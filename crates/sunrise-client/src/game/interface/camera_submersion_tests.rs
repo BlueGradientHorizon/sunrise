@@ -4,7 +4,8 @@ use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{CameraSubmersionEvent, ClientHost, Hooks, ModEntry};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{camera::CameraFluid, chunk::Chunk, fog::FogType};
+use sunrise_client::{camera::CameraFluid, fog::FogType};
+use sunrise_level::chunk::Chunk;
 
 type Heard = Arc<Mutex<Vec<([f64; 3], FogType)>>>;
 

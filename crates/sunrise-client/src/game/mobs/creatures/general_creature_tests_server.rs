@@ -4,11 +4,11 @@ use super::ProjectileKind;
 #[ignore = "daily"]
 fn conversion_transfers_tags_and_team() {
     use super::super::commands::Target;
-    use sunrise_client::{
+    use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{
         mobs::{Mob, conversion::Params},
         save::uuid_text,
     };
-    use sunrise_core::geometry::Vec3;
 
     super::super::native_entity_refs::tests::with_game(|game| {
         let kind = game
@@ -49,7 +49,7 @@ fn conversion_transfers_tags_and_team() {
 fn ender_pearl_clears_impulse_before_next_fall() {
     use super::{Hit, Projectile, Vec3, Who};
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::motion::{MotionWorld, PlayerMotion};
+    use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -110,7 +110,7 @@ fn ender_pearl_clears_impulse_before_next_fall() {
         health: &game.health_resources,
         tag_items: Some(game.res.items()),
         loop_context: &game.loop_context,
-        damage_hooks: &sunrise_client::health::DamageHooks::NONE,
+        damage_hooks: &sunrise_sim::health::DamageHooks::NONE,
         block_registries: Some(&game.ui.registries),
     }
     .cause_mount_fall(10.0, 1.0)
@@ -125,9 +125,9 @@ fn ender_pearl_clears_impulse_before_next_fall() {
 #[ignore = "daily"]
 fn wolf_owner_rejoining_receives_the_kill_statistic() {
     use std::sync::Arc;
-    use sunrise_client::advancements::{Advancement, Criterion, Rewards, Tree};
-    use sunrise_client::mobs::{Damage, Mob};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_sim::advancements::{Advancement, Criterion, Rewards, Tree};
+    use sunrise_sim::mobs::{Damage, Mob};
 
     for dedicated in [false, true] {
         super::super::native_guest_turn_tests::with_guests(|game| {
@@ -156,7 +156,7 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             game.adv.loaded = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let catalyst = game
                 .pack
                 .assets
@@ -173,7 +173,7 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let mut wolf = Mob::new(100, wolf_type, Vec3::ZERO, 0.0);
             wolf.extra.tame = true;
-            wolf.extra.owner = Some(sunrise_client::lan::playerdata::uuid_ints(12));
+            wolf.extra.owner = Some(sunrise_sim::lan::playerdata::uuid_ints(12));
             game.mobs.push(wolf);
             game.mobs.push(Mob::new(101, pig_type, Vec3::ZERO, 0.0));
             {

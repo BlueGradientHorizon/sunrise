@@ -5,8 +5,8 @@
 //! the same on vanilla 26.3).
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -75,7 +75,7 @@ fn step(game: &mut crate::game::ServerGame<'_>, ticks: usize) {
 fn dancing(game: &crate::game::ServerGame<'_>) -> bool {
     game.mobs
         .iter()
-        .find(|m| m.species() == sunrise_client::mobs::Species::Allay)
+        .find(|m| m.species() == sunrise_sim::mobs::Species::Allay)
         .expect("the allay")
         .extra
         .flag

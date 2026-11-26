@@ -1,7 +1,7 @@
 //! Side-dispatched operations for item use, consumption, fishing bobbers, buckets, and tridents.
 use crate::game::{Game, Hit, consume::ItemConsumable};
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     #[inline(always)]

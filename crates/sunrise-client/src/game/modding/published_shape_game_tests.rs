@@ -39,9 +39,9 @@ pub(super) fn with_bus(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5))
                     .unwrap(),
             );
             game.update_chunk_tickets();
@@ -114,7 +114,7 @@ fn each_level_answers_with_its_own_published_shape() {
         assert!(game.enter_command_level(crate::game::Dim::Nether).is_some());
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let nether = game.level(game.dim.id()).unwrap();
         publish(game, pos, shapes(&[LOW], &[TALL]));
         for (level, collision, outline) in [(overworld, HALF, SMALL), (nether, LOW, TALL)] {
@@ -182,7 +182,7 @@ fn collision_selection_and_support_read_the_published_shape() {
             Ok(true)
         );
         // The entity collision query (`Entity.collide`): a 0.6-wide box falling from 66.
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &game.world,
             binding: game.collision,
             subject: None,
@@ -191,17 +191,16 @@ fn collision_selection_and_support_read_the_published_shape() {
             sunrise_core::geometry::Aabb::new(Vec3::new(2.2, 66.0, 2.2), Vec3::new(2.8, 67.8, 2.8));
         // Through the move gate (#2414), as every entity's move resolves.
         let fall = Vec3::new(0.0, -3.0, 0.0);
-        let mut gate = sunrise_client::move_gate::armed(
+        let mut gate = sunrise_sim::move_gate::armed(
             &game.loop_context,
             99,
             "minecraft:zombie",
             sunrise_world::entity_move::MoverType::SelfMovement,
             fall,
         );
-        let moved = sunrise_client::move_gate::scene_resolve(
-            &mut gate, &mut scene, falling, fall, 0.6, false,
-        )
-        .unwrap();
+        let moved =
+            sunrise_sim::move_gate::scene_resolve(&mut gate, &mut scene, falling, fall, 0.6, false)
+                .unwrap();
         assert_eq!(66.0 + moved.y, 64.5, "it lands on the published top");
         assert_eq!(
             game.level_collision_boxes(level, [2.0, 64.0, 2.0, 3.0, 65.0, 3.0]),
@@ -285,13 +284,12 @@ fn pathfinding_stands_on_the_published_collision_top() {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            let mut zombie =
-                sunrise_client::mobs::Mob::new(50, kind, Vec3::new(2.5, 64.5, 2.5), 0.0);
+            let mut zombie = sunrise_sim::mobs::Mob::new(50, kind, Vec3::new(2.5, 64.5, 2.5), 0.0);
             let path_mob = zombie.path_mob();
-            let finder = sunrise_client::mobs::path::Finder::new(
+            let finder = sunrise_sim::mobs::path::Finder::new(
                 &world,
                 &path_mob,
-                sunrise_client::mobs::path::Evaluator::Walk,
+                sunrise_sim::mobs::path::Evaluator::Walk,
             );
             assert_eq!(finder.static_floor(2, 65, 2), 64.5);
             drop(finder);
@@ -299,7 +297,7 @@ fn pathfinding_stands_on_the_published_collision_top() {
             zombie.ground.on_ground = true;
             zombie.ai.mov.wanted = [5.5, 64.5, 2.5];
             zombie.ai.mov.speed_modifier = 1.0;
-            zombie.ai.mov.operation = sunrise_client::mobs::control::Operation::MoveTo;
+            zombie.ai.mov.operation = sunrise_sim::mobs::control::Operation::MoveTo;
             zombie.move_control_tick(&world, &mut Vec::new());
             assert!(!zombie.ai.jump, "no jump on the published half");
         }

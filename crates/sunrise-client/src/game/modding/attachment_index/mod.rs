@@ -90,7 +90,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .block_entities
             .observe_attachments(Arc::new(IndexedAttachmentObserver::new(
                 index,
-                move |identity: sunrise_client::block_entities::BlockEntityIdentity| {
+                move |identity: sunrise_level::block_entities::BlockEntityIdentity| {
                     Some(AttachmentHolder::BlockEntity(
                         mod_api::__private::game::block_entity_ref(
                             level,
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn chunk_residency_uses_the_owning_level_through_cow_and_swaps() {
-        use sunrise_client::chunk::{Chunk, ChunkExtras};
+        use sunrise_level::chunk::{Chunk, ChunkExtras};
         use sunrise_mod_runtime::attachments::{AttachmentError, AttachmentType, Holder};
         static VALUE: AttachmentType<i32> = AttachmentType {
             namespace: "test",

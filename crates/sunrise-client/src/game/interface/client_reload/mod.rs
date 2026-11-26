@@ -17,7 +17,8 @@ use mod_api::{
     ClientReloadContext, ClientReloadHost, ClientReloadListener, ClientReloadListenerContext,
     HookId,
 };
-use sunrise_client::{datapack::DataPack, settings::Settings};
+use sunrise_client::settings::Settings;
+use sunrise_level::datapack::DataPack;
 
 /// One client reload step: a mod's apply action or model publication.
 pub(in crate::game) type PreparedClientReload = PreparedStep<()>;
@@ -64,8 +65,8 @@ impl ClientReloadListenerContext for StartupReloadContext<'_> {
         crate::game::startup_math_profile()
     }
     fn text_string(&self, text: &mod_api::Text) -> String {
-        sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {
-            sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
+        sunrise_client_core::lang::scoped(sunrise_client_core::lang::Language::default(), || {
+            sunrise_sim::api_text::to_engine_inprocess(text).plain()
         })
         .0
     }

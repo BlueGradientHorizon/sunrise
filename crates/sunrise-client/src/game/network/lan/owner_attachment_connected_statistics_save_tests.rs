@@ -135,12 +135,12 @@ mod connected_statistics_save_tests {
         });
         fs::create_dir_all(&dir).unwrap();
         game.side.world_root = dir.clone();
-        game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
             dir.clone(),
-            sunrise_client::save::LevelShape::OVERWORLD,
+            sunrise_sim::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
-        use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
+        use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
         game.side.server_lists.0 = Some(Arc::new(Mutex::new(
             super::super::super::dedicated::Lists {
                 ops: OpList::new(dir.join("ops.json")),
@@ -184,7 +184,7 @@ mod connected_statistics_save_tests {
             game.side.chat_capture = Some(Vec::new());
             // Match dedicated registration without changing the process-wide
             // tree used by unrelated integrated-server tests.
-            let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
+            let dispatcher = sunrise_command::vanilla::build_for(false, true);
             game.ui.registries.permission = 4;
             let parsed = dispatcher.parse(command, &game.ui.registries);
             let (ctx, _) = parsed.executable().expect("registered dedicated command");

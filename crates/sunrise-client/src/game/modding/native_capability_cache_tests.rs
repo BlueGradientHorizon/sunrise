@@ -8,10 +8,10 @@ use mod_api::{
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity},
-    items::ItemStack,
 };
 
 /// A capability only the test mod answers, counting each time its provider is asked.

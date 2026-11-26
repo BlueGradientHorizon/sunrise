@@ -72,7 +72,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.side.next_entity += 1;
         // `ItemEntity(EntityType, Level)` first: its own random draws UUID, bobOffs and yaw.
         let mut own = random_source::entity();
-        let fresh = sunrise_client::save::insecure_uuid(&mut own);
+        let fresh = sunrise_sim::save::insecure_uuid(&mut own);
         let bob = own.next_float() * std::f32::consts::PI * 2.0;
         own.next_float();
         if let Some(mut e) = entity_nbt::item_entity_from_nbt(&tag, self.side.next_entity, bob) {
@@ -252,8 +252,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 velocity,
                 age,
                 no_gravity,
-                portal: sunrise_client::nether_portal::PortalState {
-                    cooldown: sunrise_client::save::number(tag.get("PortalCooldown")).unwrap_or(0)
+                portal: sunrise_sim::nether_portal::PortalState {
+                    cooldown: sunrise_sim::save::number(tag.get("PortalCooldown")).unwrap_or(0)
                         as i32,
                     process: None,
                 },
@@ -265,7 +265,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 fire_ticks: crate::game::boats::saved_fire(&tag),
                 sync_velocity: false,
                 stuck: Vec3::ZERO,
-                damage: sunrise_client::falling_block::Damage::from_nbt(
+                damage: sunrise_sim::falling_block::Damage::from_nbt(
                     &tag,
                     self.res.facts().get(state).name.ends_with("anvil"),
                 ),
@@ -358,7 +358,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ground: sunrise_world::ground_support::GroundState::from_ground_flag(
                     entity_nbt::flag(&tag, "OnGround"),
                 ),
-                fall_distance: sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0),
+                fall_distance: sunrise_sim::save::float(tag.get("fall_distance")).unwrap_or(0.0),
                 stuck: Vec3::ZERO,
                 in_water: false,
                 owner: None,
@@ -410,14 +410,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (b.ground.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
             if chest {
                 b = b.with_chest();
-                b.items = sunrise_client::save::decode_items(
+                b.items = sunrise_sim::save::decode_items(
                     tag.get("Items"),
                     crate::game::boats::CHEST_SLOTS,
                 );
             }
             b.velocity = velocity;
             // AbstractBoat.readAdditionalSaveData: the lead's holder.
-            b.leash_pending = sunrise_client::mobs::leash::pending_from_nbt(tag.get("leash"));
+            b.leash_pending = sunrise_sim::mobs::leash::pending_from_nbt(tag.get("leash"));
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(id, state);
             }
@@ -508,7 +508,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let riders = self.take_passengers(&mut tag);
         // The mob's own random makes its UUID, kept unless the tag has one.
-        let (own, fresh) = sunrise_client::mobs::living_random();
+        let (own, fresh) = sunrise_sim::mobs::living_random();
         let uuid = uuid.unwrap_or(fresh);
         let mob = entity_nbt::mob_from_nbt_with_random(
             &tag,
@@ -532,14 +532,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         admitted: Option<bool>,
     ) -> u32 {
         self.resolve_loaded_profession(&mut m);
-        if sunrise_client::mobs::camel::is_camel(m.species()) {
-            sunrise_client::mobs::camel::finish_load(&mut m, self.world.game_time);
+        if sunrise_sim::mobs::camel::is_camel(m.species()) {
+            sunrise_sim::mobs::camel::finish_load(&mut m, self.world.game_time);
         }
         // `NeutralMob.readPersistentAngerSaveData`: the anger runs until its
         // end time, and the mob is angry at the target again, through
         // `Mob.setTarget` -> `asValidTarget`: a player the golem cannot attack
         // (`IronGolem.canAttack`) comes back as no target.
-        m.extra.anger = sunrise_client::mobs::anger_left(m.extra.anger_end, self.world.game_time);
+        m.extra.anger = sunrise_sim::mobs::anger_left(m.extra.anger_end, self.world.game_time);
         let anger_uuid = match tag.get("angry_at") {
             Some(Tag::IntArray(words)) if words.len() == 4 => {
                 Some([words[0], words[1], words[2], words[3]])
@@ -551,12 +551,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `angry_at` is absent or cannot resolve to a living entity.
         let neutral = matches!(
             m.species(),
-            sunrise_client::mobs::Species::Wolf
-                | sunrise_client::mobs::Species::IronGolem
-                | sunrise_client::mobs::Species::Bee
-                | sunrise_client::mobs::Species::PolarBear
-                | sunrise_client::mobs::Species::Enderman
-                | sunrise_client::mobs::Species::ZombifiedPiglin
+            sunrise_sim::mobs::Species::Wolf
+                | sunrise_sim::mobs::Species::IronGolem
+                | sunrise_sim::mobs::Species::Bee
+                | sunrise_sim::mobs::Species::PolarBear
+                | sunrise_sim::mobs::Species::Enderman
+                | sunrise_sim::mobs::Species::ZombifiedPiglin
         );
         // Restore on the server whether or not a mod listens. The saved UUID
         // can name an unloaded entity, an online player, or another mob;
@@ -575,10 +575,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.finalize_plain(
                 &mut m,
                 &difficulty,
-                sunrise_client::mobs::spawn_rules::Reason::Structure,
+                sunrise_sim::mobs::spawn_rules::Reason::Structure,
             );
         }
-        sunrise_client::mobs::armor::prepare(&m, &self.motion.attributes);
+        sunrise_sim::mobs::armor::prepare(&m, &self.motion.attributes);
         let id = m.id;
         // Refuse residency, not the already-constructed object or its links.
         // A spawner tree has already run this decision in preorder.
@@ -887,9 +887,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // absolute game time, so it goes on while the chunk is unloaded, and
         // the target is the entity the mob is angry at (`settle_anger_end`).
         let anger = self.mob_at(object).extra.anger;
-        if sunrise_client::mobs::persistent_anger(self.mob_at(object).species()) {
+        if sunrise_sim::mobs::persistent_anger(self.mob_at(object).species()) {
             let game_time = self.world.game_time;
-            sunrise_client::mobs::settle_anger_end(self.mob_at_mut(object), game_time);
+            sunrise_sim::mobs::settle_anger_end(self.mob_at_mut(object), game_time);
         } else {
             self.mob_at_mut(object).extra.anger_end = if anger > 0 {
                 self.world.game_time + i64::from(anger)
@@ -902,7 +902,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // also once the target is gone (`tame::update_persistent_anger`).
             if matches!(
                 self.mob_at(object).species(),
-                sunrise_client::mobs::Species::Wolf | sunrise_client::mobs::Species::IronGolem
+                sunrise_sim::mobs::Species::Wolf | sunrise_sim::mobs::Species::IronGolem
             ) {
                 self.mob_at(object).extra.angry_at
             } else {
@@ -913,7 +913,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // A mob gets its UUID when it is first saved (`uuid_for`): the anger
         // target still in the world gets it now, so `uuid_of` can name it.
-        if let Some(sunrise_client::mobs::Who::Mob(target)) = self.mob_at(object).extra.angry_at
+        if let Some(sunrise_sim::mobs::Who::Mob(target)) = self.mob_at(object).extra.angry_at
             && target != 0
             && self.mobs.iter().any(|m| m.id == target)
         {
@@ -921,12 +921,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // The mob that last hurt it, still resident, gets its UUID now, as the
         // anger target does, so `put_last_hurt_by_mob` can name it.
-        if let Some(sunrise_client::mobs::Who::Mob(attacker)) = self.mob_at(object).ai.last_hurt_by
+        if let Some(sunrise_sim::mobs::Who::Mob(attacker)) = self.mob_at(object).ai.last_hurt_by
             && self.mobs.iter().any(|m| m.id == attacker)
         {
             self.uuid_for(attacker);
         }
-        use sunrise_client::mobs::leash::Holder;
+        use sunrise_sim::mobs::leash::Holder;
         let mut retained = self
             .persist
             .raw

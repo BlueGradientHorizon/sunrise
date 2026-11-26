@@ -1,6 +1,6 @@
 use super::*;
 use sunrise_client::animate_tick::campfire_particle_tick;
-use sunrise_client::containers::BlockEntity;
+use sunrise_level::containers::BlockEntity;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CampfireBlockEntity.particleTick` of the campfire at `key`.

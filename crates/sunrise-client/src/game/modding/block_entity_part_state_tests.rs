@@ -7,11 +7,11 @@ use mod_api::{
     BlockPart, Hooks, HostTransaction, PartStateError, Registrar, ServerHost, edit_part_state,
     read_state,
 };
-use sunrise_client::{
+use sunrise_core::nbt::{Compound, Tag};
+use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity},
 };
-use sunrise_core::nbt::{Compound, Tag};
 use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Attachments, Holder};
 
 use super::Dim;
@@ -208,7 +208,7 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
                 assert_eq!(Press::state_existing_in(level, a), Ok(Some(11)));
             });
             assert!(
-                !sunrise_client::join_seq::visibility::passes_settled(),
+                !sunrise_sim::join_seq::visibility::passes_settled(),
                 "no save while it is tentative"
             );
             Err(())
@@ -388,7 +388,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
     const NAME: &str = "game::server_side::block_entity_part_state_tests::item_slot_writes_save_but_menu_data_is_transient";
     with_state_mod(NAME, |game| {
         use super::api_values::TryIntoApi;
-        use sunrise_client::items::ItemStack;
+        use sunrise_items::items::ItemStack;
 
         let entity = press_with_item_slot(game, (1, 64, 1));
         game.save_level(true).unwrap();
@@ -508,7 +508,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
         };
         assert_eq!(
             saved.items,
-            [Some(sunrise_client::items::ItemStack::new(
+            [Some(sunrise_items::items::ItemStack::new(
                 "minecraft:stone",
                 1
             ))]
@@ -759,7 +759,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
                 game.world.set(pos.0, pos.1, pos.2, block).unwrap();
                 let entity = ModBlockEntity::new(
                     "part_state_fixture:part_state".into(),
-                    sunrise_client::containers::ModBlockEntityFields {
+                    sunrise_level::containers::ModBlockEntityFields {
                         data: vec![0],
                         ..Default::default()
                     },

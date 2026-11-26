@@ -34,7 +34,7 @@ fn a_gate_asks_its_neighbours_parts_for_wall_height() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let gate = registry.default_state("minecraft:oak_fence_gate").unwrap();
             for (z, name, expected) in [

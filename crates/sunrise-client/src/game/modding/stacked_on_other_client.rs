@@ -4,7 +4,7 @@ use crate::game::stacked_on_other::{
     Pickup, local_pickup_id, stacked_listened_for_side, stacked_listens_for_side,
 };
 use std::rc::Rc;
-use sunrise_client::menu::{Env, Input};
+use sunrise_sim::menu::{Env, Input};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The clicks `menu_ops` was asked for, when they resolve to a pickup of a slot of the local

@@ -1,10 +1,11 @@
 //! Enderman leave-block attempts need the authoritative block simulation.
 use crate::game::Game;
-use sunrise_client::{Result, mobs::Species};
+use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
 };
+use sunrise_sim::mobs::Species;
 use sunrise_world::{
     level::{LevelAccess, flags},
     registry::BlockStateId,
@@ -36,7 +37,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .iter()
             .filter(|m| {
                 (m.species() == Species::Enderman && m.extra.counter2 > 0)
-                    || sunrise_client::mobs::shulker::teleport_pending(m)
+                    || sunrise_sim::mobs::shulker::teleport_pending(m)
             })
             .map(|m| m.id)
             .collect();
@@ -77,14 +78,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             {
                 let world = self.mob_world_base(&others);
                 if shulker {
-                    sunrise_client::mobs::shulker::run_pending_teleports(
+                    sunrise_sim::mobs::shulker::run_pending_teleports(
                         &mut mob,
                         &world,
                         &mut level_random,
                         &mut events,
                     );
                 } else {
-                    sunrise_client::mobs::enderman::run_pending_teleports(
+                    sunrise_sim::mobs::enderman::run_pending_teleports(
                         &mut mob,
                         &world,
                         &mut events,
@@ -200,7 +201,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.post_block_game_event(
             "minecraft:block_place",
             pos,
-            Some(sunrise_client::mobs::Who::Mob(mob)),
+            Some(sunrise_sim::mobs::Who::Mob(mob)),
             Some(candidate.state),
         );
         if let Some(m) = self.mobs.iter_mut().find(|m| {

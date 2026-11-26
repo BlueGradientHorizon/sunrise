@@ -60,7 +60,7 @@ pub(in crate::game) mod item_toss_tests {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::ZERO,
                     )
@@ -164,7 +164,7 @@ pub(in crate::game) mod item_toss_tests {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::ZERO,
                     )

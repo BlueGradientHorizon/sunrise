@@ -9,11 +9,12 @@ use super::{
     lan_actions::RECIPE_CHECK_COST,
     transactions::{After, decision::MenuOwner},
 };
-use sunrise_client::lan::recipes;
-use sunrise_client::{
-    containers::{BlockEntity, ModMenuType},
+use sunrise_items::items::{ItemStack, Items};
+use sunrise_level::containers::{BlockEntity, ModMenuType};
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::lan::recipes;
+use sunrise_sim::{
     furnace::FurnaceCooking,
-    items::{ItemStack, Items},
     lan::{
         guest::Guest,
         menu::{ModCraft, Slots, linked_slot_count, read_links, write_links},
@@ -23,7 +24,6 @@ use sunrise_client::{
         place::{PostPlace, TransferCheck, TransferError},
     },
 };
-use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// `AbstractContainerMenu.dropOrPlaceInInventory`: killed or disconnected players
 /// drop inputs, while a live close or a dimension change returns them.
@@ -97,7 +97,7 @@ pub(in crate::game) fn load_player(menu: &mut Menu, g: &Guest) {
 /// with its slots' rules. None for the others, whose clicks the hub runs.
 pub(in crate::game) fn machine_menu(
     entity: &BlockEntity,
-    mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
+    mod_type: Option<&'static sunrise_level::containers::ModMenuType>,
 ) -> Option<(Kind, Vec<Option<ItemStack>>)> {
     Some(match entity {
         BlockEntity::Furnace(f) => {
@@ -204,7 +204,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         gi: usize,
         menu: &mut Menu,
-        stacked: Option<&sunrise_client::menu::StackedOutcome>,
+        stacked: Option<&sunrise_sim::menu::StackedOutcome>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
         let result = self.guest_menu_edit(gi, menu, stacked, op)?;
@@ -219,7 +219,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         gi: usize,
         menu: &mut Menu,
-        stacked: Option<&sunrise_client::menu::StackedOutcome>,
+        stacked: Option<&sunrise_sim::menu::StackedOutcome>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
         self.lan.as_ref()?;
@@ -248,7 +248,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
         let parts = self.menu_can_equip();
         let env = Env {
-            maps: maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps),
+            maps: maps.as_ref().map(|m| m as &dyn sunrise_sim::menu::Maps),
             can_equip: Some(&parts),
             stacked,
             ..self.load_guest_menu(menu, host, gi)
@@ -663,7 +663,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let guest = &host.hub.guests[gi];
             // A listener can move the off hand, which the menu's slots don't show.
             let offhand = guest.offhand != offhand_before
-                && !(p.input == sunrise_client::lan::menu::input::SWAP && p.button == 40);
+                && !(p.input == sunrise_sim::lan::menu::input::SWAP && p.button == 40);
             if live(guest) {
                 let changed: Vec<_> = before
                     .into_iter()
@@ -733,7 +733,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let listens_changed = matches!((kind, entity), (Kind::Mod(_), BlockEntity::Mod(_))
             if mod_api::__private::menu_listens(mod_api::HookId::MenuSlotChanged, &menu_id));
         let heard = listens_take || listens_changed;
-        let overlay_links = |world: &sunrise_client::world::World,
+        let overlay_links = |world: &sunrise_level::world::World,
                              items: &mut [Option<ItemStack>]| {
             if let Some((l, links)) = &linked {
                 for (k, stack) in l.slots().zip(
@@ -1120,7 +1120,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && let Some(guest) = host.hub.guest(conn)
             {
                 let offhand = guest.offhand != offhand_before
-                    && !(p.input == sunrise_client::lan::menu::input::SWAP && p.button == 40);
+                    && !(p.input == sunrise_sim::lan::menu::input::SWAP && p.button == 40);
                 if live(guest) {
                     let reply = if !applied {
                         ClickReply::Resend(p.container)
@@ -1419,7 +1419,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if g.brand != "sunrise" || g.spectator() {
             return;
         }
-        let Ok((container, id, all)) = sunrise_client::lan::recipes::decode_transfer_request(data)
+        let Ok((container, id, all)) = sunrise_sim::lan::recipes::decode_transfer_request(data)
         else {
             return;
         };
@@ -2275,13 +2275,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod machine_recipe_placement_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_core::position::ChunkPos;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
         play::{Serverbound, UseItemOn},
         recipes::PlaceRecipe,
     };
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[test]
     #[ignore = "daily"]
@@ -2291,7 +2291,7 @@ mod machine_recipe_placement_tests {
             game.set_allow_commands(true);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
@@ -2570,14 +2570,11 @@ mod machine_recipe_placement_tests {
 mod recipe_check_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        containers::{ModBlockEntity, ModBlockEntityFields, ModCrafting},
-        lan::{
-            Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
-            menu::Menu as HubMenu,
-        },
-    };
+    use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields, ModCrafting};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{
+        Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig, menu::Menu as HubMenu,
+    };
 
     const STATION: (i32, i32, i32) = (4, 200, 4);
     const WINDOW: i32 = 7;
@@ -2849,8 +2846,8 @@ mod empty_ingredient_placement_tests {
 
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::{configuration::ClientInformation, recipes::PlaceRecipe};
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[test]
     #[ignore = "daily"]

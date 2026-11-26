@@ -7,12 +7,13 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use sunrise_client::{items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{
     geometry::{Direction, Vec3},
     nbt::Tag,
     position::BlockPos,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::level::{PlaceContext, PlacementSource as EnginePlacementSource};
 
 pub(in crate::game) struct Move;
@@ -166,7 +167,7 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = game.pack.assets.registry;
             let air = registry.default_state("minecraft:air").unwrap();
@@ -348,8 +349,8 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 Some(PlayerMotion::new(game.motion, Vec3::new(12.5, 64.0, 12.5)).unwrap());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+            game.set_local_mode(sunrise_command::args::GameMode::Survival);
             let registry = game.pack.assets.registry;
             let air = registry.default_state("minecraft:air").unwrap();
             let stone = registry.default_state("minecraft:stone").unwrap();

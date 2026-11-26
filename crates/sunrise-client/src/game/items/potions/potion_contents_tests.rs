@@ -3,7 +3,7 @@
 //! (or `custom_color`) and its `potion_duration_scale`.
 use super::*;
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 
 /// A server's game with a player standing at the origin's block.
 fn player_game(

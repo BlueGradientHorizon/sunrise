@@ -1,7 +1,7 @@
 //! Dedicated server startup (`start_dedicated_game`) and server-side agent control socket setup.
 use super::*;
-use sunrise_client::control;
 use sunrise_level::sim_settings::SimSettings;
+use sunrise_sim::control;
 
 /// The post-load setup for a dedicated server run: builds `ServerGame` with no window,
 /// renderer, client reload, or audio device, runs `run_dedicated`, and shuts down.
@@ -42,7 +42,7 @@ pub(in crate::game) fn start_dedicated_game(
     if let Some(scenario) = game.options.benchmark.clone() {
         let control = game
             .control
-            .get_or_insert_with(sunrise_client::control::Server::local);
+            .get_or_insert_with(sunrise_sim::control::Server::local);
         sunrise_client::benchmark::start(
             control.sender(),
             sunrise_client::benchmark::Setup {
@@ -50,7 +50,7 @@ pub(in crate::game) fn start_dedicated_game(
                 started,
                 app: sunrise_bench::App {
                     name: "sunrise-client".into(),
-                    version: sunrise_client::crash::version(),
+                    version: sunrise_level::crash::version(),
                     commit: option_env!("SUNRISE_COMMIT").map(str::to_owned),
                     mods: Vec::new(),
                 },

@@ -1,5 +1,5 @@
 use crate::game::chat_common::end_clock_tests::game;
-use crate::save::Level;
+use sunrise_sim::save::Level;
 
 /// `/time <line>`; the feedback it printed.
 pub(in crate::game::server_side) fn run(

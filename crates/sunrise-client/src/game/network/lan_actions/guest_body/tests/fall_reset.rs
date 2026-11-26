@@ -1,7 +1,7 @@
 //! `handlePlayerPositionChange`: a move that goes up ends the guest's fall.
-use sunrise_client::items::ItemStack;
-use sunrise_client::lan::guest::InboxItem;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
+use sunrise_sim::lan::guest::InboxItem;
 
 pub(in crate::game) const NAME: &str = "GuestBodyTest";
 /// `fall_from_height` with no condition, then with a fall of at most 1 block, and of 5.

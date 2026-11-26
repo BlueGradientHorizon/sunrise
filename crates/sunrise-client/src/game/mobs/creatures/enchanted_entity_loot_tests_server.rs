@@ -8,10 +8,10 @@ use crate::game::creatures::enchanted_entity_loot_tests::heard;
 use crate::game::creatures::enchanted_entity_loot_tests::listening;
 use mod_api::ServerHost;
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::{Damage, DamageKind, Mob, Who};
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
+use sunrise_sim::motion::PlayerMotion;
 
 /// A draw the listener makes from the level's random during `/loot ... kill`
 /// stays made: the roll's sequence is its own, and the level random moves.
@@ -76,7 +76,7 @@ fn a_kills_loot_uses_the_level_a_mod_answers() {
             // The mobs' ids, clear of the guest's.
             game.side.next_entity = 1000;
             game.as_guest(5, |g| {
-                let mut sword = sunrise_client::items::ItemStack::new("minecraft:iron_sword", 1);
+                let mut sword = sunrise_items::items::ItemStack::new("minecraft:iron_sword", 1);
                 sword.enchant("minecraft:looting", 2);
                 g.inventory[g.selected] = Some(sword);
             })
@@ -182,8 +182,8 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             game.side.command_source = None;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            let stick = sunrise_client::items::ItemStack::new("minecraft:stick", 1);
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+            let stick = sunrise_items::items::ItemStack::new("minecraft:stick", 1);
             game.spawn_item(stick, [0.5, 64.0, 0.5], [0.0; 3], 0);
             let item = game.dropped.iter().last().unwrap().id;
             let item = super::super::commands::Target::Item(item);
@@ -233,7 +233,7 @@ fn loot_kill_asks_with_the_commands_source_as_the_attacker() {
             };
 
             game.as_guest(5, |g| {
-                let mut sword = sunrise_client::items::ItemStack::new("minecraft:iron_sword", 1);
+                let mut sword = sunrise_items::items::ItemStack::new("minecraft:iron_sword", 1);
                 sword.enchant("minecraft:looting", 2);
                 g.inventory[g.selected] = Some(sword);
                 g.ui.registries.permission = 4;

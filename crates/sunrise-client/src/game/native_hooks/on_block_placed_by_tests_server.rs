@@ -7,13 +7,13 @@ use crate::game::native_hooks::on_block_placed_by_tests::crate_stack;
 use crate::game::native_hooks::on_block_placed_by_tests::shulker_stack;
 use crate::game::{GuestUse, Hit};
 use std::sync::{Arc, atomic::Ordering};
-use sunrise_client::{
-    chunk::Chunk, containers::BlockEntity, items::ItemStack, motion::PlayerMotion,
-};
 use sunrise_core::{
     geometry::{Direction, Vec3},
     nbt::Tag,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]

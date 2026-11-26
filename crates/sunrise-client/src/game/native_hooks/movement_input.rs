@@ -1,6 +1,6 @@
 use super::*;
 use mod_api::{MovementInput, MovementKeys};
-use sunrise_client::sprint::Keys;
+use sunrise_sim::sprint::Keys;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

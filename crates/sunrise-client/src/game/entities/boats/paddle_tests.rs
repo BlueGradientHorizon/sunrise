@@ -9,7 +9,7 @@ fn a_paddled_boat_accelerates_by_the_sine_table_at_its_turned_yaw() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let mut boat = Boat::new(12, "oak".into(), Vec3::new(8.0, 70.0, 8.0), 30.0);
         // Right and forward: the oar turns the boat one degree, then it speeds up.
         boat.input = [false, true, true, false];

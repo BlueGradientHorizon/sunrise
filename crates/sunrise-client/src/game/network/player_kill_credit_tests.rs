@@ -5,14 +5,16 @@
 use super::{chat_common::PLAYER_NAME, native_entity_refs::tests::run_fresh_cases, *};
 use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost, StatType};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    motion::PlayerMotion,
+use sunrise_client_core::{
     scoreboard::{RenderType, stat_criteria},
     text::Text,
 };
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
+    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
+    motion::PlayerMotion,
+};
 
 /// The guest's connection: the victim of every test.
 const CONN: u32 = 2;
@@ -195,7 +197,7 @@ fn a_player_killing_another_player_credits_the_kill() {
     add_objectives(&mut game);
     let host_team = game.score.board.add_team("host");
     host_team.color = Some("red".into());
-    host_team.prefix = sunrise_client::scoreboard::literal("Host: ");
+    host_team.prefix = sunrise_client_core::scoreboard::literal("Host: ");
     game.score.board.add_team("guest").color = Some("blue".into());
     assert!(game.score.board.add_to_team(PLAYER_NAME, "host"));
     assert!(game.score.board.add_to_team(VICTIM, "guest"));
@@ -220,7 +222,7 @@ fn a_player_killing_another_player_credits_the_kill() {
         .as_ref()
         .unwrap();
     assert_eq!(
-        sunrise_client::scoreboard::comp_text(display).plain(),
+        sunrise_client_core::scoreboard::comp_text(display).plain(),
         format!("Host: {PLAYER_NAME}")
     );
     game.tick_scoreboard();
@@ -377,7 +379,7 @@ fn a_guest_killing_another_guest_while_displaced_credits_the_kill() {
 #[test]
 #[ignore = "daily"]
 fn a_displaced_archer_receives_resistance_credit() {
-    use sunrise_client::{
+    use sunrise_sim::{
         mobs::{Damage, Who},
         projectiles::{Projectile, ProjectileKind},
     };
@@ -463,7 +465,7 @@ impl Hooks for ResistanceOrder {
 #[test]
 #[ignore = "daily"]
 fn surviving_mob_hit_awards_resistance_before_pre_and_post() {
-    use sunrise_client::mobs::Damage;
+    use sunrise_sim::mobs::Damage;
 
     if fresh(
         "surviving_mob_hit_awards_resistance_before_pre_and_post",
@@ -570,8 +572,8 @@ fn a_stat_award_listener_reads_the_killers_pre_award_count() {
 #[test]
 #[ignore = "daily"]
 fn a_victim_advancement_matches_the_displaced_killers_facts() {
-    use sunrise_client::advancements::{Advancement, Criterion, Rewards, Tree};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::advancements::{Advancement, Criterion, Rewards, Tree};
 
     if fresh(
         "a_victim_advancement_matches_the_displaced_killers_facts",

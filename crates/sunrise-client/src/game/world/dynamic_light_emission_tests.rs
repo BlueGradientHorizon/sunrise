@@ -14,7 +14,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU8, Ordering},
 };
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 const LAMP: &str = "lights:lamp";
 const PLAIN: &str = "lights:plain";

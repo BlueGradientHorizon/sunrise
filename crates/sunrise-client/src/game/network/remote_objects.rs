@@ -4,12 +4,12 @@
 //! where it says and interpolates their moves like a mob's.
 use super::Game;
 use std::sync::Arc;
-use sunrise_client::entities::{ArmorStand, Cushion, ItemFrame, Painting};
-use sunrise_client::mobs::leash::Holder;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::{PaintingHolder, Value};
+use sunrise_sim::entities::{ArmorStand, Cushion, ItemFrame, Painting};
+use sunrise_sim::mobs::leash::Holder;
 
 /// `Mth.rotLerp(alpha, from, to)`: `from` turned `alpha` of the way to `to` by
 /// the shorter arc (`wrapDegrees` of the difference).
@@ -117,7 +117,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 check_interval: 0,
                 ticks: 0,
                 custom_name: None,
-                random: sunrise_client::random_source::entity(),
+                random: sunrise_level::random_source::entity(),
             });
         } else if kind == "minecraft:cushion" {
             // BlockAttachedEntity.pos: `BlockPos.containing` of the spawn.
@@ -173,7 +173,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let r = self.remote.as_ref()?;
         let (name, tag) = r.registries.entry("minecraft:painting_variant", id)?;
         if let Some(tag) = tag {
-            let json = sunrise_client::scoreboard::tag_to_json(tag);
+            let json = sunrise_client_core::scoreboard::tag_to_json(tag);
             return super::paintings::Variant::decode(name, &json).ok();
         }
         self.painting_variants.get(name).cloned()
@@ -263,10 +263,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     // Entity.DATA_CUSTOM_NAME and DATA_CUSTOM_NAME_VISIBLE.
                     (2, Value::OptText(name)) => {
-                        a.custom_name = name.as_ref().map(sunrise_client::entity_nbt::name_text);
+                        a.custom_name = name.as_ref().map(sunrise_sim::entity_nbt::name_text);
                     }
                     (2, Value::Text(name)) => {
-                        a.custom_name = Some(sunrise_client::entity_nbt::name_text(name));
+                        a.custom_name = Some(sunrise_sim::entity_nbt::name_text(name));
                     }
                     (3, Value::Bool(visible)) => a.name_visible = *visible,
                     (9, Value::Float(health)) => a.health = *health,
@@ -327,7 +327,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     // for none) and DATA_ID_DISPLAY_OFFSET.
                     (11, Value::Id(state)) => {
                         c.custom_display = (*state > 0).then(|| {
-                            sunrise_client::entity_nbt::state_to_nbt(
+                            sunrise_sim::entity_nbt::state_to_nbt(
                                 self.pack.assets.registry,
                                 sunrise_world::registry::BlockStateId(*state as u32),
                             )
@@ -347,8 +347,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     (14, Value::Text(output))
                         if c.kind == super::minecarts::CartKind::CommandBlock =>
                     {
-                        c.command.last_output = Some(sunrise_client::scoreboard::comp_text(
-                            &sunrise_client::scoreboard::tag_to_json(output),
+                        c.command.last_output = Some(sunrise_client_core::scoreboard::comp_text(
+                            &sunrise_client_core::scoreboard::tag_to_json(output),
                         ));
                     }
                     _ => {}

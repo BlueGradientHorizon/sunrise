@@ -5,11 +5,11 @@
 use super::{Game, stations::Kind};
 use std::sync::Arc;
 use sunrise_client::{
-    banner::{self, BannerLayer},
     hud::{HudBatch, Rect, rgba},
-    items::ItemStack,
     screen_layout::{self, LoomView, ScreenDraw},
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::banner::{self, BannerLayer};
 
 /// Per-menu loom state: `selectablePatterns`, the selected index and the
 /// screen's scroller.
@@ -209,7 +209,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         oy: f32,
         draws: &[ScreenDraw],
         background: bool,
-    ) -> Option<Vec<(sunrise_client::text::Text, u32)>> {
+    ) -> Option<Vec<(sunrise_client_core::text::Text, u32)>> {
         let atlas = &self.side.gui.atlas;
         let mut tooltip = None;
         let mut sheet: Option<String> = None;
@@ -250,7 +250,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 } => self.draw_banner_result(batch, ox + *x0 as f32, oy + *y0 as f32, base, layers),
                 ScreenDraw::Tooltip { key } => {
                     tooltip = Some(vec![(
-                        sunrise_client::text::Text::literal(self.translate_with_fallback(key, key)),
+                        sunrise_client_core::text::Text::literal(
+                            self.translate_with_fallback(key, key),
+                        ),
                         u32::MAX,
                     )]);
                 }
@@ -305,7 +307,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         ox: f32,
         oy: f32,
         local: (f32, f32),
-    ) -> Option<Vec<(sunrise_client::text::Text, u32)>> {
+    ) -> Option<Vec<(sunrise_client_core::text::Text, u32)>> {
         let s = self.station.as_ref()?;
         let l = &s.loom;
         let dye = s.inputs[1]

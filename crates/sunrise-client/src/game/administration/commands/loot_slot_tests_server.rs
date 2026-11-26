@@ -4,7 +4,7 @@ use crate::game::commands::terrain_cmds::loot_slot_tests::with_game;
 #[test]
 #[ignore = "daily"]
 fn loot_kill_matches_the_world_pack_entity_type_tag() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     with_game(|game| {
         let world = tempfile::tempdir().unwrap();
         let pack = world.path().join("datapacks/loot/data");

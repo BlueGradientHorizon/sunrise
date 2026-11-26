@@ -4,9 +4,10 @@
 //! `canUseSlot` refuses body and saddle, so only clearing works there. A mod's
 //! `set_equipment` is not asked.
 use mod_api::EquipmentSlot;
-use sunrise_client::{entities::ArmorStand, items::ItemStack};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::equipment::{BODY, CHEST, SADDLE};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ArmorStand;
 
 use super::native_entity_refs::tests::with_game;
 

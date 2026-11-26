@@ -2,9 +2,9 @@
 //! (#13113): `Leashable.restoreLeashFromSave` finds it with
 //! `ServerLevel.getEntity`, as any other holder.
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::leash::Holder;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::leash::Holder;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

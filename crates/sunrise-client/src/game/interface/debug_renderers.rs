@@ -17,8 +17,8 @@ use sunrise_client::{
     hud::HudBatch,
     hud_layout::abgr,
     mesher::Vertex,
-    text::Text,
 };
+use sunrise_client_core::text::Text;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_world::{collision_context::CollisionContext, heightmap::HeightmapType};
 
@@ -67,7 +67,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let bounds = p.bounds().inflate(Vec3::new(6.0, 6.0, 6.0));
         let (lo, hi) = (bounds.min_position(), bounds.max_position());
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -182,7 +182,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         fills: &mut Vec<([[f64; 3]; 4], u32)>,
         texts: &mut Vec<([f64; 3], String, u32)>,
     ) {
-        use sunrise_client::blocks::Fluid;
+        use sunrise_items::blocks::Fluid;
         for pos in cube(feet, 10) {
             let f = self
                 .res

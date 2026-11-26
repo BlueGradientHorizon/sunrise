@@ -109,7 +109,7 @@ fn a_failing_raw_handler_rolls_back_alone_and_the_next_one_commits() {
             game.side.settings.render_distance = 2;
             game.side.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
-                world_type: sunrise_client::save::WorldPreset::Flat,
+                world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
             };
             game.open_integrated(

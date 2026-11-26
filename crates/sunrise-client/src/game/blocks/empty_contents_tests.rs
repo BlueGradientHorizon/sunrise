@@ -3,8 +3,9 @@
 use crate::game::api_values::TryIntoApi;
 use mod_api::*;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, items::ItemStack};
 use sunrise_core::geometry::Direction;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 /// The dispenser, and the block it faces, where the Part pours.
 const DISPENSER: [i32; 3] = [5, 64, 5];

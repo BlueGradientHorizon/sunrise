@@ -9,10 +9,10 @@ use mod_api::{
     Passage, PassageCrossError as Error, PassageCrossRefusal as Refusal, PassageId, PassageTurn,
     Vec3,
 };
-use sunrise_client::lan::hub::passage_cross::{REACH, refusal_named};
 use sunrise_core::geometry::Vec3 as Motion;
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 use sunrise_protocol::passage_sync::{CROSS_CHANNEL, Cross, encode_cross};
+use sunrise_sim::lan::hub::passage_cross::{REACH, refusal_named};
 
 /// Where `point` comes out of `p`: as far from the destination, turned, as it is from the
 /// opening's centre (Immersive Portals' `Portal.transformPoint`).

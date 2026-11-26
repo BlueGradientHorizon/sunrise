@@ -1,5 +1,5 @@
 use crate::game::{Game, Screen};
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// The server's teleport that makes the local player, on a stone floor, with the level loaded.

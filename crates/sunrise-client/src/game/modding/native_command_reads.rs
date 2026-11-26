@@ -7,7 +7,7 @@ use mod_api::{
     AdvancementDisplay, AdvancementFrame, AdvancementInfo, CommandArgument, CommandInvocation,
     GameProfile, Identifier, PlayerRef,
 };
-use sunrise_client::advancements::{Advancement, Frame, Tree};
+use sunrise_sim::advancements::{Advancement, Frame, Tree};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A parsed native command with the level and position it executes at: after `execute
@@ -57,10 +57,10 @@ fn advancement_in(tree: &Tree, id: &Identifier) -> Option<AdvancementInfo> {
 fn advancement_info(advancement: &Advancement) -> Option<AdvancementInfo> {
     let display = match &advancement.display {
         Some(d) => Some(AdvancementDisplay::new(
-            sunrise_client::scoreboard::comp_text(&d.title)
+            sunrise_client_core::scoreboard::comp_text(&d.title)
                 .try_into_api()
                 .ok()?,
-            sunrise_client::scoreboard::comp_text(&d.description)
+            sunrise_client_core::scoreboard::comp_text(&d.description)
                 .try_into_api()
                 .ok()?,
             d.icon.try_into_api().ok()?,
@@ -95,7 +95,7 @@ fn advancement_info(advancement: &Advancement) -> Option<AdvancementInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::advancements::{Criterion, Display, Rewards};
+    use sunrise_sim::advancements::{Criterion, Display, Rewards};
 
     fn mine_stone() -> Advancement {
         let criterion = |name: &str| Criterion {
@@ -103,7 +103,7 @@ mod tests {
             trigger: "minecraft:inventory_changed".into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&serde_json::json!({})),
         };
-        let mut icon = sunrise_client::crafting::recipe_result(&serde_json::json!({
+        let mut icon = sunrise_sim::crafting::recipe_result(&serde_json::json!({
             "id": "minecraft:wooden_pickaxe",
             "components": {"minecraft:enchantment_glint_override": true}
         }))

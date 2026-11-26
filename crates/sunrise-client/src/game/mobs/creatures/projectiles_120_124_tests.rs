@@ -3,10 +3,10 @@ use crate::game::commands::Target;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use sunrise_client::mobs::{Who, leash::Holder};
-use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_sim::mobs::{Who, leash::Holder};
+use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 #[derive(Deserialize)]
 pub(in crate::game) struct Witness {
@@ -200,7 +200,7 @@ pub(in crate::game) fn setup_game<'a>(
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.options.dedicated = None;
     let mut player =
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 17.5)).unwrap();
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 17.5)).unwrap();
     player.client_loaded = true;
     game.player = Some(player);
     crate::game::native_entity_refs::tests::bind_local_player(&mut game, 1, (413u128 << 96) | 1);
@@ -305,7 +305,7 @@ pub(in crate::game) fn clear_arena(game: &mut crate::game::ServerGame<'_>, backs
     let _ = game.run_command("weather clear 10000");
     game.world.weather.rain_level = (0.0, 0.0);
     game.world.weather.thunder_level = (0.0, 0.0);
-    game.set_mode(sunrise_client::command::args::GameMode::Survival);
+    game.set_mode(sunrise_command::args::GameMode::Survival);
     game.yaw = -90.0;
     game.pitch = 0.0;
     if let Some(p) = game.player.as_mut() {
@@ -379,9 +379,9 @@ pub(in crate::game) fn run_witness_spectator_player_120() {
         clear_arena(&mut game, 8);
         game.world.random.set_seed(witness.level_seed);
         let mode = if case.mode == "spectator" {
-            sunrise_client::command::args::GameMode::Spectator
+            sunrise_command::args::GameMode::Spectator
         } else {
-            sunrise_client::command::args::GameMode::Survival
+            sunrise_command::args::GameMode::Survival
         };
         game.set_mode(mode);
         if let Some(p) = game.player.as_mut() {
@@ -1356,7 +1356,7 @@ pub(in crate::game) fn check_review_entity(
                     ));
                     return false;
                 }
-                let frozen = sunrise_client::save::number(
+                let frozen = sunrise_sim::save::number(
                     game.persist.raw.get(&id).and_then(|t| t.get("TicksFrozen")),
                 )
                 .unwrap_or(0) as i32;

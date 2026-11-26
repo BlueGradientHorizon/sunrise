@@ -34,7 +34,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .filter(|r| r.tab_players.contains_key(&uuid))
             .map(|r| {
                 let skin = r.skins.get(&uuid).map_or_else(
-                    || sunrise_client::tab_list::default_skin(uuid),
+                    || sunrise_level::profile_lookup::default_skin(uuid),
                     |skin| skin.body(uuid).0,
                 );
                 self.shown_face(uuid, skin)
@@ -152,7 +152,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .skins
                 .get(uuid)
                 .map(|skin| skin.body(*uuid).0)
-                .unwrap_or_else(|| sunrise_client::tab_list::default_skin(*uuid));
+                .unwrap_or_else(|| sunrise_level::profile_lookup::default_skin(*uuid));
             for key in [
                 format!("id:{uuid:032x}"),
                 format!("name:{}", p.name.to_ascii_lowercase()),
@@ -210,7 +210,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// atlas, as `PlayerInfo.getSkin` gives before the texture has loaded.
     pub(in crate::game) fn shown_face<'s>(&self, uuid: u128, skin: &'s str) -> &'s str {
         match self.skin_pending(skin) {
-            true => sunrise_client::tab_list::default_skin(uuid),
+            true => sunrise_level::profile_lookup::default_skin(uuid),
             false => skin,
         }
     }

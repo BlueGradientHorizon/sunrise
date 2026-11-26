@@ -165,7 +165,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 "reward_hits",
                 "dummy",
                 serde_json::json!({"text":"reward_hits"}),
-                sunrise_client::scoreboard::RenderType::Integer,
+                sunrise_client_core::scoreboard::RenderType::Integer,
                 false,
                 None,
             );
@@ -377,12 +377,12 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 "completion is captured before rewards"
             );
         } else {
-            let mut sync = sunrise_client::lan::data::SyncData::empty();
-            sync.advancements = sunrise_client::lan::ServerAdvancements::load(
+            let mut sync = sunrise_sim::lan::data::SyncData::empty();
+            sync.advancements = sunrise_sim::lan::ServerAdvancements::load(
                 &scratch,
                 &sunrise_world::loot::PackOverlay::NONE,
                 // Rewards must name a recipe registered in the server's index.
-                sunrise_client::lan::recipes::BookProjections::single_shapeless("testmod:reward"),
+                sunrise_sim::lan::recipes::BookProjections::single_shapeless("testmod:reward"),
             );
             let reload = case == "reload";
             let host = game.lan.as_mut().unwrap();

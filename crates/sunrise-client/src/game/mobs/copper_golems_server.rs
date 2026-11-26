@@ -2,16 +2,14 @@ use super::Game;
 use super::level_sounds::LevelSound;
 use crate::game::copper_golems::RECHECK_TICKS;
 use mod_api::SoundSource;
-use sunrise_client::{
-    containers::BlockEntity,
-    items::ItemStack,
-    mobs::{
-        Mob, Species,
-        transport_items::{held, set_held},
-    },
-};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::mobs::{
+    Mob, Species,
+    transport_items::{held, set_held},
+};
 use sunrise_world::chunk::BlockState;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -22,7 +20,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn golem_chest_open(&mut self, chest: [i32; 3], open: bool, mob: u32) {
         let key = (chest[0], chest[1], chest[2]);
         if self.mod_menu_at(key).is_some() {
-            self.mod_container_opener(key, open, Some(sunrise_client::mobs::Who::Mob(mob)), 3.0);
+            self.mod_container_opener(key, open, Some(sunrise_sim::mobs::Who::Mob(mob)), 3.0);
             return;
         }
         let entry = self.world.chest_openers.entry(key).or_insert((0, 0.0));
@@ -40,7 +38,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if count <= 0 {
             self.world.chest_openers.remove(&key);
         }
-        let who = Some(sunrise_client::mobs::Who::Mob(mob));
+        let who = Some(sunrise_sim::mobs::Who::Mob(mob));
         if open && before == 0 {
             self.post_block_game_event("minecraft:container_open", chest, who, None);
         } else if !open && count == 0 {
@@ -118,7 +116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // mobInteract: gameEvent(SHEAR, player) after the shear, before the
             // tool's damage.
-            let ctx = self.who_context(Some(sunrise_client::mobs::Who::Player), None);
+            let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Player), None);
             self.post_game_event("minecraft:shear", at, ctx);
             self.damage_held_tool();
             return true;
@@ -147,7 +145,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if is_axe && self.mobs[index].extra.variant > 0 {
             let m = &mut self.mobs[index];
             m.extra.vector[0] = -1.0;
-            m.extra.variant = sunrise_client::mobs::copper_golem::weather_previous(m.extra.variant);
+            m.extra.variant = sunrise_sim::mobs::copper_golem::weather_previous(m.extra.variant);
             let id = m.id;
             self.persist.force_meta(id, 16);
             let scrape = LevelSound::new("minecraft:item.axe.scrape", at, 1.0, 1.0)
@@ -167,11 +165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             m.set_saddle(Some(ItemStack::new(item, 1)));
             // OfferFlowerGoal.stop: Mob.setGuaranteedDrop(antenna).
-            sunrise_client::mobs::finalize::set_drop_chance(
-                m,
-                sunrise_items::equipment::SADDLE,
-                2.0,
-            );
+            sunrise_sim::mobs::finalize::set_drop_chance(m, sunrise_items::equipment::SADDLE, 2.0);
         }
     }
     /// `ContainerOpenersCounter.recheckOpeners` every five ticks.
@@ -263,7 +257,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let position = m.position.components();
             if let Some(i) = game.mobs.iter().position(|x| x.id == id && !x.removed) {
                 game.mobs.update(i, |owner| {
-                    sunrise_client::join_seq::store_back(owner, m);
+                    sunrise_sim::join_seq::store_back(owner, m);
                 });
             }
             became_statue.then_some(position)
@@ -278,7 +272,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let drop = self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS);
+                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS);
                 self.break_leash(id, drop, false);
             }
         }
@@ -353,7 +347,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.custom_name = plain;
-            m.custom_name_text = Some(sunrise_client::entity_nbt::name_text(&name));
+            m.custom_name_text = Some(sunrise_sim::entity_nbt::name_text(&name));
         }
         if let Tag::Compound(raw) = self
             .persist

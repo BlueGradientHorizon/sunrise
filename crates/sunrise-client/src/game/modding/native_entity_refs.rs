@@ -41,14 +41,14 @@ use mod_api::{
     EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
 };
 #[allow(unused_imports)]
-use sunrise_client::join_seq::{
-    JoinList, JoinSeq, Joined,
-    residency::table::{EntityLookup, Location, SectionSearch},
-};
-#[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
+#[allow(unused_imports)]
+use sunrise_sim::join_seq::{
+    JoinList, JoinSeq, Joined,
+    residency::table::{EntityLookup, Location, SectionSearch},
+};
 #[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
@@ -113,7 +113,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<EntityRef> {
         self.native_level_world(level)?;
         let dimension = level.dimension();
-        let uuid = sunrise_client::lan::playerdata::uuid_ints(uuid.0);
+        let uuid = sunrise_sim::lan::playerdata::uuid_ints(uuid.0);
         let mut after = None;
         loop {
             let id = self
@@ -629,7 +629,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        let mut stack = sunrise_client::items::ItemStack::new("minecraft:bone_meal", 1);
+        let mut stack = sunrise_items::items::ItemStack::new("minecraft:bone_meal", 1);
         let ask = self.bonemeal(at, false, &mut stack);
         let grown = self.with_level(|b, level, ticks| {
             ask.crop
@@ -977,7 +977,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
     /// answer from there. None on a client or for anything else.
     pub(in crate::game) fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
+        use sunrise_sim::join_seq::residency::table::EntityLookup;
         if !self.is_logical_server() {
             return None;
         }
@@ -1016,7 +1016,7 @@ pub(in crate::game) mod general_handle_tests {
         GeneralRow {
             id,
             uuid,
-            join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+            join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
             type_slot: 0,
             position: Vec3::new(0.5, 64.0, 0.5),
             previous: Vec3::new(0.5, 64.0, 0.5),
@@ -1465,7 +1465,7 @@ pub(in crate::game) mod tests {
         for z in center.z - 2..=center.z + 2 {
             for x in center.x - 2..=center.x + 2 {
                 if !game.world.chunks.contains_key(&(x, z)) {
-                    let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                    let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                     // A ticking column is lit (`ChunkMap.prepareTickingChunk`); `forceload` waits for it.
                     chunk.lit = true;
                     game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
@@ -1486,7 +1486,7 @@ pub(in crate::game) mod tests {
         game.side.next_entity = game.side.next_entity.max(id);
         game.player.as_mut().expect("fixture player body").entity_id =
             i32::try_from(id).expect("fixture entity ID fits the protocol");
-        game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(uuid));
+        game.level.player_uuid = Some(sunrise_sim::lan::playerdata::uuid_ints(uuid));
         game.bind_local_player_residency();
         game.side.lan_acting_entity = Some(id);
         game.side.lan_acting_uuid = Some(uuid);
@@ -1498,8 +1498,8 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         let conn = game.side.lan_acting.unwrap();
         let id = game.side.lan_acting_entity.unwrap();
         let uuid = game.side.lan_acting_uuid.unwrap();
@@ -1745,7 +1745,7 @@ pub(in crate::game) mod tests {
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         configure: Option<
-            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
         test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
@@ -1756,7 +1756,7 @@ pub(in crate::game) mod tests {
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         configure: Option<
-            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
         test: impl FnOnce(&mut crate::game::ClientGame<'_>),
     ) {
@@ -1767,7 +1767,7 @@ pub(in crate::game) mod tests {
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         configure: Option<
-            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
         cached: bool,
         test: impl FnOnce(&mut crate::game::ServerGame<'_>),
@@ -1846,9 +1846,9 @@ pub(in crate::game) mod tests {
         resolve_parts(&game).unwrap();
         // The title's save folder is under the working directory: give each test its own, so a
         // test that saves leaves the checkout clean and parallel tests don't share files.
-        game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
             saves.path().to_path_buf(),
-            sunrise_client::save::LevelShape::OVERWORLD,
+            sunrise_sim::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         test(&mut game);
@@ -1858,7 +1858,7 @@ pub(in crate::game) mod tests {
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         configure: Option<
-            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
         cached: bool,
         test: impl FnOnce(&mut crate::game::ClientGame<'_>),
@@ -1995,8 +1995,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn block_part_allows_weak_power_in_real_game_level() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::position::BlockPos;
+        use sunrise_level::chunk::Chunk;
 
         mod_platform::__private::part_tests::weak_power_game_thread();
         with_game(|game| {
@@ -2030,7 +2030,7 @@ pub(in crate::game) mod tests {
     fn a_placement_view_reads_redstone_and_collision_shapes() {
         use mod_api::{Direction, LevelHost};
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.world
@@ -2078,8 +2078,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_soil_part_answers_for_the_plants_above_it_in_a_real_game_level() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::position::BlockPos;
+        use sunrise_level::chunk::Chunk;
 
         // The fixture's parts: glass sustains any plant, grass sustains none.
         mod_platform::__private::part_tests::sustain_plant_game_thread();
@@ -2117,8 +2117,9 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_block_part_decides_whether_the_tool_harvests() {
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
         use sunrise_core::{geometry::Vec3, position::ChunkPos};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::motion::PlayerMotion;
 
         // The fixture's parts: stone is harvested by any tool, dirt by none.
         mod_platform::__private::part_tests::harvest_game_thread();
@@ -2192,7 +2193,7 @@ pub(in crate::game) mod tests {
         support: &str,
     ) {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         game.options.dedicated = Some(Vec::new());
         game.world
@@ -2250,7 +2251,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_level_bone_meals_a_block_and_sets_a_biome_cell() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -2499,7 +2500,7 @@ pub(in crate::game) mod tests {
             // A block-ticking chunk: lit, its neighbours loaded, with its tick list, as
             // loading gives one.
             for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                 chunk.lit = true;
                 game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
             }
@@ -2569,7 +2570,7 @@ pub(in crate::game) mod tests {
                     .unwrap()
             };
             for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                 chunk.lit = true;
                 game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
             }
@@ -2663,7 +2664,7 @@ pub(in crate::game) mod tests {
             // A reload without the mod's answers takes them back.
             game.res.mob_data().resolve_parts(
                 game.res.facts(),
-                &sunrise_client::mobs::data::PartAnswers::default(),
+                &sunrise_sim::mobs::data::PartAnswers::default(),
             );
             assert!(!asks("minecraft:glass", Land));
             assert!(asks("minecraft:air", Land));
@@ -2674,8 +2675,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn block_part_asks_neighbours_to_update_when_its_block_is_removed() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::position::BlockPos;
+        use sunrise_level::chunk::Chunk;
 
         mod_platform::__private::part_tests::removal_game_thread();
         with_game(|game| {
@@ -2780,7 +2781,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn block_parts_decide_what_a_piston_pulls_along() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         mod_platform::__private::part_tests::sticky_game_thread();
         with_game(|game| {
@@ -2833,15 +2834,15 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::server_side) fn block_part_bounce_restitution_in_own_process() {
-        use sunrise_client::block_contact::{Contact, bounce_restitution};
         use sunrise_core::position::BlockPos;
+        use sunrise_sim::block_contact::{Contact, bounce_restitution};
 
         let heard = mod_platform::__private::part_tests::restitution_game_thread();
         crate::game::native_hooks::install_block_contact_hooks();
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = game.pack.assets.registry;
             let state = |name: &str| registry.default_state(name).unwrap();
@@ -2873,7 +2874,7 @@ pub(in crate::game) mod tests {
                     LoopSide::Server
                 });
                 bounce_restitution(
-                    sunrise_client::motion::FrictionLevel {
+                    sunrise_sim::motion::FrictionLevel {
                         world: &game.world,
                         registry,
                         context: &context,
@@ -2907,8 +2908,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn block_part_connects_wire_in_a_real_game_level() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::{geometry::Direction, position::BlockPos};
+        use sunrise_level::chunk::Chunk;
 
         mod_platform::__private::part_tests::redstone_game_thread();
         with_game(|game| {
@@ -2943,8 +2944,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn block_part_flips_fence_wall_and_pane_connections_in_a_real_game_level() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::{geometry::Direction, position::BlockPos};
+        use sunrise_level::chunk::Chunk;
 
         mod_platform::__private::part_tests::connection_game_thread();
         with_game(|game| {
@@ -2990,7 +2991,7 @@ pub(in crate::game) mod tests {
     fn side_guards_agree_across_integrated_dedicated_and_client() {
         use super::super::execution_role::ExecutionRole;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         let mut server_level = None;
         with_game(|game| {
             game.world
@@ -3029,7 +3030,7 @@ pub(in crate::game) mod tests {
     fn chunk_handles_resolve_loaded_parked_and_stale_levels() {
         use mod_api::{Authority, ChunkStatus};
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             game.world
@@ -3070,7 +3071,7 @@ pub(in crate::game) mod tests {
     fn level_reads_and_writes_use_dimension_build_height() {
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
-        use sunrise_client::chunk::{Chunk, LevelShape};
+        use sunrise_level::chunk::{Chunk, LevelShape};
         with_game(|game| {
             game.world.shape = LevelShape::new(0, 128, 128, true, false).unwrap();
             game.world
@@ -3112,8 +3113,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn equipping_mobs_by_hand_keeps_one_complete_stack() {
-        use sunrise_client::{items::ItemStack, mobs::Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::mobs::Mob;
         with_game(|game| {
             game.creative = false;
             for (id, kind, item) in [
@@ -3148,8 +3150,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn sulfur_cube_absorbs_one_complete_stack_by_hand_and_pickup() {
-        use sunrise_client::{items::ItemStack, mobs::Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::mobs::Mob;
         with_game(|game| {
             game.creative = false;
             let kind = game
@@ -3188,8 +3191,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn shearing_llama_and_happy_ghast_returns_full_body_stacks() {
-        use sunrise_client::{items::ItemStack, mobs::Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::mobs::Mob;
         with_game(|game| {
             for (id, kind, item) in [
                 (12, "minecraft:llama", "minecraft:red_carpet"),
@@ -3225,11 +3229,9 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::{
-            items::ItemStack,
-            lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-        };
+        use sunrise_items::items::ItemStack;
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
         with_game(|game| {
             let settings = LanSettings {
@@ -3283,7 +3285,7 @@ pub(in crate::game) mod tests {
                 if id == 12 {
                     // A player loaded from a file saved with a walking speed.
                     guest.abilities.walking_speed = 0.25;
-                    guest.loaded_body = Some(sunrise_client::lan::guest::SavedBody {
+                    guest.loaded_body = Some(sunrise_sim::lan::guest::SavedBody {
                         fire_ticks: 0,
                         air: 300,
                         fall_distance: 0.0,
@@ -3298,7 +3300,7 @@ pub(in crate::game) mod tests {
                 guest.inventory[0] = Some(ItemStack::new("minecraft:stone", 1));
                 host.hub.guests.push(guest);
             }
-            let motion = sunrise_client::motion::PlayerMotion::new(
+            let motion = sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(3.0, 64.0, 5.0),
             )
@@ -3364,7 +3366,7 @@ pub(in crate::game) mod tests {
                     .is_none()
             );
             // The host's own previous mode, which no guest's change may touch.
-            game.previous_mode = Some(sunrise_client::command::args::GameMode::Adventure);
+            game.previous_mode = Some(sunrise_command::args::GameMode::Adventure);
             assert_eq!(game.player_previous_game_mode(player), Some(None));
             assert!(!game.player_set_game_mode(player, GameMode::Survival));
             assert_eq!(game.player_previous_game_mode(player), Some(None));
@@ -3473,7 +3475,7 @@ pub(in crate::game) mod tests {
             assert_eq!(kept.previous_game_mode, Some(0));
             assert_eq!(
                 game.previous_mode,
-                Some(sunrise_client::command::args::GameMode::Adventure)
+                Some(sunrise_command::args::GameMode::Adventure)
             );
             assert!(kept.abilities.instabuild);
             assert_eq!(kept.abilities.flying_speed, 0.4);
@@ -3540,7 +3542,7 @@ pub(in crate::game) mod tests {
                     g.game_mode = 1;
                     g.abilities.update_for_mode(1);
                     assert!(g.abilities.may_fly && g.abilities.instabuild);
-                    sunrise_client::lan::playerdata::save(g, &root, &Default::default());
+                    sunrise_sim::lan::playerdata::save(g, &root, &Default::default());
                 })
                 .unwrap();
             let joined = |game: &mut crate::game::ServerGame<'_>, force| {
@@ -3566,7 +3568,7 @@ pub(in crate::game) mod tests {
             assert_eq!(joined(game, true), (0, false, false, true));
             // A remote guest can mount through the same handle path as the acting player.
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 21,
                 kind,
                 sunrise_core::geometry::Vec3::ZERO,
@@ -3594,8 +3596,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn entities_in_returns_readable_handles_and_intersects_boxes() {
         use mod_api::{LevelRef, WorldEpoch};
-        use sunrise_client::entities::ArmorStand;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ArmorStand;
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             game.armor_stands
@@ -3635,7 +3637,12 @@ pub(in crate::game) mod tests {
     fn connectionless_guest_has_no_transport() {
         use mod_api::HostTransaction;
         use std::sync::{Arc, atomic::Ordering};
-        use sunrise_client::{
+        use sunrise_core::geometry::Vec3;
+        use sunrise_protocol::packets::{
+            configuration::ClientInformation,
+            play::{Clientbound, Distance},
+        };
+        use sunrise_sim::{
             lan::{
                 Joined, Lan, NetConfig, PlayerSender,
                 chunks::ChunkEncoder,
@@ -3645,11 +3652,6 @@ pub(in crate::game) mod tests {
                 hub::{Hub, HubConfig},
             },
             motion::PlayerMotion,
-        };
-        use sunrise_core::geometry::Vec3;
-        use sunrise_protocol::packets::{
-            configuration::ClientInformation,
-            play::{Clientbound, Distance},
         };
         with_game(|game| {
             let sync = Arc::new(SyncData::empty());
@@ -3905,7 +3907,7 @@ pub(in crate::game) mod tests {
                 slot: 0,
             };
             let sticks = mod_api::ItemResource::of(&crate::game::api_values::test_snapshot(
-                &sunrise_client::items::ItemStack::new("minecraft:stick", 1),
+                &sunrise_items::items::ItemStack::new("minecraft:stick", 1),
             ));
             let host: &mut dyn mod_api::ServerHost = game;
             let rolled_back: Result<(), mod_api::TransactionError<()>> =
@@ -4013,13 +4015,13 @@ pub(in crate::game) mod tests {
                     .update(0, |guest| guest.dimension = value);
             }
             game.side.lan_acting = Some(real_id);
-            let selector = sunrise_client::command::args::Selector {
+            let selector = sunrise_command::args::Selector {
                 kind: 'a',
                 limit: usize::MAX,
                 ..Default::default()
             };
             assert_eq!(game.select(&selector).len(), 1);
-            let named = sunrise_client::command::args::Selector {
+            let named = sunrise_command::args::Selector {
                 player_name: Some("fake".into()),
                 ..Default::default()
             };
@@ -4030,7 +4032,7 @@ pub(in crate::game) mod tests {
             for (conn, learns) in [(fake_id, false), (real_id, true)] {
                 game.as_guest(conn, |game| {
                     let mut book =
-                        sunrise_client::items::ItemStack::new("minecraft:knowledge_book", 1);
+                        sunrise_items::items::ItemStack::new("minecraft:knowledge_book", 1);
                     book.data_mut().set_other(
                         "minecraft:recipes",
                         Some(sunrise_core::nbt::Tag::List(vec![
@@ -4060,7 +4062,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(game.stats.get("custom", "minecraft:jump"), before);
                 game.trigger("minecraft:tick", |_, _| panic!("fake criterion evaluated"));
                 assert_eq!(game.award_recipes(&["minecraft:test".into()]), 0);
-                let source = sunrise_client::command::args::Selector {
+                let source = sunrise_command::args::Selector {
                     kind: 's',
                     limit: 1,
                     ..Default::default()
@@ -4069,12 +4071,12 @@ pub(in crate::game) mod tests {
                     game.select(&source),
                     vec![super::super::commands::Target::Player]
                 );
-                let named = sunrise_client::command::args::Selector {
+                let named = sunrise_command::args::Selector {
                     player_name: Some("fake".into()),
                     ..Default::default()
                 };
                 assert!(game.select(&named).is_empty());
-                let uuid = sunrise_client::command::args::Selector {
+                let uuid = sunrise_command::args::Selector {
                     uuid: Some(2),
                     ..Default::default()
                 };
@@ -4123,7 +4125,7 @@ pub(in crate::game) mod tests {
             })
             .unwrap();
             let out = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
-            let sunrise_client::lan::Out::Packet(body) = out else {
+            let sunrise_sim::lan::Out::Packet(body) = out else {
                 panic!("expected cooldown packet")
             };
             let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -4161,7 +4163,7 @@ pub(in crate::game) mod tests {
                 game.side.guest_player_sounds.clear();
             })
             .unwrap();
-            let sunrise_client::lan::Out::Packet(body) =
+            let sunrise_sim::lan::Out::Packet(body) =
                 rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap()
             else {
                 panic!("expected cooldown")
@@ -4224,7 +4226,7 @@ pub(in crate::game) mod tests {
                 (&rx, "minecraft:real_outer"),
                 (&rx2, "minecraft:real_second"),
             ] {
-                let sunrise_client::lan::Out::Packet(body) = receiver
+                let sunrise_sim::lan::Out::Packet(body) = receiver
                     .recv_timeout(std::time::Duration::from_secs(2))
                     .unwrap()
                 else {
@@ -4257,7 +4259,7 @@ pub(in crate::game) mod tests {
             let (tx, _rx) = std::sync::mpsc::channel();
             shared
                 .events
-                .send(sunrise_client::lan::NetEvent::Joined(
+                .send(sunrise_sim::lan::NetEvent::Joined(
                     Box::new(Joined {
                         conn,
                         uuid: 5678,
@@ -4300,7 +4302,7 @@ pub(in crate::game) mod tests {
             assert_eq!(game.player_is_fake(fake), None);
             assert_eq!(game.player_is_fake(other_fake), None);
             assert!(
-                !sunrise_client::lan::playerdata::path(&scratch, 5678).exists(),
+                !sunrise_sim::lan::playerdata::path(&scratch, 5678).exists(),
                 "fake login replacement saved player data"
             );
             game.side.world_root = saved_root;
@@ -4358,7 +4360,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn level_reads_whether_a_block_conducts_redstone() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         with_game(|game| {
             game.world
                 .chunks
@@ -4388,7 +4390,7 @@ pub(in crate::game) mod tests {
         use mod_api::SupportType as Support;
         use mod_api::{BlockFace as Face, LevelRef, WorldEpoch};
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         with_game(|game| {
             game.world
                 .chunks
@@ -4595,7 +4597,7 @@ pub(in crate::game) mod tests {
     fn level_clip_reads_parked_world_and_refuses_unloaded() {
         use mod_api::{BlockFace as Face, ClipBlock as Block, ClipFluid as Fluid};
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         with_game(|game| {
             game.world
                 .chunks
@@ -4671,7 +4673,7 @@ pub(in crate::game) mod tests {
             );
             use sunrise_world::world_ray::RayWorld;
             let mut ordinary = super::super::explosion::ColliderRays {
-                scene: sunrise_client::collisions::SceneCollisions {
+                scene: sunrise_level::collisions::SceneCollisions {
                     world: &game.world,
                     binding: game.collision,
                     subject: None,
@@ -4749,8 +4751,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_attributes_answer_for_mobs_stands_and_the_dragon() {
-        use sunrise_client::{entities::ArmorStand, mobs::Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::{entities::ArmorStand, mobs::Mob};
         with_game(|game| {
             let zombie = game
                 .res
@@ -4784,7 +4786,7 @@ pub(in crate::game) mod tests {
         use super::super::{Options, Progress, Settings, load_resources};
         use mod_api::{Authority, BlockShapeKind};
         use std::{sync::Arc, time::Instant};
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -4855,7 +4857,7 @@ pub(in crate::game) mod tests {
             game.level_block_shape(level, state, [0, 64, 0], kind)
                 .unwrap()
         };
-        game.inventory[game.selected] = Some(sunrise_client::items::ItemStack {
+        game.inventory[game.selected] = Some(sunrise_items::items::ItemStack {
             item: "minecraft:light".into(),
             count: 1,
             damage: 0,
@@ -4921,7 +4923,8 @@ pub(in crate::game) mod tests {
         use super::super::{Options, Progress, Settings, load_resources};
         use mod_api::{Authority, BlockUpdateFlags, HostTransaction};
         use std::{sync::Arc, time::Instant};
-        use sunrise_client::{chunk::Chunk, items::ItemStack};
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::chunk::Chunk;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -5071,12 +5074,12 @@ pub(in crate::game) mod tests {
             Some(6.0)
         );
         let mut custom_tool = ItemStack::new("minecraft:stick", 1);
-        let components = sunrise_client::item_data::command_components(
+        let components = sunrise_items::item_data::command_components(
             r#"[tool={rules:[{blocks:"stone",speed:7.0f}],default_mining_speed:2.0f}]"#,
         )
         .unwrap();
         (custom_tool.damage, custom_tool.extra) =
-            sunrise_client::item_data::decode_components(Some(&components));
+            sunrise_items::item_data::decode_components(Some(&components));
         assert_eq!(
             game.level_block_break_speed(level, [3, 64, 0], Some(&custom_tool)),
             Some(7.0)
@@ -5151,7 +5154,7 @@ pub(in crate::game) mod tests {
             else {
                 panic!("chest block entity missing")
             };
-            items[0] = Some(sunrise_client::items::ItemStack {
+            items[0] = Some(sunrise_items::items::ItemStack {
                 item: "minecraft:diamond".into(),
                 count: 3,
                 damage: 0,
@@ -5305,7 +5308,7 @@ pub(in crate::game) mod tests {
             remote.entity_id = 7;
             remote.profile = 42;
             let mut local =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             local.entity_id = 7;
             game.player = Some(local);
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
@@ -5332,7 +5335,7 @@ pub(in crate::game) mod tests {
                 ids(game, level, [2.5, 0.0, -1.0], [4.0, 1.0, 1.0]),
                 Ok(vec![])
             );
-            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
+            game.set_local_mode(sunrise_command::args::GameMode::Spectator);
             assert_eq!(
                 ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
                 Ok(vec![15])
@@ -5390,7 +5393,7 @@ pub(in crate::game) mod tests {
                 .id("minecraft:player")
                 .unwrap();
             let mut local =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             local.entity_id = 7;
             game.player = Some(local);
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
@@ -5473,7 +5476,7 @@ pub(in crate::game) mod tests {
             remote.entity_id = 7;
             remote.profile = 42;
             let mut local =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             local.entity_id = 7;
             game.player = Some(local);
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
@@ -5517,8 +5520,8 @@ pub(in crate::game) mod tests {
     fn server_box_queries_use_live_display_positions_and_section_order() {
         use mod_api::Host;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::nbt::Compound;
+        use sunrise_level::chunk::Chunk;
 
         const LO: [f64; 3] = [13.0, 65.0, 2.0];
         const HI: [f64; 3] = [19.0, 66.0, 4.0];

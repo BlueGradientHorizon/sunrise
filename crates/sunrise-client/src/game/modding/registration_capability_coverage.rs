@@ -7,7 +7,8 @@ use super::{
     machines::cauldron_contents, minecarts::CartKind,
 };
 use mod_api::ProvidedBy;
-use sunrise_client::{containers::BlockEntity, mobs::species};
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::mobs::species;
 
 /// Coverage of a built-in provider, independent of whether a particular runtime
 /// instance is loaded, simulated, chested or reachable from the requested side.
@@ -68,7 +69,7 @@ pub(super) fn builtin(by: ProvidedBy, capability: &str, kind: &str) -> bool {
 /// block-specific identity exists (including copper chests).
 pub(super) fn block_entity(kind: &str, block: &str) -> bool {
     block.starts_with("minecraft:")
-        && sunrise_client::lan::chunks::block_entity_type(block)
+        && sunrise_sim::lan::chunks::block_entity_type(block)
             .or_else(|| BlockEntity::builtin_item_container_type(block))
             == Some(kind)
 }
@@ -97,7 +98,7 @@ mod tests {
         ] {
             assert!(block_entity(kind, block), "{kind} {block}");
             let entity = BlockEntity::for_block(block).unwrap();
-            assert_eq!(sunrise_client::save::block_entity_id(&entity, block), kind);
+            assert_eq!(sunrise_sim::save::block_entity_id(&entity, block), kind);
         }
         assert!(!block_entity("minecraft:chest", "minecraft:trapped_chest"));
         assert!(!block_entity("minecraft:chest", "minecraft:barrel"));

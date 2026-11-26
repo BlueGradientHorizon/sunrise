@@ -1,6 +1,6 @@
 use super::*;
 use crate::game::remote::effect::force_add_effect;
-use sunrise_client::effects::EffectInstance;
+use sunrise_level::effects::EffectInstance;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

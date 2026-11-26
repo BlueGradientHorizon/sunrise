@@ -2,15 +2,15 @@
 #![cfg(test)]
 use crate::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
-use sunrise_client::{
-    entities::{ArmorStand, ItemEntity},
-    items::ItemStack,
-    mobs::{Mob, MobEvent},
-    motion::PlayerMotion,
-};
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
+};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
+    entities::{ArmorStand, ItemEntity},
+    mobs::{Mob, MobEvent},
+    motion::PlayerMotion,
 };
 
 // java.util.Random(1234): first floats .6465821266174316, .2597898840904236,

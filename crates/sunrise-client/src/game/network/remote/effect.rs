@@ -1,4 +1,4 @@
-use sunrise_client::effects::EffectInstance;
+use sunrise_level::effects::EffectInstance;
 
 /// `LivingEntity.forceAddEffect` with the packet's `shouldBlend` (flag 8): the effect replaces
 /// any of its kind, an update keeping its fade (`copyBlendState`). A new one not blended starts

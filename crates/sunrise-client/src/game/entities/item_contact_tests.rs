@@ -4,7 +4,8 @@ use mod_api::{
     RegistrationContext,
 };
 use std::sync::Mutex;
-use sunrise_client::{chunk::Chunk, join_seq::Joined as _};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::join_seq::Joined as _;
 
 type Contact = (bool, u32, [i32; 3], [f64; 3], u32);
 
@@ -337,7 +338,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                         let mut item = make_item(game, [x, y, 4.5], [0.0, vy, 0.0]);
                         let dim = game.dim.id();
                         let result =
-                            sunrise_client::block_contact::in_level(game.tick, Some(dim), || {
+                            sunrise_sim::block_contact::in_level(game.tick, Some(dim), || {
                                 game.tick_item_with_block_contacts(
                                     &mut item,
                                     None,
@@ -445,7 +446,7 @@ fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
                             game.carts.push(cart);
                             part.calls.lock().unwrap().clear();
                             let mut tick_cart = None;
-                            sunrise_client::block_contact::in_level(
+                            sunrise_sim::block_contact::in_level(
                                 game.tick,
                                 Some(game.dim.id()),
                                 || {
@@ -645,7 +646,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
         "game::server_side::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
         || {
             use crate::game::native_entity_refs::tests::{with_client_game, with_game};
-            use sunrise_client::motion::{MotionWorld, PlayerMotion};
+            use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
             let part = StepProbe::default();
             let mods: mod_api::Mods =
@@ -674,8 +675,8 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     }
                     let tick =
                         |game: &mut crate::game::Game<'_, S>, item: &mut ItemEntity, escape| {
-                            sunrise_client::block_contact::in_level(
-                                sunrise_client::parallel::TickThread::mint(),
+                            sunrise_sim::block_contact::in_level(
+                                sunrise_sim::parallel::TickThread::mint(),
                                 Some("minecraft:overworld"),
                                 || {
                                     game.tick_item_with_block_contacts(
@@ -772,15 +773,12 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     game.side
                         .tickets
                         .0
-                        .update(Some(crate::ticket_levels::Sources {
+                        .update(Some(sunrise_sim::ticket_levels::Sources {
                             forced: vec![(0, 0)],
                             ..Default::default()
                         }));
-                    let mut stand = sunrise_client::entities::ArmorStand::new(
-                        78,
-                        Vec3::new(4.5, 64.25, 4.5),
-                        0.0,
-                    );
+                    let mut stand =
+                        sunrise_sim::entities::ArmorStand::new(78, Vec3::new(4.5, 64.25, 4.5), 0.0);
                     stand.velocity.y = -0.5;
                     game.armor_stands.push(stand);
                     game.tick_armor_stands().unwrap();
@@ -899,7 +897,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                     );
                     let mut item = game.dropped[0].clone();
                     let before = item.health;
-                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                    sunrise_sim::block_contact::in_level(game.tick, Some(game.dim.id()), || {
                         assert_eq!(
                             game.tick_item_with_block_contacts(
                                 &mut item,
@@ -945,7 +943,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                         game.spawn_item(stack, [4.5, 64.25, 4.5], [0.0, -0.96, 0.0], 20);
                         game.dropped[0].health = 1;
                         let mut item = game.dropped.remove(0);
-                        sunrise_client::block_contact::in_level(
+                        sunrise_sim::block_contact::in_level(
                             game.tick,
                             Some(game.dim.id()),
                             || {
@@ -993,7 +991,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                         20,
                     );
                     let before = item.health;
-                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                    sunrise_sim::block_contact::in_level(game.tick, Some(game.dim.id()), || {
                         assert_eq!(
                             game.tick_item_with_block_contacts(
                                 &mut item,
@@ -1079,7 +1077,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
 
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut pig =
-                        sunrise_client::mobs::Mob::new(77, kind, Vec3::new(4.5, 64.0, 4.5), 0.0);
+                        sunrise_sim::mobs::Mob::new(77, kind, Vec3::new(4.5, 64.0, 4.5), 0.0);
                     pig.no_ai = true;
                     pig.ground.on_ground = true;
                     let pig_health = pig.health;
@@ -1093,7 +1091,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
                     let mut item = game.dropped.remove(0);
                     let item_health = item.health;
 
-                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                    sunrise_sim::block_contact::in_level(game.tick, Some(game.dim.id()), || {
                         game.tick_creature_entities().unwrap();
                         assert_eq!(
                             game.tick_item_with_block_contacts(
@@ -1226,7 +1224,7 @@ fn step_on_refuses_only_the_invalid_part_outputs() {
                             20,
                         );
                         let mut item = game.dropped.remove(0);
-                        sunrise_client::block_contact::in_level(
+                        sunrise_sim::block_contact::in_level(
                             game.tick,
                             Some(game.dim.id()),
                             || {
@@ -1317,7 +1315,7 @@ fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
                     let z = if id <= 73 { 4 } else { 8 };
                     let support = game.pack.assets.registry.default_state(block).unwrap();
                     game.world.set(x, 63, z, support).unwrap();
-                    let mut mob = sunrise_client::mobs::Mob::new(
+                    let mut mob = sunrise_sim::mobs::Mob::new(
                         id,
                         game.res.mob_types().get(kind).unwrap().clone(),
                         Vec3::new(f64::from(x) + 0.5, 64.0, f64::from(z) + 0.5),
@@ -1384,7 +1382,7 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
         "game::server_side::item_contact_tests::contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag",
         || {
             use crate::game::native_entity_refs::tests::fixture_root;
-            use sunrise_client::motion::{MotionWorld, PlayerMotion};
+            use sunrise_sim::motion::{MotionWorld, PlayerMotion};
             use sunrise_world::loot::PackOverlay;
 
             with_heated_game(|game| {
@@ -1457,7 +1455,7 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                         block_registries: Some(&game.pack.block_registries),
                         entities: &[],
                     };
-                    sunrise_client::block_contact::in_level(
+                    sunrise_sim::block_contact::in_level(
                         game.tick,
                         Some("minecraft:overworld"),
                         || {
@@ -1481,9 +1479,8 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
     crate::game::in_own_process(
         "game::server_side::item_contact_tests::contact_hurt_uses_the_orbs_level_fall_immunity_tag",
         || {
-            use sunrise_client::{
-                entities::ExperienceOrb, items::EntityTypeTags, join_seq::JoinSeq,
-            };
+            use sunrise_items::items::EntityTypeTags;
+            use sunrise_sim::{entities::ExperienceOrb, join_seq::JoinSeq};
             with_heated_game(|game| {
                 let block = game
                     .pack
@@ -1516,7 +1513,7 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
                     ));
                     game.side.ordered.announced = JoinSeq::MAX;
                     game.begin_ordered_ticks();
-                    sunrise_client::block_contact::in_level(
+                    sunrise_sim::block_contact::in_level(
                         game.tick,
                         Some("minecraft:overworld"),
                         || {

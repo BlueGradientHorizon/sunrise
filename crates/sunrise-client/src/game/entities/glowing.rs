@@ -2,7 +2,8 @@
 //! appear glowing, in which team colour, and their silhouettes for the renderer's entity
 //! outline (`OutlineBufferSource`).
 use super::{Game, Vertex};
-use sunrise_client::{mobs::Mob, scoreboard as sb};
+use sunrise_client_core::scoreboard as sb;
+use sunrise_sim::mobs::Mob;
 
 /// `Entity.getTeamColor`: the team's colour, else white.
 pub(in crate::game::client_side) fn team_color(team: Option<&sb::Team>) -> u32 {

@@ -36,7 +36,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
     game.set_allow_commands(true);
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.block_ticks
         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
         .unwrap();
@@ -156,7 +156,7 @@ fn a_mannequin_reads_and_saves_from_its_own_state() {
     let id = game.mobs[mannequin].id;
     {
         let m = &mut game.mobs[mannequin];
-        m.extra.avatar_pose = crate::pose::Pose::Crouching;
+        m.extra.avatar_pose = sunrise_sim::pose::Pose::Crouching;
         m.extra.main_hand_left = true;
         m.extra.hidden_model_parts = 1 | 1 << 6;
     }

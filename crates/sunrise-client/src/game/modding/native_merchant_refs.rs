@@ -1,14 +1,14 @@
 //! Merchant handles for native server mods: villagers and wandering traders.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, MerchantRef, PlayerRef};
-use sunrise_client::{
+use sunrise_core::identifier::Identifier;
+use sunrise_sim::{
     merchant::{MerchantOffer, Trader},
     mobs::{
         Species,
         villager::{self, VILLAGER_TYPES},
     },
 };
-use sunrise_core::identifier::Identifier;
 
 /// The index of a `minecraft:` registry id in a table of bare names.
 fn registry_index(id: &str, names: &[&str]) -> Option<u8> {
@@ -50,7 +50,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The same read while an AI tick lends this mob out of `self.mobs`.
     pub(in crate::game) fn merchant_read_lent<T>(
         &self,
-        mob: &sunrise_client::mobs::Mob,
+        mob: &sunrise_sim::mobs::Mob,
         read: impl FnOnce(&[MerchantOffer], i32, i32) -> T,
     ) -> T {
         if mob.species() == Species::Villager
@@ -107,7 +107,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if done {
                     session
                         .events
-                        .push(sunrise_client::merchant::Event::OffersRefreshed);
+                        .push(sunrise_sim::merchant::Event::OffersRefreshed);
                 }
             });
             return sent && done;
@@ -347,8 +347,9 @@ pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;
-    use sunrise_client::{items::ItemStack, merchant::ItemCost, mobs::Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::{merchant::ItemCost, mobs::Mob};
 
     pub(in crate::game) fn offer(cost: &str, result: &str) -> MerchantOffer {
         MerchantOffer {
@@ -385,7 +386,7 @@ pub(in crate::game) mod tests {
             game.options.dedicated = Some(Vec::new());
             let villager = spawn(game, 40, "minecraft:villager");
             game.mobs[0].extra.profession =
-                sunrise_client::mobs::villager::ProfessionState::from_id("example:engineer");
+                sunrise_sim::mobs::villager::ProfessionState::from_id("example:engineer");
             game.mobs[0].extra.trade = Some(Box::new(Trader {
                 offers: vec![offer("minecraft:wheat", "minecraft:emerald")],
                 ..Trader::default()
@@ -559,8 +560,8 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .try_into_engine(game.items())
                 .unwrap();
-            let tag = sunrise_client::entity_nbt::offers_to_nbt(&saved, &Default::default());
-            assert_eq!(sunrise_client::entity_nbt::offers_from_nbt(&tag), saved);
+            let tag = sunrise_sim::entity_nbt::offers_to_nbt(&saved, &Default::default());
+            assert_eq!(sunrise_sim::entity_nbt::offers_from_nbt(&tag), saved);
 
             let stale = MerchantRef::new(EntityRef::new(
                 WorldEpoch::new(villager.entity().epoch().get() + 1),

@@ -6,7 +6,7 @@ use super::tests::server_game;
 use super::*;
 use crate::game::commands::{OtherEntity, Target};
 use crate::game::minecarts::{CartKind, Minecart};
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 
 /// `EntityTypes`' `passengerAttachments` of 26.3: the rider's attachment point
 /// above the vehicle's feet, and how far forward it sits. A type that lists
@@ -26,7 +26,7 @@ const SEATS: [(&str, f64, f64); 8] = [
 /// A mob of `kind` with id `id` standing at `at` facing south, alone in `game`.
 fn mob_at(game: &mut crate::game::ServerGame<'_>, kind: &str, id: u32, at: [f64; 3]) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
-    let m = sunrise_client::mobs::Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
+    let m = sunrise_sim::mobs::Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     game.mobs.clear();
     game.mobs.push(m);
 }

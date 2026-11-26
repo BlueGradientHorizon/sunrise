@@ -40,7 +40,7 @@ impl TryIntoApi for engine::LootStack {
             .names
             .iter()
             .map(|(id, name)| {
-                sunrise_client_lib::api_text::captured_text(name)
+                sunrise_sim::api_text::captured_text(name)
                     .map(|name| (id.clone(), name))
                     .map_err(|_| LootValueError::InvalidName)
             })
@@ -77,7 +77,7 @@ impl<C: ?Sized> TryIntoEngine<C> for api::LootStack {
             .names
             .iter()
             .map(|(id, name)| {
-                let name = sunrise_client_lib::api_text::to_serialized_engine(name)
+                let name = sunrise_sim::api_text::to_serialized_engine(name)
                     .map_err(|_| LootValueError::InvalidName)?;
                 Ok((id.clone(), name.component()))
             })

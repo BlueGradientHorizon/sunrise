@@ -1,6 +1,6 @@
 //! The lectern comparator signal.
-use sunrise_client::containers::BlockEntity;
 use sunrise_core::position::BlockPos;
+use sunrise_level::containers::BlockEntity;
 use sunrise_world::registry::BlockStateId;
 
 /// `LecternBlock.getAnalogOutputSignal` and
@@ -8,7 +8,7 @@ use sunrise_world::registry::BlockStateId;
 /// answer, and an entity with no book reads 14 (a page count of 0 is a page
 /// progress of 1.0 with no book to add).
 pub fn lectern_signal(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     registry: &sunrise_world::registry::BlockRegistry,
     state: BlockStateId,
     pos: BlockPos,

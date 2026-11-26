@@ -1,7 +1,7 @@
 //! `ServerGamePacketListenerImpl.signBook`: signing a book and quill keeps
 //! every component but its content (`transmuteCopy(Items.WRITTEN_BOOK)`).
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::item_data::parse_stack;
+use sunrise_items::item_data::parse_stack;
 
 #[test]
 #[ignore = "daily"]

@@ -1,8 +1,8 @@
 use crate::game::*;
 use crate::game::{Options, Progress, Settings, load_resources};
-use sunrise_client::chunk::Chunk;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

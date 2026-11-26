@@ -12,7 +12,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::{mesher::Vertex, mobs::Mob};
+use sunrise_client::mesher::Vertex;
+use sunrise_sim::mobs::Mob;
 
 /// What the scene's mod heard, in order, and the entities whose `render_living_pre` it cancels.
 #[derive(Default)]

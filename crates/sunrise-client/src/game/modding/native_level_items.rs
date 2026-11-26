@@ -60,7 +60,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
         {
             return None;
         }
@@ -159,9 +159,9 @@ mod tests {
     fn a_level_pops_spawns_and_awards_as_vanilla() {
         use super::super::spill;
         use mod_api::{LevelRef, WorldEpoch};
-        use sunrise_client::gamerules::Value as RuleValue;
-        use sunrise_client::items::ItemStack;
+        use sunrise_client_core::gamerules::Value as RuleValue;
         use sunrise_core::random::RandomSource;
+        use sunrise_items::items::ItemStack;
 
         super::super::native_entity_refs::tests::with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
@@ -226,7 +226,7 @@ mod tests {
 
             // An item a hook spawns while the tick has the list out joins after
             // the others, which keep their numbers.
-            use sunrise_client::join_seq::Joined;
+            use sunrise_sim::join_seq::Joined;
             let joins = |game: &crate::game::ServerGame<'_>| -> Vec<(u32, u64)> {
                 game.dropped
                     .iter()
@@ -266,8 +266,8 @@ mod tests {
     #[ignore = "daily"]
     fn an_orb_awarded_in_a_merge_hook_is_merged_by_a_later_scan() {
         use mod_api::{self, ExperienceOrbMergeEvent, Flow, Hooks};
-        use sunrise_client::entities::ExperienceOrb;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ExperienceOrb;
 
         // Each scanForMerges queries the level afresh (ExperienceOrb.java:183),
         // so B's scan finds the orb a hook awarded during A's.

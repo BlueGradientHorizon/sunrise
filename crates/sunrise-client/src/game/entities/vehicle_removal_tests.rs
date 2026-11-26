@@ -5,11 +5,11 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use sunrise_client::{
+use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_sim::{
     entities::{ArmorStand, Cushion},
     mobs::Mob,
 };
-use sunrise_core::{geometry::Vec3, position::ChunkPos};
 
 pub(in crate::game) const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);
 
@@ -91,7 +91,7 @@ fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
         hook_meddler_tests::with_meddler,
         minecarts::{CartKind, Minecart},
     };
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     for case in ["stand", "boat", "cart"] {
         with_meddler(
@@ -122,7 +122,7 @@ fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
                     "boat" => {
                         let mut boat = Boat::new(71, "oak".into(), below, 0.0).with_chest();
                         boat.items[0] = Some(stack);
-                        boat.leash = Some(sunrise_client::mobs::leash::Holder::Mob(300));
+                        boat.leash = Some(sunrise_sim::mobs::leash::Holder::Mob(300));
                         game.boats.push(boat);
                     }
                     _ => {

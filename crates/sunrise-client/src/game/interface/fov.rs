@@ -20,14 +20,12 @@ pub(in crate::game::client_side) fn studio_draws_hand(
     !studio_freecam && ordinary_hand_visible
 }
 use sunrise_client::{
-    camera::{
-        BobState, CameraFluid, FovPlayer, UseItem, bob_matrix, field_of_view_modifier,
-        spinning_effect_matrix,
-    },
+    camera::{BobState, CameraFluid, bob_matrix, field_of_view_modifier, spinning_effect_matrix},
     fog::{FogType, fog_type},
     hud::HudBatch,
     hud_layout, hud_overlays,
 };
+use sunrise_level::camera_math::{FovPlayer, UseItem};
 
 fn valid_fov_modifier(modifier: f32, fallback: f32) -> f32 {
     if modifier.is_finite() && (0.01..=10.0).contains(&modifier) {
@@ -274,7 +272,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let (ground, velocity, start) = before;
-        let swimming = p.pose == sunrise_client::pose::Pose::Swimming;
+        let swimming = p.pose == sunrise_sim::pose::Pose::Swimming;
         let alive = !p.health.dead_or_dying();
         let (dx, dz) = (
             (p.position.x - start[0]) as f32,

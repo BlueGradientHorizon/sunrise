@@ -7,9 +7,9 @@ use super::api_values::TryIntoEngine;
 use super::journal_level_write::PendingWrite;
 use super::native_hooks::{mod_particles_ok, mod_sound_ok};
 use super::{Game, creatures::NativeSound};
-use crate::lan::server_effects::ServerQueuedParticle;
 use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
 use sunrise_level::particle_options::ParticleOptions;
+use sunrise_sim::lan::server_effects::ServerQueuedParticle;
 use sunrise_world::registry::BlockStateId;
 
 /// Validated inputs for queueing or deferring a level or entity-bound native sound.
@@ -255,12 +255,12 @@ mod tests {
     use super::LevelRef;
     use mod_api::{__private::particle_named_key, ParticleOptions, WorldEpoch};
     use std::sync::{Arc, mpsc};
-    use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{
         buf::Reader,
         entity_data::Particle,
         packets::play::{Clientbound as Packet, LevelEvent, LevelParticles},
     };
+    use sunrise_sim::lan::{Out, PlayerSender};
 
     fn packets(rx: &mpsc::Receiver<Out>) -> Vec<Packet> {
         rx.try_iter()

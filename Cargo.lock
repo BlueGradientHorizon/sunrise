@@ -4942,7 +4942,6 @@ dependencies = [
  "serde_json",
  "sunrise-assets",
  "sunrise-client-core",
- "sunrise-client-lib",
  "sunrise-core",
  "sunrise-gameplay-common",
  "sunrise-items",

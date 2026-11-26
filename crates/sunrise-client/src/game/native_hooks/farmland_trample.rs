@@ -68,9 +68,10 @@ pub(in crate::game) mod tests {
     use crate::game::native_item_places::tests::{guest, open_to_lan};
     use mod_api::*;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{chunk::Chunk, lan::guest::InboxItem, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
+    use sunrise_sim::{lan::guest::InboxItem, motion::PlayerMotion};
 
     pub(in crate::game) const FIELD: [i32; 3] = [1, 63, 1];
     pub(in crate::game) const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
@@ -390,7 +391,7 @@ pub(in crate::game) mod tests {
                     } else {
                         kind.clone()
                     };
-                    let mut mob = sunrise_client::mobs::Mob::new(
+                    let mut mob = sunrise_sim::mobs::Mob::new(
                         LANDING,
                         mob_kind,
                         Vec3::new(1.5, 64.125, 1.5),
@@ -415,7 +416,7 @@ pub(in crate::game) mod tests {
                     health
                 };
                 for (id, x) in [(OTHER, 1.8), (OUTSIDE, 3.5)] {
-                    let mut other = sunrise_client::mobs::Mob::new(
+                    let mut other = sunrise_sim::mobs::Mob::new(
                         id,
                         kind.clone(),
                         Vec3::new(x, LANDING_Y, 1.5),

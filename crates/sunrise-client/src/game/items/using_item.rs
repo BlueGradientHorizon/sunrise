@@ -22,7 +22,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Consumable.startConsuming` on the server for a held consumable.
     pub(in crate::game) fn server_start_eating(
         &mut self,
-        info: &sunrise_client::items::ItemInfo,
+        info: &sunrise_items::items::ItemInfo,
     ) -> bool {
         let Some(stack) = self.held().cloned() else {
             return false;
@@ -30,11 +30,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(consumable) = self.consumable(&stack) else {
             return false;
         };
-        if sunrise_client::item_sync::food(&stack, info.food).is_some()
+        if sunrise_sim::item_sync::food(&stack, info.food).is_some()
             && (self.player.is_none()
                 || !self.can_eat(
                     Some(&stack),
-                    sunrise_client::item_sync::can_always_eat(&stack, info.can_always_eat),
+                    sunrise_sim::item_sync::can_always_eat(&stack, info.can_always_eat),
                 ))
         {
             return false;
@@ -66,12 +66,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             1.0,
             true,
         );
-        self.post_entity_event(
-            "minecraft:instrument_play",
-            sunrise_client::mobs::Who::Player,
-        );
+        self.post_entity_event("minecraft:instrument_play", sunrise_sim::mobs::Who::Player);
         if instrument.use_duration > 0.0 {
-            let group = sunrise_client::cooldowns::group(stack, None);
+            let group = sunrise_items::cooldowns::group(stack, None);
             self.add_cooldown(group, instrument.use_ticks());
         }
         self.award_stat("used", &stack.item, 1);
@@ -156,7 +153,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         slot: usize,
         ticks: u32,
         stack: &ItemStack,
-        info: &sunrise_client::items::ItemInfo,
+        info: &sunrise_items::items::ItemInfo,
     ) {
         if self.blocks_attacks(stack).is_some() {
             // ShieldItem: used for 72000 ticks, i.e. until released.

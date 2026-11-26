@@ -1,15 +1,15 @@
 //! Two-arm side dispatchers owned by lane `mobs-rest`.
 use crate::game::{Game, boats::Boat, collision_source::Mover, commands::Target};
 use std::collections::HashMap;
-use sunrise_client::{
-    entities::ItemEntity,
-    entity_solids::{Candidate, Solids},
-    items::ItemStack,
-    motion::BodyRestitution,
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
+};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
+    entities::ItemEntity,
+    entity_solids::{Candidate, Solids},
+    motion::BodyRestitution,
 };
 use sunrise_world::ground_support::GroundState;
 

@@ -13,7 +13,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sender: u128,
         chat_type: Option<i32>,
         player: Option<&mod_api::PlayerChatInfo>,
-        line: &mut sunrise_client::text::Text,
+        line: &mut sunrise_client_core::text::Text,
     ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ClientChatReceived) {
             return true;
@@ -23,7 +23,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .zip(registries.as_deref())
             .and_then(|(id, registries)| registries.name("minecraft:chat_type", id));
         // A line the API's text form cannot hold is not told, as before.
-        let Ok(mut message) = sunrise_client_lib::api_text::to_api(line) else {
+        let Ok(mut message) = sunrise_sim::api_text::to_api(line) else {
             return true;
         };
         let mut cancel = false;
@@ -36,7 +36,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             message: &mut message,
             cancel: &mut cancel,
         });
-        if let Ok(text) = sunrise_client_lib::api_text::to_engine(&message) {
+        if let Ok(text) = sunrise_sim::api_text::to_engine(&message) {
             *line = text;
         }
         !cancel

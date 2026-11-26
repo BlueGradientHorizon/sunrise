@@ -2,12 +2,12 @@
 use super::{aabb_extents, knot_bounds};
 use crate::game::{Dim, Game, entity::Entity as _, general::general_type_catalog};
 use std::collections::BTreeMap;
-use sunrise_client::fast_hash::FxHashMap;
-use sunrise_client::join_seq::{
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_level::fast_hash::FxHashMap;
+use sunrise_sim::join_seq::{
     JoinSeq, Joined as _,
     residency::table::{SectionKey, SectionSearch},
 };
-use sunrise_core::geometry::{Aabb, Vec3};
 
 pub(in crate::game) use crate::game::pick_entity_common::PickKind;
 
@@ -26,7 +26,7 @@ fn hanging_center((lo, hi): ([f64; 3], [f64; 3])) -> [f64; 3] {
 }
 
 fn knot_position(block: [i32; 3]) -> [f64; 3] {
-    let p = sunrise_client::mobs::leash::knot_state(block).position;
+    let p = sunrise_sim::mobs::leash::knot_state(block).position;
     [p.x, p.y, p.z]
 }
 
@@ -583,7 +583,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         })
     }
 
-    fn client_section_player(&self) -> Option<&sunrise_client::motion::PlayerMotion> {
+    fn client_section_player(&self) -> Option<&sunrise_sim::motion::PlayerMotion> {
         let remote = self.remote.as_ref()?;
         self.player
             .as_ref()

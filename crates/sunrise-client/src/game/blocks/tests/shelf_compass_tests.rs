@@ -8,12 +8,12 @@ use super::*;
 use crate::game::{
     Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
 };
-use sunrise_client::{
+use sunrise_core::nbt::{Compound, Tag};
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, Shelf},
-    items::ItemStack,
 };
-use sunrise_core::nbt::{Compound, Tag};
 
 /// The lodestone every compass here tracks, in this dimension.
 const TARGET: [i32; 3] = [3, 200, 1];

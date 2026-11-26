@@ -37,8 +37,7 @@ mod transient_entities {
             assert_eq!(display.set_persistent(game, false), Ok(true));
             assert_eq!(display.set_persistent(game, false), Ok(true));
             assert_eq!(game.entity(display.id()), Some(display));
-            let uuid =
-                sunrise_client::lan::playerdata::uuid_ints(game.entity_uuid(display).unwrap());
+            let uuid = sunrise_sim::lan::playerdata::uuid_ints(game.entity_uuid(display).unwrap());
             assert_eq!(game.entity_chunks(&chunks, false), vec![((0, 0), vec![])]);
             let capture = game.snapshot_entity_chunks(&chunks, EntitySnapshot::Structure);
             assert_eq!(capture[0].1.len(), 1);
@@ -127,7 +126,7 @@ mod transient_entities {
         with_server(|game| {
             let display = display(game);
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             bind_local_player(game, 100, 25);
             let player = game.entity(100).unwrap();
             assert_eq!(player.set_persistent(game, false), Ok(false));
@@ -207,7 +206,7 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
                 .unwrap()
                 .ai
                 .target,
-            Some(sunrise_client::mobs::Who::Mob(zombie))
+            Some(sunrise_sim::mobs::Who::Mob(zombie))
         );
         assert_eq!(
             game.mobs
@@ -222,7 +221,7 @@ fn neutral_load_restores_only_the_saved_live_target_with_or_without_listeners() 
         let enderman_state = game.mobs.iter().find(|mob| mob.id == enderman).unwrap();
         assert_eq!(
             enderman_state.ai.target,
-            Some(sunrise_client::mobs::Who::Mob(zombie))
+            Some(sunrise_sim::mobs::Who::Mob(zombie))
         );
         assert!(
             enderman_state.extra.flag,
@@ -311,7 +310,9 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
 
 pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
     use super::super::{Options, Progress, Settings, load_resources};
-    use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::BlockEntity;
+    use sunrise_sim::save;
     fn cooldown(game: &crate::game::ServerGame<'_>) -> i32 {
         match game
             .block_entity_nbt([3, 64, 3])
@@ -625,7 +626,7 @@ fn deferred_zombie_finalization_keeps_unknown_profession_through_save_and_cure()
             Some(game.pack.assets.registry),
         )
         .unwrap();
-        let mut cured = sunrise_client::mobs::Mob::new(
+        let mut cured = sunrise_sim::mobs::Mob::new(
             id + 1,
             game.res
                 .mob_types()
@@ -1118,13 +1119,13 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
     )
     .unwrap();
     let types = game.res.mob_types();
-    let golem = sunrise_client::mobs::Mob::new(
+    let golem = sunrise_sim::mobs::Mob::new(
         1,
         types.get("minecraft:iron_golem").unwrap().clone(),
         Vec3::ZERO,
         0.0,
     );
-    let zombie = sunrise_client::mobs::Mob::new(
+    let zombie = sunrise_sim::mobs::Mob::new(
         2,
         types.get("minecraft:zombie").unwrap().clone(),
         Vec3::new(3.0, 0.0, 0.0),
@@ -1133,7 +1134,7 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
     game.mobs.push(golem);
     game.mobs.push(zombie);
     game.mobs[0].extra.anger = 400;
-    game.mobs[0].extra.angry_at = Some(sunrise_client::mobs::Who::Mob(2));
+    game.mobs[0].extra.angry_at = Some(sunrise_sim::mobs::Who::Mob(2));
     assert_eq!(game.persist.uuid_of(2), None);
     let tag = game.mob_tree_nbt(0);
     let Some(Tag::IntArray(named)) = tag.get("angry_at") else {
@@ -1199,10 +1200,10 @@ fn an_orb_saves_its_live_portal_cooldown() {
         let id = game.orbs[0].id;
         // One tick: the orb's own (ordered) tick, then Entity.handlePortal's
         // pass over the entities.
-        game.side.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
+        game.side.ordered.announced = sunrise_sim::join_seq::JoinSeq::MAX;
         game.side.tickets.0.update(None);
         game.begin_ordered_ticks();
-        game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
+        game.run_ordered_ticks(sunrise_sim::join_seq::JoinSeq::MAX, false)
             .unwrap();
         game.handle_entity_portals();
         assert_eq!(game.orbs[0].fire_ticks, 39, "one tick of Fire");

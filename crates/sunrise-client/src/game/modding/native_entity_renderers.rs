@@ -30,10 +30,9 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use sunrise_client::{
-    block_entity_render::diffuse_lights,
-    fast_hash::FxHashMap,
-    mesher::Vertex,
+use sunrise_client::{block_entity_render::diffuse_lights, mesher::Vertex};
+use sunrise_level::fast_hash::FxHashMap;
+use sunrise_sim::{
     mobs::{Mob, MobType},
     projectiles::ThrownType,
 };
@@ -311,7 +310,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let catalog = super::general::general_type_catalog();
         let (table, unknown) = EntityRendererTable::resolve(
             registered,
-            sunrise_client::projectiles::thrown_types(),
+            sunrise_sim::projectiles::thrown_types(),
             self.res.mob_types(),
             catalog,
             |id| rows.contains(id),
@@ -437,7 +436,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::chunk::{Chunk, Light, index};
+    use sunrise_level::chunk::{Chunk, Light, index};
 
     #[test]
     #[ignore = "daily"]

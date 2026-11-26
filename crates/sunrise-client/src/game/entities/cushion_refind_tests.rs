@@ -2,8 +2,8 @@
 //! a listener removed does not seat the player, and the click is spent.
 use crate::game::InteractTarget;
 use crate::game::hook_meddler_tests::with_meddler;
-use sunrise_client::entities::Cushion;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::entities::Cushion;
 
 #[test]
 #[ignore = "daily"]

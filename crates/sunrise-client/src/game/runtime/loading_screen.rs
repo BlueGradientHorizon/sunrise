@@ -162,7 +162,7 @@ impl Loading {
                             hwnd,
                             fonts.semibold,
                             fonts.mono,
-                            &sunrise_client::logging::recent_lines(),
+                            &sunrise_level::logging::recent_lines(),
                         );
                         std::thread::sleep(std::time::Duration::from_millis(300));
                     }
@@ -373,9 +373,9 @@ impl Loading {
         // The menu read its language from the prepared root alone (`set_root`) and
         // `load_resources` skips it on this path: read it again with the mods' layers, in the
         // language picked in the menu.
-        sunrise_client::lang::set(sunrise_client::lang::Language::load(
+        sunrise_client_core::lang::set(sunrise_client_core::lang::Language::load(
             &[&loaded.pack.source],
-            &sunrise_client::lang::code(),
+            &sunrise_client_core::lang::code(),
         ));
         let pack_error = loaded.pack_error.or_else(|| self.pack_error.take());
         // The game borrows its shared resources for the process's lifetime,

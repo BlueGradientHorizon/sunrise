@@ -8,8 +8,9 @@ use super::super::{
     game_tests::tests::server_game,
     minecarts::{CartKind, Minecart},
 };
-use sunrise_client::{containers::BlockEntity, items::ItemStack};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
 
 fn chest(game: &mut crate::game::ServerGame<'_>, x: i32) {
     let registry = game.pack.assets.registry;
@@ -57,7 +58,7 @@ fn a_ridden_hopper_cart_takes_one_item_a_tick() {
     game.carts.push(ridden);
     game.carts.push(empty);
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.5, 8.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.5, 8.5)).unwrap(),
     );
     // A hopper cart's interact opens its menu (`AbstractMinecartContainer.interact`),
     // so a player only gets in with `/ride`, whose `RideCommand.mount` forces

@@ -2,7 +2,7 @@ use super::{Game, combat::PlayerCredit};
 use crate::game::native_knockback_credit::CreditEntity;
 use crate::game::native_knockback_credit::CreditPlan;
 use crate::game::native_knockback_credit::HurtBy;
-use sunrise_client::{
+use sunrise_sim::{
     health::Attack,
     mobs::{Species, Who},
 };
@@ -58,11 +58,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             existing_player.is_some_and(|credit| self.resolve_player_credit(credit).is_some());
         let player = mob.and(existing_player);
         let responsibility = match attacker {
-            Some(Who::Player) => attack.player_uuid.map(|uuid| {
-                Some(PlayerCredit(sunrise_client::lan::playerdata::ints_uuid(
-                    uuid,
-                )))
-            }),
+            Some(Who::Player) => attack
+                .player_uuid
+                .map(|uuid| Some(PlayerCredit(sunrise_sim::lan::playerdata::ints_uuid(uuid)))),
             Some(Who::Mob(id)) => self
                 .mobs
                 .iter()
@@ -70,7 +68,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|wolf| {
                     wolf.extra
                         .owner
-                        .map(|uuid| PlayerCredit(sunrise_client::lan::playerdata::ints_uuid(uuid)))
+                        .map(|uuid| PlayerCredit(sunrise_sim::lan::playerdata::ints_uuid(uuid)))
                 }),
             None => None,
         };

@@ -43,7 +43,7 @@ fn crown_is_prepared_once_for_three_and_eight_dispenser_candidates() {
                 game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let kind = game
                     .res
                     .mob_types()
@@ -52,7 +52,7 @@ fn crown_is_prepared_once_for_three_and_eight_dispenser_candidates() {
                     .clone();
                 let at = sunrise_core::geometry::Vec3::new(6.5, 64.0, 5.5);
                 for id in &ids {
-                    let mut mob = sunrise_client::mobs::Mob::new(*id, kind.clone(), at, 0.0);
+                    let mut mob = sunrise_sim::mobs::Mob::new(*id, kind.clone(), at, 0.0);
                     mob.extra.pick_up_loot = true;
                     game.mobs.push(mob);
                 }

@@ -18,7 +18,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         scratch: &mut TickScratch,
     ) -> Result<Option<usize>> {
-        let mut laps = sunrise_client::spans::laps();
+        let mut laps = sunrise_level::spans::laps();
         // ServerChunkCache.tick: the tickets that time out.
         let world = &self.world;
         self.side
@@ -72,14 +72,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .iter()
             .filter(|p| p.arrow.is_some())
         {
-            scratch.inside.extend(sunrise_client::arrows::blocks_inside(
-                p.previous, p.position,
-            ));
+            scratch
+                .inside
+                .extend(sunrise_sim::arrows::blocks_inside(p.previous, p.position));
         }
         for t in &self.tridents {
-            scratch.inside.extend(sunrise_client::arrows::blocks_inside(
-                t.position, t.position,
-            ));
+            scratch
+                .inside
+                .extend(sunrise_sim::arrows::blocks_inside(t.position, t.position));
         }
         // BigDripleafBlock.entityInside also asks whether the player stands on
         // the ground and how high its feet are: the leaves its box's feet
@@ -231,8 +231,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.with_level(|b, level, ticks| {
             // The masks the random ticks will read, built on helper threads first while the
             // parallel tick is on (`SUNRISE_PARALLEL_TICK`): the draws and ticks don't depend on them.
-            if !debug && sunrise_client::parallel::lanes() > 1 {
-                sunrise_client::spans::time("random_tick_masks", || {
+            if !debug && sunrise_sim::parallel::lanes() > 1 {
+                sunrise_level::spans::time("random_tick_masks", || {
                     let chunks = &level.world.chunks;
                     level.random_tick_sections.prepare_masks(
                         &scratch.ticking,
@@ -242,7 +242,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     );
                 });
             }
-            sunrise_client::spans::time("random_ticks", || {
+            sunrise_level::spans::time("random_ticks", || {
                 for (x, z) in scratch.ticking.drain(..).filter(|_| !debug) {
                     // The last answer, asked from Y `from` at a world revision:
                     // the next ticking section. It stands for a later Y up to
@@ -277,7 +277,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
         });
         sunrise_threads::work::clear_work();
-        laps = sunrise_client::spans::laps();
+        laps = sunrise_level::spans::laps();
         let sent = self.lan_broadcast_changes();
         laps.lap("tb_broadcast");
         self.save_chunks_eagerly();
@@ -359,7 +359,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// events) happen before the next tick runs, as they do inline in vanilla.
     pub(in crate::game) fn tick_scheduled(&mut self) -> Result<()> {
         for fluids in [false, true] {
-            let mut laps = sunrise_client::spans::laps();
+            let mut laps = sunrise_level::spans::laps();
             let name = if fluids { "tb_fluids" } else { "tb_scheduled" };
             if !self.with_level(|b, level, ticks| b.scheduled_begin(level, ticks, fluids)) {
                 laps.lap(name);

@@ -6,8 +6,8 @@
 //! column) do not. The world is lit by the vanilla light engine, not by hand.
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::light::{LightTables, apply_lighting, light_chunk};
+use sunrise_level::chunk::Chunk;
+use sunrise_level::light::{LightTables, apply_lighting, light_chunk};
 
 /// The prepared resources, or `None` where CI has none (the test then skips).
 fn resources() -> Option<std::path::PathBuf> {
@@ -103,7 +103,7 @@ fn attempt(
         spawned = game
             .mobs
             .iter()
-            .filter(|m| m.species() == sunrise_client::mobs::Species::Phantom)
+            .filter(|m| m.species() == sunrise_sim::mobs::Species::Phantom)
             .map(|m| m.position)
             .collect();
         if !spawned.is_empty() {

@@ -5,7 +5,8 @@ use crate::game::native_hooks::base::screen_widgets_tests::input_routing::key;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::send;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::take;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::with_input_game;
-use sunrise_client::{items::ItemStack, keybinds::VanillaMappingSlot, preedit, widgets};
+use sunrise_client::{keybinds::VanillaMappingSlot, preedit, widgets};
+use sunrise_items::items::ItemStack;
 use winit::{dpi::PhysicalPosition, event::Ime};
 
 #[test]
@@ -19,7 +20,7 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         return;
     }
     with_input_game(|game, id, state| {
-        use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+        use sunrise_level::{chunk::Chunk, containers::BlockEntity};
         let pos = (0, 0, 0);
         let saved_player = game.player.take();
         let _pipe = crate::game::native_client_session::tests::logged_client(game);
@@ -132,7 +133,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         assert_eq!(game.side.screen, Screen::Playing);
         take(state);
 
-        let dialog = sunrise_client::command::snbt::parse_fully(
+        let dialog = sunrise_command::snbt::parse_fully(
             r#"{type:"minecraft:notice",title:"Input",inputs:[{type:"minecraft:text",key:"name",label:"Name"}]}"#,
         ).unwrap();
         game.show_dialog(&dialog);

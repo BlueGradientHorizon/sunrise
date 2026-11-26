@@ -1,9 +1,7 @@
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{Mob, Species, Who, sniffer},
-};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Mob, Species, Who, sniffer};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A snifflet where the egg was.

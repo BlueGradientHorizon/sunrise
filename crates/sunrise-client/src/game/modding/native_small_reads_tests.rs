@@ -11,7 +11,7 @@ use mod_api::LightLayer;
 #[ignore = "daily"]
 fn a_client_reads_the_light_of_its_level() {
     use std::sync::Arc;
-    use sunrise_client::chunk::{Chunk, Light};
+    use sunrise_level::chunk::{Chunk, Light};
     use sunrise_protocol::connection::Pipe;
     super::native_entity_refs::tests::with_client_game(|game| {
         let (client, _server) = Pipe::pair();
@@ -44,7 +44,7 @@ fn restricted_level_support_and_sky_reads() {
     use super::native_entity_refs::tests::with_client_game;
     use mod_api::{BlockFace, LevelHost, SupportType};
     use std::sync::Arc;
-    use sunrise_client::chunk::{Chunk, Light};
+    use sunrise_level::chunk::{Chunk, Light};
     use sunrise_protocol::connection::Pipe;
     mod_platform::testing::with_mods(Default::default(), || {
         with_client_game(|game| {
@@ -187,7 +187,7 @@ fn a_client_reads_only_its_own_menu() {
                 42,
             );
             assert_eq!(game.player_container_menu(other), None);
-            let stack = sunrise_client::items::ItemStack::new("minecraft:stone", 7);
+            let stack = sunrise_items::items::ItemStack::new("minecraft:stone", 7);
             game.inventory[0] = Some(stack.clone());
             game.carried = Some(stack.clone());
             let inventory = game.player_container_menu(player).unwrap();
@@ -220,7 +220,7 @@ fn client_merchant_offers_follow_the_open_menu() {
     use super::native_entity_refs::tests::with_client_game;
     use mod_api::__private::game::Fields;
     use mod_api::ClientHost;
-    use sunrise_client::text::Text;
+    use sunrise_client_core::text::Text;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
         item::{Component, Stack, component::STORED_ENCHANTMENTS},
@@ -351,8 +351,9 @@ fn client_merchant_offers_follow_the_open_menu() {
 fn client_player_state_reads_its_own_copy_only() {
     use super::native_client_session::tests::logged_client;
     use super::native_entity_refs::tests::with_client_game;
-    use sunrise_client::{items::ItemStack, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::motion::PlayerMotion;
     mod_platform::testing::with_mods(Default::default(), || {
         with_client_game(|game| {
             let _server = logged_client(game);
@@ -422,9 +423,9 @@ fn gui_ticks_follow_unpaused_client_ticks() {
 fn client_abilities_follow_predicted_flying_between_packets() {
     use super::native_client_session::tests::logged_client;
     use super::native_entity_refs::tests::with_client_game;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play;
+    use sunrise_sim::motion::PlayerMotion;
     mod_platform::testing::with_mods(Default::default(), || {
         with_client_game(|game| {
             let _server = logged_client(game);

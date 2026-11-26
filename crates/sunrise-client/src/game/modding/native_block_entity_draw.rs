@@ -16,14 +16,16 @@ use sunrise_assets::{
 };
 use sunrise_client::{
     block_entity_render::{diffuse, diffuse_lights, vertex_light},
-    containers::{BlockEntity, ModRevision},
-    fast_hash::FxHashMap,
     gfx::Cull,
     hud::Rect,
-    items::ItemStack,
     mesher::Vertex,
     mobs::{ModelNormals, model_layers},
-    text::Text,
+};
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
+    containers::{BlockEntity, ModRevision},
+    fast_hash::FxHashMap,
 };
 use sunrise_world::registry::BlockStateId;
 
@@ -1202,7 +1204,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         pos: [i32; 3],
         block: &str,
         state: sunrise_world::registry::BlockStateId,
-        entity: &crate::containers::ModBlockEntity,
+        entity: &sunrise_level::containers::ModBlockEntity,
         bounds: &mut [f32; 6],
     ) {
         use crate::game::api_values::TryIntoApi;
@@ -1959,7 +1961,7 @@ fn part_transform(part: &ModelPart) -> Mat4 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields};
+    use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
 
     fn draw() -> BlockEntityDraw {
         BlockEntityDraw {
@@ -3177,7 +3179,7 @@ mod tests {
         use std::time::Duration;
         use sunrise_protocol::packets::play;
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.clock = sunrise_client::clock::FixedStep::client();
+            game.clock = sunrise_sim::clock::FixedStep::client();
             game.side.texture_ticks = 0;
             // Run just the fixture's visual work, then the real frame's phase sampling.
             let frame = |game: &mut crate::game::ClientGame<'_>, ms, target, pause| {

@@ -10,8 +10,8 @@
 //! doc says which).
 use super::{Game, commands::Target};
 use mod_api::{Identifier, LivingRef};
-use sunrise_client::lan::waypoints::Icon;
-use sunrise_client::mobs::{spear_use, stuck::Stuck};
+use sunrise_sim::lan::waypoints::Icon;
+use sunrise_sim::mobs::{spear_use, stuck::Stuck};
 use {sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -349,10 +349,10 @@ pub(in crate::game) mod tests {
         LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::items::ItemStack;
-    use sunrise_client::lan::waypoints::Icon;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::lan::waypoints::Icon;
+    use sunrise_sim::mobs::Mob;
 
     /// What a mod heard of item uses, and what it does back.
     #[derive(Default)]
@@ -1111,8 +1111,8 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         with_game(|game| {
             let settings = LanSettings {
                 port: 0,
@@ -1226,10 +1226,10 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::lan::{
+        use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+        use sunrise_sim::lan::{
             Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
         };
-        use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
         with_game(|game| {
             let settings = LanSettings {
                 port: 0,

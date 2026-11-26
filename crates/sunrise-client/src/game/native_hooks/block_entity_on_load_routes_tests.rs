@@ -9,7 +9,7 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
     type Log = Arc<Mutex<Vec<(&'static str, i32)>>>;
     type Payloads = Arc<Mutex<Vec<(BlockEntityRef, i32, [i32; 3], LevelRef)>>>;
     struct Listener {
@@ -424,7 +424,7 @@ mod tests {
                 .dispense_item(
                     (0, 64, 1),
                     sunrise_core::geometry::Direction::East,
-                    sunrise_client::items::ItemStack::new("test:box_shulker_box", 1),
+                    sunrise_items::items::ItemStack::new("test:box_shulker_box", 1),
                 )
                 .unwrap();
             assert_eq!(left.continue_value(), Some(None));

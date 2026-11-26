@@ -3,8 +3,8 @@
 //! block is powered and a bell rings, both credited to the rod's owner.
 use crate::game::fishing::Hook;
 use crate::game::*;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

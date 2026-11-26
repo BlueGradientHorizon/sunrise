@@ -1,6 +1,6 @@
 use super::*;
-use sunrise_client::entities::ItemEntity;
-use sunrise_client::join_seq::JoinList;
+use sunrise_sim::entities::ItemEntity;
+use sunrise_sim::join_seq::JoinList;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the acting player, `player`, takes the ground `item` they
@@ -43,7 +43,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         notice: impl FnOnce(&mut Self, &ItemStack) -> Option<ItemStack>,
     ) -> (Option<ItemStack>, Option<ItemStack>) {
         use crate::game::commands::Target;
-        use sunrise_client::join_seq::Joined;
+        use sunrise_sim::join_seq::Joined;
         let join = items[i].join_seq();
         let mut lent = items.extract(join).expect("in its pass");
         let (id, original) = (lent.id, std::mem::replace(&mut lent.stack, during));

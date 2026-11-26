@@ -1,11 +1,9 @@
 //! Mob handles for native server mods.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, LivingRef, MobRef};
-use sunrise_client::{
-    mobs::{self, Mob, MobWorld, Species, Who, ai::brain_target},
-    scoreboard::Team,
-};
+use sunrise_client_core::scoreboard::Team;
 use sunrise_core::geometry::{Aabb, Axis};
+use sunrise_sim::mobs::{self, Mob, MobWorld, Species, Who, ai::brain_target};
 
 pub(in crate::game::server_side) fn warden_mob_target_bounds(mob: &Mob) -> Option<Aabb> {
     (!mob.removed && mob.alive() && !mob.is_invulnerable() && mob.species() != Species::Warden)
@@ -35,7 +33,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         let target = uuid.and_then(|words| {
-            let uuid = sunrise_client::lan::playerdata::ints_uuid(words);
+            let uuid = sunrise_sim::lan::playerdata::ints_uuid(words);
             let entity = self
                 .player(uuid)
                 .map(|player| player.entity())
@@ -83,7 +81,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             || p.health.permanently_invulnerable
                             || p.health.invulnerable_time > 0
                     }),
-                    uuid: sunrise_client::lan::playerdata::uuid_ints(g.uuid),
+                    uuid: sunrise_sim::lan::playerdata::uuid_ints(g.uuid),
                 })
             }
             Target::Player => {
@@ -100,7 +98,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     uuid: self
                         .side
                         .lan_acting_uuid
-                        .map(sunrise_client::lan::playerdata::uuid_ints)
+                        .map(sunrise_sim::lan::playerdata::uuid_ints)
                         .or(self.level.player_uuid)
                         .unwrap_or_default(),
                 })
@@ -182,7 +180,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mob: &Mob,
         scope: Option<(&Mob, &MobWorld<'_>)>,
     ) -> Option<(u32, Target)> {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
+        use sunrise_sim::join_seq::residency::table::EntityLookup;
         let id = mobs::warden::brain_target_id(mob)?;
         let own_team = scope.map_or_else(
             || self.mob_team_of(mob),
@@ -285,7 +283,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         other: Option<&Team>,
     ) -> bool {
         let border = self.border.geometry();
-        !sunrise_client::scoreboard::teams_allied(own, other)
+        !sunrise_client_core::scoreboard::teams_allied(own, other)
             && border.is_within_bounds(bounds.min(Axis::X), bounds.min(Axis::Z), 0.0)
             && border.is_within_bounds(
                 bounds.max(Axis::X) - f64::from(1.0e-5_f32),
@@ -469,7 +467,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(m) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
             return false;
         };
-        if !sunrise_client::mobs::ai::writes_brain_target(m) {
+        if !sunrise_sim::mobs::ai::writes_brain_target(m) {
             return false;
         }
         let Some(target) = self.native_mob_target_event(mob, target, true) else {
@@ -479,7 +477,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-            sunrise_client::mobs::ai::set_brain_target(m, who, target.map(|t| t.entity().id()))
+            sunrise_sim::mobs::ai::set_brain_target(m, who, target.map(|t| t.entity().id()))
         })
     }
 
@@ -913,8 +911,8 @@ pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;
-    use sunrise_client::{entities::ArmorStand, mobs::Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     pub(in crate::game::server_side) fn add_mob(
         game: &mut crate::game::ServerGame<'_>,
@@ -1007,10 +1005,10 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::lan::{
+        use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{
             Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig, playerdata::uuid_ints,
         };
-        use sunrise_protocol::packets::configuration::ClientInformation;
 
         with_game(|game| {
             let settings = LanSettings {
@@ -1069,8 +1067,7 @@ pub(in crate::game) mod tests {
                 cow.entity().leash_holder(game),
                 Some(LeashHolder::Unleashed)
             );
-            let motion =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+            let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             game.lan
                 .as_mut()
                 .unwrap()
@@ -1306,8 +1303,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn player_target_round_trips_through_the_mob_binding() {
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
         with_game(|game| {
             let settings = super::super::lan::LanSettings {
@@ -1539,7 +1536,7 @@ pub(in crate::game) mod tests {
             // written target (their target-validity behaviours accept an iron
             // golem), as a memory their own sensing set would be kept.
             for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                 chunk.lit = true;
                 game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
             }
@@ -1733,7 +1730,7 @@ pub(in crate::game) mod tests {
                 Some(false)
             );
             // The home area is saved with the mob.
-            let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            let saved = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
                 None,
@@ -1753,7 +1750,7 @@ pub(in crate::game) mod tests {
             assert_eq!(game.mob_restrict_center(mob), Some([10, 64, -5]));
             assert_eq!(game.mob_restrict_radius(mob), Some(-1));
             assert_eq!(game.mob_is_within_restriction(mob, [20, 64, 0]), Some(true));
-            let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            let saved = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
                 None,
@@ -1837,7 +1834,7 @@ pub(in crate::game) mod tests {
             assert!(game.mobs[0].extra.pick_up_loot);
             assert_eq!(game.mob_can_pick_up_loot(mob), Some(true));
             // Saved as LeftHanded / CanPickUpLoot.
-            let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            let saved = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
                 None,

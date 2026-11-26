@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         container: i32,
         menu: String,
         kind: Kind,
-        title: sunrise_client::text::Text,
+        title: sunrise_client_core::text::Text,
         pos: [i32; 3],
     ) {
         self.remote_set_menu(Some((container, menu)), Some(title));
@@ -64,7 +64,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let stack = menu.slot(i).cloned();
                 menu.track_results(true);
                 {
-                    let env = sunrise_client::menu::Env {
+                    let env = sunrise_sim::menu::Env {
                         enchantments: game.item_enchantments(),
                         ..game.menu_env()
                     };
@@ -72,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 loop {
                     game.deliver_client_anvil_update(menu);
-                    let env = sunrise_client::menu::Env {
+                    let env = sunrise_sim::menu::Env {
                         enchantments: game.item_enchantments(),
                         ..game.menu_env()
                     };

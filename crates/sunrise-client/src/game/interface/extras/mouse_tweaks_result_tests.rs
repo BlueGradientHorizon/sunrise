@@ -50,7 +50,7 @@ fn a_predicted_take_carries_the_servers_result_and_empties_its_slot() {
 #[test]
 #[ignore = "daily"]
 fn a_chests_first_slot_keeps_its_own_item() {
-    use sunrise_client::containers::BlockEntity;
+    use sunrise_level::containers::BlockEntity;
     with_guest_grid(|game| {
         let cobblestone = ItemStack::new("minecraft:cobblestone", 1);
         let mut slots = vec![None; 27];

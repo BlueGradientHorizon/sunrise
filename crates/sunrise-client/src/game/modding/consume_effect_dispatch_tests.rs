@@ -3,11 +3,9 @@
 use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::with_game};
 use mod_api::{ConsumeEffectEvent, Hooks, ModEntry, ServerHost};
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    items::{ConsumeEffect, ItemStack},
-    mobs::Mob,
-};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_items::items::{ConsumeEffect, ItemStack};
+use sunrise_sim::mobs::Mob;
 
 struct First(Arc<Mutex<Vec<&'static str>>>);
 #[mod_api::__subscriptions]
@@ -130,11 +128,9 @@ fn consuming_player_is_supplied_outside_a_guest_action() {
         .into(),
         || {
             with_game(|game| {
-                let mut body = sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    Vec3::new(0.0, 65.0, 0.0),
-                )
-                .unwrap();
+                let mut body =
+                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 65.0, 0.0))
+                        .unwrap();
                 body.entity_id = 7;
                 game.player = Some(body);
                 game.bind_local_player_residency();
@@ -181,7 +177,7 @@ fn replacing_the_consumed_hand_keeps_the_new_item_and_emits_no_remainder() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let mut body =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 65.0, 0.0))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 65.0, 0.0))
                     .unwrap();
             body.entity_id = 7;
             game.player = Some(body);
@@ -241,7 +237,7 @@ fn potion_finishes_with_its_patched_effects_after_potion_contents() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let mut body =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 65.0, 0.0))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 65.0, 0.0))
                     .unwrap();
             body.entity_id = 7;
             game.player = Some(body);
@@ -345,7 +341,7 @@ fn a_foxs_later_custom_effect_keeps_the_original_user_and_stack_after_discard() 
             let expected_stack = stack.try_into_api().unwrap();
             fox.extra.set_main_hand_stack(Some(stack));
             let decision =
-                sunrise_client::mobs::fox::decide_consumption(&fox, &game.mob_world_base(&[]))
+                sunrise_sim::mobs::fox::decide_consumption(&fox, &game.mob_world_base(&[]))
                     .unwrap();
             game.mobs.push(fox);
             let user = game.entity(21).unwrap();

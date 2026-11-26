@@ -5,12 +5,12 @@
 use crate::game::game_tests::tests::server_game;
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     advancements::{Advancement, Criterion, Rewards, Tree},
-    items::ItemStack,
     motion::PlayerMotion,
 };
-use sunrise_core::geometry::Vec3;
 use sunrise_world::lazy_json::LazyJson;
 
 /// A server game with a campfire at `pos` (its block entity too) and beef in

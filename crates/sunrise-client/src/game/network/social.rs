@@ -7,10 +7,10 @@ use super::{Game, Screen};
 use std::collections::{HashMap, HashSet};
 use sunrise_client::{
     social_screen::{self, Action, Entry, Page, SocialView},
-    tab_list::TabPlayer,
-    text::Text,
     ui::EditBox,
 };
+use sunrise_client_core::text::Text;
+use sunrise_level::profile_lookup::TabPlayer;
 use winit::keyboard::KeyCode;
 
 /// `PlayerSocialManager.hiddenPlayers` and the screen's state.
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some(p) => (p.name.clone(), p.skin.clone(), false),
                 None => (
                     self.side.social.names.get(&id).cloned().unwrap_or_default(),
-                    sunrise_client::tab_list::default_skin(id).to_owned(),
+                    sunrise_level::profile_lookup::default_skin(id).to_owned(),
                     true,
                 ),
             };

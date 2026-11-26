@@ -6,11 +6,11 @@
 //! first-person view and maps in item frames.
 use super::Game;
 use std::collections::HashMap;
-use sunrise_client::{
+use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_items::{
     blocks::{Fluid, MAP_COLORS},
     items::ItemStack,
 };
-use sunrise_core::nbt::{JavaString, Tag};
 
 /// What a decoration is filed under in `MapItemSavedData.decorations` (a
 /// `LinkedHashMap<String, MapDecoration>`): a player's marker by their
@@ -64,13 +64,13 @@ impl MapBanner {
     }
     pub(in crate::game::server_side) fn from_nbt(tag: &Tag) -> Option<Self> {
         // DyeColor.CODEC is read leniently: white when missing or unknown.
-        let color = sunrise_client::save::text(tag.get("color"))
+        let color = sunrise_sim::save::text(tag.get("color"))
             .filter(|c| decoration_sprite(&format!("banner_{c}")).is_some())
             .unwrap_or_else(|| "white".to_owned());
         Some(Self {
             pos: block_pos(tag.get("pos"))?,
             color,
-            name: sunrise_client::save::text(tag.get("name")),
+            name: sunrise_sim::save::text(tag.get("name")),
         })
     }
 }
@@ -92,7 +92,7 @@ impl MapFrame {
         ])
     }
     pub(in crate::game::server_side) fn from_nbt(tag: &Tag) -> Option<Self> {
-        let int = |k: &str| sunrise_client::save::number(tag.get(k)).map(|v| v as i32);
+        let int = |k: &str| sunrise_sim::save::number(tag.get(k)).map(|v| v as i32);
         Some(Self {
             pos: block_pos(tag.get("pos"))?,
             rotation: int("rotation")?,
@@ -759,7 +759,7 @@ pub(in crate::game) fn decoration_pose_at(x: i8, y: i8, rot: u8, z: f32) -> glam
 }
 pub(in crate::game) fn shown_on_frame(sprite: &str) -> bool {
     // A mod's type says for itself (`showOnItemFrame`).
-    if let Some(shown) = sunrise_client::map_decoration_types::registered().shown_on_frame(sprite) {
+    if let Some(shown) = sunrise_sim::map_decoration_types::registered().shown_on_frame(sprite) {
         return shown;
     }
     !matches!(
@@ -792,7 +792,7 @@ pub(in crate::game) fn decoration_sprite(id: &str) -> Option<&'static str> {
         .iter()
         .find(|(n, _)| *n == name)
         .map(|(_, sprite)| *sprite)
-        .or_else(|| sunrise_client::map_decoration_types::registered().sprite(id))
+        .or_else(|| sunrise_sim::map_decoration_types::registered().sprite(id))
 }
 /// The type a decoration's sprite stands for, as its registry names it (a mod's with its
 /// namespace).
@@ -801,7 +801,7 @@ pub(in crate::game::server_side) fn decoration_type(sprite: &str) -> Option<&'st
         .iter()
         .find(|(_, s)| *s == sprite)
         .map(|(name, _)| *name)
-        .or_else(|| sunrise_client::map_decoration_types::registered().id_of(sprite))
+        .or_else(|| sunrise_sim::map_decoration_types::registered().id_of(sprite))
 }
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether `sprite` draws one of vanilla's decoration types: a mod's type may not take it.
@@ -914,7 +914,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if self.maps.missing.contains(&id) {
                     return None;
                 }
-                sunrise_client::save::read_dat(&self.map_path(&format!("{id}.dat")))
+                sunrise_sim::save::read_dat(&self.map_path(&format!("{id}.dat")))
                     .and_then(|saved| MapData::from_nbt(&saved))
             },
             f,
@@ -936,7 +936,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .side
                 .world_root
                 .join(format!("data/minecraft/maps/{id}.dat"));
-            let loaded = sunrise_client::save::read_dat(&path).and_then(|t| MapData::from_nbt(&t));
+            let loaded = sunrise_sim::save::read_dat(&path).and_then(|t| MapData::from_nbt(&t));
             match loaded {
                 Some(m) => {
                     self.maps.data.insert(id, m);
@@ -960,7 +960,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return id + 1;
         }
         self.maps.last_id.unwrap_or_else(|| {
-            sunrise_client::save::read_dat(&self.map_path("last_id.dat"))
+            sunrise_sim::save::read_dat(&self.map_path("last_id.dat"))
                 .and_then(|t| match t.get("data")?.get("map")? {
                     Tag::Int(v) => Some(*v),
                     _ => None,
@@ -1006,7 +1006,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         item: &mut ItemStack,
         origin: [f64; 3],
     ) -> bool {
-        let Some(map) = sunrise_client::structure_blocks::take_pending_map(item) else {
+        let Some(map) = sunrise_sim::structure_blocks::take_pending_map(item) else {
             return true;
         };
         self.materialize_exploration_map(item, &map, origin)
@@ -1054,7 +1054,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         key: (i32, i32, i32),
         origin: [f64; 3],
     ) {
-        use sunrise_client::containers::BlockEntity;
+        use sunrise_level::containers::BlockEntity;
         let Some(BlockEntity::Chest(slots)) = self.world.block_entities.get(&key) else {
             return;
         };
@@ -1063,7 +1063,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .enumerate()
             .filter(|(_, s)| {
                 s.as_ref()
-                    .is_some_and(sunrise_client::structure_blocks::has_pending_map)
+                    .is_some_and(sunrise_sim::structure_blocks::has_pending_map)
             })
             .map(|(i, _)| i)
             .collect();
@@ -1214,7 +1214,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ItemFrame.removeFramedMap`: the map `frame` holds forgets the frame.
     pub(in crate::game::server_side) fn remove_framed_map(
         &mut self,
-        frame: &sunrise_client::entities::ItemFrame,
+        frame: &sunrise_sim::entities::ItemFrame,
     ) {
         let Some(id) = frame.item.as_ref().and_then(map_id) else {
             return;
@@ -1299,7 +1299,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for i in 0..self.inventory.len() {
             if self.inventory[i]
                 .as_ref()
-                .is_some_and(sunrise_client::structure_blocks::has_pending_map)
+                .is_some_and(sunrise_sim::structure_blocks::has_pending_map)
                 && let Some(mut item) = self.inventory[i].take()
             {
                 let keep = self.resolve_pending_map(&mut item, [p.x, p.y, p.z]);
@@ -1606,7 +1606,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .world_root
                     .join("data/minecraft/maps")
                     .join(format!("{id}.dat"));
-                if sunrise_client::save::write_dat(&path, m.to_nbt()).is_ok() {
+                if sunrise_sim::save::write_dat(&path, m.to_nbt()).is_ok() {
                     m.dirty = false;
                 }
             }
@@ -1616,7 +1616,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ("data", Tag::compound([("map", Tag::Int(last))])),
                 ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
             ]);
-            if let Err(e) = sunrise_client::save::write_dat(
+            if let Err(e) = sunrise_sim::save::write_dat(
                 &self.side.world_root.join("data/minecraft/maps/last_id.dat"),
                 tag,
             ) {
@@ -1841,7 +1841,8 @@ pub(in crate::game) mod tests {
     fn map_on_banner_in_adventure_mode_honours_can_place_on() {
         use crate::game::{Options, Progress, Settings, load_resources};
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, command::args::GameMode};
+        use sunrise_command::args::GameMode;
+        use sunrise_level::chunk::Chunk;
 
         let Some(root) = std::env::var_os("SUNRISE_TEST_RESOURCES") else {
             return;
@@ -1888,7 +1889,7 @@ pub(in crate::game) mod tests {
             .unwrap();
         game.world.block_entities.insert(
             (pos[0], pos[1], pos[2]),
-            sunrise_client::containers::BlockEntity::Banner(sunrise_client::containers::Banner {
+            sunrise_level::containers::BlockEntity::Banner(sunrise_level::containers::Banner {
                 layers: Vec::new(),
                 name: None,
                 components: Default::default(),

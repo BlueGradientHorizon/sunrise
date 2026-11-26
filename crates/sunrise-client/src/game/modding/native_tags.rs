@@ -280,7 +280,7 @@ mod tests {
             )]
             .into(),
         );
-        let empty = sunrise_client::items::ItemStack::new("minecraft:stone", 0);
+        let empty = sunrise_items::items::ItemStack::new("minecraft:stone", 0);
         assert_eq!(empty.try_into_api(), Err(StackReadError::Empty));
         assert_eq!(is_in_tag(Some(&table), air, tag), Some(true));
         assert_eq!(is_in_tag(Some(&table), stone, tag), Some(false));

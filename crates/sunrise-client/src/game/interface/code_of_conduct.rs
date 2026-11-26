@@ -5,14 +5,12 @@
 //! until the answer, so the connection stays open while the screen shows.
 use super::{Game, Screen, server_packs::saves};
 use sunrise_client::{
-    Result,
     dialog_screen::BOX,
     font::Font,
     hud::{HudBatch, rgba},
-    multiplayer,
-    text::Text,
-    ui,
+    multiplayer, ui,
 };
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::random::java_string_hash;
 use sunrise_protocol::servers;
 

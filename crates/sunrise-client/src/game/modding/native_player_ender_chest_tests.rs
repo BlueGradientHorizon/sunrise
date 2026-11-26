@@ -137,8 +137,8 @@ fn each_ender_chest_refusal_has_its_own_name_and_writes_nothing() {
 #[test]
 #[ignore = "daily"]
 fn a_written_slot_is_what_the_open_ender_chest_menu_shows_and_clicks() {
-    use sunrise_client::lan::menu::Slots;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+    use sunrise_sim::lan::menu::Slots;
     with_guests(|game| {
         let b = game.players().server_players()[1];
         let old = api_item(game, r#"{id:"minecraft:ender_pearl",count:5}"#).unwrap();
@@ -194,11 +194,11 @@ fn a_written_slot_is_what_the_open_ender_chest_menu_shows_and_clicks() {
 #[test]
 #[ignore = "daily"]
 fn a_write_while_the_local_ender_chest_is_open_survives_closing_it() {
-    use sunrise_client::containers::BlockEntity;
+    use sunrise_level::containers::BlockEntity;
     with_guests(|game| {
         let key = (1, 64, 1);
-        let old = sunrise_client::items::ItemStack::new("minecraft:ender_pearl", 5);
-        let new = sunrise_client::items::ItemStack::new("minecraft:diamond", 2);
+        let old = sunrise_items::items::ItemStack::new("minecraft:ender_pearl", 5);
+        let new = sunrise_items::items::ItemStack::new("minecraft:diamond", 2);
         game.side.ender_items = vec![None; 27];
         game.side.ender_items[3] = Some(old);
         game.open_ender_chest(key);
@@ -227,8 +227,9 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
         RightClickItemEvent, Text,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{items::ItemStack as Stack, lan::menu::Slots};
+    use sunrise_items::items::ItemStack as Stack;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound, UseItem};
+    use sunrise_sim::lan::menu::Slots;
     struct Satchel(Arc<Mutex<Vec<Result<bool, OpenMenuError>>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Satchel {

@@ -37,7 +37,7 @@ pub(in crate::game) struct GuestPlay {
     pub(in crate::game) suggestion: Option<Vec<u8>>,
     pub(in crate::game) suggestion_budget: bool,
     /// The guest's `Player.getCooldowns()` (`Game::cooldowns` for its turn).
-    pub(in crate::game) cooldowns: sunrise_client::cooldowns::Cooldowns,
+    pub(in crate::game) cooldowns: sunrise_items::cooldowns::Cooldowns,
     pub(in crate::game) attack_ticks: u32,
     /// The main hand's item at the guest's last tick (`Game::attack_item`).
     pub(in crate::game) attack_item: Option<std::sync::Arc<str>>,
@@ -66,10 +66,11 @@ pub(in crate::game) struct GuestPlay {
     pub(in crate::game) lectern: Option<super::lan_stations::GuestLectern>,
     /// The equipment the mods last heard this guest wear (`native_players_equipment`), by
     /// `EquipmentSlot`: main hand, off hand, feet, legs, chest, head.
-    pub(in crate::game) equipment_heard: Option<Box<[Option<crate::items::ItemStack>; 6]>>,
+    pub(in crate::game) equipment_heard: Option<Box<[Option<sunrise_items::items::ItemStack>; 6]>>,
     /// The slots of the guest's inventories the mods last heard (`native_players_inventory_changes`),
     /// by `NativeInventoryKind`: Player, Ender, Cursor, Crafting.
-    pub(in crate::game) inventory_heard: Option<Box<[Vec<Option<crate::items::ItemStack>>; 4]>>,
+    pub(in crate::game) inventory_heard:
+        Option<Box<[Vec<Option<sunrise_items::items::ItemStack>>; 4]>>,
     /// What the guest's body was given for its effects and enchantments.
     pub(in crate::game) potions: super::potions::BodyPotions,
     /// `ServerPlayer.getStats` and the inventory `inventory_changed` last saw.
@@ -83,11 +84,11 @@ pub(in crate::game) struct GuestPlay {
     /// The fall, lava ride, Nether trip and blast the guest's advancements track.
     pub(in crate::game) marks: super::advancements::TravelMarks,
     /// `Entity.portalProcess` and `portalCooldown` (game/world/server_travel.rs).
-    pub(in crate::game) portal: sunrise_client::nether_portal::PortalState,
+    pub(in crate::game) portal: sunrise_sim::nether_portal::PortalState,
     /// `Player.takeXpDelay`: ticks until the next orb can be taken.
     pub(in crate::game) xp_delay: u32,
     /// This player entity's age and level-up sound cooldown.
-    pub(in crate::game) level_up_sound: sunrise_client::entities::LevelUpSound,
+    pub(in crate::game) level_up_sound: sunrise_sim::entities::LevelUpSound,
     /// What last killed the guest outright (`/kill`): the death message's key.
     pub(in crate::game) death_cause: Option<String>,
     /// The equipment modifiers on the guest's attributes (`apply_equipment`)
@@ -98,7 +99,7 @@ pub(in crate::game) struct GuestPlay {
     pub(in crate::game) equipped: Option<Vec<Option<ItemStack>>>,
     pub(in crate::game) craft_grid: Vec<Option<ItemStack>>,
     /// The guest's cast fishing hook (`Player.fishing`).
-    pub(in crate::game) hook: sunrise_client::join_seq::ResidentSlot<super::fishing::Hook>,
+    pub(in crate::game) hook: sunrise_sim::join_seq::ResidentSlot<super::fishing::Hook>,
     pub(in crate::game) sculk: super::sculk_server::PlayerEvents,
     /// What `ServerPlayer` last recorded for the guest's scoreboard criteria
     /// (`lastRecordedHealthAndAbsorption` and the others).
@@ -198,18 +199,18 @@ impl GuestPlay {
 }
 
 pub(in crate::game) struct ItemRules<'a>(
-    pub(in crate::game) &'a sunrise_client::items::Items,
-    pub(in crate::game) &'a sunrise_client::enchant::Enchantments,
-    pub(in crate::game) Option<&'a dyn sunrise_client::menu::SlotRules>,
-    pub(in crate::game) Option<&'a sunrise_client::menu::StackedOutcome>,
-    pub(in crate::game) Vec<sunrise_client::containers::ModContainerInsertRule>,
+    pub(in crate::game) &'a sunrise_items::items::Items,
+    pub(in crate::game) &'a sunrise_items::enchant::Enchantments,
+    pub(in crate::game) Option<&'a dyn sunrise_sim::menu::SlotRules>,
+    pub(in crate::game) Option<&'a sunrise_sim::menu::StackedOutcome>,
+    pub(in crate::game) Vec<sunrise_level::containers::ModContainerInsertRule>,
 );
 
 /// `Player.isWithinEntityInteractionRange(entity, buffer)` for a guest: the
 /// eyes closer than the entity interaction range (3, 5 in creative) plus
 /// `buffer` to the entity's box.
 pub(in crate::game) fn guest_within_entity_range(
-    g: &sunrise_client::lan::guest::Guest,
+    g: &sunrise_sim::lan::guest::Guest,
     bounds: &sunrise_core::geometry::Aabb,
     buffer: f64,
 ) -> bool {
@@ -223,7 +224,7 @@ pub(in crate::game) fn guest_within_entity_range(
     let range = if g.creative() { 5.0 } else { 3.0 } + buffer;
     d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < range * range
 }
-pub(in crate::game) fn building_player(g: &sunrise_client::lan::guest::Guest) -> BuildingPlayer {
+pub(in crate::game) fn building_player(g: &sunrise_sim::lan::guest::Guest) -> BuildingPlayer {
     BuildingPlayer {
         conn: Some(g.conn),
         dimension: Dim::from_id(&g.dimension),
@@ -293,7 +294,7 @@ pub(in crate::game) fn refresh_building_player(host: &LanHost, _conn: u32) {
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn vehicle_has_other_viewers(
         container: Option<(i32, i32, i32)>,
-        guests: &[sunrise_client::lan::guest::Guest],
+        guests: &[sunrise_sim::lan::guest::Guest],
         closing_conn: Option<u32>,
         key: (i32, i32, i32),
     ) -> bool {
@@ -375,7 +376,7 @@ pub(in crate::game) fn reset_use_attack_strength(ticker: &mut u32, before: u32, 
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{eye_columns, reset_use_attack_strength};
-    use sunrise_client::pose::Pose;
+    use sunrise_sim::pose::Pose;
 
     pub(in crate::game) struct StopMenu(pub(in crate::game) Option<mod_api::GameMode>);
     #[mod_api::__subscriptions]
@@ -410,14 +411,16 @@ pub(in crate::game) mod tests {
     fn menu_rules_match_guest_packets_and_prediction() {
         use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
         use std::sync::Arc;
-        use sunrise_client::{
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::{
             chunk::Chunk,
             containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModMenuType},
-            items::ItemStack,
+        };
+        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+        use sunrise_sim::{
             lan::menu::Slots,
             menu::{Input, Kind, Menu},
         };
-        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 
         struct Part;
         #[mod_api::sunrise_part]
@@ -600,13 +603,13 @@ pub(in crate::game) mod tests {
                         prediction.load_slot(0, slots[0].clone());
                         prediction.load_slot(1, slots[1].clone());
                         prediction.carried =
-                            Some(sunrise_client::items::ItemStack::new(item, carried));
+                            Some(sunrise_items::items::ItemStack::new(item, carried));
                         prediction.creative = creative;
                         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                             guest.carried =
-                                Some(sunrise_client::items::ItemStack::new(item, carried));
+                                Some(sunrise_items::items::ItemStack::new(item, carried));
                             guest.game_mode = if creative {
-                                sunrise_client::lan::guest::CREATIVE
+                                sunrise_sim::lan::guest::CREATIVE
                             } else {
                                 0
                             };
@@ -658,7 +661,7 @@ pub(in crate::game) mod tests {
                         .guests
                         .update(0, |guest| guest.game_mode = 0);
                     game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
-                        Some(sunrise_client::items::ItemStack::new("minecraft:dirt", 2));
+                        Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 2));
                     let mut prediction = Menu::new(if is_mod {
                         Kind::Mod(menu_type)
                     } else {
@@ -671,18 +674,18 @@ pub(in crate::game) mod tests {
                     }));
                     prediction.load_slot(
                         0,
-                        Some(sunrise_client::items::ItemStack::new("minecraft:dirt", 2)),
+                        Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 2)),
                     );
                     prediction.set_player_item(
                         9,
-                        Some(sunrise_client::items::ItemStack::new("minecraft:dirt", 4)),
+                        Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 4)),
                     );
                     prediction
                         .click(&game.menu_env(), 27, 0, Input::QuickMove)
                         .unwrap();
                     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                         guest.inventory[9] =
-                            Some(sunrise_client::items::ItemStack::new("minecraft:dirt", 4))
+                            Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 4))
                     });
                     game.lan_guest_packet(
                         12,
@@ -707,7 +710,7 @@ pub(in crate::game) mod tests {
                     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                         guest.inventory.fill(None);
                         guest.inventory[0] =
-                            Some(sunrise_client::items::ItemStack::new("minecraft:stone", 8));
+                            Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
                     });
                     game.lan_guest_packet(
                         12,
@@ -725,11 +728,11 @@ pub(in crate::game) mod tests {
                     assert_eq!(guest.inventory[0].as_ref().unwrap().count, 8);
                     assert_eq!(guest.inventory.iter().flatten().count(), 1);
                     game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
-                        Some(sunrise_client::items::ItemStack::new("minecraft:dirt", 2));
+                        Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 2));
                     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                         guest.inventory.fill(None);
                         guest.inventory[0] =
-                            Some(sunrise_client::items::ItemStack::new("minecraft:stone", 8));
+                            Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
                     });
                     game.lan_guest_packet(
                         12,
@@ -767,7 +770,7 @@ pub(in crate::game) mod tests {
                         guest.inventory[1] = Some(limited);
                         guest.selected = 1;
                         guest.inventory[0] =
-                            Some(sunrise_client::items::ItemStack::new("minecraft:stone", 8));
+                            Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
                     });
                     game.lan_guest_packet(
                         12,
@@ -803,7 +806,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn crafting_guest_self_swap_keeps_eight_items() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.world
@@ -818,7 +821,7 @@ pub(in crate::game) mod tests {
             game.world.set(1, 64, 1, table).unwrap();
             game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                 guest.inventory[0] =
-                    Some(sunrise_client::items::ItemStack::new("minecraft:stone", 8));
+                    Some(sunrise_items::items::ItemStack::new("minecraft:stone", 8));
             });
             game.lan_open_crafting(12, [1, 64, 1]);
             let window = game
@@ -865,7 +868,7 @@ pub(in crate::game) mod tests {
         use crate::game::{Hit, sculk::TEST_POSTED_EVENTS};
         use mod_api::{BlockUpdateFlags, GameMode};
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -1031,7 +1034,7 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicUsize, Ordering::SeqCst},
         };
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         #[derive(Clone)]
         struct BlockUse(Arc<AtomicUsize>);
@@ -1099,7 +1102,7 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicBool, Ordering::SeqCst},
         };
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         #[derive(Clone)]
         struct Replacement(Arc<AtomicBool>);
@@ -1374,7 +1377,7 @@ pub(in crate::game) mod respawn_position_tests {
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use mod_api::{Hooks, LevelDimension, ModEntry, PlayerRespawnPositionEvent, ServerHost};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     /// What the hook heard: the player's UUID, the original level and point,
     /// and whether the block was missing.
@@ -1498,8 +1501,8 @@ pub(in crate::game) mod respawn_position_tests {
 pub(in crate::game) mod pickup_xp_tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
-    use sunrise_client::entities::ExperienceOrb;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::entities::ExperienceOrb;
 
     /// Listens to `pickup_xp`, canceling it when told to.
     struct Listen(bool);
@@ -1579,13 +1582,13 @@ pub(in crate::game) mod swing_echo_tests {
     use super::ItemStack;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
         play::{self, Clientbound, Serverbound},
     };
+    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
     /// handleUseItemOn swings the player's arm, but sends the swing to the
     /// player's own client only when the client did not predict it: a block
@@ -1775,7 +1778,7 @@ pub(in crate::game) fn touching_unloaded_chunk(
 #[cfg(test)]
 pub(in crate::game) mod guest_close_listener_tests {
     use super::*;
-    use sunrise_client::{containers::BlockEntity, sculk::Info};
+    use sunrise_level::{containers::BlockEntity, sculk::Info};
 
     pub(in crate::game) fn selected(game: &crate::game::ServerGame<'_>) -> Option<Info> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&(9, 100, 4)) else {
@@ -1857,13 +1860,13 @@ pub(in crate::game) mod item_on_block_cooldown_tests {
     use super::ItemStack;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
         play::{self, Clientbound, Serverbound},
     };
+    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
     // Actual registered guest packet route, with real loaded block facts.
     fn placement_control(check_start: Option<bool>) {

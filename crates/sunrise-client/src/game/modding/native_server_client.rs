@@ -4,8 +4,9 @@ use mod_api::__private::game::*;
 use mod_api::LevelRef;
 use mod_api::PlayerRef;
 use std::{collections::HashMap, sync::Arc};
-use sunrise_client::{items::ItemStack, lan::abilities::PlayerAbilities};
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::abilities::PlayerAbilities;
 
 /// Helpers for server mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
@@ -40,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         (self.local_player()? == player).then(|| PlayerRead::Acting {
             mode: self
                 .player_info_game_mode()
-                .map(sunrise_client::command::args::GameMode::id),
+                .map(sunrise_command::args::GameMode::id),
             body: self.player.as_ref(),
             abilities: self.client_abilities(),
             last_death: self.level.last_death.as_ref(),
@@ -96,7 +97,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn client_world_table_items(
         &self,
-    ) -> Option<&Arc<sunrise_client::items::Items>> {
+    ) -> Option<&Arc<sunrise_items::items::Items>> {
         None
     }
 

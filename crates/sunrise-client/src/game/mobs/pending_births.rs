@@ -10,11 +10,11 @@
 use super::Game;
 use super::native_pending_children::{Children, PendingMob, valid_child};
 use mod_api::PendingChildrenEdits;
-use sunrise_client::mobs::Mob;
 use sunrise_mod_runtime::{
     attachments::Attachments,
     pending_children::{Decision, PendingChildren},
 };
+use sunrise_sim::mobs::Mob;
 
 /// A split's most children, and a breeding's only one (the design's limits).
 const SPLIT_CAPACITY: usize = 64;
@@ -233,7 +233,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `mob_split` listener the whole list is constructed first and lent; otherwise each
     /// child joins as it is made, exactly as vanilla does.
     pub(in crate::game) fn split_cube_children(&mut self, dying: &mut Mob) {
-        let drawn = sunrise_client::mobs::cube::split_count(dying);
+        let drawn = sunrise_sim::mobs::cube::split_count(dying);
         if drawn == 0 {
             return;
         }
@@ -246,7 +246,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     dying.position,
                     0.0,
                 );
-                sunrise_client::mobs::cube::split_child(dying, &mut child, i);
+                sunrise_sim::mobs::cube::split_child(dying, &mut child, i);
                 self.mobs.push(child);
                 self.native_mobs_joined(self.mobs.len() - 1, false);
             }
@@ -258,7 +258,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let children = (0..drawn)
             .map(|i| {
                 let mut child = Mob::new(first + i, dying.kind.clone(), dying.position, 0.0);
-                sunrise_client::mobs::cube::split_child(dying, &mut child, i);
+                sunrise_sim::mobs::cube::split_child(dying, &mut child, i);
                 child.id = 0;
                 child
             })

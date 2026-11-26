@@ -1,7 +1,8 @@
 //! The benchmark's level: a stone floor at y 63 over a square of otherwise empty chunks.
 use super::super::Game;
 use std::sync::Arc;
-use sunrise_client::{Result, chunk::Chunk};
+use sunrise_client_core::Result;
+use sunrise_level::chunk::Chunk;
 use sunrise_world::level::Ticks;
 
 /// The floor's height; entities stand at `FLOOR + 1`.
@@ -19,10 +20,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 for section in &mut chunk.sections {
                     let section = Arc::make_mut(section);
                     section.biomes = sunrise_core::paletted::PalettedContainer::new(
-                        sunrise_client::chunk::BIOME_STRATEGY,
+                        sunrise_level::chunk::BIOME_STRATEGY,
                         plains,
                     );
-                    section.light = sunrise_client::chunk::Light::Uniform(15 << 4);
+                    section.light = sunrise_level::chunk::Light::Uniform(15 << 4);
                 }
                 self.world.chunks.insert((cx, cz), Arc::new(chunk));
             }

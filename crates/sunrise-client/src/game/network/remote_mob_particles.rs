@@ -1,11 +1,6 @@
 //! Particles a client of a server draws for a mob's entity event, which the
 //! server does not send as a particle packet.
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::Species,
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_core::{
     geometry::{
         Vec3,
@@ -13,6 +8,9 @@ use sunrise_core::{
     },
     random::RandomSource,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::mobs::Species;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Fox.handleEntityEvent(45)`: eight crumbs of the item in its mouth,
@@ -26,7 +24,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let Some(item) =
-            sunrise_client::mobs::finalize::item(m, sunrise_client::mobs::finalize::MAINHAND)
+            sunrise_sim::mobs::finalize::item(m, sunrise_sim::mobs::finalize::MAINHAND)
         else {
             return;
         };

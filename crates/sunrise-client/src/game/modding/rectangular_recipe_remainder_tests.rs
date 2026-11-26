@@ -68,7 +68,7 @@ fn rectangular_recipe_for_preserves_two_custom_remainder_cells() {
     super::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let recipes = sunrise_client::crafting::Recipes::from_sources(
+            let recipes = sunrise_sim::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
                 &sunrise_world::loot::PackOverlay::NONE,

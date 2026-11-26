@@ -12,11 +12,11 @@ use crate::game::{
 use mod_api::CrosshairTarget;
 use serde_json::Value;
 use std::sync::Arc;
-use sunrise_client::{
-    camera::CameraType, chunk::Chunk, entities::ArmorStand, first_person::Hand, items::ItemStack,
-    level_loading::Reason, mobs::Mob, motion::PlayerMotion,
-};
+use sunrise_client::level_loading::Reason;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_items::items::ItemStack;
+use sunrise_level::camera_math::CameraType;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     buf::pack_degrees,
     connection::{Connection, Pipe},
@@ -26,6 +26,8 @@ use sunrise_protocol::{
         play::{self, Clientbound as C, SpawnInfo},
     },
 };
+use sunrise_sim::first_person_sim::Hand;
+use sunrise_sim::{entities::ArmorStand, mobs::Mob, motion::PlayerMotion};
 
 fn crosshair_witness() -> Value {
     let path = std::env::var("SUNRISE_CROSSHAIR_PICK_WITNESS")

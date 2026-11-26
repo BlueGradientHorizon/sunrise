@@ -1,6 +1,6 @@
 use super::{Codec, Error, boolean, id, identifier, optional, s, string, uuid, uuid_tag};
 use mod_api::text::{TextClick, TextHover, TextStyle};
-use sunrise_client::component::untrusted_http_url;
+use sunrise_client_core::component::untrusted_http_url;
 use sunrise_client_core::text::is_allowed_chat_character;
 use sunrise_core::nbt::{self, Compound, Limits, Tag, numeric_int};
 use sunrise_core::text::parse_java_uuid;
@@ -171,7 +171,7 @@ impl Codec<'_> {
     }
 
     fn dialog_holder(&self, tag: &Tag) -> Option<Tag> {
-        sunrise_client::dialog::persistent_holder(
+        sunrise_sim::dialog::persistent_holder(
             tag,
             self.registries,
             &|id| self.item_exists(id),

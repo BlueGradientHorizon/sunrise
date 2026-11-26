@@ -1,5 +1,6 @@
 use super::*;
-use sunrise_client::mobs::{anim, render};
+use sunrise_client::mobs::render;
+use sunrise_sim::mobs::anim;
 
 impl render::RenderDataSource for Game<'_, crate::game::client_side::ClientState> {
     fn mob_tables(&self) -> sunrise_client::mobs_render::ClientMobRender<'_> {

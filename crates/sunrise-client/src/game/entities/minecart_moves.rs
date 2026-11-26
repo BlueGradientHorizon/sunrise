@@ -2,8 +2,8 @@
 //! the move gate (#2414) — in its own module so `minecarts.rs` keeps its size.
 use crate::game::Game;
 use crate::game::minecarts::{CartKind, Minecart};
-use sunrise_client::motion::BodyContact;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::motion::BodyContact;
 
 pub(in crate::game) struct CartLanding {
     pub(in crate::game) id: u32,

@@ -4,8 +4,8 @@
 //! cauldron there is `InteractionResult.CONSUME` (nothing happens) instead of
 //! filling it.
 use super::*;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -50,7 +50,7 @@ fn command(game: &mut crate::game::ServerGame<'_>, command: &str) {
         ok,
         "{command}: {}",
         said.iter()
-            .map(sunrise_client::text::Text::plain)
+            .map(sunrise_client_core::text::Text::plain)
             .collect::<String>()
     );
 }
@@ -73,7 +73,7 @@ fn click_under(
     game: &mut crate::game::ServerGame<'_>,
     above: &str,
     bucket: &str,
-) -> (sunrise_client::cauldron::Outcome, String) {
+) -> (sunrise_sim::cauldron::Outcome, String) {
     set(game, [8, 100, 8], "minecraft:cauldron");
     set(game, [8, 101, 8], above);
     game.inventory[0] = Some(ItemStack::new(bucket, 1));
@@ -84,7 +84,7 @@ fn click_under(
 #[test]
 #[ignore = "daily"]
 fn a_cauldron_under_water_swallows_a_lava_or_powder_snow_bucket() {
-    use sunrise_client::cauldron::Outcome;
+    use sunrise_sim::cauldron::Outcome;
     let mut resources = None;
     let mut game = game(&mut resources);
     for (bucket, filled) in [

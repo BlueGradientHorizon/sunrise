@@ -1,7 +1,7 @@
 //! Mod-owned work submitted to the client application's packet/task drain.
 use super::Game;
 use mod_api::ClientExecutor;
-use sunrise_client::crash;
+use sunrise_level::crash;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_executor(&self) -> Option<ClientExecutor> {
@@ -36,7 +36,8 @@ mod tests {
         sync::{Arc, Mutex, mpsc},
         thread,
     };
-    use sunrise_client::{crash::ModCall, net::Event};
+    use sunrise_client::net::Event;
+    use sunrise_level::crash::ModCall;
 
     struct PanickingPayload;
     impl Drop for PanickingPayload {

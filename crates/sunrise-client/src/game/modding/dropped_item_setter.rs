@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Sets the stack in a validated item-entity slot, as a hopper's `addItem`

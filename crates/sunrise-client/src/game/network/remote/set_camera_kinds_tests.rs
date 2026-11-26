@@ -1,12 +1,13 @@
 use crate::game::remote::RemoteDimensionEntry;
 use crate::game::{native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle};
 use mod_api::ClientHost;
-use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
+use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "run by tools/test_camera_parity.py"]

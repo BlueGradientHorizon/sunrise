@@ -7,11 +7,11 @@ use crate::game::game_tests::tests::server_game;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LoopContext, MoveCause};
 use std::sync::atomic::AtomicI32;
 use std::sync::{Arc, Mutex};
-use sunrise_client::lan::guest::InboxItem;
-use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 use sunrise_core::position::ChunkPos;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
+use sunrise_sim::lan::guest::InboxItem;
+use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
 struct CancelAll(Arc<Mutex<Vec<MoveCause>>>);
 
@@ -47,7 +47,7 @@ fn a_cancelled_player_packet_sends_the_guest_a_correction() {
             .default_state("minecraft:stone")
             .unwrap()
             .0;
-        let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+        let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         for x in 0..16 {
             for z in 0..16 {
                 chunk.set(x, 99, z, stone);
@@ -183,7 +183,7 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
             .default_state("minecraft:stone")
             .unwrap()
             .0;
-        let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+        let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         for x in 0..16 {
             for z in 0..16 {
                 chunk.set(x, 99, z, stone);
@@ -282,7 +282,7 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         );
         // The tick holds what it sends a guest until its end; let the held
         // correction through, as the tick's own flush would.
-        sunrise_client::lan::flush_all(
+        sunrise_sim::lan::flush_all(
             game.lan
                 .as_ref()
                 .unwrap()
@@ -295,8 +295,8 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         // The flush hands the held packets over as one batch.
         let put_back = rx.try_iter().any(|out| {
             let bodies = match out {
-                sunrise_client::lan::Out::Packet(body) => vec![body],
-                sunrise_client::lan::Out::Packets(bodies) => bodies,
+                sunrise_sim::lan::Out::Packet(body) => vec![body],
+                sunrise_sim::lan::Out::Packets(bodies) => bodies,
                 _ => return false,
             };
             bodies.iter().any(|body| {

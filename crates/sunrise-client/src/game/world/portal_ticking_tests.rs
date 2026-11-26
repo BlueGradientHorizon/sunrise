@@ -5,10 +5,10 @@
 
 use super::native_entity_refs::tests::with_game;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::Mob;
-use sunrise_client::nether_portal::ENTITY_DELAY;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::nether_portal::ENTITY_DELAY;
 
 #[test]
 #[ignore = "daily"]
@@ -32,8 +32,7 @@ fn mobs_past_the_simulation_distance_neither_enter_portals_nor_cool_down() {
         // distance, chunk (8, 0) loaded and in view but past it. In each, one
         // zombie stands in a portal (z 8) and one on stone, cooling down (z 12).
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5))
-                .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
         );
         for (cx, x, in_portal, cooling) in [(2, 40, 1, 3), (8, 136, 2, 4)] {
             game.world

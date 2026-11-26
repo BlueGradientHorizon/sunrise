@@ -7,7 +7,7 @@ pub(in crate::game) type ConditionTable =
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn stage_condition_inventory(
         &mut self,
-    ) -> sunrise_client::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
+    ) -> sunrise_client_core::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
         self.protect_condition_root();
         self.mods.load_condition_candidate = None;
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(&self.options.resources)?;
@@ -16,7 +16,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     pub(in crate::game) fn protect_condition_root(&mut self) {
-        self.mods.active_condition_root = Some(sunrise_client::mod_content::retain_root(
+        self.mods.active_condition_root = Some(sunrise_sim::mod_content::retain_root(
             &self.options.resources,
         ));
     }
@@ -76,7 +76,7 @@ fn candidate_registry_files(
         .chain(stack.enabled_packs())
         .collect();
     // Admission is evaluated below, against the load-scoped conditions; no fallback.
-    let files = sunrise_client::datapack::registry_files(&packs, &keys, |_, _| true)
+    let files = sunrise_level::datapack::registry_files(&packs, &keys, |_, _| true)
         .map_err(|error| format!("{error:?}"))?
         .into_iter()
         .flat_map(|(file, versions)| {
@@ -242,13 +242,13 @@ mod tests;
 pub(in crate::game) fn content_root_with_conditions(
     root: &std::path::Path,
     jars: &std::path::Path,
-    mods: &[sunrise_client::mod_content::ContentMod],
+    mods: &[sunrise_sim::mod_content::ContentMod],
     cache: &std::path::Path,
     inventory: &sunrise_mod_package::enabled::EnabledMods,
     sources: &super::mods::ModsState,
-) -> sunrise_client::Result<std::path::PathBuf> {
+) -> sunrise_client_core::Result<std::path::PathBuf> {
     let conditions = conditions_for_mods(sources, inventory)?;
-    sunrise_client::mod_content::resource_root_with_conditions(
+    sunrise_sim::mod_content::resource_root_with_conditions(
         root,
         jars,
         mods,

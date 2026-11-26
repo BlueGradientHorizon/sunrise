@@ -5,11 +5,10 @@ use crate::game::{
     resource_load::{Progress, load_resources},
 };
 use std::sync::Arc;
-use sunrise_client::{
-    audio::Audio,
+use sunrise_client::{audio::Audio, settings::Settings};
+use sunrise_level::{
     chunk::Chunk,
     containers::{Beacon, BlockEntity},
-    settings::Settings,
 };
 
 fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {

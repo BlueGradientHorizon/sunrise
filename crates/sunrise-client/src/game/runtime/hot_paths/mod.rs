@@ -17,7 +17,7 @@ use std::{
     io::Write as _,
     time::Instant,
 };
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 mod chunks;
 mod commands;

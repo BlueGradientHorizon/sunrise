@@ -50,7 +50,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_mod_reads_and_sets_the_servers_distances() {
         with_guests(|game| {
-            game.clock = crate::clock::FixedStep::default();
+            game.clock = sunrise_sim::clock::FixedStep::default();
             for took in [40_000_000, 51_000_000, 62_000_000] {
                 game.clock.record(std::time::Duration::from_nanos(took));
             }

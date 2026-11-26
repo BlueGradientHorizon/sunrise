@@ -2,9 +2,10 @@
 #[ignore = "daily"]
 fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
     use crate::game::{Hand, Options, Progress, Settings, load_resources};
-    use sunrise_client::{items::ItemStack, motion::PlayerMotion};
     use sunrise_core::equipment_slot::EquipmentSlot;
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::motion::PlayerMotion;
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
     );

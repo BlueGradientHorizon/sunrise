@@ -4,8 +4,8 @@
 //! (tools/test_world_test_def_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 
 /// A world folder with one data pack holding `h275:broken`.
 fn world_with_pack(tag: &str) -> std::path::PathBuf {
@@ -92,8 +92,7 @@ fn a_test_instance_from_an_enabled_world_pack_is_found_and_runs() {
         }
     }
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(24.5, 100.0, 8.5))
-            .unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(24.5, 100.0, 8.5)).unwrap(),
     );
     game.side.chat_capture = Some(Vec::new());
     assert!(game.run_command("test run h275:broken"));

@@ -6,8 +6,8 @@ use super::Game;
 use super::key_codes::{gameplay_has_keyboard, glfw_modifiers};
 use mod_api::{ClientModifiers, KeyConflictContext, MappingError, ModKeyMappingRef, ModKeyRefusal};
 use sunrise_client::keymapping::{KeyAction, MappingContext, ModBinding, ModKeySlot};
-use sunrise_client::mod_list::{ALT, CONTROL, SHIFT};
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
+use sunrise_mod_package::mod_list::{ALT, CONTROL, SHIFT};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 fn mod_key_slot(mapping: ModKeyMappingRef) -> ModKeySlot {
@@ -265,7 +265,7 @@ mod tests {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.side.title.0 = None;
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )

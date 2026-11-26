@@ -28,10 +28,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Some((command, RegisteredExecutor { callback, call }))
             })
             .unzip();
-        let vanilla = sunrise_client::command::vanilla::session_dispatcher(
-            &self.level.rule_registry,
-            features,
-        );
+        let vanilla =
+            sunrise_command::vanilla::session_dispatcher(&self.level.rule_registry, features);
         let arguments = command_arguments();
         let mut slots = HashMap::new();
         let (tree, levels, problems) = command_tree_for(
@@ -66,8 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A replacement can add a session tool, e.g. pregen. Never overwrite its nodes
         // or advertise a mod usage behind the tool's name. Vanilla's roots take mod usages.
         let report = without_reserved_roots(&commands.tree, |name| {
-            sunrise_client::command::vanilla::is_session_tool(name)
-                && dispatcher.find(name).is_some()
+            sunrise_command::vanilla::is_session_tool(name) && dispatcher.find(name).is_some()
         });
         register_command_nodes(
             dispatcher,

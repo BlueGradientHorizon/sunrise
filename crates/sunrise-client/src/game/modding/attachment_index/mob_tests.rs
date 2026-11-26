@@ -54,7 +54,7 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
         let row = old.iter().try_next().unwrap().unwrap();
         let work = index.lock().unwrap().work_count();
         let replacement = game.mobs[0].clone();
-        sunrise_client::join_seq::store_back(&mut game.mobs[0], replacement);
+        sunrise_sim::join_seq::store_back(&mut game.mobs[0], replacement);
         assert!(game.mobs[0].attachment_lifetime.is_bound());
         let after = index.lock().unwrap().work_count();
         assert_eq!(after, work);
@@ -76,7 +76,7 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
         game.native_removals_flush();
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         game.side.tickets.0.update(None);
         game.tick_creature_entities().unwrap();
         assert!(game.mobs.is_empty());
@@ -287,10 +287,8 @@ fn mob_taken_store_refuses_without_writing_and_missing_store_refuses() {
                 .get(&id)
                 .is_some_and(|map| map.has_index_binding())
         );
-        game.mobs.restore(
-            taken,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        game.mobs
+            .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         assert_eq!(VALUE.get_existing(game, Holder::Entity(id)), Ok(None));
         for id in [0, u32::MAX] {
             assert_eq!(

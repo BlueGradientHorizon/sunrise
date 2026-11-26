@@ -14,7 +14,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
         for z in -1..=0 {
             game.world.chunks.insert(
                 (x, z),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(x, z)),
             );
         }
     }
@@ -42,7 +42,7 @@ fn summoned_drowned_hold_shells_as_guaranteed_drops() {
     let drowned: Vec<u32> = game
         .mobs
         .iter()
-        .filter(|m| m.species() == sunrise_client::mobs::Species::Drowned)
+        .filter(|m| m.species() == sunrise_sim::mobs::Species::Drowned)
         .map(|m| m.id)
         .collect();
     assert_eq!(drowned.len(), 400);
@@ -52,14 +52,14 @@ fn summoned_drowned_hold_shells_as_guaranteed_drops() {
         offhands.push(m.extra.off_hand_id().map(str::to_owned));
         if m.extra.off_hand_id() == Some("minecraft:nautilus_shell") {
             live += 1;
-            if sunrise_client::mobs::drops::drop_chance(m, "offhand") == 2.0 {
+            if sunrise_sim::mobs::drops::drop_chance(m, "offhand") == 2.0 {
                 guaranteed += 1;
             }
         }
         let tag = game
             .command_target_nbt(crate::game::commands::Target::Mob(id))
             .unwrap();
-        let body = sunrise_client::snbt::pretty(&tag).plain();
+        let body = sunrise_client_core::snbt::pretty(&tag).plain();
         if body.contains("offhand: {count: 1, id: \"minecraft:nautilus_shell\"}") {
             saved += 1;
         }
@@ -78,8 +78,8 @@ fn summoned_drowned_hold_shells_as_guaranteed_drops() {
 #[test]
 #[ignore = "daily"]
 fn only_an_empty_offhand_drowned_draws_for_the_shell() {
-    use sunrise_client::mobs::drops::{DEFAULT_DROP_CHANCE, SLOTS, drop_chance};
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_sim::mobs::drops::{DEFAULT_DROP_CHANCE, SLOTS, drop_chance};
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
     for command in [
@@ -102,18 +102,18 @@ fn only_an_empty_offhand_drowned_draws_for_the_shell() {
     // The fork's finalize funnel draws from the level's random (`world.random`). `Command` is
     // `/summon`'s reason: a Natural drowned can also roll a zombie nautilus after its shell.
     let finalize = |game: &mut crate::game::ServerGame<'_>,
-                    mut m: sunrise_client::mobs::Mob,
+                    mut m: sunrise_sim::mobs::Mob,
                     seed: i64| {
         m.random.set_seed(seed);
         game.world.random = sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(seed));
         game.finalize_plain(
             &mut m,
             &difficulty,
-            sunrise_client::mobs::spawn_rules::Reason::Command,
+            sunrise_sim::mobs::spawn_rules::Reason::Command,
         );
         (m, game.world.random.clone())
     };
-    let dandelion = |m: &mut sunrise_client::mobs::Mob| {
+    let dandelion = |m: &mut sunrise_sim::mobs::Mob| {
         m.extra.set_slot_id(
             sunrise_items::equipment::OFFHAND,
             Some("minecraft:dandelion".into()),

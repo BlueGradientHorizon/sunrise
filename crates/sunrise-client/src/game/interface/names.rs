@@ -11,11 +11,9 @@ use sunrise_client::{
     block_entity_render::vertex_light,
     hud::{HudAtlas, HudBatch, HudVertex},
     mesher::Vertex,
-    mobs::Mob,
-    save::uuid_text,
-    scoreboard as sb,
-    text::Text,
 };
+use sunrise_client_core::{scoreboard as sb, text::Text};
+use sunrise_sim::{mobs::Mob, save::uuid_text};
 
 /// The world size of one text pixel in a name tag: `Matrix4f.scale(0.025F, -0.025F, 0.025F)`.
 pub(in crate::game) const NAME_TAG_UNIT: f32 = 0.025;
@@ -46,7 +44,7 @@ impl NameTagLayouts {
         let epoch = (
             atlas.revision,
             atlas.font.epoch(),
-            sunrise_client::lang::bidirectional(),
+            sunrise_client_core::lang::bidirectional(),
         );
         if self.epoch != epoch {
             self.lines.clear();
@@ -203,7 +201,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // A mannequin with no name still shows its description.
             let name = match &m.custom_name {
                 Some(name) => name.clone(),
-                None if hooks || m.species() == sunrise_client::mobs::Species::Mannequin => {
+                None if hooks || m.species() == sunrise_sim::mobs::Species::Mannequin => {
                     String::new()
                 }
                 None => return None,
@@ -287,11 +285,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // `ClientMannequin.belowNameDisplay`: the description is `scoreText`, drawn
             // within the below-name distance (10 by default) whether the name
             // shows or not.
-            let description = (m.species() == sunrise_client::mobs::Species::Mannequin
+            let description = (m.species() == sunrise_sim::mobs::Species::Mannequin
                 && distance_sqr < m.below_name_distance().powi(2))
             .then(|| m.extra.description.component())
             .flatten()
-            .map(|tag| sunrise_client::entity_nbt::name_text(&tag).resolve_legacy());
+            .map(|tag| sunrise_sim::entity_nbt::name_text(&tag).resolve_legacy());
             let is_own = Some(m.id) == own_id;
             let name_shown = sb::name_shown(team, viewer, view)
                 && (!is_own || !view.is_vehicle)
@@ -357,7 +355,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // EntityRenderer.extractNameTags: the score shows within the
             // per-entity below-name distance (10 by default), under the name.
             let mut lift = 0.0;
-            if m.species() == sunrise_client::mobs::Species::Mannequin {
+            if m.species() == sunrise_sim::mobs::Species::Mannequin {
                 if let Some(text) = description {
                     lines.push((text, 0.0));
                     lift = f64::from(9.0f32 * 1.15 * 0.025);
@@ -899,7 +897,7 @@ pub(in crate::game) struct NameTag {
 /// summoned or set as `{text: "..", color: "red"}` keeps its colour), else the plain text.
 pub(in crate::game) fn name_component(m: &Mob, name: &str) -> sunrise_core::nbt::Tag {
     match &m.custom_name_text {
-        Some(text) => sunrise_client::scoreboard::component_tag(&text.component()),
+        Some(text) => sunrise_client_core::scoreboard::component_tag(&text.component()),
         None => sunrise_protocol::text::literal(name),
     }
 }
@@ -914,16 +912,16 @@ pub(in crate::game) mod name_tag_tests;
 pub(in crate::game) mod tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::mobs::{Anim, Brain, MobType, Species};
-    use sunrise_client::pose::Pose;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Anim, Brain, MobType, Species};
+    use sunrise_sim::pose::Pose;
 
     #[test]
     fn a_mobs_name_is_sent_with_its_style() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
-        let Ok(types) = sunrise_client::mobs::MobTypes::load(&root) else {
+        let Ok(types) = sunrise_sim::mobs::MobTypes::load(&root) else {
             return;
         };
         let cow = Arc::new(types.types["minecraft:cow"].clone());
@@ -935,10 +933,10 @@ pub(in crate::game) mod tests {
             ("text", sunrise_core::nbt::Tag::String("RED NAME".into())),
             ("color", sunrise_core::nbt::Tag::String("red".into())),
         ]);
-        m.custom_name_text = Some(sunrise_client::entity_nbt::name_text(&styled));
-        let sent = sunrise_client::entity_nbt::name_text(&name_component(&m, "RED NAME"));
-        assert_eq!(sent, sunrise_client::entity_nbt::name_text(&styled));
-        assert_ne!(sent, sunrise_client::entity_nbt::name_text(&plain));
+        m.custom_name_text = Some(sunrise_sim::entity_nbt::name_text(&styled));
+        let sent = sunrise_sim::entity_nbt::name_text(&name_component(&m, "RED NAME"));
+        assert_eq!(sent, sunrise_sim::entity_nbt::name_text(&styled));
+        assert_ne!(sent, sunrise_sim::entity_nbt::name_text(&plain));
     }
 
     fn tag_font() -> HudAtlas {
@@ -1059,7 +1057,7 @@ pub(in crate::game) mod tests {
         let mut atlas = HudAtlas::boot();
         let mut sprite = atlas.sprites["sunrise/white"];
         atlas.sprites.insert("item/probe".into(), sprite);
-        let text = sunrise_client::component::to_text(
+        let text = sunrise_client_core::component::to_text(
             &serde_json::json!({"object":"atlas", "sprite":"minecraft:item/probe"}),
             &mut |_| Text::empty(),
         );

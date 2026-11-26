@@ -1,7 +1,7 @@
 //! Server-side `LivingEntity.onEquipItem` hook, sound, and game event for players.
 use super::Game;
 use crate::game::player_equip::ARMOR;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
@@ -19,10 +19,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let at = [at.x, at.y, at.z];
         let equippable = new.and_then(|stack| {
-            let equippable = sunrise_client::item_sync::equippable(stack, self.items())?;
+            let equippable = sunrise_sim::item_sync::equippable(stack, self.items())?;
             Some((
                 equippable.slot == slot,
-                sunrise_client::item_sync::equip_sound(stack, self.items()),
+                sunrise_sim::item_sync::equip_sound(stack, self.items()),
             ))
         });
         if let Some((true, sound)) = &equippable {

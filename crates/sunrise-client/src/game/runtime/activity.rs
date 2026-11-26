@@ -1,7 +1,7 @@
 //! What the player is doing, for the hooks above the engine (`Hooks::activity`: the Sunrise
 //! layer's Discord presence shows it).
 use super::*;
-use sunrise_client::command::args::GameMode;
+use sunrise_command::args::GameMode;
 use sunrise_hooks::{Activity, Client, Dimension, Play};
 
 /// At startup, for a game window (never a dedicated server's): the player's first activity, then
@@ -30,7 +30,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(remote) = &self.remote else {
             return Activity::Menus;
         };
-        let max = sunrise_client::lan::MAX_PLAYERS;
+        let max = sunrise_sim::lan::MAX_PLAYERS;
         let play = if let Some(server) = &self.integrated {
             match server.published() {
                 Some(_) => Play::Hosting {

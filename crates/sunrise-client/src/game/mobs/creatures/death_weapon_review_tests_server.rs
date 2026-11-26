@@ -10,9 +10,9 @@ pub(in crate::game) fn fixture_with_source(
     crate::game::native_entity_refs::tests::with_game(|game| {
         let scratch = tempfile::tempdir().unwrap();
         game.side.world_root = scratch.path().to_path_buf();
-        game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
             scratch.path().join("save"),
-            sunrise_client::save::LevelShape::OVERWORLD,
+            sunrise_sim::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         game.build_registries();

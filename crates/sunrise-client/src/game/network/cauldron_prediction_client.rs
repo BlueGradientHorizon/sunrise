@@ -1,11 +1,9 @@
 //! Client-side vanilla cauldron prediction.
 use super::{Game, Hit, remote::DryUse};
 use std::sync::Arc;
-use sunrise_client::{
-    actions::Action as Mapping,
-    cauldron::{self, Outcome, interactions::Dispatcher},
-    items::ItemStack,
-};
+use sunrise_client::actions::Action as Mapping;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::cauldron::{self, Outcome, interactions::Dispatcher};
 use sunrise_world::level::InteractionResult;
 
 struct DryHand<'a> {

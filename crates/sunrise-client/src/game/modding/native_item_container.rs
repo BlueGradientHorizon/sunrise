@@ -8,8 +8,8 @@
 //! they return. The contents live in `minecraft:container`, as a shulker box
 //! item keeps them. They hold no world state, so they work on any side.
 use super::Game;
-use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
 
 /// `ItemContainerContents`' limit on slots.
 const MAX_SLOTS: u32 = 256;
@@ -175,7 +175,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `ItemStack.canFitInsideContainerItems`: vanilla's answer, then the parts of `item`'s
     /// item, in the loop this game runs.
     fn fits_inside_container_items(&self, item: &ItemStack) -> bool {
-        sunrise_client::menu::fits_inside_container_items(&self.loop_context, item)
+        sunrise_sim::menu::fits_inside_container_items(&self.loop_context, item)
     }
     /// The slots a mod gave item `item`, clamped; none for any other item.
     fn item_container_size(&self, item: &str) -> Option<u32> {
@@ -305,7 +305,7 @@ mod tests {
         item: &ItemStack,
         limit: u32,
     ) -> Option<(u32, ItemStack)> {
-        let fits = sunrise_client::menu::container_items::vanilla_fits_inside_container_items(item);
+        let fits = sunrise_sim::menu::container_items::vanilla_fits_inside_container_items(item);
         super::insert_one(stack, size, item, limit, fits)
     }
 
@@ -317,7 +317,7 @@ mod tests {
         item: &ItemStack,
         limit: u32,
     ) -> Option<(u32, ItemStack)> {
-        let fits = sunrise_client::menu::container_items::vanilla_fits_inside_container_items(item);
+        let fits = sunrise_sim::menu::container_items::vanilla_fits_inside_container_items(item);
         super::insert_into(stack, size, slot, item, limit, fits)
     }
 
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn an_emptied_bag_from_a_server_stacks_with_a_new_one() {
         let mut sent = bag(2);
-        sent.data_mut().wire = sunrise_client::item_data::Wire::new(bag(2), Arc::from(vec![1u8]));
+        sent.data_mut().wire = sunrise_items::item_data::Wire::new(bag(2), Arc::from(vec![1u8]));
         let (_, filled) = insert_one(&sent, Some(1), &of("minecraft:stone", 3), 64).unwrap();
         let (_, emptied) = extract_one(&filled, Some(1), 0, 3).unwrap();
         assert!(emptied.same_item_same_components(&bag(1)));

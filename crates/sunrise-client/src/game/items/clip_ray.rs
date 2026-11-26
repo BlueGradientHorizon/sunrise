@@ -55,7 +55,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 && (f.fluid == Fluid::None
                     || f.waterlogged
                     || &*f.name == "minecraft:kelp"
-                    || f.render_shape == sunrise_client::blocks::RenderShape::Model)
+                    || f.render_shape == sunrise_items::blocks::RenderShape::Model)
                 && !matches!(
                     &*f.name,
                     "minecraft:water" | "minecraft:lava" | "minecraft:bubble_column"

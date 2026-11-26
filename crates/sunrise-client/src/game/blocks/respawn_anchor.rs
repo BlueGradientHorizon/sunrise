@@ -5,18 +5,16 @@
 //! using a charge.
 use super::{Dim, Game};
 use mod_api::client::first_person::Hand;
-use sunrise_client::{
-    Result,
-    blocks::Fluid,
-    collisions::{SceneCollisions, no_collision_empty},
-    items::ItemStack,
-    mobs::Who,
-    stand_up::{StandUpLevel, StandUpType, stand_up_fallback},
-    text::Text,
-};
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},
     position::BlockPos,
+};
+use sunrise_items::{blocks::Fluid, items::ItemStack};
+use sunrise_level::collisions::{SceneCollisions, no_collision_empty};
+use sunrise_sim::{
+    mobs::Who,
+    stand_up::{StandUpLevel, StandUpType, stand_up_fallback},
 };
 use sunrise_world::{
     collision_context::CollisionContext, level::data::state_flags, registry::BlockStateId,
@@ -360,7 +358,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         water_at: Option<[i32; 3]>,
     ) -> Result<()> {
         let interaction =
-            self.destroy_type(sunrise_client::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
+            self.destroy_type(sunrise_client_core::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
         self.server_explode_as(
             center,
             5.0,
@@ -573,7 +571,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     pub(in crate::game) fn block_collision_shape_in(
         &self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         p: [i32; 3],
     ) -> VoxelShape {
         let state = world.block(p[0], p[1], p[2]);
@@ -704,19 +702,19 @@ pub(in crate::game) mod tests {
 pub(in crate::game) mod connected_spawnpoint_rotation_tests {
     use crate::game::lan::LanSettings;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        chunk::Chunk,
-        lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig, playerdata},
-    };
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
         play::{self, Clientbound as C, Serverbound as S},
+    };
+    use sunrise_sim::lan::{
+        Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig, playerdata,
     };
 
     fn command(game: &mut crate::game::ServerGame<'_>, text: &str) {
         game.side.chat_capture = Some(Vec::new());
         game.ui.registries.permission = 4;
-        let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
+        let dispatcher = sunrise_command::vanilla::build_for(false, true);
         let parsed = dispatcher.parse(text, &game.ui.registries);
         let (ctx, _) = parsed
             .executable()
@@ -980,7 +978,7 @@ pub(in crate::game) mod forced_respawn_space_tests {
                 assert!(!game.possible_to_respawn_in(glass));
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 game.world.set(5, 64, 5, stone).unwrap();
                 game.world.set(5, 65, 5, stone).unwrap();

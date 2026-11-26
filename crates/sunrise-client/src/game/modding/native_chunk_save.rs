@@ -1,13 +1,13 @@
 //! Server capture seams. Disk callbacks run only in the persistence owner.
 use super::*;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 use sunrise_level::chunk_streamer::{ProtoSave, ProtoSnapshot};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Bind the existing world's identity and immutable resources, before workers start.
     pub(in crate::game::server_side) fn bind_chunk_disk_worker(
         &self,
-        save: &sunrise_client::save::SaveDir,
+        save: &sunrise_sim::save::SaveDir,
         dim: super::Dim,
     ) {
         if self.options.execution_role.is_client()
@@ -151,8 +151,8 @@ mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
     use std::time::Duration;
-    use sunrise_client::save::{LevelShape, SaveDir};
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+    use sunrise_sim::save::{LevelShape, SaveDir};
 
     #[test]
     #[ignore = "daily"]

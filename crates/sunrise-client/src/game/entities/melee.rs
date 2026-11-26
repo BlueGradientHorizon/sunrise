@@ -19,14 +19,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !partial.is_finite() {
             return None;
         }
-        let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
+        let delay = sunrise_sim::attack_strength::delay(self.main_hand_attack_speed());
         Some(((self.side.attack_ticks as f32 + partial) / delay).clamp(0.0, 1.0))
     }
 
     /// Sets the player in place's `attackStrengthTicker` to the fewest ticks for which
     /// `getAttackStrengthScale(0.5)` is 1.0 with the main hand's attack speed.
     pub(in crate::game::server_side) fn charge_attack_fully(&mut self) {
-        let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
+        let delay = sunrise_sim::attack_strength::delay(self.main_hand_attack_speed());
         // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
         self.side.attack_ticks = (delay - 0.5).ceil() as u32;
     }
@@ -214,7 +214,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let old_health = self.mobs[index].health;
         let source = match from {
             Some(f) => self.attack_source(f),
-            None => sunrise_client::mobs::Damage::of(sunrise_client::mobs::DamageKind::Generic),
+            None => sunrise_sim::mobs::Damage::of(sunrise_sim::mobs::DamageKind::Generic),
         };
         let (id, join) = (self.mobs[index].id, self.mobs[index].join);
         let (landed, killed) = self.hurt_by_player(index, amount, source);
@@ -248,7 +248,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if p.attack_log.len() >= 64 {
                 p.attack_log.remove(0);
             }
-            p.attack_log.push(sunrise_client::health::AttackRecord {
+            p.attack_log.push(sunrise_sim::health::AttackRecord {
                 game_time: p.health.game_time(),
                 target: target_kind.clone(),
                 id: self.mobs[index].id,
@@ -309,18 +309,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             if actual > 2.0 {
                 // The players a server serves are sent them too.
-                self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
-                    dimension: self.dim.id(),
-                    particle: crate::lan::server_effects::ServerParticle::simple(
-                        sunrise_level::particle_options::ParticleType::DamageIndicator,
-                    ),
-                    at: [feet[0], feet[1] + height * 0.5, feet[2]],
-                    spread: [0.1, 0.0, 0.1],
-                    speed: [0.2; 3],
-                    count: (actual * 0.5) as u32 as i32,
-                    randomization: 0,
-                    except: None,
-                });
+                self.server_send_particles(
+                    sunrise_sim::lan::server_effects::ServerQueuedParticle {
+                        dimension: self.dim.id(),
+                        particle: sunrise_sim::lan::server_effects::ServerParticle::simple(
+                            sunrise_level::particle_options::ParticleType::DamageIndicator,
+                        ),
+                        at: [feet[0], feet[1] + height * 0.5, feet[2]],
+                        spread: [0.1, 0.0, 0.1],
+                        speed: [0.2; 3],
+                        count: (actual * 0.5) as u32 as i32,
+                        randomization: 0,
+                        except: None,
+                    },
+                );
             }
             let sound = if crit {
                 "minecraft:entity.player.attack.crit"
@@ -358,10 +360,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let mut infested = Vec::new();
             for event in queued {
                 match event {
-                    sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) => {
+                    sunrise_sim::mobs::MobEvent::Sound(s, at, volume, pitch) => {
                         self.server_play_sound(&format!("minecraft:{s}"), at, volume, pitch);
                     }
-                    sunrise_client::mobs::MobEvent::Infested { at, velocities } => {
+                    sunrise_sim::mobs::MobEvent::Infested { at, velocities } => {
                         infested.push((at, velocities))
                     }
                     other => {
@@ -513,9 +515,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // the offset is the one from the player to the particle.
         let origin = from.unwrap_or(at);
         let spread = [at[0] - origin[0], 0.0, at[2] - origin[2]];
-        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+        self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            particle: crate::lan::server_effects::ServerParticle::simple(
+            particle: sunrise_sim::lan::server_effects::ServerParticle::simple(
                 sunrise_level::particle_options::ParticleType::SweepAttack,
             ),
             at,

@@ -3,7 +3,8 @@
 use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_client::hud_overlays::Titles;
-use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays::HeldName, text::Text};
+use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays::HeldName};
+use sunrise_client_core::text::Text;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
@@ -67,7 +68,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|last| &last.hover_name);
         Some(HeldName {
             item: stack.item.to_string(),
-            hover_name: sunrise_client::stations::hover_name_in_reusing(
+            hover_name: sunrise_sim::stations::hover_name_in_reusing(
                 &self.loop_context,
                 &self.pack.names,
                 stack,

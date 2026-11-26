@@ -167,7 +167,7 @@ fn reply_value(sunrise: &str) -> serde_json::Value {
         "minecraft": sunrise_core::VANILLA_VERSION,
         "options": options,
         "exit_codes": EXIT_CODES.iter().map(|(code, _)| code).collect::<Vec<_>>(),
-        "crash_report_line": sunrise_client::crash::SAVED_LINE,
+        "crash_report_line": sunrise_level::crash::SAVED_LINE,
         "content": content(),
     })
 }
@@ -235,7 +235,7 @@ pub fn markdown() -> String {
         w,
         "\nWhen a crash report is saved, the last line on stderr is `{}` followed by the \
          report's path.",
-        sunrise_client::crash::SAVED_LINE.trim_end()
+        sunrise_level::crash::SAVED_LINE.trim_end()
     );
     out
 }
@@ -244,7 +244,7 @@ pub fn markdown() -> String {
 mod tests {
     use super::*;
 
-    fn parse(args: &[&str]) -> sunrise_client::Result<Option<super::super::Options>> {
+    fn parse(args: &[&str]) -> sunrise_client_core::Result<Option<super::super::Options>> {
         super::super::Options::parse(args.iter().map(|a| a.to_string()))
     }
 

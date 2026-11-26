@@ -10,19 +10,18 @@ use sunrise_core::{
 };
 use sunrise_world::registry::BlockStateId;
 use {
-    sunrise_client::Result, sunrise_client::chunk_map::ChunkMap,
-    sunrise_client::chunk_map::ChunkMembershipDelta, sunrise_client::containers::BlockEntity,
-    sunrise_client::containers::CreakingHeart, sunrise_client::mobs::Mob,
-    sunrise_client::mobs::MobType, sunrise_client::mobs::creaking_heart,
-    sunrise_client::mobs::creaking_heart::HeartEvent,
-    sunrise_client::mobs::creaking_heart::HeartHost, sunrise_level::particle_options::ParticleType,
+    sunrise_client_core::Result, sunrise_level::chunk_map::ChunkMap,
+    sunrise_level::chunk_map::ChunkMembershipDelta, sunrise_level::containers::BlockEntity,
+    sunrise_level::containers::CreakingHeart, sunrise_level::particle_options::ParticleType,
+    sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobType, sunrise_sim::mobs::creaking_heart,
+    sunrise_sim::mobs::creaking_heart::HeartEvent, sunrise_sim::mobs::creaking_heart::HeartHost,
 };
 
 pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// Comparator input of a heart (`getAnalogOutputSignal`).
 pub(in crate::game) fn heart_signal(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     pos: BlockPos,
 ) -> Option<i32> {
     match world.block_entities.get(&(pos.x, pos.y, pos.z))? {
@@ -33,7 +32,7 @@ pub(in crate::game) fn heart_signal(
 
 /// The game's mobs as a heart sees them, taken out of the game for the tick.
 pub(in crate::game) struct Host<'a> {
-    pub(in crate::game) mobs: &'a mut sunrise_client::join_seq::JoinList<Mob>,
+    pub(in crate::game) mobs: &'a mut sunrise_sim::join_seq::JoinList<Mob>,
     pub(in crate::game) added: Vec<Mob>,
     pub(in crate::game) uuids: &'a mut EntityUuids,
     pub(in crate::game) creaking: Option<Arc<MobType>>,
@@ -74,7 +73,7 @@ impl HeartHost for Host<'_> {
     }
     fn uuid_for(&mut self, id: u32) -> [i32; 4] {
         self.uuids
-            .get_or_insert_with(id, sunrise_client::save::random_uuid)
+            .get_or_insert_with(id, sunrise_sim::save::random_uuid)
     }
     fn creaking_type(&self) -> Option<Arc<MobType>> {
         self.creaking.clone()
@@ -84,7 +83,7 @@ impl HeartHost for Host<'_> {
         // A new entity's random is its own (Mob::new seeds it).
         let mut m = Mob::new(*self.next_entity, kind, at, 0.0);
         let seed = i64::from(m.id);
-        sunrise_client::mobs::monster_brain::init(&mut m, seed);
+        sunrise_sim::mobs::monster_brain::init(&mut m, seed);
         m
     }
     fn add_mob(&mut self, m: Mob) {
@@ -116,7 +115,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         others: bool,
         f: impl FnOnce(
             &mut CreakingHeart,
-            Option<&sunrise_client::mobs::MobWorld>,
+            Option<&sunrise_sim::mobs::MobWorld>,
             &mut LegacyRandom,
             &mut Host,
             &mut Vec<HeartEvent>,
@@ -158,7 +157,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.mob_index = index;
         mobs.extend(added);
         self.mobs
-            .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         self.persist.uuids = uuids;
         self.side.next_entity = next_entity;
         self.world.random = random;
@@ -175,7 +174,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     color,
                     duration,
                 } => self.server_particle_at(
-                    crate::lan::server_effects::ServerParticle::trail(target, color, duration),
+                    sunrise_sim::lan::server_effects::ServerParticle::trail(
+                        target, color, duration,
+                    ),
                     at,
                     [0.0; 3],
                 ),
@@ -234,7 +235,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .find(|m| m.id == id && m.join == join && !m.removed)
         {
             let mut events = Vec::new();
-            sunrise_client::mobs::creaking::sway(mob, &mut events);
+            sunrise_sim::mobs::creaking::sway(mob, &mut events);
             let _ = self.handle_mob_events(events);
         }
     }
@@ -288,7 +289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
             {
                 self.spawn_orbs(
                     [
@@ -314,7 +315,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(());
         };
         let state = self.world.block(key.0, key.1, key.2);
-        if sunrise_client::block_entity_types::factory_block(&self.res.facts().get(state).name)
+        if sunrise_client_core::block_entity_types::factory_block(&self.res.facts().get(state).name)
             != "minecraft:creaking_heart"
         {
             // The block is gone: preRemoveSideEffects.
@@ -348,11 +349,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
     }
     /// Hearts that came with generated or loaded chunks get their block
     /// entity (`newBlockEntity`) the first time their chunk is seen lit.
@@ -425,9 +426,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[derive(Default)]
 pub(in crate::game) struct CreakingState {
     /// Chunks already scanned for heart blocks.
-    pub(in crate::game) scanned: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
+    pub(in crate::game) scanned: sunrise_level::fast_hash::FxHashSet<(i32, i32)>,
     /// Resident chunks not scanned yet (not lit yet, or just arrived).
-    pub(in crate::game) unscanned: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
+    pub(in crate::game) unscanned: sunrise_level::fast_hash::FxHashSet<(i32, i32)>,
     /// The chunk map's membership revision the two sets follow.
     pub(in crate::game) revision: Option<u64>,
     /// Which block states are creaking hearts, by state id.
@@ -509,7 +510,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     center[2] + r.next_gaussian() * spread[2],
                 ];
                 this.server_particle_at(
-                    crate::lan::server_effects::ServerParticle::block(
+                    sunrise_sim::lan::server_effects::ServerParticle::block(
                         ParticleType::BlockCrumble,
                         id,
                     ),
@@ -536,12 +537,12 @@ pub(in crate::game) mod creaking_heart_events_tests;
 pub(in crate::game) mod tests {
     use super::CreakingState;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, chunk_map::ChunkMap};
+    use sunrise_level::{chunk::Chunk, chunk_map::ChunkMap};
 
     fn add(chunks: &mut ChunkMap, key: (i32, i32)) {
         chunks.insert(key, Arc::new(Chunk::empty(key.0, key.1)));
     }
-    fn sorted(set: &sunrise_client::fast_hash::FxHashSet<(i32, i32)>) -> Vec<(i32, i32)> {
+    fn sorted(set: &sunrise_level::fast_hash::FxHashSet<(i32, i32)>) -> Vec<(i32, i32)> {
         let mut keys: Vec<_> = set.iter().copied().collect();
         keys.sort_unstable();
         keys
@@ -598,7 +599,7 @@ pub(in crate::game) mod nested_spawn_tests {
                 .push(Mob::new(70, kind, Vec3::new(0.5, 80.0, 0.5), 0.0));
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let stone = game
                 .pack

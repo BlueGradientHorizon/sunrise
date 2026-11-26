@@ -99,7 +99,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         for interaction in mod_api::__private::declared_fluid_interactions() {
             declarations.push(declared(interaction)?);
         }
-        declarations.extend(sunrise_client::mod_content::fluid_interactions());
+        declarations.extend(sunrise_sim::mod_content::fluid_interactions());
         let builtin = behaviours.vanilla_fluid_interactions(
             &fluid_tag(items, "minecraft:lava"),
             &fluid_tag(items, "minecraft:water"),

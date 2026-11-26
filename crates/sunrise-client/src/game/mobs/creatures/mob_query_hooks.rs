@@ -1,5 +1,5 @@
 // Included in creatures/mod_server.rs (server-only MobHooks impl).
-impl sunrise_client::mobs::MobHooks for Game<'_, crate::game::server_side::ServerState> {
+impl sunrise_sim::mobs::MobHooks for Game<'_, crate::game::server_side::ServerState> {
     fn block_path_type(
         &self,
         state: sunrise_world::registry::BlockStateId,
@@ -17,7 +17,7 @@ impl sunrise_client::mobs::MobHooks for Game<'_, crate::game::server_side::Serve
             level: level_ref,
         };
         let mut answer = None;
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             level.native_block_path_type(
                 sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]),
                 state,
@@ -43,7 +43,7 @@ impl sunrise_client::mobs::MobHooks for Game<'_, crate::game::server_side::Serve
             return default;
         }
         let mut answer = None;
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             self.native_adjacent_block_path_type(
                 sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]),
                 state,
@@ -62,7 +62,7 @@ impl sunrise_client::mobs::MobHooks for Game<'_, crate::game::server_side::Serve
         world: &MobWorld<'_>,
         is_brain: bool,
         target: Option<Who>,
-    ) -> sunrise_client::mobs::TargetChange {
+    ) -> sunrise_sim::mobs::TargetChange {
         self.native_mob_change_target_in_tick(mob, world, is_brain, target)
     }
 
@@ -73,7 +73,7 @@ impl sunrise_client::mobs::MobHooks for Game<'_, crate::game::server_side::Serve
         let Some(epoch) = self.native_lifecycle.epoch() else {
             return false;
         };
-        let uuid = sunrise_client::lan::playerdata::ints_uuid(player.uuid);
+        let uuid = sunrise_sim::lan::playerdata::ints_uuid(player.uuid);
         let Some(player) = self.player(uuid) else {
             return false;
         };
@@ -95,7 +95,7 @@ impl sunrise_client::mobs::MobHooks for Game<'_, crate::game::server_side::Serve
         self.entity_may_destroy(mob, pos, vanilla)
     }
     fn living_visibility(&self, player: &PlayerView, looking: u32, visibility: f64) -> f64 {
-        let uuid = sunrise_client::lan::playerdata::ints_uuid(player.uuid);
+        let uuid = sunrise_sim::lan::playerdata::ints_uuid(player.uuid);
         match self.player(uuid) {
             Some(player) => self.scaled_visibility(|_| player.entity(), looking, visibility),
             None => visibility,

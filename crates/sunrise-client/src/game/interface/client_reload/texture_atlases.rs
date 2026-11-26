@@ -346,7 +346,7 @@ mod tests {
         let pack = |meta: &str, folder: &str, texture: &str, png: &[u8]| {
             packs::pack_for(
                 format!("file/{folder}"),
-                sunrise_client::text::Text::literal(folder),
+                sunrise_client_core::text::Text::literal(folder),
                 Source::Opened(layer(&[
                     ("pack.mcmeta", meta.as_bytes()),
                     (

@@ -32,7 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some((window, name)) = remote.menu.as_ref() else {
             return false;
         };
-        let mod_type = sunrise_client::containers::mod_menu_type(name);
+        let mod_type = sunrise_level::containers::mod_menu_type(name);
         let block = target.and_then(|pos| self.menu_opener_block(pos, name));
         let binding = mod_api::RecipeBookLayout::registered(name);
         let of = block.unwrap_or(name);
@@ -53,8 +53,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             pos,
             title: remote.menu_title_snapshot(),
             backing_slots,
-            player_slots: mod_type
-                .map_or(36, sunrise_client::containers::ModMenuType::player_slots),
+            player_slots: mod_type.map_or(36, sunrise_level::containers::ModMenuType::player_slots),
             data_slots: mod_type.map_or(0, |kind| kind.data_slots),
             extra: extra.as_ref().map_or(&[], |extra| extra.data.as_slice()),
         };

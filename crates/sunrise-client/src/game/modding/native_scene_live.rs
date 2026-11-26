@@ -23,14 +23,14 @@ use std::{
 };
 use sunrise_client::{
     animate_tick::{AnimateContext, animate_scene},
-    chunk::Chunk,
     hud::HudBatch,
     mesher::Vertex,
-    mobs::Mob,
-    particles::{ParticleEngine, ParticleLevel, ParticleOptions},
-    world::World,
+    particles::{ParticleEngine, ParticleLevel},
 };
 use sunrise_core::geometry::Vec3 as Position;
+use sunrise_level::particle_options::ParticleOptions;
+use sunrise_level::{chunk::Chunk, world::World};
+use sunrise_sim::mobs::Mob;
 
 /// How many scenes the game keeps: a guide page rarely shows more. The one drawn
 /// longest ago goes first.

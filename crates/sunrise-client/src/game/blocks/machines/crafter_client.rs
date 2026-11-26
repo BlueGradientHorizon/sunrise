@@ -48,7 +48,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let grey = rgba(64, 64, 64, 255);
         // A server's crafter menu has the title it was given.
         let title = self.remote_menu_title().unwrap_or_else(|| {
-            sunrise_client::text::Text::literal(
+            sunrise_client_core::text::Text::literal(
                 self.container_title(self.translate_with_fallback("container.crafter", "Crafter")),
             )
             .resolve_legacy()
@@ -81,9 +81,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         }
         let input = if shift {
-            sunrise_client::menu::Input::QuickMove
+            sunrise_sim::menu::Input::QuickMove
         } else {
-            sunrise_client::menu::Input::Pickup
+            sunrise_sim::menu::Input::Pickup
         };
         self.click_open_inventory(Some(slot), i32::from(right), input);
         true
@@ -95,9 +95,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         slot: usize,
         button: i32,
-        input: sunrise_client::menu::Input,
+        input: sunrise_sim::menu::Input,
     ) {
-        use sunrise_client::menu::Input;
+        use sunrise_sim::menu::Input;
         if !self.crafter_open() || !(300..309).contains(&slot) || self.spectator() {
             return;
         }

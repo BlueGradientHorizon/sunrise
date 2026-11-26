@@ -59,7 +59,7 @@ fn the_block_beside_a_fence_answers_whether_it_connects() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             // The connector at x 0 and the target east of it at x 1, on row `z`: the
             // connector's east side.

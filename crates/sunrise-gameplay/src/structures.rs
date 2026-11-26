@@ -2,8 +2,8 @@
 
 /// The structures reaching `pos` (id, inside a piece) over the world's chunks and, asked only when a chunk refers to a structure, the terrain that locates the starts.
 pub fn structures_reaching_in(
-    world: &sunrise_client::world::World,
-    locator: &dyn Fn() -> Option<std::sync::Arc<sunrise_client::vanillagen::VanillaTerrain>>,
+    world: &sunrise_level::world::World,
+    locator: &dyn Fn() -> Option<std::sync::Arc<sunrise_sim::vanillagen::VanillaTerrain>>,
     pos: [i32; 3],
     wanted: &dyn Fn(&str) -> bool,
 ) -> Vec<(String, bool)> {

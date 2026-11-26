@@ -1,6 +1,6 @@
 use super::Game;
 use crate::game::server_side::machines::Screen;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[path = "crafter_client.rs"]
 pub(in crate::game) mod crafter;

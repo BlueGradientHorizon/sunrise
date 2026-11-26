@@ -8,7 +8,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         entity.on_fire = self
             .player
             .as_ref()
-            .is_some_and(sunrise_client::motion::PlayerMotion::is_on_fire);
+            .is_some_and(sunrise_sim::motion::PlayerMotion::is_on_fire);
         entity.vehicle = self
             .riding
             .and_then(|id| self.vehicle_loot_entity(id))
@@ -26,7 +26,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .extra
                 .mount
                 .and_then(|mount| self.vehicle_loot_entity(mount));
-            return Some(sunrise_client::mobs::drops::loot_entity(mob, vehicle));
+            return Some(sunrise_sim::mobs::drops::loot_entity(mob, vehicle));
         }
         if let Some(boat) = self.boats.iter().find(|boat| boat.id == id) {
             return Some(LootEntity {

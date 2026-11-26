@@ -11,15 +11,15 @@ use std::sync::{
     mpsc::Sender,
 };
 use std::time::Instant;
-use sunrise_client::server_perf::{
-    self, CaptureEnd, CaptureOptions, MAX_WINDOW_S, Role, SamplerOptions, ServerPerf, TickDetail,
-};
 use sunrise_level::spans;
 use sunrise_perf_format::{
     files,
     v1::{GpuMode, Start, StopReason, Trigger},
 };
 use sunrise_sim::perf_types::{Failed, Join, ProfileSide, StartOptions, Stopped, Threads};
+use sunrise_sim::server_perf::{
+    self, CaptureEnd, CaptureOptions, MAX_WINDOW_S, Role, SamplerOptions, ServerPerf, TickDetail,
+};
 
 /// How far the server thread has got with the side of a capture the window asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -334,7 +334,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_server_measured(
         &mut self,
         paused: bool,
-    ) -> crate::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         self.serve_perf_asked();
         let Some(mut side) = self.side.profile.server.take() else {
             return self.tick_server_timed(paused);

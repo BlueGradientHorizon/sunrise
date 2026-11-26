@@ -1,7 +1,8 @@
 use super::Game;
 use crate::game::client_side::growth::install_live_features;
-use sunrise_client::{Result, items::ItemStack};
+use sunrise_client_core::Result;
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_items::items::ItemStack;
 use sunrise_world::level::classes::Class;
 
 impl Game<'_, crate::game::server_side::ServerState> {

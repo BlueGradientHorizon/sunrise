@@ -2,13 +2,13 @@
 //! reputation, sharing food and wares, picking up dropped items, making
 //! babies, calling iron golems and the prices they ask.
 use super::Game;
-use sunrise_client::{
+use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     gossip::{self, GossipType},
-    items::ItemStack,
     merchant::TradeFeedback,
     mobs::{Mob, Species, entity_sounds::full_id, spawning, villager, villager_brain},
 };
-use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 pub(in crate::game::server_side) fn block_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
@@ -31,7 +31,7 @@ impl villager_brain::TradingPlayers for Game<'_, crate::game::server_side::Serve
         let (conn, screen) = self.lan_trade_screen(villager)?;
         let guest = host.hub.guest(conn)?;
         Some(villager_brain::TradingPlayer {
-            uuid: Some(sunrise_client::lan::playerdata::uuid_ints(guest.uuid)),
+            uuid: Some(sunrise_sim::lan::playerdata::uuid_ints(guest.uuid)),
             hero: guest.effects.amplifier("hero_of_the_village"),
             paying: screen.slots[..2].iter().any(Option::is_some),
         })
@@ -368,7 +368,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
         if self.dropped.is_empty() || (!griefing && !self.grief_hooked()) {
             return;
         }
@@ -466,7 +466,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(conn) if self.side.lan_acting == Some(conn) => self.side.lan_acting_uuid?,
             Some(conn) => self.lan.as_ref()?.hub.guest(conn)?.uuid,
         };
-        Some(sunrise_client::lan::playerdata::uuid_ints(uuid))
+        Some(sunrise_sim::lan::playerdata::uuid_ints(uuid))
     }
     /// Complete this hit before another hit can publish its effects. In
     /// `LivingEntity.hurtServer`, reputation and anger precede the damage
@@ -594,7 +594,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             hero,
             pitch,
         } = restock;
-        let refresh = |menu: &mut sunrise_client::menu::Menu, env: &sunrise_client::menu::Env| {
+        let refresh = |menu: &mut sunrise_sim::menu::Menu, env: &sunrise_sim::menu::Env| {
             if let Some(session) = menu.merchant.as_mut() {
                 step.apply(&mut session.offers);
                 session.reputation = reputation;
@@ -664,7 +664,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let (id, kind) = (m.id, m.kind.id.clone());
-        let uuid = sunrise_client::lan::playerdata::ints_uuid(self.uuid_for(id));
+        let uuid = sunrise_sim::lan::playerdata::ints_uuid(self.uuid_for(id));
         let bed = self.world.block(pos[0], pos[1], pos[2]);
         let bed_exists = self.res.facts().get(bed).name.ends_with("_bed");
         let problem = self.sleep_problem(bed_exists, false);
@@ -691,7 +691,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let old = self.mobs[i].position;
-        let level = sunrise_client::stand_up::StandUpLevel {
+        let level = sunrise_sim::stand_up::StandUpLevel {
             world: &self.world,
             registry: self.pack.assets.registry,
             facts: self.res.facts(),
@@ -733,7 +733,7 @@ pub(in crate::game) mod off_level_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let kind = game
                 .res
@@ -743,7 +743,7 @@ pub(in crate::game) mod off_level_tests {
                 .clone();
             let mut m = Mob::new(73, kind.clone(), Vec3::new(1.0, 80.0, 0.5), 0.0);
             villager_brain::init(&mut m, 0, 0, 0);
-            let mut health = sunrise_client::health::TestLevel::new(0);
+            let mut health = sunrise_sim::health::TestLevel::new(0);
             for _ in 0..40 {
                 villager_brain::tick(
                     &mut m,
@@ -782,7 +782,7 @@ pub(in crate::game) mod birth_tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
-    use sunrise_client::mobs::MobEvent;
+    use sunrise_sim::mobs::MobEvent;
 
     const BED: [i32; 3] = [3, 64, 1];
 
@@ -790,7 +790,7 @@ pub(in crate::game) mod birth_tests {
         game.mobs.clear();
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let bed = game
             .pack
             .assets

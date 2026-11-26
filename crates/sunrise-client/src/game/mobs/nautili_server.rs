@@ -1,6 +1,7 @@
 use super::Game;
-use sunrise_client::{items::ItemStack, mobs::nautilus};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::nautilus;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractNautilus.mobInteract`. Returns whether the click was used.
@@ -27,7 +28,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let m = &mut self.mobs[index];
             if !m.extra.age_locked {
                 let secs = ((-m.extra.age / 20) as f32 * 0.1) as i32;
-                sunrise_client::mobs::ai::age_up(m, secs, true);
+                sunrise_sim::mobs::ai::age_up(m, secs, true);
             }
             let sound = nautilus::eat_sound(m);
             self.use_nautilus_food(item);

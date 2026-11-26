@@ -9,14 +9,15 @@ use super::{
 };
 use serde_json::Value;
 use std::{cell::RefCell, collections::HashMap, fmt::Write as _, io::Write as _, sync::Arc};
-use sunrise_client::{
-    Result,
-    chunk::Chunk,
-    command::args::GameMode,
-    containers::BlockEntity,
-    gamerules::Value as RuleValue,
+use sunrise_client_core::{Result, gamerules::Value as RuleValue};
+use sunrise_command::args::GameMode;
+use sunrise_core::{position::BlockPos, random::RandomSource};
+use sunrise_items::{
     item_data::{canon_stack, parse_stack},
     items::ItemStack,
+};
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+use sunrise_sim::{
     mobs::{
         Mob, Species,
         spawner::{SpawnDataExt, SpawnerExt},
@@ -24,7 +25,6 @@ use sunrise_client::{
     motion::PlayerMotion,
     projectiles::ProjectileKind,
 };
-use sunrise_core::{position::BlockPos, random::RandomSource};
 use sunrise_world::{level::Ticks, registry::BlockStateId};
 
 thread_local! {
@@ -150,7 +150,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut chunk = Chunk::empty(cx, cz);
                 for section in &mut chunk.sections {
                     Arc::make_mut(section).biomes = sunrise_core::paletted::PalettedContainer::new(
-                        sunrise_client::chunk::BIOME_STRATEGY,
+                        sunrise_level::chunk::BIOME_STRATEGY,
                         plains,
                     );
                 }
@@ -209,7 +209,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let packed = (level(0, 15) << 4) | level(1, 0);
         for chunk in self.world.chunks.values_mut() {
             for section in &mut Arc::make_mut(chunk).sections {
-                Arc::make_mut(section).light = sunrise_client::chunk::Light::Uniform(packed);
+                Arc::make_mut(section).light = sunrise_level::chunk::Light::Uniform(packed);
             }
         }
         self.world.game_time = case["time"].as_i64().unwrap_or(0);
@@ -301,7 +301,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             };
             let holder = match targets.get(holder as usize) {
-                Some(Target::Mob(h)) => sunrise_client::mobs::leash::Holder::Mob(*h),
+                Some(Target::Mob(h)) => sunrise_sim::mobs::leash::Holder::Mob(*h),
                 _ => continue,
             };
             if let Some(m) = self.mobs.iter_mut().find(|m| m.id == *id) {
@@ -553,7 +553,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 1.0
             },
         );
-        let mut arrow = sunrise_client::projectiles::Projectile::new(
+        let mut arrow = sunrise_sim::projectiles::Projectile::new(
             ProjectileKind::Arrow {
                 base_damage: op["damage"].as_f64().unwrap_or(8.0),
                 critical: false,
@@ -566,8 +566,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         arrow.arrow.as_mut().unwrap().pierce = u8::from(op["pierce"].as_bool().unwrap_or(false));
         self.projectile_hit(
             &arrow,
-            sunrise_client::projectiles::Hit::Entity {
-                who: sunrise_client::mobs::Who::Player,
+            sunrise_sim::projectiles::Hit::Entity {
+                who: sunrise_sim::mobs::Who::Player,
                 at: sunrise_core::geometry::Vec3::ZERO,
             },
         )?;
@@ -885,7 +885,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .ok_or("the target is gone")?;
                 // The hurt sound the mob raised, where it stands.
                 for event in std::mem::take(&mut self.mobs[index].outbox) {
-                    if let sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
+                    if let sunrise_sim::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
                         self.server_play_sound(&format!("minecraft:{s}"), at, volume, pitch);
                     }
                 }
@@ -917,7 +917,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .unwrap_or_default();
         self.record_combat(&events);
         for event in &events {
-            if let sunrise_client::motion::MotionEvent::HurtSound(sound) = event {
+            if let sunrise_sim::motion::MotionEvent::HurtSound(sound) = event {
                 out.push(format!("S {} {sound}", floor_pos(feet)));
             }
         }
@@ -926,7 +926,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .as_ref()
             .is_some_and(|p| p.health.health() < 20.0)
         {
-            self.post_entity_event("minecraft:entity_damage", sunrise_client::mobs::Who::Player);
+            self.post_entity_event("minecraft:entity_damage", sunrise_sim::mobs::Who::Player);
         }
         if let Some(s) = &stack {
             let used = self.stats.get("used", &s.item) - used_before;
@@ -941,8 +941,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ));
         }
         let source = match source.kind {
-            sunrise_client::mobs::DamageKind::MaceSmash => "minecraft:mace_smash",
-            sunrise_client::mobs::DamageKind::Spear => "minecraft:spear",
+            sunrise_sim::mobs::DamageKind::MaceSmash => "minecraft:mace_smash",
+            sunrise_sim::mobs::DamageKind::Spear => "minecraft:spear",
             _ => "minecraft:player_attack",
         };
         out.push(format!(
@@ -975,7 +975,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(&Target::Mob(id)) = targets.first()
             && let Some(m) = self.mobs.iter().find(|m| m.id == id)
         {
-            use sunrise_client::mobs::finalize as f;
+            use sunrise_sim::mobs::finalize as f;
             for (slot, name) in [
                 (f::FEET, "feet"),
                 (f::LEGS, "legs"),
@@ -1041,7 +1041,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // JukeboxBlockEntity holding its record (setSongItemWithoutPlaying).
                 self.world.block_entities.insert(
                     p,
-                    BlockEntity::Jukebox(sunrise_client::containers::Jukebox {
+                    BlockEntity::Jukebox(sunrise_level::containers::Jukebox {
                         song_clock_present: stack
                             .as_ref()
                             .and_then(|s| self.res.items().get(&s.item))
@@ -1107,11 +1107,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if id == "minecraft:decorated_pot" {
             map.insert(
                 "item".into(),
-                sunrise_client::save::item_to_nbt(&stack, self.res.items()),
+                sunrise_sim::save::item_to_nbt(&stack, self.res.items()),
             );
             return;
         }
-        let mut item = sunrise_client::save::item_to_nbt(&stack, self.res.items());
+        let mut item = sunrise_sim::save::item_to_nbt(&stack, self.res.items());
         if let Tag::Compound(c) = &mut item {
             c.insert("Slot".into(), Tag::Byte(slot as i8));
         }
@@ -1230,10 +1230,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         let yaw = op["yaw"].as_f64().unwrap_or(0.0) as f32;
         let mut villager = Mob::new(1, kind, lying, yaw);
-        sunrise_client::mobs::villager::ext_mut(&mut villager).sleeping_pos = Some(bed);
+        sunrise_sim::mobs::villager::ext_mut(&mut villager).sleeping_pos = Some(bed);
         let mut events = Vec::new();
         let w = self.mob_world_base(&[]);
-        sunrise_client::mobs::villager::stop_sleeping(&mut villager, &w, &mut events);
+        sunrise_sim::mobs::villager::stop_sleeping(&mut villager, &w, &mut events);
         let p = villager.position;
         Ok(format!(
             "wake {} {} {} {}",
@@ -1271,7 +1271,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(Target::Boat(id));
         }
         if kind == "minecraft:armor_stand" {
-            let mut stand = sunrise_client::entities::ArmorStand::new(id, at, yaw);
+            let mut stand = sunrise_sim::entities::ArmorStand::new(id, at, yaw);
             stand.marker = e["marker"].as_bool().unwrap_or(false);
             stand.ground.on_ground = e["ground"].as_bool().unwrap_or(false);
             stand.show_arms = e["arms"].as_bool().unwrap_or(false);
@@ -1345,7 +1345,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .position(|s| s == name)
                     .filter(|_| stack.extra.is_some() || stack.damage > 0);
                 match kept {
-                    Some(at) => sunrise_client::mobs::finalize::set_item_stack(&mut mob, at, stack),
+                    Some(at) => sunrise_sim::mobs::finalize::set_item_stack(&mut mob, at, stack),
                     None => mob_set_slot(&mut mob, slot, stack),
                 }
             }

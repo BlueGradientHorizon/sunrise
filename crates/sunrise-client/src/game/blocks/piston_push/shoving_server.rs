@@ -1,8 +1,8 @@
 //! Server-side directional push of mod moving colliders (`MoveWho::Entity(_)` only).
 use super::{Game, move_gate::MoveWho};
 use crate::game::piston_push::{StepHeights, carrying::Rider};
-use sunrise_client_render::moving_colliders::{self, Placed, Prepared, Shove};
 use sunrise_core::geometry::Vec3;
+use sunrise_world::moving_colliders::{self, Placed, Prepared, Shove};
 use sunrise_world::{entity_move::MoverType, piston_push};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -13,7 +13,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         riders: &[Rider],
     ) {
         let end = self.placed_moving_colliders();
-        let starts: sunrise_client::fast_hash::FxHashMap<u32, &Placed> =
+        let starts: sunrise_level::fast_hash::FxHashMap<u32, &Placed> =
             start.placed().map(|p| (p.id, p)).collect();
         let mut sweeps: Vec<_> = end
             .placed()

@@ -23,14 +23,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 #[allow(unused_imports)]
-use sunrise_client::{
-    lang,
-    mobs::spawner::SpawnerTypeFacts,
-    mod_content::DeclaredContent,
-    mod_list::{self, Installed},
-};
+use sunrise_client_core::lang;
 #[allow(unused_imports)]
 use sunrise_mod_package::manifest::{MissingJar, collect_jar_requirements, missing_jars};
+#[allow(unused_imports)]
+use sunrise_mod_package::mod_list::{self, Installed};
+#[allow(unused_imports)]
+use sunrise_sim::{mobs::spawner::SpawnerTypeFacts, mod_content::DeclaredContent};
 #[allow(unused_imports)]
 use sunrise_world::{
     item_defaults::ItemData,
@@ -316,7 +315,7 @@ impl ModsState {
     pub(in crate::game) fn admit_startup_packages(
         &mut self,
         jar_store: &Path,
-    ) -> sunrise_client::Result<Arc<package_files::StartupAdmission>> {
+    ) -> sunrise_client_core::Result<Arc<package_files::StartupAdmission>> {
         let refused = self.missing_jar_refusals(jar_store)?;
         if let Some(missing) = self.fatal_missing_jar(&refused) {
             return Err(missing.clone().into());
@@ -329,7 +328,7 @@ impl ModsState {
     pub(in crate::game) fn missing_jar_refusals(
         &self,
         jar_store: &Path,
-    ) -> sunrise_client::Result<Vec<MissingJar>> {
+    ) -> sunrise_client_core::Result<Vec<MissingJar>> {
         let requirements = collect_jar_requirements(
             self.native
                 .packages()
@@ -391,7 +390,7 @@ pub(in crate::game) use item_data_load::{LoadRole, load_item_data};
 /// The built-in registries' names in ID order, with Sunrise's own data components.
 pub(in crate::game) fn builtin_registry_names(
     root: &Path,
-) -> sunrise_client::Result<BTreeMap<String, Vec<String>>> {
+) -> sunrise_client_core::Result<BTreeMap<String, Vec<String>>> {
     let mut registries: BTreeMap<_, _> = builtin_registries(root)?
         .registries
         .into_iter()
@@ -408,7 +407,7 @@ pub(in crate::game) fn install_registration_data(
     root: &Path,
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
     package_files: BTreeMap<String, Arc<dyn mod_api::PackageFileSource>>,
-) -> sunrise_client::Result<()> {
+) -> sunrise_client_core::Result<()> {
     let packages = mod_api::__private::loaded_mods();
     let directory = mod_api::InstanceDirectory::from_path(&crate::game::game_dir())
         .expect("the host path has an encoding the mod API carries");
@@ -431,7 +430,7 @@ pub(in crate::game) fn install_registration_data(
 
 pub(in crate::game) fn builtin_registries(
     root: &Path,
-) -> sunrise_client::Result<sunrise_protocol::registry::Builtin> {
+) -> sunrise_client_core::Result<sunrise_protocol::registry::Builtin> {
     let path = sunrise_protocol::registry::Builtin::find(root).ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "registries.json not found")
     })?;
@@ -441,7 +440,9 @@ pub(in crate::game) fn builtin_registries(
 /// Freeze native component IDs before reading content or opening a connection.
 /// With no mod registering any, nothing is installed, which every reader
 /// treats as no custom components, and `registries.json` isn't read.
-pub(in crate::game) fn register_components(root: &std::path::Path) -> sunrise_client::Result<()> {
+pub(in crate::game) fn register_components(
+    root: &std::path::Path,
+) -> sunrise_client_core::Result<()> {
     let mut names = Vec::new();
     crate::game::native_hooks::native_component_types(&RegistrationContext::new(), &mut names);
     if names.is_empty() {
@@ -471,7 +472,7 @@ impl DeclarationFailures {
     }
 
     pub(in crate::game) fn messages(&self) -> impl Iterator<Item = LoadingMessage> {
-        use sunrise_client::text::Text;
+        use sunrise_client_core::text::Text;
         let quoted = |value: &str| Text::literal(format!("{value:?}"));
         self.0.iter().map(move |refusal| {
             let key = match refusal.kind {
@@ -501,7 +502,7 @@ impl DeclarationFailures {
     }
 
     pub(crate) fn lines(&self) -> Vec<String> {
-        use sunrise_client::text::Text;
+        use sunrise_client_core::text::Text;
         let render = || {
             self.messages()
                 .map(|message| {
@@ -684,7 +685,7 @@ pub(in crate::game) fn collect_key_mappings<'declared>(
 pub(in crate::game) fn register_layer_definitions(
     role: ExecutionRole,
     vanilla_root: &std::path::Path,
-) -> sunrise_client::Result<()> {
+) -> sunrise_client_core::Result<()> {
     if !role.is_client() {
         return Ok(());
     }
@@ -716,7 +717,7 @@ pub(in crate::game) fn register_debug_entries(role: ExecutionRole) {
 pub(in crate::game) fn register_map_decoration_types() {
     let mut types = Vec::new();
     crate::game::native_hooks::native_map_decoration_types(&RegistrationContext::new(), &mut types);
-    sunrise_client::map_decoration_types::register(types, Game::is_vanilla_decoration_sprite);
+    sunrise_sim::map_decoration_types::register(types, Game::is_vanilla_decoration_sprite);
 }
 /// Install the native mods' HUD draw callbacks among the vanilla anchors once at client startup.
 pub(in crate::game) fn register_gui_layers(role: ExecutionRole) {
@@ -883,7 +884,7 @@ pub(in crate::game) fn register_special_model_renderers() {
 /// renderers.
 pub(in crate::game) fn register_client_presentations(
     role: ExecutionRole,
-) -> sunrise_client::Result<()> {
+) -> sunrise_client_core::Result<()> {
     register_preset_editors(role);
     register_dimension_transition_screens(role);
     register_entity_spectator_shaders(role);
@@ -934,7 +935,7 @@ pub(in crate::game) fn register_preset_editors(role: ExecutionRole) {
 /// load builds them from its own shader files.
 pub(in crate::game) fn register_render_pipelines(
     role: ExecutionRole,
-) -> sunrise_client::Result<()> {
+) -> sunrise_client_core::Result<()> {
     if !role.is_client() {
         return Ok(());
     }
@@ -1012,7 +1013,7 @@ pub(in crate::game) fn register_entity_renderers(role: ExecutionRole) {
 /// The native mods' particle providers (`native_register_particle_providers`) and render groups
 /// (`native_register_particle_groups`) are registered once at startup. Each particle engine
 /// constructs its groups once; sprite-set loads associate types with those groups and providers.
-pub(in crate::game) fn register_particles(role: ExecutionRole) -> sunrise_client::Result<()> {
+pub(in crate::game) fn register_particles(role: ExecutionRole) -> sunrise_client_core::Result<()> {
     if !role.is_client() {
         return Ok(());
     }
@@ -1043,19 +1044,19 @@ pub(in crate::game) struct ContentOverlay {
     /// The root with the mods' content merged in.
     pub(in crate::game) root: sunrise_assets::resource_source::ResourceRoot,
     /// The accepted content mods, in overlay order.
-    pub(in crate::game) mods: Vec<sunrise_client::mod_content::ContentMod>,
+    pub(in crate::game) mods: Vec<sunrise_sim::mod_content::ContentMod>,
     /// The protocol entries of the accepted mods.
     pub(in crate::game) announced: Vec<sunrise_protocol::mod_list::Entry>,
     /// Whether the protocol's local mod list is still unset.
     pub(in crate::game) announce: bool,
     /// The accepted content-only mods, each with its version, for the worlds saved to record.
-    pub(in crate::game) content_mods: Vec<sunrise_client::save::level_mods::ModRecord>,
+    pub(in crate::game) content_mods: Vec<sunrise_sim::save::level_mods::ModRecord>,
 }
 
 /// A package's primary namespace is not an alias another layer can acquire.
 pub(in crate::game) fn refuse_primary_namespace_claims(
     manifests: &[&sunrise_mod_package::Manifest],
-) -> sunrise_client::Result<()> {
+) -> sunrise_client_core::Result<()> {
     let mut primary: std::collections::HashSet<&str> = manifests
         .iter()
         .map(|manifest| manifest.id.as_str())
@@ -1129,7 +1130,7 @@ impl std::error::Error for DisabledServingHost {}
 /// frozen `PackageInfo` inventory that registration hooks read.
 pub(in crate::game) fn validate_startup_packages(
     sources: &ModsState,
-) -> sunrise_client::Result<()> {
+) -> sunrise_client_core::Result<()> {
     for selected in sources.selected.iter() {
         let manifest = &selected.package.manifest;
         if let Some(host) = manifest.served_by.as_deref()
@@ -1169,7 +1170,7 @@ pub(in crate::game) fn content_layer_owner<'a>(
 /// Maps each admitted content layer's namespaces to its owning package ID:
 /// the serving native host for `served_by` content packages, otherwise the layer itself.
 pub(in crate::game) fn content_owner_pairs<'a>(
-    mods: &'a [sunrise_client::mod_content::ContentMod],
+    mods: &'a [sunrise_sim::mod_content::ContentMod],
     selected: &'a [sunrise_mod_package::selection::SelectedPackage],
 ) -> Vec<(&'a str, &'a str)> {
     mods.iter()
@@ -1191,7 +1192,7 @@ pub(in crate::game) fn content_overlay(
     root: &std::path::Path,
     sources: &ModsState,
     jar_store: &std::path::Path,
-) -> sunrise_client::Result<ContentOverlay> {
+) -> sunrise_client_core::Result<ContentOverlay> {
     let admission = sources.startup_admission();
     let refused = match admission {
         Some(admission) => admission.refused.clone(),
@@ -1206,8 +1207,8 @@ pub(in crate::game) fn content_overlay_with_refusals(
     jar_store: &Path,
     admission: Option<&package_files::StartupAdmission>,
     refused: &[MissingJar],
-) -> sunrise_client::Result<ContentOverlay> {
-    use sunrise_client::mod_content::{self, ContentMod};
+) -> sunrise_client_core::Result<ContentOverlay> {
+    use sunrise_sim::mod_content::{self, ContentMod};
     let original_base = root.to_owned();
 
     *sources.refused.lock().unwrap() = refused.to_vec();
@@ -1327,7 +1328,7 @@ pub(in crate::game) fn content_overlay_with_refusals(
         };
         match mod_content::accept_mod(&mut mods, candidate, known) {
             Ok(_) if source.content_only => {
-                content_mods.push(sunrise_client::save::level_mods::ModRecord {
+                content_mods.push(sunrise_sim::save::level_mods::ModRecord {
                     id: m.id.clone(),
                     version: m.version.to_string(),
                 });
@@ -1441,7 +1442,7 @@ pub(in crate::game) fn content_overlay_with_refusals(
         &overrides,
     )
     .map_err(|error| error.to_string())?;
-    let cache = sunrise_client::logging::cache_dir();
+    let cache = sunrise_level::logging::cache_dir();
     // Content admission and the live code-dispatch boundary jointly determine
     // what loaded. Namespaces and raw startup metadata cannot answer this.
     let inventory = sources.enabled_inventory(|id| mods.iter().any(|loaded| loaded.id == id));
@@ -1555,21 +1556,21 @@ pub(in crate::game) mod particle_registry_reload_tests {
 pub(in crate::game) fn content_root(
     root: &std::path::Path,
     sources: &ModsState,
-) -> sunrise_client::Result<sunrise_assets::resource_source::ResourceRoot> {
-    let _step = sunrise_client::spans::startup::step("mods.content_root");
-    let jar_store = sunrise_client::logging::game_home().join("jars");
+) -> sunrise_client_core::Result<sunrise_assets::resource_source::ResourceRoot> {
+    let _step = sunrise_level::spans::startup::step("mods.content_root");
+    let jar_store = sunrise_level::logging::game_home().join("jars");
     let overlay = {
-        let _step = sunrise_client::spans::startup::step("mods.overlay");
+        let _step = sunrise_level::spans::startup::step("mods.overlay");
         content_overlay(root, sources, &jar_store)?
     };
-    let world_fluids = sunrise_client::mod_content::register_world_fluids(&overlay.mods)?;
+    let world_fluids = sunrise_sim::mod_content::register_world_fluids(&overlay.mods)?;
     register_block_entity_types(overlay.root.prepared(), &overlay.mods)?;
     if overlay.announce {
         sunrise_protocol::mod_list::set_local(overlay.announced);
     }
     // What every level.dat saved from here on records, and what a world is checked against
     // before it opens (`level_mods`).
-    sunrise_client::save::level_mods::set_content_mods(Some(overlay.content_mods));
+    sunrise_sim::save::level_mods::set_content_mods(Some(overlay.content_mods));
     if overlay.root.prepared() != root {
         log::info!(
             "Sunrise: content from {} mod(s) in {}",
@@ -1613,11 +1614,11 @@ pub(in crate::game) fn content_root(
     register_entity_types(&overlay.mods);
     register_menu_types(&overlay.mods)?;
     if sources.installation_side == sunrise_mod_package::manifest::Side::Server {
-        sunrise_client::mod_content::set_fluid_looks(&overlay.mods);
+        sunrise_sim::mod_content::set_fluid_looks(&overlay.mods);
     } else {
         sunrise_client::mod_content_client::set_fluid_looks(&overlay.mods);
     }
-    sunrise_client::mod_content::set_fluid_interactions(&overlay.mods);
+    sunrise_sim::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
     // reloads can change layers but cannot replace the registered blocks and block entity types.
     mod_api::__private::install_content_owners(content_owner_pairs(
@@ -1633,7 +1634,7 @@ pub(in crate::game) fn content_root(
 /// protocol ID table; their facts come from the same frozen general catalog.
 pub(in crate::game) fn register_iterated_registries(
     root: &Path,
-) -> sunrise_client::Result<HashMap<String, SpawnerTypeFacts>> {
+) -> sunrise_client_core::Result<HashMap<String, SpawnerTypeFacts>> {
     use sunrise_protocol::registry::Builtin;
     let builtin = Builtin::load(&root.join("registries.json"))?;
     let ids = &builtin
@@ -1670,9 +1671,9 @@ pub(in crate::game) fn register_iterated_registries(
 
 pub(in crate::game) fn register_block_entity_types(
     root: &std::path::Path,
-    mods: &[sunrise_client::mod_content::ContentMod],
-) -> sunrise_client::Result<()> {
-    use sunrise_client::block_entity_types::{self, BlockEntityTypes};
+    mods: &[sunrise_sim::mod_content::ContentMod],
+) -> sunrise_client_core::Result<()> {
+    use sunrise_client_core::block_entity_types::{self, BlockEntityTypes};
     use sunrise_protocol::registry::Builtin;
     let path = Builtin::find(root).ok_or("registries.json not found")?;
     let builtin = Builtin::load(&path)?;
@@ -1696,12 +1697,12 @@ pub(in crate::game) fn register_block_entity_types(
         .flat_map(|ids| &ids.names)
         .filter(|name| name.starts_with("minecraft:"))
     {
-        if let Some(kind) = sunrise_client::lan::chunks::block_entity_type(block) {
+        if let Some(kind) = sunrise_sim::lan::chunks::block_entity_type(block) {
             types.template(block.clone(), block.clone(), kind.to_owned());
         }
     }
     for block in mods.iter().flat_map(|m| &m.content.blocks) {
-        if let Some(kind) = sunrise_client::lan::chunks::block_entity_type(&block.template) {
+        if let Some(kind) = sunrise_sim::lan::chunks::block_entity_type(&block.template) {
             types.template(block.id.clone(), block.template.clone(), kind.to_owned());
         }
     }
@@ -1738,7 +1739,7 @@ pub(in crate::game) fn register_block_entity_types(
                         .to_owned(),
                 ))
             })
-            .collect::<sunrise_client::Result<_>>()?
+            .collect::<sunrise_client_core::Result<_>>()?
     };
     if additions.is_empty() {
         block_entity_types::install(types)?;
@@ -1820,7 +1821,7 @@ pub(in crate::game) fn announced_entry(
 }
 
 pub(in crate::game) fn mob_effect_entries<'a>(
-    mods: &'a [sunrise_client::mod_content::ContentMod],
+    mods: &'a [sunrise_sim::mod_content::ContentMod],
     selected: &'a [sunrise_mod_package::selection::SelectedPackage],
 ) -> Vec<(&'a str, &'a sunrise_mod_package::content::MobEffect)> {
     let mut effects: Vec<_> = mods
@@ -1840,10 +1841,10 @@ pub(in crate::game) fn mob_effect_entries<'a>(
 /// with others. A root declaring none freezes nothing, and a game without
 /// mob effects reads the same empty list either way.
 pub(in crate::game) fn register_mob_effects(
-    mods: &[sunrise_client::mod_content::ContentMod],
+    mods: &[sunrise_sim::mod_content::ContentMod],
     selected: &[sunrise_mod_package::selection::SelectedPackage],
 ) {
-    use sunrise_client::brewing::{self, Category};
+    use sunrise_level::brewing::{self, Category};
     use sunrise_mod_package::content::EffectCategory;
     let effects = mob_effect_entries(mods, selected);
     if effects.is_empty() {
@@ -1882,7 +1883,7 @@ pub(in crate::game) fn register_mob_effects(
 /// Content and general types share the entity-type key space even though their definitions
 /// enter through different paths. Refuse the collision before building the content root.
 pub(in crate::game) fn validate_entity_type_families(
-    mods: &[sunrise_client::mod_content::ContentMod],
+    mods: &[sunrise_sim::mod_content::ContentMod],
     general: &super::general::GeneralTypeCatalog,
 ) -> Result<(), String> {
     for package in mods {
@@ -1902,9 +1903,9 @@ pub(in crate::game) fn validate_entity_type_families(
 /// from, and their thrown types, as their mob effects: set once, from the
 /// startup root. Living types are mobs, loaded with vanilla's from the
 /// content root's `entity-types.json`.
-pub(in crate::game) fn register_entity_types(mods: &[sunrise_client::mod_content::ContentMod]) {
-    use sunrise_client::{lan::tracking, projectiles};
-    let mut types = sunrise_client::mod_content::entity_types(mods);
+pub(in crate::game) fn register_entity_types(mods: &[sunrise_sim::mod_content::ContentMod]) {
+    use sunrise_sim::{lan::tracking, projectiles};
+    let mut types = sunrise_sim::mod_content::entity_types(mods);
     let templates = types.iter().map(|t| (t.id.clone(), t.template.clone()));
     let templates_set = tracking::register_templates(templates);
     let templates_changed = !templates_set
@@ -1931,10 +1932,10 @@ pub(in crate::game) fn register_entity_types(mods: &[sunrise_client::mod_content
 /// the mods' menu types, as their entity types: set once, from the startup
 /// root.
 pub(in crate::game) fn register_menu_types(
-    mods: &[sunrise_client::mod_content::ContentMod],
-) -> sunrise_client::Result<()> {
-    use sunrise_client::containers;
-    let menus = sunrise_client::mod_content::menu_types(mods);
+    mods: &[sunrise_sim::mod_content::ContentMod],
+) -> sunrise_client_core::Result<()> {
+    use sunrise_level::containers;
+    let menus = sunrise_sim::mod_content::menu_types(mods);
     menu_books::validate_registered(&menus.iter().map(|&(menu, _)| menu).collect::<Vec<_>>())?;
     let set = containers::register_mod_menu_types(menus.iter().map(|&(m, owner)| {
         let results = m.results.iter().map(|&r| usize::from(r)).collect();
@@ -2010,7 +2011,7 @@ pub(in crate::game) fn remember_verdict(
     content: &sunrise_mod_package::Content,
 ) {
     if let Some(key) = verdict_key(path) {
-        let verdict = Some(sunrise_client::mod_content::live_switch(content));
+        let verdict = Some(sunrise_sim::mod_content::live_switch(content));
         VERDICTS
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -2032,7 +2033,7 @@ pub(in crate::game) fn verdict(
     }
     let verdict = sunrise_mod_package::Content::read(path, manifest)
         .ok()
-        .map(|content| sunrise_client::mod_content::live_switch(&content));
+        .map(|content| sunrise_sim::mod_content::live_switch(&content));
     if let Some(key) = key {
         VERDICTS
             .lock()
@@ -2114,7 +2115,7 @@ pub(in crate::game) struct ModsReload {
     pub(in crate::game) root: PathBuf,
     pub(in crate::game) data_source: sunrise_assets::resource_source::ResourceSource,
     pub(in crate::game) data_changes: sunrise_assets::resource_source::ResourceSource,
-    pub(in crate::game) additional_data: Arc<[Arc<sunrise_client::datapack::DataPack>]>,
+    pub(in crate::game) additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
     pub(in crate::game) enabled: std::collections::BTreeSet<String>,
     pub(in crate::game) selected: Arc<[sunrise_mod_package::selection::SelectedPackage]>,
     pub(in crate::game) refused: Arc<Mutex<Vec<MissingJar>>>,
@@ -2133,7 +2134,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// Publish the initial generation's captured settings to its loop readers.
     /// An integrated server has a distinct origin and captures its own inputs.
-    pub(in crate::game) fn refresh_loop_context(&mut self) -> sunrise_client::Result<()> {
+    pub(in crate::game) fn refresh_loop_context(&mut self) -> sunrise_client_core::Result<()> {
         let role = self.options.execution_role;
         let load = self.res.core.item_data.context();
         let context = if load.origin() == role.data_load_origin() {
@@ -2148,7 +2149,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn prepare_loop_context(
         &self,
         resources: &std::path::Path,
-    ) -> sunrise_client::Result<PreparedLoopContext> {
+    ) -> sunrise_client_core::Result<PreparedLoopContext> {
         let side = self.options.execution_role.loop_side();
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(resources)?;
         let ids: Vec<_> = if self.is_logical_server() {
@@ -2202,7 +2203,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The caller publishes it after every server reload listener prepared.
     pub(in crate::game) fn stage_enabled_inventory(
         &self,
-    ) -> sunrise_client::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
+    ) -> sunrise_client_core::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
         let previous = sunrise_mod_package::enabled::EnabledMods::read(&self.options.resources)?;
         let next = self
             .mods
@@ -2216,7 +2217,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .get()
             .cloned()
             .unwrap_or_else(|| self.vanilla_root());
-        let jars = sunrise_client::logging::game_home().join("jars");
+        let jars = sunrise_level::logging::game_home().join("jars");
         let refused = self.mods.missing_jar_refusals(&jars)?;
         let overlay = content_overlay_with_refusals(
             &base,
@@ -2327,13 +2328,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 /// (a thrown snowball, not a mob).
 #[cfg(test)]
 pub(in crate::game) fn living_mod_types()
--> std::collections::HashMap<String, std::sync::Arc<sunrise_client::mobs::MobType>> {
+-> std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>> {
     living_mod_types_and_models().0
 }
 
 #[cfg(test)]
 fn living_mod_types_and_models() -> (
-    std::collections::HashMap<String, std::sync::Arc<sunrise_client::mobs::MobType>>,
+    std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>>,
     sunrise_client::mobs_render::ClientMobModels,
 ) {
     let zombie =
@@ -2385,7 +2386,7 @@ fn living_mod_types_and_models() -> (
         "entities": {},
     }))
     .unwrap();
-    let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
+    let types = sunrise_sim::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let models = sunrise_client::mobs_render::ClientMobModels::load(&root).unwrap();
     let _ = std::fs::remove_dir_all(&root);
     (
@@ -3051,17 +3052,17 @@ pub(in crate::game) mod tests {
         let mut runes_content = sunrise_mod_package::Content::declared("runes");
         runes_content.namespaces.push("runes_extra".into());
         let layers = vec![
-            sunrise_client::mod_content::ContentMod {
+            sunrise_sim::mod_content::ContentMod {
                 id: "horizon_java".into(),
                 content: sunrise_mod_package::Content::declared("horizon_java"),
                 jars: Vec::new(),
             },
-            sunrise_client::mod_content::ContentMod {
+            sunrise_sim::mod_content::ContentMod {
                 id: "runes".into(),
                 content: runes_content,
                 jars: Vec::new(),
             },
-            sunrise_client::mod_content::ContentMod {
+            sunrise_sim::mod_content::ContentMod {
                 id: "plain".into(),
                 content: sunrise_mod_package::Content::declared("plain"),
                 jars: Vec::new(),
@@ -4145,13 +4146,13 @@ pub(in crate::game) mod tests {
         let runes_pkg = sunrise_mod_package::Package::read(&runes_path).unwrap();
         let plain_pkg = sunrise_mod_package::Package::read(&plain_path).unwrap();
         let layers = vec![
-            sunrise_client::mod_content::ContentMod {
+            sunrise_sim::mod_content::ContentMod {
                 id: "runes".into(),
                 content: sunrise_mod_package::Content::read(&runes_path, &runes_pkg.manifest)
                     .unwrap(),
                 jars: Vec::new(),
             },
-            sunrise_client::mod_content::ContentMod {
+            sunrise_sim::mod_content::ContentMod {
                 id: "plain".into(),
                 content: sunrise_mod_package::Content::read(&plain_path, &plain_pkg.manifest)
                     .unwrap(),
@@ -4432,7 +4433,7 @@ pub(in crate::game) mod tests {
             serde_json::from_str(r#"{"template":"minecraft:zombie"}"#).unwrap();
         entity.id = "ruby:robot".into();
         content.entity_types.push(entity);
-        let mut package = sunrise_client::mod_content::ContentMod {
+        let mut package = sunrise_sim::mod_content::ContentMod {
             id: "ruby".into(),
             content,
             jars: Vec::new(),
@@ -4451,8 +4452,8 @@ pub(in crate::game) mod tests {
     /// loot table. A thrown type stays a projectile.
     #[test]
     fn a_mod_living_type_is_its_templates_mob_with_its_own_attributes() {
-        use sunrise_client::mobs::{Mob, Species, drops::death_loot_table};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{Mob, Species, drops::death_loot_table};
         let (types, models) = living_mod_types_and_models();
         let (zombie, ghoul) = (&types["minecraft:zombie"], &types["ruby:ghoul"]);
         assert_eq!(ghoul.species, Species::Zombie);
@@ -4482,7 +4483,7 @@ pub(in crate::game) mod tests {
         );
         assert_eq!(ghoul.health, 40.0);
         let saved = |m: &Mob| {
-            sunrise_client::entity_nbt::mob_to_nbt(
+            sunrise_sim::entity_nbt::mob_to_nbt(
                 m,
                 [0, 0, 0, 2],
                 None,
@@ -4510,7 +4511,7 @@ pub(in crate::game) mod tests {
         for key in ["IsBaby", "CanBreakDoors", "DrownedConversionTime"] {
             assert!(keys(&ghoul_tag).iter().any(|k| k == key), "{key}");
         }
-        let loaded = sunrise_client::entity_nbt::mob_from_nbt(&ghoul_tag, &types, 3, None)
+        let loaded = sunrise_sim::entity_nbt::mob_from_nbt(&ghoul_tag, &types, 3, None)
             .expect("it loads back");
         assert_eq!(
             (loaded.kind.id.as_str(), loaded.health),
@@ -4532,8 +4533,8 @@ pub(in crate::game) mod tests {
     /// own id and loads back as itself with all of them.
     #[test]
     fn a_mod_tameable_type_saves_and_loads_its_owner() {
-        use sunrise_client::mobs::{Mob, Species};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{Mob, Species};
         let types = living_mod_types();
         let owner = [1, 2, 3, 4];
         use sunrise_core::nbt::Tag;
@@ -4552,7 +4553,7 @@ pub(in crate::game) mod tests {
                 Species::Parrot => pet.extra.variant = 2,
                 _ => pet.extra.color = if species == Species::Wolf { 14 } else { 3 },
             }
-            let tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &pet,
                 [0, 0, 0, 1],
                 None,
@@ -4577,7 +4578,7 @@ pub(in crate::game) mod tests {
                 "{id}"
             );
             assert_eq!(get(own.0), Some(own.1), "{id}");
-            let loaded = sunrise_client::entity_nbt::mob_from_nbt(&tag, &types, 2, None)
+            let loaded = sunrise_sim::entity_nbt::mob_from_nbt(&tag, &types, 2, None)
                 .expect("it loads back");
             assert_eq!(
                 (
@@ -4608,8 +4609,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mods_declared_entity_attributes_reach_spawn_and_the_live_map() {
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         use sunrise_world::attributes::entity::Catalog;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -4641,7 +4642,7 @@ pub(in crate::game) mod tests {
             base(&catalog, "minecraft:zombie", "minecraft:attack_damage")
         );
         // The live map builds for the type and answers the declared values.
-        let live = sunrise_client::living_attributes::LivingAttributes::default();
+        let live = sunrise_sim::living_attributes::LivingAttributes::default();
         assert_eq!(
             live.read(
                 &std::sync::Arc::new(merged.clone()),
@@ -4677,9 +4678,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mods_declared_attribute_reaches_rows_the_live_map_saves_and_sync() {
-        use sunrise_client::lan;
-        use sunrise_client::living_attributes::{self, LivingAttributes};
         use sunrise_core::nbt::Tag;
+        use sunrise_sim::lan;
+        use sunrise_sim::living_attributes::{self, LivingAttributes};
         use sunrise_world::attribute_map::ValueKind;
         use sunrise_world::attributes::{
             Definition, Sentiment,
@@ -4800,7 +4801,7 @@ pub(in crate::game) mod tests {
         assert_eq!(map_value(&mut guest, mana), 50.0);
 
         fn map_value(
-            map: &mut sunrise_client::living_attributes::Live,
+            map: &mut sunrise_sim::living_attributes::Live,
             id: sunrise_world::attributes::entity::AttributeId,
         ) -> f64 {
             // The first read creates the instance, as `getInstance` does.
@@ -4824,8 +4825,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_declared_type_spawns_with_its_merged_row_not_its_content_row() {
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         use sunrise_world::attributes::entity::Catalog;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -4851,7 +4852,7 @@ pub(in crate::game) mod tests {
         );
         assert_eq!(ghoul.attrs.max_health, 20.0);
         assert_eq!(ghoul.attrs.speed, 0.4, "the declared speed");
-        let live = sunrise_client::living_attributes::LivingAttributes::default();
+        let live = sunrise_sim::living_attributes::LivingAttributes::default();
         assert_eq!(
             live.read(
                 &std::sync::Arc::new(merged),
@@ -4873,8 +4874,8 @@ pub(in crate::game) mod tests {
     #[test]
     fn a_mods_attribute_addition_reaches_new_vanilla_zombies() {
         use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext};
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         use sunrise_world::attribute_map::ValueKind;
         use sunrise_world::attributes::entity::Catalog;
 
@@ -4911,7 +4912,7 @@ pub(in crate::game) mod tests {
             .unwrap(),
         );
         let read = |catalog: &Arc<Catalog>, name: &str| {
-            sunrise_client::living_attributes::LivingAttributes::default().read(
+            sunrise_sim::living_attributes::LivingAttributes::default().read(
                 catalog,
                 "minecraft:zombie",
                 name,
@@ -5006,8 +5007,8 @@ pub(in crate::game) mod tests {
     /// trader's goals, that saves what a trader saves and loads back.
     #[test]
     fn a_mod_trader_type_is_a_wandering_trader_under_its_own_id() {
-        use sunrise_client::mobs::{Mob, Species};
         use sunrise_core::nbt::Tag;
+        use sunrise_sim::mobs::{Mob, Species};
         let types = living_mod_types();
         let merchant = &types["ruby:merchant"];
         assert_eq!(merchant.species, Species::WanderingTrader);
@@ -5017,7 +5018,7 @@ pub(in crate::game) mod tests {
         let merchant = Mob::new(2, merchant.clone(), at, 0.0);
         assert!(merchant.ai.goals.has("Float") && trader.ai.goals.has("Float"));
         let saved = |m: &Mob| {
-            sunrise_client::entity_nbt::mob_to_nbt(
+            sunrise_sim::entity_nbt::mob_to_nbt(
                 m,
                 [0, 0, 0, 2],
                 None,
@@ -5039,7 +5040,7 @@ pub(in crate::game) mod tests {
             "it saves what a trader saves"
         );
         let loaded =
-            sunrise_client::entity_nbt::mob_from_nbt(&tag, &types, 3, None).expect("it loads back");
+            sunrise_sim::entity_nbt::mob_from_nbt(&tag, &types, 3, None).expect("it loads back");
         assert_eq!(
             (loaded.kind.id.as_str(), loaded.species()),
             ("ruby:merchant", Species::WanderingTrader)
@@ -5535,7 +5536,8 @@ pub(in crate::game) mod tests {
     /// that does.
     #[test]
     fn a_root_without_mob_effects_does_not_freeze_the_registry() {
-        use sunrise_client::{brewing, mod_content::ContentMod};
+        use sunrise_level::brewing;
+        use sunrise_sim::mod_content::ContentMod;
         // Another test may have set the process-wide list already.
         if !brewing::mod_effects().is_empty() {
             return;

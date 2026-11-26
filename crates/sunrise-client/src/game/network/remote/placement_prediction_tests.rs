@@ -89,8 +89,8 @@ pub(in crate::game) fn on_a_client(
                 game.connect_local(pipe, "PlacePrediction").unwrap();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+                game.set_local_mode(sunrise_command::args::GameMode::Survival);
                 test(game);
             },
         );
@@ -277,7 +277,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
         game.world.set(5, 65, 4, state).unwrap();
         game.world.block_entities.insert(
             (5, 65, 4),
-            sunrise_client::containers::BlockEntity::Campfire(Box::default()),
+            sunrise_level::containers::BlockEntity::Campfire(Box::default()),
         );
         state
     }
@@ -287,7 +287,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.sync_tick_chunks();
             setup(game, true);
             let context = PlaceContext {
@@ -962,7 +962,7 @@ fn a_placement_view_hides_block_entity_data_at_replaced_positions() {
         game.world.set(1, 65, 1, campfire).unwrap();
         game.world.block_entities.insert(
             (1, 65, 1),
-            sunrise_client::containers::BlockEntity::Campfire(Box::default()),
+            sunrise_level::containers::BlockEntity::Campfire(Box::default()),
         );
         let air = game.world.air;
         game.with_level(|_, live, ticks| {

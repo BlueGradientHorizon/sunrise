@@ -64,8 +64,8 @@ mod tests {
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use mod_api::{Hooks, ModEntry, ServerHost, XpOrbTargetingEvent};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::entities::ExperienceOrb;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::entities::ExperienceOrb;
 
     /// What the hook heard: the orb's id, the scan distance and the default
     /// player's UUID.

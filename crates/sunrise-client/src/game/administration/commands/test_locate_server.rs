@@ -5,7 +5,7 @@ use crate::game::commands::test_locate::link;
 use crate::game::commands::test_locate::locate_command;
 use crate::game::commands::test_locate::north_turned;
 use crate::game::commands::test_locate::path_of;
-use sunrise_client::text::{self, ClickEvent, Style, Text};
+use sunrise_client_core::text::{self, ClickEvent, Style, Text};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::worldgen::structure::Rotation;
 
@@ -13,7 +13,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `TestCommand.locate`.
     pub(in crate::game) fn test_locate(&mut self, ctx: &Context) -> R<i32> {
         let selected: Vec<String> = match ctx.get("tests") {
-            Some(Arg::Str(pattern)) => sunrise_client::command::args::select_resources(
+            Some(Arg::Str(pattern)) => sunrise_command::args::select_resources(
                 self.ui.registries.ids("minecraft:test_instance"),
                 pattern,
             )

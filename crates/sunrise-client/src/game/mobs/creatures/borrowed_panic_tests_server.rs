@@ -27,22 +27,19 @@ use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{
-    chunk::Chunk,
-    join_seq::residency::{
-        Change, Journal, Kind, Owner,
-        table::{EntityLookup, EntityTable, SourceEntity},
-    },
-};
 use sunrise_core::random::LegacyRandom;
+use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::Holder;
+use sunrise_sim::join_seq::residency::{
+    Change, Journal, Kind, Owner,
+    table::{EntityLookup, EntityTable, SourceEntity},
+};
 
 /// One tick of a zombie with 100 air and an iron sword: the air it listened to, then the air
 /// and the sword's damage the tick left.
 pub(in crate::game) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
     crate::entry::install_client_hooks();
-    let _ =
-        sunrise_client::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
     let scratch = Scratch(std::env::temp_dir().join(format!(
         "sunrise-breathing-{}-{:?}",
         std::process::id(),
@@ -78,7 +75,7 @@ pub(in crate::game) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
                 mob.no_ai = true;
                 mob.air = 100;
                 mob.extra
-                    .set_main_hand_stack(Some(sunrise_client::items::ItemStack::new(
+                    .set_main_hand_stack(Some(sunrise_items::items::ItemStack::new(
                         "minecraft:iron_sword",
                         1,
                     )));
@@ -97,8 +94,7 @@ pub(in crate::game) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
 #[ignore = "daily"]
 fn retained_breathing_tail() {
     crate::entry::install_client_hooks();
-    let _ =
-        sunrise_client::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
     let calls = Arc::new(AtomicUsize::new(0));
     let scratch =
         Scratch(std::env::temp_dir().join(format!("sunrise-breath-panic-{}", std::process::id())));
@@ -126,7 +122,7 @@ fn retained_breathing_tail() {
                 mob.no_ai = true;
                 mob.air = 100;
                 mob.extra
-                    .set_main_hand_stack(Some(sunrise_client::items::ItemStack::new(
+                    .set_main_hand_stack(Some(sunrise_items::items::ItemStack::new(
                         "minecraft:iron_sword",
                         1,
                     )));
@@ -186,13 +182,12 @@ fn retained_stale_push_target() {
 
 pub(in crate::game) fn run_fixture(family: Family, output: Output, dim: Dim) {
     crate::entry::install_client_hooks();
-    let _ =
-        sunrise_client::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS.set(crate::game::native_hooks::BLOCK_CONTACT_HOOKS);
     if family == Family::Knockback {
-        assert!(sunrise_client::brewing::register_mod_effects([(
+        assert!(sunrise_level::brewing::register_mod_effects([(
             "borrowed-panic:hit".into(),
             0,
-            sunrise_client::brewing::Category::Neutral,
+            sunrise_level::brewing::Category::Neutral,
             None,
             FAILING_MOD.into(),
         )]));

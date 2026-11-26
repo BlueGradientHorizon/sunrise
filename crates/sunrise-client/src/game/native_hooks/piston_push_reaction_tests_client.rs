@@ -12,8 +12,9 @@ pub(in crate::game) fn run_client_piston_case(root: std::path::PathBuf) {
         root,
         ExecutionRole::Client,
         |game| {
-            use sunrise_client::{chunk::Chunk, containers::BlockEntity, items::ItemStack};
             use sunrise_core::nbt::Tag;
+            use sunrise_items::items::ItemStack;
+            use sunrise_level::{chunk::Chunk, containers::BlockEntity};
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "CarryReplay").unwrap();
             let from = (3, 64, 2);
@@ -99,7 +100,7 @@ pub(in crate::game) fn run_client_piston_case(root: std::path::PathBuf) {
                 .1;
             let saved = game.saved_moving_piston(at, &moving);
             game.world.block_entities.discard_carried(&to);
-            let mut extras = sunrise_client::save::ChunkExtras::default();
+            let mut extras = sunrise_sim::save::ChunkExtras::default();
             extras.block_entities.push(saved);
             game.restore_moving_piston(at, moving, Some(&extras));
             for _ in 0..10 {

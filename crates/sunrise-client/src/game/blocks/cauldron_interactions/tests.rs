@@ -5,7 +5,7 @@ use mod_api::{
     StatType,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use sunrise_client::cauldron::{Outcome, interactions::Entry};
+use sunrise_sim::cauldron::{Outcome, interactions::Entry};
 
 pub(in crate::game) const POS: [i32; 3] = [0, 64, 0];
 #[derive(Default)]
@@ -265,7 +265,7 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
             );
             assert!(matches!(
                 table.select(water, "minecraft:water_bucket", false, |_| false),
-                Some(Entry::Vanilla(sunrise_client::cauldron::Action::EmptyWater))
+                Some(Entry::Vanilla(sunrise_sim::cauldron::Action::EmptyWater))
             ));
         },
     );
@@ -347,7 +347,7 @@ pub(in crate::game) fn setup_common<S>(
 ) {
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     let state = sunrise_world::chunk::BlockState {
         name: block.into(),
         properties: level
@@ -358,7 +358,7 @@ pub(in crate::game) fn setup_common<S>(
     let id = game.pack.assets.registry.resolve(&state).unwrap();
     game.world.set(0, 64, 0, id).unwrap();
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+        sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
             .unwrap(),
     );
     game.creative = false;
@@ -1675,7 +1675,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         };
         assert!(read_uses(client).is_empty());
         client.remote.as_mut().unwrap().joined = true;
-        client.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        client.set_local_mode(sunrise_command::args::GameMode::Survival);
         setup_common(client, "minecraft:cauldron", None, item, 1);
         let aim = (35.0, -12.0);
         (client.yaw, client.pitch) = aim;

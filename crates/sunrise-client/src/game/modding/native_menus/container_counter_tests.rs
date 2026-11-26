@@ -10,11 +10,9 @@ use crate::game::{
 };
 use mod_api::{EntityRef, Host, MenuReplace, ServerHost, WorldEpoch};
 use std::sync::{Arc, mpsc};
-use sunrise_client::{
-    items::ItemStack,
-    lan::{Out, PlayerSender},
-};
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_sim::lan::{Out, PlayerSender};
 
 /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
 fn watched_guest(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {

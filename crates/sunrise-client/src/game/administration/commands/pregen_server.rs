@@ -4,10 +4,8 @@ use crate::game::commands::pregen::REPORT_EVERY;
 use crate::game::commands::pregen::STALL;
 use crate::game::commands::pregen::failure;
 use std::time::{Duration, Instant};
-use sunrise_client::{
-    pregen::{Pregen, Shape},
-    text::{self, Text},
-};
+use sunrise_client_core::text::{self, Text};
+use sunrise_sim::pregen::{Pregen, Shape};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cmd_pregen(&mut self, id: &str, ctx: &Context) -> R<i32> {

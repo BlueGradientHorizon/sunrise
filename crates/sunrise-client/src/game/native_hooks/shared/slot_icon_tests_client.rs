@@ -103,7 +103,7 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 ICON_MENU.into(),
                 "icon_open".into(),
@@ -125,7 +125,7 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
                         let pos = (1, 64, 2);
                         game.world
                             .chunks
-                            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                         let block = game
                             .pack
                             .assets

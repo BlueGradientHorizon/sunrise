@@ -4,13 +4,11 @@
 use super::{Arg, Context, Game, R, Target, err};
 use serde_json::Value;
 use std::borrow::Cow;
-use sunrise_client::providers::{ConditionContext, Evaluation};
-use sunrise_client::{
-    advancements::{self as adv, EntityView},
-    command::CommandError,
-    text::Text,
-};
+use sunrise_client_core::text::Text;
+use sunrise_command::CommandError;
 use sunrise_core::java_number::float_to_string;
+use sunrise_level::providers::{ConditionContext, Evaluation};
+use sunrise_sim::advancements::{self as adv, EntityView};
 
 /// The loot context parameters of `LootContextSources`.
 #[derive(Clone, Copy, Default)]
@@ -95,7 +93,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if first == '{' || first == '[' || first == '-' || first.is_ascii_digit() || first == '"' {
             let (tag, _) = sunrise_core::nbt::parse_snbt(&raw)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-            return Ok((None, sunrise_client::scoreboard::tag_to_json(&tag)));
+            return Ok((None, sunrise_client_core::scoreboard::tag_to_json(&tag)));
         }
         let id = if raw.contains(':') {
             raw

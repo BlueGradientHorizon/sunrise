@@ -2,8 +2,9 @@
 //! empties it.
 use super::Game;
 use super::dispenser::{CLICK, Dispensed, FAIL, Pos, offset};
-use sunrise_client::{Result, items::ItemStack};
+use sunrise_client_core::Result;
 use sunrise_core::geometry::Direction;
+use sunrise_items::items::ItemStack;
 use sunrise_world::{fluid::FluidKind, level::BucketContent};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -63,8 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// evaporation smoke and the bucket's mob. False when nothing was placed,
     /// or `stack` holds no contents vanilla knows.
     fn empty_bucket_contents(&mut self, target: Pos, stack: &ItemStack) -> Result<bool> {
-        let Some((content, sound, mob)) = sunrise_client::items::bucket_contents(&stack.item)
-        else {
+        let Some((content, sound, mob)) = sunrise_items::items::bucket_contents(&stack.item) else {
             return Ok(false);
         };
         let target_pos = Self::pos_of(target);

@@ -9,14 +9,14 @@ use super::{
 };
 use mod_api::__private::reload::ReloadStageError;
 use std::sync::Arc;
-use sunrise_client::{
-    command::{Arg, Context},
-    datapack::{self, DataPack, DataStore, Function},
-    save,
+use sunrise_client_core::{
     scoreboard::bracketed,
     text::{self, Text},
 };
+use sunrise_command::{Arg, Context};
 use sunrise_core::nbt::Tag;
+use sunrise_level::datapack::{self, DataPack, DataStore, Function};
+use sunrise_sim::save;
 
 /// A `TimerQueue` event.
 #[derive(Clone, Debug, PartialEq)]
@@ -144,7 +144,7 @@ pub(in crate::game) fn overlay_files(
     // it, and the world's selected packs retain the highest priority.
     let mut store = DataStore::load(&[&stack.content]);
     for (path, bytes) in contributed {
-        if !sunrise_client::lan::data::is_pack_registry_file(&path)
+        if !sunrise_sim::lan::data::is_pack_registry_file(&path)
             && let Err(e) = serde_json::from_slice::<Box<serde_json::value::RawValue>>(&bytes)
         {
             log::warn!("Sunrise: a native mod's data pack file {path} is not JSON, skipped: {e}");
@@ -238,9 +238,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         enabled_features: &[String],
     ) -> Result<PackStack, ReloadStageError> {
         let opening_world = !run_load;
-        sunrise_client::mod_content::check_jars(
+        sunrise_sim::mod_content::check_jars(
             &self.options.resources,
-            &sunrise_client::logging::game_home().join("jars"),
+            &sunrise_level::logging::game_home().join("jars"),
         )
         .map_err(|error| {
             ReloadStageError::OriginalJars(
@@ -284,7 +284,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let initial = if opening_world {
             // This load warns again about saved attribute bases clamped to their bounds (#3728).
-            sunrise_client::living_attributes::LOAD_CLAMPS.begin_load();
+            sunrise_sim::living_attributes::LOAD_CLAMPS.begin_load();
             let tables = self
                 .stage_world_tables(&stack, false, &resources)
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
@@ -508,7 +508,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // its worldgen tag ids for the `#tag` completions. The packs are the
         // ones the world's worldgen is built from.
         let enabled: Vec<_> = stack.enabled_packs().collect();
-        let (overrides, _) = sunrise_client::datapack::worldgen_overrides(&enabled, |_| true);
+        let (overrides, _) = sunrise_level::datapack::worldgen_overrides(&enabled, |_| true);
         for (bundle, registry) in [
             ("biomes", "minecraft:worldgen/biome"),
             ("structures", "minecraft:worldgen/structure"),
@@ -716,7 +716,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .fns
             .0
             .permission
-            .replace(sunrise_client::command::vanilla::GAMEMASTERS);
+            .replace(sunrise_command::vanilla::GAMEMASTERS);
         let callback = self.side.exec.0.callback.take();
         let result = self.run_function(&function, None, source);
         self.side.exec.0.callback = callback;
@@ -743,7 +743,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 a.iter().map(|s| s as &dyn std::fmt::Display).collect();
             err(
                 "commands.function.instantiationFailure",
-                &[&f.id, &sunrise_client::text::Text::tr(key, &args).plain()],
+                &[
+                    &f.id,
+                    &sunrise_client_core::text::Text::tr(key, &args).plain(),
+                ],
             )
         };
         let lines = f.instantiate(args).map_err(|(key, a)| failure(&key, &a))?;
@@ -773,7 +776,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 > self
                     .ui
                     .rules
-                    .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
+                    .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
                     .max(1) as u32
             {
                 break;
@@ -823,7 +826,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The tree every function line is checked against, a plain line at load and a macro line
     /// after substitution: the session's (live rules, enabled features and the mods' commands,
     /// registered before functions load), as the server's own dispatcher compiles functions.
-    fn function_dispatcher(&self) -> Arc<sunrise_client::command::Dispatcher> {
+    fn function_dispatcher(&self) -> Arc<sunrise_command::Dispatcher> {
         self.ui.dispatcher.0.clone()
     }
     /// The functions a `FunctionArgument` names: a function or a tag.
@@ -920,9 +923,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let data = self.data_of(&r)?;
             let tag = match ctx.get("path") {
                 Some(Arg::Str(p)) => {
-                    let path = sunrise_client::nbt_path::NbtPath::parse(p)
-                        .map_err(sunrise_client::data_cmd::path_error)?;
-                    sunrise_client::data_cmd::single_tag(&path, &data)?
+                    let path = sunrise_client_core::nbt_path::NbtPath::parse(p)
+                        .map_err(sunrise_sim::data_cmd::path_error)?;
+                    sunrise_sim::data_cmd::single_tag(&path, &data)?
                 }
                 _ => data,
             };
@@ -959,7 +962,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             Text::translate(
                 "commands.function.scheduled.multiple",
-                &[sunrise_client::scoreboard_cmd::format_list(
+                &[sunrise_sim::scoreboard_cmd::format_list(
                     functions
                         .iter()
                         .map(|f| Text::literal(f.id.clone()))
@@ -1036,7 +1039,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
+            .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
         if sources.len() > limit.saturating_sub(self.side.exec.0.commands) as usize {
             return None;
@@ -1342,7 +1345,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             "commands.datapack.list.enabled.success",
                             &[
                                 Text::literal(links.len().to_string()),
-                                sunrise_client::scoreboard_cmd::format_list(links),
+                                sunrise_sim::scoreboard_cmd::format_list(links),
                             ],
                         ));
                     }
@@ -1361,7 +1364,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             "commands.datapack.list.available.success",
                             &[
                                 Text::literal(links.len().to_string()),
-                                sunrise_client::scoreboard_cmd::format_list(links),
+                                sunrise_sim::scoreboard_cmd::format_list(links),
                             ],
                         ));
                     }
@@ -1545,10 +1548,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Ok(())
     }
 
-    fn reload_failure(error: ReloadStageError) -> sunrise_client::command::CommandError {
+    fn reload_failure(error: ReloadStageError) -> sunrise_command::CommandError {
         let diagnostic = error.diagnostic();
         log::warn!("Sunrise: {diagnostic}");
-        sunrise_client::command::CommandError::new(
+        sunrise_command::CommandError::new(
             Text::translate("commands.reload.failure", &[])
                 .append(Text::literal(format!("\n{diagnostic}"))),
         )
@@ -1565,7 +1568,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let json = if id.starts_with('{') {
             let (tag, _) = sunrise_core::nbt::parse_snbt(id)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-            let value = sunrise_client::scoreboard::tag_to_json(&tag);
+            let value = sunrise_client_core::scoreboard::tag_to_json(&tag);
             sunrise_world::loot::validate_loot_condition(&value)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
@@ -1903,8 +1906,8 @@ mod tests {
     #[ignore = "daily"]
     fn prepared_function_calls_keep_causality_and_fallback_boundaries() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             game.options.dedicated = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 202.0, 4.5)).unwrap());
@@ -1912,7 +1915,7 @@ mod tests {
             // Supply the synthetic chunk before forceload's synchronous load barrier.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.side.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
             let pack = game.side.world_root.join("datapacks/h155_causal");
@@ -2212,8 +2215,8 @@ mod tests {
     #[ignore = "daily"]
     fn forked_function_replies_keep_task_order_and_actual_callbacks() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             game.options.dedicated = None;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 202.0, 4.5)).unwrap());
@@ -2221,7 +2224,7 @@ mod tests {
             // Supply the synthetic chunk before forceload's synchronous load barrier.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.side.world_root = std::env::current_dir().unwrap().join("h155-world");
             let pack = game.side.world_root.join("datapacks/h155_unit");
@@ -2395,7 +2398,7 @@ mod tests {
     #[ignore = "daily"]
     fn function_frames_restore_outer_frame() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_client::datapack::{Function, FunctionLine};
+        use sunrise_level::datapack::{Function, FunctionLine};
 
         let mut ran = false;
         with_game(|game| {
@@ -2713,7 +2716,7 @@ mod tests {
                 Some(1),
                 true,
                 None,
-                std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
             )
             .unwrap();
             request.save_root = root.clone();
@@ -3070,7 +3073,7 @@ mod tests {
     fn unless_function_keeps_a_fallthrough_after_running_it_once() {
         use crate::game::{Options, Settings, load_resources};
         use std::time::Instant;
-        use sunrise_client::datapack::FunctionLine;
+        use sunrise_level::datapack::FunctionLine;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -3383,7 +3386,7 @@ mod entity_score_tests {
             let id = game.load_mob(tag, None).unwrap();
             assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
             let holder = game.holder_name(Target::Mob(id)).unwrap();
-            assert_eq!(holder, sunrise_client::save::uuid_text(uuid));
+            assert_eq!(holder, sunrise_sim::save::uuid_text(uuid));
             if let Some(score) = score {
                 assert!(game.run_command(&format!("scoreboard players set {holder} pts {score}")));
             }

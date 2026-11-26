@@ -96,7 +96,7 @@ pub(in crate::game) mod tests {
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     struct ExtraPositions {
         calls: Arc<Mutex<Vec<u8>>>,

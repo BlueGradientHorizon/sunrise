@@ -40,7 +40,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         living: LivingRef,
         slot: mod_api::EquipmentSlot,
-    ) -> Option<sunrise_client::mobs::finalize::EquipmentRead<'_>> {
+    ) -> Option<sunrise_sim::mobs::finalize::EquipmentRead<'_>> {
         use mod_api::EquipmentSlot;
         let Target::Player = self.client_living_read_target(living)? else {
             return None;
@@ -54,9 +54,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             EquipmentSlot::Feet => self.armor[3].as_ref(),
             EquipmentSlot::Body | EquipmentSlot::Saddle => self.equipment.get(slot as usize),
         }?;
-        Some(sunrise_client::mobs::finalize::EquipmentRead::resident(
-            stack,
-        ))
+        Some(sunrise_sim::mobs::finalize::EquipmentRead::resident(stack))
     }
 
     pub(in crate::game) fn client_living_use_ticks(
@@ -110,9 +108,8 @@ pub(in crate::game) mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 crate::game::native_entity_refs::tests::resolve_parts(game).unwrap();
-                game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
-                );
+                game.player =
+                    Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 game.server_set_acting_use(true);
                 let player = game.living(game.entity(20).unwrap()).unwrap();

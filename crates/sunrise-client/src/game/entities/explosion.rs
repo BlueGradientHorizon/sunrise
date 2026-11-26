@@ -8,15 +8,16 @@ use super::{
 };
 use mod_api::ExplosionStart;
 use std::{cmp::Ordering, collections::HashSet, io};
-use sunrise_client::health::DamageLevel;
-use sunrise_client::{
-    Result, blocks::Fluid, collisions::SceneCollisions, items::ItemStack, mobs::Who, text::Text,
-};
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{
     geometry::{Vec3, VoxelShape},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_items::{blocks::Fluid, items::ItemStack};
+use sunrise_level::collisions::SceneCollisions;
+use sunrise_sim::health::DamageLevel;
+use sunrise_sim::mobs::Who;
 use {
     sunrise_core::java_hash_map::{JavaHashMap, JavaKey},
     sunrise_world::{
@@ -34,13 +35,13 @@ pub(in crate::game) struct ExplosionCause {
     pub entity: (u32, Text),
     pub player: bool,
     pub guest: Option<u32>,
-    pub species: Option<sunrise_client::mobs::Species>,
+    pub species: Option<sunrise_sim::mobs::Species>,
 }
 
 /// `Level.clip` with `ClipContext.Block.COLLIDER`, no fluids and the
 /// collision context of the entity whose exposure is measured.
 pub(in crate::game) struct ClipData<'a, 'r> {
-    pub facts: &'a sunrise_client::blocks::BlockFacts,
+    pub facts: &'a sunrise_items::blocks::BlockFacts,
     pub behaviours: &'a sunrise_world::level::Behaviours,
     pub registry: &'r sunrise_world::registry::BlockRegistry,
 }
@@ -77,7 +78,7 @@ impl RayWorld for ColliderRays<'_, '_> {
             // dynamic template's included (#1666): the collider below reads them
             // through the binding, the outline here.
             let at = [p.x, p.y, p.z];
-            let published = sunrise_client::collisions::published_outline(
+            let published = sunrise_level::collisions::published_outline(
                 self.scene.world,
                 self.scene.binding,
                 state,
@@ -200,13 +201,13 @@ pub(in crate::game) struct ExplosionSource {
     /// The blast damage source's direct entity and its class (`DamageSource.getDirectEntity`),
     /// as its producer knows them: the exploding entity for a default source
     /// (`Explosion.getDefaultDamageSource`), none for a blast without one.
-    damage_direct: Option<(u32, sunrise_client::health::DirectEntity)>,
+    damage_direct: Option<(u32, sunrise_sim::health::DirectEntity)>,
 }
 
 /// An explicit blast `DamageSource` (`ServerLevel.explode(source, damageSource, ...)`): its own
 /// direct entity (id, type for its name, class) and causing entity, apart from the exploding one.
 pub(in crate::game) struct ExplicitBlastSource {
-    pub direct: (u32, &'static str, sunrise_client::health::DirectEntity),
+    pub direct: (u32, &'static str, sunrise_sim::health::DirectEntity),
     /// `None` is an explicitly ownerless source.
     pub cause: Option<ExplosionCause>,
 }
@@ -224,7 +225,7 @@ impl ExplosionSource {
         mut self,
         id: u32,
         kind: &'static str,
-        class: sunrise_client::health::DirectEntity,
+        class: sunrise_sim::health::DirectEntity,
     ) -> Self {
         self.entity = Some((id, kind));
         self.with_damage_direct(id, class)
@@ -232,7 +233,7 @@ impl ExplosionSource {
     pub(in crate::game::server_side) fn with_damage_direct(
         mut self,
         id: u32,
-        class: sunrise_client::health::DirectEntity,
+        class: sunrise_sim::health::DirectEntity,
     ) -> Self {
         self.damage_direct = Some((id, class));
         self
@@ -315,7 +316,7 @@ struct ExplosionHookContext<'a> {
     flying_knockback: f32,
     /// The player whose blast it is (`DamageSource.getEntity() instanceof Player`: a primed
     /// TNT's owner, the player who broke an end crystal), by entity id, with their team.
-    player_cause: Option<(i32, Option<sunrise_client::scoreboard::Team>)>,
+    player_cause: Option<(i32, Option<sunrise_client_core::scoreboard::Team>)>,
 }
 
 /// An entity in the blast's reach: how far (as a share of the blast's
@@ -329,10 +330,10 @@ struct Hit {
 /// Apply blast damage when the mob's team and wither immunity allow it.
 fn hurt_mob(
     level: &mut DamageLevel<'_>,
-    m: &mut sunrise_client::mobs::Mob,
+    m: &mut sunrise_sim::mobs::Mob,
     hurtable: bool,
-    cause: Option<sunrise_client::mobs::Species>,
-    (amount, mut source): (f32, sunrise_client::mobs::Damage),
+    cause: Option<sunrise_sim::mobs::Species>,
+    (amount, mut source): (f32, sunrise_sim::mobs::Damage),
 ) -> bool {
     source.attacker_species = cause;
     hurtable && m.damage(level, amount, source)
@@ -377,9 +378,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map_or_else(
                 || Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]),
                 |name| {
-                    sunrise_client::scoreboard::comp_text(&sunrise_client::scoreboard::tag_to_json(
-                        name,
-                    ))
+                    sunrise_client_core::scoreboard::comp_text(
+                        &sunrise_client_core::scoreboard::tag_to_json(name),
+                    )
                 },
             )
     }
@@ -463,7 +464,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// entity id, with their team: an explicit cause that is a player (an end crystal they
     /// broke), else a primed TNT's owning player. Asked before any player is swapped in, so
     /// a cause that names no guest is the player in place.
-    fn blast_player_cause(&self) -> Option<(i32, Option<sunrise_client::scoreboard::Team>)> {
+    fn blast_player_cause(&self) -> Option<(i32, Option<sunrise_client_core::scoreboard::Team>)> {
         let (id, guest) = match &self.side.combat.0.explicit_explosion_cause {
             Some(cause) => cause
                 .as_ref()
@@ -795,7 +796,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         damage_type: &str,
         exploding: Option<u32>,
         attacker: Option<&(u32, Text)>,
-        cause: Option<&sunrise_client::advancements::EntityView>,
+        cause: Option<&sunrise_sim::advancements::EntityView>,
     ) -> Option<[f64; 3]> {
         let ExplosionHookContext { center, blocks, .. } = *context;
         let flying = self.player.as_ref().is_some_and(|p| p.flying);
@@ -860,7 +861,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `ServerPlayer.hurtServer`'s `canHarmPlayer` of the player whose blast it is.
         let hurtable = context.hurts
             && exploding.is_none_or(|id| {
-                sunrise_client::scoreboard::teams_allow_damage(
+                sunrise_client_core::scoreboard::teams_allow_damage(
                     self.mob_team(id),
                     self.player_team(),
                 )
@@ -873,7 +874,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|_| context.hurts);
         let raised = blocking.is_some();
         let (creative, spectator) = (self.creative, self.spectator());
-        let mut outcome = sunrise_client::health::BlockOutcome::default();
+        let mut outcome = sunrise_sim::health::BlockOutcome::default();
         let mut pushed = None;
         let explicit = context.explicit_cause.as_ref().and_then(|c| c.as_ref());
         let living_attacker = explicit.is_none_or(|c| c.player || c.species.is_some());
@@ -1048,9 +1049,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `source.doTeamsAllowDamage(entity)`: the exploding mob spares its
         // team mates when its team has no friendly fire (they are still pushed).
         let exploding = self.side.combat.0.explosion_source;
-        let teams_allow = |g: &Self, victim: Option<&sunrise_client::scoreboard::Team>| {
+        let teams_allow = |g: &Self, victim: Option<&sunrise_client_core::scoreboard::Team>| {
             exploding.is_none_or(|id| {
-                sunrise_client::scoreboard::teams_allow_damage(g.mob_team(id), victim)
+                sunrise_client_core::scoreboard::teams_allow_damage(g.mob_team(id), victim)
             })
         };
         // The player, then every other player in the level (LAN guests),
@@ -1139,7 +1140,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // Mobs. `WitherBoss.hurtServer`: a wither shrugs off an undead cause.
         let (blast_direct_id, blast_direct_kind) = blast_source_spec.damage_direct.map_or(
-            (0, sunrise_client::health::DirectEntity::Other),
+            (0, sunrise_sim::health::DirectEntity::Other),
             |(id, class)| (id as i32, class),
         );
         let mut blast_attack = self.side.combat.0.attack().clone();
@@ -1191,7 +1192,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && !self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: items_ignore_explosion(self.blast_griefs(), interaction),
             spared: exploding.filter(|_| self.side.combat.0.explosion_source_named),
         };
@@ -1201,7 +1202,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut destroyed_contents = Vec::new();
         macro_rules! blocked_damage {
             ($id:expr, $kind:expr) => {{
-                let source = sunrise_client::health::HurtSource {
+                let source = sunrise_sim::health::HurtSource {
                     damage_type,
                     causing: attacker.as_ref().map_or(0, |(id, _)| *id as i32),
                     direct: exploding.map_or(0, |id| id as i32),
@@ -1216,7 +1217,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     None
                 )
                 .invulnerability_check(
-                    sunrise_client::health::Hurting::Entity($id, $kind, source),
+                    sunrise_sim::health::Hurting::Entity($id, $kind, source),
                     vanilla,
                 )
             }};
@@ -1279,7 +1280,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         // The exploding mob is the damage source's entity, so
                         // victims it kills drop its charged-creeper loot
                         // (`Creeper.killedEntity`).
-                        let source = sunrise_client::mobs::Damage {
+                        let source = sunrise_sim::mobs::Damage {
                             kind,
                             // A projectile's owner (`getIndirectSourceEntity`),
                             // else the exploding mob itself.
@@ -1312,7 +1313,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                                     c.as_ref().is_some_and(|c| c.species.is_some())
                                                 })
                                         })
-                                        .map(sunrise_client::mobs::Who::Mob)
+                                        .map(sunrise_sim::mobs::Who::Mob)
                                 }),
                             from: Some(center),
                             attacker_species: cause,
@@ -1556,7 +1557,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
         {
             return false;
         }
@@ -1619,7 +1620,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
             {
                 let id = a.id;
-                let source = sunrise_client::health::HurtSource {
+                let source = sunrise_sim::health::HurtSource {
                     damage_type,
                     causing: causing as i32,
                     direct: causing as i32,
@@ -1634,7 +1635,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     None
                 )
                 .invulnerability_check(
-                    sunrise_client::health::Hurting::ArmorStand(id as i32, source),
+                    sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                     vanilla,
                 ) {
                     i += 1;
@@ -1703,7 +1704,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// and plain destruction.
     pub(in crate::game) fn destroy_type(
         &self,
-        rule: sunrise_client::gamerules::RuleIndex,
+        rule: sunrise_client_core::gamerules::RuleIndex,
     ) -> BlockInteraction {
         if self.ui.rules.bool_at(rule) {
             BlockInteraction::DestroyWithDecay
@@ -1855,7 +1856,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.native_explosion_prime(center, radius);
         }
         // Explosion.explode: the blast is heard.
-        let ctx = sunrise_client::sculk::Context::default();
+        let ctx = sunrise_level::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
         let mut targets =
             self.exploded_positions(center, radius, resists, source.portal_proof, &start);
@@ -1899,7 +1900,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
         {
             return;
         }
@@ -2019,8 +2020,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .and_then(|s| s.properties.get("facing").cloned());
             self.empty_hive(
                 pos,
-                sunrise_client::beehive::facing_step(facing.as_deref()),
-                sunrise_client::beehive::Release::Emergency,
+                sunrise_sim::beehive::facing_step(facing.as_deref()),
+                sunrise_sim::beehive::Release::Emergency,
             );
         }
         // Block.dropFromExplosion (only TntBlock refuses), or what the
@@ -2042,7 +2043,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                    .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
             {
                 self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
             }
@@ -2066,7 +2067,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .0
                 .explosion_source);
             let mut drops = sunrise_world::loot::with_native_loot_place(place, || {
-                let roll = sunrise_client::items::BlockLootRoll {
+                let roll = sunrise_items::items::BlockLootRoll {
                     dynamic: &dynamic,
                     explosion: decay,
                     ..Default::default()
@@ -2097,7 +2098,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
         {
             let r = &mut self.world.random;
             let rot = r.next_double() * f64::from(std::f32::consts::TAU);
@@ -2155,7 +2156,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let interaction = if !self.can_entity_grief(source) {
             BlockInteraction::Keep
         } else {
-            self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY)
+            self.destroy_type(sunrise_client_core::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY)
         };
         self.server_explode_from(center, radius, interaction, false, blast)
     }
@@ -2182,8 +2183,8 @@ impl crate::game::ServerGame<'_> {
         let mut output = Vec::new();
         for case in cases {
             self.dropped.clear();
-            let stack = sunrise_client::item_data::parse_stack(&case.stack)?
-                .ok_or("empty fixture stack")?;
+            let stack =
+                sunrise_items::item_data::parse_stack(&case.stack)?.ok_or("empty fixture stack")?;
             self.spawn_item(stack, [0.0, 100.0, 0.0], [0.0; 3], 0);
             self.dropped[0].health = case.health;
             let original = self.dropped[0].id;
@@ -2299,7 +2300,7 @@ pub(in crate::game) mod tests {
             Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
         };
-        use sunrise_client::random_source::{record_seeds, replay_seeds, unique_seed};
+        use sunrise_level::random_source::{record_seeds, replay_seeds, unique_seed};
 
         struct Join {
             id: u32,
@@ -2369,7 +2370,7 @@ pub(in crate::game) mod tests {
                 game.load_server_loot();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let dirt = game
                     .pack
                     .assets
@@ -2438,7 +2439,7 @@ pub(in crate::game) mod tests {
                     assert_eq!(join.seed, seeds[2 * i + 1]);
                     assert_eq!(join.id, item.id);
                     let uuid =
-                        sunrise_client::save::insecure_uuid(&mut LegacyRandom::new(seeds[2 * i]));
+                        sunrise_sim::save::insecure_uuid(&mut LegacyRandom::new(seeds[2 * i]));
                     assert_eq!(game.persist.uuids.get(&item.id), Some(&uuid));
                 }
                 assert_eq!(game.world.random.next_int(), 357_425_922);
@@ -2453,7 +2454,7 @@ pub(in crate::game) mod tests {
     fn mob_breaks_apply_block_drops() {
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::{Arc, Mutex};
-        use sunrise_client::mobs::MobEvent;
+        use sunrise_sim::mobs::MobEvent;
 
         struct ReplaceDrops(Arc<Mutex<Vec<[i32; 3]>>>);
         #[mod_api::__subscriptions]
@@ -2518,7 +2519,7 @@ pub(in crate::game) mod tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let registry = game.pack.assets.registry;
                 let dirt = registry.default_state("minecraft:dirt").unwrap();
                 let infested = registry.default_state("minecraft:infested_stone").unwrap();
@@ -2566,7 +2567,7 @@ pub(in crate::game) mod tests {
                 );
                 assert_eq!(
                     game.mobs[0].species(),
-                    sunrise_client::mobs::Species::Silverfish
+                    sunrise_sim::mobs::Species::Silverfish
                 );
             });
         });
@@ -2698,7 +2699,7 @@ pub(in crate::game) mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.run_explosion_items_fixture(std::path::Path::new(&directory))
                 .unwrap();
@@ -2740,8 +2741,8 @@ pub(in crate::game) mod tests {
     }
 
     /// A zombie's type with only what a hurt and a push read.
-    fn zombie_type() -> std::sync::Arc<sunrise_client::mobs::MobType> {
-        use sunrise_client::mobs::{Anim, Brain, MobType, Species};
+    fn zombie_type() -> std::sync::Arc<sunrise_sim::mobs::MobType> {
+        use sunrise_sim::mobs::{Anim, Brain, MobType, Species};
         std::sync::Arc::new(MobType {
             type_key: Default::default(),
             id: "minecraft:zombie".into(),
@@ -2788,9 +2789,9 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn a_mob_that_refuses_the_hit_is_still_pushed() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
-        use sunrise_client::mobs::{Damage, DamageKind, Mob, Species};
+        use sunrise_sim::mobs::{Damage, DamageKind, Mob, Species};
         let hit = (10.0, Damage::of(DamageKind::Explosion));
         let push = Vec3::new(0.5, 0.25, -0.5);
         let mob = |id, species| {
@@ -2876,7 +2877,7 @@ pub(in crate::game) mod tests {
     ) -> (&'static str, Option<(u32, Text)>) {
         let find = |id| live.iter().find(|(m, _)| *m == id).map(|(_, n)| n.clone());
         let cause = blast_cause(owner, exploding, find, exploded);
-        let kind = sunrise_client::mobs::DamageKind::Explosion;
+        let kind = sunrise_sim::mobs::DamageKind::Explosion;
         (
             super::super::creatures::damage_type(kind, cause.is_some()),
             cause,
@@ -3004,7 +3005,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn a_scaled_mob_is_blasted_by_its_own_box_and_eye_height() {
         use crate::game::entity::Entity;
-        use sunrise_client::mobs::{Mob, Species};
+        use sunrise_sim::mobs::{Mob, Species};
         let mob = |species| {
             let mut kind = (*zombie_type()).clone();
             kind.species = species;
@@ -3041,8 +3042,9 @@ mod explosion_part_tests;
 mod shulker_lock_drop_tests {
     use super::super::game_tests::tests::server_game;
     use super::*;
-    use sunrise_client::{containers::BlockEntity, save};
     use sunrise_core::nbt::Tag;
+    use sunrise_level::containers::BlockEntity;
+    use sunrise_sim::save;
 
     #[test]
     #[ignore = "daily"]
@@ -3058,7 +3060,7 @@ mod shulker_lock_drop_tests {
         assert!(
             game.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS),
+                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS),
             "actual drop rule must be enabled"
         );
         game.creative = false;
@@ -3203,7 +3205,7 @@ mod shulker_lock_drop_tests {
 #[cfg(test)]
 mod explicit_source_tests {
     use super::*;
-    use sunrise_client::{mobs::Mob, motion::PlayerMotion};
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     #[test]
     #[ignore = "daily"]
@@ -3211,7 +3213,7 @@ mod explicit_source_tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.options.dedicated = None;
             game.creative = false;
@@ -3284,14 +3286,14 @@ mod explicit_source_tests {
                             .with_entity(
                                 7,
                                 "minecraft:end_crystal",
-                                sunrise_client::health::DirectEntity::Other,
+                                sunrise_sim::health::DirectEntity::Other,
                             )
                             .with_silence(true),
                         Some(ExplicitBlastSource {
                             direct: (
                                 7,
                                 "minecraft:end_crystal",
-                                sunrise_client::health::DirectEntity::Other,
+                                sunrise_sim::health::DirectEntity::Other,
                             ),
                             cause,
                         }),

@@ -21,23 +21,23 @@ use mod_api::{BlockEntityRef, ClockAdjustment};
 use mod_api::{BlockUpdateFlags, LevelRef, LogicalSide, TriState, UsePhase};
 use mod_api::{ExplosionStart, LootDrops};
 use std::sync::Arc;
-use sunrise_client::block_contact::Pending;
-use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
-use sunrise_client::health::mob_source;
-#[cfg(test)]
-use sunrise_client::mobs::Damage;
 use sunrise_client_core::gamerules::Value as GameRuleValue;
 use sunrise_client_core::suggestion::Suggestion;
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
+use sunrise_sim::block_contact::Pending;
+use sunrise_sim::health::mob_source;
+#[cfg(test)]
+use sunrise_sim::mobs::Damage;
 use sunrise_world::level::PlaceContext;
 use sunrise_world::level::flags;
 use {
-    sunrise_client::block_entities::Pos, sunrise_client::containers::BlockEntity,
-    sunrise_client::containers::ModContainer, sunrise_client::containers::ModEnergyBuffer,
-    sunrise_client::containers::ModFluidTanks, sunrise_client::fast_hash::FxHashMap,
-    sunrise_client::health::Attack, sunrise_client::health::HurtSource,
-    sunrise_client::items::ItemStack, sunrise_client::merchant::MerchantOffer,
-    sunrise_client::mobs::Who, sunrise_client::text::Text, sunrise_sim::first_person_sim::Hand,
+    sunrise_client_core::text::Text, sunrise_items::items::ItemStack,
+    sunrise_level::block_entities::Pos, sunrise_level::containers::BlockEntity,
+    sunrise_level::containers::ModContainer, sunrise_level::containers::ModEnergyBuffer,
+    sunrise_level::containers::ModFluidTanks, sunrise_level::fast_hash::FxHashMap,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
+    sunrise_sim::health::HurtSource, sunrise_sim::merchant::MerchantOffer, sunrise_sim::mobs::Who,
 };
 use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 
@@ -210,13 +210,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
-                .map(|g| sunrise_client::lan::playerdata::uuid_ints(g.uuid))
+                .map(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid))
         };
         Attack {
             attacker,
             held,
             projectile: None,
-            projectile_kind: sunrise_client::health::DirectEntity::Other,
+            projectile_kind: sunrise_sim::health::DirectEntity::Other,
             projectile_type: None,
             direct: None,
             direct_kind: None,
@@ -234,9 +234,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         entity: i32,
         kind: &str,
-        post: std::sync::Arc<sunrise_client::health::DamagePost>,
+        post: std::sync::Arc<sunrise_sim::health::DamagePost>,
     ) {
-        use sunrise_client::health::{HitLend, LivingBody, PlayerBody, PlayerHealthRead};
+        use sunrise_sim::health::{HitLend, LivingBody, PlayerBody, PlayerHealthRead};
         let (source, state, original_lend) = post.view();
         // The victim as the death or protection callback left it, beside the lent attacker:
         // the player in place, or a mob split from the attacker in the same list.
@@ -295,7 +295,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let level = crate::game::entity::damage_level_of!(
             self,
-            &sunrise_client::health::NO_ATTACK,
+            &sunrise_sim::health::NO_ATTACK,
             no_push,
             lend
         );
@@ -341,7 +341,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mob: u32,
         pos: [i32; 3],
         state: BlockStateId,
-    ) -> crate::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let against = self.world.block(pos[0], pos[1] - 1, pos[2]);
         let kind = self
@@ -422,7 +422,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
     pub(in crate::game) fn server_acting_id(&mut self) -> u128 {
-        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
+        sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid())
     }
     pub(in crate::game) fn server_clicker(&mut self) -> (u128, i32) {
         let entity = self
@@ -444,7 +444,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game) fn server_chunks_unloaded(
         &mut self,
-        unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
+        unloaded: &[std::sync::Arc<sunrise_level::chunk::Chunk>],
     ) {
         let dimension = self.dim.id();
         for chunk in unloaded {
@@ -513,7 +513,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
     /// on the shared inside sweep, not here.
     pub(in crate::game) fn drain_entity_inside(&mut self) {
-        for contact in sunrise_client::block_contact::take_pending() {
+        for contact in sunrise_sim::block_contact::take_pending() {
             let (state, pos) = match &contact {
                 Pending::Landed(landed) => (landed.state, landed.position),
                 Pending::MinecartPass(pass) => (pass.state, pass.position),
@@ -556,7 +556,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for mob in self.mobs.iter().skip(from) {
             self.persist
                 .uuids
-                .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
+                .get_or_insert_with(mob.id, sunrise_sim::save::random_uuid);
         }
         self.join_spawn_tags(from);
         // A mod can keep a mob out; it is then taken out and not told of.
@@ -600,7 +600,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ctx: &PlaceContext,
         by_player: bool,
         stack: &ItemStack,
-    ) -> crate::Result<Option<sunrise_world::level::AppliedPlacement>> {
+    ) -> sunrise_client_core::Result<Option<sunrise_world::level::AppliedPlacement>> {
         let registry = self.pack.assets.registry;
         let game_master = ctx.can_use_game_master_blocks;
         let stack_state =
@@ -878,10 +878,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn pet_tamed(&mut self, index: usize) {
         let m = &self.mobs[index];
         let (entity, kind) = (m.id, mob_kind(m));
-        let owner = m
-            .extra
-            .owner
-            .map(sunrise_client::lan::playerdata::ints_uuid);
+        let owner = m.extra.owner.map(sunrise_sim::lan::playerdata::ints_uuid);
         self.native_entity_tame(entity, &kind, owner);
     }
     /// Whether a mod canceled `placer` writing `state` at `pos` (`entity_place`):
@@ -904,7 +901,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 impl Game<'_, crate::game::server_side::ServerState> {
-    pub(in crate::game) fn test_save(&self) -> &std::sync::Arc<sunrise_client::save::SaveDir> {
+    pub(in crate::game) fn test_save(&self) -> &std::sync::Arc<sunrise_sim::save::SaveDir> {
         &self.side.save.0
     }
 }

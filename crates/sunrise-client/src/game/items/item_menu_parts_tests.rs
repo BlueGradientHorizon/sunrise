@@ -9,7 +9,7 @@ use mod_api::{
     ItemPart, LoopContext, ModEntry, Registrar, RegistrationContext,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// A part of `item` that answers `answer` to all three hooks and records each ask: the hook
 /// and the answer it arrived with.
@@ -59,10 +59,7 @@ impl Hooks for Mod {
 fn worn(game: &crate::game::ServerGame<'_>, item: &str, damage: u32) -> ItemStack {
     let mut stack = ItemStack::new(item, 1);
     stack.damage = damage;
-    assert!(sunrise_client::stations::is_damageable(
-        game.items(),
-        &stack
-    ));
+    assert!(sunrise_sim::stations::is_damageable(game.items(), &stack));
     stack
 }
 
@@ -96,7 +93,7 @@ fn item_loop_parts_start_from_vanilla_and_decide_the_menus_answers() {
                 worn(game, "minecraft:iron_sword", 200),
                 worn(game, "minecraft:iron_sword", 100),
             );
-            let result = sunrise_client::stations::grindstone_result(
+            let result = sunrise_sim::stations::grindstone_result(
                 context,
                 enchantments,
                 game.items(),
@@ -110,7 +107,7 @@ fn item_loop_parts_start_from_vanilla_and_decide_the_menus_answers() {
                 worn(game, "minecraft:diamond_sword", 1000),
                 worn(game, "minecraft:diamond_sword", 1000),
             );
-            let result = sunrise_client::stations::grindstone_result(
+            let result = sunrise_sim::stations::grindstone_result(
                 context,
                 enchantments,
                 game.items(),
@@ -132,7 +129,7 @@ fn item_loop_parts_start_from_vanilla_and_decide_the_menus_answers() {
             assert_eq!(take(), [("minecraft:stick", "combine", false)]);
             // Container items: the diamond is kept out, a shulker box is let in.
             let fits = |item: &str| {
-                sunrise_client::menu::fits_inside_container_items(context, &ItemStack::new(item, 1))
+                sunrise_sim::menu::fits_inside_container_items(context, &ItemStack::new(item, 1))
             };
             assert!(!fits("minecraft:diamond"));
             assert!(fits("minecraft:shulker_box"));

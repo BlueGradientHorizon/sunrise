@@ -40,18 +40,20 @@ use mod_api::{
     TransactionScopeError,
 };
 use std::collections::{BTreeMap, HashMap};
-use sunrise_client::{
+use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+use sunrise_items::equipment::Equipment;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     block_entities::BlockEntityIdentity,
     effects::EffectInstance,
-    items::ItemStack,
+    world::{BlockEntityExtras, ModifiedChunks, World},
+};
+use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
+use sunrise_sim::{
     living_attributes::ModifierChanges,
     menu::QuickCraftDrag,
     mobs::{StoredEffect, finalize::EffectModifierUndo, gear::Gear},
-    world::{BlockEntityExtras, ModifiedChunks, World},
 };
-use sunrise_core::{geometry::Vec3, random::LegacyRandom};
-use sunrise_items::equipment::Equipment;
-use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
 use sunrise_world::level::flags;
 
 #[path = "transactions/decision.rs"]
@@ -226,8 +228,8 @@ impl OpenTransactions {
         &mut self,
         dim: super::Dim,
         pos: Pos,
-        loan: &sunrise_client::block_entities::BlockEntityLoan<'_>,
-        chunks: &sunrise_client::chunk_map::ChunkMap,
+        loan: &sunrise_level::block_entities::BlockEntityLoan<'_>,
+        chunks: &sunrise_level::chunk_map::ChunkMap,
         name: Option<&sunrise_core::nbt::Tag>,
         hopper: Option<HopperState>,
     ) {
@@ -264,7 +266,7 @@ impl OpenTransactions {
     /// Keep the first write to each field of a live general-entity subject.
     pub(in crate::game) fn journal_general_entity(
         &mut self,
-        join: crate::join_seq::JoinSeq,
+        join: sunrise_sim::join_seq::JoinSeq,
     ) -> Option<&mut KeptGeneralEntity> {
         Some(self.last_mut()?.general_entities.entry(join).or_default())
     }
@@ -436,11 +438,12 @@ pub(in crate::game) struct Level {
     /// in this transaction, keyed by level.
     pub(in crate::game) mob_lengths: HashMap<(Dim, u32), usize>,
     /// Each item entity's changed fields before this transaction first wrote them.
-    pub(in crate::game) item_entities: HashMap<crate::join_seq::JoinSeq, KeptItemEntity>,
+    pub(in crate::game) item_entities: HashMap<sunrise_sim::join_seq::JoinSeq, KeptItemEntity>,
     /// Each general entity subject's changed fields before the first write.
-    pub(in crate::game) general_entities: HashMap<crate::join_seq::JoinSeq, KeptGeneralEntity>,
+    pub(in crate::game) general_entities:
+        HashMap<sunrise_sim::join_seq::JoinSeq, KeptGeneralEntity>,
     /// The merge fields of resident experience orbs before the first award touched them, by level.
-    pub(in crate::game) orbs: HashMap<(Dim, crate::join_seq::JoinSeq), (i32, u32, i32)>,
+    pub(in crate::game) orbs: HashMap<(Dim, sunrise_sim::join_seq::JoinSeq), (i32, u32, i32)>,
     /// Each detached station before the first click wrote it, by connection and owner.
     pub(in crate::game) stations:
         HashMap<(u32, decision::MenuId), super::lan_stations::GuestStation>,
@@ -457,7 +460,7 @@ pub(in crate::game) struct Level {
     pub(in crate::game) native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
     pub(in crate::game) menu_data: MenuDataJournal,
     /// The scoreboard before this transaction first wrote it (`journal_scoreboard`), whole.
-    pub(in crate::game) board: Option<sunrise_client::scoreboard::Scoreboard>,
+    pub(in crate::game) board: Option<sunrise_client_core::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
     /// first reached it (a block entity's is kept with it). Per-level holders are keyed by level;
     /// player-owned attachment maps are keyed by player body across dimensions.
@@ -465,11 +468,11 @@ pub(in crate::game) struct Level {
     /// Held once this transaction reaches an attachment map, until it closes: the save
     /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
     /// values, which only the root commit makes saveable.
-    pub(in crate::game) save_gate: Option<sunrise_client::join_seq::visibility::PassLease>,
+    pub(in crate::game) save_gate: Option<sunrise_sim::join_seq::visibility::PassLease>,
     /// Each chunk's unsaved mark and save queue entry before this transaction first reached an
     /// attachment map in it: an abort puts them back, so a chunk only a tentative write marked
     /// is clean again.
-    pub(in crate::game) chunk_marks: HashMap<(i32, i32), sunrise_client::world::ChunkMark>,
+    pub(in crate::game) chunk_marks: HashMap<(i32, i32), sunrise_level::world::ChunkMark>,
     /// Chunks whose committed storage writes must be saved, in first-write order and in the
     /// levels written.
     pub(in crate::game) save_chunks: indexmap::IndexSet<(Dim, (i32, i32), SaveChunkScope)>,
@@ -481,9 +484,8 @@ pub(in crate::game) struct Level {
     pub(in crate::game) actions: decision::Journal,
     /// Merchant takes keep their session, mob, statistics and criterion progress together.
     pub(in crate::game) trades: super::lan_trade_decisions::Journal,
-    pub(in crate::game) packets: Option<sunrise_client::lan::conn::transaction_packets::Scope>,
-    pub(in crate::game) captured_packets:
-        Vec<sunrise_client::lan::conn::transaction_packets::Packets>,
+    pub(in crate::game) packets: Option<sunrise_sim::lan::conn::transaction_packets::Scope>,
+    pub(in crate::game) captured_packets: Vec<sunrise_sim::lan::conn::transaction_packets::Packets>,
     pub(in crate::game) action: Option<decision::ActiveAction>,
     /// A scratch slot owned by this frame, and before-images of ancestor loans it wrote.
     pub(in crate::game) owned_scratch: Option<u64>,
@@ -548,7 +550,7 @@ pub(in crate::game) struct Kept {
 
 impl Kept {
     pub(in crate::game) fn capture(
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         hoppers: &HashMap<Pos, HopperState>,
         pos: Pos,
     ) -> Self {
@@ -573,7 +575,7 @@ impl Kept {
         }
     }
 
-    pub(in crate::game) fn capture_client(world: &sunrise_client::world::World, pos: Pos) -> Self {
+    pub(in crate::game) fn capture_client(world: &sunrise_level::world::World, pos: Pos) -> Self {
         let entity = world.block_entities.get(&pos);
         Self {
             entity: entity.cloned(),
@@ -597,7 +599,7 @@ impl Kept {
 
     pub(in crate::game) fn restore_client(
         self,
-        world: &mut sunrise_client::world::World,
+        world: &mut sunrise_level::world::World,
         removed: bool,
         pos: Pos,
     ) {
@@ -707,10 +709,10 @@ pub(in crate::game) enum KeptEquipment {
 pub(in crate::game) struct KeptClick {
     pub(in crate::game) conn: u32,
     pub(in crate::game) drag: Option<(u8, Vec<usize>)>,
-    pub(in crate::game) craft: Option<sunrise_client::lan::menu::ModCraft>,
+    pub(in crate::game) craft: Option<sunrise_sim::lan::menu::ModCraft>,
     pub(in crate::game) slot_changed_seen: Option<Vec<Option<ItemStack>>>,
-    pub(in crate::game) owned: Option<(u64, Box<sunrise_client::menu::Menu>)>,
-    pub(in crate::game) machine: Option<(i32, Box<sunrise_client::menu::Menu>)>,
+    pub(in crate::game) owned: Option<(u64, Box<sunrise_sim::menu::Menu>)>,
+    pub(in crate::game) machine: Option<(i32, Box<sunrise_sim::menu::Menu>)>,
     pub(in crate::game) places: Option<super::native_menu_places::MenuSlotPlaces>,
 }
 
@@ -725,7 +727,7 @@ pub(in crate::game) enum After {
     Payload(super::payload_transport::Deferred),
     /// A mod's validated vanilla packet, bound to its physical protocol incarnation.
     Packet(
-        sunrise_client::net::PreparedPacket,
+        sunrise_sim::raw_payloads::queued_writer::PreparedPacket,
         mod_api::ServerboundPlayPacket,
     ),
     Composter(super::composter::Effects),
@@ -760,7 +762,7 @@ pub(in crate::game) enum After {
     /// Publish both the connection-local state and its packets together, never on abort.
     PersonalSidebar(
         u32,
-        Option<Box<sunrise_client::lan::scoreboard::SidebarContents>>,
+        Option<Box<sunrise_sim::lan::scoreboard::SidebarContents>>,
     ),
     /// Equipment transitions from a mount menu, with distinct sound and game event positions.
     MountEquipment {
@@ -785,7 +787,7 @@ pub(in crate::game) enum After {
     Block(BlockStep),
     /// Publish the storage and watched writes of a strict bulk edit, not ordinary updates.
     BulkBlocks(
-        sunrise_client::block_edit::BulkPublication,
+        sunrise_level::block_edit::BulkPublication,
         Vec<super::block_edits::Tracked>,
         Vec<[i32; 3]>,
         StrictBlockSteps,
@@ -795,12 +797,7 @@ pub(in crate::game) enum After {
     ConnectionGroup(Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
-    BlockGameEvent(
-        &'static str,
-        [i32; 3],
-        sunrise_client::mobs::Who,
-        BlockStateId,
-    ),
+    BlockGameEvent(&'static str, [i32; 3], sunrise_sim::mobs::Who, BlockStateId),
     /// Save, remesh and resend a changed biome column.
     Biome((i32, i32)),
     /// Deferred interaction effects, replayed in the same root-commit order.
@@ -1110,7 +1107,7 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
             frame: Some(frame),
             parent_attachment_query_scope,
             dimension: Some(self.dim),
-            packets: sunrise_client::lan::conn::transaction_packets::Scope::nested(),
+            packets: sunrise_sim::lan::conn::transaction_packets::Scope::nested(),
             lifetimes,
             ..Level::default()
         });
@@ -1358,7 +1355,7 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
                 .or_insert_with(|| super::spill::saved_entity(&self.world, [pos.0, pos.1, pos.2]));
             level
                 .save_gate
-                .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
+                .get_or_insert_with(sunrise_sim::join_seq::visibility::PassLease::enter);
         }
     }
 
@@ -1637,7 +1634,7 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
     }
     pub(in crate::game) fn journal_orb_merge(
         &mut self,
-        join: crate::join_seq::JoinSeq,
+        join: sunrise_sim::join_seq::JoinSeq,
         fields: (i32, u32, i32),
     ) {
         let dim = self.dim;
@@ -1760,7 +1757,8 @@ pub(in crate::game) mod tests {
         TransactionContext, TransactionError,
     };
     use std::{sync::Arc, time::Instant};
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
 
     #[test]
     #[ignore = "daily"]
@@ -1768,7 +1766,7 @@ pub(in crate::game) mod tests {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
         use mod_api::prelude::BlockStatesHost;
         use std::sync::{atomic::AtomicUsize, mpsc};
-        use sunrise_client::lan::{PlayerSender, conn::transaction_packets::Scope};
+        use sunrise_sim::lan::{PlayerSender, conn::transaction_packets::Scope};
 
         if run_fresh_cases(
             "game::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
@@ -1916,14 +1914,14 @@ pub(in crate::game) mod tests {
                 game.open_storage_transaction();
                 assert_eq!(
                     game.use_on_cauldron(pos).unwrap(),
-                    sunrise_client::cauldron::Outcome::Success
+                    sunrise_sim::cauldron::Outcome::Success
                 );
                 assert!(seen.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
                 assert!(seen.lock().unwrap().is_empty());
                 assert_eq!(
                     game.use_on_cauldron(pos).unwrap(),
-                    sunrise_client::cauldron::Outcome::Success
+                    sunrise_sim::cauldron::Outcome::Success
                 );
                 assert_eq!(
                     seen.lock().unwrap().as_slice(),
@@ -1937,7 +1935,7 @@ pub(in crate::game) mod tests {
                 game.open_storage_transaction();
                 assert_eq!(
                     game.use_on_cauldron(pos).unwrap(),
-                    sunrise_client::cauldron::Outcome::Success
+                    sunrise_sim::cauldron::Outcome::Success
                 );
                 assert_eq!(seen.lock().unwrap().len(), 1);
                 game.close_storage_transaction(true);
@@ -1977,7 +1975,7 @@ pub(in crate::game) mod tests {
                 setup(game);
                 assert_eq!(
                     game.use_on_cauldron(pos).unwrap(),
-                    sunrise_client::cauldron::Outcome::Success
+                    sunrise_sim::cauldron::Outcome::Success
                 );
                 assert_eq!(
                     drops.lock().unwrap().as_slice(),
@@ -1991,7 +1989,7 @@ pub(in crate::game) mod tests {
                 game.open_storage_transaction();
                 assert_eq!(
                     game.use_on_cauldron(pos).unwrap(),
-                    sunrise_client::cauldron::Outcome::Success
+                    sunrise_sim::cauldron::Outcome::Success
                 );
                 assert!(drops.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
@@ -1999,7 +1997,7 @@ pub(in crate::game) mod tests {
                 game.open_storage_transaction();
                 assert_eq!(
                     game.use_on_cauldron(pos).unwrap(),
-                    sunrise_client::cauldron::Outcome::Success
+                    sunrise_sim::cauldron::Outcome::Success
                 );
                 game.close_storage_transaction(true);
                 assert_eq!(
@@ -2238,16 +2236,16 @@ pub(in crate::game) mod tests {
             .unwrap_err();
             // Player clicks and shift-clicks use the menu's separate slot rules.
             let env = game.menu_env();
-            let mut menu = sunrise_client::menu::Menu::new(sunrise_client::menu::Kind::Chest(1));
+            let mut menu = sunrise_sim::menu::Menu::new(sunrise_sim::menu::Kind::Chest(1));
             menu.set_container_limits(vec![Some(10); 9]);
             menu.carried = Some(ItemStack::new("minecraft:stick", 20));
-            menu.click(&env, 0, 0, sunrise_client::menu::Input::Pickup)
+            menu.click(&env, 0, 0, sunrise_sim::menu::Input::Pickup)
                 .unwrap();
             assert_eq!(menu.slot(0).unwrap().count, 10);
             assert_eq!(menu.carried.as_ref().unwrap().count, 10);
             menu.carried = None;
             menu.set_slot(&env, 9, Some(ItemStack::new("minecraft:stick", 20)));
-            menu.click(&env, 9, 0, sunrise_client::menu::Input::QuickMove)
+            menu.click(&env, 9, 0, sunrise_sim::menu::Input::QuickMove)
                 .unwrap();
             assert_eq!(menu.slot(1).unwrap().count, 10);
             assert_eq!(menu.slot(2).unwrap().count, 10);
@@ -2863,9 +2861,9 @@ pub(in crate::game) mod mod_capability_tests {
     use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};
     use mod_platform::__private::part_tests::{CHEMICALS, ChemTank, Chemical};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
     use sunrise_core::nbt::{Compound, Tag};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
 
     /// Two mods sharing a capability one of them defines, as Mekanism's chemicals are shared
     /// through its API: the first's tank and the second's vat each answer `CHEMICALS`, and a
@@ -2952,8 +2950,8 @@ pub(in crate::game) mod mod_capability_tests {
     #[ignore = "daily"]
     fn entity_and_player_attachments_stay_on_commit_and_go_back_on_abort() {
         use mod_api::{AttachmentType, Holder};
-        use sunrise_client::entities::ArmorStand;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ArmorStand;
         const ENERGY: AttachmentType<i32> = AttachmentType {
             namespace: "robot",
             name: "energy",
@@ -2970,7 +2968,7 @@ pub(in crate::game) mod mod_capability_tests {
             game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
             let guest = 0x5eed_u128;
-            let config = sunrise_client::lan::hub::HubConfig {
+            let config = sunrise_sim::lan::hub::HubConfig {
                 default_game_mode: 0,
                 guest_commands: false,
                 force_game_mode: false,
@@ -2991,9 +2989,9 @@ pub(in crate::game) mod mod_capability_tests {
                     guest_commands: false,
                     force_game_mode: false,
                 },
-                sunrise_client::lan::NetConfig {
+                sunrise_sim::lan::NetConfig {
                     announce: false,
-                    ..sunrise_client::lan::NetConfig::lan(0, "test".into(), 2)
+                    ..sunrise_sim::lan::NetConfig::lan(0, "test".into(), 2)
                 },
                 config,
             )
@@ -3105,7 +3103,7 @@ pub(in crate::game) mod mod_capability_tests {
             );
             game.selected = 0;
             game.creative = false;
-            game.inventory[0] = Some(sunrise_client::items::ItemStack::new(
+            game.inventory[0] = Some(sunrise_items::items::ItemStack::new(
                 "minecraft:water_bucket",
                 1,
             ));
@@ -3114,7 +3112,7 @@ pub(in crate::game) mod mod_capability_tests {
             game.open_storage_transaction();
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
-                sunrise_client::cauldron::Outcome::Success
+                sunrise_sim::cauldron::Outcome::Success
             );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
             assert!(game.side.pending_sounds.is_empty());
@@ -3130,7 +3128,7 @@ pub(in crate::game) mod mod_capability_tests {
             game.open_storage_transaction();
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
-                sunrise_client::cauldron::Outcome::Success
+                sunrise_sim::cauldron::Outcome::Success
             );
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
@@ -3143,7 +3141,7 @@ pub(in crate::game) mod mod_capability_tests {
             assert!(game.side.pending_sounds.is_empty());
             assert_eq!(
                 game.use_on_cauldron(pos).unwrap(),
-                sunrise_client::cauldron::Outcome::Success
+                sunrise_sim::cauldron::Outcome::Success
             );
             assert_ne!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(

@@ -3,10 +3,10 @@ use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };
 use std::collections::BTreeMap;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_sim::motion::PlayerMotion;
 
 fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_FANGS_FLUID_CURRENT_WITNESS").unwrap_or_else(|| {
@@ -85,7 +85,7 @@ fn check_fangs_motion(
         "saved Motion NBT bits mismatch for {name} at tick {tick}"
     );
     assert_eq!(
-        motion_bits(sunrise_client::entity_nbt::motion(&saved)),
+        motion_bits(sunrise_sim::entity_nbt::motion(&saved)),
         want,
         "re-read motion bits mismatch for {name} at tick {tick}"
     );

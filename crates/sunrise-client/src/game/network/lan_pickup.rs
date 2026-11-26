@@ -4,8 +4,8 @@
 //! in `lan_trading.rs`.
 use super::{Game, lan_crafting::input};
 use crate::game::stacked_on_other::Pickup;
-use sunrise_client::menu::{Env, Input, Menu};
 use sunrise_protocol::packets::play;
+use sunrise_sim::menu::{Env, Input, Menu};
 
 /// The click a menu op makes: slot, button and input mode.
 pub(in crate::game) type Click = (i32, i32, Input);
@@ -62,7 +62,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         action: impl FnOnce(
             &mut Game<'_, crate::game::server_side::ServerState>,
             &mut Menu,
-            Option<&sunrise_client::menu::StackedOutcome>,
+            Option<&sunrise_sim::menu::StackedOutcome>,
         ) -> Option<R>,
     ) -> Option<R> {
         let Some((slot, button, mode)) =

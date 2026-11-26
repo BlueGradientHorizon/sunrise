@@ -2,8 +2,8 @@
 //! change they make is gated on `mayInteract`, and the move that put the fire
 //! out plays the extinguish hiss (`Entity.playEntityOnFireExtinguishedSound`).
 use super::Game;
-use sunrise_client::motion::MotionEvent;
 use sunrise_core::position::BlockPos;
+use sunrise_sim::motion::MotionEvent;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.mayInteract` for the player whose turn it is: a player
@@ -63,7 +63,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         else {
             return;
         };
-        let Ok(new) = registry.resolve(&sunrise_client::cauldron::extinguished(&old)) else {
+        let Ok(new) = registry.resolve(&sunrise_sim::cauldron::extinguished(&old)) else {
             return;
         };
         let level = |state: &sunrise_world::chunk::BlockState| {

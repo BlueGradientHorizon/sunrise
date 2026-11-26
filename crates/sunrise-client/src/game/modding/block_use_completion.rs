@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         hit: Option<&Hit>,
         original: &ItemStack,
-    ) -> sunrise_client::Result<bool> {
+    ) -> sunrise_client_core::Result<bool> {
         if let Some(hit) = hit {
             self.trigger_block("minecraft:item_used_on_block", hit.pos, original);
         }
@@ -54,7 +54,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .last_mut()
             .and_then(|(_, stack)| stack.take())
             .unwrap_or_else(|| ItemStack::new("minecraft:air", 0));
-        sunrise_client::spans::time("use_advancements", || {
+        sunrise_level::spans::time("use_advancements", || {
             self.trigger_any_block_use(pos, &stack);
         });
     }

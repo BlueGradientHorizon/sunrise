@@ -5,7 +5,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn remote_set_menu(
         &mut self,
         menu: Option<(i32, String)>,
-        title: Option<sunrise_client::text::Text>,
+        title: Option<sunrise_client_core::text::Text>,
     ) {
         let Some(r) = self.remote.as_mut() else {
             return;
@@ -45,7 +45,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         Some(self.remote.as_ref()?.menu.as_ref()?.1.as_str())
     }
     /// A server's chest-like menu (`MenuType.GENERIC_9xN`): its rows and title.
-    pub(in crate::game) fn remote_chest_menu(&self) -> Option<(usize, sunrise_client::text::Text)> {
+    pub(in crate::game) fn remote_chest_menu(
+        &self,
+    ) -> Option<(usize, sunrise_client_core::text::Text)> {
         let r = self.remote.as_ref()?;
         let rows = r
             .menu
@@ -58,7 +60,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             rows,
             r.menu_title
                 .clone()
-                .unwrap_or_else(sunrise_client::text::Text::empty),
+                .unwrap_or_else(sunrise_client_core::text::Text::empty),
         ))
     }
 }

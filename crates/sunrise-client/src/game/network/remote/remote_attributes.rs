@@ -1,8 +1,8 @@
 //! `ClientPacketListener.handleUpdateAttributes` for entity attributes that
 //! affect the client-side nameplate.
 use super::{Game, snapshot_value};
-use sunrise_client::entities::nameplate::NameplateDistances;
 use sunrise_protocol::packets::play;
+use sunrise_sim::entities::nameplate::NameplateDistances;
 use sunrise_world::attributes::entity::AttributeId;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
@@ -118,11 +118,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         };
         // A horse its rider's client moves goes at its own speed and jumps
         // its own height (`getSpeed`, `getCustomJump`).
-        if sunrise_client::mobs::equine::moved_by_rider(m.species()) {
+        if sunrise_sim::mobs::equine::moved_by_rider(m.species()) {
             if let Some(speed) = speed {
-                sunrise_client::mobs::finalize::set_base(
+                sunrise_sim::mobs::finalize::set_base(
                     m,
-                    sunrise_client::mobs::finalize::Attr::MovementSpeed,
+                    sunrise_sim::mobs::finalize::Attr::MovementSpeed,
                     speed,
                 );
             }
@@ -131,17 +131,17 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             }
         }
         if let Some(max_health) = max_health {
-            sunrise_client::mobs::finalize::set_base(
+            sunrise_sim::mobs::finalize::set_base(
                 m,
-                sunrise_client::mobs::finalize::Attr::MaxHealth,
+                sunrise_sim::mobs::finalize::Attr::MaxHealth,
                 max_health,
             );
             m.extra.max_health_dirty = true;
         }
         if let Some(armor) = armor {
-            sunrise_client::mobs::finalize::set_base(
+            sunrise_sim::mobs::finalize::set_base(
                 m,
-                sunrise_client::mobs::finalize::Attr::Armor,
+                sunrise_sim::mobs::finalize::Attr::Armor,
                 armor,
             );
         }

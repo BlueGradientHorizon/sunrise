@@ -4,13 +4,13 @@
 //! radius, while an operator does both, and a non-operator outside it does.
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::chunk::Chunk;
-use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::{
     configuration::ClientInformation,
     play::{Serverbound, UseItem},
 };
+use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
 const CONN: u32 = 2;
 const GUEST_UUID: u128 = 424;

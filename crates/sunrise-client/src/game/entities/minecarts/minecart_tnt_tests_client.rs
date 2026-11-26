@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::game::minecarts::minecart_tnt_tests::server;
 use crate::game::minecarts::minecart_tnt_tests::*;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[test]
 fn flint_and_steel_passes_on_a_tnt_cart_without_lighting_it() {

@@ -150,7 +150,7 @@ impl TryIntoApi for sunrise_client::hud_layout::GuiDraw {
             self,
             Engine,
             Api,
-            |t: &sunrise_client::text::Text| t.try_into_api()
+            |t: &sunrise_client_core::text::Text| t.try_into_api()
         ))
     }
 }
@@ -164,7 +164,7 @@ impl<C: ?Sized> TryIntoEngine<C> for mod_api::client::hud_layout::GuiDraw {
             self,
             Api,
             Engine,
-            sunrise_client_lib::api_text::to_engine
+            sunrise_sim::api_text::to_engine
         ))
     }
 }

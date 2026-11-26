@@ -7,13 +7,13 @@
 #[ignore = "daily"]
 fn update_attributes_answers_the_local_players_living_reads() {
     use crate::game::native_entity_refs::tests::with_client_game;
-    use sunrise_client::{mobs::Mob, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
         buf::Reader,
         connection::Pipe,
         packets::play::{self, Clientbound as C},
     };
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();

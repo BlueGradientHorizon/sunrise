@@ -4,7 +4,7 @@
 //! entity asked about it in a synchronous check.
 use super::*;
 use crate::game::api_values::TryIntoApi;
-use sunrise_client::mobs::equip::CanEquip;
+use sunrise_sim::mobs::equip::CanEquip;
 
 /// A stack converted once for the parts of its item, ready for any number of `can_equip`
 /// questions in a synchronous check. `DataOnly` when no part of the item listens (the component's
@@ -216,7 +216,7 @@ mod tests {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 // The player in place, admitted as a joined one is, so its handle resolves.
                 let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
-                let mut body = sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap();
+                let mut body = sunrise_sim::motion::PlayerMotion::new(game.motion, at).unwrap();
                 body.entity_id = 7;
                 game.player = Some(body);
                 game.bind_local_player_residency();
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_guests_bundle_puts_on_what_the_part_allows() {
-        use sunrise_client::bundle::Contents;
+        use sunrise_items::bundle::Contents;
         use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
         installed(|asked| {
             crate::game::native_guest_turn_tests::with_guests(|game| {
@@ -339,7 +339,7 @@ mod tests {
     #[ignore = "daily"]
     fn local_shift_click_prepares_once_and_preserves_a_refused_helmet() {
         with_cobbler(|game, asked| {
-            use sunrise_client::menu::{Input, Kind, Menu};
+            use sunrise_sim::menu::{Input, Kind, Menu};
             let lent = game.menu_can_equip();
             let mut env = game.menu_env();
             env.can_equip = Some(&lent);
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn missing_and_despawned_entities_refuse_but_no_listener_keeps_data() {
-        use sunrise_client::mobs::Mob;
+        use sunrise_sim::mobs::Mob;
         with_cobbler(|game, asked| {
             game.options.dedicated = Some(Vec::new());
             let kind = game

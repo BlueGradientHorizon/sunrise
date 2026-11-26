@@ -4,8 +4,8 @@
 //! (tools/test_clone_block_ticks_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::{BlockPos, ChunkPos};
+use sunrise_level::chunk::Chunk;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(

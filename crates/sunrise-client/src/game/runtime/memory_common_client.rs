@@ -10,7 +10,7 @@ use std::sync::{
 };
 use std::task::Poll;
 use std::thread::Builder;
-use sunrise_client::server_perf::MemoryCost;
+use sunrise_sim::server_perf::MemoryCost;
 
 impl MemoryCancellation {
     pub(in crate::game) fn cancel(&mut self) {
@@ -62,7 +62,7 @@ impl PendingMemory {
                 if cancelled.load(Ordering::Acquire) {
                     return;
                 }
-                sunrise_client::server_perf::profiler_thread();
+                sunrise_sim::server_perf::profiler_thread();
                 let completed = cost.measure(|| report(server, &cancelled));
                 if let Some(rows) = completed.filter(|_| !cancelled.load(Ordering::Acquire)) {
                     let _ = publish.send(rows);

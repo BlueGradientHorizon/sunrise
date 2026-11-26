@@ -5,14 +5,11 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{
-    gamerules,
-    lan::{Out, PlayerSender},
-    text,
-};
+use sunrise_client_core::{gamerules, text};
 use sunrise_protocol::{
     buf::Reader, ids::play::clientbound::SYSTEM_CHAT, packets::play::Clientbound,
 };
+use sunrise_sim::lan::{Out, PlayerSender};
 
 pub(in crate::game) struct FailingCommand(pub(in crate::game) Arc<AtomicUsize>);
 
@@ -279,13 +276,13 @@ fn a_failure_line_then_zero_is_a_red_line_and_a_zero_result() {
 #[test]
 #[ignore = "daily"]
 fn cart_failure_metadata_keeps_timestamp_and_literal_fragments() {
-    use sunrise_client::lan::entity::States;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
         entity_data::{Value, serializer},
         ids::play::clientbound::SET_ENTITY_DATA,
         packets::play::SetEntityData,
     };
+    use sunrise_sim::lan::entity::States;
 
     in_own_process(
         "game::native_server::command_failure_tests::cart_failure_metadata_keeps_timestamp_and_literal_fragments",

@@ -5,7 +5,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.die`: a veto skips its whole tail, without supplying revive health.
     pub(in crate::game::server_side) fn mob_death_canceled(
         &mut self,
-        mob: &sunrise_client::mobs::Mob,
+        mob: &sunrise_sim::mobs::Mob,
     ) -> bool {
         if mob.death_canceled {
             return true;

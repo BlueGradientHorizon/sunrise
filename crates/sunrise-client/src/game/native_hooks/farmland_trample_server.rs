@@ -74,8 +74,9 @@ pub(in crate::game) mod tests {
     use crate::game::native_hooks::farmland_trample::tests::LANDING_Y;
     use crate::game::native_hooks::farmland_trample::tests::Trace;
     use mod_api::*;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]
@@ -83,7 +84,7 @@ pub(in crate::game) mod tests {
         crate::game::in_own_process(
             "game::server_side::native_hooks_server::farmland_trample::tests::ordinary_moves_and_short_farmland_landings_do_not_pause",
             || {
-                use sunrise_client::{
+                use sunrise_sim::{
                     health::{DamageLevel, LentLevel},
                     mobs::{Mob, ai},
                     motion::MotionWorld,

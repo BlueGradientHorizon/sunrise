@@ -5,7 +5,7 @@ use crate::game::{
     native_projectiles::impact_probe::{Action, with_probe},
 };
 use std::sync::atomic::Ordering;
-use sunrise_client::mobs::Mob;
+use sunrise_sim::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]

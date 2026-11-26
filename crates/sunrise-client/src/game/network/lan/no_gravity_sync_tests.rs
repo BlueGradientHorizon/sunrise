@@ -3,10 +3,11 @@
 //! `isNoGravity`. A host sent it only for falling blocks (#5028): a dropped item or a mob with
 //! the flag fell on its clients until the next position sync.
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::lan::entity::States;
-use sunrise_client::{entities::ItemEntity, items::ItemStack, mobs::Mob};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::entity_data::{Value, serializer};
+use sunrise_sim::lan::entity::States;
+use sunrise_sim::{entities::ItemEntity, mobs::Mob};
 
 /// What the host's tracking pass holds for `id` at 5: the value it sends, and whether false
 /// is its default (so a flag taken away goes out too).

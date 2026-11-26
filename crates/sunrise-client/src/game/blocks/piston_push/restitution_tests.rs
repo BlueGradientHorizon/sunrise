@@ -8,8 +8,9 @@ use mod_api::{
     Registrar, RegistrationContext,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, mobs::Mob};
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound};
+use sunrise_sim::mobs::Mob;
 
 #[derive(Clone, Default)]
 struct PushBounce {
@@ -111,7 +112,7 @@ fn a_bounce_listener_can_remove_a_later_lid_target() {
                         Vec3::new(9.125, 64.25, 3.95),
                     ));
                     let area = Aabb::new(Vec3::new(3.0, 64.5, 4.5), Vec3::new(12.0, 65.0, 6.0));
-                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                    sunrise_sim::block_contact::in_level(game.tick, Some(game.dim.id()), || {
                         game.lid_push(Lid::Box, area, Vec3::new(-0.5, -0.5, 0.0));
                     });
                     // Discard retires the handle synchronously; the tick sweep owns
@@ -165,7 +166,7 @@ fn a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat() {
                         .iter()
                         .position(|d| *d == Direction::Down)
                         .unwrap() as u8;
-                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                    sunrise_sim::block_contact::in_level(game.tick, Some(game.dim.id()), || {
                         game.push_shulker_local(vec![(
                             [4, 65, 4],
                             facing,

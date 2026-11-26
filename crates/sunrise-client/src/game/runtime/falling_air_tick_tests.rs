@@ -1,8 +1,8 @@
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]

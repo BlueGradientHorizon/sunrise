@@ -2,11 +2,11 @@
 //! `Raid.updatePlayers` refreshes on the 20-tick beats: walking out of the
 //! raid keeps the red bar until the next beat.
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
 
 fn raid_bars(game: &crate::game::ServerGame<'_>) -> usize {
-    game.raid_bars_at(sunrise_client::lan::playerdata::ints_uuid([0, 0, 0, 1]))
+    game.raid_bars_at(sunrise_sim::lan::playerdata::ints_uuid([0, 0, 0, 1]))
         .len()
 }
 
@@ -41,7 +41,7 @@ fn the_raid_bar_keeps_a_viewer_until_the_next_twenty_tick_beat() {
         .get("minecraft:villager")
         .unwrap()
         .clone();
-    let mut villager = sunrise_client::mobs::Mob::new(162, kind, Vec3::new(3.5, 200.0, 2.5), 0.0);
+    let mut villager = sunrise_sim::mobs::Mob::new(162, kind, Vec3::new(3.5, 200.0, 2.5), 0.0);
     villager.no_ai = true;
     villager.extra.bed = Some([2, 200, 1]);
     game.mobs.push(villager);

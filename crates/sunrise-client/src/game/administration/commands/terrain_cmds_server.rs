@@ -2,11 +2,12 @@ use super::{Arg, Context, Game, R, Target, err, items::Owner};
 use crate::game::commands::terrain_cmds::holder;
 use crate::game::commands::terrain_cmds::loot_location_block;
 use crate::game::commands::terrain_cmds::num;
-use sunrise_client::{
-    command::CommandError, items::ItemStack, scoreboard_cmd::Tracker, text::Text,
-};
+use sunrise_client_core::text::Text;
+use sunrise_command::CommandError;
 #[allow(unused_imports)]
 use sunrise_core::{position::ChunkPos, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::scoreboard_cmd::Tracker;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `LootCommand.dropBlockLoot`: copy the actual block entity's components
@@ -23,7 +24,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if table.starts_with('{') {
                     let (tag, _) = sunrise_core::nbt::parse_snbt(&table)
                         .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-                    let json = sunrise_client::scoreboard::tag_to_json(&tag);
+                    let json = sunrise_client_core::scoreboard::tag_to_json(&tag);
                     sunrise_world::loot::validate_loot_table(&json)
                         .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
                     // LootCommand's omitted fishing tool is EMPTY, not mainhand.
@@ -161,7 +162,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 // The hook may borrow the live level mutably. Keep a read-only
                 // view of the location for this roll rather than borrow Game.
-                let mut chunks = sunrise_client::chunk_map::ChunkMap::default();
+                let mut chunks = sunrise_level::chunk_map::ChunkMap::default();
                 for (&key, chunk) in self.world.chunks.iter() {
                     chunks.insert(key, chunk.clone());
                 }
@@ -173,7 +174,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let location = |condition: &serde_json::Value| {
                     loot_location_block(condition, p, &chunks, registry, &items)
                 };
-                let roll = sunrise_client::items::BlockLootRoll {
+                let roll = sunrise_items::items::BlockLootRoll {
                     held: tool.as_ref(),
                     keep_empty,
                     location: Some(&location),
@@ -378,9 +379,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let (damage, extra) = match p
                 .components
                 .as_deref()
-                .map(sunrise_client::item_data::command_components)
+                .map(sunrise_items::item_data::command_components)
             {
-                Some(Ok(tag)) => sunrise_client::item_data::decode_components(Some(&tag)),
+                Some(Ok(tag)) => sunrise_items::item_data::decode_components(Some(&tag)),
                 Some(Err(e)) => return Err(CommandError::new(Text::literal(e))),
                 None => (0, None),
             };
@@ -414,8 +415,8 @@ pub(in crate::game) mod loot_mine_component_tests {
     use crate::game::commands::terrain_cmds::loot_mine_component_tests::slot;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::nbt::Tag;
+    use sunrise_level::chunk::Chunk;
 
     #[test]
     #[ignore = "daily"]
@@ -538,7 +539,7 @@ pub(in crate::game) mod loot_mine_location_tests {
     use super::*;
     use crate::game::commands::terrain_cmds::loot_mine_location_tests::TABLE;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
     #[test]
     #[ignore = "daily"]

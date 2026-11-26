@@ -5,7 +5,7 @@ use super::{
     Game, commands::Target, mounts::steering_item, remote::Remote, remote_vehicles::passenger_root,
 };
 use mod_api::{EntityRef, LeashHolder, LivingRef, StartRidingRefusal};
-use sunrise_client::{
+use sunrise_sim::{
     lan::playerdata::ints_uuid,
     mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
 };
@@ -190,7 +190,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let rider = self.mobs.iter().find(|m| m.id == first.id())?;
                 let tagged = self.items().entity_type_tags.has_bit(
                     rider.kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::NON_CONTROLLING_RIDER,
+                    sunrise_items::items::EntityTypeTags::NON_CONTROLLING_RIDER,
                 );
                 (!mob.no_ai && !tagged).then(|| LivingRef::new(first))
             }
@@ -476,7 +476,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.trigger_player("minecraft:started_riding");
             }
             Target::Mob(id) => {
-                sunrise_client::mobs::riders::link(&mut self.mobs, id, vehicle_id);
+                sunrise_sim::mobs::riders::link(&mut self.mobs, id, vehicle_id);
                 self.seat_mob(id);
                 self.break_leash(id, true, false);
             }
@@ -580,8 +580,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         m.extra.boarding_cooldown > 0
                             || matches!(
                                 m.species(),
-                                sunrise_client::mobs::Species::Warden
-                                    | sunrise_client::mobs::Species::Wither
+                                sunrise_sim::mobs::Species::Warden
+                                    | sunrise_sim::mobs::Species::Wither
                             )
                     }) =>
                 {
@@ -634,7 +634,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .count()
                     .max(usize::from(mob.rider.is_some()));
                 let passengers = players + seats.iter().filter(|(_, _, player)| !*player).count();
-                if !force && !sunrise_client::mobs::riders::can_add_passenger(mob, passengers) {
+                if !force && !sunrise_sim::mobs::riders::can_add_passenger(mob, passengers) {
                     return Err(R::Full);
                 }
             }
@@ -894,9 +894,9 @@ pub(in crate::game) mod tests {
         StartRidingRefusal,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::Mob;
 
     pub(in crate::game) struct MountObserver(pub(in crate::game) Arc<Mutex<Vec<bool>>>);
     #[mod_api::__subscriptions]
@@ -946,7 +946,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn generic_seat_mount_payloads_cancellation_and_capacity() {
         use std::sync::atomic::{AtomicBool, Ordering};
-        use sunrise_client::entities::ArmorStand;
+        use sunrise_sim::entities::ArmorStand;
 
         let events = Arc::new(Mutex::new(Vec::new()));
         let cancel = Arc::new(AtomicBool::new(false));
@@ -1195,7 +1195,7 @@ pub(in crate::game) mod tests {
             assert!(game.start_riding_target(Target::Mob(73), Target::Mob(70), false));
             assert!(game.start_riding_target(Target::Mob(74), Target::Mob(70), false));
             assert!(!game.start_riding_target(Target::Mob(75), Target::Mob(70), false));
-            let mut riding = sunrise_client::lan::entity::Riding::default();
+            let mut riding = sunrise_sim::lan::entity::Riding::default();
             game.lan_riding(&[(70, player_id)], &mut riding);
             assert_eq!(riding.passengers(70), &[player_id, 73, 74]);
             // Force bypasses mob capacity, without losing any existing passenger.
@@ -1249,7 +1249,7 @@ pub(in crate::game) mod tests {
             boats::Boat,
             minecarts::{CartKind, Minecart},
         };
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.yaw = 10.0;
@@ -1515,7 +1515,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_player_boards_ahead_of_a_mob_and_behind_a_player_as_add_passenger_says() {
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             lay_floor(game);
             let at = Vec3::new(0.5, 64.0, 0.5);
@@ -1561,7 +1561,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn the_first_passenger_controls_only_what_it_can_steer() {
         use super::super::boats::Boat;
-        use sunrise_client::items::ItemStack;
+        use sunrise_items::items::ItemStack;
         super::super::native_entity_refs::tests::with_game(|game| {
             let ravager = add_mob(game, 90, "minecraft:ravager", Vec3::ZERO);
             let zombie = add_mob(game, 91, "minecraft:zombie", Vec3::ZERO);
@@ -1667,8 +1667,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn entity_drops_gates_a_dying_mobs_lead_in_the_tick_not_in_detach() {
-        use sunrise_client::{
-            gamerules::Value,
+        use sunrise_client_core::gamerules::Value;
+        use sunrise_sim::{
             mobs::{MobEvent, leash::Holder},
             motion::PlayerMotion,
         };
@@ -1797,7 +1797,7 @@ pub(in crate::game) mod tests {
             boats::Boat,
             minecarts::{CartKind, Minecart},
         };
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             lay_floor(game);
             let at = Vec3::new(0.5, 64.0, 0.5);
@@ -1840,7 +1840,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_player_gets_off_along_their_own_yaw_on_their_turn_or_not() {
         use super::super::boats::Boat;
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             lay_floor(game);
             let at = Vec3::new(0.5, 64.0, 0.5);
@@ -1929,7 +1929,7 @@ pub(in crate::game) mod tests {
     fn leash_writes_change_the_holder_and_tell_the_mods() {
         use super::super::boats::Boat;
         use mod_api::LeashHolder;
-        use sunrise_client::{mobs::leash::Pending, motion::PlayerMotion};
+        use sunrise_sim::{mobs::leash::Pending, motion::PlayerMotion};
         let unleashed = Arc::new(Mutex::new(0));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "unleash_observer",

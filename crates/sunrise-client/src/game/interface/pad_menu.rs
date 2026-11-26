@@ -23,7 +23,6 @@ use super::{
 use std::time::Instant;
 use sunrise_client::actions::Action;
 use sunrise_client::{
-    Result,
     creative::Creative,
     gamepad::{self, Button, Rect},
     hud::HudBatch,
@@ -33,6 +32,7 @@ use sunrise_client::{
     widgets::{self, Kind, Target},
     window::PointerSample,
 };
+use sunrise_client_core::Result;
 use sunrise_client_input::snap;
 use winit::{
     event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
@@ -1026,8 +1026,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // either on a furnace's book, change the category as they go down.
             Button::LeftTrigger
                 if self.pad_recipe_book_showing()
-                    && self.active_book()
-                        == Some(sunrise_client::recipe_book::BookType::Crafting) =>
+                    && self.active_book() == Some(sunrise_sim::recipe_book::BookType::Crafting) =>
             {
                 self.side.pad.0.menu.trigger = Some(HeldTrigger { pressed_a: false });
             }

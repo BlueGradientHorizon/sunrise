@@ -9,9 +9,9 @@ use sunrise_core::{
     random::RandomSource,
 };
 use {
-    sunrise_client::collisions::SceneCollisions, sunrise_client::entity_nbt::RocketNbt,
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Who,
-    sunrise_items::firework::FireworkExplosion,
+    sunrise_items::firework::FireworkExplosion, sunrise_items::items::ItemStack,
+    sunrise_level::collisions::SceneCollisions, sunrise_sim::entity_nbt::RocketNbt,
+    sunrise_sim::mobs::Who,
 };
 
 pub(in crate::game) const FIREWORK_EXPLODE_EVENT: i8 = 17;
@@ -26,7 +26,7 @@ pub(in crate::game) struct Rocket {
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
     /// a client.
     pub id: u32,
@@ -78,7 +78,7 @@ pub(in crate::game) struct Rocket {
     pub(in crate::game) first_tick: bool,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 impl Rocket {
     /// A rocket a server sent (`handleAddEntity`): placed and moved by it.
@@ -106,7 +106,7 @@ impl Rocket {
             attached_to: None,
             angled: false,
             item: item.into(),
-            random: sunrise_client::projectiles::unique_random(position),
+            random: sunrise_sim::projectiles::unique_random(position),
             ground: Default::default(),
             // The server posts the shot.
             has_been_shot: true,
@@ -134,10 +134,10 @@ impl Rocket {
         uuid: [i32; 4],
         player: Option<[i32; 4]>,
         raw: Option<&sunrise_core::nbt::Tag>,
-        items: &crate::items::Items,
+        items: &sunrise_items::items::Items,
     ) -> sunrise_core::nbt::Tag {
-        sunrise_client::entity_nbt::firework_rocket_to_nbt(
-            &sunrise_client::entity_nbt::RocketSave {
+        sunrise_sim::entity_nbt::firework_rocket_to_nbt(
+            &sunrise_sim::entity_nbt::RocketSave {
                 rotation: self.rotation,
                 position: self.position,
                 motion: self.velocity,
@@ -187,7 +187,7 @@ impl Rocket {
             attached_to: None,
             angled: r.angled,
             item: item.into(),
-            random: sunrise_client::projectiles::unique_random(r.position),
+            random: sunrise_sim::projectiles::unique_random(r.position),
             ground: sunrise_world::ground_support::GroundState::from_ground_flag(r.on_ground),
             has_been_shot: r.has_been_shot,
             silent: r.silent,
@@ -220,7 +220,7 @@ impl Rocket {
     /// One tick of a server's client: the rocket flies on by itself between
     /// the server's updates (a rocket that follows an entity is placed by the
     /// caller).
-    pub(in crate::game) fn remote_step(&mut self, motion: sunrise_client::motion::BodyMotion<'_>) {
+    pub(in crate::game) fn remote_step(&mut self, motion: sunrise_sim::motion::BodyMotion<'_>) {
         self.previous = self.position;
         if self.attached_to.is_none() {
             let mut scene = SceneCollisions {
@@ -285,7 +285,7 @@ impl Rocket {
     /// `EntityType.FIREWORK_ROCKET`: 0.25 x 0.25.
     pub(in crate::game) fn bounds(&self) -> Aabb {
         let vanilla = Self::bounds_at(self.position);
-        sunrise_client::pose::SizeAnswer::sized_box(
+        sunrise_sim::pose::SizeAnswer::sized_box(
             self.size_answer,
             Self::DIMENSIONS,
             self.position,
@@ -323,7 +323,7 @@ impl Rocket {
             self.velocity = Vec3::ZERO;
         }
         let from = self.position;
-        let mut gate = sunrise_client::move_gate::armed(
+        let mut gate = sunrise_sim::move_gate::armed(
             context,
             self.id,
             "minecraft:firework_rocket",
@@ -332,7 +332,7 @@ impl Rocket {
         );
         let wanted = gate.delta();
         let Ok(moved) =
-            sunrise_client::move_gate::scene_resolve(&mut gate, scene, bounds, wanted, 0.0, false)
+            sunrise_sim::move_gate::scene_resolve(&mut gate, scene, bounds, wanted, 0.0, false)
         else {
             return None;
         };
@@ -346,24 +346,24 @@ impl Rocket {
 
     pub(in crate::game) fn flight_contact(
         &mut self,
-        motion: sunrise_client::motion::BodyMotion<'_>,
+        motion: sunrise_sim::motion::BodyMotion<'_>,
         wanted: Vec3,
         moved: Vec3,
-    ) -> sunrise_client::motion::BodyMove {
+    ) -> sunrise_sim::motion::BodyMove {
         let authoritative =
             motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
         motion.record_move(
-            sunrise_client::motion::BodyCollision {
+            sunrise_sim::motion::BodyCollision {
                 footprint: (self.position, self.bounds()),
                 movement: (wanted, moved),
                 authoritative,
-                context: sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+                context: sunrise_sim::motion::BodyMotion::entity_context(self.id, self.position),
                 subject: None,
             },
             &mut self.ground,
         );
         let effect = motion.legacy_contact(self.position, &self.ground);
-        sunrise_client::motion::BodyMove {
+        sunrise_sim::motion::BodyMove {
             wanted,
             moved,
             effect,
@@ -489,7 +489,7 @@ pub(in crate::game) mod tests {
             (1, 3, 46),
         ] {
             let mut own = LegacyRandom::new(seed);
-            sunrise_client::save::insecure_uuid(&mut own);
+            sunrise_sim::save::insecure_uuid(&mut own);
             assert_eq!(
                 super::rocket_draws(&mut own, flight).1,
                 lifetime,
@@ -513,8 +513,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_gliding_firework_drops_leads_and_plays_lead_break() {
         use crate::game::{Options, Progress, Settings, load_resources};
-        use sunrise_client::mobs::{Mob, leash::Holder};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{Mob, leash::Holder};
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -539,7 +539,7 @@ pub(in crate::game) mod tests {
             crate::game::ServerGame::new(&res, loaded.pack, options, settings.sim_settings(), None)
                 .unwrap();
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, -3.25))
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, -3.25))
                 .unwrap(),
         );
         let feet = {
@@ -605,8 +605,7 @@ pub(in crate::game) mod tests {
         );
         assert_eq!(snap.source, 6, "SoundSource.NEUTRAL");
         assert_eq!(snap.except_entity, None, "vanilla excludes no player");
-        let (packet, range) =
-            sunrise_client::lan::containers::captured_sound_packet(snap, None, 42);
+        let (packet, range) = sunrise_sim::lan::containers::captured_sound_packet(snap, None, 42);
         let sunrise_protocol::packets::play::Clientbound::SoundEntity(packet) = packet else {
             panic!("a firework lead snap must use the entity-bound packet");
         };
@@ -618,5 +617,5 @@ pub(in crate::game) mod tests {
 #[path = "fireworks/hit_attempt_tests.rs"]
 pub(in crate::game) mod hit_attempt_tests;
 
-sunrise_client::impl_joined!(Rocket);
+sunrise_sim::impl_joined!(Rocket);
 sunrise_mod_runtime::impl_attachment_lifetime!(Rocket);

@@ -5,7 +5,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn save_guest_advancements(
         &self,
         host: &LanHost,
-        guest: &sunrise_client::lan::guest::Guest,
+        guest: &sunrise_sim::lan::guest::Guest,
     ) {
         if !guest.joined()
             || self.side.crash_save.excludes(guest.conn)
@@ -23,14 +23,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .advancements
             .to_json(&self.adv.tree, sunrise_world::DATA_VERSION);
         if let Ok(text) = serde_json::to_string_pretty(&json) {
-            let _ = sunrise_client::save::write_durable(&path, text.as_bytes());
+            let _ = sunrise_sim::save::write_durable(&path, text.as_bytes());
         }
     }
     /// `PlayerAdvancements.save` and `ServerStatsCounter.save` of a network player.
     pub(in crate::game::server_side) fn save_guest_records(
         &self,
         host: &LanHost,
-        guest: &sunrise_client::lan::guest::Guest,
+        guest: &sunrise_sim::lan::guest::Guest,
     ) {
         if !guest.joined()
             || self.side.crash_save.excludes(guest.conn)

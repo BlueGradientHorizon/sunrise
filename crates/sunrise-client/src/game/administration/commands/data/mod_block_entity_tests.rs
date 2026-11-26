@@ -3,13 +3,13 @@
 use super::*;
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::{path::PathBuf, sync::Arc};
-use sunrise_client::{
+use sunrise_level::{
     chunk::Chunk,
     containers::{ModBlockEntity, ModRevision},
-    mod_content::{ContentMod, build},
     world::World,
 };
 use sunrise_mod_package::content::{Block, Content};
+use sunrise_sim::mod_content::{ContentMod, build};
 
 const KEY: (i32, i32, i32) = (2, 64, 2);
 const POS: [i32; 3] = [2, 64, 2];
@@ -116,12 +116,12 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         // Normal mod startup freezes canonical membership before loading resources.
         // This fixture bypasses that startup, but saved-data commands still validate
         // the entity against the block before loading its fields in place.
-        let mut types = sunrise_client::block_entity_types::BlockEntityTypes::new(
+        let mut types = sunrise_client_core::block_entity_types::BlockEntityTypes::new(
             [(BLOCK.to_owned(), ENTITY.to_owned())].into(),
             vec![ENTITY.to_owned(), "fixture:replacement".to_owned()],
         );
         types.add_valid(BLOCK, "fixture:replacement").unwrap();
-        sunrise_client::block_entity_types::install(types).unwrap();
+        sunrise_client_core::block_entity_types::install(types).unwrap();
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),

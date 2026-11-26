@@ -23,7 +23,7 @@ fn assert_preset_unavailable(game: &crate::game::ServerGame<'_>, data: &Generato
 #[test]
 #[ignore = "daily"]
 fn world_preset_availability_does_not_depend_on_shared_generator_history() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     with_game(|game| {
         let mut request = super::world_loading::WorldRequest::new(
@@ -32,7 +32,7 @@ fn world_preset_availability_does_not_depend_on_shared_generator_history() {
             Some(1),
             true,
             None,
-            Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         )
         .unwrap();
         request.save_root = scratch.path().to_owned();

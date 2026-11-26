@@ -58,8 +58,8 @@ fn block_entity_data_received_after_merge() {
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        sunrise_client::block_entity_types::install(
-            sunrise_client::block_entity_types::BlockEntityTypes::new(
+        sunrise_client_core::block_entity_types::install(
+            sunrise_client_core::block_entity_types::BlockEntityTypes::new(
                 [
                     ("minecraft:stone".into(), "notice:counter".into()),
                     ("minecraft:dirt".into(), "notice:silent".into()),
@@ -91,7 +91,7 @@ fn block_entity_data_received_after_merge() {
                 .registry
                 .default_state("minecraft:stone")
                 .unwrap();
-            let mut column = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut column = sunrise_level::chunk::Chunk::empty(0, 0);
             column.set(1, 64, 1, stone.0);
             column.set(3, 64, 3, stone.0);
             let tag = |n| Tag::Compound([("count".into(), Tag::Int(n))].into());
@@ -209,7 +209,7 @@ fn block_entity_data_received_after_merge() {
                 ]
                 .into(),
             );
-            let (_, chest) = sunrise_client::save::decode_block_entity(&vanilla).unwrap();
+            let (_, chest) = sunrise_sim::save::decode_block_entity(&vanilla).unwrap();
             game.world.block_entities.insert((4, 64, 4), chest);
             game.remote_block_entity_data([4, 64, 4], 2, UpdatePacket, &tag(13));
             assert_eq!(

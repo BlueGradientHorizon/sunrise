@@ -170,7 +170,7 @@ pub(in crate::game) fn target_bounds(
         TrackedTarget::ExplicitKnot(id) => {
             let o = game.side.others.0.iter().find(|o| o.id == id).unwrap();
             let b = sunrise_core::position::BlockPos::containing(o.position);
-            let k = sunrise_client::mobs::leash::knot_state([b.x, b.y, b.z]);
+            let k = sunrise_sim::mobs::leash::knot_state([b.x, b.y, b.z]);
             let half = k.width / 2.0;
             Aabb::new(
                 Vec3::new(k.position.x - half, k.position.y, k.position.z - half),

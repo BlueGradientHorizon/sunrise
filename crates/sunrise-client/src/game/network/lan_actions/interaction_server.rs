@@ -35,10 +35,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             g.position[2],
         ];
         let (yaw, pitch) = (g.yaw, g.pitch);
-        let mut r = sunrise_client::random_source::entity(); // the guest's Entity.random
+        let mut r = sunrise_level::random_source::entity(); // the guest's Entity.random
         // Emit toss/join directly without opening a guest turn so listeners may remove guests.
         for stack in stacks {
-            let v = sunrise_client::entities::drop_motion(&mut r, yaw, pitch, false);
+            let v = sunrise_sim::entities::drop_motion(&mut r, yaw, pitch, false);
             self.push_item_entity(stack, eye, Some(v), 40, None);
             let id = self.side.next_entity;
             if mod_api::__private::listened(mod_api::HookId::ItemToss)
@@ -229,7 +229,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 if matches!(
                     g.creatures.projectiles[i].kind,
-                    sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
+                    sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
                 ) {
                     g.hit_shulker_bullet(i);
                 } else {
@@ -474,7 +474,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Some(b);
         }
         if let Some(knot) = self.knot_at_id(id) {
-            let knot = sunrise_client::mobs::leash::knot_state(knot);
+            let knot = sunrise_sim::mobs::leash::knot_state(knot);
             let p = knot.position;
             let half = knot.width / 2.0;
             return Some(Aabb::new(
@@ -542,7 +542,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let (spectator, spawn_egg) = (g.spectator(), held.item.ends_with("_spawn_egg"));
         if let Some((yaw, pitch)) = rotation {
-            use sunrise_client::lan::hub::wrap_degrees;
+            use sunrise_sim::lan::hub::wrap_degrees;
             let (yaw, pitch) = (wrap_degrees(yaw), wrap_degrees(pitch));
             if yaw != g.yaw || pitch != g.pitch {
                 self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
@@ -640,7 +640,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 hit.pos[1],
                 hit.pos[2]
             );
-            self.lan_log_event(sunrise_client::lan::hub::HostEvent::Warn(line));
+            self.lan_log_event(sunrise_sim::lan::hub::HostEvent::Warn(line));
             return Err(ActionRefused::OutOfReach);
         }
         let spectator = self

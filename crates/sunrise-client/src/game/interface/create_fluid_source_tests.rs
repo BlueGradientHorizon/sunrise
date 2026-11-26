@@ -28,7 +28,7 @@ fn a_mod_keeps_one_source_from_counting() {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();

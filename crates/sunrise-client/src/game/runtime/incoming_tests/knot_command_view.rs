@@ -5,11 +5,9 @@
 //! commands whether or not anyone observes it.
 use super::*;
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    mobs::leash::{Holder, Pending, knot_state},
-};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::leash::{Holder, Pending, knot_state};
 
 const PIG: &str = "0000609a-0000-0000-0000-000000000001";
 const EXPLICIT: &str = "0000609a-0000-0000-0000-000000000002";
@@ -68,7 +66,7 @@ fn game<'a>(
 }
 
 fn pig(game: &mut crate::game::ServerGame<'_>) -> usize {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(PIG).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(PIG).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }

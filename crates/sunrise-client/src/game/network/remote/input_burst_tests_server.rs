@@ -10,7 +10,7 @@ use winit::keyboard::KeyCode;
 #[ignore = "daily"]
 fn a_large_burst_is_not_capped_at_1024() {
     with_pressing_game(|game, packets, triggered| {
-        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_local_mode(sunrise_command::args::GameMode::Creative);
         game.set_test_forced_hit(None);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 64));
         let attack = game.vanilla_key_mapping("key.attack").unwrap();
@@ -44,7 +44,7 @@ fn a_large_burst_is_not_capped_at_1024() {
 #[ignore = "daily"]
 fn a_mods_burst_drains_all_clicks_in_one_tick() {
     with_pressing_game(|game, packets, triggered| {
-        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_local_mode(sunrise_command::args::GameMode::Creative);
         game.set_test_forced_hit(None);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 64));
         let attack = game.vanilla_key_mapping("key.attack").unwrap();
@@ -80,7 +80,7 @@ fn a_mods_burst_drains_all_clicks_in_one_tick() {
 #[ignore = "daily"]
 fn a_players_burst_acts_on_the_next_tick_in_handle_keybinds_order() {
     with_pressing_game(|game, packets, _| {
-        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_local_mode(sunrise_command::args::GameMode::Creative);
         game.set_test_forced_hit(None);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 64));
         game.key_pressed(KeyCode::Digit2, KeyCode::Digit2).unwrap();

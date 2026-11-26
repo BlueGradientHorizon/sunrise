@@ -32,9 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ["back", "left", "right", "front"].map(|side| match sherds.and_then(|s| s.get(side)) {
                 // An item id, or the item stack the processed templates hold.
                 Some(Tag::String(id)) => Some(id.to_string_lossy()),
-                Some(stack) => {
-                    sunrise_client::save::item_from_nbt(stack).map(|s| s.item.to_string())
-                }
+                Some(stack) => sunrise_sim::save::item_from_nbt(stack).map(|s| s.item.to_string()),
                 None => None,
             })
         } else {

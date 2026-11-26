@@ -9,8 +9,8 @@
 //! already tracks it. Otherwise it is described in full, so a pairing always sends the entity
 //! as it is.
 
-use sunrise_client::fast_hash::FxHashMap;
-use sunrise_client::lan::{hub::Hub, tracking};
+use sunrise_level::fast_hash::FxHashMap;
+use sunrise_sim::lan::{hub::Hub, tracking};
 
 /// Per level, the idle entities the last pass noted (`Kept`).
 #[derive(Default)]

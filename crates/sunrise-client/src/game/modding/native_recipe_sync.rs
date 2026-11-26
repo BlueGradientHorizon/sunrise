@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             g.uuid,
         );
         let requested = self.ask_for(player);
-        let types = crate::crafting::mod_kinds::sync_recipe_types(&requested);
+        let types = sunrise_sim::crafting::mod_kinds::sync_recipe_types(&requested);
         // Use the published generation: a failed reload must not leak candidate files.
         let sources = if sunrise {
             self.recipes().recipe_content(&types)

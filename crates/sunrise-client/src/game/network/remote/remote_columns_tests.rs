@@ -1,5 +1,5 @@
 use crate::game::native_entity_refs::tests::with_client_game;
-use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
 #[test]
 #[ignore = "daily"]
@@ -90,7 +90,7 @@ fn streaming_adoption_and_resend_stay_resident_until_the_forget() {
 fn a_forget_packet_keeps_published_light_beside_a_loaded_column() {
     use sunrise_protocol::packets::play::{Clientbound, ForgetLevelChunk};
     with_client_game(|game| {
-        use sunrise_client::chunk::SECTIONS;
+        use sunrise_level::chunk::SECTIONS;
         for x in 0..2 {
             let mut chunk = Chunk::empty(x, 0);
             chunk.set(0, 0, 0, 1);
@@ -98,7 +98,7 @@ fn a_forget_packet_keeps_published_light_beside_a_loaded_column() {
             chunk.add_light_support(s);
             let mut layers = vec![(None, None); SECTIONS + 2];
             layers[s + 1] = (Some(vec![0x66; 2048]), Some(vec![0x99; 2048]));
-            sunrise_client::light::light_from_layers(&mut chunk, &layers, true);
+            sunrise_level::light::light_from_layers(&mut chunk, &layers, true);
             game.side.streaming.insert_remote(&mut game.world, chunk);
         }
         game.apply_packet(Clientbound::ForgetLevelChunk(ForgetLevelChunk {

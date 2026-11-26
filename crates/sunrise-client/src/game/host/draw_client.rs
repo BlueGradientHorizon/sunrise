@@ -106,7 +106,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         glowing: bool,
         outline: Option<u32>,
     ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = sunrise_client_lib::api_text::to_engine(text)?;
+        let text = sunrise_sim::api_text::to_engine(text)?;
         Ok(self
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
@@ -120,7 +120,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_terrain_model(&mut *self.surface, model, options)
     }
     fn text_width(&self, text: &Text) -> f32 {
-        let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
+        let text = sunrise_sim::api_text::to_engine_inprocess(text);
         self.game.native_draw_text_width(&*self.surface, &text)
     }
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
@@ -176,11 +176,11 @@ impl TooltipFont for EngineTooltipFont<'_> {
         9
     }
     fn width(&self, text: &Text) -> Result<i32, TextFormError> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
+        let text: sunrise_client_core::text::Text = text.try_into_engine(&())?;
         Ok(self.font.width_text_with_font(&text, self.name()) as i32)
     }
     fn split(&self, text: &Text, max_width: i32) -> Result<Vec<Text>, TextFormError> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
+        let text: sunrise_client_core::text::Text = text.try_into_engine(&())?;
         self.font
             .split_formatted_with_font(&text, max_width as f32, self.name())
             .into_iter()

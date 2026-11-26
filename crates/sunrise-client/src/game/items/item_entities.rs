@@ -9,7 +9,7 @@ use crate::game::collision_source::Mover;
 /// launches. The draw is made either way, so the item's random stays where vanilla's would be.
 pub(in crate::game) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f32 {
     let drawn = if still {
-        sunrise_client::mobs::entity_random(0, position).next_float()
+        sunrise_sim::mobs::entity_random(0, position).next_float()
     } else {
         drawn
     };
@@ -19,7 +19,7 @@ pub(in crate::game) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f3
 /// The items `give_items_back` takes again, where the item the loop was at now is (none once it
 /// is gone), and the index the loop goes on from.
 pub(in crate::game) struct GivenBack {
-    pub(in crate::game) items: sunrise_client::join_seq::JoinList<ItemEntity>,
+    pub(in crate::game) items: sunrise_sim::join_seq::JoinList<ItemEntity>,
     pub(in crate::game) at: Option<usize>,
     pub(in crate::game) next: usize,
 }
@@ -42,13 +42,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
         let mut removed = vec![false; items.len()];
-        let mut cells = sunrise_client::entities::ItemCells::new(&items);
+        let mut cells = sunrise_sim::entities::ItemCells::new(&items);
         // A LAN or server guest only shows the host's items.
         let merging = self.is_logical_server();
         // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
         let void = f64::from(self.world.shape.min_y - 64);
         let mut obstacles =
-            sunrise_client::entities::ObstacleGrid::new(self.entity_collisions(Mover::Passive));
+            sunrise_sim::entities::ObstacleGrid::new(self.entity_collisions(Mover::Passive));
         let mut nearby = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut moves = ahead::Moves::work_out(self, &items, &obstacles, round, |item| {
@@ -153,9 +153,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Entity.doWaterSplashEffect: the server plays the sound (broadcast
                 // to clients). Its addParticle is empty.
                 for splash in entered {
-                    if let sunrise_client::entities::ItemSplash::Sound { at, volume, pitch } =
-                        splash
-                    {
+                    if let sunrise_sim::entities::ItemSplash::Sound { at, volume, pitch } = splash {
                         self.server_play_sound(
                             "minecraft:entity.generic.splash",
                             at,
@@ -200,7 +198,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Entity.handleOnAboveBubbleColumn: the server sends the particles of
                 // the surface of a bubble column the item is at the top of.
                 if merging {
-                    bubble_tops.extend(sunrise_client::motion::bubble_column_surfaces(
+                    bubble_tops.extend(sunrise_sim::motion::bubble_column_surfaces(
                         &self.world,
                         self.pack.assets.registry,
                         self.res.facts(),
@@ -222,7 +220,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 {
                     let max_stack = |stack: &ItemStack| self.stack_max_size(stack).max(1);
                     // A merge may take this item or a neighbour out of the pass.
-                    gone |= sunrise_client::entities::merge_with_neighbours(
+                    gone |= sunrise_sim::entities::merge_with_neighbours(
                         &mut items,
                         &mut removed,
                         &mut cells,
@@ -298,13 +296,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             "minecraft:cactus" => saved[3],
                             _ => false,
                         };
-                        let source = sunrise_client::health::HurtSource {
+                        let source = sunrise_sim::health::HurtSource {
                             damage_type: damage,
                             causing: 0,
                             direct: 0,
                             position: None,
                         };
-                        sunrise_client::health::DamageLevel::of(
+                        sunrise_sim::health::DamageLevel::of(
                             world,
                             registry,
                             Some(tags),
@@ -313,7 +311,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         )
                         .no_push()
                         .invulnerability_check(
-                            sunrise_client::health::Hurting::Entity(
+                            sunrise_sim::health::Hurting::Entity(
                                 item_id as i32,
                                 "minecraft:item",
                                 source,
@@ -435,9 +433,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// right after item `i`, or, when it is gone, after where it stood in the list's join order.
     pub(in crate::game::server_side) fn give_items_back(
         &mut self,
-        mut items: sunrise_client::join_seq::JoinList<ItemEntity>,
+        mut items: sunrise_sim::join_seq::JoinList<ItemEntity>,
         removed: &mut Vec<bool>,
-        cells: &mut sunrise_client::entities::ItemCells,
+        cells: &mut sunrise_sim::entities::ItemCells,
         gone: &mut bool,
         i: usize,
         call: impl FnOnce(&mut Self),
@@ -463,7 +461,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         removed.clear();
         removed.resize(items.len(), false);
-        *cells = sunrise_client::entities::ItemCells::new(&items);
+        *cells = sunrise_sim::entities::ItemCells::new(&items);
         let at = items.iter().position(|item| item.id == id);
         let next = match at {
             Some(at) => at + 1,
@@ -562,7 +560,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// leaves both orbs as they were.
     pub(in crate::game::server_side) fn restore_orb(
         &mut self,
-        join: crate::join_seq::JoinSeq,
+        join: sunrise_sim::join_seq::JoinSeq,
         value: i32,
         count: u32,
         age: i32,
@@ -812,7 +810,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
         }
         self.orbs
-            .restore(orbs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(orbs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         if gained > 0 {
             gained = self.mending(gained);
         }
@@ -887,7 +885,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY)
+            .bool_at(sunrise_client_core::gamerules::vanilla::KEEP_INVENTORY)
         {
             stacks.extend(self.inventory.iter_mut().filter_map(Option::take));
             stacks.extend(self.armor.iter_mut().rev().filter_map(Option::take));
@@ -899,7 +897,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let stacks = stacks.into_iter().map(|stack| (stack, at, 0)).collect();
         let mut random = random_source::entity();
         self.drop_death_items(dying, stacks, 40, |game| {
-            Some(sunrise_client::entities::drop_motion(
+            Some(sunrise_sim::entities::drop_motion(
                 &mut random,
                 game.yaw,
                 game.pitch,
@@ -977,7 +975,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let block_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS);
+            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS);
         if let Some(at) = spill::admitted_pop_position(&mut self.world.random, pos, block_drops) {
             self.spawn_item_own(stack, at, 10);
         }
@@ -1020,7 +1018,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
         {
             return;
         }
@@ -1038,7 +1036,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !spectator && self.native_dropped_by_player_event(all) {
             return true;
         }
-        let Some(thrown) = sunrise_client::items::take_held_drop(
+        let Some(thrown) = sunrise_items::items::take_held_drop(
             &mut self.inventory[self.selected],
             all,
             spectator,
@@ -1091,13 +1089,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.createItemStackToDrop` draws the spread from the player's own random.
     pub(in crate::game) fn player_drop_motion(&mut self, randomly: bool) -> [f64; 3] {
         match self.player.as_mut() {
-            Some(player) => sunrise_client::entities::drop_motion(
+            Some(player) => sunrise_sim::entities::drop_motion(
                 &mut player.random,
                 self.yaw,
                 self.pitch,
                 randomly,
             ),
-            None => sunrise_client::entities::drop_motion(
+            None => sunrise_sim::entities::drop_motion(
                 &mut random_source::entity(),
                 self.yaw,
                 self.pitch,
@@ -1123,7 +1121,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => return,
         };
         for (count, experience) in used {
-            let xp = sunrise_client::containers::create_experience(
+            let xp = sunrise_level::containers::create_experience(
                 count,
                 experience,
                 &mut self.world.random,
@@ -1137,8 +1135,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 pub(in crate::game) mod destroyed_contents_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::random::RandomSource;
+    use sunrise_items::items::ItemStack;
 
     /// The motion of each spilled stack, in the order the spill made them.
     fn spilled_motions(game: &crate::game::ServerGame<'_>) -> Vec<[f64; 3]> {
@@ -1193,12 +1191,12 @@ pub(in crate::game) mod destroyed_contents_tests {
         game.set_allow_commands(true);
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let feet = Vec3::new(8.5, 70.0, 8.5);
-        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+        game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, feet).unwrap());
         game.update_chunk_tickets();
-        let boxed = sunrise_client::item_data::parse_stack(
+        let boxed = sunrise_items::item_data::parse_stack(
             r#"{id:"minecraft:shulker_box",count:1,components:{"minecraft:container":[
                 {slot:0,item:{id:"minecraft:stone",count:2}},
                 {slot:4,item:{id:"minecraft:dirt",count:1}},
@@ -1232,8 +1230,8 @@ pub(in crate::game) mod destroyed_contents_tests {
 #[cfg(test)]
 pub(in crate::game) mod escape_tests {
     use crate::game::game_tests::tests::server_game;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::random::RandomSource;
+    use sunrise_items::items::ItemStack;
 
     /// `Entity.moveTowardsClosestSpace` uses the item's own random, never the
     /// level's random. Seeded Java values pin vanilla's float arithmetic (#13043).
@@ -1243,7 +1241,7 @@ pub(in crate::game) mod escape_tests {
         let mut game_resources = None;
         let mut game = server_game(&mut game_resources);
         let feet = sunrise_core::geometry::Vec3::new(8.5, 70.0, 8.5);
-        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+        game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, feet).unwrap());
         super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
             &mut game,
             sunrise_core::position::ChunkPos::new(0, 0),
@@ -1284,7 +1282,7 @@ pub(in crate::game) mod bob_tests {
 
     /// The bob a client gives the item with entity id `id` at `at`.
     fn bob(id: u32, at: Vec3, still: bool) -> f32 {
-        let mut random = sunrise_client::mobs::entity_random(id, at);
+        let mut random = sunrise_sim::mobs::entity_random(id, at);
         super::bob_offset(at, random.next_float(), still)
     }
 
@@ -1295,7 +1293,7 @@ pub(in crate::game) mod bob_tests {
         let at = Vec3::new(0.5, 64.0, 2.5);
         assert_eq!(bob(17, at, true), bob(22, at, true));
         for id in [17, 22] {
-            let mut random = sunrise_client::mobs::entity_random(id, at);
+            let mut random = sunrise_sim::mobs::entity_random(id, at);
             let vanilla = random.next_float() * std::f32::consts::PI * 2.0;
             assert_eq!(bob(id, at, false), vanilla);
         }

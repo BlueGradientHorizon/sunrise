@@ -28,7 +28,7 @@ pub(in crate::game) fn game_with_player<'a>(
             .unwrap();
     game.creative = true;
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(
+        sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(10.5, 64.0, -3.25),
         )

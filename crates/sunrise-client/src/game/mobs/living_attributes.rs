@@ -5,12 +5,12 @@ use super::Game;
 use super::commands::Target;
 use std::convert::Infallible;
 use std::sync::Arc;
-use sunrise_client::living_attributes::{ModifierChanges, ModifierSnapshot};
-use sunrise_client::mobs::{
+use sunrise_items::items::Items;
+use sunrise_sim::living_attributes::{ModifierChanges, ModifierSnapshot};
+use sunrise_sim::mobs::{
     Mob,
     finalize::{self, Attr, Op},
 };
-use sunrise_items::items::Items;
 use sunrise_world::attributes::{
     AttributeError, Instance, Modifier, Observer, Operation,
     entity::{AttributeId, Catalog},
@@ -25,7 +25,7 @@ pub(in crate::game::server_side) fn collect_equipment(
     items: &Items,
     m: &mut Mob,
 ) {
-    sunrise_client::mobs::armor::prepare(m, catalog);
+    sunrise_sim::mobs::armor::prepare(m, catalog);
     let mut live = std::mem::take(&mut m.extra.live);
     let changed =
         live.collect_equipment_changes(catalog, &m.kind.id, &m.extra.equipment, items, || {
@@ -36,7 +36,7 @@ pub(in crate::game::server_side) fn collect_equipment(
 }
 
 fn equipment_seed(m: &Mob) -> Vec<sunrise_core::nbt::Tag> {
-    sunrise_client::entity_nbt::attribute_entries(m)
+    sunrise_sim::entity_nbt::attribute_entries(m)
         .into_iter()
         .map(|(_, entry)| entry)
         .collect()
@@ -206,7 +206,7 @@ fn snapshot(catalog: &Arc<Catalog>, mob: &Mob) -> Option<ModifierSnapshot> {
 
 /// An item modifier the map refused (a bad modifier id) is logged, naming the
 /// entity, instead of being lost.
-fn warn_failed(id: u32, kind: &str, result: sunrise_client::Result<()>) {
+fn warn_failed(id: u32, kind: &str, result: sunrise_client_core::Result<()>) {
     if let Err(error) = result {
         log::warn!("equipment attributes of {kind} {id}: {error}");
     }
@@ -529,7 +529,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 // The seed is only read when the map is not built yet.
                 let seed = if m.extra.live.built().is_none() {
-                    sunrise_client::entity_nbt::attribute_entries(m)
+                    sunrise_sim::entity_nbt::attribute_entries(m)
                         .into_iter()
                         .map(|(_, entry)| entry)
                         .collect()
@@ -567,9 +567,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::{entities::ArmorStand, items::ItemStack, mobs::Mob};
     use sunrise_core::geometry::Vec3;
     use sunrise_items::equipment::{CHEST, HEAD, MAINHAND};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     fn stack(item: &str) -> Option<ItemStack> {
         Some(ItemStack::new(item, 1))
@@ -604,8 +605,8 @@ mod tests {
     #[ignore = "daily"]
     fn a_changed_held_stack_hits_by_its_own_modifiers() {
         use mod_api::EquipmentSlot;
-        use sunrise_client::mobs::gear;
         use sunrise_core::nbt::Tag;
+        use sunrise_sim::mobs::gear;
         with_game(|game| {
             spawn(game);
             let zombie = living(game, 12);
@@ -739,7 +740,7 @@ mod tests {
                     },
                 )
                 .unwrap();
-            let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            let saved = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
                 None,
@@ -749,19 +750,13 @@ mod tests {
             );
             let loaded_id = game.load_mob(saved.clone(), None).unwrap();
             let loaded = game.mobs.iter().find(|m| m.id == loaded_id).unwrap();
-            assert_eq!(sunrise_client::mobs::armor::values(loaded), (20.0, 0.0));
+            assert_eq!(sunrise_sim::mobs::armor::values(loaded), (20.0, 0.0));
             game.apply_entity_nbt(Target::Mob(12), saved).unwrap();
-            assert_eq!(
-                sunrise_client::mobs::armor::values(&game.mobs[0]),
-                (20.0, 0.0)
-            );
+            assert_eq!(sunrise_sim::mobs::armor::values(&game.mobs[0]), (20.0, 0.0));
             let shulker = living(game, 12);
             assert!(shulker.set_attribute_base(game, "minecraft:max_health", 40.0));
             // No handle read in between: damage must not need a read to restore the map.
-            assert_eq!(
-                sunrise_client::mobs::armor::values(&game.mobs[0]),
-                (20.0, 0.0)
-            );
+            assert_eq!(sunrise_sim::mobs::armor::values(&game.mobs[0]), (20.0, 0.0));
             let mut synced = Vec::new();
             let m = game.mobs[0].clone();
             game.mob_attributes(
@@ -794,8 +789,8 @@ mod tests {
         use AttributeOperation::*;
         use ModifierLifetime::*;
         use mod_api::EquipmentSlot;
-        use sunrise_client::mobs::{Damage, DamageKind, armor};
         use sunrise_core::nbt::Tag;
+        use sunrise_sim::mobs::{Damage, DamageKind, armor};
         with_game(|game| {
             spawn(game);
             let values = |game: &crate::game::ServerGame<'_>| {
@@ -840,7 +835,7 @@ mod tests {
             assert_eq!(values(game), (8.0, 0.0));
             let level = crate::game::entity::damage_level_of!(
                 game,
-                &sunrise_client::health::NO_ATTACK,
+                &sunrise_sim::health::NO_ATTACK,
                 no_push,
                 None
             );
@@ -855,7 +850,7 @@ mod tests {
             // load's first tick or read does.
             let mut list = Vec::new();
             game.mobs[0].extra.live.save_into(&mut list);
-            let mut fresh = sunrise_client::living_attributes::LivingAttributes::default();
+            let mut fresh = sunrise_sim::living_attributes::LivingAttributes::default();
             fresh.load(Some(&Tag::List(list)), |_| true);
             game.mobs[0].extra.live = fresh;
             read(game, 12, "minecraft:armor");
@@ -1149,7 +1144,7 @@ mod tests {
             let value = base * 2.0 * 1.5;
             assert_eq!(read(game, 12, speed), (Some(value), Some(base)));
             assert_eq!(game.mobs[0].attrs.speed, value);
-            let saved = sunrise_client::entity_nbt::attribute_entries(&game.mobs[0]);
+            let saved = sunrise_sim::entity_nbt::attribute_entries(&game.mobs[0]);
             assert_eq!(saved_ids(saved.iter().map(|(_, e)| e)), ["test:fast"]);
             // Replacing takes the new lifetime: no longer saved.
             assert!(zombie.replace_attribute_modifier(
@@ -1158,7 +1153,7 @@ mod tests {
                 modifier("test:fast", 1.0, AddMultipliedBase),
                 Transient
             ));
-            let saved = sunrise_client::entity_nbt::attribute_entries(&game.mobs[0]);
+            let saved = sunrise_sim::entity_nbt::attribute_entries(&game.mobs[0]);
             assert!(saved_ids(saved.iter().map(|(_, e)| e)).is_empty());
             assert_eq!(read(game, 12, speed), (Some(value), Some(base)));
             let boost = Identifier::parse("test:boost").unwrap();
@@ -1207,9 +1202,9 @@ mod tests {
             game.mobs[0].extra.live.invalidate();
             assert_eq!(read(game, 12, gravity), (Some(0.2), Some(0.1)));
             // A change to `finalize`'s store rebuilds the map without losing them.
-            sunrise_client::mobs::finalize::set_base(
+            sunrise_sim::mobs::finalize::set_base(
                 &mut game.mobs[0],
-                sunrise_client::mobs::finalize::Attr::MaxHealth,
+                sunrise_sim::mobs::finalize::Attr::MaxHealth,
                 30.0,
             );
             assert_eq!(read(game, 12, gravity), (Some(0.2), Some(0.1)));
@@ -1236,7 +1231,7 @@ mod tests {
             );
             // A mob's armor goes to its armor map, which its damage reads.
             assert!(zombie.set_attribute_base(game, "minecraft:armor", 10.0));
-            assert_eq!(sunrise_client::mobs::armor::values(&game.mobs[0]).0, 10.0);
+            assert_eq!(sunrise_sim::mobs::armor::values(&game.mobs[0]).0, 10.0);
             assert_eq!(read(game, 12, "minecraft:armor").1, Some(10.0));
         });
     }
@@ -1246,7 +1241,7 @@ mod tests {
     fn a_stand_the_dragon_and_a_player_take_writes() {
         use AttributeOperation::*;
         use ModifierLifetime::*;
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             spawn(game);
             let health = "minecraft:max_health";

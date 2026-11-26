@@ -2,9 +2,9 @@
 //! custom name (`dragon.getDisplayName()`), and keeps the type's name until
 //! it has one.
 use super::*;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::Chunk;
 
 fn end_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -72,11 +72,11 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     });
     game.lan = Some(crate::game::lan::LanHost::for_test(hub));
     let mut overlay = sunrise_client::boss_overlay::BossOverlay::default();
-    let drain = |rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+    let drain = |rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
                  overlay: &mut sunrise_client::boss_overlay::BossOverlay| {
         let now = sunrise_client::boss_overlay::now_millis();
         while let Ok(out) = rx.try_recv() {
-            let sunrise_client::lan::Out::Packet(body) = out else {
+            let sunrise_sim::lan::Out::Packet(body) = out else {
                 continue;
             };
             let mut r = sunrise_protocol::buf::Reader::new(&body);

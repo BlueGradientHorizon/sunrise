@@ -6,8 +6,9 @@ use std::sync::{
 };
 
 use mod_api::{EntityMountEvent, EntityRef, Flow, Hooks, ServerHost, StartRidingRefusal};
-use sunrise_client::{chunk::Chunk, mobs::Mob};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Mob;
 
 use super::{Dim, commands::Target, native_entity_refs::tests::with_game};
 

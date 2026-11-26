@@ -1,15 +1,16 @@
 //! `ThrownTrident`: the thrown trident's state, its NBT and the flight rules that need no level.
-use sunrise_client::{arrows::Pickup, items::ItemStack};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::arrows::Pickup;
 
 pub struct ThrownTrident {
     /// Entity-owned registration metadata; content clones are detached.
     pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub join: sunrise_client::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub stack: ItemStack,
@@ -62,12 +63,12 @@ pub struct ThrownTrident {
     pub guest: Option<u32>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 impl ThrownTrident {
     /// A trident loaded from its NBT (`AbstractArrow.readAdditionalSaveData`).
     pub fn from_nbt(
-        n: sunrise_client::entity_nbt::TridentNbt,
+        n: sunrise_sim::entity_nbt::TridentNbt,
         tag: &sunrise_core::nbt::Tag,
         registry: &sunrise_world::registry::BlockRegistry,
     ) -> Self {
@@ -79,7 +80,7 @@ impl ThrownTrident {
     /// `/data` keeps its runtime identity, random and tick count.
     pub fn load_nbt(
         &mut self,
-        n: sunrise_client::entity_nbt::TridentNbt,
+        n: sunrise_sim::entity_nbt::TridentNbt,
         tag: &sunrise_core::nbt::Tag,
         registry: &sunrise_world::registry::BlockRegistry,
     ) {
@@ -87,7 +88,7 @@ impl ThrownTrident {
         // unreadable reads as null.
         self.last_state = tag
             .get("inBlockState")
-            .and_then(|s| sunrise_client::entity_nbt::state_from_nbt(registry, s));
+            .and_then(|s| sunrise_sim::entity_nbt::state_from_nbt(registry, s));
         self.position = n.position;
         self.previous = n.position;
         self.yaw = n.yaw;
@@ -117,10 +118,10 @@ impl ThrownTrident {
         uuid: [i32; 4],
         registry: &sunrise_world::registry::BlockRegistry,
         raw: Option<&sunrise_core::nbt::Tag>,
-        items: &sunrise_client::items::Items,
+        items: &sunrise_items::items::Items,
     ) -> sunrise_core::nbt::Tag {
-        let mut tag = sunrise_client::entity_nbt::trident_to_nbt(
-            &sunrise_client::entity_nbt::TridentSave {
+        let mut tag = sunrise_sim::entity_nbt::trident_to_nbt(
+            &sunrise_sim::entity_nbt::TridentSave {
                 position: self.position,
                 motion: self.velocity,
                 yaw: self.yaw,
@@ -151,7 +152,7 @@ impl ThrownTrident {
             if let Some(state) = self.last_state {
                 map.insert(
                     "inBlockState".into(),
-                    sunrise_client::entity_nbt::state_to_nbt(registry, state),
+                    sunrise_sim::entity_nbt::state_to_nbt(registry, state),
                 );
             }
         }
@@ -187,12 +188,12 @@ impl ThrownTrident {
             ground: Default::default(),
             fire_ticks: 0,
             fall_distance: 0.0,
-            sound_event: sunrise_client::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
+            sound_event: sunrise_sim::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
             was_touching_water: false,
             age: 0,
             owner: 0,
             guest: None,
-            random: sunrise_client::projectiles::unique_random(position),
+            random: sunrise_sim::projectiles::unique_random(position),
             deflected_by: None,
             last_state: None,
         }
@@ -247,11 +248,11 @@ impl ThrownTrident {
             atan2_degrees(m.x, m.z)
         };
         let x_rot = atan2_degrees(m.y, m.horizontal_distance());
-        self.pitch = sunrise_client::arrows::lerp_rotation(self.pitch, x_rot);
-        self.yaw = sunrise_client::arrows::lerp_rotation(self.yaw, y_rot);
+        self.pitch = sunrise_sim::arrows::lerp_rotation(self.pitch, x_rot);
+        self.yaw = sunrise_sim::arrows::lerp_rotation(self.yaw, y_rot);
     }
     /// `AbstractArrow.shouldFall`: stuck, and nothing solid within 0.06 of it.
-    pub fn should_fall(&self, scene: &sunrise_client::arrows::ArrowScene<'_, '_>) -> bool {
+    pub fn should_fall(&self, scene: &sunrise_sim::arrows::ArrowScene<'_, '_>) -> bool {
         let at = self.position;
         self.in_ground
             && scene.no_block_collision(Aabb::new(at, at).inflate(Vec3::new(0.06, 0.06, 0.06)))
@@ -335,8 +336,8 @@ pub fn segment_box(from: Vec3, d: Vec3, b: Aabb) -> Option<f64> {
     (t0 <= t1).then_some(t0)
 }
 
-impl sunrise_client::entity_rules::EntityRules for ThrownTrident {}
-sunrise_client::impl_joined!(ThrownTrident);
+impl sunrise_sim::entity_rules::EntityRules for ThrownTrident {}
+sunrise_sim::impl_joined!(ThrownTrident);
 sunrise_mod_runtime::impl_attachment_lifetime!(ThrownTrident);
 
 #[cfg(test)]
@@ -367,7 +368,7 @@ mod tests {
     /// up never counts.
     #[test]
     fn a_stuck_trident_is_discarded_when_life_reaches_1200() {
-        use sunrise_client::arrows::Pickup;
+        use sunrise_sim::arrows::Pickup;
         let mut t = ThrownTrident::remote(1, Vec3::ZERO, 0.0, 0.0);
         t.life = 1198;
         assert!(!t.tick_despawn());
@@ -441,7 +442,7 @@ mod tests {
         assert_eq!(t.hit_ground_sound(), "minecraft:item.trident.hit_ground");
         assert_eq!(saved(&t), sound("minecraft:entity.arrow.hit"));
         let tag = t.to_nbt([0; 4], &registry, None, &Default::default());
-        let n = sunrise_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let n = sunrise_sim::entity_nbt::trident_from_nbt(&tag).unwrap();
         let mut back = ThrownTrident::from_nbt(n, &tag, &registry);
         assert_eq!(back.hit_ground_sound(), "minecraft:entity.arrow.hit");
         // readAdditionalSaveData: no SoundEvent, or no identifier, is the default.
@@ -450,7 +451,7 @@ mod tests {
             Tag::compound([pos.clone()]),
             Tag::compound([pos, ("SoundEvent", Tag::String("Not An Id".into()))]),
         ] {
-            let n = sunrise_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+            let n = sunrise_sim::entity_nbt::trident_from_nbt(&tag).unwrap();
             assert_eq!(n.sound_event, "minecraft:item.trident.hit_ground");
         }
     }
@@ -467,14 +468,14 @@ mod tests {
             ("life", Tag::Short(-1)),
             ("shake", Tag::Byte(-1)),
         ]);
-        let loaded = sunrise_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let loaded = sunrise_sim::entity_nbt::trident_from_nbt(&tag).unwrap();
         assert_eq!((loaded.life, loaded.shake), (-1, 255));
         // `Entity.load` reads `Fire` with `getShortOr` as well: 40000 is -25536.
         let burning = Tag::compound([
             ("Pos", Tag::List(vec![Tag::Double(0); 3])),
             ("Fire", Tag::Int(40000)),
         ]);
-        let fire = sunrise_client::entity_nbt::trident_from_nbt(&burning)
+        let fire = sunrise_sim::entity_nbt::trident_from_nbt(&burning)
             .unwrap()
             .fire_ticks;
         assert_eq!(fire, -25536);
@@ -504,7 +505,7 @@ mod tests {
             tag.get("inBlockState"),
             Some(&Tag::String("minecraft:stone".into()))
         );
-        let loaded = sunrise_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let loaded = sunrise_sim::entity_nbt::trident_from_nbt(&tag).unwrap();
         let back = ThrownTrident::from_nbt(loaded, &tag, &registry);
         assert_eq!(back.last_state, t.last_state);
     }
@@ -528,7 +529,7 @@ mod tests {
             ("Pos", Tag::List(vec![Tag::Double(0); 3])),
             ("fall_distance", Tag::Double(5.0_f64.to_bits())),
         ]);
-        let loaded = sunrise_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let loaded = sunrise_sim::entity_nbt::trident_from_nbt(&tag).unwrap();
         let back = ThrownTrident::from_nbt(loaded, &tag, &registry);
         assert_eq!(
             fall(&back.to_nbt([1; 4], &registry, None, &Default::default())),
@@ -569,7 +570,7 @@ mod tests {
         trident.velocity = Vec3::new(1.0, -2.0, 3.0);
         let mut random = trident.random.clone();
         let expected =
-            sunrise_client::projectiles::start_falling_velocity(trident.velocity, &mut random);
+            sunrise_sim::projectiles::start_falling_velocity(trident.velocity, &mut random);
 
         trident.move_by_piston(Vec3::new(0.5, 0.0, 0.0));
         assert!(trident.piston_release_bounds().is_some());

@@ -16,12 +16,12 @@ use super::entity_initialization::TransferredEntityState;
 use super::persist::ChunkKey;
 use std::borrow::Cow;
 use std::collections::HashSet;
-use sunrise_client::entity_rules::EntityRules;
-use sunrise_client::impl_joined;
-use sunrise_client::join_seq::{JoinList, JoinSeq};
 use sunrise_core::fast_hash::{FxHashMap, FxHashSet};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_core::nbt::Tag;
+use sunrise_sim::entity_rules::EntityRules;
+use sunrise_sim::impl_joined;
+use sunrise_sim::join_seq::{JoinList, JoinSeq};
 use sunrise_world::move_gate::MoveGate;
 
 /// One general entity as a record: what save writes and load reads. The
@@ -541,7 +541,7 @@ impl GeneralTypeCatalog {
     pub(in crate::game::server_side) fn tracking(
         &self,
         slot: usize,
-    ) -> sunrise_client::lan::tracking::General {
+    ) -> sunrise_sim::lan::tracking::General {
         (&self.entries[slot]).into()
     }
 
@@ -706,7 +706,7 @@ impl GeneralStore {
 /// which is independent of when the entities themselves joined the level.
 #[derive(Default)]
 pub struct RiderIndex {
-    stamp: Option<sunrise_client::join_seq::ListStamp>,
+    stamp: Option<sunrise_sim::join_seq::ListStamp>,
     length: usize,
     mounts: u64,
     /// Each vehicle's first general rider. Places at and above `length` are
@@ -723,7 +723,7 @@ pub struct RiderIndex {
     pub(in crate::game) pending: Vec<(usize, Option<u32>)>,
     pub(in crate::game) foreign_parents: Vec<(usize, i64, usize)>,
     /// General vehicles a mob rides, from the mob riders' pass of the same tick.
-    pub(in crate::game) mob_vehicles: sunrise_client::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) mob_vehicles: sunrise_level::fast_hash::FxHashSet<u32>,
 }
 
 impl RiderIndex {
@@ -1676,8 +1676,8 @@ mod tests {
     #[test]
     fn general_row_binds_and_resolves_through_the_entity_table() {
         use mod_api::DimensionKey;
-        use sunrise_client::join_seq::residency::table::{EntityLookup, EntityTable, SourceEntity};
-        use sunrise_client::join_seq::residency::{Journal, Kind, Owner};
+        use sunrise_sim::join_seq::residency::table::{EntityLookup, EntityTable, SourceEntity};
+        use sunrise_sim::join_seq::residency::{Journal, Kind, Owner};
         let journal = Journal::default();
         let mut rows: GeneralRows = Default::default();
         let owner = Owner {
@@ -1688,7 +1688,7 @@ mod tests {
         rows.push(GeneralRow {
             id: 42,
             uuid: [1, 2, 3, 4],
-            join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+            join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
             type_slot: 0,
             position: Vec3::new(0.5, 64.0, 0.5),
             previous: Vec3::new(0.5, 64.0, 0.5),
@@ -1721,10 +1721,7 @@ mod tests {
         // slot moves with it.
         let index = rows.len() - 1;
         assert_eq!(rows[index].id, 42);
-        assert_ne!(
-            rows[index].join,
-            sunrise_client::join_seq::JoinSeq::UNJOINED
-        );
+        assert_ne!(rows[index].join, sunrise_sim::join_seq::JoinSeq::UNJOINED);
     }
 
     /// A refusal leaves no partial state: the very next valid record checks

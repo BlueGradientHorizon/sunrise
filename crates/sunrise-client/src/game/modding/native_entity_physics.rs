@@ -9,8 +9,8 @@
 //! constructors set.
 use super::{Game, commands::Target};
 use mod_api::EntityRef;
-use sunrise_client::mobs::Species;
-use sunrise_client::projectiles::{Projectile, ProjectileKind};
+use sunrise_sim::mobs::Species;
+use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.noPhysics`: a player's is whether it spectates (`Player.tick`
@@ -48,7 +48,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.persist
                     .raw
                     .get(&id)
-                    .is_some_and(|tag| sunrise_client::entity_nbt::flag(tag, "NoPhysics")),
+                    .is_some_and(|tag| sunrise_sim::entity_nbt::flag(tag, "NoPhysics")),
             ),
             _ => None,
         }
@@ -221,10 +221,10 @@ mod tests {
         use super::super::native_entity_refs::tests::with_game;
         use super::super::trident::ThrownTrident;
         use mod_api::WorldEpoch;
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
-        use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
+        use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -321,17 +321,17 @@ mod tests {
         use super::super::trident::ThrownTrident;
         use crate::game::commands::OtherEntity;
         use crate::game::entity::Entity as _;
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
-        use sunrise_client::projectiles::Projectile;
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::entities::ArmorStand;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
+        use sunrise_sim::projectiles::Projectile;
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                 chunk.lit = true;
                 game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
             }
@@ -442,13 +442,13 @@ mod tests {
             let stand = game.entity(44).unwrap();
             assert!(stand.set_no_physics(game, true));
             assert_eq!(stand.no_physics(game), Some(true));
-            let saved = sunrise_client::entity_nbt::armor_stand_to_nbt(
+            let saved = sunrise_sim::entity_nbt::armor_stand_to_nbt(
                 &game.armor_stands[0],
                 [1, 2, 3, 4],
                 None,
                 &Default::default(),
             );
-            let loaded = sunrise_client::entity_nbt::armor_stand_from_nbt(&saved, 44).unwrap();
+            let loaded = sunrise_sim::entity_nbt::armor_stand_from_nbt(&saved, 44).unwrap();
             assert!(
                 !loaded.no_physics(None),
                 "a stand recomputes the flag on load"
@@ -497,9 +497,9 @@ mod tests {
     fn a_mod_cleared_no_physics_shulker_bullet_is_pushed_by_a_shulker_lid() {
         use super::super::native_entity_refs::tests::with_game;
         use crate::game::piston_push::Lid;
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::projectiles::Projectile;
         use sunrise_core::geometry::{Aabb, Vec3};
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::projectiles::Projectile;
 
         let bullet = |game: &mut crate::game::ServerGame<'_>, at: Vec3| {
             let mut bullet = Projectile::new(
@@ -566,8 +566,8 @@ mod tests {
     fn no_physics_entry_is_cleared_when_the_bullet_leaves_with_its_chunk() {
         use super::super::native_entity_refs::tests::with_game;
         use std::collections::HashSet;
-        use sunrise_client::projectiles::Projectile;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::projectiles::Projectile;
 
         with_game(|game| {
             let mut bullet = Projectile::new(
@@ -603,8 +603,8 @@ mod tests {
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_a_command_kills_a_shulker_bullet() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::projectiles::Projectile;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::projectiles::Projectile;
 
         with_game(|game| {
             let mut bullet = Projectile::new(
@@ -644,8 +644,8 @@ mod tests {
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_a_players_blow_removes_a_shulker_bullet() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::projectiles::Projectile;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::projectiles::Projectile;
 
         with_game(|game| {
             let mut bullet = Projectile::new(
@@ -681,7 +681,7 @@ mod tests {
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_an_ominous_item_spawner_finishes() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::items::ItemStack;
+        use sunrise_items::items::ItemStack;
 
         with_game(|game| {
             game.add_ominous_item_spawner(ItemStack::new("minecraft:air", 1), [4.5, 200.0, 4.5], 1);

@@ -16,7 +16,7 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
         true,
         None,
     )];
-    sunrise_client::containers::with_mod_menu_types(menus, || {
+    sunrise_level::containers::with_mod_menu_types(menus, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "RecipeCheck").unwrap();
@@ -31,10 +31,10 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
             assert!(game.transfer_recipe_check(recipe).is_none());
             assert!(game.side.recipe_ui.0.checks.asked.is_none());
             game.side.screen = Screen::Inventory;
-            game.mode = sunrise_client::command::args::GameMode::Spectator;
+            game.mode = sunrise_command::args::GameMode::Spectator;
             assert!(game.transfer_recipe_check(recipe).is_none());
             assert!(game.side.recipe_ui.0.checks.asked.is_none());
-            game.mode = sunrise_client::command::args::GameMode::Survival;
+            game.mode = sunrise_command::args::GameMode::Survival;
             assert!(
                 !game.mod_recipe_screen(),
                 "the fixture has no crafting grid"

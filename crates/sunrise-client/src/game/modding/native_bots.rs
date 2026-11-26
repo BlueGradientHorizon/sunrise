@@ -4,11 +4,11 @@
 //! a box. Nothing runs unless a mod calls it, and neither changes the player or the level.
 use super::{Game, glide_wear, shield, worn_boots};
 use mod_api::{PlayerInput, SimulatedMove};
-use sunrise_client::items::ItemStack;
-use sunrise_client::motion::{MotionWorld, PlayerMotion};
-use sunrise_client::sprint::Keys;
-use sunrise_client::world::World;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::world::World;
+use sunrise_sim::motion::{MotionWorld, PlayerMotion};
+use sunrise_sim::sprint::Keys;
 
 /// The keys a bot's input presses: the direction flags by sign (sprint and the server's input
 /// packet read them), and the exact move vector when it isn't a key's (a stick's).
@@ -246,7 +246,8 @@ mod tests {
     fn guest_equipment_and_item_use_shape_native_movement() {
         use crate::game::native_entity_refs::tests::with_game;
         use crate::game::native_item_places::tests::{guest, open_to_lan};
-        use sunrise_client::{chunk::Chunk, items::ItemStack};
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             open_to_lan(game);
@@ -323,7 +324,8 @@ mod tests {
         use crate::game::native_entity_refs::tests::with_game;
         use crate::game::native_item_places::tests::{guest, open_to_lan};
         use std::cell::Cell;
-        use sunrise_client::{chunk::Chunk, health::DamageHooks};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::health::DamageHooks;
 
         // The movement result doesn't expose health. Observe committed damage to the
         // simulated body through its game-owned hook table, not through the live guest.

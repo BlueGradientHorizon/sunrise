@@ -94,7 +94,7 @@ fn fails_unchanged(game: &mut crate::game::ServerGame<'_>, command: &str) {
     let said = game.side.chat_capture.take().unwrap_or_default();
     assert_eq!(
         said.first()
-            .map(sunrise_client::text::Text::plain)
+            .map(sunrise_client_core::text::Text::plain)
             .as_deref(),
         Some("Nothing changed. The specified properties already have these values"),
         "{command}"
@@ -105,14 +105,14 @@ fn fails_unchanged(game: &mut crate::game::ServerGame<'_>, command: &str) {
 fn saved(
     game: &mut crate::game::ServerGame<'_>,
     name: &str,
-) -> Option<sunrise_client::command_storage::CommandStorage> {
+) -> Option<sunrise_sim::command_storage::CommandStorage> {
     let dir = std::env::temp_dir().join(format!("h246-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     game.score.storage.save(&dir);
     let back = dir
         .join("data")
         .exists()
-        .then(|| sunrise_client::command_storage::CommandStorage::load(&dir));
+        .then(|| sunrise_sim::command_storage::CommandStorage::load(&dir));
     let _ = std::fs::remove_dir_all(&dir);
     back
 }
@@ -169,7 +169,7 @@ fn the_failure_keeps_the_save_state_and_stores_nothing_new() {
     // An entity's data is a copy: its UUID stays.
     game.world.chunks.insert(
         (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
     );
     assert!(game.run_command("summon armor_stand 4.5 100 4.5 {NoGravity:1b,UUID:[I;582,0,0,1]}"));
     let stand = "00000246-0000-0000-0000-000000000001";

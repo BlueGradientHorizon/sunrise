@@ -2,7 +2,7 @@
 use super::native_namespaced_id::namespaced;
 use super::{Game, commands::Target};
 use mod_api::{GoalSpec, MobFilter, MobGoalEntry, MobRef};
-use sunrise_client::mobs::{
+use sunrise_sim::mobs::{
     self, Species,
     goals::{
         Avoid, AvoidEntity, BreathAir, Breed, ClimbOnTopOfPowderSnow, Cx, EatBlock, FleeSun, Float,
@@ -197,13 +197,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
-        let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
+        let mut lent = sunrise_sim::health::LentLevel::take(&mut self.world);
         let mut w = self.mob_world_base(&snapshot);
         let pos = mobs[index].position;
         w.difficulty = self.local_difficulty([pos.x, pos.y, pos.z]);
         let mut events = Vec::new();
         let removed = {
-            let mut level = sunrise_client::health::DamageLevel::lent(
+            let mut level = sunrise_sim::health::DamageLevel::lent(
                 &self.world,
                 self.pack.assets.registry,
                 &mut lent,
@@ -236,7 +236,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         drop(w);
         lent.give_back(&mut self.world);
         self.mobs
-            .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         self.handle_mob_events(events).ok();
         removed
     }
@@ -469,8 +469,9 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, GoalSpec, MobFilter, MobRef, WorldEpoch};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, mobs::Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::Mob;
 
     /// A mob of `kind` in the game's list, its species goals registered by
     /// `Mob::new`, as a handle.
@@ -491,7 +492,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn goal_constructors_follow_vanilla_classes() {
-        use sunrise_client::mobs::Species;
+        use sunrise_sim::mobs::Species;
         with_game(|game| {
             let mut mismatches = Vec::new();
             for (species, accepts) in [
@@ -609,8 +610,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn removing_running_goal_supplies_snapshot_and_persists_level_random() {
-        use sunrise_client::mobs::goals::{Cx, Goal};
         use sunrise_core::random::RandomSource;
+        use sunrise_sim::mobs::goals::{Cx, Goal};
         #[derive(Clone, Debug)]
         struct StopProbe;
         impl Goal for StopProbe {
@@ -636,7 +637,7 @@ mod tests {
                 .iter()
                 .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
                 .collect();
-            let mut test_level = sunrise_client::health::TestLevel::new(0);
+            let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
             let mut events = Vec::new();
             let mut selector = std::mem::take(&mut mobs[0].ai.goals);
@@ -653,7 +654,7 @@ mod tests {
             }
             mobs[0].ai.goals = selector;
             game.mobs
-                .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
             let mut expected = game.world.random.clone();
             let draw = expected.next_int_bound(1000).unwrap();
             let next = expected.next_int_bound(1000).unwrap();
@@ -667,7 +668,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn removing_hold_ground_notifies_nearby_raiders() {
-        use sunrise_client::mobs::{
+        use sunrise_sim::mobs::{
             Who,
             goals::Cx,
             raider::{self, HoldGroundAttack},
@@ -682,7 +683,7 @@ mod tests {
                 .iter()
                 .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
                 .collect();
-            let mut test_level = sunrise_client::health::TestLevel::new(0);
+            let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
             let mut events = Vec::new();
             let mut selector = std::mem::take(&mut mobs[0].ai.goals);
@@ -700,7 +701,7 @@ mod tests {
             assert!(selector.is_running("HoldGroundAttack"));
             mobs[0].ai.goals = selector;
             game.mobs
-                .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
             assert_eq!(handle.remove_goal(game, "HoldGroundAttack"), Some(1));
             assert!(game.mobs[1].ai.aggressive);
             assert_eq!(game.mobs[1].ai.target, Some(Who::Player));
@@ -710,7 +711,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn removing_school_goal_updates_the_leader() {
-        use sunrise_client::mobs::{aquatic::FollowFlockLeader, goals::Cx};
+        use sunrise_sim::mobs::{aquatic::FollowFlockLeader, goals::Cx};
         with_game(|game| {
             let follower = mob_in_game(game, "minecraft:cod", 99);
             let _leader = mob_in_game(game, "minecraft:cod", 100);
@@ -721,7 +722,7 @@ mod tests {
                 .iter()
                 .map(|m| m.seen(game.level.player_uuid, game.items()))
                 .collect();
-            let mut test_level = sunrise_client::health::TestLevel::new(0);
+            let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
             let mut events = Vec::new();
             let mut selector = std::mem::take(&mut mobs[0].ai.goals);
@@ -743,7 +744,7 @@ mod tests {
             );
             mobs[0].ai.goals = selector;
             game.mobs
-                .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
             assert_eq!(follower.remove_goal(game, "FollowFlockLeaderGoal"), Some(1));
             assert_eq!(
                 game.mobs[0].extra.leader, None,
@@ -867,10 +868,8 @@ mod tests {
             let taken = game.mobs.lift();
             assert!(zombie.goals(game).is_none());
             assert_eq!(zombie.remove_goal(game, "panic"), None);
-            game.mobs.restore(
-                taken,
-                sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-            );
+            game.mobs
+                .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         });
     }
 }

@@ -1,10 +1,10 @@
 //! `TestCommand`'s `locate`, `pos` and `create`.
 use super::{Arg, Context, Game, R, err};
 use crate::game::test_instances::TestDef;
-use sunrise_client::{
+use sunrise_client_core::text::{self, ClickEvent, Style, Text};
+use sunrise_level::{
     containers::BlockEntity,
     test_instance_block::{Status, TestInstanceBlock},
-    text::{self, ClickEvent, Style, Text},
 };
 use sunrise_world::worldgen::structure::Rotation;
 

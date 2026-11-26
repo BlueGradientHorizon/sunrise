@@ -5,8 +5,9 @@ use super::storage::GameHost;
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, entities::ArmorStand};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::entities::ArmorStand;
 
 fn identity(game: &mut crate::game::ServerGame<'_>) -> Identity {
     game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));

@@ -48,7 +48,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A language change reaches the server-sent components too: their titles
     /// are resolved when the packet arrives, with the session's language.
     pub(in crate::game) fn refresh_remote_language(&mut self) {
-        if let Some(lang) = sunrise_client::lang::current()
+        if let Some(lang) = sunrise_client_core::lang::current()
             && let Some(r) = self.remote.as_mut()
         {
             r.lang = Arc::new(lang.map().clone());
@@ -219,7 +219,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     /// The title the server gave the menu it opened.
-    pub(in crate::game) fn remote_menu_title(&self) -> Option<sunrise_client::text::Text> {
+    pub(in crate::game) fn remote_menu_title(&self) -> Option<sunrise_client_core::text::Text> {
         self.remote.as_ref()?.menu_title.clone()
     }
     /// ClientboundMerchantOffersPacket.
@@ -229,13 +229,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let cost = |g: &Self, c: &play::NetCost| {
             g.to_stack(&Some(c.clone().into()))
-                .map(|stack| sunrise_client::merchant::ItemCost { stack })
+                .map(|stack| sunrise_sim::merchant::ItemCost { stack })
         };
         let offers: Vec<_> = p
             .offers
             .iter()
             .filter_map(|o| {
-                let mut offer = sunrise_client::merchant::MerchantOffer {
+                let mut offer = sunrise_sim::merchant::MerchantOffer {
                     base_cost_a: cost(self, &o.cost_a)?,
                     cost_b: match &o.cost_b {
                         Some(b) => Some(cost(self, b)?),
@@ -269,13 +269,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         container: i32,
         title: String,
-        text: sunrise_client::text::Text,
+        text: sunrise_client_core::text::Text,
     ) {
         self.remote_set_menu(
             Some((container, "minecraft:merchant".to_owned())),
             Some(text.clone()),
         );
-        let mut session = sunrise_client::merchant::Session::new(Vec::new(), true);
+        let mut session = sunrise_sim::merchant::Session::new(Vec::new(), true);
         session.client_side = true;
         self.open_remote_merchant(session, (!title.is_empty()).then_some(text));
     }
@@ -310,7 +310,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .mobs
             .iter()
             .find(|m| m.id == entity)
-            .map(sunrise_client::mobs::Mob::species)
+            .map(sunrise_sim::mobs::Mob::species)
             .filter(|&s| crate::game::mount_menu::has_mount_menu(s))
         else {
             return Ok(());
@@ -320,7 +320,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // `HorseInventoryMenu` lays out its chest slots only `if (inventoryColumns > 0)`
         // and a `NautilusInventoryMenu` has none: no chest slot addresses the container then.
-        let chest = if sunrise_client::mobs::nautilus::is_nautilus(species) || columns == 0 {
+        let chest = if sunrise_sim::mobs::nautilus::is_nautilus(species) || columns == 0 {
             0
         } else {
             size as usize
@@ -361,7 +361,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let target = extra
             .as_ref()
             .map_or(target, |e| e.pos.map(|p| (p[0], p[1], p[2])));
-        let mod_type = sunrise_client::containers::mod_menu_type(&menu);
+        let mod_type = sunrise_level::containers::mod_menu_type(&menu);
         // MenuScreens.create looks up the constructor before touching the active window.
         if mod_type.is_some() && !mod_api::__private::has_menu_screen_factory(&menu) {
             log::warn!("no screen factory for menu {menu}");
@@ -425,7 +425,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "minecraft:hopper" => Some(BlockEntity::Chest(vec![None; 5])),
             // BrewingStandMenu: its times come in ContainerSetData.
             "minecraft:brewing_stand" => Some(BlockEntity::Brewing(Box::new(
-                sunrise_client::brewing::BrewingStand::new(),
+                sunrise_level::brewing::BrewingStand::new(),
             ))),
             "minecraft:generic_3x3" => Some(BlockEntity::Chest(vec![None; 9])),
             // CrafterMenu: the disabled slots and triggered come in ContainerSetData.
@@ -440,9 +440,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // A content mod's menu type: its container's slots, which its
             // mod's screen places.
             _ if mod_type.is_some() => Some(BlockEntity::Mod(Box::new(
-                sunrise_client::containers::ModBlockEntity::new(
+                sunrise_level::containers::ModBlockEntity::new(
                     String::new(),
-                    sunrise_client::containers::ModBlockEntityFields {
+                    sunrise_level::containers::ModBlockEntityFields {
                         items: vec![None; mod_type.map_or(0, |t| t.slots)],
                         ..Default::default()
                     },
@@ -452,7 +452,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // Unsupported menu: tell the server we closed it.
                 self.remote_reject_container(p.container);
                 self.add_chat_line(
-                    sunrise_client::text::Text::literal(format!(
+                    sunrise_client_core::text::Text::literal(format!(
                         "(Sunrise cannot show {menu} screens yet)"
                     )),
                     sunrise_client::chat::ChatSource::Client,
@@ -514,7 +514,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if clicked < m.slot_count() && m.can_take_for_pick_all(clicked) {
                     for t in 0..m.slot_count() {
                         let eligible = {
-                            let env = sunrise_client::menu::Env {
+                            let env = sunrise_sim::menu::Env {
                                 enchantments: game.item_enchantments(),
                                 ..game.menu_env()
                             };
@@ -543,7 +543,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.menu_session_with_game(|game, m, env, to_menu| {
                 let clicked = to_menu(slot)?;
                 let mut before = menu_items(m);
-                let mut each = |m: &sunrise_client::menu::Menu, t: usize| {
+                let mut each = |m: &sunrise_sim::menu::Menu, t: usize| {
                     let changed = changed_slots(&before, m);
                     sent.push((t as i16, 0, Input::QuickMove, changed, m.carried.clone()));
                     before = menu_items(m);
@@ -792,9 +792,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_throw(
         &mut self,
         right: bool,
-        input: sunrise_client::menu::Input,
+        input: sunrise_sim::menu::Input,
     ) {
-        use sunrise_client::menu::Input;
+        use sunrise_sim::menu::Input;
         let container = self
             .remote
             .as_ref()

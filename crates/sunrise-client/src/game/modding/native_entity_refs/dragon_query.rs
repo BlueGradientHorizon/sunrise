@@ -31,14 +31,14 @@ mod tests {
             collect_entities_in, collect_game_all_entities, collect_game_entities_in, with_game,
         },
     };
-    use sunrise_client::{join_seq::Joined, mobs::Mob};
+    use sunrise_sim::{join_seq::Joined, mobs::Mob};
 
     #[test]
     #[ignore = "daily"]
     fn entity_uuid_lookup_includes_the_dragon_and_excludes_its_parts() {
         use crate::game::creatures::SpawnSite;
         use mod_api::{EntityUuid, ServerHost};
-        use sunrise_client::lan::playerdata::uuid_ints;
+        use sunrise_sim::lan::playerdata::uuid_ints;
 
         with_game(|game| {
             let id = game
@@ -200,7 +200,7 @@ mod tests {
         with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
-            game.item_frames.push(sunrise_client::entities::ItemFrame {
+            game.item_frames.push(sunrise_sim::entities::ItemFrame {
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
                 id: 13,
@@ -445,7 +445,7 @@ mod tests {
             remote.entity_id = 7;
             remote.profile = 42;
             let mut local =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             local.entity_id = 7;
             game.player = Some(local);
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
@@ -480,7 +480,7 @@ mod tests {
                 Ok(parts.to_vec())
             );
             // A spectating window leaves only its own player out.
-            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
+            game.set_local_mode(sunrise_command::args::GameMode::Spectator);
             assert_eq!(
                 ids(game, [-100.0, -10.0, -100.0], [100.0, 300.0, 100.0]),
                 Ok([vec![15, 20], parts.to_vec()].concat())

@@ -4,7 +4,7 @@
 //! `Nameable.getPlainTextName` for the selector's `name=`.
 use super::super::Game;
 use super::Target;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Nameable.getPlainTextName`: `getName().getString()`, the name without
@@ -46,7 +46,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match captured {
             KillDisplay::Ready(text) => text,
             KillDisplay::Entity { kind, uuid, name } => {
-                let holder = uuid.map(sunrise_client::save::uuid_text);
+                let holder = uuid.map(sunrise_sim::save::uuid_text);
                 let team = holder
                     .as_deref()
                     .and_then(|holder| self.score.board.players_team(holder));
@@ -60,7 +60,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     fn decorate_entity_display_name_with_uuid(
         kind: &str,
         uuid: Option<[i32; 4]>,
-        team: Option<&sunrise_client::scoreboard::Team>,
+        team: Option<&sunrise_client_core::scoreboard::Team>,
         name: Text,
     ) -> Text {
         let shown = match team {
@@ -70,8 +70,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         let Some(uuid) = uuid else {
             return shown;
         };
-        let uuid = sunrise_client::save::uuid_text(uuid);
-        let kind = sunrise_client::command::args::normalize(kind);
+        let uuid = sunrise_sim::save::uuid_text(uuid);
+        let kind = sunrise_command::args::normalize(kind);
         shown.set_component_fields(vec![
             (
                 "hover_event".into(),
@@ -92,8 +92,10 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// absent or invalid under vanilla's `ComponentSerialization.CODEC`.
     fn custom_name_of(&self, id: u32) -> Option<Text> {
         let raw = self.persist_raw(id)?.get("CustomName")?;
-        let decoded = sunrise_client::entity_nbt::decode_custom_name_text(raw)?;
-        Some(sunrise_client::scoreboard::remove_click_events(&decoded))
+        let decoded = sunrise_sim::entity_nbt::decode_custom_name_text(raw)?;
+        Some(sunrise_client_core::scoreboard::remove_click_events(
+            &decoded,
+        ))
     }
 
     /// `Entity.getName`: the decoded `CustomName` with click actions removed,
@@ -130,8 +132,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                     .and_then(|f| f.saved.as_ref())
                     .and_then(|saved| saved.1.get("CustomName"))
                     .or_else(|| self.persist_raw(id).and_then(|r| r.get("CustomName")))
-                    .and_then(sunrise_client::entity_nbt::decode_custom_name_text)
-                    .map(|text| sunrise_client::scoreboard::remove_click_events(&text));
+                    .and_then(sunrise_sim::entity_nbt::decode_custom_name_text)
+                    .map(|text| sunrise_client_core::scoreboard::remove_click_events(&text));
                 if let Some(name) = custom {
                     return name;
                 }
@@ -163,9 +165,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             .iter()
             .find(|b| b.id == id)
             .and_then(|b| b.custom_name.as_ref())
-            .and_then(sunrise_client::entity_nbt::decode_custom_name_text)
+            .and_then(sunrise_sim::entity_nbt::decode_custom_name_text)
         {
-            return sunrise_client::scoreboard::remove_click_events(&name);
+            return sunrise_client_core::scoreboard::remove_click_events(&name);
         }
         Text::translate("entity.minecraft.lightning_bolt", &[])
     }
@@ -177,7 +179,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         &self,
         id: u32,
         kind: &str,
-        team: Option<&sunrise_client::scoreboard::Team>,
+        team: Option<&sunrise_client_core::scoreboard::Team>,
         name: Text,
     ) -> Text {
         Self::decorate_entity_display_name_with_uuid(kind, self.persist.uuid_of(id), team, name)

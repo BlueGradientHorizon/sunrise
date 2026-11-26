@@ -3,9 +3,10 @@ use crate::game::native_entity_refs::tests::with_game;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::{Tag, parse_snbt};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 #[derive(Deserialize)]
 struct Witness {

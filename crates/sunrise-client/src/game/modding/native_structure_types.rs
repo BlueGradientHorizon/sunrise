@@ -408,7 +408,7 @@ pub(crate) struct Adapter {
 
 impl ModStructureType for Adapter {
     fn prepare_config(&self, config: &serde_json::Value) -> Result<Arc<Tag>, String> {
-        crate::json_nbt::json_to_tag(config)
+        sunrise_core::json_nbt::json_to_tag(config)
             .map(Arc::new)
             .map_err(|error| format!("{}: {error}", self.id))
     }

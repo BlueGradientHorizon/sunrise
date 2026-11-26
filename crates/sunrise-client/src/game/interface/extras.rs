@@ -121,8 +121,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return 0.0;
         }
         let harmful = effects.iter().any(|e| {
-            sunrise_client::brewing::effect(e.id)
-                .is_some_and(|d| d.category != sunrise_client::brewing::Category::Beneficial)
+            sunrise_level::brewing::effect(e.id)
+                .is_some_and(|d| d.category != sunrise_level::brewing::Category::Beneficial)
         });
         if harmful { 50.0 } else { 25.0 }
     }

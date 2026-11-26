@@ -104,7 +104,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             Some(own) => own,
             None => match dimension {
                 Dim::Overworld => self.res.environment(),
-                Dim::Extra(_) => sunrise_client::environment::Environment::for_level(
+                Dim::Extra(_) => sunrise_level::environment::Environment::for_level(
                     dimension.id(),
                     self.res.environment(),
                 ),
@@ -122,7 +122,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             (0.0, 0.0)
         };
         let day_time = self.command_clock_time(&self.level_clock_name(dimension));
-        sunrise_client::environment::sky_darken(environment, day_time, rain, thunder)
+        sunrise_level::environment::sky_darken(environment, day_time, rain, thunder)
     }
 
     pub(in crate::game) fn sky_darken(&self) -> i32 {
@@ -130,7 +130,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             return 11;
         }
         if self.dim == Dim::End {
-            return sunrise_client::environment::sky_darken(
+            return sunrise_level::environment::sky_darken(
                 self.res.end_environment(),
                 self.world.day_time,
                 0.0,

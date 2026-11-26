@@ -47,7 +47,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn tutorial_get_item(
         &mut self,
-        stack: Option<&sunrise_client::items::ItemStack>,
+        stack: Option<&sunrise_items::items::ItemStack>,
     ) {
         // The server thread's settings are a stale copy of the window's: a
         // guest's tutorial is their own client's to record.
@@ -168,7 +168,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
                     .any(|(id, count)| *count > 0 && planks.contains(id));
             }
         }
-        let survival = self.mode == sunrise_client::command::args::GameMode::Survival;
+        let survival = self.mode == sunrise_command::args::GameMode::Survival;
         if self.side.tutorial.tick(survival, &previous) {
             self.persist_tutorial_step();
         }
@@ -192,7 +192,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
 
 pub(in crate::game) struct HintToast {
     hint: Hint,
-    lines: Vec<(sunrise_client::text::Text, bool)>,
+    lines: Vec<(sunrise_client_core::text::Text, bool)>,
     title_lines: usize,
     progress: Option<f32>,
     smooth: f32,
@@ -214,7 +214,8 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
 
     /// `Tutorial.key`: bold belongs to the bound key, not the translation using it.
     fn tutorial_toast(&self, hint: Hint, progress: Option<f32>) -> Option<HintToast> {
-        use sunrise_client::{keybinds, text::Text};
+        use sunrise_client::keybinds;
+        use sunrise_client_core::text::Text;
         let key =
             |mapping: &str| keybinds::display_name(self.side.settings.keys.get(mapping)).bold();
         let (title_key, fallback, description_key, description, title_args) = match hint {

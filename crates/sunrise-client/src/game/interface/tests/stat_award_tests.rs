@@ -244,12 +244,14 @@ fn deferred_award_rewrites_only_after_outer_commit_and_abort_emits_nothing() {
 
 // Same survival/tool/chunk setup as native_player_destroyed_block_tests.
 fn prepare_breaker(game: &mut crate::game::ServerGame<'_>) {
-    use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+    use sunrise_command::args::GameMode;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::motion::PlayerMotion;
     let _ = game.block_ticks.add_empty_chunk(ChunkPos::new(0, 0));
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
     game.set_mode(GameMode::Survival);
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
@@ -316,7 +318,7 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
                 let player = game.player.as_mut().unwrap();
                 player.ground.on_ground = true;
                 let side = game_side!(game);
-                let mut world = sunrise_client::motion::MotionWorld {
+                let mut world = sunrise_sim::motion::MotionWorld {
                     side: &side,
                     entities: &[],
                     player,
@@ -378,7 +380,7 @@ fn lan_real_break_and_jump(mods: mod_api::Mods, custom: &str, mode: Option<&Atom
                 .unwrap()
                 .hub
                 .update_guest(12, |guest| {
-                    guest.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+                    guest.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                 })
                 .unwrap();
             assert!(
@@ -530,7 +532,7 @@ fn lan_noncanonical_rewrite_keeps_the_entire_original_award() {
 
 fn assert_dirty_packet(
     game: &crate::game::ServerGame<'_>,
-    rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+    rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
     ty: &str,
     registry: &str,
     key: &str,
@@ -552,9 +554,9 @@ fn assert_dirty_packet(
     let mut found = Vec::new();
     for out in rx.try_iter() {
         let bodies = match out {
-            sunrise_client::lan::Out::Packet(body) => vec![body],
-            sunrise_client::lan::Out::Packets(bodies) => bodies,
-            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+            sunrise_sim::lan::Out::Packet(body) => vec![body],
+            sunrise_sim::lan::Out::Packets(bodies) => bodies,
+            sunrise_sim::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
         };
         for body in bodies {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);

@@ -12,8 +12,8 @@ use mod_api::client::particles::PositionSource;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use {
-    sunrise_client::chunk::Chunk, sunrise_client::motion::PlayerMotion,
-    sunrise_client::settings::Settings, sunrise_level::particle_options::ParticleType,
+    sunrise_client::settings::Settings, sunrise_level::chunk::Chunk,
+    sunrise_level::particle_options::ParticleType, sunrise_sim::motion::PlayerMotion,
 };
 
 pub(in crate::game) fn game<'a>(

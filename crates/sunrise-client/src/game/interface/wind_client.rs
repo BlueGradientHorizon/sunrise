@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::projectiles::Projectile;
+use sunrise_sim::projectiles::Projectile;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `WindChargeRenderer`: the spinning charge and its wind.
@@ -26,7 +26,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // `EntityRenderState.ageInTicks`: the tick count plus the partial tick.
         let age = p.age as f32 + partial;
-        let mut poses = sunrise_client::mobs::anim::Poses::new(model);
+        let mut poses = sunrise_sim::mobs::anim::Poses::new(model);
         poses.yrot("wind_charge", -age * 16.0_f32.to_radians());
         poses.yrot("wind", age * 16.0_f32.to_radians());
         let base = glam::Mat4::from_translation(at)

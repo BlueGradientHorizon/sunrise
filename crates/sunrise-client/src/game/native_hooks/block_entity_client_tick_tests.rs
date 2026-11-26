@@ -15,8 +15,8 @@ use mod_api::{
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use sunrise_client::containers::BlockEntity;
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_level::containers::BlockEntity;
 
 pub(in crate::game) const HUM: &str = "client_tick_probe:hum";
 pub(in crate::game) const QUIET: &str = "client_tick_probe:quiet";
@@ -194,10 +194,10 @@ pub(in crate::game) fn ticked(ticks: &[([i32; 3], i32)]) -> Vec<String> {
 }
 
 pub(in crate::game) fn request(world: &Path) -> WorldRequest {
-    let rules = std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
+    let rules = std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
     let options = sunrise_sim::world_options::WorldOptions {
-        world_type: sunrise_client::save::WorldPreset::Flat,
-        rules: sunrise_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
+        world_type: sunrise_sim::save::WorldPreset::Flat,
+        rules: sunrise_client_core::gamerules::GameRules::with_registry(rules.clone(), &[]),
         ..Default::default()
     };
     let mut request = WorldRequest::new(

@@ -4,7 +4,7 @@
 //! vehicle's interaction checks. Mobs keep theirs in `extra.boarding_cooldown`
 //! (`boat_passengers::BOARDING_COOLDOWN`).
 use super::Game;
-use sunrise_client::mobs::Mob;
+use sunrise_sim::mobs::Mob;
 
 /// `Entity.getIndirectPassengersStream` for `vehicle`: the vehicle and every
 /// vehicle riding it, directly or through another rider. `mounts` holds
@@ -244,11 +244,11 @@ mod tests {
     #[ignore = "daily"]
     fn retained_passengers_occupy_seats_in_boarding_order() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            use sunrise_client::mobs::Mob;
             use sunrise_core::geometry::Vec3;
+            use sunrise_sim::mobs::Mob;
             game.build_registries();
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
                     .unwrap(),
             );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -281,11 +281,11 @@ mod tests {
     #[ignore = "daily"]
     fn the_own_player_boards_behind_a_guest_and_a_pig() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            use sunrise_client::mobs::Mob;
             use sunrise_core::geometry::Vec3;
+            use sunrise_sim::mobs::Mob;
             game.build_registries();
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
                     .unwrap(),
             );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -325,11 +325,11 @@ mod tests {
     #[ignore = "daily"]
     fn the_own_player_in_the_third_seat_of_a_happy_ghast_sits_there() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            use sunrise_client::mobs::Mob;
             use sunrise_core::geometry::Vec3;
+            use sunrise_sim::mobs::Mob;
             game.build_registries();
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
                     .unwrap(),
             );
             let ghast = game

@@ -46,7 +46,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let use_max = self.has_shift_down();
         if let Some(frame) = self.native_net.placement.client.select(
-            sunrise_client::recipe_book::placement_sync::DisplayId { recipe, source },
+            sunrise_sim::recipe_book::placement_sync::DisplayId { recipe, source },
             use_max,
         ) {
             self.send_mod_book_placement(frame);
@@ -89,7 +89,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn install_mod_book_ghost(
         &mut self,
-        selection: &sunrise_client::recipe_book::placement_sync::Selection,
+        selection: &sunrise_sim::recipe_book::placement_sync::Selection,
     ) {
         let Some(view) = self
             .native_net

@@ -7,7 +7,7 @@ use crate::game::{
     game_tests::{Grid, Info, Retry, RunnerOptions, verify_batches},
     test_instances::TestDef,
 };
-use sunrise_client::text::{self, Text};
+use sunrise_client_core::text::{self, Text};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The tests a finder gives (`findTests`), by id.
@@ -141,7 +141,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn test_verify(&mut self, ctx: &Context) -> R<i32> {
         self.clear_game_tests();
         let tests = match ctx.get("tests") {
-            Some(Arg::Str(pattern)) => sunrise_client::command::args::select_resources(
+            Some(Arg::Str(pattern)) => sunrise_command::args::select_resources(
                 self.ui.registries.ids("minecraft:test_instance"),
                 pattern,
             )

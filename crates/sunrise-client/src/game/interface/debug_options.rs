@@ -8,9 +8,9 @@ use sunrise_client::{
     debug_entries::{Category, Entry, Profile, RegisteredDebugEntry, Status, search},
     hud::HudBatch,
     options_file::V,
-    text::Text,
     ui::{self, EditBox, Scroll},
 };
+use sunrise_client_core::text::Text;
 use winit::keyboard::KeyCode;
 
 /// `HeaderAndFooterLayout(this, 61, 33)`.
@@ -785,7 +785,7 @@ pub(in crate::game) mod tests {
         sunrise_client::widgets::end_frame(1);
         assert!(
             sunrise_client::widgets::last().iter().any(|w| {
-                w.label == sunrise_client::lang::get(Profile::Performance.translation_key())
+                w.label == sunrise_client_core::lang::get(Profile::Performance.translation_key())
             }),
             "debug options buttons, rather than title buttons, must be visible"
         );

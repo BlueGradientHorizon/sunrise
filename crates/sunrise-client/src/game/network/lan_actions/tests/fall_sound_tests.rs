@@ -2,10 +2,8 @@ use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_item_places::tests::{guest, open_to_lan};
 use std::sync::{Arc, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Out, PlayerSender, guest::GuestMove, hub::CommittedMove},
-};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::lan::{Out, PlayerSender, guest::GuestMove, hub::CommittedMove};
 
 fn run(distance: f64, expected: usize) {
     mod_platform::testing::with_mods(Vec::new().into(), || {

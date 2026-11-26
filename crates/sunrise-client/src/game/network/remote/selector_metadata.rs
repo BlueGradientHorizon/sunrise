@@ -12,12 +12,12 @@ pub(in crate::game) fn hurt_sound_for(
             Tag::String(effects) => effects.to_string().ok(),
             _ => None,
         });
-        return sunrise_client::health::hurt_sound(effects.as_deref().unwrap_or("hurt"));
+        return sunrise_sim::health::hurt_sound(effects.as_deref().unwrap_or("hurt"));
     }
     registries
         .name("minecraft:damage_type", source_type)
         .and_then(|name| damage.id(name).and_then(|id| damage.definition(id)))
-        .map_or(sunrise_client::health::hurt_sound("hurt"), |d| {
-            sunrise_client::health::hurt_sound(&d.effects)
+        .map_or(sunrise_sim::health::hurt_sound("hurt"), |d| {
+            sunrise_sim::health::hurt_sound(&d.effects)
         })
 }

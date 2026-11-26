@@ -6,13 +6,15 @@
 //! finds the ammo for bows and crossbows.
 #[allow(unused_imports)]
 use super::{Game, shield::OFFHAND_SLOT, view_vector};
-use sunrise_client::{
+use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::{
     enchant::EffectContext,
     items::{ItemStack, Items},
+};
+use sunrise_sim::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind},
 };
-use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 pub(in crate::game) const CROSSBOW: &str = "minecraft:crossbow";
 pub(in crate::game) const FIREWORK_ROCKET: &str = "minecraft:firework_rocket";
@@ -53,7 +55,7 @@ pub(in crate::game::server_side) fn charge_sounds(
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_projectile_player_uuid(&mut self) -> Option<u128> {
-        Some(sunrise_client::lan::playerdata::ints_uuid(
+        Some(sunrise_sim::lan::playerdata::ints_uuid(
             self.acting_player_uuid(),
         ))
     }
@@ -109,7 +111,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Monster.getProjectile`: the projectile `weapon` supports in the off
     /// hand, then the main hand (`getHeldProjectile`), else a new arrow.
     pub(in crate::game::server_side) fn mob_vanilla_ammo(
-        extra: &sunrise_client::mobs::Extra,
+        extra: &sunrise_sim::mobs::Extra,
         weapon: &ItemStack,
         items: &Items,
     ) -> ItemStack {
@@ -137,7 +139,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         if let Some(a) = arrow.arrow.as_mut() {
-            a.set_item(&sunrise_client::arrows::drawn_ammo(ammo, false));
+            a.set_item(&sunrise_sim::arrows::drawn_ammo(ammo, false));
         }
     }
     /// `CrossbowItem.onUseTick`'s `getProjectile` for a mob that finished
@@ -171,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let loaded = projectile.is_some();
         crossbow.data_mut().charged = projectile
             .iter()
-            .map(|ammo| sunrise_client::arrows::drawn_ammo(ammo, false))
+            .map(|ammo| sunrise_sim::arrows::drawn_ammo(ammo, false))
             .collect();
         crossbow.tidy();
         shooter.extra.set_main_hand_stack(Some(crossbow));
@@ -248,7 +250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // listener can now move the loaded bow without losing the projectile.
             // useAmmo: the extra multishot arrows and creative's are intangible.
             bow.data_mut().charged = (0..shots)
-                .map(|i| sunrise_client::arrows::drawn_ammo(&ammo.stack, creative || i > 0))
+                .map(|i| sunrise_sim::arrows::drawn_ammo(&ammo.stack, creative || i > 0))
                 .collect();
             if !creative && let Some(i) = ammo.slot {
                 self.consume_player_slot(i, 1);
@@ -346,7 +348,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 arrow.shoot_own(dir.to_array(), power, 1.0);
                 self.spawn_projectile(arrow, ammo);
                 let (player, name, projectile) = (
-                    sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
+                    sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid()),
                     self.acting_player_name().to_owned(),
                     self.side.next_entity,
                 );

@@ -14,9 +14,10 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
     use crate::game::{
         native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
     };
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_sim::motion::PlayerMotion;
     let policy = Arc::new(Mutex::new(Policy::default()));
     let mods = vec![
         mod_api::ModEntry::new("a_pick", Box::new(First)),
@@ -174,8 +175,9 @@ fn frame_pick_without_listeners_keeps_the_vanilla_result() {
     use crate::game::{
         native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
     };
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let mut server = sunrise_protocol::connection::Connection::local(logged_client(game));
@@ -305,9 +307,10 @@ pub(in crate::game) fn with_pick_game(
     use crate::game::{
         native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
     };
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_sim::motion::PlayerMotion;
     with_client_game(|game| {
         let mut server = sunrise_protocol::connection::Connection::local(logged_client(game));
         server

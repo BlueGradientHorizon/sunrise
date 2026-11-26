@@ -1,11 +1,9 @@
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    assets::Assets,
-    lan::{Joined, PlayerSender, guest::SavedBody},
-};
 use sunrise_core::random::RandomSource;
+use sunrise_level::assets::Assets;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{Joined, PlayerSender, guest::SavedBody};
 
 #[path = "tests/fall_reset.rs"]
 pub(in crate::game) mod fall_reset;
@@ -77,8 +75,8 @@ fn co_located_guests_own_distinct_streams_and_restore_the_saved_body() {
 #[test]
 #[ignore = "daily"]
 fn accepted_hit_moves_through_teleport_restore_but_not_respawn() {
-    use sunrise_client::health::{AcceptedHit, Attack, HurtSource};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::health::{AcceptedHit, Attack, HurtSource};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let assets = Assets::load(&root).unwrap();
     let resources = MotionResources::load(&root, &assets).unwrap();
@@ -175,8 +173,9 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
         || {
             use crate::game::native_entity_refs::tests::with_game;
             use crate::game::native_item_places::tests::{guest as online_guest, open_to_lan};
-            use sunrise_client::{chunk::Chunk, items::ItemStack};
             use sunrise_core::position::BlockPos;
+            use sunrise_items::items::ItemStack;
+            use sunrise_level::chunk::Chunk;
 
             with_game(|game| {
                 open_to_lan(game);
@@ -214,7 +213,7 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                             horizontal_collision: boots,
                             from: [1.5, 64.25, 1.5],
                             jump_yaw: None,
-                            movement: sunrise_client::lan::guest::GuestMove {
+                            movement: sunrise_sim::lan::guest::GuestMove {
                                 position: [1.5, 64.0, 1.5],
                                 delta: [0.0, -0.25, 0.0],
                                 on_ground: true,
@@ -299,7 +298,8 @@ impl mod_api::Hooks for Breather {
 pub(in crate::game) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
     use crate::game::native_entity_refs::tests::with_game;
     use crate::game::native_item_places::tests::{guest as online_guest, open_to_lan};
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
 
     let helmet = Arc::new(std::sync::Mutex::new(None));
     let mut left = (0, 0);
@@ -334,7 +334,7 @@ pub(in crate::game) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i3
                     .update_guest(1, |guest| {
                         guest.on_ground = true;
                         guest.moves_from_ground = false;
-                        guest.moves.push(sunrise_client::lan::guest::GuestMove {
+                        guest.moves.push(sunrise_sim::lan::guest::GuestMove {
                             position: guest.position,
                             delta: [0.0, -0.25, 0.0],
                             on_ground: true,

@@ -32,9 +32,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::client::first_person::Hand;
-    use sunrise_client::items::ItemStack;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::mobs::Mob;
 
     /// A raised shield blocks after vanilla's 5-tick delay (`block_delay_seconds` 0.25), in
     /// either hand, for the player as the damage path sees it and for a mob; a bow in use, an
@@ -46,7 +46,7 @@ mod tests {
         with_game(|game| {
             crate::game::native_entity_refs::tests::resolve_parts(game).unwrap();
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             game.server_set_acting_use(true);
             let player = game.living(game.entity(20).unwrap()).unwrap();

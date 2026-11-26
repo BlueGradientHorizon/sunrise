@@ -195,7 +195,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn publish_mod_held(
         &self,
-        prepared: sunrise_client::net::PreparedPacket,
+        prepared: sunrise_sim::raw_payloads::queued_writer::PreparedPacket,
         packet: ServerboundPlayPacket,
     ) {
         if !prepared.is_current() {

@@ -1,5 +1,5 @@
 use crate::game::{Options, Progress, Settings, load_resources};
-use sunrise_client::mobs::MobEvent;
+use sunrise_sim::mobs::MobEvent;
 
 #[test]
 #[ignore = "daily"]

@@ -2,8 +2,8 @@
 //! spawn, then snapped to the spawn block with `snapTo(spawnPos, 0.0F, 0.0F)`,
 //! so it faces yaw 0 and its facing takes no draw from the level's random.
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::mobs::Species;
 use sunrise_core::random::RandomSource;
+use sunrise_sim::mobs::Species;
 
 #[test]
 #[ignore = "daily"]
@@ -45,7 +45,7 @@ fn a_cat_spawner_cat_faces_south_without_a_level_draw() {
         let cat = game.mobs.last().expect("cat");
         assert_eq!(cat.species(), Species::Cat);
         assert_eq!(
-            sunrise_client::mobs::finalize::variant_name(Species::Cat, cat.extra.variant),
+            sunrise_sim::mobs::finalize::variant_name(Species::Cat, cat.extra.variant),
             coats[coat]
         );
         assert_eq!(cat.extra.sound_variant, Some(sound));

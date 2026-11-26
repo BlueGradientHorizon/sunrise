@@ -9,13 +9,13 @@
 //! (its hooks see every item) or a mod listening to the round, every item moves at its turn.
 use super::*;
 use super::{entity::Entity as _, native_ticks};
-use sunrise_client::{
-    blocks::BlockFacts,
+use sunrise_core::geometry::{Aabb, Vec3, border::BorderGeometry};
+use sunrise_items::blocks::BlockFacts;
+use sunrise_level::world::World;
+use sunrise_sim::{
     entities::{ItemEntity, ItemSplash, ItemStep, ObstacleGrid},
     motion::MotionResources,
-    world::World,
 };
-use sunrise_core::geometry::{Aabb, Vec3, border::BorderGeometry};
 use sunrise_world::{block_collision::BlockCollisionRegistry, registry::BlockRegistry};
 
 /// From this many items their moves go to the helper threads.
@@ -81,7 +81,7 @@ impl ItemTables<'_> {
                 return fall;
             }
             let reset = &self.motion.fall_reset;
-            let hit = sunrise_client::entities::fall_reset_hit(
+            let hit = sunrise_sim::entities::fall_reset_hit(
                 self.context,
                 self.world,
                 &self.motion.fluids,
@@ -92,7 +92,7 @@ impl ItemTables<'_> {
             if hit { 0.0 } else { fall }
         });
         if let Some(response) = item.move_restitution(
-            sunrise_client::motion::BodyMotion {
+            sunrise_sim::motion::BodyMotion {
                 world: self.world,
                 collision: self.collision,
                 facts: self.facts,
@@ -120,7 +120,7 @@ impl ItemTables<'_> {
         splash: &mut impl FnMut(ItemSplash),
     ) -> bool {
         if !no_physics {
-            let motion = sunrise_client::motion::BodyMotion {
+            let motion = sunrise_sim::motion::BodyMotion {
                 world: self.world,
                 collision: self.collision,
                 facts: self.facts,
@@ -207,7 +207,7 @@ fn ahead() -> bool {
     if let Some(ahead) = AHEAD.with(std::cell::Cell::get) {
         return ahead;
     }
-    sunrise_client::parallel::lanes() > 1
+    sunrise_sim::parallel::lanes() > 1
 }
 
 /// The moves worked out ahead, by the item's place in the loop.
@@ -232,7 +232,7 @@ impl Moves {
         }
         let todo: Vec<usize> = (0..items.len()).filter(|&i| ticks(&items[i])).collect();
         let tables = game.item_tables();
-        let done = sunrise_client::parallel::par_map(&todo, MIN_ITEMS / 4, |part, out| {
+        let done = sunrise_sim::parallel::par_map(&todo, MIN_ITEMS / 4, |part, out| {
             let (mut found, mut near) = (Vec::new(), Vec::new());
             for &i in part {
                 let mut moved = items[i].clone();
@@ -277,7 +277,7 @@ impl Moves {
         if !fits {
             return None;
         }
-        if sunrise_client::parallel::parallel_tick() == 2 {
+        if sunrise_sim::parallel::parallel_tick() == 2 {
             let mut serial = item.clone();
             let expected = again(&mut serial);
             check(item.id, &serial, &expected, &a.moved, &a.result);
@@ -310,8 +310,9 @@ mod tests {
     use super::{AHEAD, TAKEN};
     use crate::game::game_tests::tests::server_game;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
     use sunrise_core::{geometry::Vec3, random::RandomSource};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
 
     /// One item tick with the moves worked out ahead leaves every item, and the level's random,
     /// as the tick that moves each item at its turn: items escaping a block (their own random),
@@ -323,7 +324,7 @@ mod tests {
         let mut resources = None;
         let mut game = server_game(&mut resources);
         let feet = sunrise_core::geometry::Vec3::new(8.5, 70.0, 8.5);
-        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+        game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, feet).unwrap());
         // `ChunkMap.prepareEntityTickingChunk`: the chunks within 2 are loaded too.
         for x in -2..=2 {
             for z in -2..=2 {
@@ -485,7 +486,7 @@ mod tests {
         assert_eq!(runs[0].1, runs[3].1);
         assert_eq!(runs[1].2, (0, 0));
         assert_eq!(runs[3].2, (0, 0));
-        if sunrise_client::parallel::lanes() > 1 {
+        if sunrise_sim::parallel::lanes() > 1 {
             assert_eq!(runs[0].2, runs[2].2);
         } else {
             assert_eq!(runs[0].2, (0, 0));

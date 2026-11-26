@@ -4,7 +4,7 @@ use sunrise_core::nbt::Tag;
 pub(in crate::game) const ORACLE_PLAYER_UUID: u128 = 0xa01e3843_e521_3998_958a_f459800e4d11;
 
 pub(in crate::game) fn tag_contains_bolt(tag: &Tag) -> bool {
-    if sunrise_client::entity_nbt::kind(tag).as_deref() == Some("minecraft:lightning_bolt") {
+    if sunrise_sim::entity_nbt::kind(tag).as_deref() == Some("minecraft:lightning_bolt") {
         return true;
     }
     if let Some(Tag::List(passengers)) = tag.get("Passengers") {

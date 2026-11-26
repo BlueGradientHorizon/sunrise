@@ -14,12 +14,12 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{
     mobs::{Mob, Who},
     motion::PlayerMotion,
 };
-use sunrise_core::geometry::Vec3;
 
 #[test]
 #[ignore = "daily"]

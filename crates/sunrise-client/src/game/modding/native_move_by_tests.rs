@@ -2,8 +2,8 @@
 
 use super::native_entity_refs::tests::{collect_game_entities_in, with_game};
 use mod_api::MoveCause;
-use sunrise_client::entities::{ArmorStand, ItemFrame, Painting};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::entities::{ArmorStand, ItemFrame, Painting};
 
 const STAND: u32 = 910;
 const FRAME: u32 = 911;
@@ -84,7 +84,7 @@ fn move_by_stops_at_a_wall_and_refuses_what_has_no_physics() {
         // A wall in the stand's column once it has moved north to z = 1.5.
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         for y in 63..67 {
             game.world.set(2, y, 1, stone).unwrap();
@@ -118,7 +118,7 @@ fn move_by_stops_at_a_wall_and_refuses_what_has_no_physics() {
         // A piston's cause applies its per-tick limit, 0.51 a block on an axis: a second move in
         // the same tick (a mob keeps its own budget) goes nowhere.
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        game.mobs.push(sunrise_client::mobs::Mob::new(
+        game.mobs.push(sunrise_sim::mobs::Mob::new(
             PIG,
             kind,
             Vec3::new(8.5, 80.0, 8.5),

@@ -150,7 +150,7 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
             // A borrowed simulation pass can insert without running Game's spawn helper.
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             let id = game.take_entity_id();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 id,
                 kind,
                 sunrise_core::geometry::Vec3::new(1.0, 70.0, 3.0),
@@ -164,7 +164,7 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
                 .entity_chunks(&HashSet::from([(0, 0)]), false)
                 .into_iter()
                 .flat_map(|(_, tags)| tags)
-                .find(|t| sunrise_client::entity_nbt::uuid(t) == Some(uuid))
+                .find(|t| sunrise_sim::entity_nbt::uuid(t) == Some(uuid))
                 .unwrap();
             // Portals move a live entity using its saved representation, retaining its map.
             let state = game.take_transferred_entity_state(id);
@@ -752,7 +752,7 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                     let mut d = crate::game::dragon::Dragon::new(at, yaw, i64::from(id));
                     d.id = id;
                     d.phase = crate::game::dragon::Phase::from_id(10);
-                    d.join = sunrise_client::join_seq::JoinSeq::next();
+                    d.join = sunrise_sim::join_seq::JoinSeq::next();
                     if let Some(old) = game.dragon.as_ref().map(|d| d.id) {
                         remove_dragon(game, old);
                     }

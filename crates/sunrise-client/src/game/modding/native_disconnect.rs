@@ -2,7 +2,7 @@
 //! The server half is `native_player_disconnect`.
 use super::Game;
 use mod_api::{DisconnectError, WorldEpoch};
-use sunrise_client::{Result, text::Text};
+use sunrise_client_core::{Result, text::Text};
 
 /// A client mod's request to leave, carried out at the end of the frame.
 pub(in crate::game) struct LeaveRequest {
@@ -30,7 +30,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// What follows the frame's render: the cursor icon, then a mod's `disconnect` (below).
     pub(in crate::game::client_side) fn native_frame_end(&mut self) -> Result<()> {
-        sunrise_client::spans::time("pr_cursor", || self.apply_cursor_icon());
+        sunrise_level::spans::time("pr_cursor", || self.apply_cursor_icon());
         self.native_leave_if_asked()
     }
 

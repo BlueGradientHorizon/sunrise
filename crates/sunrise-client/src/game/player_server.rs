@@ -10,14 +10,14 @@ use crate::game::{
     view_vector,
 };
 use mod_api::{EntityRef, LevelRef, PlayerAbilities, PlayerRef};
-use sunrise_client::{
-    command::args::GameMode,
-    items::ItemStack,
+use sunrise_client_core::text::Text;
+use sunrise_command::args::GameMode;
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     join_seq::residency::{Kind, Owner, Source},
     lan::playerdata::ints_uuid,
-    text::Text,
 };
-use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_world::stepped_interpolation::PosRot;
 
 fn v3(a: [f64; 3]) -> Vec3 {
@@ -25,7 +25,7 @@ fn v3(a: [f64; 3]) -> Vec3 {
 }
 
 fn server_knot_bounds(block: [i32; 3]) -> Aabb {
-    let knot = sunrise_client::mobs::leash::knot_state(block);
+    let knot = sunrise_sim::mobs::leash::knot_state(block);
     let p = knot.position;
     let half = knot.width / 2.0;
     Aabb::new(
@@ -48,7 +48,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         pieces.sort_unstable_by_key(|&slot| [5, 4, 3, 2, 0, 1][slot]);
-        let pick = sunrise_client::random_source::entity().next_int_bound(pieces.len() as i32);
+        let pick = sunrise_level::random_source::entity().next_int_bound(pieces.len() as i32);
         let slot = pieces[pick.unwrap_or(0) as usize];
         let stack = match slot {
             4 => self.inventory[self.selected].clone(),
@@ -56,7 +56,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             i => self.armor[i].clone(),
         };
         if let Some(stack) = stack
-            && sunrise_client::stations::is_damageable(self.res.items(), &stack)
+            && sunrise_sim::stations::is_damageable(self.res.items(), &stack)
         {
             let loss = self.wear(&stack, points);
             let target = match slot {
@@ -95,7 +95,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .computed_value_of("minecraft:attack_speed")
                     .ok()
             })
-            .unwrap_or(sunrise_client::attack_strength::BASE_ATTACK_SPEED);
+            .unwrap_or(sunrise_sim::attack_strength::BASE_ATTACK_SPEED);
         let value = base
             + self
                 .attack_item_info()

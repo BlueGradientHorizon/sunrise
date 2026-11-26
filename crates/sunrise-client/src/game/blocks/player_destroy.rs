@@ -2,8 +2,8 @@
 //! (`on_destroyed_by_player`, `IBlockExtension.onDestroyedByPlayer`) may take it over, and with
 //! none answering `playerWillDestroy` and `Level.removeBlock` are vanilla's.
 use super::{Game, storage_common};
-use sunrise_client::{blocks::StateFacts, items::ItemStack};
 use sunrise_core::position::BlockPos;
+use sunrise_items::{blocks::StateFacts, items::ItemStack};
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -113,7 +113,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
             && let Some(stack) = self.picked_stack(pos, true)
         {
             self.spawn_item_own(stack, pos.map(f64::from), 10);

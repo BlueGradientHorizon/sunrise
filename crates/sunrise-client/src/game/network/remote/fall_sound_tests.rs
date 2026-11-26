@@ -1,7 +1,7 @@
 use crate::game::native_client_session::tests::logged_client;
 use crate::game::native_entity_refs::tests::with_client_game;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::remote_client::fall_sound::tests::heard_stone_fall;

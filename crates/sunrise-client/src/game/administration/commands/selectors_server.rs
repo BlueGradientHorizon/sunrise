@@ -1,5 +1,5 @@
 use super::{Game, Selector, Target};
-use sunrise_client::command::args::Sort;
+use sunrise_command::args::Sort;
 use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {

@@ -10,9 +10,9 @@ use crate::game::server_side::fishing::fishing_targets_tests::spawn_test_hook;
 use crate::game::server_side::fishing::fishing_targets_tests::summon_target;
 use crate::game::server_side::fishing::fishing_targets_tests::target_kinematics;
 use crate::game::server_side::fishing::fishing_targets_tests::vec_bits;
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
 
 pub(in crate::game::client_side) fn reset_arena(
     game: &mut crate::game::ServerGame<'_>,
@@ -34,7 +34,7 @@ pub(in crate::game::client_side) fn reset_arena(
     if game.riding.is_some() {
         game.stop_riding();
     }
-    game.set_mode(sunrise_client::command::args::GameMode::Survival);
+    game.set_mode(sunrise_command::args::GameMode::Survival);
     game.yaw = -90.0;
     game.pitch = 0.0;
     if let Some(p) = game.player.as_mut() {

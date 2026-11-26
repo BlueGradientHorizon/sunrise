@@ -5,9 +5,10 @@
 use super::*;
 use serde_json::Value;
 #[allow(unused_imports)]
-use sunrise_client::{
+use sunrise_level::containers::Crafter;
+#[allow(unused_imports)]
+use sunrise_sim::{
     advancements as adv,
-    containers::Crafter,
     menu::{Maps as _, Menu},
 };
 
@@ -222,7 +223,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && (lo.z < c[2] + 8.5 && hi.z > c[2] - 8.5)
         });
         if near {
-            let id = sunrise_client::crafting::qualified(recipe);
+            let id = sunrise_sim::crafting::qualified(recipe);
             let me = self.player_entity_for("minecraft:crafter_recipe_crafted");
             self.trigger("minecraft:crafter_recipe_crafted", move |c, w| {
                 let ctx = adv::Entities {
@@ -326,12 +327,12 @@ pub(in crate::game) mod tests {
         crate::game::native_item_places::tests::open_to_lan(&mut game);
         let (mut player, _output) =
             crate::game::native_sound_refs::tests::guest(1, 2123, [2.5, 4.0, 3.5]);
-        player.menu = Some(sunrise_client::lan::menu::Menu {
+        player.menu = Some(sunrise_sim::lan::menu::Menu {
             window: 1,
             kind: 0,
             registry_id: "minecraft:crafter_3x3".into(),
             pos: Some(key),
-            slots: sunrise_client::lan::menu::Slots::Block(key),
+            slots: sunrise_sim::lan::menu::Slots::Block(key),
             size: 10,
             state: 0,
             sent: vec![None; 46],

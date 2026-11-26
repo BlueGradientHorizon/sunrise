@@ -53,15 +53,17 @@ use std::sync::{
 };
 use std::{collections::HashMap, sync::Arc};
 #[allow(unused_imports)]
-use sunrise_client::{
-    command::{Arg, ArgType, Dispatcher},
-    lan::{abilities::PlayerAbilities, data::component_nbt, guest::Guest},
-    motion::PlayerMotion,
-    text::Text,
-};
+use sunrise_client_core::text::Text;
+#[allow(unused_imports)]
+use sunrise_command::{Arg, ArgType, Dispatcher};
 #[cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+#[allow(unused_imports)]
+use sunrise_sim::{
+    lan::{abilities::PlayerAbilities, data::component_nbt, guest::Guest},
+    motion::PlayerMotion,
+};
 
 /// The report's name of an operator level (`commands.json`'s
 /// `permissions`).
@@ -227,7 +229,7 @@ pub(in crate::game) fn base_root(
     let Some(mut at) = vanilla.find(root) else {
         return Ok(false);
     };
-    if sunrise_client::command::vanilla::is_session_tool(root) {
+    if sunrise_command::vanilla::is_session_tool(root) {
         return Err(format!("`{usage}`: /{root} is the game's own command"));
     }
     for (name, node, _) in &nodes[1..] {
@@ -241,7 +243,7 @@ pub(in crate::game) fn base_root(
         };
         let literal = matches!(
             vanilla.nodes[child].kind,
-            sunrise_client::command::NodeKind::Literal(_)
+            sunrise_command::NodeKind::Literal(_)
         );
         if !literal || node["type"] != "literal" {
             return Err(format!(
@@ -776,14 +778,14 @@ pub(in crate::game) struct ScopedPlayerState {
     pub(in crate::game) offhand: Option<sunrise_items::items::ItemStack>,
     pub(in crate::game) carried: Option<sunrise_items::items::ItemStack>,
     pub(in crate::game) equipment: sunrise_items::equipment::Equipment,
-    pub(in crate::game) effects: sunrise_client::effects::PlayerEffects,
+    pub(in crate::game) effects: sunrise_level::effects::PlayerEffects,
     pub(in crate::game) health: f32,
     pub(in crate::game) food: i32,
     pub(in crate::game) saturation: f32,
 }
 impl ScopedPlayerState {
     pub(in crate::game) fn new(
-        resources: &sunrise_client::motion::MotionResources,
+        resources: &sunrise_sim::motion::MotionResources,
         items: &sunrise_items::items::Items,
         setup: PlayerActionSetup,
     ) -> Result<Self, ActionRefused> {
@@ -907,7 +909,7 @@ impl Drop for Acting {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// Box bounds come from mod code: one that is not finite reads no orb and never
     /// panics, and an inverted box reads what the ordered one does.
@@ -918,7 +920,7 @@ pub(in crate::game) mod tests {
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         game.options.dedicated = Some(Vec::new());
         let at = sunrise_core::geometry::Vec3::new(1.0, 70.0, 1.0);
-        game.orbs.push(sunrise_client::entities::ExperienceOrb {
+        game.orbs.push(sunrise_sim::entities::ExperienceOrb {
             size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -987,10 +989,10 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn with_command_sources(
         test: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
-        use sunrise_client::{
+        use sunrise_core::geometry::Vec3;
+        use sunrise_level::{
             chunk::Chunk, chunk::block_entity::BlockEntity, command_block::CommandBlock,
         };
-        use sunrise_core::geometry::Vec3;
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.build_registries();
             game.register_native_commands();
@@ -1065,7 +1067,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_hubs_chunk_watches_reach_the_mods_in_order() {
-        use sunrise_client::lan::chunk_watch::{
+        use sunrise_sim::lan::chunk_watch::{
             ChunkWatch, ChunkWatchKind, ChunkWatchLog, LevelWatches,
         };
         let heard = std::sync::Arc::default();
@@ -1121,8 +1123,8 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::lan::{Joined, PlayerSender};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, PlayerSender};
         let (tx, _rx) = std::sync::mpsc::channel();
         Guest::new(
             Joined {
@@ -1269,7 +1271,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn every_added_item_lands_where_the_slot_pickers_answer() {
         use super::super::inventory_add;
-        use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+        use sunrise_sim::menu::{OFFHAND, free_slot, slot_with_remaining_space};
         let mut inv = vec![stack("minecraft:stone", 64); 36];
         for (slot, have) in [
             (0, stack("minecraft:stone", 5)),
@@ -1314,7 +1316,7 @@ pub(in crate::game) mod tests {
     fn a_replaced_slot_choice_reaches_the_games_inventory_add() {
         use super::super::inventory_add;
         use super::super::rule_replacements::{ADD_SLOT, replaced};
-        use sunrise_client::menu::OFFHAND;
+        use sunrise_sim::menu::OFFHAND;
         fn open(i: usize) -> bool {
             !(6..=8).contains(&i)
         }
@@ -1418,7 +1420,7 @@ pub(in crate::game) mod tests {
                 "native_mod_command",
                 &HashMap::new(),
             );
-            let registries = sunrise_client::command::Registries::default();
+            let registries = sunrise_command::Registries::default();
             assert!(dispatcher.parse(line, &registries).executable().is_ok());
             // The kept kind decides: `word` stops at the space, `text` takes it all.
             let kept_greedy = first.contains(":text");
@@ -1473,7 +1475,7 @@ pub(in crate::game) mod tests {
             "native_mod_command",
             &HashMap::new(),
         );
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         let (origin, rotation) = ([10.0, 70.0, -2.0], [45.0, 30.0]);
         let value = |line: &str, name: &str, kind: &str| {
             let parsed = dispatcher.parse(line, &registries);
@@ -1618,13 +1620,13 @@ pub(in crate::game) mod tests {
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("probe <value:test:hostile>")],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty());
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &tree, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         for prefix in ["panic", "text", "tip", "unicode"] {
             let input = format!("probe {prefix}");
             let parsed = dispatcher.parse(&input, &registries);
@@ -1663,7 +1665,7 @@ pub(in crate::game) mod tests {
         )]);
         let (_, _, problems) = super::command_tree(
             &[mod_api::Command::new("probe <value:test:panic>")],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert_eq!(problems.len(), 1);
@@ -1691,7 +1693,7 @@ pub(in crate::game) mod tests {
 
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("machine use <machine:test:machine>")],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
@@ -1702,7 +1704,7 @@ pub(in crate::game) mod tests {
 
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &tree, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         let parsed = dispatcher.parse("machine use press", &registries);
         let (context, _) = parsed.executable().unwrap();
         assert_eq!(
@@ -1753,7 +1755,7 @@ pub(in crate::game) mod tests {
             "native_mod_command",
             &HashMap::new(),
         );
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         for (line, id) in [
             ("map fullrender minecraft:overworld", "minecraft:overworld"),
             ("map fullrender mymod:custom", "mymod:custom"),
@@ -1812,13 +1814,13 @@ pub(in crate::game) mod tests {
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("replace <pattern:test:pattern>")],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &tree, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
 
         // The second token: the range covers it, and the text in front of it is kept.
         let typed = "replace stone st";
@@ -1874,13 +1876,13 @@ pub(in crate::game) mod tests {
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("fill <blocks:test:mixed>")],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &tree, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         let typed = "fill st";
         let parse = dispatcher.parse(typed, &registries);
         let (_, suggestions) = dispatcher.suggestions(&parse, typed.len(), &registries);
@@ -1910,7 +1912,7 @@ pub(in crate::game) mod tests {
                 mod_api::Command::new("worse <kind:resource:a:b:c>"),
                 mod_api::Command::new("worst <kind:resource:a/b:c>"),
             ],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert_eq!(problems.len(), 3, "{problems:?}");
@@ -1936,7 +1938,7 @@ pub(in crate::game) mod tests {
 
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &tree, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries {
+        let registries = sunrise_command::Registries {
             entity_types: vec!["minecraft:zombie".into()],
             ..Default::default()
         };
@@ -1979,7 +1981,7 @@ pub(in crate::game) mod tests {
             "native_mod_command",
             &HashMap::new(),
         );
-        let mut registries = sunrise_client::command::Registries::default();
+        let mut registries = sunrise_command::Registries::default();
         assert!(dispatcher.parse("warp", &registries).executable().is_ok());
         assert!(
             dispatcher
@@ -2120,10 +2122,9 @@ pub(in crate::game) mod tests {
                     || {
                         super::super::native_entity_refs::tests::with_game(|game| {
                             game.options.dedicated = Some(Vec::new());
-                            game.world.chunks.insert(
-                                (0, 0),
-                                Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
-                            );
+                            game.world
+                                .chunks
+                                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                             let air = game.world.block(JOURNALED[0], JOURNALED[1], JOURNALED[2]);
                             let stone = game
                                 .pack
@@ -2333,7 +2334,7 @@ pub(in crate::game) mod tests {
                     &HashMap::new(),
                 );
                 for permission in 0..=4 {
-                    let registries = sunrise_client::command::Registries {
+                    let registries = sunrise_command::Registries {
                         permission,
                         ..Default::default()
                     };
@@ -2371,7 +2372,7 @@ pub(in crate::game) mod tests {
                 &HashMap::new(),
             );
             for permission in 0..=4 {
-                let registries = sunrise_client::command::Registries {
+                let registries = sunrise_command::Registries {
                     permission,
                     ..Default::default()
                 };
@@ -2430,7 +2431,7 @@ pub(in crate::game) mod tests {
                 Some(&executors),
             );
             for permission in 0..=4 {
-                let registries = sunrise_client::command::Registries {
+                let registries = sunrise_command::Registries {
                     permission,
                     ..Default::default()
                 };
@@ -2472,7 +2473,7 @@ pub(in crate::game) mod tests {
             &HashMap::new(),
         );
         for permission in 0..=4 {
-            let registries = sunrise_client::command::Registries {
+            let registries = sunrise_command::Registries {
                 permission,
                 ..Default::default()
             };
@@ -2563,7 +2564,7 @@ pub(in crate::game) mod tests {
 
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &t, "native_mod_command", &HashMap::new());
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         let value = |line: &str, name: &str| {
             dispatcher
                 .parse(line, &registries)
@@ -2647,7 +2648,7 @@ pub(in crate::game) mod tests {
         assert_eq!(count["custom_argument"], "test:stack");
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &t, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         let parsed = dispatcher.parse("stack 64", &registries);
         assert_eq!(
             parsed.executable().unwrap().0.get("count"),
@@ -2715,7 +2716,7 @@ pub(in crate::game) mod tests {
 
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &t, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         for (line, value) in [
             (r##"quests open "#Chapter_One" 3"##, "#chapter_one"),
             ("quests open 1A2B3C4D5E6F7A8B 3", "1a2b3c4d5e6f7a8b"),
@@ -2776,8 +2777,8 @@ pub(in crate::game) mod tests {
     /// place, a mod argument on a vanilla literal and Sunrise's own tools are refused.
     #[test]
     fn usages_under_a_vanilla_root_merge_beside_its_usages() {
-        let vanilla = sunrise_client::command::vanilla::session_dispatcher(
-            &sunrise_client::gamerules::RuleRegistry::vanilla(),
+        let vanilla = sunrise_command::vanilla::session_dispatcher(
+            &sunrise_client_core::gamerules::RuleRegistry::vanilla(),
             &[],
         );
         let commands = [
@@ -2816,7 +2817,7 @@ pub(in crate::game) mod tests {
             &arguments,
             Some(&executors),
         );
-        let at = |permission| sunrise_client::command::Registries {
+        let at = |permission| sunrise_command::Registries {
             permission,
             ..Default::default()
         };
@@ -2865,7 +2866,7 @@ pub(in crate::game) mod tests {
         let arguments = command_arguments();
         let mut dispatcher = Dispatcher::new();
         register_dispatcher(&mut dispatcher, &t, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
+        let registries = sunrise_command::Registries::default();
         let parsed = dispatcher.parse("/set stone", &registries);
         let (context, _) = parsed.executable().expect("`//set stone` runs");
         assert_eq!(context.literals, ["/set"]);
@@ -2883,7 +2884,7 @@ pub(in crate::game) mod tests {
 pub(in crate::game) mod fake_action_tests {
     use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
     use mod_api::{BlockHit, Hand, PlayerRef};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// A server with a real guest (uuid 1) and a fake (uuid 2) standing at (0.5, 64, 0.5) on
     /// a stone floor, holding `item`, in game mode `mode`: the fake's handle and both conns.
@@ -2895,7 +2896,7 @@ pub(in crate::game) mod fake_action_tests {
         super::super::bossbars::audience_tests::add_real_and_fake(game);
         game.options.dedicated = Some(Vec::new());
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-            let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
             chunk.lit = true;
             game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
         }
@@ -2988,7 +2989,7 @@ pub(in crate::game) mod fake_action_tests {
             .unwrap()
             .clone();
         let [x, y, z] = at;
-        game.mobs.push(sunrise_client::mobs::Mob::new(
+        game.mobs.push(sunrise_sim::mobs::Mob::new(
             id,
             kind,
             sunrise_core::geometry::Vec3::new(x, y, z),
@@ -3098,8 +3099,8 @@ pub(in crate::game) mod fake_action_tests {
     #[ignore = "daily"]
     fn a_viewer_keeps_the_vehicle_menu_a_fake_player_used() {
         use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
-        use sunrise_client::containers::BlockEntity;
-        use sunrise_client::lan::menu::Slots;
+        use sunrise_level::containers::BlockEntity;
+        use sunrise_sim::lan::menu::Slots;
         super::super::native_entity_refs::tests::with_game(|game| {
             let (player, fake_conn, real_conn) = fake(game, None, 0);
             let at = sunrise_core::geometry::Vec3::new(2.5, 64.0, 0.5);
@@ -3143,7 +3144,7 @@ pub(in crate::game) mod fake_action_tests {
             // The viewer's live edit: its menu's clicks write through to the
             // stand-in (`source.write` after every click).
             let emerald = Some(ItemStack::new("minecraft:emerald", 2));
-            if let Some(sunrise_client::containers::BlockEntity::Chest(items)) =
+            if let Some(sunrise_level::containers::BlockEntity::Chest(items)) =
                 game.world.block_entities.get_mut(&key)
             {
                 items[4] = emerald.clone();
@@ -3260,7 +3261,7 @@ pub(in crate::game) mod fake_action_tests {
             .unwrap()
             .clone();
         let [x, y, z] = at;
-        game.mobs.push(sunrise_client::mobs::Mob::new(
+        game.mobs.push(sunrise_sim::mobs::Mob::new(
             id,
             kind,
             sunrise_core::geometry::Vec3::new(x, y, z),
@@ -3303,7 +3304,7 @@ pub(in crate::game) mod fake_action_tests {
                 .cooldowns
                 .add("minecraft:bucket".into(), 100);
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 5000,
                 kind,
                 sunrise_core::geometry::Vec3::new(2.0, 64.0, 0.5),
@@ -3375,7 +3376,7 @@ pub(in crate::game) mod fake_action_tests {
         use mod_api::PlayerActionSetup;
         super::super::native_entity_refs::tests::with_game(|game| {
             let (player, _, _) = fake(game, None, 0);
-            let mut stand = sunrise_client::entities::ArmorStand::new(
+            let mut stand = sunrise_sim::entities::ArmorStand::new(
                 5001,
                 sunrise_core::geometry::Vec3::new(2.0, 64.0, 0.5),
                 0.0,
@@ -3438,7 +3439,7 @@ pub(in crate::game) mod fake_action_tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let (player, _, _) = fake(game, None, 0);
-                let mut stand = sunrise_client::entities::ArmorStand::new(
+                let mut stand = sunrise_sim::entities::ArmorStand::new(
                     5001,
                     sunrise_core::geometry::Vec3::new(2.0, 64.0, 0.5),
                     0.0,
@@ -3474,11 +3475,11 @@ pub(in crate::game) mod fake_action_tests {
     fn scoped_fake_use_restores_the_persistent_menu_owner() {
         super::super::native_entity_refs::tests::with_game(|game| {
             let (player, conn, _) = fake(game, Some("minecraft:diamond"), 1);
-            let mut menu = Box::new(sunrise_client::menu::Menu::new(
-                sunrise_client::menu::Kind::Inventory,
+            let mut menu = Box::new(sunrise_sim::menu::Menu::new(
+                sunrise_sim::menu::Kind::Inventory,
             ));
             menu.carried = Some(ItemStack::new("minecraft:stick", 3));
-            let owner = (&*menu) as *const sunrise_client::menu::Menu;
+            let owner = (&*menu) as *const sunrise_sim::menu::Menu;
             *game
                 .lan
                 .as_mut()
@@ -3511,7 +3512,7 @@ pub(in crate::game) mod fake_action_tests {
                 .inventory
                 .as_ref()
                 .unwrap();
-            assert_eq!((&**restored) as *const sunrise_client::menu::Menu, owner);
+            assert_eq!((&**restored) as *const sunrise_sim::menu::Menu, owner);
             assert_eq!(restored.carried, Some(ItemStack::new("minecraft:stick", 3)));
         });
     }
@@ -4165,7 +4166,7 @@ pub(in crate::game) mod player_rule_tests {
 
 /// The online mode a dedicated server's network config carries: it has an
 /// `OnlineMode` key (and so signs its logins) only in online mode.
-pub(in crate::game) fn online_mode_of(config: &sunrise_client::lan::NetConfig) -> bool {
+pub(in crate::game) fn online_mode_of(config: &sunrise_sim::lan::NetConfig) -> bool {
     config.online.is_some()
 }
 
@@ -4175,7 +4176,7 @@ pub(in crate::game) mod network_settings_tests {
     #[test]
     #[ignore = "daily"]
     fn server_settings_follow_the_network_config() {
-        use sunrise_client::lan::{NetConfig, OnlineMode};
+        use sunrise_sim::lan::{NetConfig, OnlineMode};
         let mut config = NetConfig::loopback(25565, String::new(), 20);
         // online-mode=false: no key.
         assert!(!online_mode_of(&config));

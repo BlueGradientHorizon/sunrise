@@ -20,7 +20,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 packet: "container_click".into(),
                 field: "connection".into(),
             })?;
-        sunrise_client::mod_packet_builders::encode_container_click(
+        sunrise_sim::mod_packet_builders::encode_container_click(
             request,
             &remote.builtin,
             &remote.registries,

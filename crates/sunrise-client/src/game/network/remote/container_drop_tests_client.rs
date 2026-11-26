@@ -12,8 +12,9 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{command::args::GameMode, lan::data::SyncData};
+use sunrise_command::args::GameMode;
 use sunrise_protocol::{packets::configuration as config, registry::Builtin};
+use sunrise_sim::lan::data::SyncData;
 
 #[test]
 #[ignore = "daily"]

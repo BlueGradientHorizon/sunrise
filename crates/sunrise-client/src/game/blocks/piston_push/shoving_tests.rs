@@ -3,10 +3,12 @@ use crate::game::native_client_session::tests::{finish_login, logged_client};
 use crate::game::native_entity_refs::tests::{bind_acting_guest, with_client_game, with_game};
 use mod_api::{Collider, ColliderBox};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, entities::ItemEntity, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::connection::Connection;
 use sunrise_protocol::packets::play::{self, Clientbound, Serverbound};
+use sunrise_sim::{entities::ItemEntity, motion::PlayerMotion};
 
 const PLAYER: u32 = 42;
 const CONN: u32 = 1;
@@ -192,7 +194,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                     remote.level_load.finish();
                     remote.colliders.insert(
                         source as u32,
-                        sunrise_client::colliders::ColliderState::from_api(&shape()).unwrap(),
+                        sunrise_sim::colliders::ColliderState::from_api(&shape()).unwrap(),
                     );
                     // The last client tick saw the old pose; packet intake precedes the next.
                     game.tick().unwrap();
@@ -251,7 +253,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                     g.loaded = true;
                     g.load_timeout = 0;
                     g.inbox
-                        .push_back(sunrise_client::lan::guest::InboxItem::Packet(packet, None));
+                        .push_back(sunrise_sim::lan::guest::InboxItem::Packet(packet, None));
                 });
                 let placed = game.placed_moving_colliders();
                 moving_colliders::in_level(placed, || game.tick_lan_packets());

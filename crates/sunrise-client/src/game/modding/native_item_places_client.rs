@@ -4,17 +4,14 @@ pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::HostTransaction;
     use mod_api::{ENTITY_ITEMS, ItemResource, TransactionError};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]
     fn stand_equipment_effects_wait_for_root_commit() {
         with_game(|game| {
-            let mut stand = sunrise_client::entities::ArmorStand::new(
-                40,
-                sunrise_core::geometry::Vec3::ZERO,
-                0.0,
-            );
+            let mut stand =
+                sunrise_sim::entities::ArmorStand::new(40, sunrise_core::geometry::Vec3::ZERO, 0.0);
             stand.first_tick = false;
             game.armor_stands.push(stand);
             game.start_audio_capture();

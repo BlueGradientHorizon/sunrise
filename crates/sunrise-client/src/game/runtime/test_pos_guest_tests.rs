@@ -4,12 +4,12 @@
 //! (tools/test_test_pos_guest_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 pub(in crate::game) const GUEST: &str = "H274Guest";
 
@@ -112,7 +112,9 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<Stri
     let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
+        said.iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect(),
     )
 }
 

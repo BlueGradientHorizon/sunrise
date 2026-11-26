@@ -3,14 +3,14 @@ use crate::game::server_side::projectile_spawned_tests::ignite;
 use crate::game::server_side::projectile_spawned_tests::sound;
 use crate::game::server_side::projectile_spawned_tests::with_enchantments;
 use serde_json::json;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::Who,
-    projectiles::{Projectile, ProjectileKind},
-};
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
+};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
+    mobs::Who,
+    projectiles::{Projectile, ProjectileKind},
 };
 
 /// The sounds played since capture began, as (event, volume, pitch).

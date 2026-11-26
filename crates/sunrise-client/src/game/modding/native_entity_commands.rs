@@ -1,6 +1,6 @@
 //! Entity command execution shared by the bool and feedback-returning mod API methods.
 use super::{Game, commands::execute, native_server::system_chat};
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs the command `line` (a leading slash allowed) with the entity as
@@ -191,7 +191,7 @@ mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let id = game
                 .summon(
@@ -208,7 +208,7 @@ mod tests {
                     let (tx, rx) = std::sync::mpsc::channel();
                     game.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
                         guest.sender =
-                            sunrise_client::lan::PlayerSender::new(tx, std::sync::Arc::default());
+                            sunrise_sim::lan::PlayerSender::new(tx, std::sync::Arc::default());
                     });
                     rx
                 })
@@ -246,12 +246,12 @@ mod tests {
                 );
                 for rx in &receivers {
                     let mut announcements = 0;
-                    while let Ok(sunrise_client::lan::Out::Packet(body)) = rx.try_recv() {
+                    while let Ok(sunrise_sim::lan::Out::Packet(body)) = rx.try_recv() {
                         let mut reader = sunrise_protocol::buf::Reader::new(&body);
                         let id = reader.varint().unwrap();
                         if let C::DisguisedChat(chat) = C::decode(id, reader.rest()).unwrap() {
                             assert_eq!(
-                                sunrise_client::component::name_text(&chat.message).plain(),
+                                sunrise_client_core::component::name_text(&chat.message).plain(),
                                 "silent source announcement"
                             );
                             announcements += 1;
@@ -309,9 +309,9 @@ mod tests {
                     let chat: Vec<_> = game.side.guest_packets[before..]
                         .iter()
                         .filter_map(|packet| match packet {
-                            C::SystemChat(chat) if !chat.overlay => {
-                                Some(sunrise_client::component::name_text(&chat.content).plain())
-                            }
+                            C::SystemChat(chat) if !chat.overlay => Some(
+                                sunrise_client_core::component::name_text(&chat.content).plain(),
+                            ),
                             _ => None,
                         })
                         .collect();
@@ -332,7 +332,7 @@ mod tests {
         let name = "suppressed_player_command_changes_game_mode_without_telling_player_or_ops";
         with_command_guests(name, |game| {
             use std::sync::{Arc, mpsc};
-            use sunrise_client::lan::{Out, PlayerSender};
+            use sunrise_sim::lan::{Out, PlayerSender};
 
             game.build_registries();
             let player = game.player(12).unwrap();

@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 
 /// ClientLevel ticks entities in the order they joined: a boat added after the
 /// player pushes it after its move, one the level held when the player respawned

@@ -4,12 +4,12 @@
 //! them where it says and interpolates their moves.
 use super::{FallingBlock, Game, fireworks::fireworks_of};
 use crate::game::native_ticks::{TickRound, places_of, slot_place};
-use sunrise_client::items::ItemStack;
-use sunrise_client::join_seq::{JoinList, RestoreOrder};
-use sunrise_client::particles::{ParticleOptions, ParticleType};
-use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::Value;
+use sunrise_sim::join_seq::{JoinList, RestoreOrder};
+use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 use sunrise_world::registry::BlockStateId;
 
 #[allow(unused_imports)]
@@ -333,10 +333,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.pick_section_move(r.id, r.position.components());
             self.rocket_spark(r);
         }
-        self.rockets.restore(
-            rockets,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        self.rockets
+            .restore(rockets, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
 
     /// One tick of interpolation, as `tick_remote_objects`.
@@ -402,10 +400,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let _ = self.client_fall_step(f);
             self.pick_section_move(f.id, f.position.components());
         });
-        self.falling.restore(
-            falling,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        self.falling
+            .restore(falling, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         // Projectiles tick on the client too and fly on between the tracker's
         // updates (10 to 20 ticks apart); a block stops them there, and only
         // the server decides what they hit. EntityTickEvent.Pre for them and
@@ -492,11 +488,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.creatures.projectiles.restore(
             projectiles,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
         );
         self.tridents.restore(
             tridents,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
         );
         for (at, event) in arrow_events {
             self.client_arrow_event(at, event);
@@ -542,10 +538,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.pick_section_move(r.id, r.position.components());
             self.rocket_spark(r);
         }
-        self.rockets.restore(
-            rockets,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        self.rockets
+            .restore(rockets, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         for c in &mut self.crystals {
             c.time += 1;
             c.position = step(c.id, c.position);
@@ -609,7 +603,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mut projectiles: JoinList<Projectile, false>,
         mut tridents: JoinList<super::trident::ThrownTrident>,
         round: &mut TickRound,
-        arrow_events: &mut Vec<(Vec3, sunrise_client::arrows::ArrowEvent)>,
+        arrow_events: &mut Vec<(Vec3, sunrise_sim::arrows::ArrowEvent)>,
     ) -> (
         JoinList<Projectile, false>,
         JoinList<super::trident::ThrownTrident>,
@@ -1007,7 +1001,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 radius: 3.0,
                 waiting: false,
                 particle: default_cloud_particle(),
-                random: sunrise_client::random_source::entity(),
+                random: sunrise_level::random_source::entity(),
             }),
             "minecraft:eye_of_ender" => {
                 self.end
@@ -1016,7 +1010,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // FishingHook.recreateFromPacket: the owner's id is the data.
             "minecraft:fishing_bobber" => self.spawn_remote_hook(
                 id,
-                sunrise_client::lan::playerdata::uuid_ints(packet.uuid),
+                sunrise_sim::lan::playerdata::uuid_ints(packet.uuid),
                 at,
                 velocity,
                 data,
@@ -1026,7 +1020,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // random, so each placed crystal spins from its own phase. The id is the
                 // server's, given in the order its chunks load, so under `SUNRISE_STILL` the
                 // position alone seeds it.
-                let drawn = sunrise_client::mobs::entity_random(id, at)
+                let drawn = sunrise_sim::mobs::entity_random(id, at)
                     .next_int_bound(100_000)
                     .unwrap_or(0);
                 let time = super::dragon::Crystal::start_time(at, drawn, self.clock.still());
@@ -1097,9 +1091,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::mobs::Who;
-    use sunrise_client::projectiles::ProjectileWorld;
     use sunrise_core::geometry::Aabb;
+    use sunrise_sim::mobs::Who;
+    use sunrise_sim::projectiles::ProjectileWorld;
 
     /// A world with nothing in it: the client tick of a projectile only
     /// needs the blocks around it.
@@ -1229,7 +1223,7 @@ pub(in crate::game) mod tests {
     fn a_power_packet_gives_a_fireball_the_power_its_next_tick_uses() {
         // ClientPacketListener.handleProjectilePowerPacket: the fireball with
         // id 12 gets the power the server sends bundled with its motion.
-        let mut list: sunrise_client::join_seq::JoinList<Projectile, false> =
+        let mut list: sunrise_sim::join_seq::JoinList<Projectile, false> =
             [tracked(ProjectileKind::LargeFireball { power: 1 }, 12)]
                 .into_iter()
                 .collect();
@@ -1244,7 +1238,7 @@ pub(in crate::game) mod tests {
     fn a_power_packet_ignores_an_arrow_an_unknown_id_and_a_thrown_item() {
         // Vanilla's instanceof AbstractHurtingProjectile: an arrow and a
         // thrown egg are none, and no entity is id 99.
-        let mut list: sunrise_client::join_seq::JoinList<Projectile, false> = [
+        let mut list: sunrise_sim::join_seq::JoinList<Projectile, false> = [
             tracked(
                 ProjectileKind::Arrow {
                     base_damage: 2.0,
@@ -1272,7 +1266,7 @@ pub(in crate::game) mod tests {
         // `ClientPacketListener.handleSetEntityData` of
         // Fireball.DATA_ITEM_STACK: the item `Fireball.getItem` returns, which
         // is the fire charge the default was until the server says otherwise.
-        let mut list: sunrise_client::join_seq::JoinList<Projectile, false> = [
+        let mut list: sunrise_sim::join_seq::JoinList<Projectile, false> = [
             tracked(ProjectileKind::LargeFireball { power: 1 }, 12),
             tracked(ProjectileKind::SmallFireball, 13),
             tracked(ProjectileKind::Snowball, 14),
@@ -1369,7 +1363,7 @@ pub(in crate::game) mod nested_spawn_tests {
                 .unwrap();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.world.set(4, 63, 4, slime).unwrap();
             falling(game, 48);
             game.falling.update(0, |f| {
@@ -1405,7 +1399,7 @@ pub(in crate::game) mod nested_spawn_tests {
         game: &mut crate::game::ClientGame<'_>,
         point: Point,
         remove: bool,
-    ) -> Vec<(u32, sunrise_client::join_seq::JoinSeq)> {
+    ) -> Vec<(u32, sunrise_sim::join_seq::JoinSeq)> {
         macro_rules! rows {
             ($list:expr) => {{
                 if remove {
@@ -1432,7 +1426,7 @@ pub(in crate::game) mod nested_spawn_tests {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
@@ -1504,12 +1498,12 @@ pub(in crate::game) mod nested_spawn_tests {
             game.connect_local(client, "NestedRocket").unwrap();
             game.remote.as_mut().unwrap().entity_id = 99;
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(20.0, 80.0, 20.0))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(20.0, 80.0, 20.0))
                     .unwrap(),
             );
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
@@ -1670,7 +1664,7 @@ pub(in crate::game) mod entity_tick_tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 game.block_ticks
                     .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
@@ -1725,7 +1719,7 @@ pub(in crate::game) mod entity_tick_tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 game.block_ticks
                     .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))

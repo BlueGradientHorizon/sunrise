@@ -33,13 +33,13 @@ impl Commands for ServerGame<'_> {
         broadcast_to_admins: bool,
     ) -> Result<(), mod_api::text::TextFormError> {
         self.native_feedback(
-            sunrise_client_lib::api_text::to_serialized_engine(&line)?,
+            sunrise_sim::api_text::to_serialized_engine(&line)?,
             broadcast_to_admins,
         );
         Ok(())
     }
     fn failure(&mut self, line: Text) -> Result<(), mod_api::text::TextFormError> {
-        self.native_failure(sunrise_client_lib::api_text::to_serialized_engine(&line)?);
+        self.native_failure(sunrise_sim::api_text::to_serialized_engine(&line)?);
         Ok(())
     }
     fn run_command(&mut self, line: &str) -> bool {
@@ -56,7 +56,7 @@ impl Levels for ServerGame<'_> {
 }
 impl Messages for ServerGame<'_> {
     fn broadcast(&self, line: Text) -> Result<(), mod_api::text::TextFormError> {
-        self.native_broadcast(sunrise_client_lib::api_text::to_serialized_engine(&line)?);
+        self.native_broadcast(sunrise_sim::api_text::to_serialized_engine(&line)?);
         Ok(())
     }
 }

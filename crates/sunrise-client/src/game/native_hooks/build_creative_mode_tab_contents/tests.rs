@@ -209,7 +209,7 @@ pub(in crate::game) fn replace_client_definition(
         "minecraft:enchantment".into(),
         vec![(
             "test:levels".into(),
-            Some(sunrise_client::scoreboard::json_to_tag(&definition(
+            Some(sunrise_client_core::scoreboard::json_to_tag(&definition(
                 max_level,
             ))),
         )],
@@ -284,7 +284,7 @@ fn a_tab_reads_back_its_title_as_a_translatable_with_the_title_as_fallback() {
 fn a_servers_creative_tabs_hold_vanillas_items() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
-            use sunrise_client::save::{Level, write_dat};
+            use sunrise_sim::save::{Level, write_dat};
 
             let save = tempfile::tempdir().unwrap();
             write_dat(

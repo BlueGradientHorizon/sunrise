@@ -42,7 +42,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         Some(match target {
             Target::Player | Target::Guest(_) => super::native_living_body::PLAYER,
             Target::Mob(id) => super::native_living_body::body_kind_name(
-                sunrise_client::health::LivingBody::Mob(self.mobs.iter().find(|mob| mob.id == id)?),
+                sunrise_sim::health::LivingBody::Mob(self.mobs.iter().find(|mob| mob.id == id)?),
             ),
             Target::Item(_) => "minecraft:item",
             Target::Orb(_) => "minecraft:experience_orb",
@@ -149,9 +149,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::{with_client_game, with_game};
-    use sunrise_client::entities::ArmorStand;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::entities::ArmorStand;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]

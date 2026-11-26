@@ -211,7 +211,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     pub(in crate::game) fn native_player_resting(
         &self,
         player: PlayerRef,
-    ) -> Option<&sunrise_client::lan::guest::Guest> {
+    ) -> Option<&sunrise_sim::lan::guest::Guest> {
         match self.player_handle_read(player)? {
             PlayerRead::Guest(guest) => Some(guest),
             PlayerRead::Acting { .. } => None,
@@ -265,15 +265,13 @@ mod tests {
     #[ignore = "daily"]
     fn statistics_restore_updates_live_scores_and_next_request_without_awarding() {
         use serde_json::{Value, json};
-        use sunrise_client::{
-            lan::{Out, PlayerSender, playerdata::uuid_ints},
-            scoreboard::{RenderType, literal},
-        };
+        use sunrise_client_core::scoreboard::{RenderType, literal};
         use sunrise_protocol::{
             buf::Reader,
             ids::play::clientbound::AWARD_STATS,
             packets::play::{ClientCommand, Clientbound, Serverbound},
         };
+        use sunrise_sim::lan::{Out, PlayerSender, playerdata::uuid_ints};
 
         if run_fresh_cases(
             "game::server_side::native_player_stats::tests::statistics_restore_updates_live_scores_and_next_request_without_awarding",
@@ -455,8 +453,8 @@ mod tests {
     #[ignore = "daily"]
     fn a_resting_guest_reads_from_their_own_record() {
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
         with_game(|game| {
             let settings = super::super::lan::LanSettings {

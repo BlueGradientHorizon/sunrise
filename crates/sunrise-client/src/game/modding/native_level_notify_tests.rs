@@ -2,14 +2,14 @@
 use super::native_entity_refs::tests::with_game;
 use mod_api::{HostTransaction, TransactionError};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]
 fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
     use super::native_guest_turn_tests::with_guests;
-    use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::{Out, PlayerSender};
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
         game.world
@@ -86,8 +86,8 @@ fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
 #[ignore = "daily"]
 fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
     use super::native_guest_turn_tests::with_guests;
-    use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::{Out, PlayerSender};
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
         game.world
@@ -175,7 +175,7 @@ fn bone_meal_on_an_invalid_block_changes_nothing() {
 #[ignore = "daily"]
 fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
     use super::native_guest_turn_tests::with_guests;
-    use sunrise_client::lan::PlayerSender;
+    use sunrise_sim::lan::PlayerSender;
 
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
@@ -255,7 +255,7 @@ fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
         assert_eq!(game.world.chunks[&(0, 0)].biome(3, 67, 3), target);
         assert!(game.world.modified.contains(&(0, 0)));
         assert!(!game.world.dirty_sections.is_empty());
-        let sunrise_client::lan::Out::Packet(body) = rx.try_recv().unwrap() else {
+        let sunrise_sim::lan::Out::Packet(body) = rx.try_recv().unwrap() else {
             panic!("expected a biome packet");
         };
         let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -280,7 +280,7 @@ fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
 #[ignore = "daily"]
 fn biome_negative_min_y_and_unwind_restore_without_publication() {
     use super::native_guest_turn_tests::with_guests;
-    use sunrise_client::lan::PlayerSender;
+    use sunrise_sim::lan::PlayerSender;
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
         game.world

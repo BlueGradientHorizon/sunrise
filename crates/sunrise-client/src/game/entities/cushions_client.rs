@@ -1,8 +1,8 @@
 use super::{Game, entity_culling::default_range};
 use crate::game::server_side::cushions::aabb;
 use crate::game::server_side::cushions::snap_yaw;
-use sunrise_client::mobs::anim::Poses;
 use sunrise_core::geometry::Aabb;
+use sunrise_sim::mobs::anim::Poses;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CushionRenderer`: the coloured model, rotated to the nearest

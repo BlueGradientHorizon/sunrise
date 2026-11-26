@@ -6,10 +6,10 @@ use sunrise_core::random::RandomSource;
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::damage_source::Catalog as DamageCatalog;
 use {
-    sunrise_client::mobs::DamageKind, sunrise_client::mobs::MobEvent,
-    sunrise_client::mobs::NamedDamage, sunrise_client::mobs::Who, sunrise_client::mobs::finalize,
-    sunrise_client::scoreboard_cmd::Holder, sunrise_client::scoreboard_cmd::Tracker,
-    sunrise_client::text::Text, sunrise_level::sim_settings::SOUND_SOURCES,
+    sunrise_client_core::text::Text, sunrise_level::sim_settings::SOUND_SOURCES,
+    sunrise_sim::mobs::DamageKind, sunrise_sim::mobs::MobEvent, sunrise_sim::mobs::NamedDamage,
+    sunrise_sim::mobs::Who, sunrise_sim::mobs::finalize, sunrise_sim::scoreboard_cmd::Holder,
+    sunrise_sim::scoreboard_cmd::Tracker,
 };
 
 /// Queue bookkeeping for synchronous command damage, preserving prior requests
@@ -60,7 +60,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 !index.special(id)
                     || matches!(
                         self.recipes().recipe(id),
-                        Some(sunrise_client::crafting::Recipe::Mod(_))
+                        Some(sunrise_sim::crafting::Recipe::Mod(_))
                     )
             })
             .cloned()
@@ -254,8 +254,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         attacker: i32,
         direct: Option<Target>,
-    ) -> sunrise_client::health::Attack {
-        use sunrise_client::health::DirectEntity;
+    ) -> sunrise_sim::health::Attack {
+        use sunrise_sim::health::DirectEntity;
         let mut attack = self.attack_of(attacker);
         attack.direct = Some(
             direct
@@ -288,9 +288,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Classify an explicit `/damage` or `EntityRef::hurt` direct entity target.
     pub(in crate::game) fn target_direct_entity(
         direct: Option<Target>,
-        projectiles: &[sunrise_client::projectiles::Projectile],
-    ) -> sunrise_client::health::DirectEntity {
-        use sunrise_client::health::DirectEntity;
+        projectiles: &[sunrise_sim::projectiles::Projectile],
+    ) -> sunrise_sim::health::DirectEntity {
+        use sunrise_sim::health::DirectEntity;
         match direct {
             Some(
                 Target::Player
@@ -872,11 +872,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Target::Mob(id) = t else {
             return false;
         };
-        sunrise_client::mobs::sulfur_cube::ARCHETYPE_ATTRIBUTES.contains(&attribute)
+        sunrise_sim::mobs::sulfur_cube::ARCHETYPE_ATTRIBUTES.contains(&attribute)
             && self
                 .mobs
                 .iter()
-                .any(|m| m.id == id && m.species() == sunrise_client::mobs::Species::SulfurCube)
+                .any(|m| m.id == id && m.species() == sunrise_sim::mobs::Species::SulfurCube)
     }
     /// AttributeCommand on a living entity through its generic attribute map.
     pub(in crate::game::server_side) fn generic_attribute(
@@ -1239,7 +1239,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let at = at.unwrap_or(m.position);
         m.extra.passenger = false;
         m.extra.boarding_cooldown = super::super::boat_passengers::BOARDING_COOLDOWN;
-        sunrise_client::mobs::living::teleports::snap_to(m, at);
+        sunrise_sim::mobs::living::teleports::snap_to(m, at);
         self.snap_mob_passengers(rider);
         self.release_removed_vehicle(v);
     }
@@ -1352,11 +1352,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 /// A `CommandError` whose message is a translation with component arguments.
-pub(in crate::game) fn text_error(
-    key: &str,
-    args: &[Text],
-) -> sunrise_client::command::CommandError {
-    sunrise_client::command::CommandError::new(Text::translate(key, args))
+pub(in crate::game) fn text_error(key: &str, args: &[Text]) -> sunrise_command::CommandError {
+    sunrise_command::CommandError::new(Text::translate(key, args))
 }
 
 /// `PlaySoundCommand.playSound`: the point and the volume one target hears the
@@ -1567,7 +1564,7 @@ pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::d
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{look_at, playsound_placement, take_new_reinforcements};
-    use sunrise_client::mobs::{MobEvent, Who};
+    use sunrise_sim::mobs::{MobEvent, Who};
 
     #[test]
     fn command_reinforcements_leave_prior_requests_and_other_events_queued() {
@@ -1681,8 +1678,8 @@ pub(in crate::game) mod tests {
 pub(in crate::game) mod vehicle_damage_command_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -1810,10 +1807,10 @@ pub(in crate::game) mod vehicle_damage_command_tests {
         });
     }
     pub(in crate::game) fn attribute_chat_count(
-        rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+        rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
     ) -> usize {
-        use sunrise_client::lan::Out;
         use sunrise_protocol::packets::play::Clientbound;
+        use sunrise_sim::lan::Out;
         let mut bodies = Vec::new();
         for out in rx.try_iter() {
             match out {
@@ -1864,12 +1861,12 @@ pub(in crate::game) mod effect_attribute_tests;
 pub(in crate::game) mod attribute_modifier_command_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_client_core::nbt_value::text;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

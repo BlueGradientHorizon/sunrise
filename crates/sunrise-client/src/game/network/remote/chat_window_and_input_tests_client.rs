@@ -48,7 +48,7 @@ fn mod_open_chat_fills_the_box_only_over_the_world() {
     assert!(game.open_chat("/tp ").is_err());
     assert!(game.side.chat_ui.chat_screen.is_none());
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+        sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
             .unwrap(),
     );
     game.side.screen = Screen::Paused;

@@ -7,8 +7,8 @@
 //! the rule off and their usual item with it on.
 use super::*;
 use crate::game::game_tests::tests::{isolated_server_game, server_game};
-use sunrise_client::items::ItemStack;
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
 
 fn game(
     resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -156,7 +156,7 @@ fn block_drops_on_keeps_the_pop() {
     assert!(
         game.ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
     );
     for (block, item, drops, meal, _, on) in CASES {
         place(&mut game, on, block);
@@ -188,7 +188,7 @@ fn harvest_game<'a>(
     let (published, mut game) = isolated_server_game(resources);
     set_up(&mut game);
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(
+        sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(12.5, 100.0, 2.5),
         )

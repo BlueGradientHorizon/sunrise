@@ -142,8 +142,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+    use sunrise_command::args::GameMode;
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::motion::PlayerMotion;
 
     /// A server's game with its own player in survival standing at the
     /// origin chunk, holding `held`: their handle.
@@ -188,7 +190,7 @@ mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
             let pos = [6, 64, 4];
@@ -209,7 +211,7 @@ mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let pickaxe = ItemStack::new("minecraft:iron_pickaxe", 1);
             let player = with_player(game, pickaxe.clone());
@@ -294,7 +296,7 @@ mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let mut silk = ItemStack::new("minecraft:diamond_pickaxe", 1);
             silk.enchant("minecraft:silk_touch", 1);
@@ -322,7 +324,7 @@ mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
             let (stone, bedrock, air) = ([6, 64, 4], [7, 64, 4], [8, 64, 4]);
@@ -441,7 +443,7 @@ mod tests {
             with_game(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
                 for (i, &pos) in vein.iter().enumerate() {
@@ -522,7 +524,7 @@ mod tests {
             with_game(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
                 let pos = [6, 64, 4];

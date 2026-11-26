@@ -4,13 +4,15 @@
 //! target away. The rest of a weapon hit (`Player.itemAttackInteraction`)
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
 use super::Game;
-use sunrise_client::{
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::{
     enchant::{EffectContext, Enchantments},
-    health::ArmorWeapon,
     items::{ItemStack, Items},
+};
+use sunrise_sim::{
+    health::ArmorWeapon,
     mobs::{Damage, DamageKind, Mob, MobEvent, Species},
 };
-use sunrise_core::geometry::{Aabb, Vec3};
 
 #[cfg(test)]
 #[path = "tests/player_armor_weapon_tests.rs"]
@@ -100,7 +102,7 @@ pub(in crate::game) struct SmashPush {
     pub(in crate::game) center: Vec3,
     pub(in crate::game) heavy: f64,
     pub(in crate::game) attacker: Option<u32>,
-    pub(in crate::game) team: Option<sunrise_client::scoreboard::Team>,
+    pub(in crate::game) team: Option<sunrise_client_core::scoreboard::Team>,
 }
 /// `MaceItem.getKnockbackPower` and the push of one entity at `at`, `heavy`
 /// being 2 after a fall of more than five blocks.
@@ -196,9 +198,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if name != "minecraft:mace_smash"
             && name != "minecraft:player_attack"
             && let Some(named) =
-                sunrise_client::mobs::NamedDamage::registered(&self.health_resources.damage, &name)
+                sunrise_sim::mobs::NamedDamage::registered(&self.health_resources.damage, &name)
         {
-            source.kind = sunrise_client::mobs::DamageKind::Named(named);
+            source.kind = sunrise_sim::mobs::DamageKind::Named(named);
         }
         source
     }
@@ -247,21 +249,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// and feet (`position`). The player is the one acting, a mob one in the list.
     pub(in crate::game::server_side) fn attacker_aim(
         &self,
-        who: Option<sunrise_client::mobs::Who>,
-    ) -> Option<sunrise_client::mobs::Aim> {
+        who: Option<sunrise_sim::mobs::Who>,
+    ) -> Option<sunrise_sim::mobs::Aim> {
         match who? {
-            sunrise_client::mobs::Who::Player => {
+            sunrise_sim::mobs::Who::Player => {
                 let p = self.player.as_ref()?;
                 let look = sunrise_world::view_direction::view_vector(self.pitch, self.yaw);
-                Some(sunrise_client::mobs::Aim {
+                Some(sunrise_sim::mobs::Aim {
                     eye: self.eye_position()?,
                     look: [look.x, look.y, look.z],
                     feet: [p.position.x, p.position.y, p.position.z],
                 })
             }
-            sunrise_client::mobs::Who::Mob(id) => {
+            sunrise_sim::mobs::Who::Mob(id) => {
                 let m = self.mobs.iter().find(|m| m.id == id)?;
-                Some(sunrise_client::mobs::Aim {
+                Some(sunrise_sim::mobs::Aim {
                     eye: [m.position.x, m.eye_y(), m.position.z],
                     look: m.look_angle(),
                     feet: [m.position.x, m.position.y, m.position.z],
@@ -305,7 +307,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         amount: f32,
         source: Damage,
     ) -> (bool, bool) {
-        let attack = self.attack_of_who(Some(sunrise_client::mobs::Who::Player));
+        let attack = self.attack_of_who(Some(sunrise_sim::mobs::Who::Player));
         let plan =
             self.prepare_knockback_credit(self.mobs[index].id as i32, source.attacker, &attack);
         let held = self.held().cloned();
@@ -599,7 +601,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// team) or a creative player flying.
     pub(in crate::game::server_side) fn smash_push_player(&mut self, push: &SmashPush) {
         if self.spectator()
-            || sunrise_client::scoreboard::teams_allied(push.team.as_ref(), self.player_team())
+            || sunrise_client_core::scoreboard::teams_allied(push.team.as_ref(), self.player_team())
         {
             return;
         }
@@ -704,7 +706,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if !self.punch_armor_stand(i) {
                     continue;
                 }
-                let knock = sunrise_client::health::Knock {
+                let knock = sunrise_sim::health::Knock {
                     strength: f64::from(0.4_f32),
                     x: xd,
                     z: zd,

@@ -4,8 +4,8 @@ use mod_api::__private::game::Fields;
 use mod_api::{ItemPlace, MenuSlotBacking, MenuSlotPlace, ServerHost};
 use std::collections::BTreeSet;
 use std::result::Result;
-use sunrise_client::{
-    containers::ModMenuType,
+use sunrise_level::containers::ModMenuType;
+use sunrise_sim::{
     lan::menu::{ModCraft, Slots},
     recipe_book::placement_sync::Refusal,
 };

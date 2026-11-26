@@ -1,7 +1,7 @@
 //! Dual-role menu handle reads shared across server and client roles.
 use super::Game;
 use mod_api::{MenuRef, PlayerRef};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A player's current supported menu.

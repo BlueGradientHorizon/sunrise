@@ -8,16 +8,15 @@ use super::{
     Game, chat_common::PLAYER_NAME, commands::Target, lan_actions::CombatPlayer,
     lan_mobs::guest_bounds, mace::Spared,
 };
-use sunrise_client::enchant::EffectContext;
+use sunrise_items::enchant::EffectContext;
 
-use sunrise_client::{
-    Result,
+use sunrise_client_core::{Result, text::Text};
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::{
     health::HurtSource,
     mobs::Who,
     projectiles::{Hit, Projectile, ProjectileKind},
-    text::Text,
 };
-use sunrise_core::geometry::{Aabb, Vec3};
 
 /// The player projectiles that meet other players: arrows (their hurt), and
 /// snowballs, eggs and mods' thrown types, which break on them
@@ -67,10 +66,10 @@ pub(in crate::game) struct Strike {
     knockback: (f32, f64, f64),
     knockback_attack: bool,
     /// The attacker's team, for the victim's `Player.canHarmPlayer`.
-    team: Option<sunrise_client::scoreboard::Team>,
+    team: Option<sunrise_client_core::scoreboard::Team>,
     /// The attacker's main-hand item with a custom name, for the death
     /// message's `.item` form.
-    item: Option<sunrise_client::text::Text>,
+    item: Option<sunrise_client_core::text::Text>,
     /// The weapon's `minecraft:ignite` (Fire Aspect) on the victim, in
     /// seconds (`EnchantmentHelper.doPostAttackEffects`).
     ignite: f32,
@@ -112,7 +111,7 @@ impl Strike {
 /// The attacker's pre-hit inputs retained until a sweep's actual victim is in place.
 #[derive(Clone)]
 struct SweepDamage {
-    weapon: sunrise_client::items::ItemStack,
+    weapon: sunrise_items::items::ItemStack,
     attacker: u32,
     base: f32,
     scale: f32,
@@ -136,7 +135,7 @@ pub(in crate::game) struct Sweep {
     custom_damage: Option<SweepDamage>,
     /// The push along the attacker's yaw.
     knockback: (f64, f64),
-    team: Option<sunrise_client::scoreboard::Team>,
+    team: Option<sunrise_client_core::scoreboard::Team>,
     /// The target's box grown by (1, 0.25, 1).
     pub(in crate::game) hit_box: Aabb,
     /// The entity id of the player the sweep started from, which it spares.
@@ -296,12 +295,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         attacker_team: Option<&sunrise_client_core::scoreboard::Team>,
         victim_team: Option<&sunrise_client_core::scoreboard::Team>,
     ) -> bool {
-        let answer = sunrise_client::health::can_harm_player(
+        let answer = sunrise_sim::health::can_harm_player(
             attacker,
             victim,
             self.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::PVP),
+                .bool_at(sunrise_client_core::gamerules::vanilla::PVP),
             attacker_team,
             victim_team,
         );
@@ -395,7 +394,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             shooter,
             &sunrise_protocol::packets::play::Clientbound::GameEvent(
                 sunrise_protocol::packets::play::GameEvent {
-                    event: sunrise_client::lan::hub::game_event::PLAY_ARROW_HIT_SOUND,
+                    event: sunrise_sim::lan::hub::game_event::PLAY_ARROW_HIT_SOUND,
                     param: 0.0,
                 },
             ),
@@ -776,7 +775,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let attacker_id = attacker.as_ref().map_or(attacker_id, |(id, _)| *id as i32);
         for (victim, id, team) in victims {
             if sweep.skip == Some(id)
-                || sunrise_client::scoreboard::teams_allied(team.as_ref(), sweep.team.as_ref())
+                || sunrise_client_core::scoreboard::teams_allied(team.as_ref(), sweep.team.as_ref())
                 || !self.player_may_harm(attacker_id, id, sweep.team.as_ref(), team.as_ref())
             {
                 continue;
@@ -814,15 +813,15 @@ pub(in crate::game) mod arrow_hit_sound_tests {
     use std::fmt::Write as _;
     use std::path::PathBuf;
     use std::sync::{Arc, atomic::AtomicUsize, mpsc};
-    use sunrise_client::{
-        command::args::GameMode,
-        gamerules::Value,
+    use sunrise_client_core::gamerules::Value;
+    use sunrise_command::args::GameMode;
+    use sunrise_core::geometry::Vec3;
+    use sunrise_protocol::packets::play::Clientbound;
+    use sunrise_sim::{
         lan::{Out, PlayerSender},
         motion::PlayerMotion,
         projectiles::{Hit, Projectile, ProjectileKind},
     };
-    use sunrise_core::geometry::Vec3;
-    use sunrise_protocol::packets::play::Clientbound;
 
     fn load_witness() -> Witness {
         let value = std::env::var_os("SUNRISE_ARROW_HIT_DING_WITNESS").unwrap_or_else(|| {
@@ -1042,13 +1041,12 @@ pub(in crate::game) mod arrow_hit_sound_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::gamerules::Value;
+    use sunrise_client_core::gamerules::Value;
 
     /// A fresh survival body for guest `conn` (entity `conn`), where `with_guests` stands it.
     fn fresh_body(game: &mut crate::game::ServerGame<'_>, conn: u32) {
         let mut body =
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
-                .unwrap();
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0)).unwrap();
         body.entity_id = conn as i32;
         game.lan
             .as_mut()
@@ -1061,7 +1059,7 @@ mod tests {
             })
             .unwrap();
         game.as_guest(conn, |g| {
-            use sunrise_client::command::args::GameMode;
+            use sunrise_command::args::GameMode;
             g.set_game_mode(GameMode::Creative);
             g.set_game_mode(GameMode::Survival);
         })
@@ -1115,7 +1113,8 @@ mod tests {
         let swept = health(game, 13) < before;
 
         fresh_body(game, 13);
-        game.side.combat.0.blast_owner = Some((12, sunrise_client::text::Text::literal("guest12")));
+        game.side.combat.0.blast_owner =
+            Some((12, sunrise_client_core::text::Text::literal("guest12")));
         game.side.combat.0.blast_owner_player = true;
         game.side.combat.0.blast_guest = Some(12);
         let before = health(game, 13);
@@ -1138,7 +1137,7 @@ mod tests {
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             test(game);
         });
@@ -1168,8 +1167,8 @@ mod tests {
                 }
                 let board = &game.score.board;
                 let (own, other) = (board.players_team("guest12"), board.players_team("guest13"));
-                let allied = sunrise_client::scoreboard::teams_allied(own, other);
-                let expected = sunrise_client::health::can_harm_player(12, 13, pvp, own, other);
+                let allied = sunrise_client_core::scoreboard::teams_allied(own, other);
+                let expected = sunrise_sim::health::can_harm_player(12, 13, pvp, own, other);
                 answers.push(expected);
                 let mut wanted = [expected; 7];
                 wanted[5] = expected && !allied;

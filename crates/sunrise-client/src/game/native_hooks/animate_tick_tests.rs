@@ -10,8 +10,9 @@ use mod_api::{
     RegistrationContext,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 /// One call the part heard: its position and block, its draw before and after its particle,
 /// and whether the particle was submitted.

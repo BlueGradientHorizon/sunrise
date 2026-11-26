@@ -20,13 +20,13 @@ use sunrise_client::{
     graphics::EntityCullingMode,
     hud::{HudBatch, Rect},
     item_render::{self, ItemRenderState, SpecialHost, WorldSink},
-    items::ItemStack,
     mesher::Vertex,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
 
 struct ItemEntityDraw<'a> {
-    item: &'a sunrise_client::entities::ItemEntity,
+    item: &'a sunrise_sim::entities::ItemEntity,
     at: [f64; 3],
     partial: f32,
     entity: bool,
@@ -241,9 +241,9 @@ impl ItemEnv for Env<'_, '_> {
         // `PotionContents.getColorOr`: the effect mix when any effect is visible.
         let id = contents["potion"].as_str();
         let effects = id
-            .and_then(sunrise_client::brewing::potion)
+            .and_then(sunrise_level::brewing::potion)
             .is_some_and(|p| !p.effects.is_empty());
-        effects.then(|| (0xFF00_0000 | sunrise_client::brewing::potion_color(id)) as i32)
+        effects.then(|| (0xFF00_0000 | sunrise_level::brewing::potion_color(id)) as i32)
     }
     fn grass_color(&self, temperature: f64, downfall: f64) -> i32 {
         self.game
@@ -371,7 +371,7 @@ pub(in crate::game::client_side) fn local_time(pattern: &str) -> String {
 
 /// Banner and shield pattern textures from the banner pattern registry.
 pub(in crate::game) struct Host<'a> {
-    banners: &'a sunrise_client::banner::Banners,
+    banners: &'a sunrise_sim::banner::Banners,
     sprites: &'a HashMap<String, Rect>,
     skins: &'a RefCell<sunrise_client::skins::Downloader>,
     profiles: &'a RefCell<sunrise_client::skins::Resolver>,
@@ -504,7 +504,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn level_state_now(&self, dimension: &'static str) -> LevelState {
         let sky = self
             .dim_environment()
-            .sample(&sunrise_client::environment::Sample {
+            .sample(&sunrise_level::environment::Sample {
                 day_time: self.world.day_time,
                 ..Default::default()
             });
@@ -1021,7 +1021,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // The shared extraction already interpolated the drawn position in f64.
                 let probe = [
                     at[0],
-                    at[1] + sunrise_client::entities::ItemEntity::EYE_HEIGHT,
+                    at[1] + sunrise_sim::entities::ItemEntity::EYE_HEIGHT,
                     at[2],
                 ];
                 item.render_light(self.world.light(

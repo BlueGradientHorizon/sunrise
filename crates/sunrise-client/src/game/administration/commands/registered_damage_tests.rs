@@ -1,5 +1,5 @@
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::{
+use sunrise_sim::{
     health::{damage_type, source_damage_type},
     mobs::{Damage, DamageKind, NamedDamage as Tags, Who, gear},
 };
@@ -164,12 +164,12 @@ fn damage_command_keeps_explicit_explosion_with_an_attacker() {
 #[test]
 fn projectile_and_command_targets_classify_actual_direct_entity_families() {
     use crate::game::commands::Target;
-    use sunrise_client::{
+    use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{
         health::{Attack, DirectEntity},
         mobs::{Damage, DamageKind, Who},
         projectiles::{Projectile, ProjectileKind},
     };
-    use sunrise_core::geometry::Vec3;
 
     let mut large = Projectile::new(
         ProjectileKind::LargeFireball { power: 1 },
@@ -306,8 +306,8 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
         sculk::{TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS},
     };
     use mod_api::{ExplosionInteraction, ExplosionSettings};
-    use sunrise_client::{mobs::creaking, projectiles::ProjectileKind};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_sim::{mobs::creaking, projectiles::ProjectileKind};
 
     if crate::game::native_entity_refs::tests::run_fresh_cases(
         "game::server_side::commands::world_cmds::registered_damage_tests::live_damage_and_blast_creaking_reactions_and_timed_player_credit",
@@ -338,7 +338,7 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
             [8, 64, 8],
         );
         // `CreakingHeartBlockEntity.creakingHurt` from its protector starts the 100-tick emitter.
-        use sunrise_client::containers::BlockEntity::CreakingHeart;
+        use sunrise_level::containers::BlockEntity::CreakingHeart;
         let heart_emitter =
             |game: &crate::game::ServerGame<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
                 Some(CreakingHeart(heart)) => heart.emitter,
@@ -668,8 +668,8 @@ pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_pl
 fn live_damage_and_blast_ghast_reflected_fireball() {
     use crate::game::commands::Target;
     use mod_api::{ExplosionInteraction, ExplosionSettings};
-    use sunrise_client::projectiles::ProjectileKind;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::projectiles::ProjectileKind;
 
     with_game(|game| {
         setup_live_damage_world(game);

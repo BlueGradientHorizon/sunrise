@@ -19,10 +19,10 @@ use mod_api::{
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{cell::RefCell, rc::Rc};
-use sunrise_client::mobs::finalize::{Ageable, Group};
-use sunrise_client::mobs::{Mob, equine, llama, tame};
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_mod_runtime::pending_children::PendingChildren;
+use sunrise_sim::mobs::finalize::{Ageable, Group};
+use sunrise_sim::mobs::{Mob, equine, llama, tame};
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::attributes::Operation;
 
@@ -255,7 +255,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         mob: UnspawnedMobRef,
         slot: EquipmentSlot,
-    ) -> Result<Option<sunrise_client::items::ItemStack>, UnspawnedMobError> {
+    ) -> Result<Option<sunrise_items::items::ItemStack>, UnspawnedMobError> {
         self.with_lent_mob(mob, |m| Ok(m.equipment_stacks()[slot as usize].clone()))
     }
 
@@ -291,7 +291,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             m.extra
                 .live
                 .read(catalog, &m.kind.id, &attribute.to_string(), kind, || {
-                    sunrise_client::entity_nbt::attribute_entries(m)
+                    sunrise_sim::entity_nbt::attribute_entries(m)
                         .into_iter()
                         .map(|(_, entry)| entry)
                         .collect()
@@ -375,8 +375,8 @@ pub(in crate::game) fn native_spawn_group(group: &Group, epoch: WorldEpoch) -> O
         Group::Axolotl(a, [first, second]) => SpawnGroup::Axolotl {
             ageable: native_ageable(a),
             variants: [
-                named(&sunrise_client::entity_nbt::AXOLOTL_VARIANTS, *first)?,
-                named(&sunrise_client::entity_nbt::AXOLOTL_VARIANTS, *second)?,
+                named(&sunrise_sim::entity_nbt::AXOLOTL_VARIANTS, *first)?,
+                named(&sunrise_sim::entity_nbt::AXOLOTL_VARIANTS, *second)?,
             ],
         },
         Group::Wolf(a, v) => SpawnGroup::Wolf {
@@ -387,7 +387,7 @@ pub(in crate::game) fn native_spawn_group(group: &Group, epoch: WorldEpoch) -> O
             leader: EntityRef::new(epoch, *leader),
             tropical: match look {
                 Some((pattern, base, color)) => Some(TropicalVariant::new(
-                    named(&sunrise_client::entity_nbt::TROPICAL_PATTERNS, *pattern)?,
+                    named(&sunrise_sim::entity_nbt::TROPICAL_PATTERNS, *pattern)?,
                     named(&sunrise_level::dyes::DYE_NAMES, *base)?,
                     named(&sunrise_level::dyes::DYE_NAMES, *color)?,
                 )),
@@ -444,8 +444,8 @@ pub(in crate::game) fn spawn_group(group: &SpawnGroup) -> Option<Group> {
         } => Group::Axolotl(
             ageable(a),
             [
-                index(&sunrise_client::entity_nbt::AXOLOTL_VARIANTS, first)?,
-                index(&sunrise_client::entity_nbt::AXOLOTL_VARIANTS, second)?,
+                index(&sunrise_sim::entity_nbt::AXOLOTL_VARIANTS, first)?,
+                index(&sunrise_sim::entity_nbt::AXOLOTL_VARIANTS, second)?,
             ],
         ),
         SpawnGroup::Wolf {
@@ -463,10 +463,7 @@ pub(in crate::game) fn spawn_group(group: &SpawnGroup) -> Option<Group> {
             leader.id(),
             match tropical {
                 Some(look) => Some((
-                    index(
-                        &sunrise_client::entity_nbt::TROPICAL_PATTERNS,
-                        &look.pattern,
-                    )?,
+                    index(&sunrise_sim::entity_nbt::TROPICAL_PATTERNS, &look.pattern)?,
                     index(&sunrise_level::dyes::DYE_NAMES, &look.base_color)?,
                     index(&sunrise_level::dyes::DYE_NAMES, &look.pattern_color)?,
                 )),
@@ -604,7 +601,7 @@ impl UnspawnedMobEdits for Edits<'_, '_> {
     ) -> Result<(), UnspawnedMobError> {
         let name = name
             .as_ref()
-            .map(sunrise_client_lib::api_text::to_serialized_engine)
+            .map(sunrise_sim::api_text::to_serialized_engine)
             .transpose()?;
         self.game.edit_lent_mob(mob, |_, m| {
             m.custom_name = name.as_ref().map(Text::plain);
@@ -646,8 +643,8 @@ mod tests {
     use super::*;
     use mod_api::{FinalizeSpawnEvent, Flow, Host};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::mobs::finalize::{self, Attr};
-    use sunrise_client::mobs::spawn_rules::Reason;
+    use sunrise_sim::mobs::finalize::{self, Attr};
+    use sunrise_sim::mobs::spawn_rules::Reason;
 
     type Listen = dyn Fn(&dyn Host, &mut FinalizeSpawnEvent<'_>) -> Flow + Send + Sync;
     /// Answers `finalize_spawn` with the test's closure.
@@ -674,7 +671,7 @@ mod tests {
         Identifier::parse(s).unwrap()
     }
     fn pumpkin() -> ItemStack {
-        super::super::api_values::test_snapshot(&sunrise_client::items::ItemStack::new(
+        super::super::api_values::test_snapshot(&sunrise_items::items::ItemStack::new(
             "minecraft:carved_pumpkin",
             1,
         ))

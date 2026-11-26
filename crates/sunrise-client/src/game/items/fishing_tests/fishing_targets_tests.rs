@@ -118,7 +118,7 @@ pub(in crate::game::server_side) fn setup_game<'a>(
         let _ = game.run_command(command);
     }
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 4.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 4.5)).unwrap(),
     );
     crate::game::native_entity_refs::tests::bind_local_player(&mut game, 7, 7);
     game.side.next_entity = game.side.next_entity.max(100);
@@ -312,7 +312,7 @@ pub(in crate::game) fn check_hook_tick(
     expected: &FishingTick,
     expected_hooked_id: Option<u32>,
     is_dragon: bool,
-    posted: &[(&'static str, [f64; 3], Option<sunrise_client::mobs::Who>)],
+    posted: &[(&'static str, [f64; 3], Option<sunrise_sim::mobs::Who>)],
     errors: &mut Vec<String>,
 ) {
     let exp_lands: Vec<&[String; 3]> = expected

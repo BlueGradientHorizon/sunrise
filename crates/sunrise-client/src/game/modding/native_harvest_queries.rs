@@ -51,7 +51,7 @@ mod tests {
         PlayerHarvestCheckEvent, PlayerRef,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// A stack is the correct tool by its own rules only; a player is by their selected slot
     /// (never the offhand), and a block that needs no tool is harvested by an empty hand.

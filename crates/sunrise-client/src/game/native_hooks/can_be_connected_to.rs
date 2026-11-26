@@ -31,7 +31,7 @@ impl GameLevel<'_> {
             return vanilla;
         }
         let mut answer = None;
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             self.native_can_be_connected_to(super::fire::CanBeConnectedToCall {
                 dimension: self.dimension,
                 pos,

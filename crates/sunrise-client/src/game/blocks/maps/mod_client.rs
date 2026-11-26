@@ -80,7 +80,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         name: d
                             .name
                             .as_ref()
-                            .map(|t| sunrise_client::entity_nbt::name_text(t).plain()),
+                            .map(|t| sunrise_sim::entity_nbt::name_text(t).plain()),
                         key: Key::Remote,
                     })
                 })
@@ -229,7 +229,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 [[s.u0, s.v0], [s.u1, s.v0], [s.u1, s.v1], [s.u0, s.v1]],
             );
             if let Some(name) = &d.name {
-                let text = sunrise_client::text::Text::literal(name);
+                let text = sunrise_client_core::text::Text::literal(name);
                 let f = self.side.gui.atlas.font.width_text(&text);
                 if f > 0.0 {
                     let f1 = (25.0 / f).clamp(0.0, 6.0 / 9.0);

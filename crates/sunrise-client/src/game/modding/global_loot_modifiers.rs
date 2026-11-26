@@ -52,7 +52,7 @@ impl Serializers {
             .0
             .get(kind)
             .ok_or_else(|| format!("type: unknown global loot modifier serializer {kind}"))?;
-        let reader = sunrise_client_render::api_context::LoadReader(load);
+        let reader = sunrise_level::api_context::LoadReader(load);
         let instance = serializer
             .decode(data, &reader.context())
             .map_err(|error| error.to_string())?;

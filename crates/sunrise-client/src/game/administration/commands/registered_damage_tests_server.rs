@@ -1,5 +1,5 @@
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::mobs::{Damage, Who};
+use sunrise_sim::mobs::{Damage, Who};
 
 #[test]
 #[ignore = "daily"]
@@ -10,8 +10,8 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         native_living_flags::tests::{guest, guest_server},
     };
     use mod_api::{ExplosionInteraction, ExplosionSettings};
-    use sunrise_client::{mobs::ai, projectiles::ProjectileKind};
     use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
+    use sunrise_sim::{mobs::ai, projectiles::ProjectileKind};
 
     if crate::game::native_entity_refs::tests::run_fresh_cases(
         "game::server_side::commands_server::world_cmds::registered_damage_tests::live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown",
@@ -302,8 +302,9 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
 
 pub(in crate::game) fn setup_live_damage_world(game: &mut crate::game::ServerGame<'_>) {
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
     game.build_registries();
     game.set_allow_commands(true);
     game.options.dedicated = Some(Vec::new());
@@ -321,12 +322,12 @@ pub(in crate::game) fn setup_live_damage_world(game: &mut crate::game::ServerGam
 
 pub(in crate::game) fn spawn_test_projectile(
     game: &mut crate::game::ServerGame<'_>,
-    kind: sunrise_client::projectiles::ProjectileKind,
+    kind: sunrise_sim::projectiles::ProjectileKind,
     at: sunrise_core::geometry::Vec3,
     owner: Option<Who>,
     uuid: [i32; 4],
 ) -> u32 {
-    use sunrise_client::projectiles::Projectile;
+    use sunrise_sim::projectiles::Projectile;
     game.side.next_entity += 1;
     let id = game.side.next_entity;
     let mut shot = Projectile::new(kind, at, owner);

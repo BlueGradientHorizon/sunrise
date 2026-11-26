@@ -21,7 +21,7 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
         super::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
             game.side.world_root = scratch.path().to_path_buf();
-            let recipes = sunrise_client::crafting::Recipes::from_sources(
+            let recipes = sunrise_sim::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
                 &sunrise_world::loot::PackOverlay::NONE,

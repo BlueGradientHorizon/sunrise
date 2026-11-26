@@ -35,13 +35,13 @@ use sunrise_core::{
 use sunrise_protocol::entity_data::Value;
 #[allow(unused_imports)]
 use {
-    sunrise_client::health::DamageContainer, sunrise_client::health::DamageLevel,
-    sunrise_client::health::HurtSource, sunrise_client::health::Hurting,
-    sunrise_client::health::Knock, sunrise_client::health::Reduction,
-    sunrise_client::mesher::Vertex, sunrise_client::mobs::Damage, sunrise_client::mobs::DamageKind,
-    sunrise_client::mobs::Who, sunrise_client::projectiles::Projectile,
-    sunrise_client::projectiles::ProjectileKind, sunrise_client::random_source,
-    sunrise_client::text::Text, sunrise_level::particle_options::ParticleType,
+    sunrise_client::mesher::Vertex, sunrise_client_core::text::Text,
+    sunrise_level::particle_options::ParticleType, sunrise_level::random_source,
+    sunrise_sim::health::DamageContainer, sunrise_sim::health::DamageLevel,
+    sunrise_sim::health::HurtSource, sunrise_sim::health::Hurting, sunrise_sim::health::Knock,
+    sunrise_sim::health::Reduction, sunrise_sim::mobs::Damage, sunrise_sim::mobs::DamageKind,
+    sunrise_sim::mobs::Who, sunrise_sim::projectiles::Projectile,
+    sunrise_sim::projectiles::ProjectileKind,
 };
 
 /// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`
@@ -136,7 +136,7 @@ pub(in crate::game) const SPECIAL: u32 = u32::MAX - 4096;
 pub(in crate::game) struct DirectHit<'a> {
     pub id: u32,
     pub position: Vec3,
-    pub kind: Option<&'a sunrise_client::projectiles::ProjectileKind>,
+    pub kind: Option<&'a sunrise_sim::projectiles::ProjectileKind>,
 }
 impl<'a> DirectHit<'a> {
     pub(in crate::game) fn from_projectile(p: &'a Projectile) -> Self {
@@ -241,7 +241,7 @@ impl Respawn {
 pub(in crate::game) struct Crystal {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub join: sunrise_client::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
@@ -259,9 +259,9 @@ pub(in crate::game) struct Crystal {
     pub fall: (bool, f64),
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
-sunrise_client::impl_joined!(Crystal);
+sunrise_sim::impl_joined!(Crystal);
 sunrise_mod_runtime::impl_attachment_lifetime!(Crystal);
 impl Crystal {
     /// `EntityType.END_CRYSTAL.getDimensions()`: width, height and eye height.
@@ -273,7 +273,7 @@ impl Crystal {
             Vec3::new(p.x - 1.0, p.y, p.z - 1.0),
             Vec3::new(p.x + 1.0, p.y + 2.0, p.z + 1.0),
         );
-        sunrise_client::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
+        sunrise_sim::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
     }
 }
 #[derive(Clone, Debug, Default)]
@@ -437,7 +437,7 @@ impl Phase {
 }
 pub(in crate::game) struct Dragon {
     pub(in crate::game) residency: residency::DragonResidency,
-    pub join: sunrise_client::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     /// `Entity.id` once tracked to guests (0 before); its parts take the
     /// eight ids after it (`EnderDragon`'s constructor reserves them).
     pub id: u32,
@@ -481,7 +481,7 @@ pub(in crate::game) struct Dragon {
     pub equipment: sunrise_items::equipment::Equipment,
     /// The live attribute map (`AttributeMap`), built when an item with
     /// attribute modifiers is worn or it is read.
-    pub live: sunrise_client::living_attributes::LivingAttributes,
+    pub live: sunrise_sim::living_attributes::LivingAttributes,
     pub(in crate::game) growl: i32,
     /// `Mob.ambientSoundTime`.
     pub(in crate::game) ambient_time: i32,
@@ -630,7 +630,7 @@ pub(in crate::game::server_side) fn search_dragon_path(
     min: usize,
     last: Option<[i32; 3]>,
 ) -> Option<Path> {
-    use sunrise_client::mobs::path::heap::{Key, OpenSet};
+    use sunrise_sim::mobs::path::heap::{Key, OpenSet};
     let dist = |a: [i32; 3], b: [i32; 3]| {
         (((a[0] - b[0]).pow(2) + (a[1] - b[1]).pow(2) + (a[2] - b[2]).pow(2)) as f32).sqrt()
     };
@@ -897,7 +897,7 @@ impl Dragon {
         };
         if !invulnerability_checked
             && level.invulnerability_check(
-                sunrise_client::health::Hurting::Dragon(self.id as i32, source),
+                sunrise_sim::health::Hurting::Dragon(self.id as i32, source),
                 false,
             )
         {
@@ -908,7 +908,7 @@ impl Dragon {
         // starts, and `LivingIncomingDamageEvent` may change or cancel it. A canceled hit
         // still returns true.
         let mut container = DamageContainer::new(damage);
-        let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
+        let hurting = sunrise_sim::health::Hurting::Dragon(self.id as i32, source);
         // The dragon's head turns with its body and never pitches.
         let view = sunrise_world::view_direction::view_vector(0.0, self.yaw);
         let victim = mod_api::entity::health::Victim {
@@ -930,8 +930,8 @@ impl Dragon {
         // LivingEntity.applyItemBlocking: the dragon raises nothing, but a native
         // mod may block for it.
         if damage > 0.0 {
-            let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
-            let block = sunrise_client::health::no_block(damage);
+            let hurting = sunrise_sim::health::Hurting::Dragon(self.id as i32, source);
+            let block = sunrise_sim::health::no_block(damage);
             let blocked = level.shield_block(hurting, damage, block).map_or(0.0, |b| {
                 container.record_shield_damage(b.shield_damage.max(0) as f32);
                 b.blocked_damage
@@ -964,7 +964,7 @@ impl Dragon {
         // NeoForge still subtracts the armor-stage answer from the live container amount before Pre.
         let before_armor = container.new_damage();
         dealt = container.reduce(Reduction::Armor, before_armor, before_armor - dealt, dealt);
-        let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
+        let hurting = sunrise_sim::health::Hurting::Dragon(self.id as i32, source);
         container.record_new_damage(dealt);
         let body = super::native_living_body::dragon_body(self);
         level
@@ -1015,7 +1015,7 @@ impl Dragon {
         }
         // The last of `LivingEntity.hurtServer` (`reallyHurt`'s `super.hurtServer`):
         // `LivingDamageEvent.Post`, health taken or not.
-        let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
+        let hurting = sunrise_sim::health::Hurting::Dragon(self.id as i32, source);
         let body = super::native_living_body::dragon_body(self);
         level
             .reborrow()
@@ -1168,7 +1168,7 @@ pub(in crate::game::server_side) fn hurt_source(
 ) -> HurtSource<'static> {
     let causing = by.unwrap_or(0);
     let damage_type = super::creatures::damage_type(kind, by.is_some());
-    let projectile = direct.filter(|_| sunrise_client::health::names_its_projectile(damage_type));
+    let projectile = direct.filter(|_| sunrise_sim::health::names_its_projectile(damage_type));
     HurtSource {
         damage_type,
         causing,
@@ -1204,7 +1204,7 @@ pub(in crate::game::server_side) fn wrap64(d: f64) -> f64 {
 }
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn fight_path(&self) -> std::path::PathBuf {
-        sunrise_client::save::dimension_dir(&self.side.world_root, "minecraft:the_end")
+        sunrise_sim::save::dimension_dir(&self.side.world_root, "minecraft:the_end")
             .join(FIGHT_FILE)
     }
     /// The saved fight, or `createDefault` with the gateways shuffled by the seed.
@@ -1212,7 +1212,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.side.fight.loaded {
             return;
         }
-        let tag = sunrise_client::save::read_dat(&self.fight_path());
+        let tag = sunrise_sim::save::read_dat(&self.fight_path());
         let data = tag.as_ref().and_then(|t| t.get("data"));
         let flag = |k: &str, default: bool| match data.and_then(|d| d.get(k)) {
             Some(Tag::Byte(v)) => *v != 0,
@@ -1340,7 +1340,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ("data", Tag::compound(data)),
             ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
         ]);
-        if sunrise_client::save::write_dat(&self.fight_path(), tag).is_ok() {
+        if sunrise_sim::save::write_dat(&self.fight_path(), tag).is_ok() {
             self.side.fight.dirty = false;
         }
     }
@@ -1590,8 +1590,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // remembers them before the blast can kill it.
             self.side.fight.blast_by = by;
             // EndCrystal.hurtServer: ExplosionInteraction.BLOCK.
-            let interaction =
-                self.destroy_type(sunrise_client::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
+            let interaction = self
+                .destroy_type(sunrise_client_core::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
             // EndCrystal is 2 by 2 blocks: its box decides `isInWater`.
             let (x, y, z) = (c.position.x, c.position.y, c.position.z);
             self.side.combat.0.explosion_in_water = self.bounds_in_water(Aabb::new(
@@ -1605,7 +1605,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 interaction,
                 false,
                 super::explosion::ExplosionSource::default()
-                    .with_damage_direct(c.id, sunrise_client::health::DirectEntity::Other),
+                    .with_damage_direct(c.id, sunrise_sim::health::DirectEntity::Other),
             );
             self.side.combat.0.explosion_direct = None;
             self.side.combat.0.explosion_in_water = false;
@@ -1841,7 +1841,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         if reaches_base
             && level.invulnerability_check(
-                sunrise_client::health::Hurting::Dragon(id as i32, source),
+                sunrise_sim::health::Hurting::Dragon(id as i32, source),
                 vanilla,
             )
         {
@@ -2044,7 +2044,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let level =
                 super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None);
             if level.invulnerability_check(
-                sunrise_client::health::Hurting::Dragon(id as i32, hit_source),
+                sunrise_sim::health::Hurting::Dragon(id as i32, hit_source),
                 vanilla,
             ) {
                 return Hurt::Refused;
@@ -2117,7 +2117,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some((who, _)) = d.hurt_by_player.filter(|(_, hit)| d.ticks - hit <= 100) else {
             return;
         };
-        let view = sunrise_client::advancements::EntityView {
+        let view = sunrise_sim::advancements::EntityView {
             kind: "minecraft:ender_dragon".to_owned(),
             position: [d.position.x, d.position.y, d.position.z],
             ..Default::default()
@@ -2141,7 +2141,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn award_dragon_kill(
         &mut self,
         id: u32,
-        view: &sunrise_client::advancements::EntityView,
+        view: &sunrise_sim::advancements::EntityView,
         blow: Option<(DamageKind, bool)>,
     ) {
         self.award_stat("killed", "minecraft:ender_dragon", 1);
@@ -2157,7 +2157,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             });
             // `damageSources().explosion(crystal, player)`: the crystal is the direct entity.
             if kind == DamageKind::Explosion {
-                view.direct = Some(sunrise_client::advancements::EntityView {
+                view.direct = Some(sunrise_sim::advancements::EntityView {
                     kind: "minecraft:end_crystal".to_owned(),
                     ..Default::default()
                 });
@@ -2819,7 +2819,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // The dragon's Entity.move is this physics-less step (#2414): it
             // goes through the move gate like every other move, self cause,
             // before the position is written.
-            let gate = sunrise_client::move_gate::armed(
+            let gate = sunrise_sim::move_gate::armed(
                 &self.loop_context,
                 d.id,
                 "minecraft:ender_dragon",
@@ -2921,7 +2921,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mobs
                 .iter()
                 .map(|m| {
-                    sunrise_client::scoreboard::teams_allow_damage(
+                    sunrise_client_core::scoreboard::teams_allow_damage(
                         self.mob_team(d.id),
                         self.mob_team_of(m),
                     )
@@ -2941,7 +2941,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if sunrise_gameplay::dragon_contacts::contact_part(
                         crate::game::entity::damage_level_of!(
                             self,
-                            &sunrise_client::health::NO_ATTACK,
+                            &sunrise_sim::health::NO_ATTACK,
                             &mut credit,
                             None
                         ),
@@ -2953,7 +2953,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.finish_mob_damage_at(index);
                         self.mob_post_attack(
                             id,
-                            Some(sunrise_client::mobs::Who::Mob(frame.dragon_id)),
+                            Some(sunrise_sim::mobs::Who::Mob(frame.dragon_id)),
                             Some("minecraft:ender_dragon"),
                             Some("minecraft:mob_attack"),
                         );
@@ -3157,7 +3157,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             true
         });
         self.breath_clouds
-            .restore(clouds, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+            .restore(clouds, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
         for (who, amount) in harmed {
             self.as_fight_player(who, |g| {
                 g.dragon_hurts_player("minecraft:indirect_magic", amount);
@@ -3368,7 +3368,7 @@ pub(in crate::game) fn breath_puffs(
 pub(in crate::game) struct Breath {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id once a server's players track it (0 until then).
     pub(in crate::game) id: u32,
     pub(in crate::game) at: [f64; 3],
@@ -3390,7 +3390,7 @@ pub(in crate::game) struct Breath {
     pub(in crate::game) potion: Option<super::potions::PotionCloud>,
 }
 
-sunrise_client::impl_joined!(Breath, Dragon);
+sunrise_sim::impl_joined!(Breath, Dragon);
 sunrise_mod_runtime::impl_attachment_lifetime!(Breath);
 
 impl Breath {
@@ -3439,9 +3439,9 @@ impl Dragon {
         &self,
         uuid: [i32; 4],
         raw: Option<&Tag>,
-        items: &sunrise_client::items::Items,
+        items: &sunrise_items::items::Items,
     ) -> Tag {
-        let mut tag = sunrise_client::entity_nbt::vehicle_to_nbt(
+        let mut tag = sunrise_sim::entity_nbt::vehicle_to_nbt(
             "minecraft:ender_dragon",
             self.position,
             self.velocity,
@@ -3466,13 +3466,13 @@ impl Dragon {
                 Tag::Float(self.sitting_damage.to_bits()),
             );
             self.equipment.store(map, items);
-            sunrise_client::entity_nbt::put_live_attributes(map, &self.live);
+            sunrise_sim::entity_nbt::put_live_attributes(map, &self.live);
         }
         tag
     }
     pub(in crate::game::server_side) fn from_nbt(tag: &Tag, seed: i64) -> Option<Self> {
-        let (position, velocity, _) = sunrise_client::entity_nbt::boat_from_nbt(tag)?;
-        let [yaw, pitch] = sunrise_client::entity_nbt::loaded_rotation(tag);
+        let (position, velocity, _) = sunrise_sim::entity_nbt::boat_from_nbt(tag)?;
+        let [yaw, pitch] = sunrise_sim::entity_nbt::loaded_rotation(tag);
         let mut d = Self::new(position, yaw, seed);
         d.pitch = pitch;
         d.velocity = velocity;
@@ -3486,7 +3486,7 @@ impl Dragon {
         if let Some(t) = nbt_value::number(tag.get("DragonDeathTime")) {
             d.death_time = t as i32;
         }
-        d.persistent = sunrise_client::entity_nbt::flag(tag, "PersistenceRequired");
+        d.persistent = sunrise_sim::entity_nbt::flag(tag, "PersistenceRequired");
         if let Some(equipment) = tag.get("equipment") {
             d.equipment = sunrise_items::equipment::Equipment::read(equipment);
         }
@@ -3497,7 +3497,7 @@ impl Dragon {
 }
 impl Crystal {
     pub(in crate::game::server_side) fn to_nbt(&self, uuid: [i32; 4], raw: Option<&Tag>) -> Tag {
-        let mut tag = sunrise_client::entity_nbt::vehicle_to_nbt(
+        let mut tag = sunrise_sim::entity_nbt::vehicle_to_nbt(
             "minecraft:end_crystal",
             self.position,
             Vec3::ZERO,
@@ -3522,7 +3522,7 @@ impl Crystal {
         tag
     }
     pub(in crate::game::server_side) fn from_nbt(tag: &Tag, time: i32) -> Option<Self> {
-        let (position, _, _) = sunrise_client::entity_nbt::boat_from_nbt(tag)?;
+        let (position, _, _) = sunrise_sim::entity_nbt::boat_from_nbt(tag)?;
         // TagValueInput.getShortOr uses NumericTag.shortValue.
         let fire = match tag.get("Fire") {
             Some(Tag::Float(bits)) => sunrise_core::mth::floor_f32(f32::from_bits(*bits)) as i16,
@@ -3535,16 +3535,16 @@ impl Crystal {
             join: Default::default(),
             id: 0,
             position,
-            rotation: sunrise_client::entity_nbt::loaded_rotation(tag),
+            rotation: sunrise_sim::entity_nbt::loaded_rotation(tag),
             fire,
-            show_bottom: sunrise_client::entity_nbt::flag_or(tag, "ShowBottom", true),
+            show_bottom: sunrise_sim::entity_nbt::flag_or(tag, "ShowBottom", true),
             time,
             beam: match tag.get("beam_target") {
                 Some(Tag::IntArray(v)) if v.len() == 3 => Some([v[0], v[1], v[2]]),
                 _ => None,
             },
-            invulnerable: sunrise_client::entity_nbt::flag(tag, "Invulnerable"),
-            fall: sunrise_client::entity_nbt::ground_from_nbt(tag),
+            invulnerable: sunrise_sim::entity_nbt::flag(tag, "Invulnerable"),
+            fall: sunrise_sim::entity_nbt::ground_from_nbt(tag),
         })
     }
 }
@@ -3670,7 +3670,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// attribute instances.
     pub(in crate::game::server_side) fn lan_dragon_state(
         &self,
-    ) -> Option<sunrise_client::lan::entity::EntityState> {
+    ) -> Option<sunrise_sim::lan::entity::EntityState> {
         use sunrise_protocol::entity_data::{Value, serializer};
         let d = self.dragon.as_ref().filter(|d| d.id != 0)?;
         let mut meta = Vec::new();
@@ -3690,7 +3690,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if d.no_ai {
             meta.push((15, serializer::BYTE, Value::Byte(1)));
         }
-        Some(sunrise_client::lan::entity::EntityState {
+        Some(sunrise_sim::lan::entity::EntityState {
             id: d.id as i32,
             uuid: super::lan::entity_uuid(d.id),
             kind: "minecraft:ender_dragon".to_owned(),
@@ -3770,7 +3770,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn place_end_crystal(
         &mut self,
         hit: &super::Hit,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
     ) -> bool {
         if &*stack.item != "minecraft:end_crystal" || !self.end_crystal_fits(hit.pos) {
             return false;
@@ -4009,7 +4009,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // DragonRespawnStage.SUMMONING_PILLARS: ExplosionInteraction.BLOCK.
         let interaction =
-            self.destroy_type(sunrise_client::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
+            self.destroy_type(sunrise_client_core::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
         let _ = self.server_explode(
             [f64::from(cx) + 0.5, f64::from(h), f64::from(cz) + 0.5],
             5.0,
@@ -4110,7 +4110,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let yaw = self.world.random.next_float() * 360.0;
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(Vec3::new(0.0, 128.0, 0.0), yaw, seed);
-        dragon.join = sunrise_client::join_seq::JoinSeq::next();
+        dragon.join = sunrise_sim::join_seq::JoinSeq::next();
         dragon.id = self.side.next_entity + 1;
         dragon.phase = Phase::Holding {
             path: None,
@@ -4204,7 +4204,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .with_entity(
                             c.id,
                             "minecraft:end_crystal",
-                            sunrise_client::health::DirectEntity::Other,
+                            sunrise_sim::health::DirectEntity::Other,
                         ),
                 );
             }
@@ -4216,7 +4216,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let view = self
             .dragon
             .as_ref()
-            .map(|d| sunrise_client::advancements::EntityView {
+            .map(|d| sunrise_sim::advancements::EntityView {
                 kind: "minecraft:ender_dragon".to_owned(),
                 position: [d.position.x, d.position.y, d.position.z],
                 ..Default::default()
@@ -4283,9 +4283,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Diverges from upstream: shared mod finalization also admits command dragons.
         let yaw = match (fixed_yaw, site) {
             (Some(yaw), _) => yaw,
-            (None, SpawnSite::Finalizing(sunrise_client::mobs::spawn_rules::Reason::Command)) => {
-                0.0
-            }
+            (None, SpawnSite::Finalizing(sunrise_sim::mobs::spawn_rules::Reason::Command)) => 0.0,
             _ => sunrise_level::camera_math::wrap_degrees(self.world.random.next_float() * 360.0),
         };
         let finalized = match site {
@@ -4309,7 +4307,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The dragon's own random (`Entity.random`), not the level's.
         let seed = random_source::unique_seed();
         let mut dragon = Dragon::new(position, yaw, seed);
-        dragon.join = sunrise_client::join_seq::JoinSeq::next();
+        dragon.join = sunrise_sim::join_seq::JoinSeq::next();
         dragon.id = self.side.next_entity + 1;
         self.side.next_entity += 9;
         let id = dragon.id;
@@ -4542,7 +4540,7 @@ pub(in crate::game) mod tests {
                         "minecraft:ender_dragon",
                         at,
                         super::super::creatures::SpawnSite::Finalizing(
-                            sunrise_client::mobs::spawn_rules::Reason::SpawnItemUse,
+                            sunrise_sim::mobs::spawn_rules::Reason::SpawnItemUse,
                         ),
                     )
                     .unwrap();
@@ -4551,7 +4549,7 @@ pub(in crate::game) mod tests {
                 game.native_joins_flush(false, 0);
                 assert_eq!(joins.lock().unwrap().len(), 1, "a join is told only once");
                 let dispenser =
-                    SpawnSite::Finalizing(sunrise_client::mobs::spawn_rules::Reason::Dispenser);
+                    SpawnSite::Finalizing(sunrise_sim::mobs::spawn_rules::Reason::Dispenser);
                 assert!(game.spawn_dragon_spawned(at, dispenser).is_none());
                 assert_eq!(joins.lock().unwrap().len(), 1, "no second dragon joins");
 
@@ -4574,7 +4572,7 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicUsize, Ordering},
         };
-        use sunrise_client::mobs::spawn_rules::Reason;
+        use sunrise_sim::mobs::spawn_rules::Reason;
 
         #[derive(Clone, Copy, PartialEq)]
         enum Answer {
@@ -4654,7 +4652,7 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicUsize, Ordering},
         };
-        use sunrise_client::mobs::spawn_rules::Reason;
+        use sunrise_sim::mobs::spawn_rules::Reason;
 
         #[derive(Clone, Copy, PartialEq)]
         enum Answer {
@@ -4763,8 +4761,8 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn a_dragon_save_keeps_equipment_only_while_something_is_equipped() {
-        use sunrise_client::items::ItemStack;
         use sunrise_items::equipment::{BODY, SADDLE};
+        use sunrise_items::items::ItemStack;
         let mut d = Dragon::new(Vec3::ZERO, 0.0, 0);
         // An old save has no `equipment` key: the dragon loads empty and saves none.
         let old = d.to_nbt([0; 4], None, &Default::default());
@@ -5179,7 +5177,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn a_perched_dragon_shrugs_arrows_off() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         // AbstractDragonSittingPhase.onHurt: an arrow does nothing, melee does.
         let mut d = dragon(Phase::Scanning { time: 0 });
@@ -5209,7 +5207,7 @@ pub(in crate::game) mod tests {
     /// not a full hit, so it does not push either.
     #[test]
     fn a_melee_hit_knocks_a_flying_dragon_and_not_a_perched_one() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let from = Vec3::new(3.0, 70.0, 4.0);
         let velocity = Vec3::new(1.0, -0.3, 0.5);
@@ -5290,7 +5288,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn a_part_refuses_fire() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         // EnderDragonPart.hurtServer: the dragon is fire immune, so a
         // fireball's hit is refused on the head and on the other parts.
@@ -5310,7 +5308,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn a_perched_dragon_shrugs_a_players_wind_charge_off() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         // AbstractDragonSittingPhase.onHurt: a direct WindCharge does
         // nothing, a breeze's BreezeWindCharge is not one.
@@ -5332,7 +5330,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn only_a_player_owned_wither_skull_takes_the_dragons_health() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         // WitherSkull.onHitEntity: EnderDragon.hurt takes the wither's skull
         // (not a player, not an explosion) but takes no health, even perched.
@@ -5356,7 +5354,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn the_cooldown_lets_only_the_excess_through() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         // LivingEntity.hurtServer: damageCooldownTime > 10 keeps lastHurt.
         let mut d = dragon(flying());
@@ -5385,7 +5383,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn parts_and_sources() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         // Neither head nor neck: a quarter plus one.
         let mut d = dragon(flying());
@@ -5423,8 +5421,8 @@ pub(in crate::game) mod tests {
     }
     /// Sets the native damage hook of these tests: it records the dragon
     /// hits of entities 9001 to 9005, cancels 9001's and doubles 9002's.
-    fn hooks() -> sunrise_client::health::DamageHooks {
-        use sunrise_client::health::{DamageContainer, DamageHooks, DamageLevel, Hurting, Victim};
+    fn hooks() -> sunrise_sim::health::DamageHooks {
+        use sunrise_sim::health::{DamageContainer, DamageHooks, DamageLevel, Hurting, Victim};
         fn hook(
             _: DamageLevel<'_>,
             hurting: Hurting<'_>,
@@ -5534,7 +5532,7 @@ pub(in crate::game) mod tests {
             d.velocity = Vec3::new(1.0, -0.3, 0.5);
             d.equipment.set(
                 sunrise_items::equipment::CHEST,
-                Some(sunrise_client::items::ItemStack::new(
+                Some(sunrise_items::items::ItemStack::new(
                     "minecraft:netherite_chestplate",
                     1,
                 )),
@@ -5574,7 +5572,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn dragon_invulnerability_hook_blocks_the_matching_damage_type() {
-        use sunrise_client::health::{DamageHooks, DamageLevel, Hurting};
+        use sunrise_sim::health::{DamageHooks, DamageLevel, Hurting};
         fn hook(_: DamageLevel<'_>, hurting: Hurting<'_>, vanilla: bool) -> bool {
             match hurting {
                 Hurting::Dragon(9100, source) => source.damage_type == "minecraft:arrow",
@@ -5585,7 +5583,7 @@ pub(in crate::game) mod tests {
             invulnerable: Some(hook),
             ..DamageHooks::NONE
         };
-        let mut test_level = sunrise_client::health::TestLevel::with_hooks(0, hooks);
+        let mut test_level = sunrise_sim::health::TestLevel::with_hooks(0, hooks);
         let level = &mut test_level.level();
         let mut d = dragon_as(9100);
         let arrow = HurtSource {
@@ -5610,7 +5608,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn dragon_part_respects_a_hook_override_of_fire_immunity() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut d = dragon(flying());
         assert_eq!(
@@ -5626,7 +5624,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn the_native_damage_hook_changes_or_cancels_a_dragons_hit() {
-        let mut test_level = sunrise_client::health::TestLevel::with_hooks(0, hooks());
+        let mut test_level = sunrise_sim::health::TestLevel::with_hooks(0, hooks());
         let level = &mut test_level.level();
         // EnderDragon.hurt returns true whatever reallyHurt did. A canceled
         // hit takes no health, starts no cooldown and isn't full: what
@@ -5668,7 +5666,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn dragon_records_shield_damage_and_runs_armor_and_absorption_modifiers() {
         use std::sync::Mutex;
-        use sunrise_client::health::{
+        use sunrise_sim::health::{
             DamageContainer, DamageHooks, DamageLevel, Hurting, Reduction, ShieldBlock, Victim,
         };
         static ARMOR_SEEN: Mutex<Vec<f32>> = Mutex::new(Vec::new());
@@ -5740,7 +5738,7 @@ pub(in crate::game) mod tests {
             shield: Some(on_shield),
             ..DamageHooks::NONE
         };
-        let mut test_level = sunrise_client::health::TestLevel::with_hooks(0, hooks);
+        let mut test_level = sunrise_sim::health::TestLevel::with_hooks(0, hooks);
         let level = &mut test_level.level();
 
         // Hit 1: 10.0 - 2.0 shield = 8.0, Armor modifier takes 1.0 -> 7.0 inflicted,
@@ -5796,7 +5794,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn a_quarter_of_its_health_while_perched_makes_it_take_off() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut d = dragon(Phase::Flaming { ticks: 0 });
         d.hurt(level, 0, 30.0, HIT, false);
@@ -5825,7 +5823,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn explosions_hit_each_part_by_its_exposure() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut d = dragon(flying());
         for (i, part) in d.parts.iter_mut().enumerate() {
@@ -5914,7 +5912,7 @@ pub(in crate::game) mod tests {
     }
     #[test]
     fn a_landed_hurt_sets_the_dragon_hurt_flash_time() {
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut d = dragon_as(42);
         assert_eq!(d.hurt_time, 0);
@@ -6016,8 +6014,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             1.0,
         );
         let owner = self.dragon.as_ref().map(|d| Who::Mob(d.id));
-        let mut p = sunrise_client::projectiles::Projectile::new(
-            sunrise_client::projectiles::ProjectileKind::DragonFireball,
+        let mut p = sunrise_sim::projectiles::Projectile::new(
+            sunrise_sim::projectiles::ProjectileKind::DragonFireball,
             at,
             owner,
         );

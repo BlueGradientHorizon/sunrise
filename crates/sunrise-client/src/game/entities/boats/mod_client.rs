@@ -4,8 +4,9 @@ use crate::game::server_side::boats::HEIGHT;
 use crate::game::server_side::boats::Status;
 use crate::game::server_side::boats::WIDTH;
 use std::{f32::consts::PI, sync::Arc};
-use sunrise_client::{mesher::Vertex, mobs::anim::Poses};
+use sunrise_client::mesher::Vertex;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_sim::mobs::anim::Poses;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
@@ -43,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `AbstractBoat.onAboveBubbleColumn`: the client's half after the roll,
     /// the splash sound and particle at the boat.
     pub(in crate::game::client_side) fn boat_bubble_splash(&mut self, i: usize) {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_level::particle_options::{ParticleOptions, ParticleType};
         let p = self.boats[i].position;
         let pitch = 0.8 + 0.4 * self.world.random.next_float();
         self.side.audio.0.play(
@@ -311,7 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn run_boat_authority_fixture(
         &mut self,
         directory: &std::path::Path,
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         use serde::Deserialize;
         use serde_json::json;
         use std::sync::Mutex;

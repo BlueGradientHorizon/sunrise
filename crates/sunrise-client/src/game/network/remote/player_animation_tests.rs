@@ -40,11 +40,11 @@ fn remote_player_use_animation_dispatches_once() {
             remote.level_players.insert(66, 789);
             let kind = remote.player_type.as_ref().unwrap().clone();
             let mut mob =
-                sunrise_client::mobs::Mob::new(66, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
+                sunrise_sim::mobs::Mob::new(66, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
             mob.extra.using_item = 1;
             mob.extra.set_slot_stack(
                 sunrise_items::equipment::MAINHAND,
-                Some(sunrise_client::items::ItemStack::new("minecraft:bow", 1)),
+                Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1)),
             );
             game.mobs.push(mob);
             game.tick_remote_entities(false);

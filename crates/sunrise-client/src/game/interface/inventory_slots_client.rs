@@ -112,15 +112,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some(BlockEntity::Chest(_)) => self.draw_chest_screen(batch, ox, oy),
                 Some(BlockEntity::Furnace(f)) => {
                     let (tex, key, fallback) = match f.kind {
-                        sunrise_client::containers::FurnaceKind::Furnace => {
+                        sunrise_level::containers::FurnaceKind::Furnace => {
                             ("gui/container/furnace", "container.furnace", "Furnace")
                         }
-                        sunrise_client::containers::FurnaceKind::BlastFurnace => (
+                        sunrise_level::containers::FurnaceKind::BlastFurnace => (
                             "gui/container/blast_furnace",
                             "container.blast_furnace",
                             "Blast Furnace",
                         ),
-                        sunrise_client::containers::FurnaceKind::Smoker => {
+                        sunrise_level::containers::FurnaceKind::Smoker => {
                             ("gui/container/smoker", "container.smoker", "Smoker")
                         }
                     };
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     );
                     // A server's furnace menu has the title it was given.
                     let title = self.remote_menu_title().unwrap_or_else(|| {
-                        sunrise_client::text::Text::literal(
+                        sunrise_client_core::text::Text::literal(
                             self.container_title(self.translate_with_fallback(key, fallback)),
                         )
                         .resolve_legacy()
@@ -318,17 +318,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // moved to (x, y): the damage bar, the cooldown shade and the count.
         let info = self.items().get(&stack.item);
         // ItemStack.isBarVisible: isDamaged, which an unbreakable stack never is.
-        let max_damage = if sunrise_client::stations::is_damageable(self.items(), stack) {
+        let max_damage = if sunrise_sim::stations::is_damageable(self.items(), stack) {
             stack.max_damage(info)
         } else {
             0
         };
         let cooldown =
-            sunrise_client::cooldowns::group(stack, info.and_then(|i| i.use_cooldown.as_ref()));
+            sunrise_items::cooldowns::group(stack, info.and_then(|i| i.use_cooldown.as_ref()));
         let partial = self.clock.fraction() as f32;
         // BundleItem overrides the bar with its fullness.
         let mut bar = if info.is_some_and(|item| item.bundle) {
-            sunrise_client::bundle::Contents::of(self.items(), stack)
+            sunrise_items::bundle::Contents::of(self.items(), stack)
                 .and_then(|contents| contents.bar())
         } else {
             hud_overlays::damage_bar(stack.effective_damage(info), max_damage)

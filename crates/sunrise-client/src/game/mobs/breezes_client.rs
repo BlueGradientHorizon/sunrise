@@ -1,9 +1,7 @@
 use super::Game;
-use sunrise_client::{
-    blocks::RenderShape,
-    mobs::{Species, breeze},
-    particles::{ParticleOptions, ParticleType},
-};
+use sunrise_items::blocks::RenderShape;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::mobs::{Species, breeze};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn tick_breeze_effects(&mut self) {
@@ -66,9 +64,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 pub(in crate::game) mod tests {
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::Mob;
 
     /// A game on the prepared resources with an empty chunk at (0, 0), the
     /// window's player (the camera the dust needs) and one breeze standing
@@ -118,7 +116,7 @@ pub(in crate::game) mod tests {
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         // Eight blocks south of the breeze: inside the 32 blocks the dust needs.
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 66.0, 16.5))
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 66.0, 16.5))
                 .unwrap(),
         );
         game.side.particles.0.camera = [8.5, 66.0, 16.5];

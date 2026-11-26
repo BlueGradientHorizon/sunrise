@@ -1,6 +1,6 @@
 use mod_api::ClientHost;
-use sunrise_client::entities::ExperienceOrb;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::entities::ExperienceOrb;
 
 pub(in crate::game) fn orb(at: Vec3) -> ExperienceOrb {
     ExperienceOrb {

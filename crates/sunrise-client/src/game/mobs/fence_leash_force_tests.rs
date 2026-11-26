@@ -11,14 +11,14 @@
 //! the leash tick reads (`leash::knot_state`) is at (8.5, 201.375, 0.5).
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     mobs::leash::{Holder, Pending, knot_state},
     motion::PlayerMotion,
 };
-use sunrise_core::position::ChunkPos;
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 const ELASTIC: &str = "00006099-0000-0000-0000-000000000001";
 const SLACK: &str = "00006099-0000-0000-0000-000000000002";
@@ -133,7 +133,7 @@ fn game<'a>(
 }
 
 fn pig(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> usize {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }

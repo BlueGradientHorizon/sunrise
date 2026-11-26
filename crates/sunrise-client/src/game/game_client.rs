@@ -11,26 +11,25 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client::held::Source;
-use sunrise_client::spans::startup;
 use sunrise_client::{
-    Result,
     block_entity_render::{
         self, CacheOptions, Scene as BlockEntityScene, StaticCacheFrameStats, StaticSectionSnapshot,
     },
-    blocks::Fluid,
-    containers::BlockEntity,
     gfx::{Frame, Renderer},
     graphics::EntityCullingMode,
     hud::{HudAtlas, HudBatch},
     hud_layout, hud_overlays,
     mesher::Vertex,
-    spans,
     title::Action,
 };
+use sunrise_client_core::Result;
 use sunrise_client_gameplay::frame_autotune;
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::blocks::Fluid;
+use sunrise_level::spans::startup;
+use sunrise_level::{containers::BlockEntity, spans};
 use sunrise_world::{level::LevelEvent, registry::BlockStateId};
 use winit::{
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
@@ -50,16 +49,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side water splash particles for a dropped item (`side_apply_item_splash`).
     pub(in crate::game) fn client_apply_item_splash(
         &mut self,
-        splash: sunrise_client::entities::ItemSplash,
+        splash: sunrise_sim::entities::ItemSplash,
     ) {
-        use sunrise_client::entities::ItemSplash;
+        use sunrise_sim::entities::ItemSplash;
         if let ItemSplash::Particle {
             bubble,
             at,
             velocity,
         } = splash
         {
-            use sunrise_client::particles::{ParticleOptions, ParticleType};
+            use sunrise_level::particle_options::{ParticleOptions, ParticleType};
             let kind = if bubble {
                 ParticleType::Bubble
             } else {
@@ -125,23 +124,25 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(crate) fn camera_orientation(&self) -> glam::Quat {
         if self.side.studio.flying() {
             return camera_rotation(
-                sunrise_client::camera::CameraType::FirstPerson,
+                sunrise_level::camera_math::CameraType::FirstPerson,
                 self.side.studio.freecam.yaw,
                 self.side.studio.freecam.pitch,
             ) * glam::Quat::from_rotation_z(self.side.studio.freecam.roll.to_radians());
         }
         match self.side.posed_rotation {
             // The frame's camera, already turned round in front view.
-            Some((yaw, pitch)) => {
-                camera_rotation(sunrise_client::camera::CameraType::FirstPerson, yaw, pitch)
-            }
+            Some((yaw, pitch)) => camera_rotation(
+                sunrise_level::camera_math::CameraType::FirstPerson,
+                yaw,
+                pitch,
+            ),
             None => camera_rotation(self.side.camera_type, self.yaw, self.pitch),
         }
     }
     /// `AbstractCandleBlock.extinguish`: the smoke from each wick, at the
     /// block's `getParticleOffsets` (sixteenths of a block), rising 0.1.
     pub(in crate::game) fn candle_smoke(&mut self, pos: [i32; 3], state: BlockStateId) {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_level::particle_options::{ParticleOptions, ParticleType};
         let candles = self
             .pack
             .assets
@@ -304,7 +305,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game) fn render_frame(&mut self) -> Result<bool> {
         self.render_with(|renderer, frame| {
-            sunrise_client::spans::time("renderer", || renderer.render(frame))
+            sunrise_level::spans::time("renderer", || renderer.render(frame))
         })
     }
     /// Extract every particle group after the frame's entity, screen and hand callbacks.
@@ -546,7 +547,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         StaticCacheFrameStats,
     ) {
         // Its steps as spans (SUNRISE_SPIKES): each lap names the step that just ended.
-        let mut laps = sunrise_client::spans::laps();
+        let mut laps = sunrise_level::spans::laps();
         let mut static_block_entities = std::sync::Arc::from([]);
         let mut visible_static_block_entity_sections = Vec::new();
         let mut static_block_entity_stats = StaticCacheFrameStats::default();
@@ -757,7 +758,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             }
             // Blaze.isOnFire: a charged blaze burns.
-            let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
+            let blazing = m.species() == sunrise_sim::mobs::Species::Blaze && m.extra.flag;
             if (m.is_on_fire() || blazing) && !m.removed {
                 let at = m.previous.lerp(m.position, alpha);
                 if !fire_visible([at.x, at.y, at.z], m.width(), m.height()) {
@@ -1152,8 +1153,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 - camera)
                 .as_vec3();
             let state = self.world.block(pos[0], pos[1], pos[2]);
-            if self.res.facts().get(state).render_shape
-                == sunrise_client::blocks::RenderShape::Model
+            if self.res.facts().get(state).render_shape == sunrise_items::blocks::RenderShape::Model
                 && let Ok(models) = self
                     .side
                     .client_pack
@@ -1234,7 +1234,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.world_biomes = None;
         self.world_biomes_base = None;
         self.side.world_icon = None;
-        sunrise_client::crash::clear_detail("World");
+        sunrise_level::crash::clear_detail("World");
         self.side.debug_charts.reset();
         self.side.boss_overlay.reset();
         // GameRenderer.resetData (Minecraft.clearClientLevel).
@@ -1806,8 +1806,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .0
                         .as_ref()
                         .filter(|flight| flight.raw)
-                        .map(|_| sunrise_client::spans::record_frame());
-                    sunrise_client::spans::time("recover_device", || self.recover_device())?;
+                        .map(|_| sunrise_level::spans::record_frame());
+                    sunrise_level::spans::time("recover_device", || self.recover_device())?;
                     self.observe_fullscreen();
                     self.sync_ime();
                     let now = Instant::now();
@@ -1844,9 +1844,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                     .into(),
                             );
                         }
-                        sunrise_client::spans::time("update_world", || self.client_update_world());
+                        sunrise_level::spans::time("update_world", || self.client_update_world());
                     } else if let Err(e) =
-                        sunrise_client::spans::time("poll_remote", || self.poll_remote())
+                        sunrise_level::spans::time("poll_remote", || self.poll_remote())
                     {
                         log::warn!("Sunrise: {e}");
                     }
@@ -1875,14 +1875,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let rendered = self.render_and_flip(elapsed)?;
                     self.native_frame_end()?;
                     // Drain once for both the raw flight and the slow-frame/capture route.
-                    let frame_spans = if sunrise_client::spans::recording_here() {
-                        sunrise_client::spans::take_raw()
+                    let frame_spans = if sunrise_level::spans::recording_here() {
+                        sunrise_level::spans::take_raw()
                     } else {
                         Vec::new()
                     };
                     let block_entity_work = flight_spans.as_ref().map_or(
                         [0; 2],
-                        sunrise_client::spans::FrameRecording::block_entity_work,
+                        sunrise_level::spans::FrameRecording::block_entity_work,
                     );
                     drop(flight_spans);
                     let mut perf_times = None;
@@ -2064,7 +2064,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         }
                         self.side.frames += 1;
                         self.side.fps_frames += 1;
-                        sunrise_client::crash::debug_crash_tick();
+                        sunrise_level::crash::debug_crash_tick();
                         if self.side.fps_at.elapsed() >= Duration::from_secs(1) {
                             self.side.fps = self.side.fps_frames as f32
                                 / self.side.fps_at.elapsed().as_secs_f32();
@@ -2248,7 +2248,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let speed = self.main_hand_attack_speed();
                 (
                     self.side.hand_strength.scale(0.0, speed),
-                    sunrise_client::attack_strength::delay(speed),
+                    sunrise_sim::attack_strength::delay(speed),
                 )
             });
             self.gui_layer(VanillaGuiLayer::Crosshair, &mut batch, &mut |g, batch| {
@@ -2436,7 +2436,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if let Some((volume, pitch)) = pop_sound
                     && let Some(at) = sound_at
                 {
-                    let players = sunrise_client::settings::SOUND_SOURCES
+                    let players = sunrise_level::sim_settings::SOUND_SOURCES
                         .iter()
                         .position(|s| *s == "player")
                         .unwrap_or(0);
@@ -2761,7 +2761,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let p = [at(pos[0], 0), at(pos[1], 1), at(pos[2], 2)];
         self.side.particles.0.add(
-            &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
+            &sunrise_level::particle_options::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
             p,
             [0.0; 3],
         );
@@ -3157,9 +3157,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     ..
                 } => self.dragon_fireball_burst(pos, data),
                 // LevelEventHandler 2009: a wet sponge drying.
-                LevelEvent::LevelEvent { id: 2009, pos, .. } => {
-                    self.puffs_above_block(pos, sunrise_client::particles::ParticleType::Cloud)
-                }
+                LevelEvent::LevelEvent { id: 2009, pos, .. } => self
+                    .puffs_above_block(pos, sunrise_level::particle_options::ParticleType::Cloud),
                 // LevelEventHandler 2011 and 2012: a bee growing a crop, a
                 // turtle egg laid.
                 LevelEvent::LevelEvent {
@@ -3270,7 +3269,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             1.0,
                         ),
                         2000 | 2010 => {
-                            use sunrise_client::particles::{ParticleOptions, ParticleType};
+                            use sunrise_level::particle_options::{ParticleOptions, ParticleType};
                             let particle = if id == 2010 {
                                 ParticleType::WhiteSmoke
                             } else {
@@ -3368,7 +3367,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     match id {
                         1501 => self.puffs_above_block(
                             pos,
-                            sunrise_client::particles::ParticleType::LargeSmoke,
+                            sunrise_level::particle_options::ParticleType::LargeSmoke,
                         ),
                         1502 => self.torch_burnout_smoke(pos),
                         1503 => self.end_portal_frame_smoke(pos),
@@ -3385,7 +3384,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     state,
                     kind: "note_particle",
                 } => {
-                    use sunrise_client::particles::{ParticleOptions, ParticleType};
+                    use sunrise_level::particle_options::{ParticleOptions, ParticleType};
                     let note = self
                         .pack
                         .assets
@@ -3449,8 +3448,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         old: BlockStateId,
         new: BlockStateId,
     ) {
-        use sunrise_client::collisions::SceneCollisions;
         use sunrise_core::geometry::{Axis, ShapeOp};
+        use sunrise_level::collisions::SceneCollisions;
 
         let at = [pos.x, pos.y, pos.z];
         let shape = |state| {
@@ -3528,8 +3527,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             f64::from(pos.z) + 0.5,
         ];
         self.side.particles.0.add_with(
-            &sunrise_client::particles::ParticleOptions::simple(
-                sunrise_client::particles::ParticleType::ExplosionEmitter,
+            &sunrise_level::particle_options::ParticleOptions::simple(
+                sunrise_level::particle_options::ParticleType::ExplosionEmitter,
             ),
             at,
             [0.0; 3],
@@ -3962,7 +3961,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && let Some(renderer) = self.side.renderer.0.as_mut()
         {
             renderer.sync_loaded_columns(&self.world.chunks);
-            sunrise_client::spans::time("occlusion", || {
+            sunrise_level::spans::time("occlusion", || {
                 renderer.start_occlusion(camera, effective_detail_distance, cave_culling)
             });
         }
@@ -3987,15 +3986,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let weights = {
             let chunks = &self.world.chunks;
             let plains = biomes.id("minecraft:plains");
-            sunrise_client::biome::gaussian_weights(camera.to_array(), |qx, qy, qz| {
+            sunrise_level::biome::gaussian_weights(camera.to_array(), |qx, qy, qz| {
                 chunks
                     .get(&(qx >> 2, qz >> 2))
                     .map_or(plains, |c| c.biome(qx * 4, qy * 4, qz * 4))
             })
         };
         // visual/water_fog_color: no dimension sets it, its default is #050533.
-        let water_fog = sunrise_client::biome::blend_rgb(&weights, |b| {
-            sunrise_client::biome::rgb(biomes.get(b).water_fog)
+        let water_fog = sunrise_level::biome::blend_rgb(&weights, |b| {
+            sunrise_level::biome::rgb(biomes.get(b).water_fog)
         });
         // The attribute stack, with the camera's biome mix in the probe's order; the biome
         // maps as the packs left them.
@@ -4031,7 +4030,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let light = self.world.light(block[0], block[1], block[2]);
             let info = biomes.get(biome);
             // Every field named, so a new one has to be written here too.
-            let sunrise_client::environment::Frame {
+            let sunrise_level::environment::Frame {
                 rain: frame_rain,
                 thunder: frame_thunder,
                 game_time,
@@ -4081,7 +4080,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             environment.set_frame(&frame);
             polytone_frame = Some(&frame);
         }
-        let mut sky = environment.sample(&sunrise_client::environment::Sample {
+        let mut sky = environment.sample(&sunrise_level::environment::Sample {
             day_time: self.view_day_time(),
             rain,
             thunder,
@@ -4249,7 +4248,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
-        let mut hud = sunrise_client::spans::time("hud", || {
+        let mut hud = sunrise_level::spans::time("hud", || {
             self.extract_frame_hud(
                 size,
                 reload_overlay,
@@ -4428,7 +4427,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.outline_fill(&outline, camera, &mut entities);
         pr.lap("pr_screen_end");
         let weather = if !title && self.can_have_weather() && self.side.settings.sunrise.weather {
-            sunrise_client::spans::time("weather", || self.weather_geometry(camera, alpha))
+            sunrise_level::spans::time("weather", || self.weather_geometry(camera, alpha))
         } else {
             Vec::new()
         };
@@ -5270,7 +5269,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let lid = |p: [i32; 3]| self.chest_lid(p, partial);
         let anim = |p: [i32; 3]| self.block_anim(p, partial);
-        let substitute = |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
+        let substitute =
+            |text: &sunrise_client_core::text::Text| self.substitute_inline_images(text);
         let inline_sprite =
             |atlas: &str, sprite: &str| self.side.gui.atlas.inline_sprite(atlas, sprite);
         use block_entity_render::SignOutline;

@@ -1,6 +1,6 @@
 use super::Game;
-use sunrise_client::containers::BlockEntity;
 use sunrise_gameplay::mount_rules::has_mount_menu;
+use sunrise_level::containers::BlockEntity;
 
 /// Authoritative per-turn input flags for the active server actor (guest or host-over-pipe).
 /// `attack` and `use_item` are CONTINUATION flags (`play.digging.is_some()` / `self.using.is_some()`),

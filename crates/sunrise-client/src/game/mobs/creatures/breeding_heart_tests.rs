@@ -21,7 +21,7 @@ fn a_bred_turtle_posts_no_heart_burst_but_a_bred_frog_does() {
             None,
             None,
             None,
-            sunrise_client::mobs::BreedExperience::Deferred,
+            sunrise_sim::mobs::BreedExperience::Deferred,
         );
         let burst = game
             .side

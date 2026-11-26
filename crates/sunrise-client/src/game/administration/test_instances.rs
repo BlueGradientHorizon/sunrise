@@ -7,13 +7,13 @@ use super::{
     structure_blocks::{create_seed, template_size},
     test_entities::{aabb_of, inflate},
 };
-use sunrise_client::{
+use sunrise_client_core::text::{self, Text};
+use sunrise_core::{position::BlockPos, ticks::TickArea};
+use sunrise_level::{
     containers::BlockEntity,
     structure_block::rotation_from_ordinal,
     test_instance_block::{Data, Status, TestInstanceBlock},
-    text::{self, Text},
 };
-use sunrise_core::{position::BlockPos, ticks::TickArea};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use {
     sunrise_core::bounding_box::BoundingBox,
@@ -245,7 +245,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.send_to(
                 conn,
                 &C::TestInstanceBlockStatus(play::TestInstanceBlockStatus {
-                    status: sunrise_client::lan::data::component_nbt(&status.component()),
+                    status: sunrise_sim::lan::data::component_nbt(&status.component()),
                     size,
                 }),
             );

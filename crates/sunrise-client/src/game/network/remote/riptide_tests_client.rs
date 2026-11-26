@@ -8,7 +8,7 @@ use crate::game::{
     native_entity_refs::tests::with_client_game, native_guest_turn_tests::with_guests,
 };
 use std::sync::mpsc::channel;
-use sunrise_client::lan::PlayerSender;
+use sunrise_sim::lan::PlayerSender;
 
 #[test]
 #[ignore = "daily"]

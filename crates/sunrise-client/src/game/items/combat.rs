@@ -8,11 +8,10 @@ pub(in crate::game) mod infested_roll_tests;
 #[cfg(test)]
 use sunrise_core::random::RandomSource;
 use {
-    sunrise_client::health::Attack, sunrise_client::health::HealthEvent,
-    sunrise_client::mobs::Damage, sunrise_client::mobs::Mob, sunrise_client::mobs::Species,
-    sunrise_client::mobs::Who, sunrise_client::mobs::stuck::Stuck,
-    sunrise_client::motion::MotionEvent, sunrise_client::text::Text,
-    sunrise_level::particle_options::ParticleType,
+    sunrise_client_core::text::Text, sunrise_level::particle_options::ParticleType,
+    sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent, sunrise_sim::mobs::Damage,
+    sunrise_sim::mobs::Mob, sunrise_sim::mobs::Species, sunrise_sim::mobs::Who,
+    sunrise_sim::mobs::stuck::Stuck, sunrise_sim::motion::MotionEvent,
 };
 
 /// `EntityEvent.DROWN_PARTICLES`: broadcast with the drowning damage.
@@ -158,7 +157,7 @@ pub(in crate::game) struct CombatTracker {
     pub(in crate::game) explosion_direct: Option<u32>,
     /// The exploding mob as predicates see it (`ServerExplosion.source`,
     /// `ServerPlayer.currentExplosionCause`), for a mob already out of the list.
-    pub(in crate::game) explosion_cause: Option<sunrise_client::advancements::EntityView>,
+    pub(in crate::game) explosion_cause: Option<sunrise_sim::advancements::EntityView>,
     /// The exploding mob named itself (`MobEvent::ExplosionSource`), so the
     /// blast leaves it out (`getEntities(source, box)`). A source guessed
     /// from the mobs near the centre is still hurt: it may be a bystander.
@@ -292,7 +291,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return true;
         }
         if bubbles > 0 {
-            let bubble = crate::lan::server_effects::ServerParticle::simple(ParticleType::Bubble);
+            let bubble =
+                sunrise_sim::lan::server_effects::ServerParticle::simple(ParticleType::Bubble);
             self.server_level_particles(&bubble, at, [0.5; 3], 0.0, bubbles as u32);
         }
         false
@@ -319,9 +319,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
     pub(in crate::game::server_side) fn player_hurt_by(
         &self,
-    ) -> Option<(sunrise_client::mobs::Who, i64)> {
+    ) -> Option<(sunrise_sim::mobs::Who, i64)> {
         let ((id, _), at) = self.side.combat.0.last_hurt_by.as_ref()?;
-        (self.world.game_time - at <= 100).then_some((sunrise_client::mobs::Who::Mob(*id), *at))
+        (self.world.game_time - at <= 100).then_some((sunrise_sim::mobs::Who::Mob(*id), *at))
     }
     /// Remember who deals the next `damage_type` damage to the player.
     pub(in crate::game::server_side) fn note_attacker(&mut self, damage_type: &str, mob: u32) {
@@ -395,7 +395,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match self.mobs.iter().find(|m| m.id == id) {
             None => {
                 let uuid = captured_player
-                    .map(sunrise_client::lan::playerdata::ints_uuid)
+                    .map(sunrise_sim::lan::playerdata::ints_uuid)
                     .or_else(|| {
                         self.lan.as_ref().and_then(|host| {
                             host.hub
@@ -415,7 +415,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // `instanceof Wolf`: a content mod's type copying the wolf is one.
             Some(m) if m.extra.tame && m.species() == Species::Wolf => {
                 self.side.combat.0.last_hurt_by_player = m.extra.owner.map(|o| {
-                    let owner = sunrise_client::lan::playerdata::ints_uuid(o);
+                    let owner = sunrise_sim::lan::playerdata::ints_uuid(o);
                     (PlayerCredit(owner), now)
                 });
             }
@@ -584,7 +584,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 (p.position.y + 0.1).floor() as i32,
                 p.position.z.floor() as i32,
             ));
-            (f.fluid == sunrise_client::blocks::Fluid::Water || f.waterlogged).then_some("water")
+            (f.fluid == sunrise_items::blocks::Fluid::Water || f.waterlogged).then_some("water")
         };
         (location, distance)
     }
@@ -644,8 +644,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !has_custom_name(&stack) {
             return None;
         }
-        if let Some(g) = sunrise_client::mobs::gear::gear(m) {
-            stack.data_mut().enchantments = g.slots[sunrise_client::mobs::gear::MAIN].clone();
+        if let Some(g) = sunrise_sim::mobs::gear::gear(m) {
+            stack.data_mut().enchantments = g.slots[sunrise_sim::mobs::gear::MAIN].clone();
         }
         Some(self.stack_display_name(&stack))
     }
@@ -711,14 +711,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // with a custom name gets the `.item` message.
             let (key, args) = match (&knock.attacker, &killer) {
                 (Some(a), k) if k.as_ref().is_none_or(|k| k.0 != a.0) => {
-                    sunrise_client::scoreboard::death_message_args(
+                    sunrise_client_core::scoreboard::death_message_args(
                         "death.fell.assist",
                         &me,
                         &a.1,
                         self.entry_item(knock).as_ref(),
                     )
                 }
-                (_, Some(k)) => sunrise_client::scoreboard::death_message_args(
+                (_, Some(k)) => sunrise_client_core::scoreboard::death_message_args(
                     "death.fell.finish",
                     &me,
                     &k.1,
@@ -740,7 +740,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some((_, name)) = killer {
             // DamageSource.getLocalizedDeathMessage: the cause's item with a
             // custom name gets the `<id>.item` message.
-            let (key, args) = sunrise_client::scoreboard::death_message_args(
+            let (key, args) = sunrise_client_core::scoreboard::death_message_args(
                 &key,
                 &me,
                 &name,
@@ -785,16 +785,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SHOW_DEATH_MESSAGES)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SHOW_DEATH_MESSAGES)
         {
             return;
         }
-        let uuid = sunrise_client::lan::playerdata::ints_uuid(owner);
+        let uuid = sunrise_sim::lan::playerdata::ints_uuid(owner);
         let recipient = if let Some(lan) = &self.lan {
             lan.hub.guests.iter().any(|g| g.placed && g.uuid == uuid)
         } else {
             self.player.is_some()
-                && sunrise_client::mobs::tame::owned_by(
+                && sunrise_sim::mobs::tame::owned_by(
                     Some(owner),
                     self.level.player_uuid.unwrap_or_default(),
                 )
@@ -810,7 +810,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         if let Some(lan) = &self.lan {
-            let content = sunrise_client::lan::data::component_nbt(&message.component());
+            let content = sunrise_sim::lan::data::component_nbt(&message.component());
             lan.hub.system_message_to_player(uuid, content);
         } else {
             self.server_system_message(message);
@@ -823,7 +823,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         m: &Mob,
         killer: Option<Option<u32>>,
     ) -> Text {
-        use sunrise_client::mobs::{DamageKind, Who};
+        use sunrise_sim::mobs::{DamageKind, Who};
         let me = mob_name(m);
         // The player behind a `Who::Player` hit: the last one to hurt it, or
         // the one in place (a server with nobody acting has none).
@@ -915,7 +915,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// `!stack.isEmpty() && stack.has(DataComponents.CUSTOM_NAME)`: the held
 /// item that turns a death message into its `.item` form.
 pub(in crate::game::server_side) fn has_custom_name(
-    stack: &sunrise_client::items::ItemStack,
+    stack: &sunrise_items::items::ItemStack,
 ) -> bool {
     &*stack.item != "minecraft:air"
         && stack.count > 0
@@ -957,7 +957,7 @@ pub(in crate::game::server_side) fn fall_location_of(name: &str, trapdoor: bool)
 /// `playerAttack`, a mace's or a spear's, a ram's no-aggro blow, a sting, a
 /// sonic boom, thorns): the fork's one answer lives with the damage sources.
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_client::health::melee;
+pub(in crate::game) use sunrise_sim::health::melee;
 
 #[cfg(test)]
 pub(in crate::game) mod fall_location_tests {
@@ -1005,8 +1005,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn last_hurt_living_target(
         &self,
         id: u32,
-    ) -> Option<(Target, sunrise_client::join_seq::JoinSeq)> {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
+    ) -> Option<(Target, sunrise_sim::join_seq::JoinSeq)> {
+        use sunrise_sim::join_seq::residency::table::EntityLookup;
         let EntityLookup::Found { value, location } = self.server_resident_entity(id) else {
             return None;
         };
@@ -1068,7 +1068,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         target: u32,
         amount: f32,
-        source: sunrise_client::mobs::Damage,
+        source: sunrise_sim::mobs::Damage,
     ) -> bool {
         let hurt = self.mob_hits_mob(target, amount, source);
         if hurt {
@@ -1105,7 +1105,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.side.combat.0.hit_landed = landed;
         if !landed {
             if let Some(b) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
-                sunrise_client::mobs::bee::sting_refused(b);
+                sunrise_sim::mobs::bee::sting_refused(b);
             }
             return;
         }
@@ -1127,7 +1127,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         if let Some(b) = self.mobs.iter_mut().find(|m| m.id == mob)
-            && sunrise_client::mobs::bee::sting_landed(b)
+            && sunrise_sim::mobs::bee::sting_landed(b)
         {
             self.server_play_sound("minecraft:entity.bee.sting", from, 1.0, 1.0);
         }
@@ -1142,10 +1142,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// cooldown leaves timers that already counted down this tick unchanged.
     pub(in crate::game::server_side) fn catch_up_countdowns(
         &self,
-        attacker: Option<sunrise_client::mobs::Who>,
+        attacker: Option<sunrise_sim::mobs::Who>,
         target: u32,
     ) -> bool {
-        let Some(sunrise_client::mobs::Who::Mob(attacker)) = attacker else {
+        let Some(sunrise_sim::mobs::Who::Mob(attacker)) = attacker else {
             return false;
         };
         let ticked = &self.creatures.ticked;
@@ -1181,8 +1181,8 @@ pub(in crate::game) mod damage_taken_tests {
 #[cfg(test)]
 pub(in crate::game) mod held_item_tests {
     use super::has_custom_name;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
 
     /// `DamageSource.getLocalizedDeathMessage`: only a non-empty stack with
     /// a `custom_name` component names the item.
@@ -1204,7 +1204,7 @@ pub(in crate::game) mod held_item_tests {
 #[cfg(test)]
 pub(in crate::game) mod noted_tests {
     use super::{CombatTracker, PendingAttacker};
-    use sunrise_client::text::Text;
+    use sunrise_client_core::text::Text;
 
     /// A canceled hit forgets what was noted for it, also before its hurt
     /// started (a PvP blow, `/damage`), and nothing a landed hit noted.
@@ -1249,7 +1249,7 @@ pub(in crate::game) mod noted_tests {
 #[cfg(test)]
 pub(in crate::game) mod kill_credit_tests {
     use super::{CombatTracker, PlayerCredit};
-    use sunrise_client::text::Text;
+    use sunrise_client_core::text::Text;
 
     #[test]
     fn player_reference_expires_after_one_hundred_ticks() {
@@ -1280,9 +1280,9 @@ pub(in crate::game) mod kill_credit_tests {
 #[cfg(test)]
 pub(in crate::game) mod pet_credit_tests {
     use std::sync::Arc;
-    use sunrise_client::lan::playerdata::uuid_ints;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::lan::playerdata::uuid_ints;
+    use sunrise_sim::mobs::Mob;
 
     /// A tame wolf's hit on the player in place is its owner's
     /// (`resolvePlayerResponsibleForDamage` asks `instanceof Wolf`), so a
@@ -1318,9 +1318,9 @@ pub(in crate::game) mod pet_credit_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod guest_hit_tests {
-    use sunrise_client::mobs::{Damage, DamageKind, Mob, MobEvent, Species, Who};
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Damage, DamageKind, Mob, MobEvent, Species, Who};
+    use sunrise_sim::motion::PlayerMotion;
 
     /// A bystander stands exactly under the mob that bites, listed first: the
     /// search by position ignores height and would have named the bystander.

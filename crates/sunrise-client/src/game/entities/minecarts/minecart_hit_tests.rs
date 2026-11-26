@@ -4,8 +4,8 @@
 use super::super::{CartKind, Minecart};
 use super::CartHit;
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::mobs::{Species, Who};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{Species, Who};
 
 /// A server game with a player at `(8.5, 64, 8.5)`, as a window's player is
 /// there for the piglins that look at it.
@@ -16,7 +16,7 @@ fn game_with_player(
     game.build_registries();
     game.set_allow_commands(true);
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap(),
     );
     game
 }
@@ -128,7 +128,7 @@ fn a_chest_cart_broken_by_a_player_angers_the_piglins_that_see_them() {
     assert!(
         game.ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
     );
     let at = Vec3::new(8.5, 64.0, 8.5);
     game.carts.push(Minecart::new(1, CartKind::Chest, at));
@@ -162,7 +162,7 @@ fn a_chest_cart_broken_by_a_player_angers_the_piglins_that_see_them() {
         "the piglin saw it"
     );
     assert_eq!(
-        sunrise_client::mobs::piglin::angry_at(m),
+        sunrise_sim::mobs::piglin::angry_at(m),
         Some(600),
         "PiglinAi.setAngerTarget's 600 ticks"
     );

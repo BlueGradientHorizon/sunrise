@@ -1,6 +1,6 @@
 use super::*;
 use std::sync::{Mutex, OnceLock};
-use sunrise_client::recipe_book::{settings_codec, settings_sync::Message};
+use sunrise_sim::recipe_book::{settings_codec, settings_sync::Message};
 
 pub(in crate::game) static KEY: OnceLock<mod_api::RecipeBookTypeKey> = OnceLock::new();
 pub(in crate::game) struct BookMod;
@@ -111,7 +111,7 @@ impl mod_api::MenuScreenFactory for BoundBookScreen {
     }
 }
 pub(in crate::game) fn with_bound_menu_type(test: impl FnOnce()) {
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [(
             "bound:menu".into(),
             "bound".into(),

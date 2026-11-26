@@ -3,8 +3,8 @@ use super::Game;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
-use sunrise_client::neoforge_mob_maps::{self as builtin, BuiltinMap, Kind, MAPS, NeoForgeMobMaps};
 use sunrise_core::{identifier::Identifier, nbt::Tag};
+use sunrise_sim::neoforge_mob_maps::{self as builtin, BuiltinMap, Kind, MAPS, NeoForgeMobMaps};
 
 type Tags = HashMap<String, HashSet<String>>;
 
@@ -129,7 +129,7 @@ pub(in crate::game::server_side) fn load<'a>(
                     Tag::String(if sound.is_empty() {
                         "minecraft:intentionally_empty".into()
                     } else {
-                        sunrise_client::mobs::entity_sounds::full_id(sound)
+                        sunrise_sim::mobs::entity_sounds::full_id(sound)
                             .as_ref()
                             .into()
                     })
@@ -141,7 +141,7 @@ pub(in crate::game::server_side) fn load<'a>(
                 |value| {
                     let id = format!(
                         "minecraft:{}",
-                        sunrise_client::mobs::villager::VILLAGER_TYPES[*value as usize]
+                        sunrise_sim::mobs::villager::VILLAGER_TYPES[*value as usize]
                     );
                     Tag::String(id.as_str().into())
                 },

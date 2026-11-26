@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::containers::{BlockEntity, Crafter};
+use sunrise_level::containers::{BlockEntity, Crafter};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn crafter_open(&self) -> bool {

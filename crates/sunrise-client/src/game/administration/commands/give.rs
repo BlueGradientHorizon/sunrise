@@ -2,8 +2,8 @@
 use super::{Game, Target};
 use crate::game::level_sounds::LevelSound;
 use mod_api::SoundSource;
-use sunrise_client::items::ItemStack;
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
 
 pub(in crate::game) enum GiveItem {
     Overflow(Option<[i32; 4]>),

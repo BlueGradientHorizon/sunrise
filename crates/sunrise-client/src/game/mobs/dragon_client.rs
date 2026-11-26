@@ -11,17 +11,13 @@ use crate::game::server_side::dragon::breath_puffs;
 use crate::game::server_side::dragon::dragon_part_id;
 use crate::game::server_side::dragon::dragon_part_index;
 use crate::game::server_side::dragon::wrap;
-use sunrise_client::{
-    hud::HudBatch,
-    hud_layout, hud_overlays,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-};
+use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays, mesher::Vertex};
 use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     random::RandomSource,
 };
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::Value;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -103,7 +99,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         base *=
             glam::Mat4::from_translation(glam::Vec3::new(0.0, (bounce - 2.0) * 16.0, -48.0) / 16.0)
                 * glam::Mat4::from_rotation_x((bounce * 2.0).to_radians());
-        let mut poses = sunrise_client::mobs::anim::Poses::new(model);
+        let mut poses = sunrise_sim::mobs::anim::Poses::new(model);
         poses.get("jaw")[3] = (flap.sin() + 1.0) * 0.2;
         let sitting = d.phase.sitting();
         let landing = matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. });
@@ -357,7 +353,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // DragonFireballRenderer.submit: turned by the camera's orientation.
         let [right, up] = super::billboard_axes(self.camera_orientation());
         for b in self.creatures.projectiles.iter().filter(|p| {
-            p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball
+            p.kind == sunrise_sim::projectiles::ProjectileKind::DragonFireball
                 && !self.hides_as_camera(p.id)
         }) {
             let p = glam::DVec3::new(
@@ -661,7 +657,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut d = Dragon::new(at, yaw, i64::from(id));
         d.id = id as u32;
         d.phase = Phase::from_id(10);
-        d.join = sunrise_client::join_seq::JoinSeq::next();
+        d.join = sunrise_sim::join_seq::JoinSeq::next();
         self.client_discard_dragon();
         self.dragon.replace(d);
         self.place_dragon_parts();

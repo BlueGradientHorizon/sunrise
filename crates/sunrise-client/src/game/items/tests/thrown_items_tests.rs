@@ -5,10 +5,10 @@
 use super::*;
 use crate::game::game_tests::tests::server_game;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::entities::{ExperienceOrb, ItemEntity};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::entities::{ExperienceOrb, ItemEntity};
 
 /// A game with the player standing at 8.5 70 8.5 in a ticking chunk, with the
 /// positional sounds it plays recorded.
@@ -17,7 +17,7 @@ pub(in crate::game::server_side) fn standing_game<'a>(
 ) -> crate::game::ServerGame<'a> {
     let mut game = server_game(resources);
     let feet = Vec3::new(8.5, 70.0, 8.5);
-    game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+    game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, feet).unwrap());
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

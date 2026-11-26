@@ -1,8 +1,6 @@
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::finalize::{OFFHAND, item_stack},
-};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::finalize::{OFFHAND, item_stack};
 
 fn stack(sword: bool) -> ItemStack {
     sunrise_items::item_data::parse_stack(if sword {
@@ -28,7 +26,7 @@ fn piglin_admire_preserves_components_on_death_and_finish() {
             g.set_allow_commands(true);
             g.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             for sword in [true, false] {
                 g.mobs.clear();
@@ -81,7 +79,7 @@ fn piglin_admire_hit_keeps_baby_gold_and_cancels_adult_barter() {
             g.set_allow_commands(true);
             g.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             for baby in [true, false] {
                 g.mobs.clear();
@@ -101,9 +99,9 @@ fn piglin_admire_hit_keeps_baby_gold_and_cancels_adult_barter() {
                 );
                 g.piglin_pickups();
                 assert!(item_stack(&g.mobs[0], OFFHAND).is_some());
-                sunrise_client::mobs::ai::after_hurt(
+                sunrise_sim::mobs::ai::after_hurt(
                     &mut g.mobs[0],
-                    &sunrise_client::mobs::Damage::player([1.0, 100.0, 0.0]),
+                    &sunrise_sim::mobs::Damage::player([1.0, 100.0, 0.0]),
                 );
                 let events = std::mem::take(&mut g.mobs[0].outbox);
                 g.handle_mob_events(events).unwrap();

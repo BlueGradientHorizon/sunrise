@@ -5,9 +5,9 @@ pub(in crate::game) mod connected_advancement_save_tests {
     fn command(
         game: &mut crate::game::ServerGame<'_>,
         text: &str,
-    ) -> Vec<sunrise_client::text::Text> {
+    ) -> Vec<sunrise_client_core::text::Text> {
         game.side.chat_capture = Some(Vec::new());
-        let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
+        let dispatcher = sunrise_command::vanilla::build_for(false, true);
         game.ui.registries.permission = 4;
         let parsed = dispatcher.parse(text, &game.ui.registries);
         let (ctx, _) = parsed
@@ -46,12 +46,12 @@ pub(in crate::game) mod connected_advancement_save_tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         game.side.world_root = dir.clone();
-        game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
             dir.clone(),
-            sunrise_client::save::LevelShape::OVERWORLD,
+            sunrise_sim::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
-        use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
+        use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
         game.side.server_lists.0 = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
             ops: OpList::new(dir.join("ops.json")),
             white: WhiteList::new(dir.join("whitelist.json")),
@@ -182,9 +182,9 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
     fn command(
         game: &mut crate::game::ServerGame<'_>,
         text: &str,
-    ) -> Vec<sunrise_client::text::Text> {
+    ) -> Vec<sunrise_client_core::text::Text> {
         game.side.chat_capture = Some(Vec::new());
-        let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
+        let dispatcher = sunrise_command::vanilla::build_for(false, true);
         game.ui.registries.permission = 4;
         let parsed = dispatcher.parse(text, &game.ui.registries);
         let (ctx, _) = parsed
@@ -216,12 +216,12 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         game.side.world_root = dir.clone();
-        game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
             dir.clone(),
-            sunrise_client::save::LevelShape::OVERWORLD,
+            sunrise_sim::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
-        use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
+        use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
         game.side.server_lists.0 = Some(Arc::new(Mutex::new(super::super::dedicated::Lists {
             ops: OpList::new(dir.join("ops.json")),
             white: WhiteList::new(dir.join("whitelist.json")),
@@ -257,7 +257,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
         assert!(game.adv.tree.find_id("minecraft:story/root").is_some());
         let path = stats::player_json(&dir, "advancements", [0, 0, 0, 1]);
         let stats_path = stats::player_json(&dir, "stats", [0, 0, 0, 1]);
-        let player_path = sunrise_client::lan::playerdata::path(&dir, 1);
+        let player_path = sunrise_sim::lan::playerdata::path(&dir, 1);
         assert!(!player_path.exists());
         let read = || -> serde_json::Value {
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap()
@@ -321,14 +321,14 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
         game.lan.as_mut().unwrap().play.insert(1, play);
         for excluded in ["unplaced", "released", "fake"] {
             let original = if excluded == "fake" {
-                let motion = sunrise_client::motion::PlayerMotion::new(
+                let motion = sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
                 .unwrap();
                 let guests = &mut game.lan.as_mut().unwrap().hub.guests;
                 let g = &guests[0];
-                let fake = sunrise_client::lan::guest::Guest::connectionless(
+                let fake = sunrise_sim::lan::guest::Guest::connectionless(
                     g.conn,
                     g.uuid,
                     g.name.clone(),
@@ -388,7 +388,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
         game.options.dedicated = Some(Vec::new());
         for role in [ExecutionRole::IntegratedServer, ExecutionRole::Client] {
             game.options.execution_role = role;
-            let dispatcher = sunrise_client::command::vanilla::build_for(false, true);
+            let dispatcher = sunrise_command::vanilla::build_for(false, true);
             let parsed = dispatcher.parse("save-all", &game.ui.registries);
             let (ctx, _) = parsed.executable().unwrap();
             let error = game.run_chain(&parsed.context, ctx).unwrap_err();

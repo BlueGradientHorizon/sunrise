@@ -5,7 +5,7 @@
 use super::Remote;
 use crate::game::{Dim, remote_chunks::ChunkFormat};
 use std::sync::{Arc, Weak};
-use sunrise_client::{chunk::LevelShape, environment::Environment};
+use sunrise_level::{chunk::LevelShape, environment::Environment};
 use sunrise_protocol::{packets::play, registry::DimensionType};
 use sunrise_world::dimension_type::DimensionFacts;
 

@@ -44,7 +44,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if d.length_squared() >= range * range {
             return;
         }
-        let beam = sunrise_client::mobs::guardian::beam(mob, alpha as f32);
+        let beam = sunrise_sim::mobs::guardian::beam(mob, alpha as f32);
         // EntityRenderer.shouldRender: the renderer's interpolated culling box,
         // grown by 0.5 (GuardianRenderer also draws while its beam is out).
         if let Some(view) = &self.side.view_frustum
@@ -69,7 +69,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Entity.isInvisibleTo(viewer): a spectator sees it anyway, the
         // body forced translucent (`LivingEntityRenderer.submit`).
         let seen_invisible = invisible
-            && !sunrise_client::scoreboard::invisible_to(
+            && !sunrise_client_core::scoreboard::invisible_to(
                 self.client_mob_team_of(mob),
                 viewer,
                 self.own_player_is_spectator(),

@@ -4,10 +4,11 @@ use super::{
 };
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
-    block_entity_render::vertex_light, camera::rotate_degrees, containers::BlockEntity,
-    item_render, items::ItemStack, mesher::Vertex,
+    block_entity_render::vertex_light, camera::rotate_degrees, item_render, mesher::Vertex,
 };
 use sunrise_client_render::block_entity_reach::Reach;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `VaultRenderer`: the display item of every vault near the camera that
@@ -30,9 +31,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         alpha: f64,
         mut draw: impl FnMut(BlockItemDraw),
     ) {
-        let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
+        let _items = sunrise_level::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
-        sunrise_client::spans::note_block_entity_item_visits(|| {
+        sunrise_level::spans::note_block_entity_item_visits(|| {
             self.world.block_entities.len() as u64
         });
         for (key, entity) in &self.world.block_entities {
@@ -86,7 +87,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         held.is_some()
             && self.pack.assets.registry.state(state).is_some_and(|block| {
-                sunrise_client::block_entity_types::factory_block(&block.name) == "minecraft:vault"
+                sunrise_client_core::block_entity_types::factory_block(&block.name)
+                    == "minecraft:vault"
                     && block.properties.get("vault_state").map(String::as_str) == Some("active")
             })
     }

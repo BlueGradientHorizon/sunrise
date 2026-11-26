@@ -127,7 +127,7 @@ fn nbt_flags_use_numbers_without_changing_json_booleans() {
     );
     assert_eq!(codec.read(&snbt("{text:'flag',bold:'true'}")), Ok(None));
     assert!(
-        sunrise_client::text_grammar::build(
+        sunrise_sim::text_grammar::build(
             &serde_json::json!({"text":"flag","bold":0.5}),
             &reg,
             false

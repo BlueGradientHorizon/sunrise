@@ -35,8 +35,8 @@ mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
     use mod_api::DimensionKey;
-    use sunrise_client::ticket_levels::Sources;
     use sunrise_core::position::ChunkPos;
+    use sunrise_sim::ticket_levels::Sources;
 
     fn assert_reads(
         game: &crate::game::ServerGame<'_>,

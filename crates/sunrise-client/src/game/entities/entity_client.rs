@@ -3,10 +3,10 @@ use super::{boats::Boat, minecarts::Minecart};
 use crate::game::server_side::entity::DrawExtras;
 use crate::game::server_side::entity::DrawRun;
 use crate::game::server_side::entity::*;
-use sunrise_client::entities::{ArmorStand, Cushion, ItemEntity, ItemFrame, Painting};
-use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_core::position::BlockPos;
+use sunrise_sim::entities::{ArmorStand, Cushion, ItemEntity, ItemFrame, Painting};
+use sunrise_sim::mobs::Mob;
 
 /// Identity and glowing state needed by the render occlusion culler.
 pub(in crate::game) trait RenderEntity {
@@ -40,7 +40,7 @@ pub(in crate::game) fn mob_render_bounds(
     models: &sunrise_client::mobs_render::ClientMobModels,
     alpha: f64,
 ) -> Option<Aabb> {
-    use sunrise_client::mobs::Species;
+    use sunrise_sim::mobs::Species;
     let visuals = models.get(&mob.kind.id)?;
     let (width, height, _) = mob.awake_dims();
     let at = mob.previous.lerp(mob.position, f64::from(alpha as f32));
@@ -234,7 +234,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_player_equipped(
         &mut self,
         _slot: &str,
-        _new: Option<&sunrise_client::items::ItemStack>,
+        _new: Option<&sunrise_items::items::ItemStack>,
     ) {
     }
 
@@ -249,7 +249,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         _entity: (u32, &str),
         _feet: Vec3,
-        response: sunrise_client::motion::BodyRestitution,
+        response: sunrise_sim::motion::BodyRestitution,
     ) -> Vec3 {
         response.velocity
     }
@@ -297,14 +297,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_vehicle_solids(
         &self,
         mover: super::collision_source::Mover<'_>,
-        solids: &sunrise_client::entity_solids::Solids,
-        each: &mut dyn FnMut(&sunrise_client::entity_solids::Candidate, Option<usize>),
+        solids: &sunrise_sim::entity_solids::Solids,
+        each: &mut dyn FnMut(&sunrise_sim::entity_solids::Candidate, Option<usize>),
     ) {
         use super::{
             collision_source::{Mover, boat, cart, cart_reach, player},
             commands::Target,
         };
-        use sunrise_client::entity_solids::{Candidate, SolidKind};
+        use sunrise_sim::entity_solids::{Candidate, SolidKind};
         match mover {
             Mover::Cart(c) => {
                 for o in self

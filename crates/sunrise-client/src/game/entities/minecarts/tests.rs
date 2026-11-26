@@ -10,16 +10,16 @@ fn a_furnace_cart_is_capped_at_half_the_rule_speed_under_the_new_physics() {
         features.push("minecraft:minecart_improvements".into());
         game.level.enabled_features = features.into();
         game.ui.rules =
-            sunrise_client::gamerules::GameRules::with_features(&game.level.enabled_features);
+            sunrise_client_core::gamerules::GameRules::with_features(&game.level.enabled_features);
         let rule = f64::from(
             game.ui
                 .rules
-                .int_at(sunrise_client::gamerules::vanilla::MAX_MINECART_SPEED),
+                .int_at(sunrise_client_core::gamerules::vanilla::MAX_MINECART_SPEED),
         ) / 20.0;
         assert_eq!(rule, 0.4);
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let rail = game
             .pack
@@ -117,7 +117,7 @@ fn cart_index_finds_what_a_scan_finds() {
 #[ignore = "daily"]
 fn cart_index_finds_the_mobs_a_scan_finds() {
     use super::{CartIndex, CartKind, Minecart};
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
     crate::game::native_entity_refs::tests::with_game(|game| {
         let kinds: Vec<_> = ["minecraft:zombie", "minecraft:chicken", "minecraft:ravager"]
             .iter()
@@ -291,7 +291,7 @@ fn data_merge_loads_into_a_live_cart() {
             r#"{DisplayState:"minecraft:furnace",DisplayOffset:3,CustomName:"Cart",Pos:[1.5d,70.0d,2.5d]}"#,
         )
         .unwrap();
-    let merged = sunrise_client::data_cmd::merged(&old, &patch);
+    let merged = sunrise_sim::data_cmd::merged(&old, &patch);
     cart.load(&merged).unwrap();
     assert_eq!(
         (cart.id, cart.kind, cart.hurt_time),
@@ -327,10 +327,8 @@ fn data_merge_of_a_name_keeps_the_carts_state() {
     let (patch, _) = sunrise_core::nbt::parse_snbt(r#"{CustomName:"x"}"#).unwrap();
     for cart in [furnace, tnt, hopper] {
         let mut merged_cart = cart.clone();
-        let merged = sunrise_client::data_cmd::merged(
-            &cart.to_nbt([0; 4], None, &Default::default()),
-            &patch,
-        );
+        let merged =
+            sunrise_sim::data_cmd::merged(&cart.to_nbt([0; 4], None, &Default::default()), &patch);
         merged_cart.load(&merged).unwrap();
         assert_eq!(
             (
@@ -638,7 +636,7 @@ fn an_old_behaviour_cart_writes_is_on_rails_each_tick() {
     super::super::native_entity_refs::tests::with_game(|game| {
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let rail = game
             .pack

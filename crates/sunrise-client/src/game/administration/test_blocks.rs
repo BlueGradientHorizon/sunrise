@@ -1,11 +1,11 @@
 //! Test blocks on the server: `handleSetTestBlock` and the mode a placed
 //! test block starts with.
 use super::Game;
-use sunrise_client::{
+use sunrise_core::position::BlockPos;
+use sunrise_level::{
     containers::BlockEntity,
     test_block::{Effects, TestBlock, TestBlockMode},
 };
-use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play;
 
 type Pos = (i32, i32, i32);

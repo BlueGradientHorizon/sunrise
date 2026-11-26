@@ -4,7 +4,7 @@
 //! on a client as the server's light update reaches its section, the answers kept in the
 //! chunk (`Chunk::dynamic_emission`) for the light engine, which never asks on its own.
 use super::*;
-use sunrise_client::fast_hash::FxHashMap;
+use sunrise_level::fast_hash::FxHashMap;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Query dynamic light emission in the active (`None`) or parked (`Some`) level.

@@ -5,8 +5,9 @@
 //! compound of block id to property name. Sunrise preserves it through
 //! `StackData::set_other` and `StackData::other`, so it travels through NBT unchanged.
 use super::Game;
-use sunrise_client::{Result, items::ItemStack, text::Text};
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
 use sunrise_world::level::flags;
 
 const DEBUG_STICK: &str = "minecraft:debug_stick";

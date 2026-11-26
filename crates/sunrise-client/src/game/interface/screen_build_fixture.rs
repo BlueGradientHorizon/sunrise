@@ -8,16 +8,17 @@ use super::{Game, Screen, screen_build::ScreenLayout};
 use serde_json::Value;
 use std::io::Write as _;
 use sunrise_client::{
-    Result,
     chat::{ChatAbilities, ChatScreen, ChatVisibility, Commands},
-    chunk::Chunk,
-    containers::{BlockEntity, Furnace, FurnaceKind},
     hud::{GuiScale, HudBatch},
-    recipe_book::BookType,
     screen_draw::Measure,
-    text::Text,
     window::GuiSize,
 };
+use sunrise_client_core::{Result, text::Text};
+use sunrise_level::{
+    chunk::Chunk,
+    containers::{BlockEntity, Furnace, FurnaceKind},
+};
+use sunrise_sim::recipe_book::BookType;
 
 /// A container screen's block and block entity at the fixture's one position.
 const POS: (i32, i32, i32) = (0, 0, 0);
@@ -115,7 +116,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 None => {
                     let m = Measure(&self.side.gui.atlas.font);
                     let c = Commands {
-                        dispatcher: sunrise_client::command::vanilla::game_dispatcher(),
+                        dispatcher: sunrise_command::vanilla::game_dispatcher(),
                         registries: &self.ui.registries,
                     };
                     let abilities = ChatAbilities::new(ChatVisibility::Full);
@@ -124,7 +125,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.side.screen = Screen::Chat;
                 }
                 Some(cart) => {
-                    use sunrise_client::command_block::{CommandBlock, Mode};
+                    use sunrise_level::command_block::{CommandBlock, Mode};
                     let block = CommandBlock::default();
                     self.open_edit_screen(POS, cart.then_some(0), block, Mode::Redstone, false);
                     self.side.screen = Screen::CommandBlock;

@@ -32,22 +32,20 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use sunrise_client::{
-    Result,
-    chunk::Chunk,
-    entity_nbt,
-    mobs::{Mob, Who},
-    random_source,
-    save::{ChunkExtras, random_uuid, text, uuid_from_text, uuid_text},
-    scoreboard::Scoreboard,
-};
+use sunrise_client_core::{Result, scoreboard::Scoreboard};
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::{BlockPos, ChunkPos},
     random::RandomSource,
     ticks::ChunkTicks,
 };
+use sunrise_level::{chunk::Chunk, random_source};
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, attachment_compound};
+use sunrise_sim::{
+    entity_nbt,
+    mobs::{Mob, Who},
+    save::{ChunkExtras, random_uuid, text, uuid_from_text, uuid_text},
+};
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::{level::MovingPiston, registry::BlockStateId},
@@ -142,13 +140,14 @@ impl OffLevel {
 /// `Entity.<init>` always draws it from the entity's own random, so the draw is taken
 /// whether or not the tag has a UUID (as `load_item_transferred` and `load_mob` do).
 fn with_constructor_uuid(saved: Option<[i32; 4]>) -> Option<[i32; 4]> {
-    let made = sunrise_client::save::insecure_uuid(&mut random_source::entity());
+    let made = sunrise_sim::save::insecure_uuid(&mut random_source::entity());
     Some(saved.unwrap_or(made))
 }
 /// `Entity.saveWithoutId`: materialize the mandatory fields of an entity
 /// whose simulation state is still represented by its loaded compound.
 pub(in crate::game::server_side) fn write_static_entity_fields(tag: &mut Tag) {
-    use sunrise_client::{nbt_path::int_value, save::float};
+    use sunrise_client_core::nbt_path::int_value;
+    use sunrise_sim::save::float;
 
     let int = |key, default| tag.get(key).and_then(int_value).unwrap_or(default);
     let motion = entity_nbt::loaded_motion(tag);
@@ -156,7 +155,7 @@ pub(in crate::game::server_side) fn write_static_entity_fields(tag: &mut Tag) {
     let values = [
         (
             "Motion",
-            sunrise_client::save::doubles(&[motion.x, motion.y, motion.z]),
+            sunrise_sim::save::doubles(&[motion.x, motion.y, motion.z]),
         ),
         (
             "fall_distance",
@@ -243,7 +242,7 @@ pub struct EntityMemory {
     /// counted so `/summon` can fail as vanilla's refused add does.
     pub(in crate::game) joins_canceled: u32,
     /// The latest insertion considered for `native_entity_join_level`.
-    pub(in crate::game) joined_seq: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) joined_seq: sunrise_sim::join_seq::JoinSeq,
     /// The entities mods were told of and that have not left since: id (in
     /// increasing order), type, and whether the last leave sweep saw it.
     /// Only filled while a mod is loaded.
@@ -381,7 +380,7 @@ pub(in crate::game::server_side) fn tnt_fuse(tag: &Tag) -> i32 {
     i32::from(match tag.get("fuse") {
         Some(Tag::Float(v)) => f32::from_bits(*v).floor() as i32 as i16,
         Some(Tag::Double(v)) => f64::from_bits(*v).floor() as i32 as i16,
-        other => sunrise_client::save::number(other).unwrap_or(80) as i16,
+        other => sunrise_sim::save::number(other).unwrap_or(80) as i16,
     })
 }
 
@@ -490,7 +489,7 @@ pub(in crate::game::server_side) fn write_attachments(
     }
 }
 
-fn painting_center(p: &sunrise_client::entities::Painting) -> Vec3 {
+fn painting_center(p: &sunrise_sim::entities::Painting) -> Vec3 {
     let (lo, hi) = p.bounds();
     Vec3::new(
         (lo[0] + hi[0]) / 2.0,
@@ -500,7 +499,7 @@ fn painting_center(p: &sunrise_client::entities::Painting) -> Vec3 {
 }
 pub(in crate::game) fn block_entity_pos(tag: &Tag) -> [i32; 3] {
     [tag.get("x"), tag.get("y"), tag.get("z")]
-        .map(|v| sunrise_client::save::number(v).unwrap_or(0) as i32)
+        .map(|v| sunrise_sim::save::number(v).unwrap_or(0) as i32)
 }
 /// `EntitySectionStorage.getExistingSectionsInChunk`: a chunk's sections in
 /// packed `SectionPos` order, whose low 20 bits are the section Y: section 0
@@ -572,16 +571,16 @@ fn transformation_tag(
     let mut t = sunrise_core::nbt::Compound::new();
     t.insert(
         "translation".into(),
-        sunrise_client::save::floats(&translation),
+        sunrise_sim::save::floats(&translation),
     );
     t.insert(
         "left_rotation".into(),
-        sunrise_client::save::floats(&left_rotation),
+        sunrise_sim::save::floats(&left_rotation),
     );
-    t.insert("scale".into(), sunrise_client::save::floats(&scale));
+    t.insert("scale".into(), sunrise_sim::save::floats(&scale));
     t.insert(
         "right_rotation".into(),
-        sunrise_client::save::floats(&right_rotation),
+        sunrise_sim::save::floats(&right_rotation),
     );
     Tag::Compound(t)
 }
@@ -709,7 +708,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // TheEndGatewayBlockEntity saves its Age (the server copy's).
         for tag in &mut extras.block_entities {
             let pos = [tag.get("x"), tag.get("y"), tag.get("z")]
-                .map(|v| sunrise_client::save::number(v).unwrap_or(0) as i32);
+                .map(|v| sunrise_sim::save::number(v).unwrap_or(0) as i32);
             if let Some(g) = self.side.be_anims.gateway_servers.get(&pos)
                 && let Some(age) = tag.get_mut("Age")
             {
@@ -737,7 +736,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let p = block_entity_pos(tag);
                 if text(tag.get("id")).as_deref() == Some("minecraft:comparator")
                     && self.data_block_name(p) == "minecraft:comparator"
-                    && let Some(tag) = sunrise_client::block_entity_nbt::canonical(tag)
+                    && let Some(tag) = sunrise_client_core::block_entity_nbt::canonical(tag)
                     && let Some(Tag::Int(output)) = tag.get("OutputSignal")
                 {
                     self.block_ticks
@@ -814,7 +813,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `PistonMovingBlockEntity.loadAdditional`, for a `minecraft:piston`
     /// entity whose block is still a moving piston.
     fn moving_piston_from_nbt(&self, tag: &Tag) -> Option<(BlockPos, MovingPiston)> {
-        use sunrise_client::save::{float, number, text};
+        use sunrise_sim::save::{float, number, text};
         if text(tag.get("id")).as_deref() != Some("minecraft:piston") {
             return None;
         }
@@ -886,7 +885,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if let Some(at) = entity_nbt::position(&tag) {
                     self.side.next_entity += 1;
                     let id = self.side.next_entity;
-                    let delay = sunrise_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
+                    let delay = sunrise_sim::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
                     let owner = self.loaded_fangs_owner(&tag);
                     if let Some(state) = transferred.take() {
                         self.adopt_transferred_entity_state(id, state);
@@ -1115,7 +1114,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let uuid = with_constructor_uuid(uuid);
             self.remember_tags(d.id, &tag);
             self.remember_uuid(d.id, uuid, &tag);
-            d.join = sunrise_client::join_seq::JoinSeq::next();
+            d.join = sunrise_sim::join_seq::JoinSeq::next();
             assert!(self.dragon.install(d).is_ok());
         }
     }
@@ -1220,7 +1219,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.adopt_transferred_entity_state(id, state);
             }
             self.remember(id, uuid, tag);
-            let mut painting = sunrise_client::entities::Painting {
+            let mut painting = sunrise_sim::entities::Painting {
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
                 id,
@@ -1451,8 +1450,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if knot_check.is_some() {
             // BlockAttachedEntity.setPos -> LeashFenceKnotEntity.recalculateBoundingBox.
             let block = BlockPos::containing(position);
-            position =
-                sunrise_client::mobs::leash::knot_state([block.x, block.y, block.z]).position;
+            position = sunrise_sim::mobs::leash::knot_state([block.x, block.y, block.z]).position;
         }
         let interaction = super::interactions::is_interaction(kind)
             .then(|| super::interactions::InteractionState::from_tag(tag));
@@ -1548,7 +1546,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 motion: entity_nbt::motion(&tag),
                 rotation: [o.yaw, o.pitch],
                 on_ground: entity_nbt::flag(&tag, "OnGround"),
-                fall_distance: sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0),
+                fall_distance: sunrise_sim::save::float(tag.get("fall_distance")).unwrap_or(0.0),
             };
             let mut out = entity_nbt::EntityTagWriter::from_saved(tag);
             base.write(&mut out, include_id);
@@ -1573,11 +1571,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             c.insert(
                 "Pos".into(),
-                sunrise_client::save::doubles(&[o.position.x, o.position.y, o.position.z]),
+                sunrise_sim::save::doubles(&[o.position.x, o.position.y, o.position.z]),
             );
             c.insert(
                 "Rotation".into(),
-                sunrise_client::save::floats(&[o.yaw, o.pitch]),
+                sunrise_sim::save::floats(&[o.yaw, o.pitch]),
             );
             c.insert("UUID".into(), Tag::IntArray(uuid.to_vec()));
         }
@@ -1598,7 +1596,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let m = eye.motion;
             c.insert(
                 "Motion".into(),
-                sunrise_client::save::doubles(&[m.x, m.y, m.z]),
+                sunrise_sim::save::doubles(&[m.x, m.y, m.z]),
             );
             c.insert("Fire".into(), Tag::Short(eye.fire_ticks as i16));
         }
@@ -1948,7 +1946,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.persist
                     .raw
                     .get(&id)
-                    .is_some_and(|tag| sunrise_client::entity_nbt::flag(tag, "Silent"))
+                    .is_some_and(|tag| sunrise_sim::entity_nbt::flag(tag, "Silent"))
             },
             |m| m.silent,
         )
@@ -2086,7 +2084,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         keys: &HashSet<ChunkKey>,
         purpose: EntitySnapshot,
     ) -> Vec<(ChunkKey, Vec<Tag>)> {
-        use sunrise_client::join_seq::{JoinSeq, Joined};
+        use sunrise_sim::join_seq::{JoinSeq, Joined};
         self.eject_player_riders(None);
         let include_transient = matches!(purpose, EntitySnapshot::Structure);
         // Each root with its id and join number, ordered once all are in.
@@ -2434,13 +2432,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// A loaded projectile's `Owner`: living hit credit and vehicle collision identity.
     pub(in crate::game::server_side) fn claim_owner(
         &self,
-        p: &mut sunrise_client::projectiles::Projectile,
+        p: &mut sunrise_sim::projectiles::Projectile,
     ) {
         let Some(uuid) = p.owner_uuid else {
             return;
         };
         let guest = self.lan.as_ref().and_then(|host| {
-            let ints = sunrise_client::lan::playerdata::uuid_ints;
+            let ints = sunrise_sim::lan::playerdata::uuid_ints;
             host.hub
                 .guests
                 .iter()
@@ -2453,11 +2451,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             p.owner = self.mob_by_uuid(uuid).map(Who::Mob);
         }
         use super::commands::Target;
-        p.owner_vehicle =
-            match self.target_by_uuid(sunrise_client::lan::playerdata::ints_uuid(uuid)) {
-                Some(Target::Boat(id) | Target::Cart(id)) => Some(id),
-                _ => None,
-            };
+        p.owner_vehicle = match self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid)) {
+            Some(Target::Boat(id) | Target::Cart(id)) => Some(id),
+            _ => None,
+        };
     }
     /// Save and remove the entities of chunks that unloaded.
     pub(in crate::game) fn unload_entities(&mut self, unloaded: &[Arc<Chunk>]) {
@@ -2555,9 +2552,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `ShulkerBullet`'s target, over the UUID bridge: a mob the level has
         // no UUID for writes no `Target` rather than a made-up one.
         let target = match &p.kind {
-            sunrise_client::projectiles::ProjectileKind::ShulkerBullet {
-                target: Some(who),
-                ..
+            sunrise_sim::projectiles::ProjectileKind::ShulkerBullet {
+                target: Some(who), ..
             } => self.save_who_uuid(*who),
             _ => None,
         };
@@ -2745,7 +2741,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// The mob layer's [`sunrise_client::mobs::WhoLookup`]: a warden's anger keeps
 /// the suspects that left by UUID, and resolves the ones that are back through
 /// the same map a save writes them from (`mob_to_nbt`'s `uuid_of`).
-impl sunrise_client::mobs::WhoLookup for Game<'_, crate::game::server_side::ServerState> {
+impl sunrise_sim::mobs::WhoLookup for Game<'_, crate::game::server_side::ServerState> {
     fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
         Game::who_by_uuid(self, uuid)
     }
@@ -3034,7 +3030,7 @@ mod interaction_saved_defaults_tests {
 mod loaded_tag_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
-    use sunrise_client::mobs::Species;
+    use sunrise_sim::mobs::Species;
 
     fn check(
         game: &mut crate::game::ServerGame<'_>,
@@ -3281,8 +3277,9 @@ mod loaded_tag_tests {
 mod item_display_saved_transform_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -3382,7 +3379,7 @@ mod item_display_saved_transform_tests {
         assert_eq!([o.yaw, o.pitch], [12.5, -20.0]);
         let id = o.id;
         let saved = game.command_target_nbt(Target::Other(id)).unwrap();
-        let stack = sunrise_client::save::item_from_nbt(saved.get("item").unwrap()).unwrap();
+        let stack = sunrise_sim::save::item_from_nbt(saved.get("item").unwrap()).unwrap();
         assert_eq!(&*stack.item, "minecraft:diamond");
         assert_eq!(stack.count, 2);
         assert_eq!(
@@ -3574,8 +3571,8 @@ mod item_display_saved_transform_tests {
 #[cfg(test)]
 mod baby_modifier_mutation_tests {
     use super::*;
-    use sunrise_client::mobs::finalize::{self, Attr};
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::mobs::finalize::{self, Attr};
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
@@ -3857,7 +3854,7 @@ mod baby_modifier_mutation_tests {
 mod attribute_instance_save_tests {
     use super::*;
     use crate::game::commands::Target;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
@@ -4045,7 +4042,7 @@ mod attribute_instance_save_tests {
 mod mob_inventory_merge_tests {
     use super::*;
     use crate::game::commands::Target;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
@@ -4078,8 +4075,8 @@ mod mob_inventory_merge_tests {
     /// The live inventory: (item, count, custom_data h138) per stack, in order.
     fn live(game: &crate::game::ServerGame<'_>, i: usize) -> Vec<(String, u32, Option<i32>)> {
         let m = &game.mobs[i];
-        let stacks = if m.species() == sunrise_client::mobs::Species::Villager {
-            sunrise_client::mobs::villager::ext(m)
+        let stacks = if m.species() == sunrise_sim::mobs::Species::Villager {
+            sunrise_sim::mobs::villager::ext(m)
                 .map(|e| e.inventory.clone())
                 .unwrap_or_default()
         } else {
@@ -4088,7 +4085,7 @@ mod mob_inventory_merge_tests {
         stacks
             .iter()
             .map(|s| {
-                let saved = sunrise_client::save::item_to_nbt(s, &Default::default());
+                let saved = sunrise_sim::save::item_to_nbt(s, &Default::default());
                 let data = match saved
                     .get("components")
                     .and_then(|c| c.get("minecraft:custom_data"))
@@ -4110,9 +4107,9 @@ mod mob_inventory_merge_tests {
             return Vec::new();
         };
         list.iter()
-            .filter_map(sunrise_client::save::item_from_nbt)
+            .filter_map(sunrise_sim::save::item_from_nbt)
             .map(|s| {
-                let saved = sunrise_client::save::item_to_nbt(&s, &Default::default());
+                let saved = sunrise_sim::save::item_to_nbt(&s, &Default::default());
                 let data = match saved
                     .get("components")
                     .and_then(|c| c.get("minecraft:custom_data"))
@@ -4227,7 +4224,7 @@ mod mob_inventory_merge_tests {
 mod invalid_passenger_tests {
     use super::*;
     use crate::game::commands::Target;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     const PIG: &str = "NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Silent:1b";
     const UNKNOWN: &str = "{id:\"minecraft:h161_unknown\",Tags:[\"h161_unknown_entry\"]}";
@@ -4462,8 +4459,8 @@ pub(in crate::game) mod thrown_item_tests;
 mod h262_enderman_absolute_anger_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_sim::motion::PlayerMotion;
     pub(super) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -4529,10 +4526,7 @@ mod h262_enderman_absolute_anger_tests {
             .find_map(|(id, u)| (*u == [262, 1, 0, n]).then_some(*id))
             .unwrap();
         let i = game.mobs.iter().position(|m| m.id == id).unwrap();
-        assert_eq!(
-            game.mobs[i].species(),
-            sunrise_client::mobs::Species::Enderman
-        );
+        assert_eq!(game.mobs[i].species(), sunrise_sim::mobs::Species::Enderman);
         assert!(game.mobs[i].no_ai);
         assert_eq!(game.mobs[i].health, 40.0);
         assert_eq!(game.mobs[i].position, Vec3::new(6.5, 200.0, 4.5));
@@ -4680,7 +4674,7 @@ mod h262_enderman_absolute_anger_tests {
             let i = game
                 .mobs
                 .iter()
-                .position(|m| m.species() == sunrise_client::mobs::Species::Wolf)
+                .position(|m| m.species() == sunrise_sim::mobs::Species::Wolf)
                 .unwrap();
             game.mobs[i].extra.anger = 50;
             assert_eq!(
@@ -4700,7 +4694,7 @@ mod h262_enderman_absolute_anger_tests {
 mod sulfur_body_attribute_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -4889,12 +4883,12 @@ mod sulfur_body_attribute_tests {
             let mob = game
                 .mobs
                 .iter_mut()
-                .find(|m| m.species() == sunrise_client::mobs::Species::SulfurCube)
+                .find(|m| m.species() == sunrise_sim::mobs::Species::SulfurCube)
                 .unwrap();
             mob.extra.set_body(Some("minecraft:oak_planks".into()));
-            sunrise_client::mobs::sulfur_cube::adopt_body(mob);
+            sunrise_sim::mobs::sulfur_cube::adopt_body(mob);
             mob.extra.set_body(None);
-            sunrise_client::mobs::sulfur_cube::adopt_body(mob);
+            sunrise_sim::mobs::sulfur_cube::adopt_body(mob);
             assert!(game.run_command(&format!(
                 "attribute {sel} minecraft:knockback_resistance modifier add {id} 0.6 add_value"
             )));
@@ -4907,7 +4901,7 @@ mod sulfur_body_attribute_tests {
             let mob = game
                 .mobs
                 .iter()
-                .find(|m| m.species() == sunrise_client::mobs::Species::SulfurCube)
+                .find(|m| m.species() == sunrise_sim::mobs::Species::SulfurCube)
                 .unwrap();
             assert!((mob.knockback_resistance() - 0.6).abs() < 1e-9);
         });
@@ -4980,8 +4974,9 @@ mod sulfur_body_attribute_tests {
 mod summoned_knot_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -5250,7 +5245,7 @@ mod summoned_knot_tests {
     #[ignore = "daily"]
     fn explicit_knot_removal_preserves_a_real_lead_created_knot() {
         with_game(|game| {
-            use sunrise_client::mobs::leash::Holder;
+            use sunrise_sim::mobs::leash::Holder;
             assert!(game.run_command("tp @s 12.5 200 2.5"));
             assert!(game.run_command("item replace entity @s weapon.mainhand with lead"));
             assert!(game.run_command("setblock 14 200 2 oak_fence strict"));
@@ -5387,9 +5382,9 @@ mod camel_pose_saved_tests {
                 assert!(mob.no_ai && mob.alive());
                 assert_eq!(mob.age, elapsed as u32, "actual entity tick admission");
                 assert_eq!(mob.health, 32.0);
-                assert_eq!(sunrise_client::mobs::camel::sitting(mob), value < 0);
+                assert_eq!(sunrise_sim::mobs::camel::sitting(mob), value < 0);
                 assert_eq!(
-                    sunrise_client::mobs::camel::refuse_to_move(mob),
+                    sunrise_sim::mobs::camel::refuse_to_move(mob),
                     value < 0 || value == now - 24 || value == now + 20
                 );
                 let saved = game.mob_tree_nbt(index);
@@ -5450,7 +5445,7 @@ mod camel_pose_saved_tests {
 #[cfg(test)]
 mod mob_hurt_cooldown_tests {
     use super::*;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
@@ -5675,7 +5670,7 @@ mod restored_vehicle_transfer_tests {
                 assert!(game.entity(destination).is_some());
                 assert_eq!(
                     game.mob_object(arrived).unwrap().species(),
-                    sunrise_client::mobs::Species::Cow
+                    sunrise_sim::mobs::Species::Cow
                 );
                 assert_eq!(
                     game.mob_object(destination).unwrap().extra.rider,
@@ -5702,7 +5697,7 @@ mod restored_vehicle_transfer_tests {
 mod trader_llama_discard_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

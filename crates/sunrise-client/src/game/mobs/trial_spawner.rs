@@ -3,22 +3,20 @@
 //! it adds and the rewards it ejects.
 use super::{Game, natural_spawning::GameLevel, spawner::Planned};
 use std::collections::HashMap;
-use sunrise_client::{
-    Result,
-    containers::BlockEntity,
-    items::ItemStack,
-    mobs::{
-        Mob, Who,
-        spawner::SpawnerSpawn,
-        trial_spawner::{
-            TRIAL_OMEN_TICKS_PER_LEVEL, TrialEvent, TrialPlayer, TrialSpawner, TrialSpawnerExt,
-            TrialSpawnerLevel, TrialState, Uuid,
-        },
-    },
-};
+use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
+};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::mobs::{
+    Mob, Who,
+    spawner::SpawnerSpawn,
+    trial_spawner::{
+        TRIAL_OMEN_TICKS_PER_LEVEL, TrialEvent, TrialPlayer, TrialSpawner, TrialSpawnerExt,
+        TrialSpawnerLevel, TrialState, Uuid,
+    },
 };
 
 type Pos = (i32, i32, i32);
@@ -31,7 +29,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
         self.game
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
     }
     fn players(&self) -> Vec<TrialPlayer> {
         let guests = self.game.lan_present().into_iter().map(|g| TrialPlayer {
@@ -93,7 +91,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
         };
         loot.roll_split(table, &mut LegacyRandom::new(seed))
             .iter()
-            .map(sunrise_client::structure_blocks::loot_item_with_components)
+            .map(sunrise_sim::structure_blocks::loot_item_with_components)
             .collect()
     }
     fn seed(&self) -> i64 {
@@ -125,7 +123,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// holds `next_mob_spawns_at` (`TrialSpawnerStateData.getUpdateTag`).
     pub(in crate::game::server_side) fn lan_update_tag_sources(
         &self,
-        encoder: &mut sunrise_client::lan::chunks::ChunkEncoder,
+        encoder: &mut sunrise_sim::lan::chunks::ChunkEncoder,
     ) {
         encoder.mod_update_tag = Some(|pos, entity| {
             let mut tag = None;
@@ -153,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .assets
             .registry
             .state(self.world.block(key.0, key.1, key.2))?;
-        if sunrise_client::block_entity_types::factory_block(&block.name)
+        if sunrise_client_core::block_entity_types::factory_block(&block.name)
             != "minecraft:trial_spawner"
         {
             return None;
@@ -200,7 +198,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;
                 let uuid = match planned.last() {
                     Some(Planned::Loaded(tree, _, _)) => tree.root_uuid(),
-                    _ => sunrise_client::save::random_uuid(),
+                    _ => sunrise_sim::save::random_uuid(),
                 };
                 uuids.push((added.id, uuid));
                 Some(uuid)
@@ -225,7 +223,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         random.triangle(0.0, spread),
                     ];
                     ejected.push((
-                        sunrise_client::structure_blocks::loot_item_with_components(stack),
+                        sunrise_sim::structure_blocks::loot_item_with_components(stack),
                         v,
                     ));
                 }
@@ -286,7 +284,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed)
                     {
                         let at = m.position;
-                        let drops = sunrise_client::mobs::drops::drop_preserved_equipment(m);
+                        let drops = sunrise_sim::mobs::drops::drop_preserved_equipment(m);
                         for stack in drops {
                             self.spawn_at_location(at, 0.0, stack);
                         }
@@ -345,7 +343,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return;
             };
             let Some(index) = host.hub.guests.iter().position(|g| {
-                sunrise_client::lan::playerdata::uuid_ints(g.uuid) == uuid && Some(g.conn) != acting
+                sunrise_sim::lan::playerdata::uuid_ints(g.uuid) == uuid && Some(g.conn) != acting
             }) else {
                 return;
             };
@@ -369,13 +367,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 /// Swap Bad Omen for Trial Omen on `effects`; true when Trial Omen is new.
-fn transform_bad_omen(effects: &mut sunrise_client::effects::PlayerEffects) -> bool {
+fn transform_bad_omen(effects: &mut sunrise_level::effects::PlayerEffects) -> bool {
     let Some(amplifier) = effects.amplifier("bad_omen") else {
         return false;
     };
     effects.list.retain(|e| e.id != "bad_omen");
     let new = effects.get("trial_omen").is_none();
-    effects.add(sunrise_client::effects::EffectInstance::new(
+    effects.add(sunrise_level::effects::EffectInstance::new(
         "trial_omen",
         TRIAL_OMEN_TICKS_PER_LEVEL * (amplifier + 1),
         0,
@@ -386,10 +384,8 @@ fn transform_bad_omen(effects: &mut sunrise_client::effects::PlayerEffects) -> b
 #[cfg(test)]
 mod omen_tests {
     use super::*;
-    use sunrise_client::{
-        effects::{EffectInstance, PlayerEffects},
-        mobs::trial_spawner::Omen,
-    };
+    use sunrise_level::effects::{EffectInstance, PlayerEffects};
+    use sunrise_sim::mobs::trial_spawner::Omen;
 
     #[test]
     fn bad_omen_becomes_trial_omen_per_level() {
@@ -416,8 +412,8 @@ mod omen_tests {
             native_sound_refs::tests::guest,
         };
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::nbt::parse_snbt;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             guest_server(game, false, false);

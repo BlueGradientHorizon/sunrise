@@ -1,7 +1,7 @@
 //! Code item identities available while reading a package's content files.
 use std::collections::BTreeMap;
-use sunrise_client::mod_content::DeclaredContent;
 use sunrise_mod_package::Manifest;
+use sunrise_sim::mod_content::DeclaredContent;
 
 fn batch_item_ids(batch: &DeclaredContent) -> impl Iterator<Item = &str> {
     batch.items.iter().map(|item| item.get().id.as_str()).chain(

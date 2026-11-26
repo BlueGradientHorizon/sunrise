@@ -23,8 +23,8 @@ fn default_drop_rng_continues_identically_with_table_sequence_or_level_fallback(
             let registry = game.pack.assets.registry;
             // The level callback requires its catalog for the world lifetime.
             // These two fixture catalogs live only for this test process.
-            let items: &'static sunrise_client::items::Items = Box::leak(Box::new(
-                sunrise_client::items::Items::load(
+            let items: &'static sunrise_items::items::Items = Box::leak(Box::new(
+                sunrise_items::items::Items::load(
                     &root,
                     registry,
                     game.res.facts(),

@@ -14,18 +14,22 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client::{
-    containers::{BlockEntity, FurnaceKind},
     hud::{HudBatch, Rect, rgba},
-    items::ItemStack,
-    menu::place::Stacked,
-    random_source,
-    recipe_book::{Book, BookType, ClientBook, Collection, Entry, GhostTarget, Tab},
     recipe_book_screen::{
         self as screen, ButtonView, Call, Drawn, GhostView, ItemCall, OverlayRecipe, OverlayView,
         Screen as Layout, Search, TabView,
     },
-    text::{Style, Text},
     ui::EditBox,
+};
+use sunrise_client_core::text::{Style, Text};
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
+    containers::{BlockEntity, FurnaceKind},
+    random_source,
+};
+use sunrise_sim::{
+    menu::place::Stacked,
+    recipe_book::{Book, BookType, ClientBook, Collection, Entry, GhostTarget, Tab},
 };
 
 pub(in crate::game) const WIDTH: f32 = 147.0;
@@ -436,7 +440,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn book_available(&mut self, _book: BookType) -> Stacked {
         if self.remote.is_some() {
             // A server's menu: the slots it last sent, counted the same way.
-            use sunrise_client::menu::{Env, Kind, Menu};
+            use sunrise_sim::menu::{Env, Kind, Menu};
             let table = self.craft_size == 3;
             let grid: Vec<_> = (0..self.craft_size * self.craft_size)
                 .map(|k| self.slot_mut(100 + k).clone())
@@ -539,13 +543,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let item = |id: i32| name_of("minecraft:item", id);
         let category = |id: i32| {
             name_of("minecraft:recipe_book_category", id).or_else(|| {
-                sunrise_client::recipe_book::Category::from_id(id).map(|c| c.name().to_owned())
+                sunrise_sim::recipe_book::Category::from_id(id).map(|c| c.name().to_owned())
             })
         };
         let tag = |name: &str| items.item_tag_order.get(name).cloned().unwrap_or_default();
         book.use_server_entries(
             entries,
-            &sunrise_client::recipe_book::PacketNames {
+            &sunrise_sim::recipe_book::PacketNames {
                 item: &item,
                 category: &category,
                 tag: &tag,
@@ -1453,7 +1457,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.remote
             .as_ref()
             .and_then(|r| r.menu.as_ref())
-            .and_then(|(_, menu)| sunrise_client::containers::mod_menu_type(menu))
+            .and_then(|(_, menu)| sunrise_level::containers::mod_menu_type(menu))
             .is_some_and(|t| t.crafting.is_some())
     }
     /// `native_place_recipe`: the book's click on the recipe with this display
@@ -1488,7 +1492,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the open menu is a content mod's menu type.
     pub(in crate::game) fn mod_menu_open(&self) -> bool {
         self.remote_menu_type()
-            .and_then(sunrise_client::containers::mod_menu_type)
+            .and_then(sunrise_level::containers::mod_menu_type)
             .is_some()
     }
     /// A viewer's transfer of a recipe by id (`transfer_recipe_id`): sent to the server, whose
@@ -1518,7 +1522,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         request.u8(u8::from(max));
         self.send(sunrise_protocol::packets::play::Serverbound::CustomPayload(
             sunrise_protocol::packets::configuration::CustomPayload {
-                channel: sunrise_client::lan::recipes::TRANSFER_CHANNEL.into(),
+                channel: sunrise_sim::lan::recipes::TRANSFER_CHANNEL.into(),
                 data: request.data,
             },
         ));
@@ -1585,7 +1589,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             request.string(&id);
             self.send(sunrise_protocol::packets::play::Serverbound::CustomPayload(
                 sunrise_protocol::packets::configuration::CustomPayload {
-                    channel: sunrise_client::lan::recipes::TRANSFER_CHANNEL.into(),
+                    channel: sunrise_sim::lan::recipes::TRANSFER_CHANNEL.into(),
                     data: request.data,
                 },
             ));
@@ -1602,7 +1606,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         channel: &str,
         data: &[u8],
     ) {
-        use sunrise_client::lan::recipes::TRANSFER_CHANNEL;
+        use sunrise_sim::lan::recipes::TRANSFER_CHANNEL;
         if data.is_empty() {
             if let Some(remote) = &mut self.remote {
                 let channels = &mut remote.recipe_viewer;
@@ -1621,12 +1625,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn remote_recipe_transfer(&mut self, data: &[u8]) {
         if let Ok(Some((container, result))) =
-            sunrise_client::lan::recipes::decode_transfer_reply(data)
+            sunrise_sim::lan::recipes::decode_transfer_reply(data)
             && container == self.remote_menu_id()
             && (self.mod_recipe_screen() || self.mod_menu_open())
             && self.side.panel.recipes.is_some()
         {
-            match sunrise_client::lan::recipes::byte_result(result) {
+            match sunrise_sim::lan::recipes::byte_result(result) {
                 Some(result) => self.show_transfer_result(result),
                 None => self.side.panel.transfer_warning = None,
             }
@@ -1697,7 +1701,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             request.string(recipe);
             self.send(sunrise_protocol::packets::play::Serverbound::CustomPayload(
                 sunrise_protocol::packets::configuration::CustomPayload {
-                    channel: sunrise_client::lan::recipes::CHECK_CHANNEL.into(),
+                    channel: sunrise_sim::lan::recipes::CHECK_CHANNEL.into(),
                     data: request.data,
                 },
             ));
@@ -1708,7 +1712,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The server's answer to `sunrise:recipe_check`. Kept only as the answer
     /// to the request out, for the view of the menu it was asked for.
     pub(in crate::game) fn remote_recipe_check(&mut self, data: &[u8]) {
-        let Some((container, tag, check)) = sunrise_client::lan::recipes::decode_check_reply(data)
+        let Some((container, tag, check)) = sunrise_sim::lan::recipes::decode_check_reply(data)
         else {
             return;
         };
@@ -2211,8 +2215,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         batch: &mut HudBatch,
         calls: &[Drawn],
-    ) -> Option<Vec<(sunrise_client::text::Text, u32)>> {
-        let mut tooltip: Option<Vec<(sunrise_client::text::Text, u32)>> = None;
+    ) -> Option<Vec<(sunrise_client_core::text::Text, u32)>> {
+        let mut tooltip: Option<Vec<(sunrise_client_core::text::Text, u32)>> = None;
         for d in calls {
             let start = batch.vertices.len();
             let atlas = &self.side.gui.atlas;
@@ -2308,7 +2312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 .iter()
                                 .map(|l| {
                                     (
-                                        sunrise_client::text::Text::literal(
+                                        sunrise_client_core::text::Text::literal(
                                             l.iter().map(|r| r.text.as_str()).collect::<String>(),
                                         ),
                                         u32::MAX,
@@ -2323,10 +2327,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         let mut lines = self.stack_tooltip(stack);
                         if *more {
                             lines.push((
-                                sunrise_client::text::Text::literal(self.translate_with_fallback(
-                                    "gui.recipebook.moreRecipes",
-                                    "Right Click for More",
-                                )),
+                                sunrise_client_core::text::Text::literal(
+                                    self.translate_with_fallback(
+                                        "gui.recipebook.moreRecipes",
+                                        "Right Click for More",
+                                    ),
+                                ),
                                 u32::MAX,
                             ));
                         }

@@ -13,10 +13,8 @@ use super::{
 };
 use mod_api::Stack as BrowserStack;
 use std::time::Instant;
-use sunrise_client::{
-    hud::{HudBatch, rgba},
-    items::ItemStack,
-};
+use sunrise_client::hud::{HudBatch, rgba};
+use sunrise_items::items::ItemStack;
 
 const SLOT: f32 = 18.0;
 /// The title row's height, and the gap under each recipe.
@@ -126,7 +124,7 @@ pub(in crate::game) struct Pages {
 
 impl Pages {
     pub(in crate::game::client_side) fn new(
-        items: &sunrise_client::items::Items,
+        items: &sunrise_items::items::Items,
         shown: &RecipePage,
         old: Option<Pages>,
     ) -> Self {
@@ -304,13 +302,13 @@ struct Well {
 impl Well {
     fn new(fluid: &mod_api::FluidStack) -> Self {
         let id = mod_api::__private::fluid_identity_name(fluid.fluid);
-        let look = sunrise_client::mod_content::fluid_look(&id);
+        let look = sunrise_sim::mod_content::fluid_look(&id);
         let tint = fluid_tint(&id, look.as_ref().and_then(|l| l.tint));
         let amount = format!("{} mB", fluid.amount);
         let name = if fluid.key().is_some() {
             sunrise_client::fluid_tooltip::fluid_name(&id)
         } else {
-            sunrise_client::lang::get("sunrise.fluid.unknown")
+            sunrise_client_core::lang::get("sunrise.fluid.unknown")
         };
         Self {
             stack: fluid.clone(),
@@ -649,9 +647,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if let Some((key, fallback)) = self.side.panel.transfer_warning {
-            let warning = sunrise_client::lang::get_or(key, fallback);
+            let warning = sunrise_client_core::lang::get_or(key, fallback);
             let lines = [(
-                sunrise_client::text::Text::literal(warning.clone()).resolve_legacy(),
+                sunrise_client_core::text::Text::literal(warning.clone()).resolve_legacy(),
                 rgba(255, 100, 100, 255),
             )];
             if let Some(rect) = self.draw_tooltip_lines(batch, &lines, cursor.0, cursor.1) {

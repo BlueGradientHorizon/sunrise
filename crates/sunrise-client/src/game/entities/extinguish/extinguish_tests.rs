@@ -2,8 +2,8 @@
 //! (`Entity.playEntityOnFireExtinguishedSound`) plays either way, the block
 //! change only where `mayInteract` allows it.
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::motion::{MotionWorld, PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 use sunrise_world::chunk::BlockState;
 use sunrise_world::entity_move::MovementRecord;
 use sunrise_world::registry::BlockStateId;

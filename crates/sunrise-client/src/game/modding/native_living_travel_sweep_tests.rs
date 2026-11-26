@@ -52,7 +52,7 @@ fn one_travel_fires_once_and_its_move_beside_and_noai_fires_nobody() {
             game.set_allow_commands(true);
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             for x in 0..16 {
                 for z in 0..16 {
                     chunk.set(x, 8, z, stone.0);
@@ -109,7 +109,7 @@ fn a_replaced_travel_velocity_steer_its_tick() {
             game.set_allow_commands(true);
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             for x in 0..16 {
                 for z in 0..16 {
                     chunk.set(x, 8, z, stone.0);
@@ -178,7 +178,7 @@ fn a_move_veto_still_holds_a_travel_that_ran() {
             game.set_allow_commands(true);
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             for x in 0..16 {
                 for z in 0..16 {
                     chunk.set(x, 8, z, stone.0);

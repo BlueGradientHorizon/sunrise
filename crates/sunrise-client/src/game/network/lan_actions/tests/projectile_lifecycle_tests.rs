@@ -2,13 +2,13 @@
 #![cfg(test)]
 use crate::game::Game;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    motion::PlayerMotion,
-    projectiles::{Projectile, ProjectileKind},
-};
 use sunrise_core::geometry::Vec3;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
+};
+use sunrise_sim::{
+    motion::PlayerMotion,
+    projectiles::{Projectile, ProjectileKind},
 };
 
 fn arrow(id: u32, at: [f64; 3]) -> Projectile {
@@ -42,7 +42,7 @@ fn exercise_restore<S: crate::game::Side>(
     let at = [3.0, 64.0, 5.0];
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.block_ticks
         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
         .unwrap();
@@ -94,7 +94,7 @@ fn projectile_restore_entries_keep_the_bound_arrow() {
                 let mut picked = arrow(72, at);
                 let state = picked.arrow.as_mut().unwrap();
                 state.in_ground = true;
-                state.pickup = sunrise_client::arrows::Pickup::Allowed;
+                state.pickup = sunrise_sim::arrows::Pickup::Allowed;
                 for id in [73, 74] {
                     game.creatures.projectiles.push(arrow(id, at));
                 }

@@ -61,9 +61,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         };
         let input = if words.contains(&"shift") {
-            sunrise_client::menu::Input::QuickMove
+            sunrise_sim::menu::Input::QuickMove
         } else {
-            sunrise_client::menu::Input::Pickup
+            sunrise_sim::menu::Input::Pickup
         };
         self.remote_menu_ops(&[(Some(slot), i32::from(words.contains(&"right")), input)]);
         true

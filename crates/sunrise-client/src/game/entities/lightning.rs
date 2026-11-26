@@ -5,7 +5,7 @@
 //! witches, mooshroom colours, turtles, burnt items), lightning rods, the sky
 //! flash, the sounds and the branching additive bolt.
 use super::Game;
-use sunrise_client::random_source;
+use sunrise_level::random_source;
 
 use sunrise_core::{
     geometry::Vec3,
@@ -29,7 +29,7 @@ pub(in crate::game) struct StrikeState {
 pub(in crate::game) struct Bolt {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// The entity id a server's players know it by (0 until it has one).
     pub id: u32,
     pub at: [f64; 3],
@@ -67,14 +67,14 @@ pub(in crate::game) struct Bolt {
     pub cause: Option<Option<u32>>,
 }
 
-sunrise_client::impl_joined!(Bolt);
+sunrise_sim::impl_joined!(Bolt);
 sunrise_mod_runtime::impl_attachment_lifetime!(Bolt);
 
 impl Bolt {
     /// `LightningBolt.<init>`: `Entity.<init>` draws the UUID first, then `seed` and `flashes`.
     pub(in crate::game) fn new(id: u32, at: [f64; 3], visual_only: bool) -> (Self, [i32; 4]) {
         let mut random = random_source::entity();
-        let uuid = sunrise_client::save::insecure_uuid(&mut random);
+        let uuid = sunrise_sim::save::insecure_uuid(&mut random);
         let seed = random.next_long();
         let flashes = random.next_int_bound(3).unwrap_or(0) + 1;
         (
@@ -116,7 +116,8 @@ impl Bolt {
 
     /// `Entity.load` inherited fields (`LightningBolt.readAdditionalSaveData` is empty).
     pub(in crate::game) fn apply_nbt(&mut self, tag: &sunrise_core::nbt::Tag) {
-        use sunrise_client::{entity_nbt, nbt_path::int_value, save::float};
+        use sunrise_client_core::nbt_path::int_value;
+        use sunrise_sim::{entity_nbt, save::float};
         if let Some(pos) = entity_nbt::position(tag) {
             self.at = [
                 pos.x.clamp(-3.000_051_2e7, 3.000_051_2e7),
@@ -218,7 +219,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Client-side `LightningBolt.tick`: thunder/impact sounds and sky flash.
     pub(in crate::game) fn client_tick_bolts(&mut self) {
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let ids: Vec<u32> = self.bolts.iter().map(|b| b.id).collect();
         for id in ids {
             let Some(i) = self.bolts.iter().position(|b| b.id == id) else {
@@ -319,19 +320,19 @@ pub(in crate::game) mod tests {
     use super::*;
     use mod_api::{self, ServerHost};
     use std::sync::Arc;
-    use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Species};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Anim, Brain, Mob, MobType, Species};
 
     /// `LightningBolt.spawnFire` places nothing, and draws no extra sources,
     /// unless `canSpreadFireAround` passes at the bolt (#11376).
     #[test]
     #[ignore = "daily"]
     fn a_bolt_away_from_players_starts_no_fire() {
-        use sunrise_client::gamerules::Value;
+        use sunrise_client_core::gamerules::Value;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.block_ticks
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
                 .unwrap();
@@ -356,7 +357,7 @@ pub(in crate::game) mod tests {
                     .rules
                     .set("fire_spread_radius_around_player", Value::Int(radius));
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         Vec3::new(player_x, 65.0, 8.5),
                     )
@@ -502,15 +503,15 @@ pub(in crate::game) mod tests {
         let mut kind = (*adult_pig.kind).clone();
         kind.species = Species::ZombifiedPiglin;
         kind.id = "minecraft:zombified_piglin".into();
-        let params = sunrise_client::mobs::conversion::Params {
+        let params = sunrise_sim::mobs::conversion::Params {
             keep_equipment: false,
             preserve_can_pick_up_loot: true,
         };
         for (pig, baby) in [(&adult_pig, false), (&baby_pig, true)] {
             let mut zombified = Mob::new(2, Arc::new(kind.clone()), Vec3::ZERO, 0.0);
             let mut pig = pig.clone();
-            sunrise_client::mobs::conversion::single(&pig, &mut zombified, params);
-            sunrise_client::mobs::conversion::pig_thunder_hit(&mut pig, &mut zombified);
+            sunrise_sim::mobs::conversion::single(&pig, &mut zombified, params);
+            sunrise_sim::mobs::conversion::pig_thunder_hit(&mut pig, &mut zombified);
             assert_eq!(zombified.is_baby(), baby);
             assert_eq!(zombified.yaw, 45.0);
             assert!(zombified.persistent);

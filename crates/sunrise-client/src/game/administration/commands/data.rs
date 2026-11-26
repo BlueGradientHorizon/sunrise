@@ -1,17 +1,15 @@
 //! `/data` (DataCommands), `/tag` (TagCommand) and `/summon` with NBT: entity,
 //! block entity and storage data accessors over the game state.
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client::{
-    containers::BlockEntity,
+use sunrise_client_core::{nbt_path::NbtPath, snbt, text::Text};
+use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{
     data_cmd::{self, Op, path_error},
     entity_nbt,
-    nbt_path::NbtPath,
     save::{self},
     scoreboard_cmd::{Holder, Tracker, format_list},
-    snbt,
-    text::Text,
 };
-use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
 
 /// A `DataAccessor`.
 #[derive(Clone, Debug, PartialEq)]
@@ -29,11 +27,11 @@ pub(in crate::game) fn empty() -> Tag {
 /// `TransferCooldown` (`HopperBlockEntity.saveAdditional`), the custom name
 /// and the pending loot table.
 pub(in crate::game) fn stored_block_entity_data(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     key: (i32, i32, i32),
     name: &str,
     entity: &BlockEntity,
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
     hopper_cooldown: impl FnOnce() -> i32,
 ) -> Tag {
     let pending = world
@@ -321,7 +319,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if let Tag::Compound(map) = &mut input {
             map.remove(&"OutputSignal".into());
         }
-        let Some(normalized) = sunrise_client::block_entity_nbt::canonical(&input) else {
+        let Some(normalized) = sunrise_client_core::block_entity_nbt::canonical(&input) else {
             return Some(None);
         };
         let output = normalized.get("OutputSignal").cloned();
@@ -357,7 +355,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         == p
                         && save::text(t.get("id")).as_deref() == Some("minecraft:comparator")
                 })?;
-                let tag = sunrise_client::block_entity_nbt::canonical(tag)?;
+                let tag = sunrise_client_core::block_entity_nbt::canonical(tag)?;
                 match tag.get("OutputSignal") {
                     Some(Tag::Int(v)) => Some(*v),
                     _ => None,
@@ -636,9 +634,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let Some(Arg::Str(nbt)) = ctx.get("nbt") else {
                     return Ok(0);
                 };
-                let nbt = sunrise_client::command::snbt::parse_fully(nbt)?;
+                let nbt = sunrise_command::snbt::parse_fully(nbt)?;
                 let old = self.data_of(&target)?;
-                if sunrise_client::nbt_path::too_deep(&nbt, 0) {
+                if sunrise_client_core::nbt_path::too_deep(&nbt, 0) {
                     return Err(err("arguments.nbtpath.too_deep", &[]));
                 }
                 let result = data_cmd::merged(&old, &nbt);
@@ -721,7 +719,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let Some(Arg::Str(text)) = ctx.get("value") else {
                 return Ok(0);
             };
-            vec![sunrise_client::command::snbt::parse_fully(text)?]
+            vec![sunrise_command::snbt::parse_fully(text)?]
         } else if ctx.get("provider").is_some() {
             // `LootContextSources`' compute source: the provider's value in the
             // command's loot context, as a one-tag source.
@@ -905,7 +903,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         format_list(
                             sorted
                                 .into_iter()
-                                .map(|s| Text::literal(s).with_color(sunrise_client::text::GREEN))
+                                .map(|s| {
+                                    Text::literal(s).with_color(sunrise_client_core::text::GREEN)
+                                })
                                 .collect(),
                         )
                     };
@@ -1045,7 +1045,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn guest_placement_keeps_forced_metadata_in_each_dimension() {
-        use sunrise_client::lan::entity::{EntityState, States};
+        use sunrise_sim::lan::entity::{EntityState, States};
         with_game(|game| {
             for elsewhere in [false, true] {
                 game.persist.force_meta(12, 8);
@@ -1197,7 +1197,7 @@ pub(in crate::game) mod boat_passenger_tree_tests {
             // Supply the synthetic chunk before forceload's synchronous load barrier.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             assert!(game.run_command("forceload add 0 0 15 15"));
             assert!(game.world.loaded(8, 8));
@@ -1316,7 +1316,7 @@ pub(in crate::game) mod boat_passenger_tree_tests {
                 failures.push("registered data command must reach live tree".into());
             }
             game.boats.update(bi, |boat| {
-                boat.leash = Some(sunrise_client::mobs::leash::Holder::Mob(control))
+                boat.leash = Some(sunrise_sim::mobs::leash::Holder::Mob(control))
             });
             let leashed = game.command_target_nbt(Target::Boat(bid)).unwrap();
             assert_eq!(
@@ -1359,13 +1359,10 @@ pub(in crate::game) mod boat_passenger_tree_tests {
 pub(in crate::game) mod loot_table_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{
-        chunk::Chunk,
-        containers::BlockEntity,
-        items::ItemStack,
-        save::{self, ChunkExtras, PendingContainerLoot},
-    };
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_sim::save::{self, ChunkExtras, PendingContainerLoot};
 
     const TABLE: &str = "minecraft:chests/simple_dungeon";
 
@@ -1642,8 +1639,9 @@ pub(in crate::game) mod modern_literal_tests {}
 pub(in crate::game) mod bell_command_identity_tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();
@@ -1743,8 +1741,8 @@ pub(in crate::game) mod bell_command_identity_tests {
 pub(in crate::game) mod falling_live_adoption_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();

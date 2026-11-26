@@ -11,10 +11,10 @@
 
 use super::{Game, Result};
 use crate::game::collision_source::Mover;
-use sunrise_client::join_seq::{JoinSeq, Joined};
-use sunrise_client::random_source;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource as _;
+use sunrise_level::random_source;
+use sunrise_sim::join_seq::{JoinSeq, Joined};
 
 /// Progress through this level tick's ordered entity turns.
 #[derive(Default, Clone)]
@@ -45,7 +45,7 @@ pub(in crate::game) struct OrderedTicks {
     pub(in crate::game) defer_landings: bool,
     /// The terminal slots awaiting compaction at the end of that run.
     pub(in crate::game) landed: sunrise_core::fast_hash::FxHashSet<JoinSeq>,
-    pub(in crate::game) landing_time: sunrise_client::spans::SpanTotal,
+    pub(in crate::game) landing_time: sunrise_level::spans::SpanTotal,
     /// Whether the entity tick hooks are heard this tick, and which types are told alone: the
     /// server's unsimulated entities of those types are told at their place in this order
     /// (game/modding/native_ticks.rs).
@@ -94,7 +94,7 @@ pub(in crate::game::server_side) fn first_join<T: Joined>(list: &[T]) -> Option<
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A level tick starts: what has joined so far ticks this tick.
     pub(in crate::game::server_side) fn begin_ordered_ticks(&mut self) {
-        let _span = sunrise_client::spans::guard("ordered_ticks");
+        let _span = sunrise_level::spans::guard("ordered_ticks");
         let pending_buf = std::mem::take(&mut self.side.ordered.pending_buf);
         let landed = std::mem::take(&mut self.side.ordered.landed);
         let mut armor_stands = std::mem::take(&mut self.side.ordered.armor_stands);
@@ -144,7 +144,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         cut: JoinSeq,
         late: bool,
     ) -> Result<()> {
-        let _span = sunrise_client::spans::guard("ordered_ticks");
+        let _span = sunrise_level::spans::guard("ordered_ticks");
         let mut first_error = None;
         let mut followed = None;
         let mut events = false;
@@ -198,7 +198,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // EntityGetter.getEntityCollisions: the boxes that stop these moves (a
         // boat, a shulker, a happy ghast held still), gathered once for the
         // run and again after an explosion, which can move or remove them.
-        let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
+        let mut obstacles: Option<sunrise_sim::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
         self.side.ordered.defer_landings = mod_api::__private::mods().is_empty();
         'entity: for (join, kind) in pending.drain(..) {
@@ -236,7 +236,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let area = t.bounds().expand_towards(t.velocity);
                         obstacles
                             .get_or_insert_with(|| {
-                                sunrise_client::entities::ObstacleGrid::new(
+                                sunrise_sim::entities::ObstacleGrid::new(
                                     self.entity_collisions(Mover::Passive),
                                 )
                             })
@@ -261,7 +261,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let area = f.bounds().expand_towards(f.velocity);
                         obstacles
                             .get_or_insert_with(|| {
-                                sunrise_client::entities::ObstacleGrid::new(
+                                sunrise_sim::entities::ObstacleGrid::new(
                                     self.entity_collisions(Mover::Passive),
                                 )
                             })
@@ -308,7 +308,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let area = o.bounds().expand_towards(o.velocity);
                     obstacles
                         .get_or_insert_with(|| {
-                            sunrise_client::entities::ObstacleGrid::new(
+                            sunrise_sim::entities::ObstacleGrid::new(
                                 self.entity_collisions(Mover::Passive),
                             )
                         })
@@ -324,7 +324,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .next_float()
                     };
                     let side = server_game_side!(self);
-                    let motion = sunrise_client::motion::BodyMotion {
+                    let motion = sunrise_sim::motion::BodyMotion {
                         world: &self.world,
                         collision: self.collision,
                         facts: self.res.facts(),
@@ -377,7 +377,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                     let Some(kind) = self.health_resources.damage.id(name) else {
                                         continue;
                                     };
-                                    let source = sunrise_client::health::HurtSource {
+                                    let source = sunrise_sim::health::HurtSource {
                                         damage_type: name,
                                         causing: 0,
                                         direct: 0,
@@ -434,7 +434,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         &self.res.motion().fluids,
                         tick,
                         server,
-                        sunrise_client::entities::OrbLavaEffects {
+                        sunrise_sim::entities::OrbLavaEffects {
                             next_float: &mut next_float,
                             on_sound: &mut |pos, pitch| {
                                 if capture_active {
@@ -449,13 +449,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 }
                             },
                             invulnerable: &mut |world| {
-                                let source = sunrise_client::health::HurtSource {
+                                let source = sunrise_sim::health::HurtSource {
                                     damage_type: "minecraft:lava",
                                     causing: 0,
                                     direct: 0,
                                     position: None,
                                 };
-                                sunrise_client::health::DamageLevel::of(
+                                sunrise_sim::health::DamageLevel::of(
                                     world,
                                     registry,
                                     Some(tags),
@@ -464,7 +464,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 )
                                 .no_push()
                                 .invulnerability_check(
-                                    sunrise_client::health::Hurting::Entity(
+                                    sunrise_sim::health::Hurting::Entity(
                                         orb_id as i32,
                                         "minecraft:experience_orb",
                                         source,
@@ -520,7 +520,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 impl Game<'_, crate::game::server_side::ServerState> {
     #[cfg(test)]
-    pub(in crate::game) fn orb_moved(&mut self, i: usize, step: sunrise_client::entities::OrbMove) {
+    pub(in crate::game) fn orb_moved(&mut self, i: usize, step: sunrise_sim::entities::OrbMove) {
         let o = &self.orbs[i];
         let effect = self
             .body_motion(&game_side!(self))
@@ -532,8 +532,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     fn orb_fall(
         &mut self,
         i: usize,
-        step: sunrise_client::entities::OrbMove,
-        effect: sunrise_client::motion::BodyContact,
+        step: sunrise_sim::entities::OrbMove,
+        effect: sunrise_sim::motion::BodyContact,
     ) {
         let o = &self.orbs[i];
         let mut fall = self.vehicle_fall_reset(o.fall_distance, step.from, step.moved);
@@ -557,9 +557,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::first_join;
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::join_seq::{JoinList, JoinSeq, Joined as _};
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
 
     #[test]
     #[ignore = "daily"]
@@ -581,10 +581,10 @@ mod tests {
                 assert!(game.run_command(&format!("summon experience_orb {x} 70 12 {{Value:1}}")));
             }
             // Existing residents whose spawn packets were already announced.
-            game.side.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
+            game.side.ordered.announced = sunrise_sim::join_seq::JoinSeq::MAX;
             game.side.tickets.0.update(None);
             game.begin_ordered_ticks();
-            game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
+            game.run_ordered_ticks(sunrise_sim::join_seq::JoinSeq::MAX, false)
                 .unwrap();
             assert_eq!(
                 game.tnts.iter().map(|t| t.fuse).collect::<Vec<_>>(),
@@ -670,7 +670,7 @@ mod tests {
                 ids = game.side.others.0.iter().map(|o| o.id).collect();
                 game.side.tickets.0.update(None);
                 game.begin_ordered_ticks();
-                game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
+                game.run_ordered_ticks(sunrise_sim::join_seq::JoinSeq::MAX, false)
                     .unwrap();
                 game.native_others_tick_family(game.side.ordered.told, game.side.ordered.born);
             });
@@ -711,7 +711,7 @@ mod tests {
         struct E {
             join: JoinSeq,
         }
-        impl sunrise_client::join_seq::Joined for E {
+        impl sunrise_sim::join_seq::Joined for E {
             fn join_seq(&self) -> JoinSeq {
                 self.join
             }

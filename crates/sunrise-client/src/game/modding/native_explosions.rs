@@ -9,14 +9,14 @@ use super::{
     minecarts::CartKind,
     native_hooks::sound_id,
 };
-use crate::lan::server_effects::{ServerExplosionParticle, ServerParticle, server_particle_ok};
 use mod_api::{EntityRef, ExplodeError, ExplosionInteraction, ExplosionSettings};
-use sunrise_client::projectiles::ProjectileKind;
-use sunrise_client::{
-    gamerules::vanilla,
-    mobs::{NamedDamage, Who},
-};
+use sunrise_client_core::gamerules::vanilla;
 use sunrise_level::particle_options::ParticleType;
+use sunrise_sim::lan::server_effects::{
+    ServerExplosionParticle, ServerParticle, server_particle_ok,
+};
+use sunrise_sim::mobs::{NamedDamage, Who};
+use sunrise_sim::projectiles::ProjectileKind;
 
 /// Whether `native_explode` takes this centre and radius. Vanilla bounds
 /// neither: any finite radius goes, one of 0 or below finding no blocks. A
@@ -396,12 +396,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// The fields of `CombatTracker` that describe the blast going off now.
 pub(in crate::game) struct BlastState {
     explicit_cause: Option<Option<super::explosion::ExplosionCause>>,
-    blast_owner: Option<(u32, sunrise_client::text::Text)>,
+    blast_owner: Option<(u32, sunrise_client_core::text::Text)>,
     blast_guest: Option<u32>,
-    explicit_direct: Option<sunrise_client::text::Text>,
+    explicit_direct: Option<sunrise_client_core::text::Text>,
     source: Option<u32>,
     direct: Option<u32>,
-    cause: Option<sunrise_client::advancements::EntityView>,
+    cause: Option<sunrise_sim::advancements::EntityView>,
     source_named: bool,
     in_water: bool,
     hive_emptying: bool,

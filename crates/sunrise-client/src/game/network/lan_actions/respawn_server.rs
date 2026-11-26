@@ -64,7 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .and_then(|c| c.killing_blow())
             .unwrap_or_else(|| ("minecraft:player_attack".into(), None));
         let g = &host.hub.guests[gi];
-        let view = sunrise_client::advancements::EntityView {
+        let view = sunrise_sim::advancements::EntityView {
             kind: "minecraft:player".into(),
             position: at,
             sneaking: g.sneaking,
@@ -95,7 +95,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .guests
                     .iter()
                     .find(|g| g.entity_id as u32 == id)
-                    .map(|g| sunrise_client::advancements::EntityView {
+                    .map(|g| sunrise_sim::advancements::EntityView {
                         kind: "minecraft:player".into(),
                         position: g.position,
                         sneaking: g.sneaking,
@@ -117,12 +117,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "minecraft:fireworks" => Some("minecraft:firework_rocket"),
             _ => None,
         };
-        let blow = sunrise_client::advancements::DamageView {
+        let blow = sunrise_sim::advancements::DamageView {
             kind: damage,
             // DamageSource.isDirect: the causing entity is the direct one.
             is_direct: projectile.is_none(),
             direct: match projectile {
-                Some(kind) => Some(sunrise_client::advancements::EntityView {
+                Some(kind) => Some(sunrise_sim::advancements::EntityView {
                     kind: kind.into(),
                     position: at,
                     ..Default::default()
@@ -184,8 +184,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn guest_death_message(
         &mut self,
         conn: u32,
-        me: sunrise_client::text::Text,
-    ) -> sunrise_client::text::Text {
+        me: sunrise_client_core::text::Text,
+    ) -> sunrise_client_core::text::Text {
         if self.side.lan_acting == Some(conn) {
             return self.combat_death_message_for(me);
         }
@@ -205,7 +205,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let guest = &host.hub.guests[gi];
         let id = guest.entity_id;
         let acting = self.side.lan_acting == Some(conn);
-        let dying = |game: &Self, guest: &sunrise_client::lan::guest::Guest| {
+        let dying = |game: &Self, guest: &sunrise_sim::lan::guest::Guest| {
             !guest.dead
                 && if acting {
                     game.player
@@ -259,7 +259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let reward = xp.death_reward(
                 self.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY)
+                    .bool_at(sunrise_client_core::gamerules::vanilla::KEEP_INVENTORY)
                     || spectator,
             );
             let drops = (!spectator).then(|| [at[0], at[1] + eye - f64::from(0.3f32), at[2]]);
@@ -311,23 +311,23 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let message = if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SHOW_DEATH_MESSAGES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SHOW_DEATH_MESSAGES)
             {
                 let me = self.player_text(&name, uuid);
                 let text = match cause {
-                    Some(key) => sunrise_client::text::Text::translate(&key, &[me]),
+                    Some(key) => sunrise_client_core::text::Text::translate(&key, &[me]),
                     None if at[1] < self.world.below_world_y() => {
-                        sunrise_client::text::Text::translate("death.attack.outOfWorld", &[me])
+                        sunrise_client_core::text::Text::translate("death.attack.outOfWorld", &[me])
                     }
                     None => self.guest_death_message(conn, me),
                 };
-                let message = sunrise_client::lan::data::component_nbt(&text.component());
+                let message = sunrise_sim::lan::data::component_nbt(&text.component());
                 let board = &self.score.board;
                 let Some(host) = self.lan.as_ref() else {
                     return;
                 };
                 host.hub.system_message_to(message.clone(), |other| {
-                    sunrise_client::scoreboard::death_message_reaches(board, &name, other)
+                    sunrise_client_core::scoreboard::death_message_reaches(board, &name, other)
                 });
                 if self.is_dedicated_server() {
                     crate::game::dedicated::events::record(
@@ -338,7 +338,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     );
                     // Only a message for everyone is logged (`broadcastSystemMessage`).
                     if board.players_team(&name).is_none_or(|t| {
-                        t.death_message_visibility == sunrise_client::scoreboard::Visibility::Always
+                        t.death_message_visibility
+                            == sunrise_client_core::scoreboard::Visibility::Always
                     }) {
                         crate::game::dedicated::log(
                             "INFO",
@@ -450,8 +451,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         id: u32,
         trigger: &str,
-    ) -> Option<sunrise_client::advancements::EntityView> {
-        use sunrise_client::advancements::EntityView;
+    ) -> Option<sunrise_sim::advancements::EntityView> {
+        use sunrise_sim::advancements::EntityView;
         match self.combat_player(id) {
             // `player_entity_for` takes `&mut self` (the compound for `nbt`);
             // this view of the killer has the player's records without it.
@@ -535,7 +536,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let keep_inventory_rule = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY);
+            .bool_at(sunrise_client_core::gamerules::vanilla::KEEP_INVENTORY);
         let motion = self.motion;
         if !self.restore_cloned_player(
             conn,

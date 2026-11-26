@@ -1,7 +1,7 @@
 //! Typed adaptations for upstream mob knockback and breeding draws.
 use super::{Damage, Game, HurtSource, Who, source_damage_type};
-use sunrise_client::mobs::Species;
 use sunrise_core::random::RandomSource;
+use sunrise_sim::mobs::Species;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mob_pushes_player(
@@ -28,7 +28,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 _ => None,
             };
             self.after_block(
-                sunrise_client::health::BlockOutcome {
+                sunrise_sim::health::BlockOutcome {
                     blocked,
                     fully_blocked: blocked >= damage,
                     ..Default::default()
@@ -53,7 +53,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.knock_back_player(power, x, z, source, &attack, 0.0);
     }
     pub(in crate::game) fn bred_wolf_voice(&mut self, parent: u32) -> Option<u8> {
-        let voices = sunrise_client::mobs::finalize::sound_variants(Species::Wolf);
+        let voices = sunrise_sim::mobs::finalize::sound_variants(Species::Wolf);
         self.mobs
             .iter_mut()
             .find(|m| m.id == parent)

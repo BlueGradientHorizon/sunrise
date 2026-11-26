@@ -19,7 +19,7 @@ fn count_equality_uses_live_stack_bounds_and_command_flow() {
     assert!(game.run_command("scoreboard objectives add h194 dummy"));
     let clock = game.world.game_time;
     let counts = |g: &crate::game::ServerGame<'_>| {
-        let sunrise_client::containers::BlockEntity::Chest(slots) =
+        let sunrise_level::containers::BlockEntity::Chest(slots) =
             g.world.block_entities.get(&(4, 200, 4)).unwrap()
         else {
             panic!("actual chest model missing")
@@ -42,7 +42,7 @@ fn count_equality_uses_live_stack_bounds_and_command_flow() {
         );
         let stack = ItemStack::new("minecraft:diamond", count);
         assert!(
-            sunrise_client::item_data::component_snapshot(&stack)
+            sunrise_items::item_data::component_snapshot(&stack)
                 .is_none_or(|t| t.get("minecraft:count").is_none()),
             "count is not a component patch"
         );

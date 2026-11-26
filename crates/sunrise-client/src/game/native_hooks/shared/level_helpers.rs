@@ -77,7 +77,7 @@ impl GameLevel<'_> {
             return false;
         };
         self.native_particles
-            .push(crate::lan::server_effects::ServerQueuedParticle {
+            .push(sunrise_sim::lan::server_effects::ServerQueuedParticle {
                 dimension: dimension_id(self.dimension),
                 particle,
                 at,
@@ -94,7 +94,7 @@ impl GameLevel<'_> {
     /// Sunrise's own. The one place both whole-block write paths make it.
     pub(in crate::game) fn new_block_entity(&self, name: &str) -> Option<BlockEntity> {
         let mut nbt = None;
-        if sunrise_client::block_entity_types::type_for(name).is_some() {
+        if sunrise_client_core::block_entity_types::type_for(name).is_some() {
             self.native_block_entity(name, self.registry.default_state(name)?, &mut nbt);
         }
         block_entity_for_block(self.registry, self.facts, name, nbt.unwrap_or_default())
@@ -116,9 +116,10 @@ impl GameLevel<'_> {
         // `TestBlockEntity` takes its mode from the state at construction,
         // before any block entity data supplied by the item is loaded.
         if let BlockEntity::TestBlock(test) = &mut entity
-            && let Some(mode) = placed.properties.get("mode").and_then(|mode| {
-                sunrise_client::test_block::TestBlockMode::of_serialized_name(mode)
-            })
+            && let Some(mode) = placed
+                .properties
+                .get("mode")
+                .and_then(|mode| sunrise_level::test_block::TestBlockMode::of_serialized_name(mode))
         {
             test.mode = mode;
         }
@@ -252,11 +253,11 @@ impl GameLevel<'_> {
 /// Host's and a level hook's whole-block writes.
 pub(in crate::game) fn block_entity_for_block(
     registry: &BlockRegistry,
-    facts: &sunrise_client::blocks::BlockFacts,
+    facts: &sunrise_items::blocks::BlockFacts,
     name: &str,
     initial: Compound,
 ) -> Option<BlockEntity> {
-    if let Some(kind) = sunrise_client::block_entity_types::type_for(name) {
+    if let Some(kind) = sunrise_client_core::block_entity_types::type_for(name) {
         let slots = mod_api::__private::parts_installation::block_container(name)
             .map_or(0, |container| container.slots);
         return Some(BlockEntity::Mod(Box::new(EngineBlockEntity::new(
@@ -295,7 +296,7 @@ pub(in crate::game) fn block_entity_for_block(
 /// entity the write creates, when the write changed the block's name and the
 /// new block landed.
 fn block_entity_to_create(
-    facts: &sunrise_client::blocks::BlockFacts,
+    facts: &sunrise_items::blocks::BlockFacts,
     changed: bool,
     previous: BlockStateId,
     state: BlockStateId,
@@ -307,7 +308,7 @@ fn block_entity_to_create(
 }
 
 /// Stores a new block entity at `pos`, keeping an existing one of the same kind.
-fn put_block_entity(world: &mut sunrise_client::world::World, pos: [i32; 3], entity: BlockEntity) {
+fn put_block_entity(world: &mut sunrise_level::world::World, pos: [i32; 3], entity: BlockEntity) {
     let key = (pos[0], pos[1], pos[2]);
     if let Some(existing) = world.block_entities.get(&key) {
         if std::mem::discriminant(existing) == std::mem::discriminant(&entity) {

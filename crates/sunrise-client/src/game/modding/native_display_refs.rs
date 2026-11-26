@@ -10,13 +10,13 @@ use mod_api::{
     Billboard, DisplayKind, DisplayRef, EntityRef, ItemDisplayContext, TextAlignment,
     Transformation,
 };
-use sunrise_client::{
-    items::ItemStack,
-    save::item_from_nbt,
+use sunrise_client_core::{
     scoreboard::{comp_text, json_to_tag, tag_to_json},
     text::Text,
 };
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::entity_data::Value;
+use sunrise_sim::save::item_from_nbt;
 use sunrise_sim::text_display_data::{display_data, text_display_data};
 use {
     sunrise_core::nbt::{Compound, Tag},
@@ -582,7 +582,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(stack) => {
                 c.insert(
                     "item".into(),
-                    sunrise_client::save::item_to_nbt(&stack, &items),
+                    sunrise_sim::save::item_to_nbt(&stack, &items),
                 );
             }
             None => {

@@ -5,7 +5,7 @@ use super::{
     native_book_scope::MenuSnapshot,
 };
 use mod_api::{HostTransaction, ItemPlace, ItemResource, MenuSlotBacking, ServerHost};
-use sunrise_client::{
+use sunrise_sim::{
     lan::menu::ModCraft,
     menu::{
         Env, Kind, Menu,
@@ -153,8 +153,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .ok_or(R::Changed)?;
         let block_pos = match before.slots {
-            sunrise_client::lan::menu::Slots::Block(pos) => Some(pos),
-            sunrise_client::lan::menu::Slots::Native => None,
+            sunrise_sim::lan::menu::Slots::Block(pos) => Some(pos),
+            sunrise_sim::lan::menu::Slots::Native => None,
             _ => return Err(R::Unavailable),
         };
         let sources = block_pos.map_or_else(Vec::new, |pos| {

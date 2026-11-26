@@ -1,10 +1,8 @@
 //! Client-side composter level event feedback (`ComposterBlock.handleFill`) and use check.
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_core::{position::BlockPos, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 fn composter_level(
     game: &Game<'_, crate::game::client_side::ClientState>,

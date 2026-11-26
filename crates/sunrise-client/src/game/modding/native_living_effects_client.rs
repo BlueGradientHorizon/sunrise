@@ -45,8 +45,9 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_client_reads_the_local_players_effect_blend_factors() {
         use super::super::native_entity_refs::tests::with_client_game;
-        use sunrise_client::{effects::EffectInstance, motion::PlayerMotion};
+        use sunrise_level::effects::EffectInstance;
         use sunrise_protocol::connection::Pipe;
+        use sunrise_sim::motion::PlayerMotion;
         let close =
             |read: Option<f32>, expected: f32| read.is_some_and(|f| (f - expected).abs() < 1e-6);
         with_client_game(|game| {

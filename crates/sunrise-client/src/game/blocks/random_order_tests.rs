@@ -4,8 +4,8 @@
 
 use crate::game::game_tests::tests::server_game;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 
 /// A game whose player stands in chunk (0, 0), with lit chunks loaded in
 /// `order`.
@@ -17,7 +17,7 @@ fn game_loading<'a>(
     game.side.settings.simulation_distance = 5;
     game.side.settings.render_distance = 8;
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
     );
     game.world.chunks.clear();
     for &(x, z) in order {

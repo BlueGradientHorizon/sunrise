@@ -8,15 +8,13 @@ use crate::game::{
 };
 use mod_api::{BlockPos, Direction, ModEntry};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    motion::PlayerMotion,
-    particles::{ParticleLevel, requested_count},
-};
+use sunrise_client::particles::{ParticleLevel, requested_count};
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource as _},
 };
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game::client_side) fn admit(game: &mut crate::game::ClientGame<'_>) -> usize {
     game.side.particles.0.tick(&ParticleLevel {

@@ -4,13 +4,13 @@
 //! `discard()` when the support goes away (no `entity_die` game event).
 use super::super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::Who;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Who;
 
 /// The cushion's position: `Vec3.atCenterOfWithY(4 199 4, 200.0)`.
 const AT: [f64; 3] = [4.5, 200.0, 4.5];
@@ -58,11 +58,11 @@ fn game<'a>(
     assert!(
         game.ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
             && game
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
     );
     game
 }

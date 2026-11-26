@@ -1,11 +1,11 @@
 use super::*;
 use std::fmt::Write;
-use sunrise_client::mobs::{
+use sunrise_core::nbt::parse_snbt;
+use sunrise_core::random::{InvalidBound, PositionalRandom};
+use sunrise_sim::mobs::{
     finalize::FinalizeLevel as _,
     spawner::{Spawner, SpawnerEvent, SpawnerExt, SpawnerLevel, SpawnerSpawn},
 };
-use sunrise_core::nbt::parse_snbt;
-use sunrise_core::random::{InvalidBound, PositionalRandom};
 
 /// Two attempts at y=64 with a common z and a specified x displacement.
 /// No other draws should occur with this configured spawner and fixed delay.
@@ -147,9 +147,8 @@ fn spawner_batch(
     if installation == "admission-intra" {
         spawner.spawn_count = 1;
     }
-    game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, z)).unwrap(),
-    );
+    game.player =
+        Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, z)).unwrap());
     let level = game.natural_level();
     let mut random = Attempts {
         doubles: [0.0, 0.0, 0.0, 0.0, dx, 0.0, 0.0, 0.0].into_iter(),
@@ -279,7 +278,7 @@ fn spawn_entity_obstruction() {
                     let at = [8.5 + dx, 64.0, z];
                     game.world.chunks.insert(
                         (0, i as i32),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, i as i32)),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, i as i32)),
                     );
                     if installation == "batch" || installation.starts_with("admission-") {
                         let (first, second) = spawner_batch(game, z, dx, id, data, installation);

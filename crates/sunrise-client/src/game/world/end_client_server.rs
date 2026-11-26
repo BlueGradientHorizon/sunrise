@@ -1,7 +1,7 @@
 use super::Game;
 use crate::game::server_side::end::EyeOfEnder;
-use sunrise_client::items::ItemStack;
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// EnderEyeItem.use: findNearestMapStructure over the stronghold rings,
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// EyeOfEnder.tick: fly, then drop (4 in 5) or shatter after 80 ticks.
     pub(in crate::game::server_side) fn tick_eyes(&mut self) {
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let mut eyes = std::mem::take(&mut self.end.eyes);
         let mut shattered = Vec::new();
         eyes.retain_mut(|eye| {

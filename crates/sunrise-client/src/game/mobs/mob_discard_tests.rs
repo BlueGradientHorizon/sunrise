@@ -1,7 +1,8 @@
 //! Actual entity removal, commands and chunk-save assembly, with no intervening tick.
 use super::*;
-use sunrise_client::{chunk::Chunk, mobs::Mob};
 use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]
@@ -59,8 +60,8 @@ pub(in crate::game) fn run_discarded_mob_leaves_selectors_and_saves_while_frozen
     let removed_uuid = game.uuid_for(42);
     let dying_uuid = game.uuid_for(43);
     let selector = |game: &crate::game::ServerGame<'_>, text: &str| {
-        sunrise_client::command::selector::parse(
-            &mut sunrise_client::command::Reader::new(text),
+        sunrise_command::selector::parse(
+            &mut sunrise_command::Reader::new(text),
             &game.ui.registries,
             true,
         )
@@ -116,7 +117,7 @@ pub(in crate::game) fn run_discarded_mob_leaves_selectors_and_saves_while_frozen
         Some(&Tag::Byte(1))
     );
     // UUID-backed commands also bypass the entity-list enumeration.
-    let uuid = sunrise_client::lan::playerdata::ints_uuid(removed_uuid);
+    let uuid = sunrise_sim::lan::playerdata::ints_uuid(removed_uuid);
     let uuid = sunrise_protocol::crypto::uuid_string(uuid);
     assert!(game.run_command(&format!(
         "execute unless entity {uuid} run data merge storage fixture:discard {{uuid_gone:1b}}"
@@ -244,7 +245,7 @@ fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
                 })
                 .unwrap();
             game.as_guest(12, |game| {
-                let selector = |token: Option<&str>| sunrise_client::command::args::Selector {
+                let selector = |token: Option<&str>| sunrise_command::args::Selector {
                     kind: 'e',
                     include_entities: true,
                     token: token.map(Into::into),

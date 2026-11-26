@@ -98,7 +98,7 @@ fn native_movement_input_keys_axes_and_sprint() {
             tick(game);
             assert!(!game.player.as_ref().unwrap().sprinting);
             reset_player(game, 20);
-            game.inventory[0] = Some(sunrise_client::items::ItemStack::new("minecraft:apple", 1));
+            game.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:apple", 1));
             assert!(game.start_using_item());
             tick(game);
             assert!(!game.player.as_ref().unwrap().sprinting);

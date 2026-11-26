@@ -1,7 +1,8 @@
 //! `LivingEntity.aiStep` -> `EntityEquipment.tick` -> `CompassItem.inventoryTick` for mobs, and
 //! the compass-only rule a player's `Inventory.tick` shares with them (#3221).
-use sunrise_client::{items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 
 const UUID_HIGH: i32 = 3221;
 
@@ -44,7 +45,7 @@ fn lodestone_tracker(stack: &ItemStack) -> &Tag {
 fn target(stack: &ItemStack) -> Option<(String, Vec<i32>)> {
     let target = lodestone_tracker(stack).get("target")?;
     let dimension =
-        sunrise_client::save::text(target.get("dimension")).expect("a target with a dimension");
+        sunrise_sim::save::text(target.get("dimension")).expect("a target with a dimension");
     let Some(Tag::IntArray(pos)) = target.get("pos") else {
         panic!("a target without a pos");
     };
@@ -53,7 +54,7 @@ fn target(stack: &ItemStack) -> Option<(String, Vec<i32>)> {
 
 /// `tracked` reads true when it is left out (`Codec.BOOL.optionalFieldOf("tracked", true)`).
 fn tracked(stack: &ItemStack) -> bool {
-    sunrise_client::save::number(lodestone_tracker(stack).get("tracked")).is_none_or(|v| v != 0)
+    sunrise_sim::save::number(lodestone_tracker(stack).get("tracked")).is_none_or(|v| v != 0)
 }
 
 #[test]

@@ -16,7 +16,7 @@ pub(in crate::game) fn player_teleport(
 #[cfg(feature = "client")]
 pub(in crate::game) fn tick_items(
     game: &mut Game<'_, crate::game::client_side::ClientState>,
-    entered: &mut Vec<sunrise_client::entities::ItemSplash>,
+    entered: &mut Vec<sunrise_sim::entities::ItemSplash>,
 ) {
     let mut items = game.dropped.lift();
     let mut i = 0;

@@ -57,12 +57,12 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
             return;
         }
         with_game_role(root, ExecutionRole::IntegratedServer, |game| {
-            use sunrise_client::{
+            use sunrise_core::nbt::Tag;
+            use sunrise_items::items::ItemStack;
+            use sunrise_level::{
                 chunk::{Chunk, PendingContainerLoot},
                 containers::{BlockEntity, Furnace, FurnaceKind},
-                items::ItemStack,
             };
-            use sunrise_core::nbt::Tag;
             game.options.dedicated = Some(vec![]);
             let from = (3, 64, 2);
             let to = (4, 64, 2);
@@ -237,7 +237,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 .1;
             let saved = game.saved_moving_piston(at, &moving);
             game.world.block_entities.discard_carried(&to);
-            let mut extras = sunrise_client::save::ChunkExtras::default();
+            let mut extras = sunrise_sim::save::ChunkExtras::default();
             extras.block_entities.push(saved);
             game.restore_moving_piston(at, moving, Some(&extras));
             for _ in 0..10 {
@@ -311,13 +311,13 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                     slots.as_slice()
                 );
             }
-            let mut batch = sunrise_client::save::chunks_with_block_entities(
+            let mut batch = sunrise_sim::save::chunks_with_block_entities(
                 game.world.chunks.values(),
                 &game.world.block_entities,
                 &game.world.block_names,
             );
             game.attach_save_data(&mut batch[0]);
-            let encoded = sunrise_client::save::encode(
+            let encoded = sunrise_sim::save::encode(
                 &batch[0],
                 registry,
                 game.res.biomes(),
@@ -355,14 +355,14 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 assert_eq!(tag.get("LootTableSeed"), Some(&Tag::Long(37)));
             } else if case == "furnace" {
                 let (_, BlockEntity::Furnace(saved_furnace)) =
-                    sunrise_client::save::decode_block_entity(tag).unwrap()
+                    sunrise_sim::save::decode_block_entity(tag).unwrap()
                 else {
                     panic!()
                 };
                 assert_eq!(saved_furnace.lit_remaining, 99);
             } else {
                 let (_, BlockEntity::Chest(saved_slots)) =
-                    sunrise_client::save::decode_block_entity(tag).unwrap()
+                    sunrise_sim::save::decode_block_entity(tag).unwrap()
                 else {
                     panic!()
                 };
@@ -370,7 +370,7 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
             }
             if matches!(case.as_str(), "loot" | "mixed-loot" | "chest") {
                 let loaded =
-                    sunrise_client::save::decode(&encoded, registry, game.res.biomes()).unwrap();
+                    sunrise_sim::save::decode(&encoded, registry, game.res.biomes()).unwrap();
                 assert!(
                     !loaded
                         .saved

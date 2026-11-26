@@ -1,7 +1,7 @@
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::{
-    brewing::BrewingStand, containers::BlockEntity, gamerules::Value, items::ItemStack,
-};
+use sunrise_client_core::gamerules::Value;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{brewing::BrewingStand, containers::BlockEntity};
 
 /// A stand whose block state already shows the bottles it holds, so a tick
 /// only reports what it changes.
@@ -88,7 +88,7 @@ fn a_fuel_item_with_no_uses_marks_the_chunk() {
     let mut fuel = ItemStack::new("minecraft:blaze_powder", 1);
     fuel.data_mut().set_loot_component(
         "minecraft:brewing_fuel",
-        &Some(sunrise_client::scoreboard::json_to_tag(
+        &Some(sunrise_client_core::scoreboard::json_to_tag(
             &serde_json::json!({"uses": 0, "speed_multiplier": 1.0}),
         )),
     );

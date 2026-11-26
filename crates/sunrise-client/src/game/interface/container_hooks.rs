@@ -10,16 +10,14 @@ use super::{
 use crate::game::{Game, Screen};
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
-use sunrise_client::{
-    containers::{BlockEntity, FurnaceKind, ModMenuType},
-    hud::{HudAtlas, HudBatch, rgba},
-    items::ItemStack,
-    menu::Input,
-};
+use sunrise_client::hud::{HudAtlas, HudBatch, rgba};
 use sunrise_hooks::{
     containers::{self as api, Button, Click, Container, Panel, Role, Slot, SlotId, Stack},
     hud,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::{BlockEntity, FurnaceKind, ModMenuType};
+use sunrise_sim::menu::Input;
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 // Views built since the test began: none without a registrant.
@@ -250,7 +248,7 @@ impl hud::Canvas for Canvas<'_> {
         (self.batch.width, self.batch.height)
     }
     fn tr(&self, key: &str) -> String {
-        sunrise_client::lang::get(key)
+        sunrise_client_core::lang::get(key)
     }
     fn text_width(&self, text: &str) -> f32 {
         HudBatch::text_width(self.atlas, text)
@@ -335,7 +333,7 @@ impl<'g> Game<'g, crate::game::client_side::ClientState> {
             return None;
         }
         self.remote_menu_type()
-            .and_then(sunrise_client::containers::mod_menu_type)
+            .and_then(sunrise_level::containers::mod_menu_type)
     }
     /// The panel's corner, which slot positions are from, and its size, as `batch`'s frame lays
     /// the screen out.
@@ -800,7 +798,7 @@ mod tests {
         with_client_game(|game| {
             game.side.screen = Screen::Inventory;
             with_registrants(&[&TAKE], || assert!(game.container_key(KeyCode::KeyR)));
-            game.level.recipe_book.open[sunrise_client::recipe_book::BookType::Crafting.index()] =
+            game.level.recipe_book.open[sunrise_sim::recipe_book::BookType::Crafting.index()] =
                 true;
             game.ensure_recipe_search();
             game.recipe_focus_search();

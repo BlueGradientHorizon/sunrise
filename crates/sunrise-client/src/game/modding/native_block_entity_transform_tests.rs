@@ -511,7 +511,7 @@ fn structure_transform_survives_real_datapack_reload_with_its_registry() {
                 Some(1),
                 true,
                 None,
-                Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
             )
             .unwrap();
             request.save_root = dir.path().to_owned();

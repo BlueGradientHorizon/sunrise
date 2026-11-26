@@ -104,7 +104,7 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();

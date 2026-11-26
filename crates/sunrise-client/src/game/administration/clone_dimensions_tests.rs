@@ -5,8 +5,8 @@
 //! same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
@@ -52,7 +52,7 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<S
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said = game.side.chat_capture.take().unwrap_or_default();
-    (ok, said.first().map(sunrise_client::text::Text::plain))
+    (ok, said.first().map(sunrise_client_core::text::Text::plain))
 }
 
 #[test]

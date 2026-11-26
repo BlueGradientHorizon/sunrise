@@ -9,11 +9,9 @@ use crate::game::{
 use mod_api::{Identifier, ModEntry};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    camera::CameraType,
-    crash::{ModCall, enter_native_mod},
-    hud::Rect,
-};
+use sunrise_client::hud::Rect;
+use sunrise_level::camera_math::CameraType;
+use sunrise_level::crash::{ModCall, enter_native_mod};
 
 #[test]
 #[ignore = "daily"]

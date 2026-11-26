@@ -16,12 +16,12 @@ use mod_api::{
     Hand, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal, MenuSlotPlace,
     ServerHost,
 };
-use sunrise_client::items::ItemStack;
-use sunrise_client::lan::{
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::{
     guest::Guest,
     menu::{NativeMenuEvent, Slots},
 };
-use sunrise_client::menu::{SlotContext, SlotRules, apply_menu_slot_rules, item_max_stack};
+use sunrise_sim::menu::{SlotContext, SlotRules, apply_menu_slot_rules, item_max_stack};
 
 /// The places backing one guest's open mod menu.
 #[derive(Clone)]
@@ -638,8 +638,8 @@ mod tests {
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use super::*;
     use mod_api::{HostTransaction, MenuReplace, MenuSlotBacking};
-    use sunrise_client::items::ItemStack;
-    use sunrise_client::lan::menu::Slots;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::lan::menu::Slots;
 
     struct Backpack;
     #[mod_api::__subscriptions]
@@ -769,7 +769,7 @@ mod tests {
     /// The guest's record, to change their hands as a packet or a command would.
     fn edit_guest(
         game: &mut crate::game::ServerGame<'_>,
-        edit: impl FnOnce(&mut sunrise_client::lan::guest::Guest),
+        edit: impl FnOnce(&mut sunrise_sim::lan::guest::Guest),
     ) {
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;
         let index = guests.connection_index(1).unwrap();
@@ -1066,7 +1066,7 @@ mod tests {
 
     /// The bound stack replaced by `replace`, then a shift-click: the menu closes and the click
     /// moves nothing.
-    fn replaced_closes(hand: Hand, replace: impl FnOnce(&mut sunrise_client::lan::guest::Guest)) {
+    fn replaced_closes(hand: Hand, replace: impl FnOnce(&mut sunrise_sim::lan::guest::Guest)) {
         with_game(|game| {
             let window = backpack_menu(game);
             if hand == Hand::Off {
@@ -1182,7 +1182,7 @@ mod tests {
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
             let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-            sunrise_client::containers::with_mod_menu_types(
+            sunrise_level::containers::with_mod_menu_types(
                 [(
                     SATCHEL_MENU.into(),
                     "satchel".into(),
@@ -1210,7 +1210,7 @@ mod tests {
         let pos = [1, 64, 2];
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let stand = game
             .pack

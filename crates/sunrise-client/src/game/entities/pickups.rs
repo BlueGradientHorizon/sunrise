@@ -3,7 +3,7 @@
 //! adds one for every `ClientboundTakeItemEntityPacket`), drawn with the render
 //! state it had when it was taken (`extractEntity(from, 1.0F)`).
 use super::Game;
-use sunrise_client::{
+use sunrise_sim::{
     entities::{ExperienceOrb, ItemEntity},
     projectiles::Projectile,
 };

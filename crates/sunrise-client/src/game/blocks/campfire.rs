@@ -3,17 +3,18 @@
 //! items drawn on the fire are `campfire_geometry`'s; a server's clients get
 //! them through the block entity's update tag (`lan::chunks::entity_tag`).
 use super::Game;
-use sunrise_client::{
-    Result, block_entities::Pos, containers::BlockEntity, items::ItemStack, mobs::Who,
-};
+use sunrise_client_core::Result;
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{block_entities::Pos, containers::BlockEntity};
+use sunrise_sim::mobs::Who;
 
 /// The `campfire_cooking` recipe kind (`RecipeType.CAMPFIRE_COOKING`).
 pub(in crate::game) const KIND: &str = "minecraft:campfire_cooking";
 
 pub(in crate::game) fn is_campfire(name: &str) -> bool {
     matches!(
-        sunrise_client::block_entity_types::factory_block(name),
+        sunrise_client_core::block_entity_types::factory_block(name),
         "minecraft:campfire" | "minecraft:soul_campfire"
     )
 }

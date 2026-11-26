@@ -36,7 +36,7 @@ impl Seat {
 
     /// `Entity.positionRider`: the passenger point less the rider's vehicle attachment.
     pub fn passenger_position(&self, rider_offset: f64) -> Vec3 {
-        sunrise_client::mobs::riders::seat(self.attachment, rider_offset, self.position, self.yaw)
+        sunrise_sim::mobs::riders::seat(self.attachment, rider_offset, self.position, self.yaw)
     }
 
     /// `Entity.positionRider` for a player: its vehicle attachment below the passenger point.
@@ -44,9 +44,9 @@ impl Seat {
         self.passenger_position(PLAYER_VEHICLE_ATTACHMENT)
     }
 
-    pub(in crate::game) fn position_mob(&self, mob: &mut sunrise_client::mobs::Mob) {
-        let offset = sunrise_client::mobs::riders::vehicle_attachment(mob, self.width);
-        sunrise_client::mobs::living::teleports::snap_to(mob, self.passenger_position(offset));
+    pub(in crate::game) fn position_mob(&self, mob: &mut sunrise_sim::mobs::Mob) {
+        let offset = sunrise_sim::mobs::riders::vehicle_attachment(mob, self.width);
+        sunrise_sim::mobs::living::teleports::snap_to(mob, self.passenger_position(offset));
         mob.velocity = Vec3::ZERO;
         mob.fall_distance = 0.0;
         mob.ground.on_ground = false;

@@ -1,13 +1,13 @@
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig, playerdata},
     motion::PlayerMotion,
 };
-use sunrise_core::nbt::Tag;
-use sunrise_core::position::ChunkPos;
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 fn check(tag: &Tag, grace: i32, particles: bool, phase: &str, failures: &mut Vec<String>) {
     let expected = [
@@ -218,7 +218,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
             "owner snapshot restored",
             &mut failures,
         );
-        let mut saved_guest = sunrise_client::save::Level::default();
+        let mut saved_guest = sunrise_sim::save::Level::default();
         let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.motion.as_ref().unwrap().impulse.reset_grace_time, 7);
         playerdata::store(guest, &mut saved_guest, None);

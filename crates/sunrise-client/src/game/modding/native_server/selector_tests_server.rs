@@ -2,8 +2,8 @@ use super::*;
 use crate::game::native_server::selector_tests::SelectorCommands;
 use mod_api::CommandArgumentValue as Value;
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 
 /// One overworld cow (cow 1, tag `over`) and one nether cow (cow 2, tag `under`), then `lines`
 /// run as the first guest with the console's permission; each line's last invocation names the

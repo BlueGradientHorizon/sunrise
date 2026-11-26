@@ -293,7 +293,7 @@ impl Stats {
     pub fn write(&self, path: &Path) {
         let json = self.to_json();
         if let Ok(text) = serde_json::to_string_pretty(&json) {
-            let _ = sunrise_client::save::write_durable(path, text.as_bytes());
+            let _ = sunrise_sim::save::write_durable(path, text.as_bytes());
         }
     }
 }

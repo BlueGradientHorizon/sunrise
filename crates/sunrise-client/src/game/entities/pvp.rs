@@ -7,11 +7,11 @@ use sunrise_client::{
     extras_hud::Corners,
     hud::{HudBatch, rgba},
     mesher::Vertex,
-    particles::ParticleType,
     pvp::{ChatOptions, Colour, CrosshairCache, Frame},
     pvp_hud::{self, Combo, Durability, Icon, Key, Line, Widget},
-    text::Text,
 };
+use sunrise_client_core::text::Text;
+use sunrise_level::particle_options::ParticleType;
 use winit::event::MouseButton;
 
 #[derive(Default)]
@@ -175,7 +175,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Once per frame: the options that live outside the game's state.
     pub(in crate::game::client_side) fn pvp_frame(&mut self) {
         let tweaks = self.side.settings.extras.pvp.tweaks;
-        sunrise_client::enchant::set_numeric_levels(tweaks.numeric_enchants);
+        sunrise_items::enchant::set_numeric_levels(tweaks.numeric_enchants);
     }
     /// Whether this window may draw PvP & HUD's own time and weather: only a client of a server
     /// (single player's included) draws them, never the server that ticks the world.
@@ -383,7 +383,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         let level = amplifier + 1;
                         let suffix = names
                             .display_get(&format!("enchantment.level.{level}"))
-                            .unwrap_or_else(|| sunrise_client::enchant::level_name(level as u32));
+                            .unwrap_or_else(|| sunrise_items::enchant::level_name(level as u32));
                         name = format!("{name} {suffix}");
                     }
                     let time = if secs == -1 {
@@ -391,7 +391,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             .display_get("effect.duration.infinite")
                             .unwrap_or_else(|| "∞".into())
                     } else {
-                        sunrise_client::brewing::format_tick_duration(secs, 1.0)
+                        sunrise_level::brewing::format_tick_duration(secs, 1.0)
                     };
                     let sprite = match id.split_once(':') {
                         Some((ns, path)) => format!("{ns}:mob_effect/{path}"),
@@ -416,7 +416,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             state.held.clear();
         }
         let text = |key: &str, args: &[&dyn std::fmt::Display]| {
-            let line = sunrise_client::lang::tr(key, args);
+            let line = sunrise_client_core::lang::tr(key, args);
             Line::new(Icon::None, line, &width)
         };
         if hud.ping {
@@ -433,7 +433,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if let Some(([x, y, z], facing)) = coords {
                     lines.push(text("sunrise.pvp.hud.coords", &[x, y, z]));
                     let key = format!("sunrise.pvp.hud.direction.{facing}");
-                    let name = sunrise_client::lang::get_or(&key, facing);
+                    let name = sunrise_client_core::lang::get_or(&key, facing);
                     lines.push(text("sunrise.pvp.hud.facing", &[&name]));
                 }
             });
@@ -622,7 +622,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 false => (lines, size),
                 true if editing => {
                     let key = format!("sunrise.pvp.hud_{}", id.name());
-                    let name = sunrise_client::lang::get_or(&key, id.name());
+                    let name = sunrise_client_core::lang::get_or(&key, id.name());
                     let width = |s: &str| HudBatch::text_width(&self.side.gui.atlas, s);
                     stand_in = vec![Line::new(Icon::None, name, &width)];
                     (&stand_in, pvp_hud::size(&stand_in))
@@ -742,7 +742,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn held_count(&self) -> Option<(usize, Arc<str>, u32)> {
         let held = self.held()?;
         let ranged = matches!(&*held.item, "minecraft:bow" | "minecraft:crossbow");
-        let counts = |s: &sunrise_client::items::ItemStack| match ranged {
+        let counts = |s: &sunrise_items::items::ItemStack| match ranged {
             true => ARROWS.contains(&&*s.item),
             false => s.item == held.item,
         };

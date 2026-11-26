@@ -2,7 +2,7 @@
 //! kind for an action. Vanilla's answer comes first, then the parts of the stack's item
 //! (`ItemPart::can_perform_action`, NeoForge's `IItemExtension.canPerformAction`).
 use super::Game;
-use sunrise_client::items::{ItemInfo, ItemStack};
+use sunrise_items::items::{ItemInfo, ItemStack};
 
 /// The abilities the game asks, plain case-sensitive names, like a mod's own.
 pub(in crate::game) mod ability {

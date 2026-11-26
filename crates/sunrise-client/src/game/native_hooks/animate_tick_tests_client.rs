@@ -4,8 +4,8 @@ use crate::game::{
 };
 use mod_api::BlockPos;
 use std::sync::Arc;
-use sunrise_client::particles::ParticleType;
 use sunrise_core::random::{LegacyRandom, RandomSource as _};
+use sunrise_level::particle_options::ParticleType;
 use sunrise_world::registry::BlockStateId;
 
 pub(in crate::game::client_side) fn level_random(
@@ -150,7 +150,7 @@ fn the_part_runs_inside_its_pick_before_the_fluid_the_next_pick_and_the_rain() {
         game.world.weather.thunder_level = (1.0, 1.0);
         game.world.game_time = 199;
         // The empty chunks' biome, made a rainy one.
-        let mut biomes = sunrise_client::biome::Biomes::clone(game.res.biomes());
+        let mut biomes = sunrise_level::biome::Biomes::clone(game.res.biomes());
         biomes.list[0].precipitation = true;
         biomes.list[0].temperature = 0.8;
         game.world_biomes = Some(Arc::new(biomes));

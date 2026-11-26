@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::health::{DamageHooks, DamageLevel};
+use sunrise_sim::health::{DamageHooks, DamageLevel};
 
 /// What the hook of these tests saw: the player, its source (as damage
 /// type, causing, direct) and the push.
@@ -38,13 +38,13 @@ fn the_native_knockback_hook_changes_or_cancels_a_players_push() {
     if !root.join("movement-properties.nbt").exists() {
         return;
     }
-    let assets = sunrise_client::assets::Assets::load(&root).unwrap();
-    let resources = sunrise_client::motion::MotionResources::load(&root, &assets).unwrap();
+    let assets = sunrise_level::assets::Assets::load(&root).unwrap();
+    let resources = sunrise_sim::motion::MotionResources::load(&root, &assets).unwrap();
     let hooks = DamageHooks {
         knockback: Some(hook),
         ..DamageHooks::NONE
     };
-    let mut test_level = sunrise_client::health::TestLevel::with_hooks(1, hooks);
+    let mut test_level = sunrise_sim::health::TestLevel::with_hooks(1, hooks);
     let hit = HurtSource {
         damage_type: "minecraft:player_attack",
         causing: 5,
@@ -52,7 +52,7 @@ fn the_native_knockback_hook_changes_or_cancels_a_players_push() {
         position: None,
     };
     let mut push = |entity, resistance: f64| {
-        let mut p = sunrise_client::motion::PlayerMotion::new(&resources, Vec3::ZERO).unwrap();
+        let mut p = sunrise_sim::motion::PlayerMotion::new(&resources, Vec3::ZERO).unwrap();
         p.entity_id = entity;
         p.ground.on_ground = true;
         if resistance != 0.0 {

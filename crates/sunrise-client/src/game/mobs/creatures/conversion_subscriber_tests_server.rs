@@ -47,7 +47,7 @@ fn post_only_listener_is_subscribed_without_a_pre_listener() {
                     .convert_to(
                         &from,
                         "minecraft:drowned",
-                        sunrise_client::mobs::conversion::Params::KEEP_ALL,
+                        sunrise_sim::mobs::conversion::Params::KEEP_ALL,
                         false,
                         |_, _| {},
                     )

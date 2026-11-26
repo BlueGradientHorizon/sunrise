@@ -3,8 +3,8 @@
 use super::*;
 use mod_api::{CommandArgumentValue as Value, CommandInvocation};
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 
 pub(in crate::game) struct SelectorCommands(pub(in crate::game) Arc<Mutex<Vec<CommandInvocation>>>);
 
@@ -46,7 +46,7 @@ fn selector_kinds_publish_vanilla_flags_and_share_parser_suggestions() {
     ];
     let (tree, _, problems) = command_tree(
         &commands,
-        &sunrise_client::command::Dispatcher::new(),
+        &sunrise_command::Dispatcher::new(),
         &HashMap::new(),
     );
     assert!(problems.is_empty(), "{problems:?}");
@@ -57,7 +57,7 @@ fn selector_kinds_publish_vanilla_flags_and_share_parser_suggestions() {
         "native_mod_command",
         &HashMap::new(),
     );
-    let mut registries = sunrise_client::command::Registries {
+    let mut registries = sunrise_command::Registries {
         permission: 4,
         players: vec!["Alice".into(), "Bob".into()],
         selected_entities: vec!["00000000-0000-0000-0000-000000000007".into()],
@@ -78,12 +78,12 @@ fn selector_kinds_publish_vanilla_flags_and_share_parser_suggestions() {
             .copied()
             .find(|id| {
                 matches!(&dispatcher.nodes[*id].kind,
-                sunrise_client::command::NodeKind::Literal(literal) if literal == name)
+                sunrise_command::NodeKind::Literal(literal) if literal == name)
             })
             .unwrap();
         let argument = dispatcher.nodes[root].children[0];
         assert!(matches!(&dispatcher.nodes[argument].kind,
-            sunrise_client::command::NodeKind::Argument {
+            sunrise_command::NodeKind::Argument {
                 ty: ArgType::Entity { single: s, players: p }, ..
             } if *s == single && *p == players));
         for (prefix, expected) in [("Al", "Alice"), ("@", "@a")] {

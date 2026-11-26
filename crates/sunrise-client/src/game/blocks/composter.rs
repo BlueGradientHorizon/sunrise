@@ -6,8 +6,9 @@ use super::{
     Game,
     commands::{Target, compute::ComputeContext},
 };
-use sunrise_client::{items::ItemStack, mobs::villager};
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::villager;
 use sunrise_world::registry::BlockStateId;
 
 /// Whether a block type provides the composter's state-backed container ports.

@@ -4,9 +4,7 @@ use crate::game::remote::raw_ingress::bundle_parity_tests::wait_pong_in_game;
 use crate::game::remote::raw_ingress::bundle_parity_tests::witness_json;
 use crate::game::{native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry};
 use std::time::{Duration, Instant};
-use sunrise_client::{
-    level_loading::Reason, motion::PlayerMotion, multiplayer, net::Session, title::Mode,
-};
+use sunrise_client::{level_loading::Reason, multiplayer, net::Session, title::Mode};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_protocol::{
     connection::Pipe,
@@ -16,6 +14,7 @@ use sunrise_protocol::{
         play::{self, Clientbound as C, Serverbound as S, SpawnInfo},
     },
 };
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn dependent_entity_bundle_body() {
     let witness = bundle_witness();

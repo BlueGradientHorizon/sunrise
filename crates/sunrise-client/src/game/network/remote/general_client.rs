@@ -3,9 +3,9 @@ use crate::game::general::general_type_catalog;
 use crate::game::remote::general::RemoteGeneral;
 use crate::game::remote::general::RemoteGenerals;
 pub(in crate::game::client_side) use crate::game::remote::general::tick_remote_general;
-use sunrise_client::join_seq::JoinSeq;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::general_entity::{self, Message};
+use sunrise_sim::join_seq::JoinSeq;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -60,7 +60,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let row = RemoteGeneral::new(type_slot, uuid, position, rotation, render_attachments);
         self.persist
             .uuids
-            .insert(id as u32, sunrise_client::lan::playerdata::uuid_ints(uuid));
+            .insert(id as u32, sunrise_sim::lan::playerdata::uuid_ints(uuid));
         // Tracked: the id-keyed move, position sync, teleport and removal handlers apply.
         // Snapshot any old emitter body before publishing this new row.
         self.spawn_entity(

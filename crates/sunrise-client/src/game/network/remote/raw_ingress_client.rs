@@ -41,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<()> {
         // A run of ForgetLevelChunk (thousands when the server's view moves far: a
         // teleport at 32 chunks) is forgotten at once, before whatever follows it.
-        let mut forgotten = sunrise_client::fast_hash::FxHashSet::default();
+        let mut forgotten = sunrise_level::fast_hash::FxHashSet::default();
         let mut forgotten_credits = Vec::new();
         let mut turn = ListenerTurn::default();
         while let Some(item) = events.pop_front() {
@@ -67,7 +67,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 forgotten_credits.push(item.into_event_credit());
                 continue;
             }
-            sunrise_client::spans::time("pr_forget", || self.forget_remote_packets(&mut forgotten));
+            sunrise_level::spans::time("pr_forget", || self.forget_remote_packets(&mut forgotten));
             forgotten_credits.clear();
             let chunk = matches!(item, Received::Chunk(_, _));
             if chunk && !overdue && !before_tick && *chunks >= CHUNK_PACKETS_PER_FRAME {
@@ -109,7 +109,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     self.observe_client_packet(&packet);
                     if let C::LevelChunkWithLight(p) = *packet {
-                        sunrise_client::spans::time("pr_chunk", || {
+                        sunrise_level::spans::time("pr_chunk", || {
                             self.remote_chunk(&p, Some((&format, column)))
                         });
                     }
@@ -154,7 +154,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Ok(());
         }
         if self.remote.is_some() {
-            sunrise_client::spans::time("pr_forget", || self.forget_remote_packets(&mut forgotten));
+            sunrise_level::spans::time("pr_forget", || self.forget_remote_packets(&mut forgotten));
         }
         if let Some(r) = self.remote.as_mut() {
             r.backlog_since = if events.is_empty() {
@@ -190,7 +190,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         self.connection_ended(&reason, key.as_deref(), by);
         let screen_reason = match key.as_deref() {
-            Some(k) if sunrise_client::lang::get(k) == reason => Text::translate(k, &[]),
+            Some(k) if sunrise_client_core::lang::get(k) == reason => Text::translate(k, &[]),
             _ => Text::literal(reason),
         };
         self.leave_server(Some(screen_reason))
@@ -218,8 +218,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         turn: &mut ListenerTurn,
     ) -> Result<()> {
         use sunrise_client::net::{BundleMember, BundleStep};
-        use sunrise_client::raw_payloads::{Classified, Incoming, dispatch_bundle};
         use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
+        use sunrise_sim::raw_payloads::{Classified, Incoming, dispatch_bundle};
         let sunrise_client::net::CompletedBundle { packets, io } = bundle;
         let Some(remote) = self.remote.as_ref() else {
             return Ok(());
@@ -337,7 +337,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     r.joined = true;
                     r.profile = uuid;
                     r.profile_name = name.clone();
-                    r.status = sunrise_client::lang::get_or(
+                    r.status = sunrise_client_core::lang::get_or(
                         "multiplayer.downloadingTerrain",
                         "Loading terrain...",
                     );
@@ -491,7 +491,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Event::ObservePacket(packet) => self.observe_client_packet(&packet),
             Event::AttachmentSync(staged) => self.apply_staged_attachment_sync(*staged),
             Event::Packet(packet) => match *packet {
-                C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
+                C::CustomPayload(p) if p.channel == sunrise_sim::perf_net::CHANNEL => {
                     self.remote_perf_reply(&p.data)
                 }
                 packet => match self.handle_packet(packet) {

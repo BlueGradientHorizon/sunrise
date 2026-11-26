@@ -4,28 +4,27 @@
 use super::{Dim, Game, creatures::Finalized};
 use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
 use std::collections::HashMap;
-use sunrise_client::vanillagen::VanillaTerrain;
-use sunrise_client::{
-    biome::{BiomeInfo, SpawnEntry},
-    blocks::BlockFacts,
-    collisions::{SceneCollisions, no_collision_empty},
-    mobs::{
-        Mob, MobType, MobWorld, Species,
-        data::{self, MobData},
-        seen_grid::SeenGrid,
-        spawn_rules::{Reason, SpawnLevel},
-        spawn_selection::{
-            self, Category, Counted, Heightmap, NaturalLevel, PlayerSquares, SpawnBuffers,
-            SpawnCost, SpawnPlayer, SpawnRequest, SpawnState, Spawned, StructureAt,
-            StructureSpawns,
-        },
-    },
-};
 use sunrise_core::{
     geometry::{Aabb, COLLISION_EPSILON, Vec3, VoxelShape},
     position::BlockPos,
     random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
+use sunrise_items::blocks::BlockFacts;
+use sunrise_level::{
+    biome::{BiomeInfo, SpawnEntry},
+    collisions::{SceneCollisions, no_collision_empty},
+};
+use sunrise_sim::mobs::{
+    Mob, MobType, MobWorld, Species,
+    data::{self, MobData},
+    seen_grid::SeenGrid,
+    spawn_rules::{Reason, SpawnLevel},
+    spawn_selection::{
+        self, Category, Counted, Heightmap, NaturalLevel, PlayerSquares, SpawnBuffers, SpawnCost,
+        SpawnPlayer, SpawnRequest, SpawnState, Spawned, StructureAt, StructureSpawns,
+    },
+};
+use sunrise_sim::vanillagen::VanillaTerrain;
 use sunrise_world::dimension_type::DimensionFacts;
 use {
     sunrise_core::nbt::{Compound, Tag},
@@ -42,7 +41,7 @@ pub(in crate::game) struct SpawnPolicy {
 
 /// `ServerLevel.canSpawnEntitiesInChunk` of `world`: the chunk is loaded.
 pub(in crate::game::server_side) fn can_spawn_entities_in_chunk(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     cx: i32,
     cz: i32,
 ) -> bool {
@@ -226,7 +225,7 @@ pub(in crate::game::server_side) fn nearest_player(
 /// look at every player for every mob.
 pub(in crate::game) struct NearestPlayers<'p> {
     players: &'p [LevelPlayer],
-    cells: sunrise_client::fast_hash::FxHashMap<(i64, i64), Vec<usize>>,
+    cells: sunrise_level::fast_hash::FxHashMap<(i64, i64), Vec<usize>>,
     /// The cells' bounding box: (x0, z0, x1, z1).
     bounds: (i64, i64, i64, i64),
     /// Few players, or one too far out for cells: every question scans.
@@ -237,7 +236,7 @@ impl<'p> NearestPlayers<'p> {
     /// Further out than any world border: such positions are answered by a scan.
     const FAR: f64 = 1.0e9;
     pub(in crate::game::server_side) fn new(players: &'p [LevelPlayer]) -> Self {
-        let mut cells = sunrise_client::fast_hash::FxHashMap::<(i64, i64), Vec<usize>>::default();
+        let mut cells = sunrise_level::fast_hash::FxHashMap::<(i64, i64), Vec<usize>>::default();
         let mut bounds = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
         let mut scan = players.len() <= 8;
         for (i, p) in players.iter().enumerate().filter(|(_, p)| !p.spectator) {
@@ -370,7 +369,7 @@ pub(in crate::game) struct GameLevel<'g, 'a> {
     /// Single-entry cache of the last looked-up chunk: natural spawning makes
     /// dozens of block, heightmap, light, biome and structure queries in the
     /// same chunk per pass.
-    last_chunk: std::cell::Cell<Option<((i32, i32), Option<&'g sunrise_client::chunk::Chunk>)>>,
+    last_chunk: std::cell::Cell<Option<((i32, i32), Option<&'g sunrise_level::chunk::Chunk>)>>,
 }
 /// The mob a listened `mob_spawn_position_check` created for its lend, held
 /// until the spawn takes it, and the provisional count before it was
@@ -397,7 +396,7 @@ fn mob_collidable_for_spawn(mob: &Mob) -> bool {
     mob.alive()
         && match mob.species() {
             Species::Shulker => true,
-            Species::HappyGhast => sunrise_client::mobs::happy_ghast::on_still_timeout(mob),
+            Species::HappyGhast => sunrise_sim::mobs::happy_ghast::on_still_timeout(mob),
             _ => false,
         }
 }
@@ -429,7 +428,7 @@ impl MobBoxes {
 }
 impl<'g> GameLevel<'g, '_> {
     #[inline]
-    fn chunk_at(&self, cx: i32, cz: i32) -> Option<&'g sunrise_client::chunk::Chunk> {
+    fn chunk_at(&self, cx: i32, cz: i32) -> Option<&'g sunrise_level::chunk::Chunk> {
         let key = (cx, cz);
         if let Some((cached, chunk)) = self.last_chunk.get()
             && cached == key
@@ -476,7 +475,7 @@ impl<'g> GameLevel<'g, '_> {
         tree: &mut super::persist::SpawnTree,
     ) -> bool {
         if !tree.admit(&mut self.pending_uuids.borrow_mut(), |uuid| {
-            use sunrise_client::join_seq::residency::table::EntityLookup;
+            use sunrise_sim::join_seq::residency::table::EntityLookup;
             let game = self.game;
             let mut after = None;
             loop {
@@ -579,14 +578,14 @@ impl<'g> GameLevel<'g, '_> {
             Finalized::Skipped => {}
             Finalized::Done => {
                 let mut level = PassLevel::new(self);
-                let mut cx = sunrise_client::mobs::finalize::Ctx {
+                let mut cx = sunrise_sim::mobs::finalize::Ctx {
                     level: &mut level,
                     random,
                     difficulty,
                     created: Vec::new(),
                     jockey_rider: None,
                 };
-                sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, r.reason, group);
+                sunrise_sim::mobs::finalize::finalize(&mut cx, &mut mob, r.reason, group);
                 for m in cx.created {
                     self.record_pending(&m);
                     self.spawned.borrow_mut().push(m);
@@ -617,15 +616,15 @@ impl<'a, 'g, 'h> PassLevel<'a, 'g, 'h> {
         Self { l }
     }
 }
-impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
-    fn mob_maps(&self) -> &sunrise_client::neoforge_mob_maps::NeoForgeMobMaps {
+impl sunrise_sim::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
+    fn mob_maps(&self) -> &sunrise_sim::neoforge_mob_maps::NeoForgeMobMaps {
         self.l.game.mob_maps()
     }
     fn spawn_event(
         &mut self,
-        mob: &mut sunrise_client::mobs::Mob,
-        reason: sunrise_client::mobs::spawn_rules::Reason,
-    ) -> sunrise_client::mobs::finalize::SpawnEvent {
+        mob: &mut sunrise_sim::mobs::Mob,
+        reason: sunrise_sim::mobs::spawn_rules::Reason,
+    ) -> sunrise_sim::mobs::finalize::SpawnEvent {
         self.l.game.finalize_spawn_event_result(mob, reason)
     }
     fn biome(&self, pos: [i32; 3]) -> String {
@@ -664,7 +663,7 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
     fn halloween(&self) -> bool {
         self.l.game.finalize_halloween()
     }
-    fn create(&mut self, kind: &str, _: sunrise_client::mobs::spawn_rules::Reason) -> Option<Mob> {
+    fn create(&mut self, kind: &str, _: sunrise_sim::mobs::spawn_rules::Reason) -> Option<Mob> {
         use sunrise_world::food::Difficulty;
         let t = self.l.game.res.mob_types().get(kind)?;
         if self.l.game.world.health_rules.difficulty == Difficulty::Peaceful
@@ -680,7 +679,7 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
             0.0,
         ))
     }
-    fn spawn_data(&self) -> sunrise_client::mobs::finalize::SpawnData<'_> {
+    fn spawn_data(&self) -> sunrise_sim::mobs::finalize::SpawnData<'_> {
         self.l.game.finalize_spawn_data()
     }
 }
@@ -745,7 +744,7 @@ impl SpawnLevel for GameLevel<'_, '_> {
         self.w.spawn_sky_light(|| self.light(x, y, z))
     }
     fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        sunrise_client::mobs::spawn_rules::spawn_block_light(self.light(x, y, z))
+        sunrise_sim::mobs::spawn_rules::spawn_block_light(self.light(x, y, z))
     }
     fn sky_darken(&self) -> i32 {
         SpawnLevel::sky_darken(&self.w)
@@ -992,7 +991,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         self.game
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
     }
     /// WORLD_SURFACE (every spawn attempt's) is the chunk's kept heightmap.
     /// The others are scanned down the column: sections of air alone are
@@ -1021,7 +1020,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             .pathfindable(self.state(x, y, z), data::PathComputationType::Land)
     }
 }
-impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
+impl sunrise_sim::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
     /// `Level.hasNearbyAlivePlayer`, over every player.
     fn alive_player_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool {
         self.players.iter().any(|p| p.alive_near(x, y, z, range))
@@ -1030,9 +1029,9 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
         self.game
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
     }
-    fn spawner_type(&self, id: &str) -> Option<sunrise_client::mobs::spawner::SpawnerTypeFacts> {
+    fn spawner_type(&self, id: &str) -> Option<sunrise_sim::mobs::spawner::SpawnerTypeFacts> {
         self.game.res.rest().spawner_types.get(id).copied()
     }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
@@ -1050,7 +1049,7 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
     }
 }
 /// Every entity type with a spawn cost in some biome, each once.
-fn spawn_cost_types(biomes: &sunrise_client::biome::Biomes) -> Vec<&str> {
+fn spawn_cost_types(biomes: &sunrise_level::biome::Biomes) -> Vec<&str> {
     let mut types: Vec<&str> = Vec::new();
     for t in biomes.list.iter().flat_map(|b| b.spawn_costs.keys()) {
         if !types.contains(&t.as_str()) {
@@ -1188,7 +1187,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         rides: Vec<(u32, u32)>,
         persistent: bool,
     ) {
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let mut pending = pending;
         let mut created = created;
         for m in pending.iter_mut() {
@@ -1229,7 +1228,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
             return None;
         }
         self.player_view().map(|p| LevelPlayer {
-            uuid: sunrise_client::lan::playerdata::ints_uuid(p.uuid),
+            uuid: sunrise_sim::lan::playerdata::ints_uuid(p.uuid),
             position: p.position,
             bounds: p.bounds,
             alive: p.alive,
@@ -1246,7 +1245,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         dimension: &'s str,
     ) -> impl Iterator<Item = u128> + 's {
         let local = (dimension == self.dim.id() && self.local_player_in_level())
-            .then(|| sunrise_client::lan::playerdata::ints_uuid(self.acting_uuid()));
+            .then(|| sunrise_sim::lan::playerdata::ints_uuid(self.acting_uuid()));
         local
             .into_iter()
             .chain(self.guests_placed_in(dimension).map(|g| g.uuid))
@@ -1261,7 +1260,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
     }
     /// The guests in the level in place, past the acting one: `player_view`
     /// already reads that guest's live body, and its record lags behind it.
-    fn level_guests(&self) -> impl Iterator<Item = &sunrise_client::lan::guest::Guest> + '_ {
+    fn level_guests(&self) -> impl Iterator<Item = &sunrise_sim::lan::guest::Guest> + '_ {
         self.lan
             .iter()
             .flat_map(|h| self.guests_placed_in(&h.hub.config.dimension))
@@ -1270,7 +1269,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
     fn guests_placed_in<'s>(
         &'s self,
         dimension: &'s str,
-    ) -> impl Iterator<Item = &'s sunrise_client::lan::guest::Guest> + 's {
+    ) -> impl Iterator<Item = &'s sunrise_sim::lan::guest::Guest> + 's {
         self.lan.iter().flat_map(move |h| {
             h.hub
                 .guests
@@ -1338,12 +1337,12 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         state: &SpawnState,
     ) -> Vec<Category> {
         let rules = &self.ui.rules;
-        if !rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS) {
+        if !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS) {
             return Vec::new();
         }
         state.policy_categories(
             self.spawn_policy(self.dim.key()).flags,
-            rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS),
+            rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS),
             self.world.game_time % 400 == 0,
         )
     }
@@ -1358,15 +1357,15 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
             return;
         }
         let from = self.lan_synced_from();
-        sunrise_client::spans::time("spawn_raids", || self.tick_raids());
-        sunrise_client::spans::time("spawn_natural", || self.spawn_natural());
+        sunrise_level::spans::time("spawn_raids", || self.tick_raids());
+        sunrise_level::spans::time("spawn_natural", || self.spawn_natural());
         // ServerChunkCache.tickChunks: the custom spawners tick only with spawn_mobs.
         if self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
         {
-            sunrise_client::spans::time("spawn_custom", || self.tick_custom_spawners());
+            sunrise_level::spans::time("spawn_custom", || self.tick_custom_spawners());
         }
         self.lan_synced_since(from);
     }
@@ -1379,7 +1378,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         if self.side.world_debug {
             return;
         }
-        let mut laps = sunrise_client::spans::laps();
+        let mut laps = sunrise_level::spans::laps();
         let mut players = self.level_players();
         // Fake players (mods' bots) do not anchor natural spawning.
         let mut had_fake = false;
@@ -1439,7 +1438,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
                     ],
                     is_mob: true,
                     persistent: m.persistent
-                        || sunrise_client::mobs::ai::requires_custom_persistence(m),
+                        || sunrise_sim::mobs::ai::requires_custom_persistence(m),
                 })
                 .collect();
             laps.lap("sn_materialize");
@@ -1588,8 +1587,8 @@ mod tests {
     #[ignore = "daily"]
     fn alive_player_near_tests_guests_where_they_stand() {
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let net = NetConfig {
@@ -1684,7 +1683,7 @@ mod tests {
     #[ignore = "daily"]
     fn end_spawning_reads_the_level_range_not_the_widened_column() {
         use std::sync::Arc;
-        use sunrise_client::chunk::{Chunk, LevelShape};
+        use sunrise_level::chunk::{Chunk, LevelShape};
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         game.dim = Dim::End;
@@ -1727,7 +1726,7 @@ mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.border.set_center([8.0, 8.0]);
             game.border.set_size(16.0);
@@ -1752,12 +1751,13 @@ mod tests {
     #[ignore = "daily"]
     fn world_border_outer_chunk_gate_keeps_attempt_randomness() {
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::motion::PlayerMotion;
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             // Only the center chunk can tick: its eight neighbors are loaded,
             // but none of those has all its own neighbors. The center is partial.
@@ -1778,7 +1778,7 @@ mod tests {
             assert!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+                    .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
             );
             // A contained chunk must actually reach the spawning pass, so an
             // empty category list cannot satisfy the rejected-chunk assertion.
@@ -2041,7 +2041,7 @@ mod tests {
         with_game(|game| {
             let level = game.natural_level();
             let placement = |random: &mut LegacyRandom| {
-                let ok = sunrise_client::mobs::spawn_rules::check_spawn_rules(
+                let ok = sunrise_sim::mobs::spawn_rules::check_spawn_rules(
                     level.mob_type("minecraft:sulfur_cube").unwrap().into(),
                     &level,
                     Reason::Natural,
@@ -2235,8 +2235,8 @@ mod tests {
     /// A survival player standing at `at`, and empty lit chunks around the origin.
     fn spawn_check_world(game: &mut crate::game::ServerGame<'_>, at: Vec3) {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
+        use sunrise_level::chunk::Chunk;
+        game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, at).unwrap());
         for cx in -2..=4 {
             for cz in -2..=4 {
                 let mut chunk = Chunk::empty(cx, cz);
@@ -2355,8 +2355,8 @@ mod tests {
     #[ignore = "daily"]
     fn spawner_checks_tell_the_block_and_keep_the_draws() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::chunk::block_entity::Next;
-        use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
+        use sunrise_level::chunk::block_entity::Next;
+        use sunrise_sim::mobs::spawner::{SpawnData, SpawnDataExt};
         with_game(|game| {
             spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
             let level = level_of(game);
@@ -2376,7 +2376,7 @@ mod tests {
                 if let Some((name, value)) = extra {
                     entity.insert(name.into(), value);
                 }
-                let mut spawner = sunrise_client::mobs::spawner::Spawner {
+                let mut spawner = sunrise_sim::mobs::spawner::Spawner {
                     spawn_delay: 0,
                     next: Some(Next::Own(SpawnData::new(entity, None, None))),
                     ..Default::default()
@@ -2451,8 +2451,8 @@ mod tests {
     #[ignore = "daily"]
     fn trial_spawner_checks_tell_the_block_and_keep_the_draws() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
-        use sunrise_client::mobs::trial_spawner::{TrialSpawner, TrialState};
+        use sunrise_sim::mobs::spawner::{SpawnData, SpawnDataExt};
+        use sunrise_sim::mobs::trial_spawner::{TrialSpawner, TrialState};
         with_game(|game| {
             spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
             let level = level_of(game);
@@ -2762,7 +2762,7 @@ mod tests {
                     let mut player = mob.position;
                     player.x += 40.0;
                     world.nearest_player = Some(player);
-                    let kept = sunrise_client::mobs::ai::despawn_check(&mut mob, &world);
+                    let kept = sunrise_sim::mobs::ai::despawn_check(&mut mob, &world);
                     let untouched_random =
                         mob.random.next_int_bound(1 << 30) == untouched.next_int_bound(1 << 30);
                     (kept, untouched_random)
@@ -2815,7 +2815,7 @@ mod tests {
             let mut player = mob.position;
             player.x += 40.0;
             world.nearest_player = Some(player);
-            sunrise_client::mobs::ai::despawn_check(&mut mob, &world);
+            sunrise_sim::mobs::ai::despawn_check(&mut mob, &world);
             assert_eq!(mob.despawn, mod_api::Despawn::Default);
             assert_ne!(
                 mob.random.next_int_bound(1 << 30),
@@ -2927,11 +2927,11 @@ mod tests {
     fn raids_tick_before_natural_and_custom_spawning() {
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        sunrise_client::spans::record_here(true);
-        let _ = sunrise_client::spans::take_raw();
+        sunrise_level::spans::record_here(true);
+        let _ = sunrise_level::spans::take_raw();
         game.tick_spawners();
-        let raw = sunrise_client::spans::take_raw();
-        sunrise_client::spans::record_here(false);
+        let raw = sunrise_level::spans::take_raw();
+        sunrise_level::spans::record_here(false);
         let phases: Vec<&str> = raw
             .iter()
             .map(|s| s.name)

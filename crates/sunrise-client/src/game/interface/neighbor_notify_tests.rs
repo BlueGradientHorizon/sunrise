@@ -26,7 +26,7 @@ fn a_cancelled_update_leaves_the_lamp_unlit() {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = &game.pack.assets.registry;
             let power = registry.default_state("minecraft:redstone_block").unwrap();

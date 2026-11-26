@@ -1,10 +1,8 @@
 //! `RaidCommand`: `/raid start|stop|check|spawnleader|setomen|glow|sound`.
 use super::{Game, R, Text, err};
-use sunrise_client::{
-    command::{Arg, Context},
-    mobs::raider,
-};
+use sunrise_command::{Arg, Context};
 use sunrise_core::random::RandomSource;
+use sunrise_sim::mobs::raider;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cmd_raid(&mut self, id: &str, ctx: &Context) -> R<i32> {
@@ -63,7 +61,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     [player.x, player.y, player.z],
                     true,
                     super::super::creatures::SpawnSite::Finalizing(
-                        sunrise_client::mobs::spawn_rules::Reason::Command,
+                        sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 ) {
                     Some(id) => {
@@ -86,12 +84,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     fail(self, "No raid found here");
                     return Ok(1);
                 };
-                if level > sunrise_client::raid::MAX_OMEN_LEVEL {
+                if level > sunrise_sim::raid::MAX_OMEN_LEVEL {
                     fail(
                         self,
                         &format!(
                             "Sorry, the max raid omen level you can set is {}",
-                            sunrise_client::raid::MAX_OMEN_LEVEL
+                            sunrise_sim::raid::MAX_OMEN_LEVEL
                         ),
                     );
                 } else {
@@ -131,8 +129,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 pub(in crate::game) mod tests {
 
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::{command::vanilla, motion::PlayerMotion};
+    use sunrise_command::vanilla;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
 
     /// Runs a line of the dev tree (`/raid` is registered only there).
     fn run_dev(game: &mut crate::game::ServerGame<'_>, line: &str) -> i32 {

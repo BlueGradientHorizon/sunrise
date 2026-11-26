@@ -8,8 +8,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        inputs: crate::menu::AnvilUpdateInputs<'_>,
-        result: &mut crate::stations::AnvilResult,
+        inputs: sunrise_sim::menu::AnvilUpdateInputs<'_>,
+        result: &mut sunrise_sim::stations::AnvilResult,
     ) {
         use mod_api::item::menu::{AnvilUpdateEdits, AnvilUpdateInputs, StackResult};
 

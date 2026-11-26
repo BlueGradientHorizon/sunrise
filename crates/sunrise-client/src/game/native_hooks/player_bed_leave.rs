@@ -39,7 +39,7 @@ pub(in crate::game) mod player_bed_leave_tests {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             test(game);
         });

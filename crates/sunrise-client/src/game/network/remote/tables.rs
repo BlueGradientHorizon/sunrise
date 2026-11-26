@@ -6,12 +6,13 @@ pub(in crate::game) mod tests {
         Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
     use std::{collections::HashSet, sync::Arc};
-    use sunrise_client::{items::ItemStack, mobs::equip::equippable_in_slot};
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::{
         connection::Pipe,
         packets::configuration::{RegistryTags, TagEntry, UpdateTags},
     };
+    use sunrise_sim::mobs::equip::equippable_in_slot;
 
     fn client<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

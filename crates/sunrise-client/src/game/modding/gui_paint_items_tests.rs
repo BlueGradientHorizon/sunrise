@@ -8,8 +8,8 @@ use mod_api::{ComponentHoverEvent, GuiPaintError, Hooks, ModEntry};
 use mod_platform::testing::with_mods;
 use std::sync::Mutex;
 use sunrise_client::hud::{Blend as Run, HudBatch, map_slot_sprite};
-use sunrise_client::items::ItemStack;
-use sunrise_client::text::{Style, Text};
+use sunrise_client_core::text::{Style, Text};
+use sunrise_items::items::ItemStack;
 
 /// What each `gui_paint` answered, in order.
 static ANSWERS: Mutex<Vec<Result<(), GuiPaintError>>> = Mutex::new(Vec::new());

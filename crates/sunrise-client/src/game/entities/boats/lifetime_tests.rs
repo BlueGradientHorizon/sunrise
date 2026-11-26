@@ -15,7 +15,7 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 
 #[test]
 fn a_tick_clone_follows_its_join_but_cannot_replace_a_later_resident() {
-    let mut boats = crate::join_seq::JoinList::<Boat, false>::default();
+    let mut boats = sunrise_sim::join_seq::JoinList::<Boat, false>::default();
     for id in [1, 2] {
         boats.push(Boat::new(id, "oak".into(), Vec3::ZERO, 0.0));
     }
@@ -48,7 +48,7 @@ fn a_bound_boat_keeps_its_registration_through_ticks_until_discard() {
 fn a_bound_boat_commits_the_driven_client_tick() {
     bound_boat_client_case(|game, step| {
         game.riding = Some(71);
-        assert!(game.remote_ride(sunrise_client::sprint::Keys {
+        assert!(game.remote_ride(sunrise_sim::sprint::Keys {
             forward: true,
             ..Default::default()
         },));

@@ -7,12 +7,10 @@
 use super::held_items::in_attack_range;
 use super::held_items::{attack_range_contains, attack_reach};
 use super::{Game, minecarts::CartKind};
-use sunrise_client::{
-    attack_strength::HeldStack,
-    first_person::{Hand, SwingAnimation, swing_duration},
-    items::ItemStack,
-};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::attack_strength::HeldStack;
+use sunrise_sim::first_person_sim::{Hand, SwingAnimation, swing_duration};
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
 /// - entity.position()`, measured from the entity's feet, as
@@ -574,7 +572,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // ChestBlock.getMenuProvider: none while a redstone conductor
             // sits on top of either half (a sitting cat aside). Copper
             // chests are `ChestBlock`s too.
-            _ if sunrise_client::containers::is_chest_block(id) => {
+            _ if sunrise_level::containers::is_chest_block(id) => {
                 let key = (hit.pos[0], hit.pos[1], hit.pos[2]);
                 let blocked = |p: (i32, i32, i32)| {
                     let above = self.world.block(p.0, p.1 + 1, p.2);
@@ -672,7 +670,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn spear_default_reach_and_bounds() {
         // #14092: A spear's default reach matches REACH (min 2.0, max 4.5, creative 6.5, margin 0.125).
-        let r = &sunrise_client::spear::REACH;
+        let r = &sunrise_sim::spear_sim::REACH;
         let spear = serde_json::json!({
             "min_reach": r.min, "max_reach": r.max,
             "min_creative_reach": r.min_creative, "max_creative_reach": r.max_creative,

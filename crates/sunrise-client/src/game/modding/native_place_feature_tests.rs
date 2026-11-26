@@ -4,7 +4,7 @@
 use super::native_entity_refs::tests::with_game;
 use mod_api::{LevelRef, PlaceFeatureRefusal, WorldEpoch};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 /// The 3x3 chunks around (100, 100): a dirt floor at y 63 under open air, or, with `buried`,
 /// stone from y 63 up to y 90.
@@ -180,8 +180,8 @@ fn a_biome_filter_refuses_only_when_reached() {
             assert_eq!(game.world.chunks.len(), before.len());
             for (pos, chunk) in &before {
                 let after = &game.world.chunks[pos];
-                for y in sunrise_client::chunk::MIN_Y
-                    ..sunrise_client::chunk::MIN_Y + sunrise_client::chunk::HEIGHT
+                for y in sunrise_level::chunk::MIN_Y
+                    ..sunrise_level::chunk::MIN_Y + sunrise_level::chunk::HEIGHT
                 {
                     for z in 0..16 {
                         for x in 0..16 {

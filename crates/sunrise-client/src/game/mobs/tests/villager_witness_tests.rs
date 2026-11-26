@@ -3,7 +3,7 @@ use super::*;
 use crate::game::native_entity_refs::tests::{
     bind_acting_guest, bind_local_player, run_fresh_cases, with_game,
 };
-use sunrise_client::mobs::{Damage, Who};
+use sunrise_sim::mobs::{Damage, Who};
 
 #[test]
 #[ignore = "daily"]
@@ -33,7 +33,7 @@ fn murder_uses_only_the_victims_sensor_memory() {
             .map(|m| m.seen(None, game.items()))
             .collect();
         let world = game.mob_world_base(&snapshot);
-        let mut level = sunrise_client::health::TestLevel::new(0);
+        let mut level = sunrise_sim::health::TestLevel::new(0);
         let mut events = Vec::new();
         for _ in 0..20 {
             villager_brain::tick(&mut victim, &world, &mut level.level(), &mut events);
@@ -75,7 +75,7 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
                 "minecraft:ender_dragon",
                 at.components(),
                 super::super::creatures::SpawnSite::Finalizing(
-                    sunrise_client::mobs::spawn_rules::Reason::SpawnItemUse,
+                    sunrise_sim::mobs::spawn_rules::Reason::SpawnItemUse,
                 ),
             )
             .expect("a dragon admitted by the egg path");
@@ -87,7 +87,7 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
         }
         game.persist.uuids.insert(92, [0, 0, 0, 4]);
         game.native_mobs_joined(0, false);
-        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
+        game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, at).unwrap());
         let player_hit = |game: &mut crate::game::ServerGame<'_>, uuid, amount| {
             bind_local_player(game, 300, uuid);
             game.mob_hits_mob(91, amount, Damage::player([at.x, at.y, at.z]))
@@ -142,7 +142,7 @@ fn two_hits_of_a_mob_without_uuid_share_one() {
         game.build_registries();
         game.side
             .streaming
-            .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
         game.mobs.clear();
         let fish = game
             .res
@@ -198,7 +198,7 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
         let at = Vec3::new(1.0, 100.0, 1.0);
         game.mobs.push(Mob::new(91, kind, at, 0.0));
         game.native_mobs_joined(0, false);
-        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
+        game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, at).unwrap());
         bind_local_player(game, 301, 9);
         game.side.lan_acting = Some(7);
         game.side.lan_acting_name = Some("Cloud owner".into());
@@ -210,7 +210,7 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
             &[("instant_damage", 1, 0)],
             (&[], &[], 1.0),
             [at.x, at.y, at.z],
-            &crate::text::Text::literal("Cloud"),
+            &sunrise_client_core::text::Text::literal("Cloud"),
             (Some(Who::Player), Some(7)),
         );
         assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 9]), -25);

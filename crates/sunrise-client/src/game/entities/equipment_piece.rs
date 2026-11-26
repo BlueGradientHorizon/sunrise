@@ -49,8 +49,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         baby: bool,
     ) -> Option<EquipmentPiece<'a>> {
         let equippable = match stack {
-            Some(stack) => sunrise_client::item_sync::equippable(stack, self.res.items()),
-            None => sunrise_client::item_sync::item_equippable(item, self.res.items()),
+            Some(stack) => sunrise_sim::item_sync::equippable(stack, self.res.items()),
+            None => sunrise_sim::item_sync::item_equippable(item, self.res.items()),
         }?;
         let glint = self
             .res
@@ -86,7 +86,7 @@ pub(in crate::game) type EquipmentAssets =
     HashMap<String, HashMap<String, Vec<EquipmentAssetLayer>>>;
 
 fn resolve_piece<'a>(
-    equippable: sunrise_client::item_sync::Equippable,
+    equippable: sunrise_sim::item_sync::Equippable,
     slot: &str,
     leggings: bool,
     baby: bool,
@@ -137,7 +137,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .iter()
             .all(|&slot| mob.extra.slot_stack(slot).is_none())
             || render::avatar(mob)
-            || sunrise_client::mobs::equine::is_equine(mob.species())
+            || sunrise_sim::mobs::equine::is_equine(mob.species())
         {
             return Vec::new();
         }
@@ -347,10 +347,8 @@ impl EquipmentPiece<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::{
-        item_sync::Equippable,
-        mobs::{Part, anim::Poses, render},
-    };
+    use sunrise_client::mobs::{Part, render};
+    use sunrise_sim::{item_sync::Equippable, mobs::anim::Poses};
 
     pub(super) fn asset_layer(
         texture: &str,

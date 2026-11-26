@@ -3,7 +3,7 @@ use super::{Game, Target};
 use crate::game::commands::compute::ComputeContext;
 use crate::game::commands::compute::context_entities;
 use serde_json::Value;
-use sunrise_client::advancements::{self as adv};
+use sunrise_sim::advancements::{self as adv};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Leaf predicates that read the command's world or entity context.
@@ -94,7 +94,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         registry: &str,
         id: &str,
     ) -> Option<Value> {
-        let id = sunrise_client::command::args::normalized(id);
+        let id = sunrise_command::args::normalized(id);
         match registry {
             "minecraft:predicate" => self.side.fns.0.store.predicates.get(id.as_ref()),
             _ => self.context_registry(registry)?.get(id.as_ref()),
@@ -149,7 +149,7 @@ pub(in crate::game) mod tests {
             .rest
             .get_mut()
             .unwrap()
-            .providers = sunrise_client::providers::Providers::load(&fixture);
+            .providers = sunrise_level::providers::Providers::load(&fixture);
         std::fs::remove_dir_all(&fixture).unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
@@ -211,7 +211,7 @@ pub(in crate::game) mod tests {
         game.set_allow_commands(true);
         assert!(game.run_command("scoreboard objectives add points dummy"));
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
             )

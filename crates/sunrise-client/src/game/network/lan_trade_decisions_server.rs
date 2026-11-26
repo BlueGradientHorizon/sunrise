@@ -13,12 +13,12 @@ use crate::game::lan_trade_decisions::Journal;
 use crate::game::lan_trade_decisions::TakePlan;
 use crate::game::lan_trade_decisions::TakeReads;
 use std::cell::RefCell;
-use sunrise_client::{
+use sunrise_protocol::packets::play;
+use sunrise_sim::{
     lan::conn::transaction_packets::Scope,
     menu::{Input, StackedOutcome},
     merchant::Event,
 };
-use sunrise_protocol::packets::play;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Install only the writes calculated by the plan.
@@ -43,7 +43,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (session, _) = self.merchant_apply(
             plan.menu.merchant.take().expect("planned merchant"),
             Some(mob),
-            sunrise_client::merchant::TradeFeedback::Current,
+            sunrise_sim::merchant::TradeFeedback::Current,
         );
         let host = self.lan.as_mut().expect("validated merchant host");
         let gi = host

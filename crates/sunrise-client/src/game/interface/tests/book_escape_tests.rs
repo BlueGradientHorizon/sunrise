@@ -9,7 +9,7 @@
 //! (`:70`).
 use super::BookScreen;
 use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 use winit::keyboard::KeyCode;
 
 /// A game whose selected hotbar slot holds a book and quill, its editor open,

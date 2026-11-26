@@ -68,21 +68,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let custom = |k: (i32, i32, i32)| self.block_name_plain(k);
         let title = match slots {
             Slots::Ender => sunrise_protocol::text::translatable("container.enderchest", &[]),
-            Slots::Double(first, second) => sunrise_client::containers::double_chest_name(
+            Slots::Double(first, second) => sunrise_level::containers::double_chest_name(
                 custom(first).as_deref(),
                 custom(second).as_deref(),
             ),
             Slots::Block(k) => {
                 // A mod block's container is named after its block
                 // (`Block.getDescriptionId`).
-                let key = match sunrise_client::containers::default_name_key(name) {
+                let key = match sunrise_level::containers::default_name_key(name) {
                     Some(key) => key.to_owned(),
                     None if self.mod_menu_at(k).is_some() => {
                         format!("block.{}", name.replace(':', "."))
                     }
                     None => return MenuOpen::NoProvider,
                 };
-                sunrise_client::containers::display_name(custom(k).as_deref(), &key)
+                sunrise_level::containers::display_name(custom(k).as_deref(), &key)
             }
             // Opened by a mod (`open_menu`), never here.
             Slots::Native => return MenuOpen::NoProvider,
@@ -100,7 +100,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The block entity's createMenu: a shulker box opens a ShulkerBoxMenu
         // (not a 9x3 ChestMenu), whose slots refuse shulker boxes.
         let menu = match slots {
-            Slots::Block(_) => sunrise_client::containers::block_menu_type(name).unwrap_or(menu),
+            Slots::Block(_) => sunrise_level::containers::block_menu_type(name).unwrap_or(menu),
             _ => menu,
         };
         // BaseContainerBlockEntity.createMenu (and a double chest's own menu
@@ -134,7 +134,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.send_to(
                 conn,
                 &C::SystemChat(play::SystemChat {
-                    content: sunrise_client::containers::locked_message(&title),
+                    content: sunrise_level::containers::locked_message(&title),
                     overlay: true,
                 }),
             );
@@ -166,11 +166,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(guest) = host.hub.guest(conn) else {
             return MenuOpen::Refused;
         };
-        if !sunrise_client::containers::menu_reaches(&guest.brand, menu) {
+        if !sunrise_level::containers::menu_reaches(&guest.brand, menu) {
             return MenuOpen::Refused;
         }
         let sends_menu_extra = matches!(slots, Slots::Block(k) if self.mod_menu_at(k).is_some());
-        let required_rev = if let Some(kind) = sunrise_client::containers::mod_menu_type(menu) {
+        let required_rev = if let Some(kind) = sunrise_level::containers::mod_menu_type(menu) {
             if !kind.player_inventory || kind.slots == 0 {
                 sunrise_protocol::menu_extra::LIVE_DATA_REVISION
             } else {
@@ -296,11 +296,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // `createMenu` (ChestMenu.threeRows or a HopperMenu), and
         // `MenuProvider.getDisplayName`, the vehicle's name key.
-        let Some((menu, _)) = sunrise_client::containers::vehicle_menu(&entity_type) else {
+        let Some((menu, _)) = sunrise_level::containers::vehicle_menu(&entity_type) else {
             return MenuOpen::NoProvider;
         };
         let title = sunrise_protocol::text::translatable(
-            &sunrise_client::containers::vehicle_menu_name(&entity_type),
+            &sunrise_level::containers::vehicle_menu_name(&entity_type),
             &[],
         );
         let slots = Slots::Block(pos);
@@ -323,12 +323,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         let denied = if spectator_pending {
             // ServerPlayer.openMenu: the refused spectator's action bar, red.
-            let message = sunrise_client::text::Text::translate("container.spectatorCantOpen", &[])
-                .with_color(sunrise_client::text::RED);
+            let message =
+                sunrise_client_core::text::Text::translate("container.spectatorCantOpen", &[])
+                    .with_color(sunrise_client_core::text::RED);
             host.hub.send_to(
                 conn,
                 &C::SystemChat(play::SystemChat {
-                    content: sunrise_client::lan::data::component_nbt(&message.component()),
+                    content: sunrise_sim::lan::data::component_nbt(&message.component()),
                     overlay: true,
                 }),
             );
@@ -498,7 +499,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn settle_closed_hub_menu(
         &mut self,
         conn: u32,
-        closed: sunrise_client::lan::containers::ClosedHubMenu,
+        closed: sunrise_sim::lan::containers::ClosedHubMenu,
         removal: MenuRemoval,
     ) {
         let carried: Vec<_> = closed.carried.into_iter().collect();
@@ -550,8 +551,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
                 .is_some_and(|g| g.spectator());
-            let ctx = sunrise_client::sculk::Context {
-                source: Some(sunrise_client::mobs::Who::Player.into()),
+            let ctx = sunrise_level::sculk::Context {
+                source: Some(sunrise_sim::mobs::Who::Player.into()),
                 spectator: spect,
                 targetable: !spect,
                 living: true,

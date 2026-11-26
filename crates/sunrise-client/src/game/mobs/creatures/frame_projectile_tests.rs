@@ -2,8 +2,8 @@
 //! gives the item up, an empty frame breaks, and a fixed one refuses the hit.
 use crate::game::{Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

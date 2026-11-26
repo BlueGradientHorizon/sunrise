@@ -5,7 +5,7 @@ use super::*;
 use crate::game::{
     native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
 };
-use sunrise_client::menu::{Input, Kind};
+use sunrise_sim::menu::{Input, Kind};
 
 fn fixture(game: &mut crate::game::ServerGame<'_>) -> (Target, Identity) {
     let mut menu = Box::new(EngineMenu::new(Kind::Inventory));

@@ -37,7 +37,7 @@ impl SpawnTree {
             };
             let (node, uuid) = if let Some(mob_type) = game.res.mob_types().get(&kind) {
                 Game::normalize_loaded_mob_tags(&mut tag);
-                let (random, fresh_uuid) = sunrise_client::mobs::living_random();
+                let (random, fresh_uuid) = sunrise_sim::mobs::living_random();
                 let mob = entity_nbt::mob_from_nbt_deferred(
                     &tag,
                     mob_type.clone(),

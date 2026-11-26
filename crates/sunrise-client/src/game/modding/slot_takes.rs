@@ -5,7 +5,8 @@
 use super::api_values::TryIntoApi;
 use super::native_hooks::ResidentBlockEntityAccess;
 use super::{Game, transactions::After};
-use sunrise_client::{block_entities::Pos, menu::SlotTake};
+use sunrise_level::block_entities::Pos;
+use sunrise_sim::menu::SlotTake;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Deliver a take made by the current click (`Slot.onTake`) to the parts of mod menu type

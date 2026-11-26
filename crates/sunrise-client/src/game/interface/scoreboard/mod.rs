@@ -9,15 +9,13 @@ use sunrise_core::nbt::Tag;
 use sunrise_gameplay::stats::{StatScoreChange, StatScoreOp};
 #[allow(unused_imports)]
 use {
-    sunrise_client::command::Context, sunrise_client::command::args::IntRange,
-    sunrise_client::command::args::Selector, sunrise_client::lan::guest::Guest,
-    sunrise_client::lan::playerdata::ints_uuid, sunrise_client::save,
-    sunrise_client::save::uuid_from_text, sunrise_client::save::uuid_text,
-    sunrise_client::scoreboard as sb, sunrise_client::scoreboard::Comp,
-    sunrise_client::scoreboard::Scoreboard, sunrise_client::scoreboard::literal,
-    sunrise_client::scoreboard_cmd, sunrise_client::scoreboard_cmd::Env,
-    sunrise_client::scoreboard_cmd::Holder, sunrise_client::text::Text,
-    sunrise_level::profile_lookup::TabPlayer,
+    sunrise_client_core::scoreboard as sb, sunrise_client_core::scoreboard::Comp,
+    sunrise_client_core::scoreboard::Scoreboard, sunrise_client_core::scoreboard::literal,
+    sunrise_client_core::text::Text, sunrise_command::Context, sunrise_command::args::IntRange,
+    sunrise_command::args::Selector, sunrise_level::profile_lookup::TabPlayer,
+    sunrise_sim::lan::guest::Guest, sunrise_sim::lan::playerdata::ints_uuid, sunrise_sim::save,
+    sunrise_sim::save::uuid_from_text, sunrise_sim::save::uuid_text, sunrise_sim::scoreboard_cmd,
+    sunrise_sim::scoreboard_cmd::Env, sunrise_sim::scoreboard_cmd::Holder,
 };
 
 /// What `ServerPlayer` last recorded for the criteria that follow the player.
@@ -62,8 +60,8 @@ impl Recorded {
 pub(in crate::game) struct ScoreState {
     pub board: Scoreboard,
     /// `/data ... storage`.
-    pub storage: sunrise_client::command_storage::CommandStorage,
-    pub stopwatches: sunrise_client::stopwatches::Stopwatches,
+    pub storage: sunrise_sim::command_storage::CommandStorage,
+    pub stopwatches: sunrise_sim::stopwatches::Stopwatches,
     pub(in crate::game) loaded: bool,
     pub(in crate::game) recorded: Recorded,
 }
@@ -84,7 +82,7 @@ pub(in crate::game) fn pet_team<'a>(
         .or_else(|| board.players_team(owner?))
 }
 /// A tamed pet's owner (`TamableAnimal.getOwnerReference` while `isTame`).
-pub(in crate::game) fn tame_owner(m: &sunrise_client::mobs::Mob) -> Option<[i32; 4]> {
+pub(in crate::game) fn tame_owner(m: &sunrise_sim::mobs::Mob) -> Option<[i32; 4]> {
     m.extra.tame.then_some(m.extra.owner).flatten()
 }
 /// `TamableAnimal.getRootOwner`: the owner, or that owner's own root owner
@@ -147,14 +145,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn load_border(
         &self,
         dim: super::Dim,
-    ) -> sunrise_client::worldborder::WorldBorder {
+    ) -> sunrise_level::worldborder::WorldBorder {
         let mut root = save::read_dat(&self.border_path(dim));
         if root.is_none() && dim == super::Dim::Overworld {
             root = save::read_dat(&self.side.world_root.join("data/minecraft/world_border.dat"));
         }
         root.as_ref()
             .and_then(|root| root.get("data"))
-            .map(sunrise_client::worldborder::WorldBorder::unpack)
+            .map(sunrise_level::worldborder::WorldBorder::unpack)
             .unwrap_or_default()
     }
     /// Save the border of the level in place (`SavedData`, one per level).
@@ -162,7 +160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.score.loaded || !self.is_logical_server() {
             return;
         }
-        if self.border != sunrise_client::worldborder::WorldBorder::default()
+        if self.border != sunrise_level::worldborder::WorldBorder::default()
             && let Err(e) = save::write_dat(
                 &self.border_path(self.dim),
                 Tag::compound([
@@ -186,9 +184,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.score.board = Scoreboard::unpack(data);
         }
         self.score.storage =
-            sunrise_client::command_storage::CommandStorage::load(&self.side.world_root);
-        self.score.stopwatches =
-            sunrise_client::stopwatches::Stopwatches::load(&self.side.world_root);
+            sunrise_sim::command_storage::CommandStorage::load(&self.side.world_root);
+        self.score.stopwatches = sunrise_sim::stopwatches::Stopwatches::load(&self.side.world_root);
         self.sync_score_registries();
     }
     pub(in crate::game) fn save_scoreboard(&mut self) {
@@ -411,7 +408,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let data = self.command_target_nbt(t);
                 for (pattern, negated) in &s.nbt {
                     let matches = match (&data, sunrise_core::nbt::parse_snbt(pattern)) {
-                        (Some(d), Ok((p, _))) => sunrise_client::nbt_path::compare_nbt(&p, Some(d)),
+                        (Some(d), Ok((p, _))) => {
+                            sunrise_client_core::nbt_path::compare_nbt(&p, Some(d))
+                        }
                         _ => false,
                     };
                     if matches == *negated {
@@ -451,9 +450,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn advancements_match(
         &self,
         target: Target,
-        wanted: &[(String, sunrise_client::command::args::AdvCondition)],
+        wanted: &[(String, sunrise_command::args::AdvCondition)],
     ) -> bool {
-        use sunrise_client::command::args::AdvCondition;
+        use sunrise_command::args::AdvCondition;
         let progress = match target {
             Target::Player => &self.adv.progress,
             Target::Guest(conn) => match self.command_guest(conn) {
@@ -518,7 +517,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let board = &self.score.board;
         host.hub.teams.clone_from(&board.teams);
-        let view = sunrise_client::lan::scoreboard::View::of(board);
+        let view = sunrise_sim::lan::scoreboard::View::of(board);
         host.hub.guests.update_all(|g| {
             if g.placed {
                 g.sync_scoreboard(&view, board);
@@ -646,9 +645,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// resolving a tame owner's UUID; other live entities still use Game.
     pub(in crate::game::server_side) fn mob_team_scoped(
         &self,
-        m: &sunrise_client::mobs::Mob,
-        actor: &sunrise_client::mobs::Mob,
-        world: &sunrise_client::mobs::MobWorld<'_>,
+        m: &sunrise_sim::mobs::Mob,
+        actor: &sunrise_sim::mobs::Mob,
+        world: &sunrise_sim::mobs::MobWorld<'_>,
     ) -> Option<&sb::Team> {
         if self.score.board.teams.is_empty() {
             return None;
@@ -703,7 +702,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.score.board.players_team(self.acting_player_name())
     }
     /// The teams of the player and of the mobs on one (empty without teams).
-    pub(in crate::game) fn mob_teams(&self) -> sunrise_client::mobs::Teams<'_> {
+    pub(in crate::game) fn mob_teams(&self) -> sunrise_sim::mobs::Teams<'_> {
         if self.score.board.teams.is_empty() {
             return Default::default();
         }
@@ -726,7 +725,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ))
             }))
             .collect();
-        sunrise_client::mobs::Teams {
+        sunrise_sim::mobs::Teams {
             player: self.player_team(),
             players,
             mobs: self
@@ -819,12 +818,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ctx: &Context,
     ) -> super::commands::R<i32> {
         let mut env = GameEnv { g: self };
-        let result = scoreboard_cmd::execute(id, ctx, &mut env).unwrap_or_else(|| {
-            Err(sunrise_client::command::CommandError::tr(
-                "command.failed",
-                &[],
-            ))
-        });
+        let result = scoreboard_cmd::execute(id, ctx, &mut env)
+            .unwrap_or_else(|| Err(sunrise_command::CommandError::tr("command.failed", &[])));
         self.sync_score_registries();
         result
     }
@@ -869,13 +864,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
     pub(in crate::game::server_side) fn resolve_selector_text(&mut self, raw: &str) -> String {
-        let mut reader = sunrise_client::command::Reader::new(raw);
-        let ty = sunrise_client::command::args::ArgType::Entity {
+        let mut reader = sunrise_command::Reader::new(raw);
+        let ty = sunrise_command::args::ArgType::Entity {
             single: false,
             players: false,
         };
-        let Ok(sunrise_client::command::Arg::Entity(sel)) =
-            ty.parse(&mut reader, &self.ui.registries)
+        let Ok(sunrise_command::Arg::Entity(sel)) = ty.parse(&mut reader, &self.ui.registries)
         else {
             return raw.to_owned();
         };
@@ -909,7 +903,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// [`mob_team`](Self::mob_team) of a mob at hand, without looking it up.
-    pub(in crate::game) fn mob_team_of(&self, m: &sunrise_client::mobs::Mob) -> Option<&sb::Team> {
+    pub(in crate::game) fn mob_team_of(&self, m: &sunrise_sim::mobs::Mob) -> Option<&sb::Team> {
         if self.score.board.teams.is_empty() {
             return None;
         }
@@ -1083,11 +1077,9 @@ pub(in crate::game) mod tab_list_tests {
         atomic::{AtomicI32, Ordering},
         mpsc,
     };
-    use sunrise_client::{
-        lan::{Joined, PlayerSender},
-        tab_list,
-    };
+    use sunrise_client::tab_list;
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, PlayerSender};
 
     fn guest(uuid: u128, name: &str) -> Guest {
         let (tx, _rx) = mpsc::channel();
@@ -1145,12 +1137,18 @@ pub(in crate::game) mod tab_list_tests {
         for guest in &mut guests {
             guest.placed = true;
         }
-        guests[0].game_mode = tab_list::SPECTATOR;
+        guests[0].game_mode = sunrise_level::profile_lookup::SPECTATOR;
         let players = local_tab_players(me.clone(), &guests);
         assert_eq!(players.len(), 3);
-        assert_eq!(players[1].game_mode, tab_list::SPECTATOR);
+        assert_eq!(
+            players[1].game_mode,
+            sunrise_level::profile_lookup::SPECTATOR
+        );
         assert_eq!(players[1].latency, 42);
-        assert_eq!(players[1].skin, tab_list::default_skin(2));
+        assert_eq!(
+            players[1].skin,
+            sunrise_level::profile_lookup::default_skin(2)
+        );
         assert_eq!(players[2].name, "Grumm");
 
         guests[0].game_mode = 1;

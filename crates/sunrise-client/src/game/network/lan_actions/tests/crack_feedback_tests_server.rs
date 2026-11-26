@@ -3,10 +3,8 @@ use crate::game::lan_actions::crack_feedback_tests::cracks;
 use crate::game::lan_actions::crack_feedback_tests::observer;
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{NetConfig, hub::HubConfig},
-};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 use sunrise_world::registry::BlockStateId;
 
 pub(in crate::game) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() {

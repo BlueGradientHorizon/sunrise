@@ -6,8 +6,9 @@
 use super::commands::Target;
 use super::*;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 const NEAR_HOGLIN: &str = "00006093-0000-0000-0000-000000000003";
 const NEAR_PIG: &str = "00006093-0000-0000-0000-00000000000d";
@@ -84,7 +85,7 @@ fn game<'a>(
 
 fn health(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> f32 {
     let target = game
-        .target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap())
+        .target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap())
         .expect("the entity is in the level");
     match target {
         Target::Mob(id) => game.mobs.iter().find(|m| m.id == id).unwrap().health,
@@ -164,7 +165,7 @@ fn a_hoglin_hits_from_its_second_fighting_tick_every_41_ticks() {
 #[test]
 #[ignore = "daily"]
 fn deferred_stronger_hits_do_not_count_hurt_timers_down_twice() {
-    use sunrise_client::mobs::Damage;
+    use sunrise_sim::mobs::Damage;
     let mut resources = None;
     let mut game = game(&mut resources);
     let first = mob_id(&mut game, NEAR_HOGLIN);
@@ -191,7 +192,7 @@ fn deferred_stronger_hits_do_not_count_hurt_timers_down_twice() {
 
 /// Added controls (after the frozen baseline above).
 fn mob_id(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> u32 {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap()) {
         Some(Target::Mob(id)) => id,
         other => panic!("{other:?}"),
     }
@@ -203,8 +204,8 @@ fn mob_id(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> u32 {
 #[test]
 #[ignore = "daily"]
 fn a_broadcast_target_replaces_only_a_farther_one() {
-    use sunrise_client::mobs::{Who, piglin::receive_attack_target};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Who, piglin::receive_attack_target};
     let mut resources = None;
     let mut game = game(&mut resources);
     let receiver = mob_id(&mut game, HOGLIN);
@@ -336,8 +337,8 @@ impl mod_api::Hooks for BroadcastTargetListener {
 #[ignore = "daily"]
 fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::mobs::{Mob, MobEvent, Who};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Mob, MobEvent, Who};
 
     let state = Arc::new(std::sync::Mutex::new((0, None, None)));
     let mods = vec![mod_api::ModEntry::new(
@@ -471,13 +472,13 @@ fn broadcast(
     game: &mut crate::game::ServerGame<'_>,
     mob: u32,
     from: u32,
-    target: sunrise_client::mobs::Who,
+    target: sunrise_sim::mobs::Who,
 ) {
     let player = game
         .lan
         .as_ref()
         .and_then(|h| h.mob_players.get(&from).copied());
-    let event = sunrise_client::mobs::MobEvent::HoglinAttackTarget {
+    let event = sunrise_sim::mobs::MobEvent::HoglinAttackTarget {
         mob,
         target,
         player,
@@ -485,14 +486,14 @@ fn broadcast(
     game.handle_mob_events(vec![event]).unwrap();
 }
 
-fn target_of(game: &crate::game::ServerGame<'_>, id: u32) -> Option<sunrise_client::mobs::Who> {
+fn target_of(game: &crate::game::ServerGame<'_>, id: u32) -> Option<sunrise_sim::mobs::Who> {
     game.mobs.iter().find(|m| m.id == id).unwrap().ai.target
 }
 
 fn set_target(
     game: &mut crate::game::ServerGame<'_>,
     id: u32,
-    target: Option<sunrise_client::mobs::Who>,
+    target: Option<sunrise_sim::mobs::Who>,
 ) {
     game.mobs.iter_mut().find(|m| m.id == id).unwrap().ai.target = target;
 }
@@ -513,7 +514,7 @@ fn place_player(game: &mut crate::game::ServerGame<'_>, x: f64, z: f64) {
 #[test]
 #[ignore = "daily"]
 fn a_broadcast_player_is_compared_by_distance() {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     let mut resources = None;
     let mut game = game(&mut resources);
     let receiver = mob_id(&mut game, HOGLIN);
@@ -554,8 +555,8 @@ fn a_broadcast_player_is_compared_by_distance() {
 
 /// A host on LAN with one placed guest (conn 2) at `guest_at`.
 fn host_with_guest(game: &mut crate::game::ServerGame<'_>, guest_at: [f64; 3]) {
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     let net = NetConfig {
         announce: false,
         ..NetConfig::lan(0, "hoglin-broadcast-test".into(), 2)
@@ -612,7 +613,7 @@ fn host_with_guest(game: &mut crate::game::ServerGame<'_>, guest_at: [f64; 3]) {
 #[test]
 #[ignore = "daily"]
 fn a_guest_broadcast_is_placed_as_the_guest() {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     let mut resources = None;
     let mut game = game(&mut resources);
     // The host 21 blocks from the receiver, the guest 2 blocks.

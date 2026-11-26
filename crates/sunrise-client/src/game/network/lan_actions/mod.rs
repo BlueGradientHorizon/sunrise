@@ -16,10 +16,10 @@ use sunrise_core::geometry::Aabb;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 #[allow(unused_imports)]
 use {
-    sunrise_client::entities::Experience, sunrise_client::items::ItemStack,
-    sunrise_client::lan::guest::SPECTATOR, sunrise_client::lan::menu::Slots,
-    sunrise_client::motion::PlayerMotion, sunrise_client::pose::Dimensions,
+    sunrise_items::items::ItemStack, sunrise_sim::entities::Experience,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
+    sunrise_sim::lan::guest::SPECTATOR, sunrise_sim::lan::menu::Slots,
+    sunrise_sim::motion::PlayerMotion, sunrise_sim::pose::Dimensions,
 };
 
 pub(in crate::game) mod attack_checks;

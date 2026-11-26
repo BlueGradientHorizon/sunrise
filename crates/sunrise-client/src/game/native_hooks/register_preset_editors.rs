@@ -356,7 +356,7 @@ pub(in crate::game) mod tests {
             mod_platform::testing::with_mods(mods.into(), || {
                 with_client_game(|game| {
                     let saves = tempfile::tempdir().unwrap();
-                    sunrise_client::logging::init(saves.path(), "Client thread");
+                    sunrise_level::logging::init(saves.path(), "Client thread");
                     let mut editors = Vec::new();
                     crate::game::native_hooks::native_register_preset_editors(
                         &mod_api::RegistrationContext::new(),
@@ -371,7 +371,7 @@ pub(in crate::game) mod tests {
                         creative: false,
                         focus: 0,
                         options: WorldOptions {
-                            world_type: sunrise_client::save::WorldPreset::Flat,
+                            world_type: sunrise_sim::save::WorldPreset::Flat,
                             tab: 1,
                             ..Default::default()
                         },
@@ -429,7 +429,7 @@ pub(in crate::game) mod tests {
                             "with": [{"text": "editor_paint_failure"}, {"text": "render"}],
                         })
                     );
-                    assert!(sunrise_client::logging::recent_lines().iter().any(|line| {
+                    assert!(sunrise_level::logging::recent_lines().iter().any(|line| {
                         line.contains("mod editor_paint_failure panicked in hook render")
                             && line.contains("preset editor failed after painting")
                     }));

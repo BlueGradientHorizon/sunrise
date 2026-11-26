@@ -1,6 +1,6 @@
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_item_places::tests::{guest, open_to_lan};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[test]
 #[ignore = "daily"]
@@ -828,10 +828,10 @@ mod custom_bundle_integration_tests {
                 panic_stack.store(false, Ordering::Relaxed);
 
                 // 4. Dropped custom pouch destroyed by damage spills its stored arrows.
-                game.world = sunrise_client::world::World::new(game.res.facts().air, 1);
+                game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 game.dropped.clear();
                 game.spawn_item(updated, [4.5, 64.0, 4.5], [0.0; 3], 0);
                 let id = game.dropped.last().unwrap().id;

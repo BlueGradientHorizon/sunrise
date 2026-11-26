@@ -31,7 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// None outside a logged-in client world.
     pub(in crate::game) fn native_client_language(&self) -> Option<Arc<str>> {
         self.native_session()?;
-        Some(sunrise_client::lang::code_snapshot())
+        Some(sunrise_client_core::lang::code_snapshot())
     }
 
     /// `PlayerInfo.getLatency` of the local player in milliseconds, 0 before the server's first
@@ -62,8 +62,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (_, ticks) = self.using?;
         let ticks_used = i32::try_from(ticks).unwrap_or(i32::MAX);
         let hand = match self.used_hand()? {
-            sunrise_client::first_person::Hand::Main => mod_api::Hand::Main,
-            sunrise_client::first_person::Hand::Off => mod_api::Hand::Off,
+            sunrise_sim::first_person_sim::Hand::Main => mod_api::Hand::Main,
+            sunrise_sim::first_person_sim::Hand::Off => mod_api::Hand::Off,
         };
         Some(mod_api::ItemUse::new(
             hand,
@@ -151,15 +151,15 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// `PlayerTabOverlay`'s list: the overlay's own order and cap (`tab_list::sorted_players`) and
 /// names (`tab_list::name_for_display`), so the read cannot drift from what is drawn.
 fn tab_list(
-    players: &[sunrise_client::tab_list::TabPlayer],
-    board: &sunrise_client::scoreboard::Scoreboard,
-    header: Option<&sunrise_client::text::Text>,
-    footer: Option<&sunrise_client::text::Text>,
+    players: &[sunrise_level::profile_lookup::TabPlayer],
+    board: &sunrise_client_core::scoreboard::Scoreboard,
+    header: Option<&sunrise_client_core::text::Text>,
+    footer: Option<&sunrise_client_core::text::Text>,
 ) -> mod_api::ClientTabList {
     use super::api_values::TryIntoApi;
     use sunrise_client::tab_list::{name_for_display, sorted_players};
     // A text too deep for the API reads as its plain words rather than dropping the entry.
-    let text = |text: &sunrise_client::text::Text| {
+    let text = |text: &sunrise_client_core::text::Text| {
         text.try_into_api()
             .unwrap_or_else(|_| mod_api::Text::literal(text.plain()))
     };
@@ -187,9 +187,8 @@ pub(in crate::game) mod tests {
     /// The Tab overlay's names, order, cap, header and footer, as `client_tab_list` reads them.
     #[test]
     fn the_tab_list_reads_as_the_overlay_draws_it() {
-        use sunrise_client::{
-            scoreboard::Scoreboard, tab_list::TabPlayer, text::Text as EngineText,
-        };
+        use sunrise_client_core::{scoreboard::Scoreboard, text::Text as EngineText};
+        use sunrise_level::profile_lookup::TabPlayer;
         let mut board = Scoreboard::default();
         let team = board.add_team("red");
         team.prefix = serde_json::json!("[R] ");
@@ -311,7 +310,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_session_reads_follow_connection_language_and_frame_state() {
-        use sunrise_client::lang::{self, Language};
+        use sunrise_client_core::lang::{self, Language};
 
         with_client_game(|game| {
             assert_eq!(game.client_session().client_server(), None);

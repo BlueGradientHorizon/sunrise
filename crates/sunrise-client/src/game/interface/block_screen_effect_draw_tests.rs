@@ -17,16 +17,22 @@ use std::{
 };
 #[allow(unused_imports)]
 use sunrise_client::{
-    camera::{CameraType, hand_projection},
-    chunk::Chunk,
-    clock::FixedStep,
+    camera::hand_projection,
     fog::FogType,
     gfx::ScreenshotRequest,
-    motion::{MotionWorld, PlayerMotion, WATER},
     screen_effects::{Blend, ScreenQuad},
 };
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+#[allow(unused_imports)]
+use sunrise_level::camera_math::CameraType;
+#[allow(unused_imports)]
+use sunrise_level::chunk::Chunk;
+#[allow(unused_imports)]
+use sunrise_sim::{
+    clock::FixedStep,
+    motion::{MotionWorld, PlayerMotion, WATER},
+};
 
 pub(in crate::game) const RED: u32 = 0xFFFF0000;
 /// Half-transparent blue: it shows what is under it.
@@ -746,9 +752,9 @@ fn pack_assembly_reports_a_missing_water_default() {
                 .as_slice(),
         )
         .unwrap();
-        let assets = sunrise_client::assets::Assets {
+        let assets = sunrise_level::assets::Assets {
             registry: Box::leak(Box::new(registry)),
-            properties: sunrise_client::assets::Properties::for_tests(&[(
+            properties: sunrise_level::assets::Properties::for_tests(&[(
                 true, false, false, false,
             )]),
             material_states: [sunrise_world::registry::BlockStateId(0); 6],

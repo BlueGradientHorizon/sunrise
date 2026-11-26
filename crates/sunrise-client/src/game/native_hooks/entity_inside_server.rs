@@ -22,17 +22,16 @@ pub(in crate::game) mod sweep_tests {
                 let mods = install_inside_mod("inside-item-kill", &part);
                 mod_platform::testing::with_mods(mods, || {
                     crate::game::native_entity_refs::tests::with_game(|game| {
-                        let _ =
-                            sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                        let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                         let mut item = item_at_blocks(game);
-                        use sunrise_client::items::ItemStack;
+                        use sunrise_items::items::ItemStack;
                         let diamonds = ItemStack::new("minecraft:diamond", 3);
                         item.stack = ItemStack::new("minecraft:shulker_box", 1);
                         item.stack.data_mut().container = vec![(0, diamonds.clone())];
                         item.health = 1;
                         let before = item.velocity.x;
-                        sunrise_client::block_contact::in_level(
-                            sunrise_client::parallel::TickThread::mint(),
+                        sunrise_sim::block_contact::in_level(
+                            sunrise_sim::parallel::TickThread::mint(),
                             Some("minecraft:overworld"),
                             || {
                                 game.sweep_item_inside(&mut item);
@@ -79,8 +78,8 @@ pub(in crate::game) mod sweep_tests {
                                 item.ticks = ticks;
                             }
                             let neighbour = game.dropped[1].id;
-                            sunrise_client::block_contact::in_level(
-                                sunrise_client::parallel::TickThread::mint(),
+                            sunrise_sim::block_contact::in_level(
+                                sunrise_sim::parallel::TickThread::mint(),
                                 Some("minecraft:overworld"),
                                 || game.tick_items(),
                             );

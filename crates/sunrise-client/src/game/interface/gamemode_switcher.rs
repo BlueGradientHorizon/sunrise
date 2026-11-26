@@ -4,8 +4,8 @@ use sunrise_client::{
     game_mode_switcher::{GameModeSwitcher, ICONS, MODES, slot_origin},
     hud::HudBatch,
     keybinds,
-    text::Text,
 };
+use sunrise_client_core::text::Text;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn open_gamemode_switcher(&mut self) {

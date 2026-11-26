@@ -43,7 +43,7 @@ pub(in crate::game) mod swap_hands_tests {
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// The swap through a LAN host's registered connection: the packet goes
     /// through the hub's inbox and the game's packet pass
@@ -84,14 +84,14 @@ pub(in crate::game) mod swap_hands_tests {
                     .guests
                     .update_connection(1, |g| {
                         g.inbox
-                            .push_back(sunrise_client::lan::guest::InboxItem::Packet(swap, None))
+                            .push_back(sunrise_sim::lan::guest::InboxItem::Packet(swap, None))
                     })
                     .unwrap();
                 game.side.level_pass.first = false;
                 game.side.level_pass.packets_drained = false;
                 game.tick_lan_packets();
                 let hub = &game.lan.as_ref().unwrap().hub;
-                sunrise_client::lan::flush_all(hub.guests.iter().map(|g| &g.sender));
+                sunrise_sim::lan::flush_all(hub.guests.iter().map(|g| &g.sender));
                 output(&receivers[0])
                     .into_iter()
                     .filter_map(|p| match p {

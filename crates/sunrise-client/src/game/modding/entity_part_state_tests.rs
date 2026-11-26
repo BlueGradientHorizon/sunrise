@@ -6,11 +6,11 @@ use mod_api::{
     AttachmentType, EntityPart, EntityPartState, EntityRef, Hooks, HostTransaction, PartStateError,
     Registrar, ServerHost, TransactionError, WorldEpoch, edit_part_state, read_state,
 };
-use sunrise_client::chunk::Chunk;
 use sunrise_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
+use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Attachments, Holder};
 
 use super::Dim;
@@ -236,14 +236,14 @@ fn entity_part_state_is_per_entity_through_edits_transactions_and_panics() {
                 assert_eq!(Charge::edit_state(host, a, |_, n| *n = 11), Ok(()));
                 assert_eq!(Charge::state(host, a), Ok(11), "later steps see it");
                 assert!(
-                    !sunrise_client::join_seq::visibility::passes_settled(),
+                    !sunrise_sim::join_seq::visibility::passes_settled(),
                     "no save while it is tentative"
                 );
                 Err(())
             });
         assert_eq!(aborted, Err(TransactionError::Aborted(())));
         assert_eq!(stored(game, a), Some(7));
-        assert!(sunrise_client::join_seq::visibility::passes_settled());
+        assert!(sunrise_sim::join_seq::visibility::passes_settled());
         assert_eq!(indexed(game, Dim::Overworld), [(a.id(), 7)]);
 
         // A panic inside an edit leaves no default behind.
@@ -305,10 +305,8 @@ fn entity_part_state_is_per_entity_through_edits_transactions_and_panics() {
             Charge::edit_state(game, a, |_, n| *n = 1),
             Err(PartStateError::HolderBusy)
         );
-        game.mobs.restore(
-            taken,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        game.mobs
+            .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         assert_eq!(stored(game, a), Some(10));
 
         // A handle answers only in its own level.
@@ -339,7 +337,7 @@ fn a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_valu
             saved
                 .iter()
                 .flat_map(|(_, tags)| tags)
-                .any(|tag| sunrise_client::entity_nbt::uuid(tag) == Some([20, 0, 0, 1])),
+                .any(|tag| sunrise_sim::entity_nbt::uuid(tag) == Some([20, 0, 0, 1])),
             "saved"
         );
         assert!(game.entity(sheep.id()).is_some(), "still in its level");
@@ -369,7 +367,7 @@ fn a_removed_or_unloaded_entity_is_stale_and_a_reloaded_one_reads_its_saved_valu
         let saved = saved
             .into_iter()
             .flat_map(|(_, tags)| tags)
-            .find(|tag| sunrise_client::entity_nbt::uuid(tag) == Some([22, 0, 0, 1]))
+            .find(|tag| sunrise_sim::entity_nbt::uuid(tag) == Some([22, 0, 0, 1]))
             .unwrap();
         game.entity_attachments.remove(&again.id());
         game.world
@@ -561,7 +559,7 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
             .or_default()
             .set_inside(
                 sunrise_core::position::BlockPos::new(1, 70, 3),
-                sunrise_client::nether_portal::ENTITY_DELAY,
+                sunrise_sim::nether_portal::ENTITY_DELAY,
             );
         game.handle_entity_portals();
         game.carry_riders_through_portals();

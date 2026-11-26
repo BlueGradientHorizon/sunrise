@@ -4,9 +4,18 @@
 //! side of them.
 use super::{Dim, Game, creatures::Finalized};
 use std::collections::{HashMap, HashSet};
-use sunrise_client::mobs::villager as mobs_villager;
-use sunrise_client::{
+use sunrise_core::nbt::Tag;
+use sunrise_core::{
+    geometry::Vec3,
+    random::{LegacyRandom, LevelRandom, RandomSource},
+};
+use sunrise_gameplay::village_siege::{SiegeLevel, VillageSiege};
+use sunrise_level::{
     effects::{EffectInstance, OmenTick},
+    random_source,
+};
+use sunrise_sim::mobs::villager as mobs_villager;
+use sunrise_sim::{
     lan::playerdata::ints_uuid,
     mobs::{
         Mob, Species, raider,
@@ -15,14 +24,7 @@ use sunrise_client::{
     },
     patrol::{GameplayAttributes, Member, PatrolLevel, PatrolSpawner},
     raid::{self, Action, BarName, RaidLevel, RaidPlayer, RaiderInfo, RaiderType, Raids, Spawn},
-    random_source,
 };
-use sunrise_core::nbt::Tag;
-use sunrise_core::{
-    geometry::Vec3,
-    random::{LegacyRandom, LevelRandom, RandomSource},
-};
-use sunrise_gameplay::village_siege::{SiegeLevel, VillageSiege};
 
 /// Patrol and raid state owned by the game.
 #[derive(Default)]
@@ -153,10 +155,10 @@ impl SpawnLevel for PatrolCx<'_, '_, '_> {
     fn state(&self, x: i32, y: i32, z: i32) -> sunrise_world::registry::BlockStateId {
         self.level.state(x, y, z)
     }
-    fn facts(&self) -> &sunrise_client::blocks::BlockFacts {
+    fn facts(&self) -> &sunrise_items::blocks::BlockFacts {
         self.level.facts()
     }
-    fn mob_data(&self) -> &sunrise_client::mobs::data::MobData {
+    fn mob_data(&self) -> &sunrise_sim::mobs::data::MobData {
         self.level.mob_data()
     }
     fn block_tag(&self, tag: &str, block: &str) -> bool {
@@ -205,7 +207,7 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
             .game
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_PATROLS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_PATROLS)
     }
     fn bright_outside(&self) -> bool {
         !self.level.game.dimension_type().has_fixed_time && self.level.game.sky_darken() < 4
@@ -287,7 +289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `dimensions/<dimension>/data/minecraft/raids.dat`: each dimension
     /// keeps its own raids.
     pub(in crate::game::server_side) fn raids_path(&self, dim: Dim) -> std::path::PathBuf {
-        sunrise_client::save::dimension_dir(&self.side.world_root, dim.id())
+        sunrise_sim::save::dimension_dir(&self.side.world_root, dim.id())
             .join("data/minecraft/raids.dat")
     }
     /// The raids of the player's dimension, seeded (the previous dimension's
@@ -313,7 +315,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.side.raiding.0.loaded = Some(self.dim);
         self.side.raiding.0.bar_hurts.clear();
         self.side.raiding.0.homes.clear();
-        let (raids, order) = match sunrise_client::save::read_dat(&self.raids_path(self.dim))
+        let (raids, order) = match sunrise_sim::save::read_dat(&self.raids_path(self.dim))
             .and_then(|tag| tag.get("data").cloned())
         {
             Some(data) => Raids::from_nbt_unseeded(&data),
@@ -337,7 +339,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 sunrise_core::nbt::Tag::Int(sunrise_world::DATA_VERSION),
             ),
         ]);
-        if sunrise_client::save::write_dat(&self.raids_path(dim), tag).is_ok() {
+        if sunrise_sim::save::write_dat(&self.raids_path(dim), tag).is_ok() {
             self.side.raiding.0.raids.dirty = false;
         }
         self.save_raid_omen_position();
@@ -465,8 +467,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::RAIDS)
-            || !self.gameplay_attribute(sunrise_client::patrol::CAN_START_RAID, at)
+                .bool_at(sunrise_client_core::gamerules::vanilla::RAIDS)
+            || !self.gameplay_attribute(sunrise_sim::patrol::CAN_START_RAID, at)
         {
             return None;
         }
@@ -688,7 +690,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &lvl,
                 self.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::RAIDS),
+                    .bool_at(sunrise_client_core::gamerules::vanilla::RAIDS),
                 &members,
             )
         };
@@ -908,9 +910,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let spawn_reason = if reason == raider::Reason::Patrol {
-            sunrise_client::mobs::spawn_rules::Reason::Patrol
+            sunrise_sim::mobs::spawn_rules::Reason::Patrol
         } else {
-            sunrise_client::mobs::spawn_rules::Reason::Event
+            sunrise_sim::mobs::spawn_rules::Reason::Event
         };
         if self.finalize_with(&mut mob, spawn_reason, None) == Finalized::Cancelled {
             return None;
@@ -979,8 +981,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let block = block_of(position);
             let in_village = sections_to_village(centers, section(block)) <= 1;
             let has_rider = ridden.contains(&m.id);
-            let target_golem = matches!(m.ai.target, Some(sunrise_client::mobs::Who::Mob(t)) if golems.contains(&t));
-            let target_player = m.ai.target == Some(sunrise_client::mobs::Who::Player);
+            let target_golem =
+                matches!(m.ai.target, Some(sunrise_sim::mobs::Who::Mob(t)) if golems.contains(&t));
+            let target_player = m.ai.target == Some(sunrise_sim::mobs::Who::Player);
             let (health, range) = (m.health, m.attrs.follow_range);
             let raids = &mut self.side.raiding.0.raids;
             let wears_banner = m.extra.head_id() == Some(raider::BANNER);
@@ -1295,11 +1298,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// bottle's amplifier. The consumable list owns the dispose sound.
     pub(in crate::game::server_side) fn drink_ominous_bottle(
         &mut self,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
     ) {
         let amplifier = stack.data().and_then(|d| d.ominous_amplifier).unwrap_or(0);
         let mut effect =
-            sunrise_client::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
+            sunrise_level::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
         effect.visible = false;
         let new = self.potions.effects.get("bad_omen").is_none();
         self.apply_player_effect(effect);
@@ -1363,7 +1366,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         color: usize,
         flight: u8,
     ) {
-        let mut stack = sunrise_client::items::ItemStack::new("minecraft:firework_rocket", 1);
+        let mut stack = sunrise_items::items::ItemStack::new("minecraft:firework_rocket", 1);
         stack.data_mut().fireworks = Some((
             flight,
             vec![sunrise_items::firework::FireworkExplosion {
@@ -1414,7 +1417,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // loaded bed head disappears. An unavailable chunk remains unknown.
             let bed = m.extra.bed.filter(|&[x, y, z]| {
                 !self.world.loaded(x, z)
-                    || sunrise_client::mobs::villager_brain::poi_at(&world, x, y, z)
+                    || sunrise_sim::mobs::villager_brain::poi_at(&world, x, y, z)
                         == Some(sunrise_world::poi::PoiIdentity::Vanilla(
                             sunrise_world::poi::PoiType::Home,
                         ))
@@ -1447,7 +1450,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 })
                 .unwrap_or_default();
             attributes.value(
-                sunrise_client::patrol::CAN_PILLAGER_PATROL_SPAWN,
+                sunrise_sim::patrol::CAN_PILLAGER_PATROL_SPAWN,
                 game.dim.id(),
                 &biome,
                 game.world.day_time,
@@ -1456,11 +1459,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let enemies = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS);
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS);
         let mut random = std::mem::replace(
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
@@ -1576,7 +1579,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn raid_fixture_state(
         &self,
         op: &serde_json::Value,
-    ) -> sunrise_client::Result<serde_json::Value> {
+    ) -> sunrise_client_core::Result<serde_json::Value> {
         use serde_json::json;
         let id = op["id"].as_i64().ok_or("raid observation: missing id")? as i32;
         let mut state = json!({"id":id,"present":self.side.raiding.0.raids.get(id).is_some()});
@@ -1592,14 +1595,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 state["member_present"] = json!(self.raid_members(id).next().is_some());
             }
         }
-        let observe = |m: &Mob| -> sunrise_client::Result<serde_json::Value> {
+        let observe = |m: &Mob| -> sunrise_client_core::Result<serde_json::Value> {
             let uuid = self
                 .persist
                 .uuids
                 .get(&m.id)
                 .copied()
                 .ok_or("raid observation: actor UUID is not registered")?;
-            let tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 m,
                 uuid,
                 self.persist.raw.get(&m.id),
@@ -1611,12 +1614,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "pos":[m.position.x,m.position.y,m.position.z],"noai":m.no_ai,
                 "home":m.extra.bed.map(|p| p.to_vec()).unwrap_or_default(),
                 "raid_id":raider::state(m).and_then(|s|s.raid_id).unwrap_or(-1),
-                "nbt":sunrise_client::snbt::to_snbt(&tag)}))
+                "nbt":sunrise_client_core::snbt::to_snbt(&tag)}))
         };
         let actors = self
             .raid_members(id)
             .map(observe)
-            .collect::<sunrise_client::Result<Vec<_>>>()?;
+            .collect::<sunrise_client_core::Result<Vec<_>>>()?;
         let mut villagers = Vec::new();
         for uuid in op["villagers"]
             .as_array()
@@ -1644,7 +1647,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let loaded = self.world.loaded(pos[0], pos[2]);
         let live_poi = if loaded {
             let w = self.mob_world_base(&[]);
-            sunrise_client::mobs::villager_brain::poi_at(&w, pos[0], pos[1], pos[2])
+            sunrise_sim::mobs::villager_brain::poi_at(&w, pos[0], pos[1], pos[2])
                 .and_then(|poi| w.professions.pois.name(poi))
         } else {
             None
@@ -1653,7 +1656,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "raid input raw: {}",
             json!({"label":op["label"],"id":id,"loaded":loaded,
             "live_poi":live_poi,"claimed_pois":self.village_pois(),
-            "raid_nbt":sunrise_client::snbt::to_snbt(&self.side.raiding.0.raids.to_nbt()),
+            "raid_nbt":sunrise_client_core::snbt::to_snbt(&self.side.raiding.0.raids.to_nbt()),
             "actors":actors,"villagers":villagers})
         );
         Ok(state)
@@ -1681,7 +1684,8 @@ pub(in crate::game) mod entity_ticking_tests {
     use super::{Lvl, RaidLevel};
     use crate::game::native_entity_refs::tests::with_game;
     use std::{collections::HashSet, sync::Arc};
-    use sunrise_client::{chunk::Chunk, ticket_levels::Sources};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::ticket_levels::Sources;
 
     #[test]
     #[ignore = "daily"]

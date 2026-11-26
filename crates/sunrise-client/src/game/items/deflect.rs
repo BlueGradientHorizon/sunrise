@@ -4,11 +4,11 @@
 //! along the player's view and is the player's now (`Projectile.deflect`
 //! sets the owner), so a ghast it meets dies of it (`Ghast.isReflectedFireball`).
 use super::Game;
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind, Turn},
 };
-use sunrise_core::geometry::Vec3;
 
 /// `AbstractHurtingProjectile.getPickRadius`: the crosshair finds it a block
 /// round its box.
@@ -137,7 +137,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.entity_silent(p.id),
             )
         };
-        let ctx = sunrise_client::sculk::Context {
+        let ctx = sunrise_level::sculk::Context {
             owner,
             owner_uuid,
             ..self.entity_event_context(id, None)
@@ -250,7 +250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if let Some(ty) = sunrise_level::particle_options::ParticleType::from_name("crit") {
             self.server_level_particles(
-                &crate::lan::server_effects::ServerParticle::simple(ty),
+                &sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                 at,
                 [0.2, 0.2, 0.2],
                 0.0,

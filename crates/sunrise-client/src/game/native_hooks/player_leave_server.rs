@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::lan::guest::Guest;
+use sunrise_sim::lan::guest::Guest;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The leave lines of a guest the hub removed and broadcast the leave line of, and whether
@@ -21,7 +21,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Never announced, so no "left the game" either.
                 crate::game::dedicated::log(
                     "INFO",
-                    &sunrise_client::lan::arrivals::dropped_line(&guest.name, &guest.left_reason),
+                    &sunrise_sim::lan::arrivals::dropped_line(&guest.name, &guest.left_reason),
                 );
             } else {
                 crate::game::dedicated::log(
@@ -98,8 +98,8 @@ pub(in crate::game) mod player_leave_tests {
     };
     use mod_api::ModEntry;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::lan::{NetEvent, playerdata};
     use sunrise_mod_runtime::attachments::Holder;
+    use sunrise_sim::lan::{NetEvent, playerdata};
 
     /// Two guests, 12 then 13, a listener on both hooks, and guest 12's connection closing as
     /// the hub hears it (`NetEvent::Left`, `Hub::remove_guest`). `prepare` sets the guests up
@@ -117,7 +117,7 @@ pub(in crate::game) mod player_leave_tests {
                 game.native_level_opened(Dim::Overworld);
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 prepare(game);
                 let shared = &game.lan.as_ref().unwrap().hub.lan.shared;
                 shared

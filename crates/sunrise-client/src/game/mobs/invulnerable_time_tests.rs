@@ -4,8 +4,8 @@
 //! vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 const EDIT: &str = "00006095-0000-0000-0000-000000000002";
 
@@ -59,7 +59,7 @@ fn game<'a>(
 
 fn health(game: &mut crate::game::ServerGame<'_>) -> f32 {
     let target = game
-        .target_with_uuid(sunrise_client::save::uuid_from_text(EDIT).unwrap())
+        .target_with_uuid(sunrise_sim::save::uuid_from_text(EDIT).unwrap())
         .unwrap();
     match target {
         super::commands::Target::Mob(id) => game.mobs.iter().find(|m| m.id == id).unwrap().health,
@@ -102,7 +102,7 @@ fn a_hurt_cooldown_survives_an_edit_and_is_not_saved() {
 use sunrise_core::nbt::Tag;
 
 fn mob(game: &mut crate::game::ServerGame<'_>) -> usize {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(EDIT).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(EDIT).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }

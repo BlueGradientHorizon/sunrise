@@ -3,15 +3,15 @@
 //! `onSyncedDataUpdated`): what a client draws from it rather than from its
 //! own simulation, which a client of a server doesn't run.
 use super::Game;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_protocol::entity_data::{ParticleData, Particles, Value};
+use sunrise_protocol::registry::{Builtin, Dynamic};
 #[cfg(test)]
-use sunrise_client::mobs::villager::VILLAGER_TYPES;
-use sunrise_client::mobs::{
+use sunrise_sim::mobs::villager::VILLAGER_TYPES;
+use sunrise_sim::mobs::{
     Mob, Species, Who, armadillo, bat, bee, camel, creaking, equine, finalize, illusioner, panda,
     phantom, raider, sniffer, species::can_be_a_baby, sync, tame, zombie_villager,
 };
-use sunrise_client::particles::{ParticleOptions, ParticleType};
-use sunrise_protocol::entity_data::{ParticleData, Particles, Value};
-use sunrise_protocol::registry::{Builtin, Dynamic};
 use sunrise_world::registry::BlockStateId;
 
 /// The values `apply` takes from one SetEntityData packet, by vanilla's entry
@@ -42,7 +42,7 @@ pub(in crate::game) fn apply(
             (6, Value::Id(pose))
                 if matches!(&*m.kind.id, "minecraft:player" | "minecraft:mannequin") =>
             {
-                m.extra.avatar_pose = sunrise_client::pose::Pose::from_id(*pose);
+                m.extra.avatar_pose = sunrise_sim::pose::Pose::from_id(*pose);
             }
             // Entity.DATA_SHARED_FLAGS_ID's FLAG_ONFIRE: Entity.isOnFire on a
             // client, which draws the flames. A client doesn't count the
@@ -193,7 +193,7 @@ pub(in crate::game) fn apply(
             // SulfurCube.MAX_FUSE: onSyncedDataUpdated copies it into the fuse
             // the client ticks for swell / white flash (#4548); -1 is not primed.
             (Species::SulfurCube, 19, Value::Int(fuse)) => {
-                m.extra.sulfur_fuse = sunrise_client::mobs::sulfur_cube::Fuse::set(*fuse);
+                m.extra.sulfur_fuse = sunrise_sim::mobs::sulfur_cube::Fuse::set(*fuse);
             }
             (Species::SulfurCube, 20, Value::Bool(from_bucket)) => {
                 m.extra.scratch[3] = i32::from(*from_bucket);
@@ -206,7 +206,7 @@ pub(in crate::game) fn apply(
             (Species::Enderman, 17, Value::Bool(creepy)) => {
                 m.extra.flag = *creepy;
                 if m.extra.flag2 {
-                    stare_sound = sunrise_client::mobs::enderman::stare_sound(m);
+                    stare_sound = sunrise_sim::mobs::enderman::stare_sound(m);
                 }
             }
             (Species::Enderman, 18, Value::Bool(stared)) => m.extra.flag2 = *stared,
@@ -246,7 +246,7 @@ pub(in crate::game) fn apply(
             (Species::Vex, 16, Value::Byte(flags)) => m.extra.flag = flags & 1 != 0,
             // GlowSquid.DATA_DARK_TICKS_REMAINING (after AgeableMob's two).
             (Species::GlowSquid, 18, Value::Int(ticks)) => {
-                sunrise_client::mobs::aquatic::set_dark_ticks(m, *ticks);
+                sunrise_sim::mobs::aquatic::set_dark_ticks(m, *ticks);
             }
             // Creaking.CAN_MOVE, IS_ACTIVE and IS_TEARING_DOWN.
             (Species::Creaking, 16, Value::Bool(can_move)) => m.extra.flag2 = !*can_move,
@@ -380,9 +380,8 @@ pub(in crate::game) fn apply(
             // Mannequin.DATA_IMMOVABLE and DATA_DESCRIPTION (an empty one is hidden).
             (Species::Mannequin, 18, Value::Bool(immovable)) => m.extra.immovable = *immovable,
             (Species::Mannequin, 19, Value::OptText(description)) => {
-                m.extra.description = sunrise_client::mobs::MannequinDescription::from_component(
-                    description.as_ref(),
-                );
+                m.extra.description =
+                    sunrise_sim::mobs::MannequinDescription::from_component(description.as_ref());
             }
             _ => {}
         }
@@ -569,7 +568,7 @@ pub(in crate::game) mod tests {
 
     pub(super) fn fixture_mob(kind: &str) -> Mob {
         use std::sync::Arc;
-        use sunrise_client::mobs::{Anim, Brain, Flags, MobType};
+        use sunrise_sim::mobs::{Anim, Brain, Flags, MobType};
         let species = match kind {
             "minecraft:cow" => Species::Cow,
             "minecraft:axolotl" => Species::Axolotl,
@@ -713,8 +712,8 @@ pub(in crate::game) mod tests {
     }
 
     fn air_trace(kind: &str, sequence: &[(i32, i32)]) -> Vec<String> {
-        use sunrise_client::lan::entity::{Entities, EntityState, Riding, Tracker, Viewer};
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+        use sunrise_sim::lan::entity::{Entities, EntityState, Riding, Tracker, Viewer};
         let name = format!("minecraft:{kind}");
         let mut server = fixture_mob(&name);
         let mut client = fixture_mob(&name);
@@ -845,7 +844,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn raider_celebration_follows_metadata_and_clears() {
-        use sunrise_client::mobs::raider;
+        use sunrise_sim::mobs::raider;
         for kind in [
             "pillager",
             "vindicator",
@@ -882,7 +881,7 @@ pub(in crate::game) mod tests {
     }
 
     fn celebration_trace(kind: &str, sequence: &[bool]) -> Vec<(Vec<bool>, bool)> {
-        use sunrise_client::mobs::raider;
+        use sunrise_sim::mobs::raider;
         raider_flag_trace(
             kind,
             16,
@@ -902,8 +901,8 @@ pub(in crate::game) mod tests {
         read: impl Fn(&Mob) -> bool,
         sequence: &[bool],
     ) -> Vec<(Vec<bool>, bool)> {
-        use sunrise_client::lan::entity::{Entities, EntityState, Riding, Tracker, Viewer};
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+        use sunrise_sim::lan::entity::{Entities, EntityState, Riding, Tracker, Viewer};
         let name = format!("minecraft:{kind}");
         let mut server = fixture_mob(&name);
         let mut client = fixture_mob(&name);
@@ -1085,7 +1084,7 @@ pub(in crate::game) mod tests {
     }
 
     fn mob(kind: &str) -> Option<Mob> {
-        let types = sunrise_client::mobs::MobTypes::load(&root()).ok()?;
+        let types = sunrise_sim::mobs::MobTypes::load(&root()).ok()?;
         let t = std::sync::Arc::new(types.types.get(kind)?.clone());
         let mut m = Mob::new(1, t, sunrise_core::geometry::Vec3::ZERO, 0.0);
         client_defaults(&mut m);
@@ -1125,7 +1124,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn guardian_charge_follows_target_updates_and_caps_at_its_duration() {
-        use sunrise_client::mobs::guardian::{beam, client_tick};
+        use sunrise_sim::mobs::guardian::{beam, client_tick};
         for (kind, duration) in [("guardian", 80), ("elder_guardian", 60)] {
             let Some(mut m) = mob(&format!("minecraft:{kind}")) else {
                 return;
@@ -1203,7 +1202,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn a_happy_ghast_and_a_nautilus_take_their_babyhood() {
         use std::{fs, sync::Arc};
-        use sunrise_client::mobs::MobTypes;
+        use sunrise_sim::mobs::MobTypes;
 
         let root = std::env::temp_dir().join(format!("sunrise-baby-flag-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
@@ -1264,8 +1263,8 @@ pub(in crate::game) mod tests {
     fn bat_flags_select_continuous_client_clocks_without_changing_motion() {
         use serde_json::json;
         use std::{collections::HashMap, fs, sync::Arc};
-        use sunrise_client::mobs::{MobTypes, anim, keyframes::Animation};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{MobTypes, anim, keyframes::Animation};
 
         // Original minimal resources keep this regression runnable without vanilla data.
         let root =
@@ -1354,7 +1353,7 @@ pub(in crate::game) mod tests {
     /// tick), and `getHeadRollAngle` tilts the head by it.
     #[test]
     fn a_wolf_tilts_its_head_while_the_server_says_it_begs() {
-        use sunrise_client::mobs::sync::client_tick;
+        use sunrise_sim::mobs::sync::client_tick;
         let Some(mut m) = mob("minecraft:wolf") else {
             return;
         };
@@ -1403,10 +1402,10 @@ pub(in crate::game) mod tests {
         };
         apply(&mut m, &[(15, s::BYTE, Value::Byte(4 | 2))]);
         assert!(m.ai.aggressive && m.extra.left_handed && !m.no_ai);
-        assert!(sunrise_client::mobs::illager::shows_item(&m));
+        assert!(sunrise_sim::mobs::illager::shows_item(&m));
         apply(&mut m, &[(15, s::BYTE, Value::Byte(0))]);
         assert!(!m.ai.aggressive && !m.extra.left_handed);
-        assert!(!sunrise_client::mobs::illager::shows_item(&m));
+        assert!(!sunrise_sim::mobs::illager::shows_item(&m));
     }
 
     #[test]
@@ -1426,7 +1425,7 @@ pub(in crate::game) mod tests {
         let name = |m: &Mob| {
             (
                 VILLAGER_TYPES[m.extra.variant as usize],
-                sunrise_client::mobs::villager::profession_table().entries()
+                sunrise_sim::mobs::villager::profession_table().entries()
                     [m.extra.profession.index().unwrap_or(0) as usize]
                     .id
                     .as_str(),
@@ -1557,7 +1556,7 @@ pub(in crate::game) mod tests {
     /// description, an empty one hides it, any other is the server's own.
     #[test]
     fn a_mannequin_takes_its_immovable_flag_and_description() {
-        use sunrise_client::mobs::MannequinDescription as D;
+        use sunrise_sim::mobs::MannequinDescription as D;
         let Some(mut m) = mob("minecraft:mannequin") else {
             return;
         };
@@ -1618,7 +1617,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game::client_side) fn run_sulfur_cube_max_fuse_sets_the_client_fuse() {
-        use sunrise_client::mobs::sulfur_cube::{client_tick, fuse, max_fuse, primed};
+        use sunrise_sim::mobs::sulfur_cube::{client_tick, fuse, max_fuse, primed};
         let dir = std::env::var_os("SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR").unwrap_or_else(|| {
             panic!(
                 "SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR is unset; run tools/test_sulfur_cube_fuse_parity.py"
@@ -1648,7 +1647,7 @@ pub(in crate::game) mod tests {
                 "entities": {},
             }))
             .unwrap();
-        let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
+        let types = sunrise_sim::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());
         let mut m = None;
@@ -1709,8 +1708,8 @@ pub(in crate::game) mod tests {
     #[test]
     fn a_synced_boost_starts_the_client_timer() {
         use std::{fs, sync::Arc};
-        use sunrise_client::mobs::MobTypes;
         use sunrise_core::geometry::trig::Mth;
+        use sunrise_sim::mobs::MobTypes;
         use sunrise_world::native_load_context::{
             DataLoadOrigin, LoadContext, LoadInputs, LoopSide,
         };

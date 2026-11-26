@@ -1,12 +1,12 @@
 //! Pure common block-state, bed, respawn-anchor, and portal-eligibility helpers.
 use super::Game;
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     bed_geometry::{SleepOn, pos_to_bed, shape_top, slept_on},
-    items::ItemStack,
     motion::PlayerMotion,
     stand_up::bed_forward,
 };
-use sunrise_core::geometry::Vec3;
 use sunrise_world::registry::BlockStateId;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

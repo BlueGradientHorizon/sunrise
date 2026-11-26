@@ -230,7 +230,7 @@ pub(in crate::game) fn run_portal_arrival_effects_mod_items_merge_immediately() 
     with_game(|game| {
         game.native_lifecycle.world_open_ready().unwrap();
         game.spawn_item_own(
-            sunrise_client::items::ItemStack::new("minecraft:diamond", 3),
+            sunrise_items::items::ItemStack::new("minecraft:diamond", 3),
             [0.5, 80.0, 0.5],
             10,
         );
@@ -239,7 +239,7 @@ pub(in crate::game) fn run_portal_arrival_effects_mod_items_merge_immediately() 
         let item = game.entity(game.dropped[0].id).unwrap();
         game.enter_level(Dim::Nether).unwrap();
         game.spawn_item_own(
-            sunrise_client::items::ItemStack::new("minecraft:diamond", 5),
+            sunrise_items::items::ItemStack::new("minecraft:diamond", 5),
             [3.5, 70.0, -2.5],
             10,
         );

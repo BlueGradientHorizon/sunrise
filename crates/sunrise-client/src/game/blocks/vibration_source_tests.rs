@@ -5,8 +5,8 @@
 //! (tools/test_vibration_source_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
@@ -58,7 +58,11 @@ fn read(game: &mut crate::game::ServerGame<'_>, path: &str) -> Option<String> {
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(&format!("data get block 8 100 8 {path}"));
     let said = game.side.chat_capture.take().unwrap_or_default();
-    ok.then(|| said.iter().map(sunrise_client::text::Text::plain).collect())
+    ok.then(|| {
+        said.iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect()
+    })
 }
 
 #[test]

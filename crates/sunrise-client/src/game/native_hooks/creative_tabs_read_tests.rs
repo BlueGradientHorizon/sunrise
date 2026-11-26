@@ -6,7 +6,7 @@
 fn block_items_use_block_light_and_flat_items_do_not() {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         let light = |id: &str, context| {
-            let stack = sunrise_client::items::ItemStack::new(id, 1);
+            let stack = sunrise_items::items::ItemStack::new(id, 1);
             game.item_uses_block_light(&stack, context)
         };
         for context in [

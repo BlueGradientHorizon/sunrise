@@ -3,8 +3,8 @@
 //! the integrated server is created with, before its startup hooks and apart from its hub.
 use super::Game;
 use mod_api::{GameProfile, PlayerRef};
-use sunrise_client::lan::OwnerProfile;
 use sunrise_core::profile::AccountProperty;
+use sunrise_sim::lan::OwnerProfile;
 
 /// `IntegratedServer`'s `singleplayerProfile`: the window's player as the server was created
 /// with it, properties and all. Fixed once made: every read returns this snapshot.

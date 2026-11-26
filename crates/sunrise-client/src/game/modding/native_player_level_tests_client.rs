@@ -11,9 +11,9 @@ use mod_api::{HostTransaction, ServerHost};
 #[ignore = "daily"]
 fn a_give_that_fits_plays_pickup_in_the_players_level() {
     use std::sync::{Arc, mpsc};
-    use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_core::random::{EntityRandom, LegacyRandom, RandomSource};
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+    use sunrise_sim::lan::{Out, PlayerSender};
 
     if run_fresh_cases(
         "game::client_side::native_player_level_tests_client::a_give_that_fits_plays_pickup_in_the_players_level",

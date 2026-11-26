@@ -5,9 +5,9 @@ use super::native_knockback_tests::{
     assert_sword_credit_reached_the_push, credit_pig, heard, sword_evoker,
 };
 use super::potions::PotionOwner;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::Who;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Who;
 
 fn credited_push(hit: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mut pushed = Vec3::ZERO;
@@ -58,7 +58,8 @@ fn a_harming_splash_potion_credits_its_thrower_and_its_sword() {
 #[ignore = "daily"]
 fn a_harming_area_cloud_credits_its_owner_and_its_sword() {
     credited_push(|game| {
-        let text = sunrise_client::text::Text::translate("entity.minecraft.area_effect_cloud", &[]);
+        let text =
+            sunrise_client_core::text::Text::translate("entity.minecraft.area_effect_cloud", &[]);
         game.cloud_affect(
             super::potions::Victim::Mob(100),
             &[("instant_damage", 1, 0)],

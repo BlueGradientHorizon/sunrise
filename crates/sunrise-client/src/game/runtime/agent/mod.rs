@@ -22,14 +22,11 @@ use std::{
 };
 use sunrise_client::actions::Action;
 use sunrise_client::held::Source;
-use sunrise_client::{
-    Result,
-    block_entity_anim::Ticker,
-    items::ItemStack,
-    mobs::{Species, villager::VILLAGER_TYPES},
-    widgets,
-};
+use sunrise_client::{block_entity_anim::Ticker, widgets};
+use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Species, villager::VILLAGER_TYPES};
 use sunrise_world::registry::BlockStateId;
 use winit::{
     event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
@@ -398,7 +395,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             _ => {}
         }
         // The lines of a sign, as this client has them.
-        if let Some(sunrise_client::containers::BlockEntity::Sign(sign)) =
+        if let Some(sunrise_level::containers::BlockEntity::Sign(sign)) =
             self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
         {
             v["sign"] = json!({ "front": sign.front.lines, "back": sign.back.lines });
@@ -417,13 +414,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // How worn a tool or armour piece is: its durability and what is left.
         let items = self.res.items();
-        if sunrise_client::stations::is_damageable(items, s) {
-            let max = sunrise_client::stations::max_damage(items, s);
+        if sunrise_sim::stations::is_damageable(items, s) {
+            let max = sunrise_sim::stations::max_damage(items, s);
             v["max_damage"] = json!(max);
             v["durability_left"] = json!((i64::from(max) - i64::from(s.damage)).max(0));
         }
-        if let Some(c) = sunrise_client::item_data::component_snapshot(s) {
-            v["components"] = json!(sunrise_client::snbt::to_snbt(&c));
+        if let Some(c) = sunrise_items::item_data::component_snapshot(s) {
+            v["components"] = json!(sunrise_client_core::snbt::to_snbt(&c));
         }
         v
     }
@@ -683,7 +680,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } => json!({
                 "mode": "customize-flat",
                 "fields": { "name": name, "seed": seed },
-                "superflat": options.world_type == sunrise_client::save::WorldPreset::Flat,
+                "superflat": options.world_type == sunrise_sim::save::WorldPreset::Flat,
                 "biome": flat.settings().biome,
                 "layers": flat.settings().layers.iter().map(|layer| json!({
                     "block": layer.block,
@@ -736,10 +733,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 json!({ "mode": "missing-mods", "folder": world.folder, "name": world.name, "missing": missing.iter().map(|m| json!({ "mod": m.id, "saved_version": m.saved_version, "code": m.code, "content": m.content, "blocks": m.blocks })).collect::<Vec<_>>() })
             }
             Mode::Recover { world, issues } => {
-                let issue = |i: &Option<sunrise_client::save::DatIssue>| match i {
+                let issue = |i: &Option<sunrise_sim::save::DatIssue>| match i {
                     None => json!(null),
-                    Some(sunrise_client::save::DatIssue::Missing) => json!("missing file"),
-                    Some(sunrise_client::save::DatIssue::Unreadable(why)) => json!(why),
+                    Some(sunrise_sim::save::DatIssue::Missing) => json!("missing file"),
+                    Some(sunrise_sim::save::DatIssue::Unreadable(why)) => json!(why),
                 };
                 json!({ "mode": "recover-world", "folder": world.folder, "level_dat": issue(&issues[0]), "level_dat_old": issue(&issues[1]) })
             }
@@ -794,7 +791,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if matches!(m.species(), Species::Villager | Species::ZombieVillager) {
                 v["villager"] = json!({
                     "type": VILLAGER_TYPES[m.extra.variant as usize % VILLAGER_TYPES.len()],
-                    "profession": sunrise_client::mobs::villager::reported_profession(m),
+                    "profession": sunrise_sim::mobs::villager::reported_profession(m),
                     "level": m.extra.villager_level,
                 });
             }
@@ -942,7 +939,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let f = self.res.facts().get(self.world.block(n[0], n[1], n[2]));
             Some(Cell {
                 solid: f.full_collision || f.legacy_solid,
-                fluid: f.fluid != sunrise_client::blocks::Fluid::None,
+                fluid: f.fluid != sunrise_items::blocks::Fluid::None,
                 lava: &*f.name == "minecraft:lava",
             })
         })
@@ -1530,7 +1527,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let f = self.res.facts().get(state);
                     if self.res.facts().is_air(state)
                         || f.replaceable
-                        || f.fluid != sunrise_client::blocks::Fluid::None && !f.waterlogged
+                        || f.fluid != sunrise_items::blocks::Fluid::None && !f.waterlogged
                     {
                         continue;
                     }
@@ -2416,7 +2413,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .facts()
                 .get(self.world.block(b[0], b[1], b[2]))
                 .fluid
-                != sunrise_client::blocks::Fluid::None
+                != sunrise_items::blocks::Fluid::None
         };
         if aim[1] > p[1] + 0.5 && horizontal(p, aim) < 1.6 && on_ground {
             g.jump_until = self.ticks + 4;
@@ -2434,7 +2431,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn block_gone(&self, state: BlockStateId) -> bool {
         let facts = self.res.facts();
         let f = facts.get(state);
-        facts.is_air(state) || f.fluid != sunrise_client::blocks::Fluid::None && !f.waterlogged
+        facts.is_air(state) || f.fluid != sunrise_items::blocks::Fluid::None && !f.waterlogged
     }
 
     pub(in crate::game::client_side) fn step_break(
@@ -2533,7 +2530,7 @@ pub(in crate::game) mod tests {
             use sunrise_client::title::{Mode, Title, list_worlds};
             let scratch = tempfile::tempdir().unwrap();
             let saves = scratch.path().join("saves");
-            sunrise_client::save::Level {
+            sunrise_sim::save::Level {
                 name: "Moor".into(),
                 ..Default::default()
             }

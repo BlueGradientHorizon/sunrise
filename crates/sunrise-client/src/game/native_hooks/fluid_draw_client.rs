@@ -42,7 +42,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         at: [f32; 2],
         size: f32,
     ) {
-        let look = sunrise_client::mod_content::fluid_look(fluid);
+        let look = sunrise_sim::mod_content::fluid_look(fluid);
         let tint = crate::game::native_panel_recipes::fluid_tint(
             fluid,
             look.as_ref().and_then(|l| l.tint),

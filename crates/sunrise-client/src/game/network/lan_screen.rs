@@ -10,10 +10,10 @@ use sunrise_client::{
     font::Font,
     game_rules_screen::{Exit, RulesScreen},
     hud::{HudBatch, rgba},
-    text::{Text, named_color},
     ui::{self, EditBox},
     widgets::{self, Narratable, join_for_narration},
 };
+use sunrise_client_core::text::{Text, named_color};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
 
@@ -616,28 +616,29 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The response itself lists the server's available rules; the client
         // may not own this world's level.dat (including on the server thread).
         let features = if entries.iter().any(|e| {
-            sunrise_client::gamerules::rule_registry()
+            sunrise_client_core::gamerules::rule_registry()
                 .rule(&e.name)
                 .is_some_and(|r| r.name == "minecraft:max_minecart_speed")
         }) {
-            vec![sunrise_client::gamerules::MINECART_IMPROVEMENTS.to_owned()]
+            vec![sunrise_client_core::gamerules::MINECART_IMPROVEMENTS.to_owned()]
         } else {
             Vec::new()
         };
         let registry = self
             .integrated
             .as_ref()
-            .map_or_else(sunrise_client::gamerules::rule_registry, |server| {
+            .map_or_else(sunrise_client_core::gamerules::rule_registry, |server| {
                 server.rule_registry.clone()
             });
-        let mut rules = sunrise_client::gamerules::GameRules::with_registry(registry, &features);
+        let mut rules =
+            sunrise_client_core::gamerules::GameRules::with_registry(registry, &features);
         for entry in entries {
             rules.set_string(&entry.name, &entry.value);
         }
         o.rules = Some(RulesScreen::new(&rules));
     }
     pub(in crate::game) fn open_world_options(&mut self) {
-        let hint = sunrise_client::lan::available_port();
+        let hint = sunrise_sim::lan::available_port();
         let mut port = EditBox::new(0.0, 0.0, 150.0, 20.0);
         port.message = super::screen_info::tr("lanServer.port", &[]);
         port.max_length = 5;

@@ -1,8 +1,8 @@
 use super::super::{Game, Result};
 use crate::game::server_side::nether_portal::respawn_attributes::Carried;
 use crate::game::server_side::nether_portal::respawn_attributes::RespawnAttributes;
-use sunrise_client::{lan::attributes::apply, motion::PlayerMotion};
 use sunrise_protocol::packets::play::AttributeSnapshot;
+use sunrise_sim::{lan::attributes::apply, motion::PlayerMotion};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleUpdateAttributes` of the player's own entity.

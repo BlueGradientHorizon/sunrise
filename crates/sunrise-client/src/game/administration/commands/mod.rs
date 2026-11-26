@@ -34,17 +34,17 @@ pub(in crate::game) mod text_commands;
 pub(in crate::game) mod world_cmds;
 
 use super::{Dim, Game};
-use sunrise_client::{
-    command::{
-        Arg, CommandError, Context, Reader,
-        args::{BlockInput, Coordinates, ItemInput, Selector},
-        vanilla::DIFFICULTIES,
-    },
+use sunrise_client_core::{
     gamerules::{self, Value},
-    items::ItemStack,
     text::{self, Text},
 };
+use sunrise_command::{
+    Arg, CommandError, Context, Reader,
+    args::{BlockInput, Coordinates, ItemInput, Selector},
+    vanilla::DIFFICULTIES,
+};
 use sunrise_core::{geometry::Vec3, java_number::float_to_string, random::RandomSource};
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
 
@@ -383,7 +383,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+                    .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
             let changed = self.for_player(t, |g| {
                 if !g.set_game_mode(mode) {
                     return false;
@@ -563,7 +563,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if !m.extra.fall_flying {
                         m.ground.on_ground = true;
                     }
-                    sunrise_client::mobs::living::teleports::snap_to(m, v);
+                    sunrise_sim::mobs::living::teleports::snap_to(m, v);
                     m.needs_sync = true;
                     // Entity.teleportSetPosition: setYRot, setYHeadRot, setXRot
                     // (clamped to -90..90), then setOldRot.
@@ -1062,10 +1062,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let Some(nbt) = &b.nbt else { return true };
         // (the argument's own grammar, `TagParser`, as the predicate was read)
-        let Ok(pattern) = sunrise_client::command::snbt::parse_fully(nbt) else {
+        let Ok(pattern) = sunrise_command::snbt::parse_fully(nbt) else {
             return false;
         };
-        sunrise_client::nbt_path::compare_nbt(&pattern, self.block_entity_nbt(p).as_ref())
+        sunrise_client_core::nbt_path::compare_nbt(&pattern, self.block_entity_nbt(p).as_ref())
     }
     /// The state part of `block_matches`: name or tag, then properties.
     pub(in crate::game) fn command_block_state_matches(
@@ -1248,10 +1248,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         key: (i32, i32, i32),
         tag: &sunrise_core::nbt::Tag,
-        entity: &mut sunrise_client::containers::BlockEntity,
+        entity: &mut sunrise_level::containers::BlockEntity,
     ) -> bool {
-        let pending = matches!(entity, sunrise_client::containers::BlockEntity::Chest(_))
-            .then(|| sunrise_client::save::PendingContainerLoot::from_tag(tag))
+        let pending = matches!(entity, sunrise_level::containers::BlockEntity::Chest(_))
+            .then(|| sunrise_sim::save::PendingContainerLoot::from_tag(tag))
             .flatten();
         let mut changed = false;
         self.world.with_chunk_extras(key, |extras| {
@@ -1263,13 +1263,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Raw NBT inspection overlays metadata without unpacking the inventory.
     pub(in crate::game::server_side) fn write_pending_loot(
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         key: (i32, i32, i32),
         tag: &mut sunrise_core::nbt::Tag,
     ) {
         if !matches!(
             world.block_entities.get(&key),
-            Some(sunrise_client::containers::BlockEntity::Chest(_))
+            Some(sunrise_level::containers::BlockEntity::Chest(_))
         ) {
             return;
         }
@@ -1518,7 +1518,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if levels {
                         e.level
                     } else {
-                        (e.progress * sunrise_client::entities::Experience::needed(e.level) as f32)
+                        (e.progress * sunrise_sim::entities::Experience::needed(e.level) as f32)
                             as i32
                     }
                 })
@@ -1577,7 +1577,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if levels {
             self.experience.level = amount;
         } else {
-            let needed = sunrise_client::entities::Experience::needed(self.experience.level);
+            let needed = sunrise_sim::entities::Experience::needed(self.experience.level);
             if amount > needed - 1 {
                 return false;
             }
@@ -1733,7 +1733,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .strip_prefix('[')
             .and_then(|t| t.strip_suffix(']'))
             .unwrap_or("");
-        let components = match sunrise_client::item_data::component_snapshot(stack) {
+        let components = match sunrise_items::item_data::component_snapshot(stack) {
             Some(sunrise_core::nbt::Tag::Compound(c)) => c,
             _ => Default::default(),
         };
@@ -1764,8 +1764,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .map(|(t, _)| t);
                     match (present, value) {
                         (Some(have), Some(want)) => {
-                            sunrise_client::nbt_path::compare_nbt(&want, Some(have))
-                                && sunrise_client::nbt_path::compare_nbt(have, Some(&want))
+                            sunrise_client_core::nbt_path::compare_nbt(&want, Some(have))
+                                && sunrise_client_core::nbt_path::compare_nbt(have, Some(&want))
                         }
                         _ => false,
                     }
@@ -1817,7 +1817,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 }
                         }
                         (_, Some(v)) => present.is_some_and(|have| {
-                            sunrise_client::nbt_path::compare_nbt(&v, Some(have))
+                            sunrise_client_core::nbt_path::compare_nbt(&v, Some(have))
                         }),
                         _ => false,
                     }
@@ -1838,7 +1838,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn stack_component_present(&self, stack: &ItemStack, id: &str) -> bool {
         // Read the modeled patch before saved-default elision. A removal wins
         // even when the actual item prototype supplies the component.
-        if let Some(patch) = sunrise_client::item_data::components_tag(stack.damage, stack.data()) {
+        if let Some(patch) = sunrise_items::item_data::components_tag(stack.damage, stack.data()) {
             if patch.get(&format!("!{id}")).is_some() {
                 return false;
             }
@@ -2136,7 +2136,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let max = self
             .lan
             .as_ref()
-            .map_or(sunrise_client::lan::MAX_PLAYERS, |h| {
+            .map_or(sunrise_sim::lan::MAX_PLAYERS, |h| {
                 h.hub.lan.shared.max_players()
             });
         let uuids = ctx.has("uuids");
@@ -2176,7 +2176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         while let Some(at) = rest.find('@') {
             out.push(&rest[..at]);
             let mut reader = Reader::new(&rest[at..]);
-            match (sunrise_client::command::ArgType::Entity {
+            match (sunrise_command::ArgType::Entity {
                 single: false,
                 players: false,
             })
@@ -2209,13 +2209,13 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     pub(in crate::game) fn level_entity(&self, id: i32) -> Option<Target> {
         let id = id as u32;
         match self.server_resident_entity(id) {
-            sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value }
+            sunrise_sim::join_seq::residency::table::EntityLookup::Found { location, value }
                 if location.owner.dimension == self.dim.key()
                     && !matches!(
                         location.owner.kind,
-                        sunrise_client::join_seq::residency::Kind::Player
-                            | sunrise_client::join_seq::residency::Kind::Hook
-                            | sunrise_client::join_seq::residency::Kind::DragonPart
+                        sunrise_sim::join_seq::residency::Kind::Player
+                            | sunrise_sim::join_seq::residency::Kind::Hook
+                            | sunrise_sim::join_seq::residency::Kind::DragonPart
                     ) =>
             {
                 Some(value)
@@ -2230,7 +2230,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     pub(in crate::game) fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
-        let tag = sunrise_client::command::args::normalized(tag);
+        let tag = sunrise_command::args::normalized(tag);
         self.items().entity_type_tags.contains(&tag, ty)
     }
 }
@@ -2339,14 +2339,12 @@ pub(in crate::game) mod peaceful_tests {
     use super::{Arg, Context};
     use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
     use std::sync::{Arc, OnceLock};
-    use sunrise_client::{
-        chunk::Chunk,
-        items::ItemStack,
-        mod_content::{self, ContentMod},
-    };
     use sunrise_command::ParsedArg;
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
     use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
+    use sunrise_sim::mod_content::{self, ContentMod};
 
     pub(in crate::game) const TRADER: &str = "peaceful_test:trader";
 
@@ -2629,8 +2627,8 @@ pub(in crate::game) mod teleport_player_rider_tests;
 pub(in crate::game) mod selector_bounds_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::{entities::ArmorStand, mobs::Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     #[test]
     #[ignore = "daily"]
@@ -2727,7 +2725,7 @@ pub(in crate::game) mod forced_respawn_tests {
     #[ignore = "daily"]
     fn overworld_spawnpoint_is_validated_at_both_player_blocks() {
         use crate::game::{native_guest_turn_tests::with_guests, respawn_anchor::RespawnConfig};
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_guests(|game| {
@@ -2831,7 +2829,7 @@ pub(in crate::game) mod effective_presence_tests {
             // Supply the synthetic chunk before forceload's synchronous load barrier.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             assert!(game.run_command("forceload add 0 0 15 15"));
             assert!(game.world.loaded(4, 4));
@@ -2839,7 +2837,7 @@ pub(in crate::game) mod effective_presence_tests {
             assert!(game.run_command("setblock 4 200 4 chest{Items:[{Slot:0b,id:\"minecraft:music_disc_cat\",count:1},{Slot:1b,id:\"minecraft:stone\",count:1},{Slot:2b,id:\"minecraft:stone\",count:1,components:{\"minecraft:jukebox_playable\":\"minecraft:cat\",\"minecraft:custom_data\":{h193:1}}},{Slot:3b,id:\"minecraft:music_disc_cat\",count:1,components:{\"!minecraft:jukebox_playable\":{},\"minecraft:custom_data\":{h193:1}}}]}"));
             assert!(game.run_command("scoreboard objectives add h193 dummy"));
             let clock = game.world.game_time;
-            let sunrise_client::containers::BlockEntity::Chest(stacks) =
+            let sunrise_level::containers::BlockEntity::Chest(stacks) =
                 game.world.block_entities.get(&(4, 200, 4)).unwrap()
             else {
                 panic!("actual chest missing")
@@ -2937,8 +2935,9 @@ pub(in crate::game) mod fill_note_instrument_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -3078,7 +3077,7 @@ pub(in crate::game) mod item_damage_range_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.build_registries();
             game.set_allow_commands(true);
@@ -3093,7 +3092,7 @@ pub(in crate::game) mod item_damage_range_tests {
             assert!(game.run_command("execute if block 4 199 4 stone"));
             let clock = game.world.game_time;
             let stacks = match game.world.block_entities.get(&(4, 200, 4)).unwrap() {
-                sunrise_client::containers::BlockEntity::Chest(slots) => slots.clone(),
+                sunrise_level::containers::BlockEntity::Chest(slots) => slots.clone(),
                 _ => panic!("actual loaded chest missing"),
             };
             for (slot, damage) in [0, 3, 4, 5, 0, 0].into_iter().enumerate() {
@@ -3136,7 +3135,7 @@ pub(in crate::game) mod item_damage_range_tests {
                     .any(|c| c == "minecraft:damage")
             );
             let removed =
-                sunrise_client::item_data::component_snapshot(stacks[5].as_ref().unwrap()).unwrap();
+                sunrise_items::item_data::component_snapshot(stacks[5].as_ref().unwrap()).unwrap();
             assert!(
                 removed.get("!minecraft:damage").is_some(),
                 "actual removal patch must survive load before evaluating it"
@@ -3218,7 +3217,7 @@ pub(in crate::game) mod item_damage_range_tests {
                 "execute if items block 4 200 4 container.6 diamond_sword[damage~{damage:4}]"
             ));
             let actual = match game.world.block_entities.get(&(4, 200, 4)).unwrap() {
-                sunrise_client::containers::BlockEntity::Chest(slots) => slots,
+                sunrise_level::containers::BlockEntity::Chest(slots) => slots,
                 _ => panic!("source chest changed"),
             };
             assert_eq!(
@@ -3242,10 +3241,10 @@ pub(in crate::game) mod vehicle_kill_tests;
 #[cfg(test)]
 pub(in crate::game) mod global_selector_order_tests {
     use super::{Selector, Target};
-    use sunrise_client::command::args::Sort;
-    use sunrise_client::join_seq::Joined;
+    use sunrise_command::args::Sort;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
+    use sunrise_sim::join_seq::Joined;
 
     #[test]
     #[ignore = "daily"]
@@ -3254,7 +3253,7 @@ pub(in crate::game) mod global_selector_order_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.build_registries();
             game.set_allow_commands(true);
@@ -3262,7 +3261,7 @@ pub(in crate::game) mod global_selector_order_tests {
                 for z in 0..2 {
                     game.world.chunks.insert(
                         (x, z),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(x, z)),
                     );
                     game.block_ticks
                         .add_empty_chunk(ChunkPos::new(x, z))

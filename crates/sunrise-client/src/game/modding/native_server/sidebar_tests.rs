@@ -3,13 +3,13 @@ use crate::game::{
 };
 use mod_api::{EntityRef, HostTransaction, Sidebar, SidebarLine, Text, TextFormError, WorldEpoch};
 use std::sync::{Arc, mpsc};
-use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::{
     buf::Reader,
     ids::play::clientbound::{SET_DISPLAY_OBJECTIVE, SET_OBJECTIVE, SET_SCORE},
     packets::play::Clientbound as C,
 };
+use sunrise_sim::lan::{Out, PlayerSender};
 
 fn received_sidebar_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
     rx.try_iter()

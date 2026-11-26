@@ -4,8 +4,8 @@
 //! (`ItemEntity.readAdditionalSaveData`) yet the command still succeeds.
 use super::super::{Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

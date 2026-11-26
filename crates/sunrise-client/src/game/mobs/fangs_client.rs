@@ -1,8 +1,8 @@
 use super::Game;
 use crate::game::server_side::fangs::fang_attack_pitch;
 use crate::game::server_side::fangs::fang_crit;
-use sunrise_client::mobs::anim::Poses;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::mobs::anim::Poses;
 
 fn p_zrot(p: &mut Poses, part: &str, v: f32) {
     p.zrot(part, v);

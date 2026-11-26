@@ -2,7 +2,7 @@
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{Hooks, ModEntry, ServerHost};
 use std::sync::{Arc, Mutex};
-use sunrise_client::gamerules::Value;
+use sunrise_client_core::gamerules::Value;
 
 struct Observe(Arc<Mutex<Vec<&'static str>>>);
 fn assert_rules(host: &dyn ServerHost) {
@@ -53,12 +53,12 @@ fn early_server_game_rules_saved_and_creation_values() {
     for dedicated in [false, true] {
         for saved in [false, true] {
             let scratch = tempfile::tempdir().unwrap();
-            let registry = Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
+            let registry = Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
             let mut create = sunrise_sim::world_options::WorldOptions::default();
             assert!(create.rules.set("keep_inventory", Value::Bool(true)));
             assert!(create.rules.set("random_tick_speed", Value::Int(7)));
             if saved {
-                let mut level = sunrise_client::save::Level {
+                let mut level = sunrise_sim::save::Level {
                     game_rules: create.rules.by_name(),
                     ..Default::default()
                 };

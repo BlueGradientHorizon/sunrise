@@ -4,8 +4,8 @@
 use super::Game;
 use crate::game::level_sounds::LevelSound;
 use mod_api::SoundSource;
-use sunrise_client::mobs::{MobEvent, happy_ghast};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{MobEvent, happy_ghast};
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -55,7 +55,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // (`babyGhastSetup`) while the mob is still being hatched: its
             // goals, navigation and brain are a ghastling's before its first
             // tick, not an adult's until the next aiStep.
-            sunrise_client::mobs::finalize::set_age(m, -24000, None);
+            sunrise_sim::mobs::finalize::set_age(m, -24000, None);
             m.yaw = yaw;
             m.body_yaw = yaw;
             m.head_yaw = yaw;
@@ -146,8 +146,8 @@ pub(in crate::game) mod hatch_tests {
 pub(in crate::game) mod item_collision_tests {
     use super::with_headless_game;
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
 
     /// An item dropped onto a minecart falls through it to the floor, and one
     /// dropped onto a boat rests on the boat (`canBeCollidedWith`).

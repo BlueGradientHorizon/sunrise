@@ -8,7 +8,7 @@ use std::{
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 pub(in crate::game) const HELP: &[&str] = &[
     "events [--since SEQ]           what happened (screen, chat, death, respawn, item, hurt, heal, food, dimension, world), oldest first",

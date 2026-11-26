@@ -6,11 +6,11 @@
 //! are used, as vanilla's do, so the box preview follows them.
 use super::{Game, Screen};
 use sunrise_client::{
-    containers::BlockEntity,
     hud::{HudBatch, rgba},
-    text::Text,
     ui::{self, EditBox},
 };
+use sunrise_client_core::text::Text;
+use sunrise_level::containers::BlockEntity;
 use sunrise_protocol::packets::play::Serverbound as S;
 use winit::keyboard::KeyCode;
 

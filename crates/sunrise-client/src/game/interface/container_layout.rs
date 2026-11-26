@@ -16,7 +16,7 @@ pub(in crate::game) struct SlotInputs {
     creative_inventory: bool,
     creative_tab: bool,
     station: Option<(std::mem::Discriminant<super::stations::Kind>, usize)>,
-    container: Option<std::mem::Discriminant<sunrise_client::containers::BlockEntity>>,
+    container: Option<std::mem::Discriminant<sunrise_level::containers::BlockEntity>>,
     machine: Option<bool>,
     crafter: bool,
     mount: Option<(usize, bool, bool)>,

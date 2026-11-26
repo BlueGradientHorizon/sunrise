@@ -1,12 +1,10 @@
 //! Exercise the actual registered leave-block goal and Game event handler.
 use super::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    mobs::{Mob, MobEvent, goals::Cx},
-};
 use sunrise_core::random::RandomSource;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::{Mob, MobEvent, goals::Cx};
 
 /// The production tick lends the level's RNG and attachments to goals while
 /// they read its blocks. Keep that ownership boundary in the registered-goal test.
@@ -14,10 +12,10 @@ fn tick_registered_goals(game: &mut crate::game::ServerGame<'_>, mob: &mut Mob) 
     let mut goals = std::mem::take(&mut mob.ai.goals);
     let snapshot = [super::creatures::seen(mob, None, game.items())];
     let mut events = Vec::new();
-    let mut lent = sunrise_client::health::LentLevel::take(&mut game.world);
+    let mut lent = sunrise_sim::health::LentLevel::take(&mut game.world);
     {
         let world = game.mob_world_base(&snapshot);
-        let mut level = sunrise_client::health::DamageLevel::lent(
+        let mut level = sunrise_sim::health::DamageLevel::lent(
             &game.world,
             game.pack.assets.registry,
             &mut lent,

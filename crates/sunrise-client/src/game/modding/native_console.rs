@@ -2,7 +2,7 @@
 //! and a console command whose feedback comes back (`run_command_with_output`).
 use super::Game;
 use mod_api::CommandResult;
-use sunrise_client::logging;
+use sunrise_level::logging;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `console_line` for each line logged since the last server tick, while
@@ -42,7 +42,7 @@ pub(in crate::game) const MAX_FEEDBACK_LINE_BYTES: usize = 4096;
 
 /// `lines` as plain text, at most `MAX_FEEDBACK_LINES` of them, each cut to at most
 /// `MAX_FEEDBACK_LINE_BYTES` bytes at a character boundary.
-pub(in crate::game) fn capped_lines(lines: &[sunrise_client::text::Text]) -> Vec<String> {
+pub(in crate::game) fn capped_lines(lines: &[sunrise_client_core::text::Text]) -> Vec<String> {
     lines
         .iter()
         .take(MAX_FEEDBACK_LINES)

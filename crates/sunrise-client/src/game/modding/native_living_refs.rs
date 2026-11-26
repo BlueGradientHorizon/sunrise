@@ -10,15 +10,15 @@ use super::Game;
 use super::api_values::{StackReadMetadata, project_stack, stack_read_metadata};
 use super::commands::{Target, items::Owner};
 use super::living_attributes::AttributeWrite;
-use crate::mobs::Who;
 use mod_api::client::first_person::Hand;
 use mod_api::{
     AttributeModifier, AttributeOperation, Direction, EntityRef, EquipmentSlot, Identifier,
     ItemStackView, LivingRef, ModifierLifetime,
 };
-use sunrise_client::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
-use sunrise_client::items::{EntityTypeTags, ItemStack};
-use sunrise_client::mobs::{
+use sunrise_items::items::{EntityTypeTags, ItemStack};
+use sunrise_sim::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
+use sunrise_sim::mobs::Who;
+use sunrise_sim::mobs::{
     Mob,
     finalize::{self, EquipmentRead},
 };
@@ -191,7 +191,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     strength,
                     x,
                     z,
-                    &sunrise_client::mobs::Damage::of(sunrise_client::mobs::DamageKind::Generic),
+                    &sunrise_sim::mobs::Damage::of(sunrise_sim::mobs::DamageKind::Generic),
                     0.0,
                 )
             }
@@ -348,7 +348,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Mob(id) => {
                 let mob = self.mobs.iter().find(|m| m.id == id)?;
                 Some(
-                    sunrise_client::mobs::spear_use::is_using_item(mob)
+                    sunrise_sim::mobs::spear_use::is_using_item(mob)
                         .then(|| mob.extra.using_item.unsigned_abs() - 1),
                 )
             }
@@ -551,7 +551,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Mob(id) => {
                 let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
                 let w = self.mob_world_base(&[]);
-                Some(sunrise_client::mobs::ai::can_freeze(m, &w))
+                Some(sunrise_sim::mobs::ai::can_freeze(m, &w))
             }
             t => Some(self.native_player_body(t)?.can_freeze()),
         }
@@ -669,7 +669,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         match self.native_living_target(living) {
             Some(t @ (Target::Player | Target::Guest(_))) => self
                 .for_player(t, |g| {
-                    g.apply_effect_action(sunrise_client::effects::EffectAction::Heal(amount));
+                    g.apply_effect_action(sunrise_level::effects::EffectAction::Heal(amount));
                 })
                 .is_some(),
             Some(Target::Mob(id)) => {
@@ -848,7 +848,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let body = match target {
             // A removed mob still lends what it wears.
             Target::Mob(id) => {
-                sunrise_client::health::LivingBody::Mob(self.mobs.iter().find(|m| m.id == id)?)
+                sunrise_sim::health::LivingBody::Mob(self.mobs.iter().find(|m| m.id == id)?)
             }
             target => self.native_living_body(target)?,
         };
@@ -910,7 +910,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if broken.is_some() {
             let event =
-                sunrise_client::mobs::item_break::equipment_break_event(world_equipment_slot(slot));
+                sunrise_sim::mobs::item_break::equipment_break_event(world_equipment_slot(slot));
             // Non-player equipment writes above are unjournaled and take effect immediately; keep
             // the coupled break event on the same immediate side of the rollback boundary.
             self.broadcast_entity_event_immediate(living.entity(), event as u8);
@@ -982,7 +982,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         at: [f64; 3],
         sound: Option<String>,
         equips: bool,
-        ctx: sunrise_client::sculk::Context,
+        ctx: sunrise_level::sculk::Context,
     ) {
         if let Some(sound) = sound {
             self.server_play_sound(&sound, at, 1.0, 1.0);
@@ -1086,7 +1086,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         who: id,
                     });
                 } else {
-                    let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
+                    let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Mob(id)), None);
                     self.equip_item_effects([at.x, at.y, at.z], sound, equippable.is_some(), ctx);
                 }
             }
@@ -1147,7 +1147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     who: id,
                 });
             } else {
-                let ctx_who = Some(sunrise_client::mobs::Who::Mob(id));
+                let ctx_who = Some(sunrise_sim::mobs::Who::Mob(id));
                 let ctx = self.who_context(ctx_who, None);
                 self.equip_item_effects([at.x, at.y, at.z], sound, equippable.is_some(), ctx);
             }
@@ -1161,7 +1161,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         stack: &ItemStack,
     ) -> Option<(super::dispenser::Slot, String)> {
-        let name = sunrise_client::item_sync::equippable_slot(stack, self.items())?;
+        let name = sunrise_sim::item_sync::equippable_slot(stack, self.items())?;
         let equip_slot = super::dispenser::Slot::from_name(&name)?;
         let sound = match stack.data().and_then(|d| d.other("minecraft:equippable")) {
             Some(component) => match component.get("equip_sound") {
@@ -1222,7 +1222,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// mob, a kind that can't be tamed, or a stale handle. API @API:living_refs@.
     pub(in crate::game) fn living_owner(&self, living: LivingRef) -> Option<u128> {
         let owner = self.native_tamable(living)?.extra.owner?;
-        Some(sunrise_client::lan::playerdata::ints_uuid(owner))
+        Some(sunrise_sim::lan::playerdata::ints_uuid(owner))
     }
     /// The mob a handle names, when it is a `TamableAnimal` or an `AbstractHorse`.
     pub(in crate::game::server_side) fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
@@ -1273,7 +1273,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         thrown_from_hand: bool,
     ) -> Option<u32> {
         let m = self.mobs.iter_mut().find(|m| m.id == id)?;
-        let v = sunrise_client::entities::drop_motion(&mut m.random, m.yaw, m.head_pitch, randomly);
+        let v = sunrise_sim::entities::drop_motion(&mut m.random, m.yaw, m.head_pitch, randomly);
         let at = [m.position.x, m.eye_y() - f64::from(0.3f32), m.position.z];
         let thrower = thrown_from_hand.then(|| self.uuid_for(id));
         self.spawn_item(stack, at, v, 40);
@@ -1374,7 +1374,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                     .extra
                     .live
                     .modifiers(catalog, &m.kind.id, name, || {
-                        sunrise_client::entity_nbt::attribute_entries(m)
+                        sunrise_sim::entity_nbt::attribute_entries(m)
                             .into_iter()
                             .map(|(_, entry)| entry)
                             .collect()
@@ -1512,8 +1512,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn durability_handle_and_held_path_share_rng_and_damage() {
         use mod_api::ServerHost;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::random::RandomSource;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -1614,11 +1614,11 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn armor_hit_matches_old_draws_and_break_order() {
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::random::RandomSource;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let source = sunrise_client::health::NO_ATTACK.player_source("minecraft:generic", 0);
+            let source = sunrise_sim::health::NO_ATTACK.player_source("minecraft:generic", 0);
             let mut armor: [Option<ItemStack>; 4] = std::array::from_fn(|_| None);
             for (i, name) in ["minecraft:diamond_helmet", "minecraft:diamond_chestplate"]
                 .into_iter()
@@ -1687,8 +1687,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn immutable_host_attribute_read_refreshes_live_cache() {
         use mod_api::Host;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         use sunrise_world::attributes::{Modifier, Operation};
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -1746,11 +1746,11 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_handle_lists_its_attributes_and_reads_its_modifiers() {
         use mod_api::{AttributeOperation, AttributeOperation::*, Identifier, ModifierLifetime::*};
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
         use sunrise_items::equipment::HEAD;
+        use sunrise_sim::entities::ArmorStand;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         let modifier = |id: &str, amount: f64, operation: AttributeOperation| {
             AttributeModifier::new(Identifier::parse(id).unwrap(), amount, operation)
         };
@@ -1867,10 +1867,10 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_reads_answer_the_vanilla_defaults_and_a_gone_entity_reads_none() {
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ArmorStand;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             let zombie = game
                 .res
@@ -1924,8 +1924,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn kill_credit_prefers_the_player_reference_and_never_falls_back_when_unresolved() {
-        use sunrise_client::mobs::{Damage, Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{Damage, Mob};
 
         super::super::native_guest_turn_tests::with_guests(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -1933,7 +1933,7 @@ pub(in crate::game) mod tests {
             game.mobs.push(Mob::new(100, pig, Vec3::ZERO, 0.0));
             let mut wolf = Mob::new(101, wolf, Vec3::ZERO, 0.0);
             wolf.extra.tame = true;
-            wolf.extra.owner = Some(sunrise_client::lan::playerdata::uuid_ints(12));
+            wolf.extra.owner = Some(sunrise_sim::lan::playerdata::uuid_ints(12));
             game.mobs.push(wolf);
             game.mobs[0].ai.last_hurt_by = Some(Who::Mob(101));
             game.mobs[0].ai.last_hurt_by_time = game.mobs[0].age as i32;
@@ -2010,7 +2010,7 @@ pub(in crate::game) mod tests {
         game.enter_level(Dim::Nether).unwrap();
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         game.block_ticks
             .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
             .unwrap();
@@ -2019,7 +2019,7 @@ pub(in crate::game) mod tests {
         game.enter_level(Dim::Overworld).unwrap();
         let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
         let zombie = summon_mob(game, "minecraft:zombie", ZOMBIE_NBT);
-        let hit = sunrise_client::mobs::Damage::mob(zombie, [0.5, 70.0, 0.5]);
+        let hit = sunrise_sim::mobs::Damage::mob(zombie, [0.5, 70.0, 0.5]);
         assert!(game.mob_hits_mob(pig, 1.0, hit));
         let living = game.living(game.entity(pig).unwrap()).unwrap();
         assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(zombie));
@@ -2066,7 +2066,7 @@ pub(in crate::game) mod tests {
             );
             assert_eq!(
                 credit.uuid(game),
-                Some(sunrise_client::lan::playerdata::ints_uuid(ZOMBIE_UUID))
+                Some(sunrise_sim::lan::playerdata::ints_uuid(ZOMBIE_UUID))
             );
             let nether = game.level("minecraft:the_nether");
             assert_eq!(credit.level(game), nether);
@@ -2153,9 +2153,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_push_names_the_credited_mob_in_another_level_and_its_main_hand() {
-        use sunrise_client::health::NO_ATTACK;
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::mobs::{Damage, DamageKind};
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::health::NO_ATTACK;
+        use sunrise_sim::mobs::{Damage, DamageKind};
         let mut credited = 0;
         let heard = super::super::native_knockback_tests::heard(|game, _| {
             let (pig, zombie) = hurt_pig(game);
@@ -2190,9 +2190,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mobs_last_attacker_names_a_mob_the_host_and_none_when_displaced() {
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(12, pig, Vec3::ZERO, 0.0));
@@ -2229,8 +2229,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn set_health_can_store_zero() {
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         super::super::native_entity_refs::tests::with_game(|game| {
             let zombie = game
                 .res
@@ -2250,8 +2250,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn set_health_journal_restores_nested_player_and_mob_writes() {
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             let zombie = game
                 .res
@@ -2346,8 +2346,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn heal_uses_the_vanilla_signed_sum() {
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         super::super::native_entity_refs::tests::with_game(|game| {
             let zombie = game
                 .res
@@ -2368,9 +2368,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn absorbed_player_hit_still_remembers_the_living_attacker() {
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             let zombie = game
                 .res
@@ -2407,7 +2407,7 @@ pub(in crate::game) mod tests {
                 let rules = game.world.health_rules;
                 let level = super::super::entity::damage_level_of!(
                     game,
-                    &sunrise_client::health::NO_ATTACK,
+                    &sunrise_sim::health::NO_ATTACK,
                     no_push,
                     None
                 );
@@ -2447,9 +2447,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn raw_health_write_can_change_a_dead_entity_but_heal_cannot() {
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(12, pig, Vec3::ZERO, 0.0));
@@ -2484,8 +2484,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn set_hand_item_writes_the_hands_slot() {
         use mod_api::ServerHost;
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -2557,8 +2557,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_equipment_writes_keep_full_stacks() {
-        use sunrise_client::mobs::gear;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::gear;
         super::super::native_entity_refs::tests::with_game(|game| {
             let expect_slot =
                 |game: &crate::game::ServerGame<'_>, living, slot, expected: Option<&ItemStack>| {
@@ -2651,12 +2651,12 @@ pub(in crate::game) mod tests {
             saddle.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("saddle".into()));
             assert!(game.living_set_equipment(horse, EquipmentSlot::Saddle, Some(saddle.clone())));
             expect_slot(game, horse, EquipmentSlot::Saddle, Some(&saddle));
-            sunrise_client::mobs::raider::set_patrol_leader(&mut game.mobs[2], true);
-            sunrise_client::mobs::raider::wear_banner(&mut game.mobs[2]);
-            assert!(sunrise_client::mobs::raider::is_captain(&game.mobs[2]));
+            sunrise_sim::mobs::raider::set_patrol_leader(&mut game.mobs[2], true);
+            sunrise_sim::mobs::raider::wear_banner(&mut game.mobs[2]);
+            assert!(sunrise_sim::mobs::raider::is_captain(&game.mobs[2]));
             assert!(game.living_set_equipment(captain, EquipmentSlot::Head, Some(helmet.clone())));
             expect_slot(game, captain, EquipmentSlot::Head, Some(&helmet));
-            assert!(!sunrise_client::mobs::raider::is_captain(&game.mobs[2]));
+            assert!(!sunrise_sim::mobs::raider::is_captain(&game.mobs[2]));
             assert!(game.living_set_equipment(
                 horse,
                 EquipmentSlot::Body,
@@ -2670,7 +2670,7 @@ pub(in crate::game) mod tests {
             let dragon = game.living(game.entity(40).unwrap()).unwrap();
             // The dragon and an armor stand store all eight slots, full
             // stacks included, and save them through the real codecs.
-            let mut stand = sunrise_client::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
+            let mut stand = sunrise_sim::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
             stand.id = 16;
             game.armor_stands.push(stand);
             let stand = game.living(game.entity(16).unwrap()).unwrap();
@@ -2692,13 +2692,13 @@ pub(in crate::game) mod tests {
             let loaded = super::super::dragon::Dragon::from_nbt(&saved, 0).unwrap();
             assert_eq!(loaded.equipment, game.dragon.as_ref().unwrap().equipment);
             let stored = game.armor_stands.last().unwrap();
-            let saved = sunrise_client::entity_nbt::armor_stand_to_nbt(
+            let saved = sunrise_sim::entity_nbt::armor_stand_to_nbt(
                 stored,
                 [0; 4],
                 None,
                 &Default::default(),
             );
-            let loaded = sunrise_client::entity_nbt::armor_stand_from_nbt(&saved, 16).unwrap();
+            let loaded = sunrise_sim::entity_nbt::armor_stand_from_nbt(&saved, 16).unwrap();
             assert_eq!(loaded.equipment, stored.equipment);
             for living in [dragon, stand] {
                 assert!(game.living_set_equipment(living, EquipmentSlot::Saddle, None));
@@ -2763,8 +2763,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_wolf_throws_and_reads_tamed_and_owner() {
-        use sunrise_client::{chunk::Chunk, entities::ArmorStand};
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::entities::ArmorStand;
 
         super::super::native_entity_refs::tests::with_game(|game| {
             game.world
@@ -2776,7 +2777,7 @@ pub(in crate::game) mod tests {
                     [2.5, 64.0, 2.5],
                     true,
                     super::super::creatures::SpawnSite::Finalizing(
-                        sunrise_client::mobs::spawn_rules::Reason::Command,
+                        sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 )
                 .unwrap();
@@ -2832,7 +2833,7 @@ pub(in crate::game) mod tests {
     fn player_mod_drop_and_drop_key_have_equivalent_motion() {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
@@ -2840,7 +2841,7 @@ pub(in crate::game) mod tests {
             );
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.yaw = 37.0;
             game.pitch = -21.0;
@@ -2849,13 +2850,13 @@ pub(in crate::game) mod tests {
             game.inventory[game.selected] = Some(item.clone());
             let player_random = game.player.as_ref().unwrap().random.clone();
             let (_, seeds) =
-                sunrise_client::random_source::record_seeds(|| game.drop_held_item(true));
+                sunrise_level::random_source::record_seeds(|| game.drop_held_item(true));
             let key_velocity = game.dropped.last().unwrap().velocity;
             *game.world.random = sunrise_core::random::LegacyRandom::new(12345);
             crate::game::native_entity_refs::tests::bind_local_player(game, 42, 123);
             let player = game.living(game.entity(42).unwrap()).unwrap();
             game.player.as_mut().unwrap().random = player_random;
-            let id = sunrise_client::random_source::replay_seeds(seeds.clone(), || {
+            let id = sunrise_level::random_source::replay_seeds(seeds.clone(), || {
                 game.living_drop(player, item, false, true).unwrap().id()
             });
             assert!(
@@ -2896,7 +2897,7 @@ pub(in crate::game) mod tests {
             mod_platform::testing::with_mods(mods, || {
                 super::super::native_entity_refs::tests::with_game(|game| {
                     game.player = Some(
-                        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
+                        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
                     );
                     super::super::native_entity_refs::tests::bind_local_player(game, 42, 123);
                     game.yaw = 0.0;
@@ -2956,7 +2957,7 @@ pub(in crate::game) mod tests {
     fn armor_stand_drop_does_not_swing() {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.armor_stands
-                .push(sunrise_client::entities::ArmorStand::new(
+                .push(sunrise_sim::entities::ArmorStand::new(
                     90,
                     sunrise_core::geometry::Vec3::ZERO,
                     0.0,
@@ -2984,9 +2985,9 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn the_engines_own_portal_melee_freeze_and_air_answers() {
         use mod_api::Host;
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             // Two zombies an arm's length apart, and one a stride away.
             let zombie = game
@@ -3051,7 +3052,7 @@ pub(in crate::game) mod tests {
             }
             game.mobs[0].extra.equipment.set(
                 sunrise_items::equipment::FEET,
-                Some(sunrise_client::items::ItemStack::new(
+                Some(sunrise_items::items::ItemStack::new(
                     "minecraft:leather_boots",
                     1,
                 )),
@@ -3120,12 +3121,12 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_sleepers_bed_orientation() {
         use mod_api::{Direction, Host};
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         super::super::native_entity_refs::tests::with_game(|game| {
             // A floor with a red bed on it, facing north.
             for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                 chunk.lit = true;
                 game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
             }
@@ -3164,19 +3165,17 @@ pub(in crate::game) mod tests {
             // Asleep in the bed: the block's own facing, the engine's own
             // sleeping position naming the bed.
             game.mobs[0].extra.ints[1] = 1;
-            sunrise_client::mobs::villager::ext_mut(&mut game.mobs[0]).sleeping_pos =
-                Some([2, 63, 2]);
+            sunrise_sim::mobs::villager::ext_mut(&mut game.mobs[0]).sleeping_pos = Some([2, 63, 2]);
             let host: &dyn Host = game;
             assert_eq!(sleeper.bed_orientation(host), Some(Direction::North));
             assert_eq!(sleeper.can_use_portal(host), Some(false));
             // A sleeping position that is not a bed answers none.
-            sunrise_client::mobs::villager::ext_mut(&mut game.mobs[0]).sleeping_pos =
-                Some([0, 63, 0]);
+            sunrise_sim::mobs::villager::ext_mut(&mut game.mobs[0]).sleeping_pos = Some([0, 63, 0]);
             let host: &dyn Host = game;
             assert_eq!(sleeper.bed_orientation(host), None);
             // A player asleep in the same bed answers the same facing.
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             game.sleeping = Some([2, 63, 2]);
             let player = game.living(game.entity(20).unwrap()).unwrap();
@@ -3187,10 +3186,10 @@ pub(in crate::game) mod tests {
             for name in ["minecraft:fox", "minecraft:bat", "minecraft:cat"] {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
                 let mut mob = Mob::new(31, kind, Vec3::ZERO, 0.0);
-                assert!(sunrise_client::mobs::mob_can_use_portal(&mob));
+                assert!(sunrise_sim::mobs::mob_can_use_portal(&mob));
                 if name == "minecraft:fox" {
-                    mob.extra.ints[0] |= sunrise_client::mobs::fox::SLEEPING;
-                    assert!(!sunrise_client::mobs::mob_can_use_portal(&mob));
+                    mob.extra.ints[0] |= sunrise_sim::mobs::fox::SLEEPING;
+                    assert!(!sunrise_sim::mobs::mob_can_use_portal(&mob));
                 }
             }
             assert!(!game.mob_portal_eligible(&game.mobs[0]));
@@ -3211,7 +3210,7 @@ pub(in crate::game) mod tests {
             // joined player's server record keeps.
             game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                 g.motion = Some(Box::new(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::new(3.0, 64.0, 5.0),
                     )
@@ -3293,11 +3292,8 @@ pub(in crate::game) mod tests {
             vec![ModEntry::new("first_tick_equipment", Box::new(Reequip))].into(),
             || {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    let mut stand = sunrise_client::entities::ArmorStand::new(
-                        18,
-                        Vec3::new(0.5, 70.0, 0.5),
-                        0.0,
-                    );
+                    let mut stand =
+                        sunrise_sim::entities::ArmorStand::new(18, Vec3::new(0.5, 70.0, 0.5), 0.0);
                     stand.no_gravity = true;
                     stand.equipment[0] = Some(ItemStack::new("minecraft:stone", 1));
                     game.armor_stands.push(stand);
@@ -3325,8 +3321,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_equipment_writes_emit_vanilla_equip_events() {
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         super::super::native_entity_refs::tests::with_game(|game| {
             let kind = game
                 .res
@@ -3386,9 +3382,9 @@ pub(in crate::game) mod tests {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
-            let mut stand = sunrise_client::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
+            let mut stand = sunrise_sim::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
             stand.id = 16;
             game.armor_stands.push(stand);
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
@@ -3436,7 +3432,7 @@ pub(in crate::game) mod tests {
             body.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("armor".into()));
             let saddle = ItemStack::new("minecraft:saddle", 1);
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
@@ -3457,7 +3453,7 @@ pub(in crate::game) mod tests {
             let tag = game.level.player_tag(&Default::default());
             let equipment = tag.get("equipment").unwrap();
             assert!(equipment.get("body").is_some() && equipment.get("saddle").is_some());
-            let mut read = sunrise_client::save::Level::default();
+            let mut read = sunrise_sim::save::Level::default();
             read.read_player(&tag);
             game.equipment = Default::default();
             let level = read;

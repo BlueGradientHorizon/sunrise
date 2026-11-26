@@ -2,7 +2,7 @@
 //! recipe list goes back to the top whenever the menu's input container
 //! changes, and only then.
 use super::*;
-use sunrise_client::menu::Input;
+use sunrise_sim::menu::Input;
 
 fn deepslate(count: u32) -> ItemStack {
     ItemStack::new("minecraft:deepslate", count)
@@ -40,7 +40,7 @@ fn the_stonecutter_list_returns_to_the_top_when_its_input_changes() {
     crate::game::native_entity_refs::tests::with_client_game(|g| {
         g.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         g.open_station_client(Station::new(Kind::Stonecutter, [0, 64, 0]));
         // Two deepslate in the input: 17 recipes, so the list scrolls.

@@ -10,22 +10,29 @@ use super::{
 use sunrise_assets::item_model::DisplayContext;
 #[allow(unused_imports)]
 use sunrise_client::{
-    block_entity_render::vertex_light,
-    brewing,
-    effects::{EffectInstance, PlayerEffects},
-    hud::HudBatch,
-    hud_layout, hud_overlays, inventory_effects,
-    items::ItemStack,
+    block_entity_render::vertex_light, hud::HudBatch, hud_layout, hud_overlays, inventory_effects,
     mesher::Vertex,
-    mobs::{Damage, NamedDamage, Who},
-    particles::{ParticleOptions, ParticleType},
-    projectiles::{Projectile, ProjectileKind},
-    text::Text,
 };
+#[allow(unused_imports)]
+use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::LegacyRandom,
+};
+#[allow(unused_imports)]
+use sunrise_items::items::ItemStack;
+#[allow(unused_imports)]
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+#[allow(unused_imports)]
+use sunrise_level::{
+    brewing,
+    effects::{EffectInstance, PlayerEffects},
+};
+#[allow(unused_imports)]
+use sunrise_sim::{
+    mobs::{Damage, NamedDamage, Who},
+    projectiles::{Projectile, ProjectileKind},
 };
 
 /// Per-cloud settings; natural lingering clouds keep their creation defaults.
@@ -109,9 +116,9 @@ pub(in crate::game) const REAPPLICATION_DELAY: i32 = 20;
 /// `AreaEffectCloud.readAdditionalSaveData`: load the cloud's simulation state and decode
 /// its custom particle once. The entity id is the caller's (`load_potion_cloud`).
 pub(in crate::game) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)> {
-    use sunrise_client::save::{float, number, text};
-    let at = sunrise_client::entity_nbt::position(tag)?;
-    let motion = sunrise_client::entity_nbt::loaded_motion(tag);
+    use sunrise_sim::save::{float, number, text};
+    let at = sunrise_sim::entity_nbt::position(tag)?;
+    let motion = sunrise_sim::entity_nbt::loaded_motion(tag);
     let int = |key, default| number(tag.get(key)).map_or(default, |v| v as i32);
     let real = |key, default| float(tag.get(key)).map_or(default, |v| v as f32);
     let contents = tag.get("potion_contents");
@@ -157,8 +164,8 @@ pub(in crate::game) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)
             id: 0,
             at: [at.x, at.y, at.z],
             motion: [motion.x, motion.y, motion.z],
-            fall_distance: sunrise_client::entity_nbt::ground_from_nbt(tag).1,
-            fire_ticks: sunrise_client::entity_nbt::fire_ticks_from_nbt(tag),
+            fall_distance: sunrise_sim::entity_nbt::ground_from_nbt(tag).1,
+            fire_ticks: sunrise_sim::entity_nbt::fire_ticks_from_nbt(tag),
             first_tick: true,
             radius: real("Radius", 3.0).clamp(0.0, 32.0),
             age: int("Age", 0),
@@ -207,8 +214,8 @@ pub(in crate::game) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Opti
     let at = Vec3::new(c.at[0], c.at[1], c.at[2]);
     let motion = Vec3::new(c.motion[0], c.motion[1], c.motion[2]);
     // AreaEffectCloud never turns: the rotation it was loaded with.
-    let rotation = raw.map_or([0.0; 2], sunrise_client::entity_nbt::loaded_rotation);
-    let mut tag = sunrise_client::entity_nbt::entity_base_tag(
+    let rotation = raw.map_or([0.0; 2], sunrise_sim::entity_nbt::loaded_rotation);
+    let mut tag = sunrise_sim::entity_nbt::entity_base_tag(
         "minecraft:area_effect_cloud",
         at,
         motion,
@@ -373,12 +380,12 @@ pub(in crate::game) fn mob_effect_id(id: &str) -> Option<&'static str> {
 /// still takes the wither as a victim (`AreaEffectCloud` asks `canBeAffected`),
 /// so its instant effects land and it shrinks.
 pub(in crate::game) fn mob_can_be_affected(
-    tags: &sunrise_client::items::EntityTypeTags,
+    tags: &sunrise_items::items::EntityTypeTags,
     kind: &str,
     slot: Option<usize>,
     effect: &str,
 ) -> bool {
-    use sunrise_client::items::EntityTypeTags;
+    use sunrise_items::items::EntityTypeTags;
     let effect = effect.trim_start_matches("minecraft:");
     let overridden = match kind.trim_start_matches("minecraft:") {
         "wither" | "wither_skeleton" => effect == "wither",
@@ -581,7 +588,7 @@ pub(in crate::game::client_side) fn thrown_kind(stack: &ItemStack) -> &'static s
 /// the cloud's position when one was found.
 pub(in crate::game) fn collect_dragon_breath(
     player_box: Aabb,
-    clouds: &mut sunrise_client::join_seq::ResidentList<super::dragon::Breath>,
+    clouds: &mut sunrise_sim::join_seq::ResidentList<super::dragon::Breath>,
 ) -> Option<[f64; 3]> {
     let search_box = player_box.inflate(Vec3::new(2.0, 2.0, 2.0));
     if let Some(i) = clouds.iter().position(|c| {
@@ -1296,7 +1303,7 @@ pub(in crate::game) mod tests {
             assert!(tag.get(key).is_some(), "{key}");
         }
         assert_eq!(
-            sunrise_client::entity_nbt::kind(&tag).as_deref(),
+            sunrise_sim::entity_nbt::kind(&tag).as_deref(),
             Some("minecraft:area_effect_cloud")
         );
     }
@@ -1306,7 +1313,7 @@ pub(in crate::game) mod tests {
     /// as a victim (`AreaEffectCloud.serverTick` asks `canBeAffected`).
     #[test]
     fn a_cloud_still_counts_the_wither_as_a_victim() {
-        let tags = sunrise_client::items::EntityTypeTags::default();
+        let tags = sunrise_items::items::EntityTypeTags::default();
         for effect in ["strength", "instant_health"] {
             assert!(
                 mob_can_be_affected(&tags, "minecraft:wither", None, effect),

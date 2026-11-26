@@ -47,7 +47,7 @@ fn the_hurt_sound_follows_the_damage_events_type() {
     for (id, (name, effects)) in types.iter().enumerate() {
         assert_eq!(
             hurt_sound_for(&registries, &catalog, id as i32),
-            sunrise_client::health::hurt_sound(effects),
+            sunrise_sim::health::hurt_sound(effects),
             "{name}"
         );
     }

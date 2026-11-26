@@ -6,13 +6,13 @@
 //! that is not in the level in place (a player in a parked level).
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, SoundSource};
-use sunrise_client::mobs::Species;
+use sunrise_sim::mobs::Species;
 
 /// `Monster`'s sound source is hostile, and so are a few mobs that are not
 /// `Monster`s: `Hoglin`, `Ghast`, `Phantom`, `Shulker` and the slimes
 /// (`AbstractCubeMob`).
 pub(in crate::game::server_side) fn hostile_species(species: Species) -> bool {
-    sunrise_client::mobs::ai::is_monster(species)
+    sunrise_sim::mobs::ai::is_monster(species)
         || matches!(
             species,
             Species::Hoglin
@@ -41,7 +41,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Mob(id) => {
                 let m = self.mobs.iter().find(|m| m.id == id)?;
                 let evil = m.species() == Species::Rabbit
-                    && m.extra.variant == sunrise_client::mobs::rabbit::EVIL;
+                    && m.extra.variant == sunrise_sim::mobs::rabbit::EVIL;
                 if evil || hostile_species(m.species()) {
                     SoundSource::Hostile
                 } else {
@@ -185,10 +185,10 @@ mod tests {
     use super::super::dispense_fixture;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, SoundSource, WorldEpoch};
-    use sunrise_client::command::args::GameMode;
-    use sunrise_client::mobs::Mob;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_command::args::GameMode;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> EntityRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
@@ -224,7 +224,7 @@ mod tests {
                 .find(|m| m.id == 15)
                 .unwrap()
                 .extra
-                .variant = sunrise_client::mobs::rabbit::EVIL;
+                .variant = sunrise_sim::mobs::rabbit::EVIL;
             assert_eq!(source(game, bunny), Some(SoundSource::Hostile));
             acting_player(game);
             let player = game.entity(7).unwrap();

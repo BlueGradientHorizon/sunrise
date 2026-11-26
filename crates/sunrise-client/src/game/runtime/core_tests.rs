@@ -446,7 +446,7 @@ fn a_falling_block_keeps_its_model_offset() {
         drop_item: true,
         fall_distance: 0.0,
         stuck: Vec3::ZERO,
-        damage: sunrise_client::falling_block::Damage::default(),
+        damage: sunrise_sim::falling_block::Damage::default(),
         saved: None,
     };
     // OffsetType.XZ: one offset per column (Mth.getSeed(x, 0, z)).
@@ -889,7 +889,7 @@ fn integrated_server_save_persists_owner_player_data() {
 #[test]
 fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
     use std::cell::Cell;
-    use sunrise_client::world::ModifiedChunks;
+    use sunrise_level::world::ModifiedChunks;
     let now = Instant::now();
     let mut dirty = ModifiedChunks::default();
     dirty.extend((0..27).map(|x| (x, 0)));
@@ -966,12 +966,12 @@ pub(in crate::game) mod wind_charge_burst_tests {
     use super::*;
     use crate::game::wind::above_the_top;
     use std::sync::Arc;
-    use sunrise_client::{
-        chunk::{Chunk, LevelShape},
+    use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::{Chunk, LevelShape};
+    use sunrise_sim::{
         mobs::Who,
         projectiles::{Hit, Projectile, ProjectileKind},
     };
-    use sunrise_core::position::ChunkPos;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

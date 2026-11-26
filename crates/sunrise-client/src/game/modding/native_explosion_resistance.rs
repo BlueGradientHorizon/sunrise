@@ -6,7 +6,7 @@ use mod_api::{
     EntityRef, ExplosionInteraction, ExplosionResistance, LevelRef, ResistanceCells,
     ResistanceCellsError,
 };
-use sunrise_client::mobs::DamageKind;
+use sunrise_sim::mobs::DamageKind;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The resistance the blast `level.explode(source, center, radius, fire, interaction)` would

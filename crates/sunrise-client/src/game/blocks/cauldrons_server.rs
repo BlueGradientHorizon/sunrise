@@ -5,8 +5,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn use_on_cauldron(
         &mut self,
         pos: [i32; 3],
-    ) -> Result<sunrise_client::cauldron::Outcome> {
-        use sunrise_client::cauldron::{self, Outcome};
+    ) -> Result<sunrise_sim::cauldron::Outcome> {
+        use sunrise_sim::cauldron::{self, Outcome};
         let registry = self.pack.assets.registry;
         let Some((state, under_water)) = self.cauldron_at(pos) else {
             return Ok(Outcome::Pass);

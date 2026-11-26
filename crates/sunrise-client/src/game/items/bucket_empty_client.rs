@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 use sunrise_world::level::BucketContent;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -15,6 +15,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             return None;
         }
-        sunrise_client::items::bucket_contents(&stack.item)
+        sunrise_items::items::bucket_contents(&stack.item)
     }
 }

@@ -6,8 +6,8 @@
 //! (tools/test_sulfur_prime_phase_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -54,9 +54,9 @@ fn fuse(game: &crate::game::ServerGame<'_>) -> i32 {
     let cube = game
         .mobs
         .iter()
-        .find(|m| m.species() == sunrise_client::mobs::Species::SulfurCube)
+        .find(|m| m.species() == sunrise_sim::mobs::Species::SulfurCube)
         .expect("the cube");
-    sunrise_client::mobs::sulfur_cube::fuse(cube)
+    sunrise_sim::mobs::sulfur_cube::fuse(cube)
 }
 
 fn step(game: &mut crate::game::ServerGame<'_>) {

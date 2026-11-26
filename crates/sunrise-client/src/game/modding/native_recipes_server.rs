@@ -2,7 +2,7 @@
 use super::Game;
 use super::api_values::TryIntoApi;
 use mod_api::{LevelRef, RecipeInput, RecipeLookupError, RecipeMatch};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The engine's matchers, shared with crafting and station menus; no mod-side rematching.

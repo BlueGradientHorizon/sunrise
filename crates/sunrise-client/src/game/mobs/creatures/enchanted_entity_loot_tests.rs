@@ -1,7 +1,7 @@
 use super::super::native_entity_refs::tests::with_game;
 use mod_api::ServerHost;
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::Damage;
+use sunrise_sim::mobs::Damage;
 
 /// What the mod read through its handles, of one question.
 #[derive(Debug, PartialEq)]

@@ -18,7 +18,7 @@ fn client_player_ticks_on_the_death_screen_too() {
             remote.logged_in = true;
             remote.profile = 456;
             remote.entity_id = 42;
-            game.player = sunrise_client::motion::PlayerMotion::new(
+            game.player = sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::ZERO,
             )
@@ -32,7 +32,7 @@ fn client_player_ticks_on_the_death_screen_too() {
                 .as_ref()
                 .unwrap()
                 .clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 66,
                 kind,
                 sunrise_core::geometry::Vec3::ZERO,
@@ -56,7 +56,7 @@ fn client_player_ticks_on_the_death_screen_too() {
             game.remote.as_mut().unwrap().loaded_sent = true;
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             // The other player's tick ends before the local player's starts.
             game.tick_remote().unwrap();
             assert_eq!(game.cooldowns.remaining().next().unwrap().1, 2);

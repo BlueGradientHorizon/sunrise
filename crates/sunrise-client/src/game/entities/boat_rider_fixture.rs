@@ -3,9 +3,11 @@ use super::{Game, Keys, boats::Boat};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;
-use sunrise_client::{Result, held::Source, motion::PlayerMotion};
+use sunrise_client::held::Source;
+use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{connection::Pipe, packets::play::Serverbound};
+use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
 
 #[derive(Deserialize)]

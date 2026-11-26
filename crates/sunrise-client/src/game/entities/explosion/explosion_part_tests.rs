@@ -128,7 +128,7 @@ fn block_parts_xp_and_explosion_contract() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let ore = registry.default_state("minecraft:diamond_ore").unwrap();
             let stone = registry.default_state("minecraft:stone").unwrap();
@@ -136,7 +136,7 @@ fn block_parts_xp_and_explosion_contract() {
             let pos = BlockPos::new(1, 64, 1);
             let drop = |game: &mut crate::game::ServerGame<'_>,
                         state,
-                        tool: Option<&sunrise_client::items::ItemStack>,
+                        tool: Option<&sunrise_items::items::ItemStack>,
                         override_xp| {
                 game.with_level(|_, level, _| {
                     let block_entity = level.resident_block_entity(pos);
@@ -167,7 +167,7 @@ fn block_parts_xp_and_explosion_contract() {
             game.native_break_block([1, 64, 1], ore, &mut canceled, &mut xp);
             assert_eq!(seen.lock().unwrap().as_slice(), &[Some(7), Some(7)]);
             assert_eq!(drop(game, ore, None, xp), 10);
-            let mut silk = sunrise_client::items::ItemStack::new("minecraft:diamond_pickaxe", 1);
+            let mut silk = sunrise_items::items::ItemStack::new("minecraft:diamond_pickaxe", 1);
             silk.extra
                 .get_or_insert_with(Default::default)
                 .enchantments
@@ -207,13 +207,10 @@ fn block_parts_xp_and_explosion_contract() {
                     .unwrap();
             }
             let mut contents = vec![None; 27];
-            contents[0] = Some(sunrise_client::items::ItemStack::new(
-                "minecraft:diamond",
-                3,
-            ));
+            contents[0] = Some(sunrise_items::items::ItemStack::new("minecraft:diamond", 3));
             game.world.block_entities.insert(
                 (1, 64, 1),
-                sunrise_client::containers::BlockEntity::Chest(contents),
+                sunrise_level::containers::BlockEntity::Chest(contents),
             );
             assert_eq!(drop(game, chest, None, None), 7);
             cancel_blast.store(true, Ordering::Relaxed);
@@ -265,13 +262,10 @@ fn block_parts_xp_and_explosion_contract() {
             for mode in 1..=3 {
                 game.level_set([1, 64, 1], chest).unwrap();
                 let mut contents = vec![None; 27];
-                contents[0] = Some(sunrise_client::items::ItemStack::new(
-                    "minecraft:diamond",
-                    3,
-                ));
+                contents[0] = Some(sunrise_items::items::ItemStack::new("minecraft:diamond", 3));
                 game.world.block_entities.insert(
                     (1, 64, 1),
-                    sunrise_client::containers::BlockEntity::Chest(contents),
+                    sunrise_level::containers::BlockEntity::Chest(contents),
                 );
                 blast.1.store(mode, Ordering::Relaxed);
                 let mut drops = Vec::new();
@@ -394,7 +388,7 @@ fn with_answers(answers: &Answers, test: impl FnOnce(&mut crate::game::ServerGam
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             test(game);
         });
     });
@@ -510,7 +504,7 @@ fn block_parts_answer_explosion_resistance() {
 #[test]
 #[ignore = "daily"]
 fn block_parts_answer_drops_from_explosions() {
-    use sunrise_client::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
+    use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
     let answers = Answers::default();
     with_answers(&answers, |game| {
         mod_api::__private::resolve_block_entity_types(["explosion_answers:drop_save"], |_| {
@@ -645,7 +639,7 @@ fn a_block_part_keeps_its_block_from_a_dangerous_skull_cap() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let stone = game
                 .pack
                 .assets
@@ -656,8 +650,8 @@ fn a_block_part_keeps_its_block_from_a_dangerous_skull_cap() {
             // blasts at radius 1 and keeps it readable while the stone's part is asked.
             let survives = |game: &mut crate::game::ServerGame<'_>| {
                 game.world.set(2, 64, 0, stone).unwrap();
-                let mut skull = sunrise_client::projectiles::Projectile::new(
-                    sunrise_client::projectiles::ProjectileKind::WitherSkull { dangerous: true },
+                let mut skull = sunrise_sim::projectiles::Projectile::new(
+                    sunrise_sim::projectiles::ProjectileKind::WitherSkull { dangerous: true },
                     Vec3::new(1.5, 64.25, 0.5),
                     None,
                 );

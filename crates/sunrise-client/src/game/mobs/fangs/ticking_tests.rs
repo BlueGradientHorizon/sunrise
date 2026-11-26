@@ -2,12 +2,12 @@ use crate::game::native_entity_refs::tests::with_game;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::containers::BlockEntity;
-use sunrise_client::items::ItemStack;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::motion::PlayerMotion;
 
 fn load_witness() -> TickingGateWitness {
     let path = std::env::var_os("SUNRISE_FANGS_TICKING_GATE_WITNESS").unwrap_or_else(|| {

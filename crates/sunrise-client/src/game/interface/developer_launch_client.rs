@@ -21,7 +21,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<()> {
         if local.is_none() && self.options.developer_single_player {
             return Err(
-                sunrise_client::lang::get("sunrise.developer_offline.single_player").into(),
+                sunrise_client_core::lang::get("sunrise.developer_offline.single_player").into(),
             );
         }
         self.connect_remote_session(address, name, local, cookies, lan, realm, list_name)

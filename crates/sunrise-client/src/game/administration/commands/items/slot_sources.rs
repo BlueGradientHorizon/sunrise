@@ -2,8 +2,8 @@
 use super::{Game, Owner};
 use serde_json::Value;
 use std::collections::BTreeSet;
-use sunrise_client::datapack::DataStore;
 use sunrise_core::nbt::Tag;
+use sunrise_level::datapack::DataStore;
 pub(in crate::game) fn id(raw: &str) -> String {
     if raw.contains(':') {
         raw.to_owned()
@@ -45,7 +45,7 @@ pub(in crate::game) fn typed_source(tag: &Tag) -> Value {
             _ => {}
         }
     }
-    let mut value = sunrise_client::scoreboard::tag_to_json(tag);
+    let mut value = sunrise_client_core::scoreboard::tag_to_json(tag);
     keep_byte_limits(tag, &mut value);
     value
 }

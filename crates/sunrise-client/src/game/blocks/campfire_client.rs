@@ -3,12 +3,10 @@ use super::{
     item_draw::{BlockItemDraw, block_entity_pose},
 };
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::{
-    block_entity_render::vertex_light, camera::rotate_degrees, containers::BlockEntity,
-    mesher::Vertex,
-};
+use sunrise_client::{block_entity_render::vertex_light, camera::rotate_degrees, mesher::Vertex};
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::position::BlockPos;
+use sunrise_level::containers::BlockEntity;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CampfireRenderer`: each cooking item lies on the fire, slot `i`
@@ -26,9 +24,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         camera: glam::DVec3,
         mut draw: impl FnMut(BlockItemDraw),
     ) {
-        let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
+        let _items = sunrise_level::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
-        sunrise_client::spans::note_block_entity_item_visits(|| {
+        sunrise_level::spans::note_block_entity_item_visits(|| {
             self.world.block_entities.len() as u64
         });
         for (key, entity) in &self.world.block_entities {

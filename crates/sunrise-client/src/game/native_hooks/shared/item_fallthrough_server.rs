@@ -21,7 +21,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn use_target_then_item(
         &mut self,
         hit: &crate::game::Hit,
-    ) -> sunrise_client::Result<bool> {
+    ) -> sunrise_client_core::Result<bool> {
         self.side.guest_use = Some(crate::game::GuestUse::on_block(self.hand));
         let result = self.with_block_use_original(self.hand, |g| {
             let result = g.use_hand(Some(hit));

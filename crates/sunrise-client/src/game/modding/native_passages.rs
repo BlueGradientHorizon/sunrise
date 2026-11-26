@@ -7,7 +7,7 @@ use mod_api::{
     DimensionKey, LevelRef, Passage, PassageId, PassageRegistrationError as Refused, PassageTurn,
     Vec3,
 };
-use sunrise_client::fast_hash::FxHashMap;
+use sunrise_level::fast_hash::FxHashMap;
 use sunrise_protocol::passage_sync::{Message, PassageForm};
 
 /// Passages a level holds at most. A client holds every passage of the chunks it has, so
@@ -103,7 +103,7 @@ impl Passages {
 
     /// A new hub (the LAN opened again) records the chunks it sends from its start while a
     /// passage lives, so a chunk it sends before the next `flush_passages` carries them.
-    pub(in crate::game::server_side) fn record_on(&self, hub: &mut sunrise_client::lan::hub::Hub) {
+    pub(in crate::game::server_side) fn record_on(&self, hub: &mut sunrise_sim::lan::hub::Hub) {
         if !self.index.is_empty() {
             hub.chunk_watches.record_for_passages();
         }
@@ -277,8 +277,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// A guest's crossing that passed the hub's move check (`Hub::passage_leg`), decided
     /// from the `from` it names (`decide_passage_cross`).
     pub(in crate::game) fn guest_passage_cross(&mut self, conn: u32, data: &[u8]) {
-        use sunrise_client::lan::hub::passage_cross::crossing_source;
         use sunrise_protocol::passage_sync::decode_cross;
+        use sunrise_sim::lan::hub::passage_cross::crossing_source;
 
         let Ok(cross) = decode_cross(data) else {
             return;
@@ -341,7 +341,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         from: [f64; 3],
     ) -> Result<Passage, mod_api::PassageCrossRefusal> {
         use mod_api::PassageCrossRefusal as Refusal;
-        use sunrise_client::lan::hub::passage_cross::REACH;
+        use sunrise_sim::lan::hub::passage_cross::REACH;
         let host = self.lan.as_ref().ok_or(Refusal::UnknownPassage)?;
         let g = &host.hub.guests[gi];
         if let Some(why) = host.hub.passage_refusal(gi) {
@@ -420,7 +420,7 @@ pub(in crate::game) fn passage_within_reach(p: &Passage, point: [f64; 3]) -> boo
         );
         d[k] - aw[k] * w - ah[k] * h
     });
-    let reach = f64::from(sunrise_client::lan::hub::passage_cross::REACH);
+    let reach = f64::from(sunrise_sim::lan::hub::passage_cross::REACH);
     nearest.iter().map(|v| v * v).sum::<f64>() <= reach * reach
 }
 
@@ -524,7 +524,7 @@ pub(in crate::game) mod tests {
     use crate::game::native_guest_turn_tests::with_guests;
     use mod_api::{DimensionKey, LevelRef, Passage, PassageId, PassageTurn, Vec3, WorldEpoch};
     use std::sync::{Arc, mpsc};
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::play::Clientbound;
     use sunrise_protocol::passage_sync::encode;
 
@@ -558,11 +558,9 @@ pub(in crate::game) mod tests {
     }
 
     /// The play packets a guest was sent, in order; ones this build cannot read are left out.
-    pub(in crate::game) fn packets(
-        rx: &mpsc::Receiver<sunrise_client::lan::Out>,
-    ) -> Vec<Clientbound> {
-        use sunrise_client::lan::Out;
+    pub(in crate::game) fn packets(rx: &mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<Clientbound> {
         use sunrise_protocol::buf::Reader;
+        use sunrise_sim::lan::Out;
         let mut packets = Vec::new();
         for out in rx.try_iter() {
             let bodies = match out {
@@ -596,12 +594,12 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn listen(
         game: &mut crate::game::ServerGame<'_>,
         brands: [&str; 2],
-    ) -> Vec<mpsc::Receiver<sunrise_client::lan::Out>> {
+    ) -> Vec<mpsc::Receiver<sunrise_sim::lan::Out>> {
         let mut receivers = Vec::new();
         for (conn, brand) in [12, 13].into_iter().zip(brands) {
             let (tx, rx) = mpsc::channel();
             game.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
-                g.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+                g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                 g.brand = brand.into();
             });
             receivers.push(rx);
@@ -943,8 +941,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_reopened_lan_records_chunks_for_the_live_passages() {
         use crate::game::lan::LanSettings;
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         with_guests(|game| {
             game.native_lifecycle.world_open_ready().unwrap();
             let level = game.level(game.dim.id()).unwrap();
@@ -1079,7 +1077,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_passage_sent_with_its_chunk_and_removed_in_the_same_tick_leaves_no_ghost() {
-        use sunrise_client::lan::chunk_watch::{
+        use sunrise_sim::lan::chunk_watch::{
             ChunkWatch, ChunkWatchKind, ChunkWatchLog, LevelWatches,
         };
         let mods = vec![mod_api::ModEntry::new(
@@ -1218,12 +1216,12 @@ mod cross_tests {
     use crate::game::native_guest_turn_tests::with_guests;
     use mod_api::{DimensionKey, Passage, PassageCrossRefusal as Refusal, PassageId, Vec3};
     use std::sync::{Arc, mpsc};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::lan::guest::InboxItem;
-    use sunrise_client::lan::hub::passage_cross::refusal_code;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::configuration::CustomPayload;
     use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S, relative};
     use sunrise_protocol::passage_sync::{CROSS_CHANNEL, Cross, Message, encode_cross};
+    use sunrise_sim::lan::guest::InboxItem;
+    use sunrise_sim::lan::hub::passage_cross::refusal_code;
 
     /// The doorway comes out 24 blocks east, turned a clockwise quarter.
     fn near_doorway() -> Passage {
@@ -1238,7 +1236,7 @@ mod cross_tests {
     fn scene(
         game: &mut crate::game::ServerGame<'_>,
         at: [f64; 3],
-    ) -> mpsc::Receiver<sunrise_client::lan::Out> {
+    ) -> mpsc::Receiver<sunrise_sim::lan::Out> {
         game.native_lifecycle.world_open_ready().unwrap();
         let stone = game
             .pack
@@ -1312,7 +1310,7 @@ mod cross_tests {
             .collect()
     }
 
-    fn guest<'a>(game: &'a crate::game::ServerGame<'_>) -> &'a sunrise_client::lan::guest::Guest {
+    fn guest<'a>(game: &'a crate::game::ServerGame<'_>) -> &'a sunrise_sim::lan::guest::Guest {
         &game.lan.as_ref().unwrap().hub.guests[0]
     }
 

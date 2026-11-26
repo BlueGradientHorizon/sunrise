@@ -18,7 +18,7 @@ impl Options {
         }
         // Refused here, before the account's file is used up or anything loads.
         if let Some(path) = &o.control {
-            sunrise_client::control::check_path(path).map_err(|e| {
+            sunrise_sim::control::check_path(path).map_err(|e| {
                 launch_api::UsageError(format!("--control-socket {}: {e}", path.display()))
             })?;
         }

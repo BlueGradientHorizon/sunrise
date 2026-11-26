@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         root: &std::path::Path,
         items: &Items,
-        stations: &mut sunrise_client::stations::StationData,
+        stations: &mut sunrise_sim::stations::StationData,
     ) -> Result<()> {
         let declarations = self.mods.profession_declarations.get_or_init(|| {
             let mut registrar = mod_api::ProfessionDeclarations::default();
@@ -57,7 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             format!("{owners}: {reason}")
         })?;
         let mut candidate =
-            sunrise_client::mobs::villager::ResolvedProfessions::prepare(
+            sunrise_sim::mobs::villager::ResolvedProfessions::prepare(
                 declarations.clone(),
                 |kind, id| {
                     let name = id.to_string();
@@ -111,11 +111,10 @@ mod tests;
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn resolve_loaded_profession(
         &mut self,
-        mob: &mut sunrise_client::mobs::Mob,
+        mob: &mut sunrise_sim::mobs::Mob,
     ) {
         self.stations().professions.resolve_loaded(mob);
-        if let sunrise_client::mobs::villager::ProfessionState::Unresolved(id) =
-            &mob.extra.profession
+        if let sunrise_sim::mobs::villager::ProfessionState::Unresolved(id) = &mob.extra.profession
             && self.side.missing_professions.insert(id.clone())
         {
             log::warn!(

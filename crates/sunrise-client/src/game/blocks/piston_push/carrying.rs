@@ -4,9 +4,9 @@
 #[path = "shoving.rs"]
 mod shoving;
 use super::*;
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_client_render::moving_colliders::{self, Prepared};
 use sunrise_core::geometry::Axis;
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_world::moving_colliders::{self, Prepared};
 
 /// How far under its feet a body may have a box and still stand on it.
 pub(in crate::game) const SUPPORT_PROBE: f64 = 0.01;

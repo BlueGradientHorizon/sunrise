@@ -127,15 +127,13 @@ pub(in crate::game) mod client_screen_tests {
     use crate::game::books::BookScreen;
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
-    use sunrise_client::{
-        containers::BlockEntity,
-        items::ItemStack,
-        mobs::Mob,
-        signs::{SignData, SignText},
-    };
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::BlockEntity;
+    use sunrise_level::signs_data::{SignData, SignText};
     use sunrise_protocol::connection::ConnReader;
     use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+    use sunrise_sim::mobs::Mob;
 
     /// What the window sent since the last call, as play packets.
     fn sent(reader: &mut ConnReader) -> Vec<S> {
@@ -544,7 +542,7 @@ pub(in crate::game) mod client_screen_tests {
             // The player's keys act once the client told the server it loaded.
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             game.poll_stationary_client().unwrap();
             sent(&mut reader); // PlayerLoaded precedes the inventory action.
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();

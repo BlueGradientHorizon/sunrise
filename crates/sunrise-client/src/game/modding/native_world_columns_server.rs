@@ -94,7 +94,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use std::sync::Arc;
-    use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
+    use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
     use sunrise_world::worldgen::generator::FlatSettings;
 
     #[test]
@@ -185,7 +185,7 @@ mod tests {
     fn read_columns_returns_server_water_colors_without_colormaps() {
         use std::path::Path;
         use sunrise_assets::resource_source::ResourceRoot;
-        use sunrise_client::{biome::Biomes, chunk::Chunk};
+        use sunrise_level::{biome::Biomes, chunk::Chunk};
 
         fn link_tree(src: &Path, dst: &Path) {
             #[cfg(unix)]

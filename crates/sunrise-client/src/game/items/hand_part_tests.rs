@@ -7,7 +7,7 @@ use mod_api::{
     ShouldCauseReequipAnimationEvent,
 };
 use std::sync::Mutex;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// What the part answers: `None` leaves vanilla's answer.
 pub(in crate::game) static REEQUIP: Mutex<Option<bool>> = Mutex::new(None);
@@ -228,15 +228,16 @@ fn remote_mining_component_update_restarts_unless_the_part_refuses() {
             for keep in [false, true] {
                 with_stick_part(|game| {
                     use std::sync::Arc;
-                    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
                     use sunrise_core::geometry::Vec3;
+                    use sunrise_level::chunk::Chunk;
                     use sunrise_protocol::packets::play;
+                    use sunrise_sim::motion::PlayerMotion;
                     *RESET.lock().unwrap() = keep.then_some(false);
                     // Play packets are suppressed until login/configuration finishes.
                     let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
                     peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
                         .unwrap();
-                    game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                    game.set_local_mode(sunrise_command::args::GameMode::Survival);
                     let mut player =
                         PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap();
                     player.ground.on_ground = true;

@@ -1,7 +1,7 @@
 //! Live living-entity weapon reads for death loot.
 use super::{Game, commands::Target, native_living_refs::lend_equipment};
 use mod_api::{EquipmentSlot, ItemStackView, LivingRef};
-use sunrise_client::mobs::finalize::EquipmentRead;
+use sunrise_sim::mobs::finalize::EquipmentRead;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn living_weapon_item(

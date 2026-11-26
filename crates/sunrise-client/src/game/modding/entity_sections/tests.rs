@@ -319,7 +319,7 @@ fn floating_cow(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> u32 {
     if !game.world.chunks.contains_key(&(0, 0)) {
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
     }
     let id = game
@@ -336,32 +336,28 @@ fn floating_cow(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> u32 {
 #[derive(Clone, Debug)]
 struct Teleports(Vec<[f64; 3]>);
 
-impl sunrise_client::mobs::goals::Goal for Teleports {
+impl sunrise_sim::mobs::goals::Goal for Teleports {
     fn flags(&self) -> u8 {
         0
     }
     fn can_use(
         &mut self,
-        _: &mut sunrise_client::mobs::Mob,
-        _: &mut sunrise_client::mobs::goals::Cx<'_, '_, '_>,
+        _: &mut sunrise_sim::mobs::Mob,
+        _: &mut sunrise_sim::mobs::goals::Cx<'_, '_, '_>,
     ) -> bool {
         !self.0.is_empty()
     }
     fn start(
         &mut self,
-        m: &mut sunrise_client::mobs::Mob,
-        cx: &mut sunrise_client::mobs::goals::Cx<'_, '_, '_>,
+        m: &mut sunrise_sim::mobs::Mob,
+        cx: &mut sunrise_sim::mobs::goals::Cx<'_, '_, '_>,
     ) {
         for [x, y, z] in self.0.drain(..) {
             let at = sunrise_core::geometry::Vec3::new(x, y, z);
-            sunrise_client::mobs::living::teleports::snap_to_with(
-                m,
-                at,
-                cx.w.section_writer.clone(),
-            );
+            sunrise_sim::mobs::living::teleports::snap_to_with(m, at, cx.w.section_writer.clone());
         }
     }
-    fn box_clone(&self) -> Box<dyn sunrise_client::mobs::goals::Goal> {
+    fn box_clone(&self) -> Box<dyn sunrise_sim::mobs::goals::Goal> {
         Box::new(self.clone())
     }
 }
@@ -437,46 +433,38 @@ struct TeleportsAndChecks {
     ran: bool,
 }
 
-impl sunrise_client::mobs::goals::Goal for TeleportsAndChecks {
+impl sunrise_sim::mobs::goals::Goal for TeleportsAndChecks {
     fn flags(&self) -> u8 {
         0
     }
 
     fn can_use(
         &mut self,
-        _: &mut sunrise_client::mobs::Mob,
-        _: &mut sunrise_client::mobs::goals::Cx<'_, '_, '_>,
+        _: &mut sunrise_sim::mobs::Mob,
+        _: &mut sunrise_sim::mobs::goals::Cx<'_, '_, '_>,
     ) -> bool {
         !self.ran
     }
 
     fn start(
         &mut self,
-        m: &mut sunrise_client::mobs::Mob,
-        cx: &mut sunrise_client::mobs::goals::Cx<'_, '_, '_>,
+        m: &mut sunrise_sim::mobs::Mob,
+        cx: &mut sunrise_sim::mobs::goals::Cx<'_, '_, '_>,
     ) {
         self.ran = true;
         let first = sunrise_core::geometry::Vec3::new(8.5, 120.0, 8.5);
-        sunrise_client::mobs::living::teleports::set_pos_with(
-            m,
-            first,
-            cx.w.section_writer.clone(),
-        );
+        sunrise_sim::mobs::living::teleports::set_pos_with(m, first, cx.w.section_writer.clone());
         if self.callbacks.load(Ordering::SeqCst) != 1 {
             self.failed.store(true, Ordering::SeqCst);
         }
         let second = sunrise_core::geometry::Vec3::new(8.5, 143.75, 8.5);
-        sunrise_client::mobs::living::teleports::set_pos_with(
-            m,
-            second,
-            cx.w.section_writer.clone(),
-        );
+        sunrise_sim::mobs::living::teleports::set_pos_with(m, second, cx.w.section_writer.clone());
         if self.callbacks.load(Ordering::SeqCst) != 2 {
             self.failed.store(true, Ordering::SeqCst);
         }
     }
 
-    fn box_clone(&self) -> Box<dyn sunrise_client::mobs::goals::Goal> {
+    fn box_clone(&self) -> Box<dyn sunrise_sim::mobs::goals::Goal> {
         Box::new(self.clone())
     }
 }
@@ -566,27 +554,27 @@ fn a_mob_that_teleports_twice_in_its_tick_then_walks_is_three_crossings() {
 #[derive(Clone, Debug)]
 struct Grows(bool);
 
-impl sunrise_client::mobs::goals::Goal for Grows {
+impl sunrise_sim::mobs::goals::Goal for Grows {
     fn flags(&self) -> u8 {
         0
     }
     fn can_use(
         &mut self,
-        _: &mut sunrise_client::mobs::Mob,
-        _: &mut sunrise_client::mobs::goals::Cx<'_, '_, '_>,
+        _: &mut sunrise_sim::mobs::Mob,
+        _: &mut sunrise_sim::mobs::goals::Cx<'_, '_, '_>,
     ) -> bool {
         !self.0
     }
     fn start(
         &mut self,
-        m: &mut sunrise_client::mobs::Mob,
-        cx: &mut sunrise_client::mobs::goals::Cx<'_, '_, '_>,
+        m: &mut sunrise_sim::mobs::Mob,
+        cx: &mut sunrise_sim::mobs::goals::Cx<'_, '_, '_>,
     ) {
         self.0 = true;
         m.fudge_position_after_size_change(cx.w, 0.1, 0.1);
         m.velocity = sunrise_core::geometry::Vec3::new(0.0, 0.6, 0.0);
     }
-    fn box_clone(&self) -> Box<dyn sunrise_client::mobs::goals::Goal> {
+    fn box_clone(&self) -> Box<dyn sunrise_sim::mobs::goals::Goal> {
         Box::new(self.clone())
     }
 }

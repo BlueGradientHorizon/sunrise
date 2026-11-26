@@ -4,8 +4,8 @@
 use crate::game::boats::Boat;
 use crate::game::remote_camera::CameraEntities;
 use crate::game::tnt::PrimedTnt;
-use sunrise_client::entities::ItemFrame;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::entities::ItemFrame;
 
 fn boat(id: u32) -> Boat {
     Boat::new(id, "oak".into(), Vec3::new(10.5, 64.0, -3.5), 90.0)
@@ -174,7 +174,8 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
 
 pub(in crate::game::client_side) fn run_a_spectated_sleeping_villager_shows_the_bed_view() {
     use super::mob_camera_entity;
-    use sunrise_client::camera::{Camera, CameraType};
+    use sunrise_client::camera::Camera;
+    use sunrise_level::camera_math::CameraType;
 
     let dir = std::path::PathBuf::from(
         std::env::var("SUNRISE_REMOTE_CAMERA_SLEEPING_DIR")
@@ -203,7 +204,7 @@ pub(in crate::game::client_side) fn run_a_spectated_sleeping_villager_shows_the_
                 .join("../../.local/sunrise-client")
                 .join(sunrise_core::VANILLA_VERSION)
         });
-    let types = sunrise_client::mobs::MobTypes::load(&root).unwrap();
+    let types = sunrise_sim::mobs::MobTypes::load(&root).unwrap();
     let player_kind = crate::game::perspective::player_type(&root).expect("player mob type");
     let bits = |v: &serde_json::Value| u64::from_str_radix(v.as_str().unwrap(), 16).unwrap();
     let mut checked = 0;
@@ -223,14 +224,14 @@ pub(in crate::game::client_side) fn run_a_spectated_sleeping_villager_shows_the_
                 std::sync::Arc::new(types.types["minecraft:villager"].clone()),
             )
         };
-        let mut mob = sunrise_client::mobs::Mob::new(1, kind, v3(&s["pos"]), 0.0);
+        let mut mob = sunrise_sim::mobs::Mob::new(1, kind, v3(&s["pos"]), 0.0);
         mob.previous = v3(&s["prev"]);
         mob.head_pitch = f(&s["xr"]);
         mob.head_yaw = f(&s["yr"]);
         mob.previous_head_pitch = f(&s["xro"]);
         mob.previous_head_yaw = f(&s["yro"]);
         if is_player {
-            mob.extra.avatar_pose = sunrise_client::pose::Pose::Sleeping;
+            mob.extra.avatar_pose = sunrise_sim::pose::Pose::Sleeping;
         }
         // Convert the witness's bed facing (`Direction.get2DDataValue`) to the mob's stored facing.
         mob.extra.ints[1] = [2, 3, 1, 4][case["bed"][3].as_u64().unwrap() as usize];

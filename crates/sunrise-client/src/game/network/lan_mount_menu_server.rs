@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// plus 4 of its box (`Player.isWithinEntityInteractionRange(mount, 4.0)`).
     pub(in crate::game) fn lan_mount_valid(
         &self,
-        g: &sunrise_client::lan::guest::Guest,
+        g: &sunrise_sim::lan::guest::Guest,
         mob: u32,
     ) -> bool {
         self.mobs

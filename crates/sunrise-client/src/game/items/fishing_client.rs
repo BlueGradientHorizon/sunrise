@@ -7,9 +7,10 @@ use crate::game::server_side::fishing::push_remote_hook;
 use crate::game::server_side::fishing::remove_remote_hook_from;
 use crate::game::server_side::fishing::synchronized_random;
 use crate::game::server_side::fishing::*;
-use sunrise_client::{gizmos::Line, mesher::Vertex, pose::Pose};
+use sunrise_client::{gizmos::Line, mesher::Vertex};
 use sunrise_core::geometry::{Vec3, trig};
 use sunrise_protocol::entity_data::Value;
+use sunrise_sim::pose::Pose;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// FishingHookRenderer: camera-facing half-block quads centred on each bobber.
@@ -367,7 +368,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             },
             tag_items: self.remote.as_ref().and_then(|remote| remote.tags.as_ref()),
         };
-        let motion = sunrise_client::motion::BodyMotion {
+        let motion = sunrise_sim::motion::BodyMotion {
             world: &self.world,
             collision: self.collision,
             facts: self.res.facts(),
@@ -376,11 +377,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             side: Some(&side),
         };
         motion.record_move(
-            sunrise_client::motion::BodyCollision {
+            sunrise_sim::motion::BodyCollision {
                 footprint: (position, bounds(position)),
                 movement: (wanted, moved),
                 authoritative: false,
-                context: sunrise_client::motion::BodyMotion::entity_context(id, position),
+                context: sunrise_sim::motion::BodyMotion::entity_context(id, position),
                 subject: None,
             },
             ground,
@@ -389,7 +390,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let entity = (id, "minecraft:fishing_bobber");
         let response = motion.restitute(
             entity,
-            sunrise_client::motion::BodyMove {
+            sunrise_sim::motion::BodyMove {
                 wanted,
                 moved,
                 effect,

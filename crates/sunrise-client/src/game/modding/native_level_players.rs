@@ -195,7 +195,7 @@ mod tests {
             let fake = game.fake_player(level, 1234, "machine").unwrap();
             for cz in -1..=1 {
                 for cx in -1..=1 {
-                    let mut chunk = sunrise_client::chunk::Chunk::empty(cx, cz);
+                    let mut chunk = sunrise_level::chunk::Chunk::empty(cx, cz);
                     chunk.lit = true;
                     game.world
                         .chunks
@@ -211,7 +211,7 @@ mod tests {
                     [2.5, 64.0, 2.5],
                     true,
                     super::super::creatures::SpawnSite::Finalizing(
-                        sunrise_client::mobs::spawn_rules::Reason::Command,
+                        sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 )
                 .unwrap();

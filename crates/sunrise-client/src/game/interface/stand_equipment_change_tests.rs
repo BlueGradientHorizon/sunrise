@@ -4,9 +4,10 @@
 use std::sync::{Arc, Mutex};
 
 use mod_api::{self, Hooks, LivingEquipmentChangeEvent, ServerHost};
-use sunrise_client::{entities::ArmorStand, items::ItemStack};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::equipment::{BODY, HEAD, SADDLE};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ArmorStand;
 
 use super::native_entity_refs::tests::with_game;
 

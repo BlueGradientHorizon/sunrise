@@ -547,8 +547,8 @@ fn piston_push_reaction_real_block_entity_payload_lifecycle() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            use sunrise_client::{chunk::Chunk, containers::BlockEntity};
             use sunrise_items::items::ItemStack;
+            use sunrise_level::{chunk::Chunk, containers::BlockEntity};
             game.options.dedicated = Some(vec![]);
             game.world
                 .chunks
@@ -791,7 +791,7 @@ fn piston_push_reaction_unowned_vanilla_data_stays_refused() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            use sunrise_client::chunk::Chunk;
+            use sunrise_level::chunk::Chunk;
             game.options.dedicated = Some(vec![]);
             game.world
                 .chunks

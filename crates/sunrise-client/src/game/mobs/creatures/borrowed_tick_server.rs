@@ -28,7 +28,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         state: BorrowedMobTick<'_>,
     ) -> (
-        sunrise_client::health::LentLevel,
+        sunrise_sim::health::LentLevel,
         Option<Box<dyn std::any::Any + Send>>,
     ) {
         let passenger_objects = state.passenger_objects;
@@ -48,7 +48,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|(slot, (conn, _))| (*conn, slot))
                 .collect()
         };
-        let mut guest_slots: sunrise_client::fast_hash::FxHashMap<u32, usize> =
+        let mut guest_slots: sunrise_level::fast_hash::FxHashMap<u32, usize> =
             guest_indices(&guests);
         let mut spare = state.spare.take();
         let mut bindings = std::mem::take(state.bindings);
@@ -85,7 +85,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(sections) => std::mem::take(&mut sections.borrow_mut().ticked),
             None => std::mem::take(&mut self.native_lifecycle.entity_sections.ticked),
         };
-        crate::mobs::living::section_writes::begin(section_table.is_some() || entries);
+        sunrise_sim::mobs::living::section_writes::begin(section_table.is_some() || entries);
         let mut dispatch_panic = None;
         let mut pushes = std::mem::take(state.pushes);
         let original_len = snapshot.len();
@@ -100,12 +100,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         let mut keep = vec![true; original_len];
         let mut grid =
-            sunrise_client::mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
+            sunrise_sim::mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
         // Snapshot slots stay stable even if a full-host listener removes an
         // earlier row or adds a new one. Only that rare boundary needs a map
         // from stable identities to the owning list's current positions.
-        let mut positions: Option<sunrise_client::fast_hash::FxHashMap<u32, usize>> = None;
-        let mut index = sunrise_client::fast_hash::FxHashMap::<u32, u32>::default();
+        let mut positions: Option<sunrise_level::fast_hash::FxHashMap<u32, usize>> = None;
+        let mut index = sunrise_level::fast_hash::FxHashMap::<u32, u32>::default();
         let mut villager_slots = Vec::new();
         let mut solid_slots = Vec::new();
         for (i, s) in snapshot.iter().enumerate() {
@@ -113,14 +113,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if s.may_block_mobs() {
                 solid_slots.push(i as u32);
             }
-            if s.species == sunrise_client::mobs::Species::Villager {
+            if s.species == sunrise_sim::mobs::Species::Villager {
                 villager_slots.push(i as u32);
             }
         }
         let mut cursor = 0;
         // Sounds the tick's hits queued, appended to the level's queue once the level is dropped.
         let mut hit_sounds: Vec<super::NativeSound> = Vec::new();
-        use sunrise_client::mobs::{
+        use sunrise_sim::mobs::{
             ai::Pause,
             player_selection::{PlayerSelection, TickPlayer},
         };
@@ -146,7 +146,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // These belong to the finished mob, not the victim its event may hurt.
         // Keep them until the mob's event tail finishes, then file its section
         // writes and issue its Post while the rows are back in the owner.
-        let mut tell_post: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>)> = None;
+        let mut tell_post: Option<(u32, std::sync::Arc<sunrise_sim::mobs::MobType>)> = None;
         let mut section_yield = false;
         loop {
             let mut pause = None;
@@ -160,7 +160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let mut paused_hurt = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
-            let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
+            let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_sim::mobs::MobType>, usize)> =
                 None;
             {
                 let ticking = self.entity_ticking_area();
@@ -178,7 +178,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // reusable base empty lets its reference fields remain copyable between rows.
                 base.section_writer = None;
                 base.passenger_objects = passenger_objects;
-                let mut level = sunrise_client::health::DamageLevel::lent(
+                let mut level = sunrise_sim::health::DamageLevel::lent(
                     &self.world,
                     self.pack.assets.registry,
                     &mut lent,
@@ -198,14 +198,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     in hit_sounds
                 ))
                 .with_reads(crate::game::entity::hit_reads_of!(self));
-                let path_changes = sunrise_client::mobs::collision_changes(&base, &path_writes);
+                let path_changes = sunrise_sim::mobs::collision_changes(&base, &path_writes);
                 laps.lap("creature_prepare");
                 let mut cached_difficulty: Option<((i32, i32), spawning::LocalDifficulty)> = None;
                 if let Some((from, sections, post)) = resume_brain.take() {
                     brain_from = from;
                     section_yield = sections;
                     tell_post = post;
-                    sting = sunrise_client::mobs::apply_brain_events_until_hurt(
+                    sting = sunrise_sim::mobs::apply_brain_events_until_hurt(
                         &mut mobs,
                         &mut level,
                         &mut events,
@@ -331,8 +331,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && mod_api::__private::listened(mod_api::HookId::MobDespawn)
                         && !matches!(
                             m.species(),
-                            sunrise_client::mobs::Species::Wither
-                                | sunrise_client::mobs::Species::Mannequin
+                            sunrise_sim::mobs::Species::Wither
+                                | sunrise_sim::mobs::Species::Mannequin
                         )
                         && let Some(epoch) = self.native_lifecycle.epoch()
                     {
@@ -389,7 +389,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             section_writer: None,
                             ..base
                         };
-                        let kept = sunrise_client::mobs::ai::despawn_check(m, &w);
+                        let kept = sunrise_sim::mobs::ai::despawn_check(m, &w);
                         m.despawn = mod_api::Despawn::default();
                         if !kept {
                             died.remove(&m.id);
@@ -409,7 +409,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         }
                         continue;
                     }
-                    let controlling_player_movement = sunrise_client::mobs::equine::controlled(m)
+                    let controlling_player_movement = sunrise_sim::mobs::equine::controlled(m)
                         .then(|| {
                             base.player
                                 .as_ref()
@@ -455,8 +455,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             difficulty
                         }
                     };
-                    sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
-                    sunrise_client::mobs::blocks_changed(m, &path_changes);
+                    sunrise_sim::mobs::apply_mob_pushes(m, &mut pushes);
+                    sunrise_sim::mobs::blocks_changed(m, &path_changes);
                     if !resuming {
                         // LivingEntity.aiStep -> EntityEquipment.tick, before movement.
                         super::super::inventory_tick::equipment_inventory_tick(
@@ -514,7 +514,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         }
                         selection
                     } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
-                        || sunrise_client::mobs::tame::reads_another_player(
+                        || sunrise_sim::mobs::tame::reads_another_player(
                             m,
                             active_player.as_ref(),
                             seen_guest.and(base.player.as_ref()).into_iter().chain(
@@ -599,7 +599,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     };
                     let run_tick = || match resume.take() {
                         Some(Pause::Breathing { air, known_speed }) => {
-                            sunrise_client::mobs::riders::resume_after_breathing(
+                            sunrise_sim::mobs::riders::resume_after_breathing(
                                 &mut mobs,
                                 i,
                                 &w,
@@ -612,7 +612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             )
                         }
                         Some(Pause::AfterDamage(damage)) => {
-                            sunrise_client::mobs::riders::resume_after_damage(
+                            sunrise_sim::mobs::riders::resume_after_damage(
                                 &mut mobs,
                                 i,
                                 &w,
@@ -623,7 +623,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             )
                         }
                         Some(Pause::Trample(_) | Pause::FallToPassengers(_)) => {
-                            sunrise_client::mobs::riders::resume_movement(
+                            sunrise_sim::mobs::riders::resume_movement(
                                 &mut mobs,
                                 i,
                                 &w,
@@ -633,7 +633,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             )
                         }
                         Some(Pause::Consumption { was_on_fire, .. }) => {
-                            sunrise_client::mobs::riders::resume_after_consumption(
+                            sunrise_sim::mobs::riders::resume_after_consumption(
                                 &mut mobs,
                                 i,
                                 &w,
@@ -643,7 +643,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 &mut movement,
                             )
                         }
-                        None => sunrise_client::mobs::riders::tick_until_consumption(
+                        None => sunrise_sim::mobs::riders::tick_until_consumption(
                             &mut mobs,
                             i,
                             &w,
@@ -674,7 +674,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             } else if let Some(k) = lent {
                                 spare = w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
                             }
-                            sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
+                            sunrise_sim::mobs::take_mob_pushes(&mut events, from, &mut pushes);
                             route_player_events(
                                 &mut events,
                                 from,
@@ -688,11 +688,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         }
                     };
                     let kept = match progress {
-                        sunrise_client::mobs::ai::TickProgress::Complete(kept) => {
+                        sunrise_sim::mobs::ai::TickProgress::Complete(kept) => {
                             movement = None;
                             kept
                         }
-                        sunrise_client::mobs::ai::TickProgress::Paused(paused) => {
+                        sunrise_sim::mobs::ai::TickProgress::Paused(paused) => {
                             // Return every player loan before ending the world borrow.
                             if seen_guest.is_none() {
                                 base.player = w.player;
@@ -732,7 +732,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // it, are two position updates (`EntityInLevelCallback.onMove` for each).
                     if round.sections() || entries {
                         let start = section_moves.len();
-                        let captured = crate::mobs::living::section_writes::drain_for(
+                        let captured = sunrise_sim::mobs::living::section_writes::drain_for(
                             m.id,
                             &mut section_moves,
                         );
@@ -743,13 +743,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 // still has the old filed section as its first write.
                                 if round.sections() {
                                     section_moves.push(
-                                        crate::mobs::living::section_writes::PositionWrite::baseline(
+                                        sunrise_sim::mobs::living::section_writes::PositionWrite::baseline(
                                             m.id, m.join, m.previous,
                                         ),
                                     );
                                 }
                                 section_moves.push(
-                                    crate::mobs::living::section_writes::PositionWrite::captured(
+                                    sunrise_sim::mobs::living::section_writes::PositionWrite::captured(
                                         m.id, m.join, m.previous, m.position,
                                     ),
                                 );
@@ -791,7 +791,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if !kept && !m.alive() && !m.removed && !m.extra.effects.is_empty() {
                         corpses.push(m.clone());
                     }
-                    sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
+                    sunrise_sim::mobs::take_mob_pushes(&mut events, from, &mut pushes);
                     // LivingEntity.tickDeath: after twenty ticks the body is removed.
                     if !kept && !m.removed && !m.alive() && m.death_time >= 20 {
                         let (width, height) = (f64::from(m.width()), f64::from(m.height()));
@@ -840,7 +840,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     grid.update(slot, snapshot[slot].bounds);
                     let id = m.id;
                     brain_from = from;
-                    sting = sunrise_client::mobs::apply_brain_events_until_hurt(
+                    sting = sunrise_sim::mobs::apply_brain_events_until_hurt(
                         &mut mobs,
                         &mut level,
                         &mut events,
@@ -898,7 +898,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     || lid_push.is_some());
             if applied_pushes {
                 for m in &mut mobs {
-                    sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
+                    sunrise_sim::mobs::apply_mob_pushes(m, &mut pushes);
                 }
             }
             // A yield only to tell a named mob alone changes nothing of the loop's own: the list
@@ -928,7 +928,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Mobs that joined during the pass go first on a restore: the rows move.
             let same_rows = same_rows && self.mobs.is_empty();
             self.mobs
-                .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+                .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
             let restored = self.mobs.stamp();
             std::mem::swap(&mut self.side.last_hurt_by_player, &mut player_credit);
             std::mem::swap(&mut self.side.died, &mut died);
@@ -1023,7 +1023,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             air_answer = self.ask_mob_breath(air);
                         }
                         Pause::AfterDamage(_) => {
-                            if sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[i]) {
+                            if sunrise_sim::mobs::creaking::has_pending_hurt(&self.mobs[i]) {
                                 // The earlier emissions (e.g. drowning bubbles) precede this hurt.
                                 let before_hurt = events.split_off(resume_from);
                                 let _ = self.handle_mob_events(before_hurt);
@@ -1108,7 +1108,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
             if callback_panic.is_some() || state.stand_result.is_err() {
-                lent = sunrise_client::health::LentLevel::take(&mut self.world);
+                lent = sunrise_sim::health::LentLevel::take(&mut self.world);
                 dispatch_panic = callback_panic;
                 break;
             }
@@ -1129,7 +1129,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // A trample or a flushed push can change other mobs without moving
             // their slots. Rebuild the views before later turns read old state.
             if !unchanged || applied_pushes || trampling || pause.is_some() || stinging {
-                let current: sunrise_client::fast_hash::FxHashMap<u32, usize> =
+                let current: sunrise_level::fast_hash::FxHashMap<u32, usize> =
                     mobs.iter().enumerate().map(|(i, m)| (m.id, i)).collect();
                 for (slot, s) in snapshot.iter_mut().enumerate() {
                     if let Some(&i) = current.get(&s.id) {
@@ -1158,15 +1158,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         solid_slots.push(slot as u32);
                     }
                 }
-                grid = sunrise_client::mobs::seen_grid::SeenGrid::new(
-                    snapshot.iter().map(|s| s.bounds),
-                );
+                grid =
+                    sunrise_sim::mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
                 positions = Some(current);
             }
             if let Some(writes) = self.world.path_writes.as_mut() {
                 path_writes.append(writes);
             }
-            lent = sunrise_client::health::LentLevel::take(&mut self.world);
+            lent = sunrise_sim::health::LentLevel::take(&mut self.world);
             resume = pause;
             resume_air_answer = air_answer;
             retried_rider = retry_rider;
@@ -1188,10 +1187,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 });
             }
             for m in &mut mobs {
-                sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
+                sunrise_sim::mobs::apply_mob_pushes(m, &mut pushes);
             }
         }
-        crate::mobs::living::section_writes::finish();
+        sunrise_sim::mobs::living::section_writes::finish();
         drop(live_section_observer);
         // Keep the reusable write storage for the next pass; the live-row callback has already
         // consumed every record that belonged to this family tick.

@@ -3,9 +3,9 @@
 //! has marked it dirty (`SavedDataStorage.collectDirtyTagsToSave`), and writes what it holds
 //! then: the map `/random reset *` emptied and the salt it set.
 use super::{read_random_sequences, write_random_sequences};
-use sunrise_client::random_sequences::RandomSequences;
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
+use sunrise_items::random_sequences::RandomSequences;
 
 const SEED: i64 = 1234;
 const TEST: &str = "minecraft:test";
@@ -27,7 +27,7 @@ fn draw(data: &mut RandomSequences) -> i32 {
 
 /// The salt `random_sequences.dat` holds.
 fn salt_on_disk(root: &std::path::Path) -> Option<Tag> {
-    let tag = sunrise_client::save::read_dat(&root.join("data/minecraft/random_sequences.dat"))?;
+    let tag = sunrise_sim::save::read_dat(&root.join("data/minecraft/random_sequences.dat"))?;
     tag.get("data")?.get("salt").cloned()
 }
 

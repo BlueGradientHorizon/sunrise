@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::server_side::dragon::thorns_tests::thorny;
 use crate::game::*;
-use sunrise_client::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
+use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
 
 pub(in crate::game) fn check_answer(g: &crate::game::ServerGame<'_>, slot: usize, answers: bool) {
     let health = g.mobs[0].health;

@@ -1,7 +1,7 @@
 //! Common entity-pick types and queries shared by client crosshair picking and server entity picks.
 use super::{Game, Hit, pick_ray::PickCandidate};
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::game) enum PickKind {
@@ -61,7 +61,7 @@ pub(in crate::game) fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
 }
 
 pub(in crate::game) fn knot_bounds(block: [i32; 3]) -> Aabb {
-    let knot = sunrise_client::mobs::leash::knot_state(block);
+    let knot = sunrise_sim::mobs::leash::knot_state(block);
     let p = knot.position;
     let half = knot.width / 2.0;
     Aabb::new(

@@ -1,8 +1,8 @@
 use super::{EntitySections, LiveSectionObserver, Scope};
 use crate::game::entity_sections::observer_cache::ObserverCache;
 use crate::game::entity_sections::observer_cache::SharedSections;
-use crate::mobs::living::section_writes::Observer;
 use std::{cell::RefCell, rc::Rc};
+use sunrise_sim::mobs::living::section_writes::Observer;
 
 impl ObserverCache {
     pub(in crate::game) fn begin(

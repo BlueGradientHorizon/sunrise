@@ -5,8 +5,10 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{chunk::Chunk, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 /// The listener action exercised by a tick.
 #[derive(Clone, Copy)]

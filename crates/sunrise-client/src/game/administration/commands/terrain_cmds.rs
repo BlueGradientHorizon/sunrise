@@ -1,21 +1,22 @@
 //! `/forceload`, `/fillbiome`, `/worldborder` and `/loot`.
 use super::{Arg, Context, Game, R, err};
 #[allow(unused_imports)]
-use sunrise_client::{
-    items::ItemStack,
-    scoreboard_cmd::{Holder, Tracker},
-    text::Text,
-    worldborder::{MAX_CENTER, MAX_SIZE},
-};
+use sunrise_client_core::text::Text;
 use sunrise_core::position::ChunkPos;
+#[allow(unused_imports)]
+use sunrise_items::items::ItemStack;
+#[allow(unused_imports)]
+use sunrise_level::worldborder::{MAX_CENTER, MAX_SIZE};
+#[allow(unused_imports)]
+use sunrise_sim::scoreboard_cmd::{Holder, Tracker};
 
 /// `LocationCheck.test` / `BlockPredicate`: the measured loaded block-state subset.
 pub(in crate::game) fn loot_location_block(
     condition: &serde_json::Value,
     origin: [i32; 3],
-    chunks: &sunrise_client::chunk_map::ChunkMap,
+    chunks: &sunrise_level::chunk_map::ChunkMap,
     registry: &sunrise_world::registry::BlockRegistry,
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Option<bool> {
     let condition = condition.as_object()?;
     if condition.keys().any(|k| {
@@ -240,7 +241,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
+            .int_at(sunrise_client_core::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if volume > i64::from(limit) {
             return Err(err("commands.fillbiome.toobig", &[&limit, &volume]));
         }
@@ -383,7 +384,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let now = sunrise_client::lan::border::Sent::of(&self.border);
+        let now = sunrise_sim::lan::border::Sent::of(&self.border);
         if let Some(sent) = host.border_sent.replace(now) {
             for packet in sent.changes(&self.border) {
                 // PlayerList$1: only the players of the border's own level.
@@ -605,8 +606,9 @@ pub(in crate::game) mod loot_mine_component_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity, save};
     use sunrise_core::nbt::{Compound, Tag};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_sim::save;
 
     pub(in crate::game) fn slot(game: &crate::game::ServerGame<'_>, index: usize) -> ItemStack {
         let Some(BlockEntity::Chest(items)) = game.world.block_entities.get(&(12, 200, 4)) else {
@@ -844,7 +846,7 @@ pub(in crate::game) mod loot_position_tests {
         game.set_allow_commands(true);
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         game.block_ticks
             .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
@@ -915,7 +917,7 @@ pub(in crate::game) mod loot_kill_target_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
     #[test]
     #[ignore = "daily"]
     fn loot_kill_uses_actual_sheep_state_without_killing_the_target() {
@@ -1037,7 +1039,7 @@ pub(in crate::game) mod loot_location_shape_tests {
     use super::*;
     use serde_json::json;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, chunk_map::ChunkMap};
+    use sunrise_level::{chunk::Chunk, chunk_map::ChunkMap};
     use sunrise_world::registry::BlockRegistry;
 
     #[test]
@@ -1056,7 +1058,7 @@ pub(in crate::game) mod loot_location_shape_tests {
         let mut chunks = ChunkMap::default();
         chunks.insert((0, 0), Arc::new(positive));
         chunks.insert((-1, -1), Arc::new(negative));
-        let items = sunrise_client::items::Items::for_tests(Default::default());
+        let items = sunrise_items::items::Items::for_tests(Default::default());
         let valid = json!({"type":"minecraft:location_check","offsetX":1,"predicate":{"block":{"blocks":"minecraft:oak_log","state":{"axis":"x"}}}});
         assert_eq!(
             loot_location_block(&valid, [4, 200, 4], &chunks, &registry, &items),

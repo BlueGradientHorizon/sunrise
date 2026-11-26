@@ -26,8 +26,8 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::connection::Pipe;
 use {
-    sunrise_client::chunk::Chunk, sunrise_client::items::ItemStack,
-    sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_level::chunk::Chunk,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::motion::PlayerMotion,
 };
 
 impl<S: crate::game::Side> Game<'_, S> {
@@ -294,7 +294,7 @@ pub(in crate::game) fn with_interaction_client_game_at(
             game.connect_local(client, "InteractionTest").unwrap();
             game.remote.as_mut().unwrap().logged_in = true;
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
-            game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+            game.set_local_mode(sunrise_command::args::GameMode::Creative);
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -334,10 +334,7 @@ pub(in crate::game) fn with_interaction_server_game_at(
 pub(in crate::game) trait InteractionSide: crate::game::Side {
     const IS_CLIENT: bool;
     const LOGICAL_SIDE: LogicalSide;
-    fn set_interaction_mode(
-        game: &mut Game<'_, Self>,
-        mode: sunrise_client::command::args::GameMode,
-    );
+    fn set_interaction_mode(game: &mut Game<'_, Self>, mode: sunrise_command::args::GameMode);
     fn interaction_use_block_hand(game: &mut Game<'_, Self>, hand: Hand) -> bool;
     fn interaction_use_air_hand(game: &mut Game<'_, Self>, hand: Hand) -> bool;
     fn interaction_use_item_as_player(game: &mut Game<'_, Self>) -> bool;

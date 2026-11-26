@@ -132,8 +132,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn pickable_from_inside(&self, id: u32) -> bool {
         !self.mobs.iter().any(|m| {
             m.id == id
-                && m.species() == sunrise_client::mobs::Species::SulfurCube
-                && sunrise_client::mobs::sulfur_cube::has_body(m)
+                && m.species() == sunrise_sim::mobs::Species::SulfurCube
+                && sunrise_sim::mobs::sulfur_cube::has_body(m)
         })
     }
 

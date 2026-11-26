@@ -2,7 +2,8 @@
 
 use super::Game;
 use mod_api::PlayerRef;
-use sunrise_client::{lan::data::component_nbt, text::Text};
+use sunrise_client_core::text::Text;
+use sunrise_sim::lan::data::component_nbt;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Kicks a network or fake player with `reason` through the shared leave path.

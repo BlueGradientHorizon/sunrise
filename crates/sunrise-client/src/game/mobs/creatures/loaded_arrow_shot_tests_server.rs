@@ -3,14 +3,14 @@ use crate::game::creatures::loaded_arrow_shot_tests::stop_events;
 use crate::game::creatures::loaded_arrow_shot_tests::take_shots;
 use crate::game::creatures::loaded_arrow_shot_tests::with_game;
 use std::sync::Arc;
-use sunrise_client::mobs::Who;
+use sunrise_sim::mobs::Who;
 
 #[test]
 #[ignore = "daily"]
 fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
     use std::sync::{atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     with_game(|game| {
         game.lan_host(
             crate::game::lan::LanSettings {

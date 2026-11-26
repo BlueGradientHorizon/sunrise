@@ -16,12 +16,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
     pub(in crate::game) fn native_block_collision_in(
         &self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         pos: [i32; 3],
     ) -> Vec<[f64; 6]> {
         let state = world.block(pos[0], pos[1], pos[2]);
         let binding = self.collision;
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world,
             binding,
             subject: None,

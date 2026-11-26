@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::boats::Boat;
 use crate::game::native_entity_refs::tests::with_client_game;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
 
 #[test]
@@ -41,7 +41,7 @@ fn a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground() {
             game.side.screen = Screen::Playing;
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let stone = game
                 .pack
                 .assets

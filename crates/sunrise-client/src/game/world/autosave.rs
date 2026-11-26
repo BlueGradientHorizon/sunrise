@@ -4,7 +4,7 @@ use super::*;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn admit_entity_save() -> Result<()> {
-        if !sunrise_client::join_seq::visibility::passes_settled() {
+        if !sunrise_sim::join_seq::visibility::passes_settled() {
             return Err("entity pass is lifted".into());
         }
         Ok(())

@@ -8,11 +8,11 @@ fn the_biome_tags_pick_the_rabbit_variant() {
     let mut temperate = [0usize; 8];
     for seed in 0..2_000i64 {
         let mut r = LegacyRandom::new(seed);
-        white[usize::from(sunrise_client::mobs::rabbit::random_variant(
+        white[usize::from(sunrise_sim::mobs::rabbit::random_variant(
             true, false, &mut r,
         ))] += 1;
         let mut r = LegacyRandom::new(seed);
-        temperate[usize::from(sunrise_client::mobs::rabbit::random_variant(
+        temperate[usize::from(sunrise_sim::mobs::rabbit::random_variant(
             false, false, &mut r,
         ))] += 1;
     }
@@ -39,7 +39,7 @@ fn the_biome_tags_pick_the_rabbit_variant() {
     // The gold rabbit's tag decides alone, but its roll is still drawn.
     let mut a = LegacyRandom::new(7);
     assert_eq!(
-        sunrise_client::mobs::rabbit::random_variant(false, true, &mut a),
+        sunrise_sim::mobs::rabbit::random_variant(false, true, &mut a),
         4
     );
     let mut b = LegacyRandom::new(7);

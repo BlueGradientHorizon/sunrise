@@ -88,11 +88,12 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
 #[ignore = "daily"]
 fn a_piston_ignored_general_row_moves_for_a_shulker_lid() {
     use crate::game::piston_push::Lid;
-    use sunrise_client::{chunk::Chunk, entities::ArmorStand, mobs::Mob};
     use sunrise_core::{
         geometry::{Aabb, Direction},
         position::BlockPos,
     };
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
     use sunrise_world::level::pistons::MovingPiston;
 
     with_types(|game| {
@@ -159,7 +160,7 @@ fn a_piston_ignored_general_row_moves_for_a_shulker_lid() {
 
 /// The saved rows of one chunk, through the same walk the save uses.
 fn saved_chunk(game: &mut crate::game::ServerGame<'_>, key: ChunkKey) -> Vec<Tag> {
-    let mut out: HashMap<ChunkKey, Vec<(u32, sunrise_client::join_seq::JoinSeq, Tag)>> =
+    let mut out: HashMap<ChunkKey, Vec<(u32, sunrise_sim::join_seq::JoinSeq, Tag)>> =
         HashMap::new();
     let mut keys = HashSet::new();
     keys.insert(key);
@@ -253,7 +254,7 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
 
         // Keep the chunk loaded but outside simulation range so the pass refreshes
         // the adjacency without rider movement invalidating it again.
-        use sunrise_client::ticket_levels::{Sources, ViewedTicket};
+        use sunrise_sim::ticket_levels::{Sources, ViewedTicket};
         game.side.tickets.0.update(Some(Sources {
             viewed: vec![ViewedTicket {
                 center: (0, 0),
@@ -274,7 +275,7 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
         };
         assert_eq!(passengers.len(), 1);
         assert_eq!(
-            sunrise_client::entity_nbt::uuid(&passengers[0]),
+            sunrise_sim::entity_nbt::uuid(&passengers[0]),
             Some(rider_uuid)
         );
     });
@@ -366,7 +367,7 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
             panic!("missing nested pig")
         };
         assert_eq!(pigs.len(), 1);
-        assert_eq!(sunrise_client::entity_nbt::uuid(&pigs[0]), Some(pig_uuid));
+        assert_eq!(sunrise_sim::entity_nbt::uuid(&pigs[0]), Some(pig_uuid));
         let Some(Tag::List(leaves)) = pigs[0].get("Passengers") else {
             panic!("missing nested general row")
         };
@@ -914,14 +915,14 @@ fn with_types_and_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
 /// A guest 13 seated on a general root turned to 30 degrees, its packets read through the receiver.
 fn seat_guest_on_general_root(
     game: &mut crate::game::ServerGame<'_>,
-) -> (u32, std::sync::mpsc::Receiver<sunrise_client::lan::Out>) {
+) -> (u32, std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) {
     let ids = general_chain(game, &[([0.0, 64.0, 0.0], [0.0, 0.0])], 7);
     let (tx, rx) = std::sync::mpsc::channel();
     let hub = &mut game.lan.as_mut().unwrap().hub;
     hub.update_guest(13, |g| {
         g.vehicle = Some(ids[0]);
         g.yaw = 30.0;
-        g.sender = sunrise_client::lan::PlayerSender::new(tx, Default::default());
+        g.sender = sunrise_sim::lan::PlayerSender::new(tx, Default::default());
     })
     .unwrap();
     game.guest_boarded(13, None);
@@ -930,7 +931,7 @@ fn seat_guest_on_general_root(
 
 /// The packets of one guest's teleport: its own position packets and the vehicle's teleport packets.
 fn guest_teleport_packets(
-    rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+    rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
 ) -> (
     Vec<sunrise_protocol::packets::play::PlayerPosition>,
     Vec<sunrise_protocol::packets::play::TeleportEntity>,
@@ -1077,7 +1078,7 @@ impl mod_api::Hooks for ObserveDismounts {
 #[ignore = "daily"]
 fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order() {
     use crate::game::minecarts::{CartHit, CartKind, Minecart};
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     let dismounts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let observer =
@@ -1107,7 +1108,7 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
                 )),
                 "stand damage" => game
                     .armor_stands
-                    .push(sunrise_client::entities::ArmorStand::new(vehicle, at, 0.0)),
+                    .push(sunrise_sim::entities::ArmorStand::new(vehicle, at, 0.0)),
                 "mob death" | "mob death with only a mob rider" => {
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     game.mobs.push(Mob::new(vehicle, kind, at, 0.0));
@@ -1161,7 +1162,7 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
                 "mob death" | "mob death with only a mob rider" => {
                     game.world.chunks.insert(
                         (0, 0),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                     );
                     let index = game.mobs.iter().position(|mob| mob.id == vehicle).unwrap();
                     game.mobs.update(index, |mob| {
@@ -1191,7 +1192,7 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
         // loader admits its passengers. Fuse expiry must let them go too.
         assert!(game.ui.rules.set(
             "tnt_explodes",
-            sunrise_client::gamerules::Value::Bool(false),
+            sunrise_client_core::gamerules::Value::Bool(false),
         ));
         game.load_tnt(
             Tag::Compound(
@@ -1541,7 +1542,8 @@ fn no_save_rider_is_omitted_from_saved_tree() {
 #[ignore = "daily"]
 fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
     use crate::game::minecarts::{CartKind, Minecart};
-    use sunrise_client::{chunk::Chunk, mobs::Mob};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::Mob;
     with_types(|game| {
         let at = Vec3::new(8.5, 64.0, 8.5);
         let cart_id = 5000;
@@ -1589,7 +1591,7 @@ fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
 #[ignore = "daily"]
 fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
     use crate::game::boats::Boat;
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     with_types(|game| {
         let at = Vec3::new(8.5, 64.0, 8.5);

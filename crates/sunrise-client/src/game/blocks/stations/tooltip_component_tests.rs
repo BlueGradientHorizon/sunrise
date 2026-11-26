@@ -124,7 +124,7 @@ fn text_lines(components: &[PreparedTooltipItem]) -> Vec<String> {
 
 /// Pack-independent ASCII metrics: each lowercase letter and the space have the given advance.
 fn synthetic_ascii_fonts<const N: usize>(fonts: [(&str, i32); N]) -> sunrise_client::font::Font {
-    use sunrise_client::resource_source::{Resource, ResourceSource};
+    use sunrise_assets::resource_source::{Resource, ResourceSource};
     let files = fonts.into_iter().map(|(name, advance)| {
         let advances: std::collections::BTreeMap<_, _> = ('a'..='z')
             .chain([' '])
@@ -278,7 +278,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
         *config.bundle.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
         game.side.gui.atlas.font = synthetic_ascii_fonts([("default", 5)]);
         let font = &game.side.gui.atlas.font;
-        let long_text = sunrise_client::text::Text::literal(
+        let long_text = sunrise_client_core::text::Text::literal(
             "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron",
         );
         const RIGHT_WRAP: [&str; 3] = [
@@ -288,7 +288,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
         ];
 
         // Fixtures A & B: fits right and right-edge flip without wrapping.
-        let short = sunrise_client::text::Text::literal("alpha beta");
+        let short = sunrise_client_core::text::Text::literal("alpha beta");
         for mouse_x in [10, 260] {
             let gathered = game
                 .gather_tooltip_components(
@@ -354,7 +354,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
             .gather_tooltip_components(
                 &stick,
                 vec![(
-                    sunrise_client::text::Text::literal("alpha beta gamma delta"),
+                    sunrise_client_core::text::Text::literal("alpha beta gamma delta"),
                     u32::MAX,
                 )],
                 10,
@@ -444,7 +444,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
         let excluded = game
             .gather_tooltip_components(
                 &stick,
-                vec![(sunrise_client::text::Text::literal("short"), u32::MAX)],
+                vec![(sunrise_client_core::text::Text::literal("short"), u32::MAX)],
                 10,
                 (100.0, 240.0),
             )
@@ -459,7 +459,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
         assert!(matches!(
             game.gather_tooltip_components(
                 &stick,
-                vec![(sunrise_client::text::Text::literal("short"), u32::MAX)],
+                vec![(sunrise_client_core::text::Text::literal("short"), u32::MAX)],
                 10,
                 (320.0, 240.0),
             ),
@@ -590,7 +590,7 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
     with_mod_factories(mods, |game| {
         let mut components = vec![
             PreparedTooltipItem::Text {
-                text: sunrise_client::text::Text::literal("A"),
+                text: sunrise_client_core::text::Text::literal("A"),
                 color: u32::MAX,
             },
             game.prepare_tooltip_component(&TooltipComponent::custom(ZeroWidthData))
@@ -804,7 +804,7 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
         let stick = ItemStack::new("minecraft:stick", 1);
         *state.bundle_stack.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
         game.side.gui.atlas.font = synthetic_ascii_fonts([("default", 5), ("alt", 14)]);
-        let line = sunrise_client::text::Text::literal("one two three four five six");
+        let line = sunrise_client_core::text::Text::literal("one two three four five six");
 
         let mut prepared = game
             .gather_tooltip_components(&stick, vec![(line, u32::MAX)], 10, (320.0, 240.0))
@@ -1161,7 +1161,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
         let gathered = game
             .gather_tooltip_components(
                 stack,
-                vec![(sunrise_client::text::Text::literal(WIDE), u32::MAX)],
+                vec![(sunrise_client_core::text::Text::literal(WIDE), u32::MAX)],
                 145,
                 (160.0, 240.0),
             )
@@ -1177,7 +1177,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
     with_mod_factories(empty_mods, |game| {
         let unconvertible = ItemStack::new("missing:unregistered_item", 1);
         assert!(unconvertible.try_into_api().is_err());
-        let lines = vec![(sunrise_client::text::Text::literal("Plain"), u32::MAX)];
+        let lines = vec![(sunrise_client_core::text::Text::literal("Plain"), u32::MAX)];
         let mut gathered = game
             .gather_tooltip_components(&unconvertible, lines.clone(), 10, (320.0, 240.0))
             .unwrap_ready();
@@ -1324,7 +1324,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
 
         let unconvertible = ItemStack::new("missing:unregistered_item", 1);
         let mut one_line = vec![PreparedTooltipItem::Text {
-            text: sunrise_client::text::Text::literal("Keep"),
+            text: sunrise_client_core::text::Text::literal("Keep"),
             color: u32::MAX,
         }];
         let mut pre_batch = HudBatch::scratch([320, 240]);
@@ -1348,7 +1348,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
         let mut gathered = game
             .gather_tooltip_components(
                 &stick,
-                vec![(sunrise_client::text::Text::literal("Seed"), u32::MAX)],
+                vec![(sunrise_client_core::text::Text::literal("Seed"), u32::MAX)],
                 10,
                 (320.0, 240.0),
             )
@@ -1871,7 +1871,7 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
     }
 
     let make_unconvertible_text = || {
-        let text = sunrise_client::text::Text::from(serde_json::json!({
+        let text = sunrise_client_core::text::Text::from(serde_json::json!({
             "object": "player",
             "player": 7,
             "fallback": "Visible"
@@ -1956,7 +1956,7 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
         let mut gathered_bundle = game
             .gather_tooltip_components(
                 &bundle,
-                vec![(sunrise_client::text::Text::literal("Bundle"), u32::MAX)],
+                vec![(sunrise_client_core::text::Text::literal("Bundle"), u32::MAX)],
                 10,
                 (320.0, 240.0),
             )
@@ -2046,7 +2046,7 @@ fn unregistered_custom_component_aborts_before_pre_texture_and_paint_without_lat
 
     with_mod_factories(mods, |game| {
         let stick = ItemStack::new("minecraft:stick", 1);
-        let lines = vec![(sunrise_client::text::Text::literal("Stick"), u32::MAX)];
+        let lines = vec![(sunrise_client_core::text::Text::literal("Stick"), u32::MAX)];
         assert!(matches!(
             game.gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0)),
             GatheredTooltip::PrepareError(TooltipComponentPrepareError::MissingFactory {
@@ -2248,7 +2248,7 @@ fn panicking_tooltip_payload_drop_contained_across_prepare_cancel_and_removal() 
         let _ = mod_api::__private::take_hook_panics();
         let stick = ItemStack::new("minecraft:stick", 1);
         let hover = |stack: &ItemStack| {
-            let lines = vec![(sunrise_client::text::Text::literal("Item"), u32::MAX)];
+            let lines = vec![(sunrise_client_core::text::Text::literal("Item"), u32::MAX)];
             game.gather_tooltip_components(stack, lines, 10, (320.0, 240.0))
         };
 
@@ -2394,21 +2394,21 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
         let default_json = r#"{"providers":[{"type":"space","advances":{" ":2,"a":3}}]}"#;
         let item_json = r#"{"providers":[{"type":"space","advances":{" ":4,"a":8}}]}"#;
         let pre_json = r#"{"providers":[{"type":"space","advances":{" ":4,"a":15}}]}"#;
-        let source = sunrise_client::resource_source::ResourceSource::indexed(
+        let source = sunrise_assets::resource_source::ResourceSource::indexed(
             std::collections::BTreeMap::from([
                 (
                     "assets/minecraft/font/default.json".into(),
-                    sunrise_client::resource_source::Resource::bytes(
+                    sunrise_assets::resource_source::Resource::bytes(
                         default_json.as_bytes().to_vec(),
                     ),
                 ),
                 (
                     "assets/minecraft/font/item_wide.json".into(),
-                    sunrise_client::resource_source::Resource::bytes(item_json.as_bytes().to_vec()),
+                    sunrise_assets::resource_source::Resource::bytes(item_json.as_bytes().to_vec()),
                 ),
                 (
                     "assets/minecraft/font/pre_wider.json".into(),
-                    sunrise_client::resource_source::Resource::bytes(pre_json.as_bytes().to_vec()),
+                    sunrise_assets::resource_source::Resource::bytes(pre_json.as_bytes().to_vec()),
                 ),
             ]),
         );
@@ -2417,7 +2417,7 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
             crate::game::ClientGame::prepare_client_item_extensions(&game.side.gui).unwrap();
 
         let stick = ItemStack::new("minecraft:stick", 1);
-        let text = sunrise_client::text::Text::literal("aa aa");
+        let text = sunrise_client_core::text::Text::literal("aa aa");
         let anchor = quantize_tooltip_anchor((10.75, 20.25));
         assert_eq!(anchor, [10, 20]);
 
@@ -2467,7 +2467,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
         }
     }
 
-    use sunrise_client::resource_source::{Resource, ResourceSource};
+    use sunrise_assets::resource_source::{Resource, ResourceSource};
     // Logical lam + alef each take 9px; their visual ligature takes 5px. With a 2px
     // space between the words, the unsplit text is 38px logical but only 12px shaped.
     let source = ResourceSource::indexed(std::collections::BTreeMap::from([(
@@ -2483,7 +2483,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
         with_mod_factories(mods.into(), |game| {
             game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let stack = ItemStack::new("minecraft:stick", 1);
-            let line = sunrise_client::text::Text::literal("\u{644}\u{627} \u{644}\u{627}");
+            let line = sunrise_client_core::text::Text::literal("\u{644}\u{627} \u{644}\u{627}");
             // The listener uses max_width; the fast path gets the same 25px from the screen edge.
             let width = if listened { 320.0 } else { 51.0 };
             let mut components = game
@@ -2655,7 +2655,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
             "stonecutter preview gathers"
         );
 
-        use sunrise_client::merchant::{ItemCost, MerchantOffer, Session};
+        use sunrise_sim::merchant::{ItemCost, MerchantOffer, Session};
         game.open_remote_merchant(
             Session::new(
                 vec![MerchantOffer {
@@ -2830,7 +2830,7 @@ fn widget_tooltip_uses_the_same_positioner_for_pre_and_paint() {
     )]
     .into();
     with_mod_factories(mods, |game| {
-        let lines = [(sunrise_client::text::Text::literal(""), u32::MAX)];
+        let lines = [(sunrise_client_core::text::Text::literal(""), u32::MAX)];
         let mut batch = HudBatch::scratch([320, 240]);
         let widget = [50, 40, 22, 22];
         assert_eq!(

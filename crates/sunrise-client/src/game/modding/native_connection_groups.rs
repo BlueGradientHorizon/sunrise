@@ -138,10 +138,7 @@ mod tests {
         LevelWriteError, ServerHost, WorldEpoch,
     };
     use std::sync::Arc;
-    use sunrise_client::{
-        chunk::{Chunk, MIN_Y},
-        ticket_levels::{Sources, ViewedTicket},
-    };
+    use sunrise_level::chunk::{Chunk, MIN_Y};
     use sunrise_protocol::{
         connection::Pipe,
         connection_groups::{Cell, Entry},
@@ -151,6 +148,7 @@ mod tests {
         },
         payload_negotiation::Phase,
     };
+    use sunrise_sim::ticket_levels::{Sources, ViewedTicket};
 
     fn state(game: &crate::game::ServerGame<'_>, name: &str) -> mod_api::BlockState {
         let host: &dyn Host = game;

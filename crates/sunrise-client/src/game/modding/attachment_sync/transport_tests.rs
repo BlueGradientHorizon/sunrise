@@ -159,8 +159,7 @@ pub(super) fn peer(port: u16, name: &str, sunrise: bool) -> Connection {
     c.send(&login::Serverbound::LoginAcknowledged(Empty).encode())
         .unwrap();
     let local =
-        sunrise_client::raw_payloads::Local::capture(sunrise_client::raw_payloads::Side::Client)
-            .unwrap();
+        sunrise_sim::raw_payloads::Local::capture(sunrise_sim::raw_payloads::Side::Client).unwrap();
     if sunrise {
         // A server queries a client only once its brand says Sunrise.
         let mut brand = ::sunrise_core::vanilla_bytes::Writer::new();
@@ -321,7 +320,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             game.side.settings.render_distance = 2;
             game.side.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
-                world_type: sunrise_client::save::WorldPreset::Flat,
+                world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
             };
             game.open_integrated(

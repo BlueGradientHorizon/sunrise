@@ -3,18 +3,18 @@
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
 use super::{Game, creatures::ProjectileHitter, lan_mobs::guest_bounds};
 use std::sync::Arc;
-use sunrise_client::advancements::EntityView;
-use sunrise_client::lan::entity::States;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_protocol::entity_data::{Value, serializer};
+use sunrise_sim::advancements::EntityView;
+use sunrise_sim::lan::entity::States;
 use {
-    sunrise_client::blocks::Fluid, sunrise_client::collisions::SceneCollisions,
-    sunrise_client::items::ItemStack, sunrise_client::random_source,
-    sunrise_level::particle_options::ParticleType,
+    sunrise_items::blocks::Fluid, sunrise_items::items::ItemStack,
+    sunrise_level::collisions::SceneCollisions, sunrise_level::particle_options::ParticleType,
+    sunrise_level::random_source,
 };
 
 #[path = "fishing/impact.rs"]
@@ -46,7 +46,7 @@ pub(in crate::game::server_side) fn hook_params(
 pub(in crate::game::server_side) fn fishing_loot(
     loot: &sunrise_world::loot::LootData,
     table: &str,
-    sequences: &mut sunrise_client::random_sequences::RandomSequences,
+    sequences: &mut sunrise_items::random_sequences::RandomSequences,
     level_random: &mut LegacyRandom,
     world_seed: i64,
     biome: Option<&str>,
@@ -79,9 +79,9 @@ pub(in crate::game) enum EntityCollision {
 pub(in crate::game) struct Hook {
     pub(in crate::game) uuid: [i32; 4],
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     pub(in crate::game) caster: Option<u32>,
-    pub(in crate::game) caster_generation: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) caster_generation: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id, which a server's players track it under.
     pub(in crate::game) id: u32,
     pub(in crate::game) position: Vec3,
@@ -239,7 +239,7 @@ pub(in crate::game::server_side) fn first_entity_hit(
     hit
 }
 pub(in crate::game::server_side) fn pull_item(
-    item: &mut sunrise_client::entities::ItemEntity,
+    item: &mut sunrise_sim::entities::ItemEntity,
     delta: Vec3,
 ) {
     item.velocity = item.velocity.add_vector(delta);
@@ -268,11 +268,11 @@ pub(in crate::game::server_side) fn minecart_hook_targets<'a>(
 }
 sunrise_mod_runtime::impl_attachment_lifetime!(Hook);
 
-impl sunrise_client::join_seq::Joined for Hook {
-    fn join_seq(&self) -> sunrise_client::join_seq::JoinSeq {
+impl sunrise_sim::join_seq::Joined for Hook {
+    fn join_seq(&self) -> sunrise_sim::join_seq::JoinSeq {
         self.join
     }
-    fn set_join_seq(&mut self, join: sunrise_client::join_seq::JoinSeq) {
+    fn set_join_seq(&mut self, join: sunrise_sim::join_seq::JoinSeq) {
         self.join = join;
     }
 }
@@ -585,7 +585,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
             // The hook's own random (`Entity.random`).
             let mut random = random_source::entity();
-            let uuid = sunrise_client::save::insecure_uuid(&mut random);
+            let uuid = sunrise_sim::save::insecure_uuid(&mut random);
             // FishingHook's second random is reseeded from UUID/game time on
             // use, but its construction still takes its own unique seed.
             let _synchronized = random_source::create();
@@ -595,9 +595,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.install_fishing_hook(Hook {
                 uuid,
                 attachment_lifetime: Default::default(),
-                join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+                join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
                 caster: None,
-                caster_generation: sunrise_client::join_seq::JoinSeq::UNJOINED,
+                caster_generation: sunrise_sim::join_seq::JoinSeq::UNJOINED,
                 id: self.side.next_entity,
                 position: start,
                 previous: start,
@@ -706,9 +706,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     {
                         Some("minecraft:player".to_owned())
                     } else {
-                        self.entity_kind_for_who(sunrise_client::mobs::Who::Mob(id))
+                        self.entity_kind_for_who(sunrise_sim::mobs::Who::Mob(id))
                     }?;
-                    Some(sunrise_client::advancements::EntityView {
+                    Some(sunrise_sim::advancements::EntityView {
                         kind,
                         position: [hook.position.x, hook.position.y, hook.position.z],
                         ..Default::default()
@@ -771,7 +771,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     };
                     for (id, level) in &stack.enchantments {
                         if &*item.item == "minecraft:enchanted_book" {
-                            sunrise_client::item_data::set_level(
+                            sunrise_items::item_data::set_level(
                                 &mut item.data_mut().stored_enchantments,
                                 id,
                                 (*level).max(0) as u32,
@@ -1056,7 +1056,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .expand_towards(h.velocity)
                 .inflate(Vec3::new(1.0, 1.0, 1.0));
             h.left_owner =
-                self.outside_owner_collision_range(sunrise_client::mobs::Who::Player, swept);
+                self.outside_owner_collision_range(sunrise_sim::mobs::Who::Player, swept);
         }
         // The players it can catch, as they stand now (the host's own hook;
         // guests' hooks use the ones taken as their turns start).
@@ -1130,12 +1130,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let to = h.position.add_vector(h.velocity);
                 let block_hit = self.hook_block_hit(h.position, to);
                 let entity_end = block_hit.map_or(to, |hit| hit.location);
-                let margin = sunrise_client::projectiles::compute_margin(h.tick_count);
+                let margin = sunrise_sim::projectiles::compute_margin(h.tick_count);
                 let search_area = h
                     .bounds()
                     .expand_towards(h.velocity)
                     .inflate(Vec3::new(1.0, 1.0, 1.0));
-                let mut best = sunrise_client::projectiles::NearestHit::new();
+                let mut best = sunrise_sim::projectiles::NearestHit::new();
                 let query = super::creatures::TargetQuery {
                     include_guests: true,
                     include_items: true,
@@ -1143,7 +1143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 self.visit_projectile_targets(query, &[], |c| {
                     if !h.left_owner
-                        && self.in_same_vehicle_tree(sunrise_client::mobs::Who::Player, c.who)
+                        && self.in_same_vehicle_tree(sunrise_sim::mobs::Who::Player, c.who)
                     {
                         return;
                     }
@@ -1151,22 +1151,22 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 });
                 let hit = best.finish().map(|(who, at)| {
                     let id = match who {
-                        sunrise_client::mobs::Who::Player => self.own_entity_id() as u32,
-                        sunrise_client::mobs::Who::Mob(id) => id,
+                        sunrise_sim::mobs::Who::Player => self.own_entity_id() as u32,
+                        sunrise_sim::mobs::Who::Mob(id) => id,
                     };
                     (id, at)
                 });
                 let impact = match (hit, block_hit) {
-                    (Some((id, at)), _) => sunrise_client::projectiles::Hit::Entity {
-                        who: sunrise_client::mobs::Who::Mob(id),
+                    (Some((id, at)), _) => sunrise_sim::projectiles::Hit::Entity {
+                        who: sunrise_sim::mobs::Who::Mob(id),
                         at,
                     },
-                    (None, Some(hit)) => sunrise_client::projectiles::Hit::Block {
+                    (None, Some(hit)) => sunrise_sim::projectiles::Hit::Block {
                         pos: [hit.block.x, hit.block.y, hit.block.z],
                         face: hit.direction.normal(),
                         at: hit.location,
                     },
-                    (None, None) => sunrise_client::projectiles::Hit::None,
+                    (None, None) => sunrise_sim::projectiles::Hit::None,
                 };
                 let (hook, canceled) = self.fishing_impact(h, impact)?;
                 h = hook;
@@ -1177,7 +1177,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         // Vanilla onSyncedDataUpdated resolves level.getEntity(part.id) == null, clearing hookedIn.
                         self.projectile_landed_event(
                             h.id,
-                            Some(sunrise_client::mobs::Who::Player),
+                            Some(sunrise_sim::mobs::Who::Player),
                             [at.x, at.y, at.z],
                         );
                     } else if id != 0 {
@@ -1187,13 +1187,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .find(|m| {
                                 m.id == id
                                     && m.alive()
-                                    && m.species() == sunrise_client::mobs::Species::Breeze
+                                    && m.species() == sunrise_sim::mobs::Species::Breeze
                             })
                             .map(|m| [m.position.x, m.position.y, m.position.z]);
                         if breeze.is_none() {
                             self.redirect_projectile(
                                 id,
-                                Some(sunrise_client::mobs::Who::Player),
+                                Some(sunrise_sim::mobs::Who::Player),
                                 self.level.player_uuid,
                                 self.side.lan_acting,
                                 None,
@@ -1216,7 +1216,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             EntityCollision::Hooked => {
                                 self.projectile_landed_event(
                                     h.id,
-                                    Some(sunrise_client::mobs::Who::Player),
+                                    Some(sunrise_sim::mobs::Who::Player),
                                     [at.x, at.y, at.z],
                                 );
                             }
@@ -1224,7 +1224,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 } else if let Some(hit) = block_hit.filter(|_| !canceled && hit.is_none()) {
                     let projectile = ProjectileHitter {
-                        owner: Some(sunrise_client::mobs::Who::Player),
+                        owner: Some(sunrise_sim::mobs::Who::Player),
                         guest: self.side.lan_acting,
                         arrow: false,
                         kind: "minecraft:fishing_bobber",
@@ -1241,7 +1241,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // Projectile.onHit on a block: PROJECTILE_LAND at block center with post-callback state.
                     self.projectile_block_landed_event(
                         h.id,
-                        Some(sunrise_client::mobs::Who::Player),
+                        Some(sunrise_sim::mobs::Who::Player),
                         pos,
                     );
                     h.velocity = rebound(h.velocity, hit.location, h.position);
@@ -1289,7 +1289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.dropped
                             .iter()
                             .find(|i| i.id == id)
-                            .map(|i| (i.position, sunrise_client::entities::ItemEntity::WIDTH))
+                            .map(|i| (i.position, sunrise_sim::entities::ItemEntity::WIDTH))
                     })
                     .or_else(|| {
                         self.tnts
@@ -1348,7 +1348,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .find(|k| k.id == id)
                             .map(|k| {
                                 (
-                                    sunrise_client::mobs::leash::knot_state(k.fence).position,
+                                    sunrise_sim::mobs::leash::knot_state(k.fence).position,
                                     f64::from(0.5_f32),
                                 )
                             })
@@ -1423,7 +1423,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // The bobber's Entity.move goes through the move gate (#2414); PR 1a
         // records the movement unchanged.
-        let mut gate = sunrise_client::move_gate::armed(
+        let mut gate = sunrise_sim::move_gate::armed(
             &self.loop_context,
             h.id,
             "minecraft:fishing_bobber",
@@ -1431,7 +1431,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             h.velocity,
         );
         let wanted = gate.delta();
-        if let Ok(moved) = sunrise_client::move_gate::scene_resolve(
+        if let Ok(moved) = sunrise_sim::move_gate::scene_resolve(
             &mut gate,
             &mut scene,
             bounds(h.position),
@@ -1454,7 +1454,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
             // FishingHook.tick turns before grounding or drag zeros/scales motion.
             let [yaw, pitch] = hook_rotation(h.velocity);
-            let lerp = sunrise_client::arrows::lerp_rotation;
+            let lerp = sunrise_sim::arrows::lerp_rotation;
             h.yaw = lerp(old_yaw, yaw);
             h.pitch = lerp(h.pitch, pitch);
             if h.state == State::Flying && (h.ground.on_ground || h.ground.horizontal_collision) {
@@ -1483,11 +1483,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let authoritative =
             motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
         motion.record_move(
-            sunrise_client::motion::BodyCollision {
+            sunrise_sim::motion::BodyCollision {
                 footprint: (position, bounds(position)),
                 movement: (wanted, moved),
                 authoritative,
-                context: sunrise_client::motion::BodyMotion::entity_context(id, position),
+                context: sunrise_sim::motion::BodyMotion::entity_context(id, position),
                 subject: None,
             },
             ground,
@@ -1496,7 +1496,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let entity = (id, "minecraft:fishing_bobber");
         let response = motion.restitute(
             entity,
-            sunrise_client::motion::BodyMove {
+            sunrise_sim::motion::BodyMove {
                 wanted,
                 moved,
                 effect,
@@ -1617,7 +1617,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let (at, bounds, mut ground) = (hook.position, hook.bounds(), hook.ground);
         ground.on_ground = on_ground;
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -1627,7 +1627,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             at,
             bounds,
             None,
-            sunrise_client::motion::BodyMotion::entity_context(id, at),
+            sunrise_sim::motion::BodyMotion::entity_context(id, at),
         );
         let hook = match caster {
             super::commands::Target::Guest(conn) if Some(conn) != self.side.lan_acting => self
@@ -1650,7 +1650,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Takes a cast hook out of the level (`Entity.discard`).
     pub(in crate::game::server_side) fn remove_fishing_hook(&mut self, id: u32) {
-        use sunrise_client::join_seq::residency::{Kind, Source, table::EntityLookup};
+        use sunrise_sim::join_seq::residency::{Kind, Source, table::EntityLookup};
         let found = self
             .resident_entities
             .table
@@ -1679,7 +1679,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         &self,
         id: u32,
     ) -> Option<(&Hook, super::commands::Target)> {
-        use sunrise_client::join_seq::residency::{
+        use sunrise_sim::join_seq::residency::{
             Kind, Source,
             table::{EntityLookup, SourceEntity},
         };
@@ -1866,14 +1866,14 @@ impl Hook {
     pub(in crate::game) fn remote(id: u32, at: Vec3, uuid: [i32; 4]) -> Self {
         let mut random = random_source::entity();
         // Entity initializes a local UUID before recreateFromPacket replaces it.
-        let _local_uuid = sunrise_client::save::insecure_uuid(&mut random);
+        let _local_uuid = sunrise_sim::save::insecure_uuid(&mut random);
         let _synchronized = random_source::create();
         Self {
             uuid,
             attachment_lifetime: Default::default(),
-            join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+            join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
             caster: None,
-            caster_generation: sunrise_client::join_seq::JoinSeq::UNJOINED,
+            caster_generation: sunrise_sim::join_seq::JoinSeq::UNJOINED,
             id,
             position: at,
             previous: at,
@@ -1908,7 +1908,7 @@ impl Hook {
         let p = self.position;
         let e = out.add(
             self.id as i32,
-            sunrise_client::lan::playerdata::ints_uuid(self.uuid),
+            sunrise_sim::lan::playerdata::ints_uuid(self.uuid),
             "minecraft:fishing_bobber",
         );
         e.position = [p.x, p.y, p.z];
@@ -2083,7 +2083,7 @@ pub(in crate::game) mod tests {
         let loot = LootData::load(root, &PackOverlay::NONE, &defaults).unwrap();
         for row in rows {
             let seed = row["sequence_seed"].as_i64().unwrap();
-            let mut sequences = sunrise_client::random_sequences::RandomSequences::default();
+            let mut sequences = sunrise_items::random_sequences::RandomSequences::default();
             let mut level_random = LegacyRandom::new(1);
             let items = super::fishing_loot(
                 &loot,
@@ -2182,7 +2182,7 @@ pub(in crate::game) mod tests {
         let mut hook = Hook::remote(1, Vec3::ZERO, [0, 0, 0, 1]);
         hook.velocity = Vec3::new(2.0, 0.0, 0.0);
         hook.hit_entity(10, true);
-        let mut states = sunrise_client::lan::entity::States::default();
+        let mut states = sunrise_sim::lan::entity::States::default();
         hook.track(99, &mut states);
         let state = &states.as_slice()[0];
         assert!(state.needs_sync);
@@ -2237,8 +2237,9 @@ pub(in crate::game) mod tests {
         }
     }
 
-    use sunrise_client::{entities::ItemEntity, items::ItemStack};
     use sunrise_core::geometry::{Aabb, Vec3};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::entities::ItemEntity;
 
     #[test]
     fn casting_straight_down_aims_down_and_straight_up_aims_up() {

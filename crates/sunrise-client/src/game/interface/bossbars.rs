@@ -4,17 +4,15 @@ use super::{
     commands_common::{R, Target, err},
 };
 use std::collections::{HashMap, HashSet};
-use sunrise_client::{
+use sunrise_client_core::{
     bossbar::{self, BossBars},
-    command::{Arg, Context},
-    mobs::Species,
-    save,
     scoreboard::{self as sb, Comp, canonical_component, json_to_tag},
-    scoreboard_cmd::format_list,
     text::Text,
 };
+use sunrise_command::{Arg, Context};
 use sunrise_core::{identifier::Identifier, java_hash_map::JavaHashMap, nbt::Tag};
 use sunrise_protocol::packets::play::{self, BossAction, Clientbound as C};
+use sunrise_sim::{mobs::Species, save, scoreboard_cmd::format_list};
 
 #[derive(Default)]
 pub(in crate::game) struct BossState {
@@ -190,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.side.bosses.add_bar(id, name) {
             return None;
         }
-        let uuid = sunrise_client::lan::playerdata::ints_uuid(sunrise_client::save::insecure_uuid(
+        let uuid = sunrise_sim::lan::playerdata::ints_uuid(sunrise_sim::save::insecure_uuid(
             &mut self.world.random,
         ));
         self.side.bosses.bars.get_mut(id)?.uuid = uuid;
@@ -225,7 +223,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .bosses
                     .listed_bars()
                     .into_iter()
-                    .map(sunrise_client::bossbar::BossBar::display_name)
+                    .map(sunrise_client_core::bossbar::BossBar::display_name)
                     .collect();
                 let n = names.len();
                 if n == 0 {
@@ -259,7 +257,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "bossbar.get" => {
                 let b = self.side.bosses.bars.get(&bar).cloned().unwrap_or_else(|| {
-                    sunrise_client::bossbar::BossBar::new(&bar, sb::literal(&bar))
+                    sunrise_client_core::bossbar::BossBar::new(&bar, sb::literal(&bar))
                 });
                 let s = b.display_name();
                 Ok(match last.as_str() {
@@ -499,7 +497,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .iter()
                 .filter(|g| g.placed && g.participates_online())
             {
-                let ints = sunrise_client::lan::playerdata::uuid_ints(g.uuid);
+                let ints = sunrise_sim::lan::playerdata::uuid_ints(g.uuid);
                 if out.iter().any(|(uuid, _)| *uuid == ints) {
                     continue;
                 }
@@ -521,7 +519,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .guests
                     .iter()
                     .find(|g| g.conn == conn)
-                    .map(|g| sunrise_client::lan::playerdata::uuid_ints(g.uuid))
+                    .map(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid))
             }),
             _ => None,
         }
@@ -576,7 +574,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .cloned();
         if let Some(custom) = custom {
             self.side.bosses.dragon_name = Some(json_to_tag(
-                &sunrise_client::entity_nbt::name_text(&custom).component(),
+                &sunrise_sim::entity_nbt::name_text(&custom).component(),
             ));
         }
     }
@@ -594,7 +592,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 out.push(Viewer {
                     uuid: g.uuid,
-                    ints: sunrise_client::lan::playerdata::uuid_ints(g.uuid),
+                    ints: sunrise_sim::lan::playerdata::uuid_ints(g.uuid),
                     at: g.position,
                     alive: !g.dead,
                     here: g.dimension == self.dim.id(),
@@ -657,7 +655,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     continue;
                 }
                 let progress = if m.extra.counter > 0 {
-                    1.0 - m.extra.counter as f32 / sunrise_client::mobs::wither::INVULNERABLE as f32
+                    1.0 - m.extra.counter as f32 / sunrise_sim::mobs::wither::INVULNERABLE as f32
                 } else {
                     (m.health / m.attrs.max_health).clamp(0.0, 1.0)
                 };
@@ -807,8 +805,8 @@ pub(in crate::game) struct Offer {
 #[cfg(test)]
 pub(in crate::game) mod audience_tests {
     use std::sync::Arc;
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     pub(in crate::game) fn add_real_and_fake(game: &mut crate::game::ServerGame<'_>) {
         game.player = None;

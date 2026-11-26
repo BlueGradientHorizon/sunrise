@@ -19,7 +19,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .context_outline_edges(state, kind)
                     .unwrap_or_default(),
             ),
-            Outline::Dynamic(_) => (sunrise_client::blocks::cube_edges(), &[][..]),
+            Outline::Dynamic(_) => (sunrise_items::blocks::cube_edges(), &[][..]),
             Outline::Default(facts) => (Vec::new(), facts.outline_edges.as_ref()),
         };
         owned

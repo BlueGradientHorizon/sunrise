@@ -16,17 +16,19 @@ use sunrise_assets::resource_source::ResourceRoot;
 #[cfg(feature = "client")]
 use sunrise_client::gfx::PreparedTextures;
 #[cfg(feature = "client")]
+use sunrise_client::{hud::HudAtlas, level_loading::OverlayFade, pack_browser};
 use sunrise_client::{
-    assets::Assets, hud::HudAtlas, lang, level_loading::OverlayFade, pack_browser,
-};
-use sunrise_client::{
-    datapack::DataPack,
     pack_screen::{self, Compat, PackInfo, Source as PackSource},
     packs::{self, Pack, Position},
-    text::{Style, Text},
 };
 #[cfg(feature = "client")]
+use sunrise_client_core::lang;
+use sunrise_client_core::text::{Style, Text};
+#[cfg(feature = "client")]
 use sunrise_client_render::streaming::WorkerContext;
+#[cfg(feature = "client")]
+use sunrise_level::assets::Assets;
+use sunrise_level::datapack::DataPack;
 
 /// Where overlay roots are built (beside options.txt).
 pub fn cache_dir() -> PathBuf {
@@ -96,7 +98,7 @@ pub(in crate::game) fn startup_root(
     selected: &[String],
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
-) -> sunrise_client::Result<PackRoots> {
+) -> sunrise_client_core::Result<PackRoots> {
     let mut all = packs::discover(vanilla, &packs_dir());
     all.extend(super::pack_finders::discover(
         mod_api::PackType::ClientResources,
@@ -395,7 +397,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             clear_selection(&mut self.side.settings);
             if self.spawn_pack_reload(ReloadKind::Selection).is_ok() {
                 // addResourcePackLoadFailToast(null), SystemToast.addOrUpdate.
-                let title = sunrise_client::text::Text::translate("resourcePack.load_fail", &[]);
+                let title =
+                    sunrise_client_core::text::Text::translate("resourcePack.load_fail", &[]);
                 self.add_or_update_system_toast(
                     super::toast_manager::SystemToastId::PackLoadFailure,
                     sunrise_client::toasts::SystemToast::new(title, None),
@@ -568,7 +571,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn apply_staged_pack(
         &mut self,
         staged: StagedPack,
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let StagedPack {
             root,
             client_applies,
@@ -807,7 +810,7 @@ pub(in crate::game) fn stage_pack(
     force_unicode: bool,
     japanese: bool,
     progress: &super::Progress,
-) -> sunrise_client::Result<StagedPack> {
+) -> sunrise_client_core::Result<StagedPack> {
     let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?.selected?;
     let resource_root = super::client_reload::stage_texture_atlases(resource_root, texture_atlases);
     let root = resource_root.prepared().to_path_buf();
@@ -816,7 +819,7 @@ pub(in crate::game) fn stage_pack(
     let (staged, client_applies) = super::client_reload::stage_client_reload(
         &source,
         client_listeners,
-        || -> sunrise_client::Result<_> {
+        || -> sunrise_client_core::Result<_> {
             // The world's models and sprites and the GUI atlas read the same root and nothing of
             // each other: about a second each, side by side.
             let pool = super::resource_tables::dynamic_texture_pool();
@@ -835,7 +838,7 @@ pub(in crate::game) fn stage_pack(
                 });
                 let small = super::resource_load::named_scope(s, "pack-assets", || {
                     (
-                        sunrise_client::sound_events::SoundRegistry::load(&source),
+                        sunrise_level::sound_events::SoundRegistry::load(&source),
                         lang::Language::load(&[&source], &lang::code()),
                     )
                 });
@@ -926,7 +929,7 @@ pub(in crate::game) struct StagedPack {
     /// The block entities' models, the packs' custom entity models over vanilla's.
     pub block_entity_shapes: Arc<sunrise_client::block_entity_render::BlockEntityShapes>,
     /// The root's sound events and current language.
-    pub sounds: sunrise_client::sound_events::SoundRegistry,
+    pub sounds: sunrise_level::sound_events::SoundRegistry,
     pub language: lang::Language,
 }
 

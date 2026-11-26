@@ -10,9 +10,9 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::TagRegistry;
+use sunrise_level::chunk::Chunk;
 
 static VETO: AtomicBool = AtomicBool::new(false);
 

@@ -1,8 +1,8 @@
 //! Read-only world content tables shared by server and client games.
 use super::*;
 use std::sync::LazyLock;
-use sunrise_client::{menu::Env, neoforge_mob_maps::NeoForgeMobMaps};
 use sunrise_core::nbt::Tag;
+use sunrise_sim::{menu::Env, neoforge_mob_maps::NeoForgeMobMaps};
 use sunrise_world::level::data::BlockSet;
 
 /// [`Game::level_suffocation`] from the fields it reads, for a caller that holds other fields: the
@@ -19,7 +19,7 @@ pub(in crate::game) fn level_suffocation_of<'a>(
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Server reads active station enchantments; client reads synced remote enchantments or active items.
-    pub(in crate::game) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
+    pub(in crate::game) fn item_enchantments(&self) -> &Arc<sunrise_items::enchant::Enchantments> {
         if self.is_logical_server() {
             &self.stations().enchantments
         } else if let Some(ench) = self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
@@ -55,7 +55,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .map_or_else(|| self.res.providers(), |t| &t.providers)
     }
 
-    pub(in crate::game) fn stations(&self) -> &sunrise_client::stations::StationData {
+    pub(in crate::game) fn stations(&self) -> &sunrise_sim::stations::StationData {
         self.side_world_tables()
             .map_or_else(|| self.res.stations(), |t| &t.stations)
     }
@@ -110,7 +110,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     pub(in crate::game) fn active_enchantment_definitions(
         &self,
-    ) -> &sunrise_client::enchant::Enchantments {
+    ) -> &sunrise_items::enchant::Enchantments {
         self.item_enchantments()
     }
 
@@ -124,7 +124,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
 
-    pub(in crate::game) fn station_recipes(&self) -> &sunrise_client::stations::StationRecipes {
+    pub(in crate::game) fn station_recipes(&self) -> &sunrise_sim::stations::StationRecipes {
         if self.is_logical_server() {
             &self.stations().recipes
         } else {
@@ -162,7 +162,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         if self.is_logical_server() {
             self.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::LIMITED_CRAFTING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::LIMITED_CRAFTING)
         } else {
             self.remote.as_ref().is_some_and(|r| r.do_limited_crafting)
         }

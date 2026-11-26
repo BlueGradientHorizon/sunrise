@@ -87,7 +87,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 let f = self.res.facts().get(self.world.block(x, y, z));
                 (f.full_collision
                     || f.legacy_solid
-                    || f.fluid != sunrise_client::blocks::Fluid::None)
+                    || f.fluid != sunrise_items::blocks::Fluid::None)
                     && !f.name.ends_with("_leaves")
             })
             .map_or(0, |y| y + 1)

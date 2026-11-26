@@ -2,12 +2,13 @@ use super::Game;
 use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::with_game};
 use mod_api::{BlockUpdateFlags, Flow, Hooks, ItemResource, ServerHost};
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, items::ItemStack};
 use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
     random::RandomSource,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 const POS: [i32; 3] = [2, 64, 2];
 
@@ -526,7 +527,7 @@ fn a_composter_click_supplies_its_interacting_player_and_no_this() {
     game.build_registries();
     // The clicking player, beside the composter.
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(
+        sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(4.5, 64.0, 2.5),
         )

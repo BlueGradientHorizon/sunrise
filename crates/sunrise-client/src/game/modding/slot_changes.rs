@@ -18,10 +18,12 @@
 use super::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
 use super::{Game, transactions::After};
 use mod_api::{MenuContainer, MenuSlotChange, MenuSlotContext, MenuSlotWrite};
-use sunrise_client::{
+use sunrise_items::items::{ItemStack, Items};
+use sunrise_level::{
     block_entities::Pos,
     containers::{BlockEntity, ModMenuType},
-    items::{ItemStack, Items},
+};
+use sunrise_sim::{
     lan::{guest::Guest, guest_list::GuestList, menu::Slots},
     menu::Menu,
 };
@@ -402,14 +404,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|m| m.links.as_slice())
         {
             for (k, stack) in l.slots().zip(
-                sunrise_client::lan::menu::read_links(&self.world, links, l.count)
+                sunrise_sim::lan::menu::read_links(&self.world, links, l.count)
                     .into_iter()
                     .chain(std::iter::repeat(None)),
             ) {
                 full_items[k] = stack;
             }
         }
-        let mut lifted = Menu::new(sunrise_client::menu::Kind::Mod(layout));
+        let mut lifted = Menu::new(sunrise_sim::menu::Kind::Mod(layout));
         let mut env = self.menu_env();
         env.loop_context = &self.loop_context;
         if let Some(host) = self.lan.as_ref()
@@ -920,11 +922,9 @@ mod tests {
     };
     use crate::game::api_values::StackReadError;
     use mod_api::{MenuContainer, MenuSlotWrite};
-    use sunrise_client::{
-        containers::{ModCrafting, ModLinks, ModMenuType},
-        items::{ItemStack, Items},
-        menu::{Kind, Menu},
-    };
+    use sunrise_items::items::{ItemStack, Items};
+    use sunrise_level::containers::{ModCrafting, ModLinks, ModMenuType};
+    use sunrise_sim::menu::{Kind, Menu};
 
     fn with_test_item_keys(f: impl FnOnce(mod_api::ItemKey, mod_api::ItemKey, Items)) {
         let mods = mod_api::Mods::default();
@@ -1260,7 +1260,7 @@ mod tests {
     #[test]
     fn listening_block_viewers_are_the_placed_guests_here_with_a_listening_menu_open_there() {
         use std::sync::Arc;
-        use sunrise_client::lan::{
+        use sunrise_sim::lan::{
             Joined, PlayerSender,
             guest::Guest,
             guest_list::GuestList,

@@ -8,20 +8,18 @@ use super::{
     persist::SpawnTree,
 };
 use std::collections::HashMap;
-use sunrise_client::{
-    Result,
-    containers::BlockEntity,
-    mobs::{
-        Mob, Who,
-        spawner::{Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
-        trial_spawner::{TrialSpawnerExt, TrialState},
-    },
-};
+use sunrise_client_core::Result;
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
+};
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::mobs::{
+    Mob, Who,
+    spawner::{Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
+    trial_spawner::{TrialSpawnerExt, TrialState},
 };
 
 pub(in crate::game) type Pos = (i32, i32, i32);
@@ -96,7 +94,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
             return Ok(());
         }
@@ -149,7 +147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mut created: Vec<Mob>,
         rides: Vec<(u32, u32)>,
     ) -> HashMap<u32, u32> {
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let mut finalized: Vec<Mob> = Vec::new();
         let mut gears: Vec<Option<Tag>> = Vec::new();
         let mut loads = Vec::new();
@@ -222,14 +220,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 (outcome, difficulty) => {
                     if outcome == Finalized::Done {
                         let mut level = super::natural_spawning::PassLevel::new(l);
-                        let mut cx = sunrise_client::mobs::finalize::Ctx {
+                        let mut cx = sunrise_sim::mobs::finalize::Ctx {
                             level: &mut level,
                             random,
                             difficulty,
                             created: Vec::new(),
                             jockey_rider: None,
                         };
-                        sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
+                        sunrise_sim::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
                         for m in cx.created {
                             l.record_pending(&m);
                             l.spawned.borrow_mut().push(m);
@@ -238,7 +236,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             // Shulker.finalizeSpawn faces it south.
-            if mob.species() == sunrise_client::mobs::Species::Shulker {
+            if mob.species() == sunrise_sim::mobs::Species::Shulker {
                 mob.yaw = 0.0;
                 mob.previous_yaw = 0.0;
                 mob.body_yaw = 0.0;
@@ -360,9 +358,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
-            self.server_system_message(sunrise_client::text::Text::translate(
+            self.server_system_message(sunrise_client_core::text::Text::translate(
                 "advMode.notEnabled.spawner",
                 &[],
             ));
@@ -411,22 +409,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         target: super::commands::Target,
         kind: &str,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
         by_player: bool,
     ) {
         let op = by_player && self.acting_player_is_op();
         let configures = stack
             .data()
             .is_some_and(|d| d.custom_name.is_some() || d.other("minecraft:custom_data").is_some())
-            || sunrise_client::block_entity_item::spawn_egg_entity_data(stack, kind, op).is_some();
+            || sunrise_sim::block_entity_item::spawn_egg_entity_data(stack, kind, op).is_some();
         if !configures {
             return;
         }
         let Some(own) = self.command_target_nbt(target) else {
             return;
         };
-        let tag =
-            sunrise_client::block_entity_item::stack_configured_entity_by(stack, kind, &own, op);
+        let tag = sunrise_sim::block_entity_item::stack_configured_entity_by(stack, kind, &own, op);
         // The entity's own compound, its name and data merged in: it loads back.
         let _ = self.apply_entity_nbt(target, tag);
     }
@@ -447,10 +444,10 @@ pub(in crate::game) mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
                     .unwrap(),
             );
             let key = (8, 64, 12);

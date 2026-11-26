@@ -12,8 +12,9 @@ use crate::game::{
     native_hotbar_slot::hotbar_slot_tests::logged_in,
 };
 use std::sync::Arc;
-use sunrise_client::{interaction_input::Button, items::ItemStack};
+use sunrise_client::interaction_input::Button;
 use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_items::items::ItemStack;
 
 #[test]
 #[ignore = "daily"]

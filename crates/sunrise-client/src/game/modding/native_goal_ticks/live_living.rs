@@ -1,12 +1,10 @@
 //! Reads from the actual mob loaned to the active goal, or a disjoint live mob.
 use super::super::native_living_refs::{hand_slot, lend_equipment};
 use super::{GoalCx, Resolved};
-use crate::mobs::Mob;
 use mod_api::{ActiveEffect, EffectKey, EquipmentSlot, Hand, ItemStackView, LivingRef, Pose};
-use sunrise_client::{
-    items::EntityTypeTags,
-    mobs::{finalize, villager},
-};
+use sunrise_items::items::EntityTypeTags;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::{finalize, villager};
 
 impl GoalCx<'_, '_> {
     fn live_living_mob(&self, living: LivingRef) -> Option<&Mob> {
@@ -110,7 +108,7 @@ impl GoalCx<'_, '_> {
         if !mob.is_tamable() {
             return None;
         }
-        Some(sunrise_client::lan::playerdata::ints_uuid(mob.extra.owner?))
+        Some(sunrise_sim::lan::playerdata::ints_uuid(mob.extra.owner?))
     }
 
     pub(super) fn r_living_dimensions_for_pose(
@@ -127,7 +125,7 @@ impl GoalCx<'_, '_> {
     }
 
     pub(super) fn r_living_can_freeze(&self, living: LivingRef) -> Option<bool> {
-        Some(sunrise_client::mobs::ai::can_freeze(
+        Some(sunrise_sim::mobs::ai::can_freeze(
             self.live_living_mob(living)?,
             self.w,
         ))
@@ -230,7 +228,7 @@ impl GoalCx<'_, '_> {
         m.extra
             .live
             .read(self.w.attributes, &m.kind.id, id, kind, || {
-                sunrise_client::entity_nbt::attribute_entries(m)
+                sunrise_sim::entity_nbt::attribute_entries(m)
                     .into_iter()
                     .map(|(_, entry)| entry)
                     .collect()
@@ -262,7 +260,7 @@ impl GoalCx<'_, '_> {
         m.extra
             .live
             .modifiers(self.w.attributes, &m.kind.id, id, || {
-                sunrise_client::entity_nbt::attribute_entries(m)
+                sunrise_sim::entity_nbt::attribute_entries(m)
                     .into_iter()
                     .map(|(_, entry)| entry)
                     .collect()
@@ -290,7 +288,7 @@ impl GoalCx<'_, '_> {
 
     pub(super) fn r_living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
         let mob = self.live_living_mob(living)?;
-        sunrise_client::mobs::spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
+        sunrise_sim::mobs::spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
             Hand::Off
         } else {
             Hand::Main
@@ -304,12 +302,12 @@ impl GoalCx<'_, '_> {
     pub(super) fn r_living_last_attacker(&self, living: LivingRef) -> Option<mod_api::EntityRef> {
         let mob = self.live_living_mob(living)?;
         let id = match mob.recent_hurt_by()? {
-            crate::mobs::Who::Mob(id) => {
+            sunrise_sim::mobs::Who::Mob(id) => {
                 return self
                     .lookup_entity(id)
                     .or_else(|| self.w.goal_host?.mob_attacker_elsewhere(id));
             }
-            crate::mobs::Who::Player => self.w.goal_host?.mob_player_credit(mob)??,
+            sunrise_sim::mobs::Who::Player => self.w.goal_host?.mob_player_credit(mob)??,
         };
         self.lookup_entity(id)
     }

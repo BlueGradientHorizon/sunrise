@@ -1,7 +1,7 @@
 //! ITEM_USED_ON_BLOCK after the block phase sees the stack copied before it (#2940).
 use super::*;
 use serde_json::json;
-use sunrise_client::advancements as a;
+use sunrise_sim::advancements as a;
 
 /// One `item_used_on_block` advancement per stick count the tool must have.
 pub(in crate::game) fn install_criteria(

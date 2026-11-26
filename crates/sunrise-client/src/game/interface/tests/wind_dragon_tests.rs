@@ -1,8 +1,8 @@
 use crate::game::{creatures::SpawnSite, wind::Source};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::spawn_rules::Reason;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::spawn_rules::Reason;
 
 fn end_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

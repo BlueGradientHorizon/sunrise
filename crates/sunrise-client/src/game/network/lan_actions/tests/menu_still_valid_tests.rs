@@ -7,12 +7,12 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use sunrise_client::{
+use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModMenuType},
-    lan::menu::{Menu, NativeMenuEvent, Slots, VEHICLE_KEY_Y, asks_still_valid},
 };
 use sunrise_protocol::packets::play::{ContainerButtonClick, ContainerClick, Serverbound};
+use sunrise_sim::lan::menu::{Menu, NativeMenuEvent, Slots, VEHICLE_KEY_Y, asks_still_valid};
 
 /// What the part answers, and how often it was asked.
 static KEEP: AtomicBool = AtomicBool::new(true);
@@ -48,7 +48,7 @@ impl Hooks for Mod {
 }
 
 fn scoped_dispatch() -> impl Drop {
-    sunrise_client::native_client_hooks::scoped_menu_validity_hooks(
+    sunrise_sim::native_client_hooks::scoped_menu_validity_hooks(
         crate::game::api_values::menu_still_valid,
         |menu| mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu),
     )
@@ -291,7 +291,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         let _callbacks = scoped_dispatch();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MENU.into(),
                 "test".into(),

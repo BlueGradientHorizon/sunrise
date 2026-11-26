@@ -7,11 +7,11 @@ use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
-use sunrise_client::motion::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::{
     PlayerMotion,
     section_writes::{PositionObserver, PositionObserverScope},
 };
-use sunrise_core::geometry::Vec3;
 
 #[derive(Clone, Copy)]
 pub(in crate::game) struct PlayerSectionScope {

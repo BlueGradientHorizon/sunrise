@@ -46,11 +46,9 @@ fn transactional_bucket_hands_reach_the_owning_client() {
     use mod_api::{
         HostTransaction, ITEM_FLUIDS, ItemPlace, ServerHost, resource_util::move_resources,
     };
-    use sunrise_client::{
-        items::ItemStack,
-        lan::{Out, PlayerSender},
-    };
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+    use sunrise_sim::lan::{Out, PlayerSender};
 
     with_guests(|server| {
         let (tx, rx) = std::sync::mpsc::channel();

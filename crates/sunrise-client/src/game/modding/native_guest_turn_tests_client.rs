@@ -4,7 +4,7 @@ use std::sync::Arc;
 #[test]
 #[ignore = "daily"]
 fn level_event_excludes_its_source_even_during_another_guests_turn() {
-    use sunrise_client::lan::PlayerSender;
+    use sunrise_sim::lan::PlayerSender;
     use sunrise_world::level::{LevelEvent, LevelEventPlayer};
 
     with_guests(|game| {

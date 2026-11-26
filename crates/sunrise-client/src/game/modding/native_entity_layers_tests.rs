@@ -15,7 +15,8 @@ use std::{
         atomic::{AtomicU32, Ordering},
     },
 };
-use sunrise_client::{mesher::Vertex, mobs::Mob};
+use sunrise_client::mesher::Vertex;
+use sunrise_sim::mobs::Mob;
 
 /// A load's entity types: a boat, a zombie, an armour stand, the ender dragon, the player and a mod's
 /// living type.
@@ -356,7 +357,7 @@ fn this_windows_player_is_told_its_own_entity_id() {
                 None => {
                     let at = sunrise_core::geometry::Vec3::ZERO;
                     let mut player =
-                        sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap();
+                        sunrise_sim::motion::PlayerMotion::new(game.motion, at).unwrap();
                     player.entity_id = 4321;
                     game.player = Some(player);
                 }

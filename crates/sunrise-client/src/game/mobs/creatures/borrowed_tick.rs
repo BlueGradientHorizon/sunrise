@@ -58,7 +58,7 @@ pub(in crate::game) fn route_player_events(
 /// Commit departures in the borrowed list, not when a tick merely proposes retention.
 /// In particular an interrupted pass keeps the credit of every row it gives back.
 pub(in crate::game) fn retain_mob_rows(
-    mobs: &mut sunrise_client::join_seq::JoinList<Mob>,
+    mobs: &mut sunrise_sim::join_seq::JoinList<Mob>,
     player_credit: &mut std::collections::HashMap<u32, super::super::combat::PlayerCredit>,
     mut keep: impl FnMut(&Mob) -> bool,
 ) {
@@ -72,28 +72,28 @@ pub(in crate::game) fn retain_mob_rows(
 }
 
 pub(in crate::game) struct BorrowedMobTick<'a> {
-    pub(in crate::game) mobs: &'a mut sunrise_client::join_seq::JoinList<Mob>,
+    pub(in crate::game) mobs: &'a mut sunrise_sim::join_seq::JoinList<Mob>,
     pub(in crate::game) snapshot: &'a mut Vec<Seen>,
     pub(in crate::game) passenger_objects: &'a [Seen],
     pub(in crate::game) blocked: &'a std::collections::HashSet<u32>,
     pub(in crate::game) events: &'a mut Vec<MobEvent>,
-    pub(in crate::game) restocks: &'a mut Vec<sunrise_client::mobs::villager_brain::RestockNotice>,
-    pub(in crate::game) pushes: &'a mut sunrise_client::mobs::PendingPushes,
+    pub(in crate::game) restocks: &'a mut Vec<sunrise_sim::mobs::villager_brain::RestockNotice>,
+    pub(in crate::game) pushes: &'a mut sunrise_sim::mobs::PendingPushes,
     pub(in crate::game) dead: &'a mut Vec<Mob>,
     pub(in crate::game) corpses: &'a mut Vec<Mob>,
-    pub(in crate::game) died: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
-    pub(in crate::game) ticked: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) died: &'a mut sunrise_level::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) ticked: &'a mut sunrise_level::fast_hash::FxHashSet<u32>,
     pub(in crate::game) guests: &'a mut super::super::lan_mobs::GuestViews,
     pub(in crate::game) spare: &'a mut Option<PlayerView>,
-    pub(in crate::game) bindings: &'a mut sunrise_client::fast_hash::FxHashMap<u32, u32>,
+    pub(in crate::game) bindings: &'a mut sunrise_level::fast_hash::FxHashMap<u32, u32>,
     pub(in crate::game) guest_ids: &'a mut Vec<(u32, u32)>,
     pub(in crate::game) guest_events: &'a mut Vec<(u32, u32, MobEvent)>,
     pub(in crate::game) player_credit:
         &'a mut std::collections::HashMap<u32, super::super::combat::PlayerCredit>,
     pub(in crate::game) path_writes: &'a mut Vec<((i32, i32, i32), u32, u32)>,
     pub(in crate::game) gone: &'a mut Vec<(u32, Vec3, f64, f64, Option<Mob>)>,
-    pub(in crate::game) lent: sunrise_client::health::LentLevel,
-    pub(in crate::game) laps: &'a mut sunrise_client::spans::Laps,
+    pub(in crate::game) lent: sunrise_sim::health::LentLevel,
+    pub(in crate::game) laps: &'a mut sunrise_level::spans::Laps,
     pub(in crate::game) uuid: Option<[i32; 4]>,
     pub(in crate::game) level_id: &'static str,
     pub(in crate::game) round: &'a mut super::super::native_ticks::TickRound,
@@ -123,11 +123,11 @@ pub(in crate::game) mod off_level_tests {
     #[ignore = "daily"]
     fn borrowed_tick_resolves_the_retained_controller() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            use sunrise_client::mobs::goals::{JUMP, LOOK, MOVE};
+            use sunrise_sim::mobs::goals::{JUMP, LOOK, MOVE};
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let spider = game
                 .res
@@ -168,7 +168,7 @@ pub(in crate::game) mod off_level_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let mut parent = Mob::new(72, pig.clone(), Vec3::new(1.0, 80.0, 0.5), 0.0);

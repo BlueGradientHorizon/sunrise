@@ -14,15 +14,12 @@ use super::{Game, commands::Target};
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
 use std::{cell::RefCell, sync::Arc};
-use sunrise_client::{
-    hud::HudBatch,
-    mesher::Vertex,
-    mobs::{Mob, render::FrameDraw},
-};
+use sunrise_client::{hud::HudBatch, mesher::Vertex, mobs::render::FrameDraw};
 use sunrise_core::{
     geometry::Vec3 as Position,
     nbt::{Compound, JavaString, Tag},
 };
+use sunrise_sim::mobs::Mob;
 
 /// How many entities made for `GuiEntity::Kind` are kept: a mob page shows a
 /// few at once, and a learner's four models.
@@ -229,7 +226,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let mut tag = data.clone();
             tag.insert("id".into(), Tag::String(named));
             tag.remove(&JavaString::from("Pos"));
-            sunrise_client::entity_nbt::mob_from_nbt_remote(
+            sunrise_sim::entity_nbt::mob_from_nbt_remote(
                 &Tag::Compound(tag),
                 types,
                 u32::MAX,

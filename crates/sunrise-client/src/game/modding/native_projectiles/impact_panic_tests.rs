@@ -6,12 +6,10 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use sunrise_client::{
-    chunk::Chunk,
-    join_seq::residency::{
-        Change, Journal, Kind, Owner,
-        table::{EntityLookup, EntityTable, SourceEntity},
-    },
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::join_seq::residency::{
+    Change, Journal, Kind, Owner,
+    table::{EntityLookup, EntityTable, SourceEntity},
 };
 
 struct PanicAfterAdmission {
@@ -118,10 +116,10 @@ fn shoot_listener_panic_after_admission_preserves_owned_rows() {
                     let x = if i == 2 { 5.5 } else { 0.5 };
                     let kind = if i == 2 {
                         // The missing snowball survives and queues its first-shot event.
-                        sunrise_client::projectiles::ProjectileKind::Snowball
+                        sunrise_sim::projectiles::ProjectileKind::Snowball
                     } else {
                         // Arrows stay alive after impact, so no row is terminal here.
-                        sunrise_client::projectiles::ProjectileKind::Arrow {
+                        sunrise_sim::projectiles::ProjectileKind::Arrow {
                             base_damage: 2.0,
                             critical: false,
                             effect: None,
@@ -215,7 +213,7 @@ fn normal_dispatch_returns_the_owned_pass_for_explicit_restore() {
                 .projectiles
                 .bind_residency(&journal, owner, |p| (p.id, p.join));
             let mut original = Projectile::new(
-                sunrise_client::projectiles::ProjectileKind::Egg,
+                sunrise_sim::projectiles::ProjectileKind::Egg,
                 Vec3::new(3.5, 80.0, 0.5),
                 None,
             );
@@ -225,7 +223,7 @@ fn normal_dispatch_returns_the_owned_pass_for_explicit_restore() {
             let mut pass = game.creatures.projectiles.lift();
             let mut child = pass[0].clone();
             child.id = 8;
-            child.join = sunrise_client::join_seq::JoinSeq::UNJOINED;
+            child.join = sunrise_sim::join_seq::JoinSeq::UNJOINED;
             game.creatures.projectiles.push(child);
             let child_identity = (8, game.creatures.projectiles[0].join);
             game.with_projectile_dispatch(&mut pass, |game| {
@@ -249,7 +247,7 @@ fn normal_dispatch_returns_the_owned_pass_for_explicit_restore() {
             );
             game.creatures
                 .projectiles
-                .restore(pass, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+                .restore(pass, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
             assert_eq!(
                 game.creatures
                     .projectiles

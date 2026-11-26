@@ -7,9 +7,9 @@ use sunrise_client::{
     clipboard,
     screen_narrator::{InputType, ScreenNarrator},
     settings::Settings,
-    text::Text,
     toasts::SystemToast,
 };
+use sunrise_client_core::text::Text;
 use sunrise_narrator::{Status, screen::Trigger};
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};

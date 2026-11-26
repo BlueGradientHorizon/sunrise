@@ -6,8 +6,8 @@
 //! four commands).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
@@ -124,7 +124,7 @@ fn editing_a_command_block_marks_its_chunk() {
         pos: (5, 100, 2),
         command: "say hi".into(),
         track_output: false,
-        mode: sunrise_client::command_block::Mode::Redstone,
+        mode: sunrise_level::command_block::Mode::Redstone,
         conditional: false,
         auto: false,
     });

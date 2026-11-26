@@ -6,12 +6,13 @@ fn client_epochs_follow_level_replacement_and_logout() {
         native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
     };
     use mod_api::{CrosshairTarget, EntityRef};
-    use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
+    use sunrise_client::level_loading::Reason;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
         connection::Pipe,
         packets::play::{Clientbound, Respawn, SpawnInfo},
     };
+    use sunrise_sim::motion::PlayerMotion;
 
     with_client_game(|game| {
         game.native_lifecycle = NativeLifecycle::default();

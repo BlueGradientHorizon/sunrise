@@ -2,8 +2,8 @@
 //! painting turn and their bounds follow, a painting refuses up and down, a frame's item turns
 //! with vanilla's wrap, and another kind is refused.
 use super::native_entity_refs::tests::with_game;
-use sunrise_client::entities::{ItemFrame, Painting};
 use sunrise_core::geometry::Direction;
+use sunrise_sim::entities::{ItemFrame, Painting};
 
 const FRAME: u32 = 900;
 const PAINTING: u32 = 901;
@@ -121,7 +121,7 @@ fn a_frames_item_turns_with_vanillas_wrap_and_other_kinds_are_refused() {
 /// value, or the default it sends once the value is left out (`ServerEntity.sendDirtyEntityData`).
 fn tracked_facing(game: &mut crate::game::ServerGame<'_>, id: u32) -> Option<i32> {
     use sunrise_protocol::entity_data::Value;
-    let mut states = sunrise_client::lan::entity::States::default();
+    let mut states = sunrise_sim::lan::entity::States::default();
     game.lan_object_states(&mut states, false, 0);
     let state = states
         .as_slice()

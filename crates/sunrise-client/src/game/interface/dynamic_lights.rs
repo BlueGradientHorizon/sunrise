@@ -113,7 +113,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         camera: DVec3,
         alpha: f64,
     ) {
-        let _span = sunrise_client::spans::guard("pr_light_gather");
+        let _span = sunrise_level::spans::guard("pr_light_gather");
         let mut out = std::mem::take(&mut self.side.dynamic_lights);
         dynamic_light::select_iter(
             self.dynamic_light_sources(alpha).map(|(s, _)| s),

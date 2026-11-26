@@ -47,7 +47,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if !crate::game::deflect::redirectable(projectile) {
                 let bullet = matches!(
                     projectile.kind,
-                    sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
+                    sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
                 );
                 self.remote_sweep_event("minecraft:shulker_bullet", false);
                 if bullet {
@@ -89,7 +89,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .own_attribute("minecraft:attack_knockback")
             .map_or(0.0, |v| v as f32);
         let sprinting = self.player.as_ref().is_some_and(|p| p.sprinting);
-        if sunrise_client::attack_strength::attacker_slows_after_hit(
+        if sunrise_sim::attack_strength::attacker_slows_after_hit(
             damage, knockback, strength, sprinting,
         ) {
             self.attacker_slowdown();
@@ -114,9 +114,9 @@ pub(in crate::game) mod tests {
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
     use std::sync::Arc;
-    use sunrise_client::projectiles::{Projectile, ProjectileKind};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::Serverbound as S;
+    use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
     /// Each target, sprinting at full strength (knockback 0.5): the horizontal motion times 0.6,
     /// the vertical kept, the sprint stopped, and STOP_SPRINTING after the Attack on the wire.

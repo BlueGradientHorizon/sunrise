@@ -3,15 +3,11 @@ use super::{
     item_draw::{BlockItemDraw, block_entity_pose},
     view_vector,
 };
-use sunrise_client::{
-    block_entity_render::vertex_light,
-    camera::rotate_degrees,
-    containers::BlockEntity,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-};
+use sunrise_client::{block_entity_render::vertex_light, camera::rotate_degrees, mesher::Vertex};
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::random::RandomSource;
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Level event 3008 (`LevelEventHandler`): the finished block's sound
@@ -84,9 +80,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mut draw: impl FnMut(BlockItemDraw),
     ) {
         use sunrise_assets::item_model::DisplayContext;
-        let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
+        let _items = sunrise_level::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
-        sunrise_client::spans::note_block_entity_item_visits(|| {
+        sunrise_level::spans::note_block_entity_item_visits(|| {
             self.world.block_entities.len() as u64
         });
         for (key, entity) in &self.world.block_entities {

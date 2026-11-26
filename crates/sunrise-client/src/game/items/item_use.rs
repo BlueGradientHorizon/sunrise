@@ -8,8 +8,8 @@
 use super::{Game, shield::OFFHAND_SLOT};
 use sunrise_core::use_animation::UseAnimation;
 use {
-    sunrise_client::items::ItemInfo, sunrise_client::items::ItemStack,
-    sunrise_client::mobs::spear_use, sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemInfo, sunrise_items::items::ItemStack,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::mobs::spear_use,
 };
 
 thread_local! {
@@ -59,7 +59,7 @@ pub(in crate::game) fn interact_vibrations(stack: &ItemStack, default: Option<bo
     }
     data.other("minecraft:use_effects").map_or_else(
         || default.unwrap_or(false),
-        |tag| sunrise_client::save::number(tag.get("interact_vibrations")).unwrap_or(1) != 0,
+        |tag| sunrise_sim::save::number(tag.get("interact_vibrations")).unwrap_or(1) != 0,
     )
 }
 
@@ -207,7 +207,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         hand: Hand,
     ) -> bool {
         let off_hand = hand == Hand::Off;
-        let free = |m: &sunrise_client::mobs::Mob| {
+        let free = |m: &sunrise_sim::mobs::Mob| {
             !spear_use::is_using_item(m) && !spear_use::counts_own_timer(m)
         };
         if !self.mobs.iter().any(|m| m.id == id && free(m)) {
@@ -535,7 +535,7 @@ pub(in crate::game) mod tests {
                         "{side}"
                     );
                     assert_eq!(
-                        game.item_use_animation(&sunrise_client::items::ItemStack::new(
+                        game.item_use_animation(&sunrise_items::items::ItemStack::new(
                             "minecraft:stick",
                             1
                         )),
@@ -605,7 +605,7 @@ pub(in crate::game) mod tests {
                         assert_eq!(*inner.lock().unwrap(), [UseAnimation::None]);
                         // The renderer's read after it asks the Part again, as before.
                         assert_eq!(
-                            game.item_use_animation(&sunrise_client::items::ItemStack::new(
+                            game.item_use_animation(&sunrise_items::items::ItemStack::new(
                                 "minecraft:stick",
                                 1
                             )),
@@ -757,12 +757,12 @@ pub(in crate::game) mod tests {
                 ("minecraft:stick", None),
             ] {
                 assert_eq!(
-                    game.item_use_animation(&sunrise_client::items::ItemStack::new(id, 1)),
+                    game.item_use_animation(&sunrise_items::items::ItemStack::new(id, 1)),
                     expected,
                     "{id}"
                 );
             }
-            let mut bow = sunrise_client::items::ItemStack::new("minecraft:bow", 1);
+            let mut bow = sunrise_items::items::ItemStack::new("minecraft:bow", 1);
             bow.data_mut().set_other(
                 "minecraft:consumable",
                 Some(sunrise_core::nbt::Tag::compound([(
@@ -938,7 +938,7 @@ pub(in crate::game) mod tests {
 pub(in crate::game) mod interact_vibration_tests {
     use super::*;
 
-    type RecordedEvent = (&'static str, [f64; 3], Option<sunrise_client::mobs::Who>);
+    type RecordedEvent = (&'static str, [f64; 3], Option<sunrise_sim::mobs::Who>);
     thread_local! {
         pub(in crate::game) static EVENTS: std::cell::RefCell<Vec<RecordedEvent>> = const { std::cell::RefCell::new(Vec::new()) };
         static RECORDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -947,7 +947,7 @@ pub(in crate::game) mod interact_vibration_tests {
     pub(in crate::game::server_side) fn record_event(
         event: &'static str,
         pos: [f64; 3],
-        source: Option<sunrise_client::mobs::Who>,
+        source: Option<sunrise_sim::mobs::Who>,
     ) {
         if RECORDING.get() {
             EVENTS.with(|events| events.borrow_mut().push((event, pos, source)));
@@ -989,7 +989,7 @@ pub(in crate::game) mod interact_vibration_tests {
         )
         .unwrap();
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(10.5, 64.0, -3.25),
             )
@@ -1148,7 +1148,7 @@ pub(in crate::game) mod interact_vibration_tests {
                 let remote = game.remote.as_mut().unwrap();
                 remote.logged_in = true;
                 remote.entity_id = 41;
-                let mut player = sunrise_client::motion::PlayerMotion::new(
+                let mut player = sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(0.5, 65.0, 0.5),
                 )
@@ -1160,7 +1160,7 @@ pub(in crate::game) mod interact_vibration_tests {
                 *game.held_mut() = Some(ItemStack::new("minecraft:rotten_flesh", 1));
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 game.with_level(|b, level, _| {
                     let cake = b
                         .table
@@ -1210,8 +1210,8 @@ pub(in crate::game) mod interact_vibration_tests {
             Arc,
             atomic::{AtomicUsize, Ordering},
         };
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
 
         const REMOTE: u128 = 0xC0FF_EE00_0000_0000_0000_0000_0000_002A;
         struct Allow(Arc<AtomicUsize>);
@@ -1389,7 +1389,7 @@ pub(in crate::game) mod interact_vibration_tests {
     #[test]
     #[ignore = "daily"]
     fn fishing_cast_and_reel_post_player_vibrations() {
-        use sunrise_client::mobs::Who;
+        use sunrise_sim::mobs::Who;
         let Some(_) = with_game("minecraft:fishing_rod", |game| {
             let rod = ItemStack::new("minecraft:fishing_rod", 1);
             EVENTS.with(|events| events.borrow_mut().clear());
@@ -1450,12 +1450,12 @@ pub(in crate::game) mod interact_vibration_tests {
     #[test]
     #[ignore = "daily"]
     fn thrown_eye_posts_projectile_shoot_at_eye_from_player() {
-        use sunrise_client::mobs::Who;
+        use sunrise_sim::mobs::Who;
         let Some(_) = with_game("minecraft:ender_eye", |game| {
             let root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let terrain = sunrise_client::vanillagen::VanillaTerrain::new(
-                sunrise_client::vanillagen::TerrainResources {
+            let terrain = sunrise_sim::vanillagen::VanillaTerrain::new(
+                sunrise_sim::vanillagen::TerrainResources {
                     dir: &root.join("worldgen"),
                     data: Some(&game.pack.data_changes),
                     registry: game.pack.assets.registry,

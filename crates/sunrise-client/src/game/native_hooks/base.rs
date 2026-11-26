@@ -1052,7 +1052,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             _ => return Ok(None),
         };
         let items = self.items();
-        let Some(mut ingredient) = sunrise_client::crafting::Ingredient::parse(&json, items) else {
+        let Some(mut ingredient) = sunrise_sim::crafting::Ingredient::parse(&json, items) else {
             return Ok(None);
         };
         let known: Vec<String> = std::mem::take(&mut ingredient.order)

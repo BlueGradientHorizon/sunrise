@@ -7,7 +7,7 @@ use super::{
     creatures::{SpawnReason, SpawnSite},
 };
 use std::collections::HashSet;
-use sunrise_client::join_seq::residency::table::EntityLookup;
+use sunrise_sim::join_seq::residency::table::EntityLookup;
 
 fn live_mob_ids(game: &crate::game::ServerGame<'_>, expected: usize) -> HashSet<u32> {
     let mut ids = Vec::new();

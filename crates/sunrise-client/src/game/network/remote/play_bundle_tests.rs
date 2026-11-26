@@ -14,7 +14,7 @@ use std::{
     thread::{self, JoinHandle, ThreadId},
     time::{Duration, Instant},
 };
-use sunrise_client::{net::Event, raw_payloads};
+use sunrise_client::net::Event;
 use sunrise_protocol::{
     connection::ConnReader,
     connection_groups::{self, Cell, Entry, Section},
@@ -25,6 +25,7 @@ use sunrise_protocol::{
         play::{self, Clientbound as C, Serverbound as S},
     },
 };
+use sunrise_sim::raw_payloads;
 
 pub(in crate::game) const MAIN: &str = "bundle_probe:main";
 pub(in crate::game) const NETWORK: &str = "bundle_probe:network";

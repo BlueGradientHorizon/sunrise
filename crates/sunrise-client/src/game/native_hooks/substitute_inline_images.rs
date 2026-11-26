@@ -2,7 +2,7 @@ use super::Game;
 use mod_api::{Answered, InlineImageReplacement};
 use std::collections::BTreeMap;
 use sunrise_client::hud::HudAtlas;
-use sunrise_client::text::{InlineObject, Text};
+use sunrise_client_core::text::{InlineObject, Text};
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -88,7 +88,8 @@ pub(in crate::game) mod tests {
     use mod_api::{ClientHost, Hooks, Identifier, ModEntry, SubstituteInlineImagesEvent};
     use mod_platform::testing::with_mods;
     use sunrise_assets::resource_source::ResourceSource;
-    use sunrise_client::{hud::Rect, text};
+    use sunrise_client::hud::Rect;
+    use sunrise_client_core::text;
 
     struct Propose(&'static [(u32, u32, &'static str)]);
 

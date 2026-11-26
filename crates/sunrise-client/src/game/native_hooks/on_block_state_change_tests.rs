@@ -115,7 +115,7 @@ fn a_part_hears_a_state_change_after_the_neighbours_shapes_settled() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let [fence, stone, air] = ["minecraft:oak_fence", "minecraft:stone", "minecraft:air"]
                 .map(|name| registry.default_state(name).unwrap());
@@ -196,7 +196,7 @@ fn a_client_hears_each_block_the_server_sends_and_each_write_of_a_piston_replay(
             game.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             // One BlockUpdate, one notice, on the client side.

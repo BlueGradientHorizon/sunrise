@@ -4,15 +4,15 @@
 use super::Game;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use {
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Mob, sunrise_client::mobs::Species,
-    sunrise_client::mobs::equip, sunrise_client::mobs::equip::Slot,
-    sunrise_client::mobs::finalize::OFFHAND, sunrise_client::mobs::finalize::SLOT_NAMES,
-    sunrise_client::mobs::finalize::item_stack, sunrise_client::mobs::finalize::set_drop_chance,
-    sunrise_client::mobs::finalize::set_item_stack,
-    sunrise_client::mobs::finalize::set_slot_enchantments,
-    sunrise_client::mobs::finalize::stored_drop_chance, sunrise_client::mobs::piglin::ADMIRE,
-    sunrise_client::mobs::piglin::eat, sunrise_client::mobs::piglin::has_eaten_recently,
-    sunrise_client::mobs::piglin::is_idle, sunrise_sim::first_person_sim::SwingAnimation,
+    sunrise_items::items::ItemStack, sunrise_sim::first_person_sim::SwingAnimation,
+    sunrise_sim::mobs::Mob, sunrise_sim::mobs::Species, sunrise_sim::mobs::equip,
+    sunrise_sim::mobs::equip::Slot, sunrise_sim::mobs::finalize::OFFHAND,
+    sunrise_sim::mobs::finalize::SLOT_NAMES, sunrise_sim::mobs::finalize::item_stack,
+    sunrise_sim::mobs::finalize::set_drop_chance, sunrise_sim::mobs::finalize::set_item_stack,
+    sunrise_sim::mobs::finalize::set_slot_enchantments,
+    sunrise_sim::mobs::finalize::stored_drop_chance, sunrise_sim::mobs::piglin::ADMIRE,
+    sunrise_sim::mobs::piglin::eat, sunrise_sim::mobs::piglin::has_eaten_recently,
+    sunrise_sim::mobs::piglin::is_idle,
 };
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -20,10 +20,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// refuse recipients that already have a target or are allied to it.
     pub(in crate::game::server_side) fn piglin_alert_target(
         &mut self,
-        alert: sunrise_client::mobs::undead::PiglinAlert,
+        alert: sunrise_sim::mobs::undead::PiglinAlert,
     ) {
-        use sunrise_client::mobs::Who;
-        let sunrise_client::mobs::undead::PiglinAlert {
+        use sunrise_sim::mobs::Who;
+        let sunrise_sim::mobs::undead::PiglinAlert {
             mob,
             source,
             target,
@@ -43,7 +43,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             },
         };
         if target == Who::Mob(mob)
-            || sunrise_client::scoreboard::teams_allied(self.mob_team(mob), target_team)
+            || sunrise_client_core::scoreboard::teams_allied(self.mob_team(mob), target_team)
             || self
                 .mobs
                 .iter()
@@ -277,7 +277,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
         if !griefing && !self.grief_hooked() {
             return;
         }
@@ -388,7 +388,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let m = &mut self.mobs[index];
         // The memory is set again, for the item it holds now.
         m.extra.piglin.seen_admire.erase();
-        sunrise_client::mobs::piglin::hold_in_offhand(m, stack);
+        sunrise_sim::mobs::piglin::hold_in_offhand(m, stack);
         // `admireGoldItem`: `ADMIRING_ITEM` for `ADMIRE` ticks, kept as `Ttl` keeps a
         // memory (the brain counts it down before it reads it).
         m.extra.using_item = ADMIRE + 1;
@@ -471,7 +471,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // `LootContextParamSets.PIGLIN_BARTER`: the piglin is THIS_ENTITY, and
         // nothing else is supplied.
-        let piglin = sunrise_client::mobs::drops::loot_entity(&self.mobs[i], None);
+        let piglin = sunrise_sim::mobs::drops::loot_entity(&self.mobs[i], None);
         let items = self
             .roll_table_at(
                 "minecraft:gameplay/piglin_bartering",
@@ -540,7 +540,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let uuid = self
                     .side
                     .lan_acting_uuid
-                    .map(sunrise_client::lan::playerdata::uuid_ints)
+                    .map(sunrise_sim::lan::playerdata::uuid_ints)
                     .or(self.level.player_uuid);
                 best = Some((uuid, d2));
             }
@@ -555,7 +555,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && self.can_see(m.center(), eye)
                         && best.as_ref().is_none_or(|(_, bd)| d2 < *bd)
                     {
-                        let uuid = sunrise_client::lan::playerdata::uuid_ints(g.uuid);
+                        let uuid = sunrise_sim::lan::playerdata::uuid_ints(g.uuid);
                         best = Some((Some(uuid), d2));
                     }
                 }
@@ -580,12 +580,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let player_uuid = self
             .side
             .lan_acting_uuid
-            .map(sunrise_client::lan::playerdata::uuid_ints)
+            .map(sunrise_sim::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid);
         let universal = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::UNIVERSAL_ANGER);
+            .bool_at(sunrise_client_core::gamerules::vanilla::UNIVERSAL_ANGER);
         // The target hook may remove mobs, so the list's end is read at each step.
         let mut next = 0;
         while next < self.mobs.len() {
@@ -627,11 +627,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.native_mob_target_event(mob, Some(original), true)
                     .and_then(|target| self.native_mob_bind_target(id, target))
                     .map_or(
-                        sunrise_client::mobs::TargetChange::Keep,
-                        sunrise_client::mobs::TargetChange::Set,
+                        sunrise_sim::mobs::TargetChange::Keep,
+                        sunrise_sim::mobs::TargetChange::Set,
                     )
             } else {
-                sunrise_client::mobs::TargetChange::Set(Some(sunrise_client::mobs::Who::Player))
+                sunrise_sim::mobs::TargetChange::Set(Some(sunrise_sim::mobs::Who::Player))
             };
             // The piglin again by its id: one a listener removed is skipped.
             let Some(i) = self.mobs.iter().position(|m| m.id == id && !m.removed) else {
@@ -639,10 +639,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             let m = &mut self.mobs[i];
             let previous = m.ai.target;
-            sunrise_client::mobs::piglin::set_guarded_anger_target(m, target_uuid);
+            sunrise_sim::mobs::piglin::set_guarded_anger_target(m, target_uuid);
             m.ai.target = match change {
-                sunrise_client::mobs::TargetChange::Keep => previous,
-                sunrise_client::mobs::TargetChange::Set(target) => target,
+                sunrise_sim::mobs::TargetChange::Keep => previous,
+                sunrise_sim::mobs::TargetChange::Set(target) => target,
             };
         }
     }

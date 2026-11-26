@@ -2,7 +2,7 @@
 //! (`wear_armor`, `hurt_armor`, `hurt_equipment`, `hurt_player_equipment`) and the held stack's wear
 //! (`damage_held`, `damage_held_in_slot`, `hurt_held_without_breaking`).
 use super::*;
-use sunrise_client::motion::MotionEvent;
+use sunrise_sim::motion::MotionEvent;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Run equipment continuations with the acting player installed on the real host.
@@ -11,13 +11,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         source: sunrise_world::damage_source::DamageTypeId,
         amount: f32,
-        blocking: Option<sunrise_client::health::Blocking>,
+        blocking: Option<sunrise_sim::health::Blocking>,
         living_cause: bool,
         causing: i32,
         creative_source: bool,
-        attack: &sunrise_client::health::Attack,
-        armor_weapon: Option<sunrise_client::health::ArmorWeapon>,
-    ) -> sunrise_client::Result<sunrise_client::health::BlockOutcome> {
+        attack: &sunrise_sim::health::Attack,
+        armor_weapon: Option<sunrise_sim::health::ArmorWeapon>,
+    ) -> sunrise_client_core::Result<sunrise_sim::health::BlockOutcome> {
         let rules = self.world.health_rules;
         // One decision about the hit's causing entity for its three levels.
         let decision = crate::game::entity::causer_decision!(self, attack.attacker);
@@ -93,7 +93,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// a cactus, lava, a campfire.
     pub(in crate::game) fn wear_armor(&mut self, events: &[MotionEvent]) {
         for event in events {
-            if let MotionEvent::Health(sunrise_client::health::HealthEvent::ArmorHurt {
+            if let MotionEvent::Health(sunrise_sim::health::HealthEvent::ArmorHurt {
                 source,
                 causing,
                 direct,
@@ -109,7 +109,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 else {
                     continue;
                 };
-                let source = sunrise_client::health::HurtSource {
+                let source = sunrise_sim::health::HurtSource {
                     damage_type: &name,
                     causing: *causing,
                     direct: *direct,
@@ -122,7 +122,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.hurtArmor`: every armor slot wears.
     pub(in crate::game::server_side) fn hurt_armor(
         &mut self,
-        source: &sunrise_client::health::HurtSource<'_>,
+        source: &sunrise_sim::health::HurtSource<'_>,
         damage: f32,
     ) {
         self.hurt_equipment(source, damage, &[3, 2, 1, 0]);
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.hurtHelmet`: the head slot alone wears.
     pub(in crate::game::server_side) fn hurt_helmet(
         &mut self,
-        source: &sunrise_client::health::HurtSource<'_>,
+        source: &sunrise_sim::health::HurtSource<'_>,
         damage: f32,
     ) {
         self.hurt_equipment(source, damage, &[0]);
@@ -142,7 +142,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// to a fire source when the piece resists fire (`ItemStack.canBeHurtBy`).
     pub(in crate::game::server_side) fn hurt_equipment(
         &mut self,
-        source: &sunrise_client::health::HurtSource<'_>,
+        source: &sunrise_sim::health::HurtSource<'_>,
         damage: f32,
         slots: &[usize],
     ) {
@@ -167,7 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // ItemStack.isDamageableItem: component removal and
             // unbreakable are checked before enchantment RNG or hooks.
             if stack.count == 0
-                || !sunrise_client::item_sync::damage_on_hurt(&stack, info.equip_damage_on_hurt)
+                || !sunrise_sim::item_sync::damage_on_hurt(&stack, info.equip_damage_on_hurt)
                 || component("minecraft:unbreakable").is_some()
                 || component("!minecraft:max_damage").is_some()
                 || component("!minecraft:damage").is_some()

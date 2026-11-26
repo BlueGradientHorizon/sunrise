@@ -2,7 +2,8 @@ use super::Game;
 use crate::game::chat_common::SessionDispatcher;
 use crate::game::chat_common::command_export;
 use std::sync::Arc;
-use sunrise_client::{command::Registries, text::Text};
+use sunrise_client_core::text::Text;
+use sunrise_command::Registries;
 use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
 use sunrise_gameplay::world_clock::WorldClock;
 
@@ -45,13 +46,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Overworld state when a world opens; clear the other command-state cache.
     /// The carrier store's open-time state settles here too, before the
     /// first tick and any player: a refusal fails the open.
-    pub(in crate::game::server_side) fn load_world_state(&mut self) -> crate::Result<()> {
-        self.ui.dispatcher = SessionDispatcher(Arc::new(
-            sunrise_client::command::vanilla::session_dispatcher(
+    pub(in crate::game::server_side) fn load_world_state(
+        &mut self,
+    ) -> sunrise_client_core::Result<()> {
+        self.ui.dispatcher =
+            SessionDispatcher(Arc::new(sunrise_command::vanilla::session_dispatcher(
                 &self.level.rule_registry,
                 &self.level.enabled_features,
-            ),
-        ));
+            )));
         self.restore_native_commands();
         self.ui.clock = WorldClock::default();
         self.ui.end_clock = WorldClock::default();
@@ -114,7 +116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // stay as saved, and (like vanilla's codec) rate, partial tick and pause are omitted
         // while they have their defaults.
         let path = self.side.world_root.join("data/minecraft/world_clocks.dat");
-        let existing = sunrise_client::save::read_dat(&path);
+        let existing = sunrise_sim::save::read_dat(&path);
         let mut data = match existing.as_ref().and_then(|r| r.get("data")) {
             Some(d @ Tag::Compound(_)) => d.clone(),
             _ => Tag::Compound(Default::default()),
@@ -165,7 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ("data", data),
             ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
         ]);
-        if let Err(e) = sunrise_client::save::write_dat(&path, root) {
+        if let Err(e) = sunrise_sim::save::write_dat(&path, root) {
             log::warn!("the world clocks were not written: {e}");
         }
     }
@@ -184,7 +186,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .guest_packets
                 .push(sunrise_protocol::packets::play::Clientbound::SystemChat(
                     sunrise_protocol::packets::play::SystemChat {
-                        content: sunrise_client::lan::data::component_nbt(&text.component()),
+                        content: sunrise_sim::lan::data::component_nbt(&text.component()),
                         overlay: false,
                     },
                 ));
@@ -212,9 +214,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game) fn server_apply_item_splash(
         &mut self,
-        splash: sunrise_client::entities::ItemSplash,
+        splash: sunrise_sim::entities::ItemSplash,
     ) {
-        if let sunrise_client::entities::ItemSplash::Sound { at, volume, pitch } = splash {
+        if let sunrise_sim::entities::ItemSplash::Sound { at, volume, pitch } = splash {
             self.server_play_sound("minecraft:entity.generic.splash", at, volume, pitch);
         }
     }
@@ -452,7 +454,7 @@ pub(in crate::game) mod damage_type_registry_tests {
             "the damage catalog holds the pack's type"
         );
         let parse = |input: &str| {
-            sunrise_client::command::vanilla::dispatcher()
+            sunrise_command::vanilla::dispatcher()
                 .parse(input, reg)
                 .executable()
                 .map(|_| ())

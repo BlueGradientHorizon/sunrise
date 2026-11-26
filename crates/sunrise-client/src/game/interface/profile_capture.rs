@@ -8,7 +8,6 @@ use super::memory::{MEMORY_EVERY_S, PendingMemory};
 use super::owner_link::OwnerRequest;
 use super::profile_capture_server::{ENV_DIR, reply_text, reports_dir, shown};
 use super::profile_lines::{self as lines, Notice};
-use crate::Result;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -24,14 +23,15 @@ use sunrise_client::client_perf::{
         Started, Status, Stopped, Traced,
     },
 };
-use sunrise_client::command::{Arg, CommandError, Dispatcher, PROFILER_GPU, Registries};
-use sunrise_client::perf_net::Link;
-use sunrise_client::server_perf::{self, TickDetail, WorldCounts};
-use sunrise_client::spans::{self, Span};
+use sunrise_client_core::Result;
+use sunrise_command::{Arg, CommandError, Dispatcher, PROFILER_GPU, Registries};
+use sunrise_level::spans::{self, Span};
 use sunrise_perf_format::{
     files,
     v1::{BenchResult, ClientSettings, StopReason, Trigger},
 };
+use sunrise_sim::perf_net::Link;
+use sunrise_sim::server_perf::{self, TickDetail, WorldCounts};
 
 /// How often a progress notice is set again so the action bar keeps it until the work is done.
 pub(in crate::game) const PROGRESS_EVERY: Duration = Duration::from_secs(2);
@@ -341,12 +341,12 @@ pub(in crate::game::client_side) fn profiler_args(command: &str) -> Option<&str>
 }
 
 pub(in crate::game) fn unavailable() -> String {
-    sunrise_client::lang::get("sunrise.perf.unavailable")
+    sunrise_client_core::lang::get("sunrise.perf.unavailable")
 }
 
 /// A path a request names, relative to the game's home.
 pub(in crate::game) fn game_path(file: &Path) -> PathBuf {
-    sunrise_client::logging::game_home().join(file)
+    sunrise_level::logging::game_home().join(file)
 }
 
 /// Why a `/profiler open` or `share` found no capture.
@@ -380,7 +380,7 @@ pub(in crate::game) fn resolve_capture(
 /// The captures hook's answer: the share link for [`Job::Share`], nothing for [`Job::Open`].
 pub(in crate::game) fn run_job(job: Job, file: &Path) -> std::result::Result<String, String> {
     let captures = sunrise_hooks::engine::captures()
-        .ok_or_else(|| sunrise_client::lang::get("sunrise.perf.unavailable"))?;
+        .ok_or_else(|| sunrise_client_core::lang::get("sunrise.perf.unavailable"))?;
     match job {
         Job::Open => captures.open(file).map(|()| String::new()),
         Job::Share => captures.share(file),
@@ -857,7 +857,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn profiler_saved(&mut self, path: &str) {
-        let full = sunrise_client::logging::game_home().join(path);
+        let full = sunrise_level::logging::game_home().join(path);
         self.side.profile.last_capture = Some(full.clone());
         let secs = self.side.profile.stopped_after.take().unwrap_or_default();
         let can_open_and_share = sunrise_hooks::engine::captures().is_some();
@@ -917,9 +917,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let result = match receiver.try_recv() {
                 Ok(result) => result,
                 Err(TryRecvError::Empty) => return,
-                Err(TryRecvError::Disconnected) => {
-                    Err(sunrise_client::lang::get("sunrise.perf.upload_interrupted"))
-                }
+                Err(TryRecvError::Disconnected) => Err(sunrise_client_core::lang::get(
+                    "sunrise.perf.upload_interrupted",
+                )),
             };
             self.side.profile.job = None;
             let shown = shown(&file);
@@ -1164,7 +1164,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game::client_side) fn profile_saved(
         &mut self,
-        saved: std::io::Result<sunrise_client::server_perf::Saved>,
+        saved: std::io::Result<sunrise_sim::server_perf::Saved>,
     ) {
         self.stop_joined_server();
         spans::record_here(self.side.profile.spans_were_on);
@@ -1178,7 +1178,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 log::info!("Sunrise: {}", files::saved_line(&saved.path));
                 self.side.profile.last_capture =
-                    Some(sunrise_client::logging::game_home().join(shown(&saved.path)));
+                    Some(sunrise_level::logging::game_home().join(shown(&saved.path)));
                 if let Some(reply) = reply {
                     let _ = reply.send(reply_text(&Stopped {
                         ok: true,

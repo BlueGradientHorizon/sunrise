@@ -3,8 +3,8 @@
 use super::respawn_anchor::RespawnConfig;
 use crate::game::{Dim, native_entity_refs::tests::with_game};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]

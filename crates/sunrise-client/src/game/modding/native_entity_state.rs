@@ -9,9 +9,9 @@
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
 use super::{Game, commands::Target};
 use mod_api::EntityRef;
-use sunrise_client::mobs::{Mob, Species, sync};
-use sunrise_client::motion::PlayerMotion;
-use sunrise_client::pose::Pose;
+use sunrise_sim::mobs::{Mob, Species, sync};
+use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::pose::Pose;
 
 /// `Pose`'s serialized names by id (`Pose.STANDING` is 0).
 pub(in crate::game) const POSES: [&str; 18] = [
@@ -39,7 +39,7 @@ pub(in crate::game) const POSES: [&str; 18] = [
 pub(in crate::game::server_side) fn max_air(species: Option<Species>) -> i32 {
     match species {
         Some(Species::Dolphin) => 4800,
-        Some(Species::Axolotl) => sunrise_client::mobs::axolotl::MAX_AIR,
+        Some(Species::Axolotl) => sunrise_sim::mobs::axolotl::MAX_AIR,
         _ => 300,
     }
 }
@@ -250,10 +250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             Target::Projectile(id) => {
                 let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                if matches!(
-                    p.kind,
-                    sunrise_client::projectiles::ProjectileKind::EnderPearl
-                ) {
+                if matches!(p.kind, sunrise_sim::projectiles::ProjectileKind::EnderPearl) {
                     return Some(self.pearl_portal_cooldown(id));
                 }
                 if !super::nether_portal::is_arrow(p)
@@ -304,7 +301,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 if matches!(
                     projectile.kind,
-                    sunrise_client::projectiles::ProjectileKind::EnderPearl
+                    sunrise_sim::projectiles::ProjectileKind::EnderPearl
                 ) || (!super::nether_portal::is_arrow(projectile)
                     && !super::nether_portal::is_portal_projectile(projectile))
                 {
@@ -615,7 +612,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         &self,
         entity: EntityRef,
     ) -> Option<Vec<(String, f64)>> {
-        use sunrise_client::motion::{LAVA, WATER};
+        use sunrise_sim::motion::{LAVA, WATER};
         Some(
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
                 Body::Player(p) => touched_fluids(
@@ -635,7 +632,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// (`IEntityExtension.getFirstEyeInFluidType`): water or lava, none in air. Players and mobs.
     /// On a client this reads its own cached fluid update, without sampling the world again.
     pub(in crate::game) fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<String>> {
-        use sunrise_client::motion::{LAVA, WATER};
+        use sunrise_sim::motion::{LAVA, WATER};
         Some(
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
                 Body::Player(p) => eye_fluid(p.is_eye_in_fluid(WATER), p.is_eye_in_fluid(LAVA)),
@@ -888,9 +885,9 @@ mod tests {
     fn no_gravity_reads_and_writes_a_live_dropped_item() {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::WorldEpoch;
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::items::ItemStack;
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::entities::ArmorStand;
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -942,8 +939,9 @@ mod tests {
     #[ignore = "daily"]
     fn a_granted_player_does_not_burn_or_take_damage_in_lava() {
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, motion::MotionWorld};
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::motion::MotionWorld;
 
         with_player(|game, player| {
             // `EntityFluidInteraction.update` needs the chunks around the box loaded as well.
@@ -1003,9 +1001,9 @@ mod tests {
     #[ignore = "daily"]
     fn fire_ticks_reads_supported_entities_and_refuses_others() {
         use mod_api::WorldEpoch;
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::items::ItemStack;
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::entities::ArmorStand;
 
         with_player(|game, player| {
             game.player.as_mut().unwrap().fire_ticks = 0;
@@ -1064,10 +1062,10 @@ mod tests {
         use super::super::native_entity_refs::tests::bind_local_player;
         use super::super::native_guest_turn_tests::with_guests;
         use mod_api::WorldEpoch;
-        use sunrise_client::entities::ExperienceOrb;
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::entities::ExperienceOrb;
+        use sunrise_sim::motion::PlayerMotion;
 
         with_guests(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -1172,10 +1170,10 @@ mod tests {
             minecarts::Minecart, trident::ThrownTrident,
         };
         use mod_api::WorldEpoch;
-        use sunrise_client::entities::{ArmorStand, ExperienceOrb};
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::{geometry::Vec3, position::BlockPos};
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::entities::{ArmorStand, ExperienceOrb};
+        use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
         with_guests(|game| {
             // Players keep their own state: in place during their turn, beside the hub otherwise.
@@ -1305,14 +1303,14 @@ mod tests {
                 velocity: Vec3::ZERO,
                 age: 0,
                 no_gravity: false,
-                portal: sunrise_client::nether_portal::PortalState {
+                portal: sunrise_sim::nether_portal::PortalState {
                     cooldown: 25,
                     process: None,
                 },
                 drop_item: false,
                 fall_distance: 0.0,
                 stuck: Vec3::ZERO,
-                damage: sunrise_client::falling_block::Damage::falling("minecraft:sand"),
+                damage: sunrise_sim::falling_block::Damage::falling("minecraft:sand"),
                 saved: None,
             });
             let falling = game.entity(falling).unwrap();
@@ -1343,9 +1341,9 @@ mod tests {
     fn portal_cooldown_write_blocks_entry_and_counts_down() {
         use super::super::native_entity_refs::tests::with_game;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::motion::PlayerMotion;
 
         with_game(|game| {
             game.world
@@ -1391,7 +1389,7 @@ mod tests {
             let held = mob.portal_cooldown(game).unwrap();
             assert_eq!(
                 held,
-                sunrise_client::nether_portal::ENTITY_DELAY - 1,
+                sunrise_sim::nether_portal::ENTITY_DELAY - 1,
                 "standing in the portal refills the cooldown before the tick"
             );
 
@@ -1459,8 +1457,8 @@ mod tests {
     fn portal_cooldown_write_is_refused_for_a_falling_block() {
         use super::super::FallingBlock;
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::nether_portal::PortalState;
         use sunrise_core::{geometry::Vec3, position::BlockPos};
+        use sunrise_sim::nether_portal::PortalState;
 
         with_game(|game| {
             let state = game
@@ -1495,7 +1493,7 @@ mod tests {
                 drop_item: false,
                 fall_distance: 0.0,
                 stuck: Vec3::ZERO,
-                damage: sunrise_client::falling_block::Damage::falling("minecraft:sand"),
+                damage: sunrise_sim::falling_block::Damage::falling("minecraft:sand"),
                 saved: None,
             });
             let falling = game.entity(id).unwrap();
@@ -1520,7 +1518,7 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_item() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::items::ItemStack;
+        use sunrise_items::items::ItemStack;
 
         with_game(|game| {
             game.spawn_item(
@@ -1544,8 +1542,8 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_arrow() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
         with_game(|game| {
             game.add_projectile(Projectile::new(
@@ -1567,8 +1565,8 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_non_portal_projectile() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
         with_game(|game| {
             game.add_projectile(Projectile::new(
@@ -1945,8 +1943,8 @@ mod tests {
             return;
         }
         use super::super::native_client_session::tests::logged_client;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         mod_platform::testing::with_mods(Default::default(), || {
             with_client_game(|game| {
                 let _server = logged_client(game);
@@ -2057,7 +2055,7 @@ mod tests {
                 .clone();
             let at = sunrise_core::geometry::Vec3::ZERO;
             game.mobs
-                .push(sunrise_client::mobs::Mob::new(500, zombie, at, 0.0));
+                .push(sunrise_sim::mobs::Mob::new(500, zombie, at, 0.0));
             let mob = game.entity(500).unwrap();
             assert_eq!(read(game, mob), Some(MainHand::Right));
             game.mobs.last_mut().unwrap().extra.left_handed = true;

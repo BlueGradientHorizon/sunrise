@@ -200,7 +200,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Some([h.position.x, h.position.y, h.position.z]);
         }
         if let Some(&fence) = self.side.remote_knots.get(&eid) {
-            let p = sunrise_client::mobs::leash::knot_state(fence).position;
+            let p = sunrise_sim::mobs::leash::knot_state(fence).position;
             return Some([p.x, p.y, p.z]);
         }
         None

@@ -182,17 +182,17 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                     )],
                 )
                 .unwrap();
-                sunrise_client::datapack_net::serve(Some(std::sync::Arc::new(
+                sunrise_sim::datapack_net::serve(Some(std::sync::Arc::new(
                     mod_api::DatapackRegistrySet::from_candidate(remote),
                 )));
-                let offer = sunrise_client::datapack_net::offer().unwrap();
-                let sunrise_client::datapack_net::Step::Send(bytes) =
-                    sunrise_client::datapack_net::server_step(true, Some(&offer))
+                let offer = sunrise_sim::datapack_net::offer().unwrap();
+                let sunrise_sim::datapack_net::Step::Send(bytes) =
+                    sunrise_sim::datapack_net::server_step(true, Some(&offer))
                 else {
                     panic!("snapshot required");
                 };
-                sunrise_client::datapack_net::clear_received();
-                sunrise_client::datapack_net::accept(&bytes).unwrap();
+                sunrise_sim::datapack_net::clear_received();
+                sunrise_sim::datapack_net::accept(&bytes).unwrap();
                 let level = client.level("minecraft:overworld").unwrap();
                 let other_dim = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
                 let mut visited_refusal = false;
@@ -222,7 +222,7 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                         "registry_test:fire",
                         &mut |entry| {
                             // Clearing takes the publication lock and drops its reference to the set.
-                            sunrise_client::datapack_net::clear_received();
+                            sunrise_sim::datapack_net::clear_received();
                             assert_eq!(entry.get("power"), Some(&DatapackValue::Int(19)));
                             visits += 1;
                         },

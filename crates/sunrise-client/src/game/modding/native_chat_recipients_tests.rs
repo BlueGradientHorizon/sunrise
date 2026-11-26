@@ -3,11 +3,11 @@
 use super::native_entity_refs::tests::with_game;
 use mod_api::{ChatRecipientEvent, CommandResult, Flow, Hooks, PermissionLevel, ServerHost};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
-use sunrise_client::lan::hub::chat::ChatMessage;
-use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_core::position::{BlockPos, ChunkPos};
 use sunrise_protocol::packets::{configuration::ClientInformation, play};
+use sunrise_sim::lan::hub::chat::ChatMessage;
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
 
 type Asked = Arc<Mutex<Vec<(u128, String, String, u128)>>>;
 
@@ -99,7 +99,7 @@ fn two_guests(
         lod_distance: 0,
         ..NetConfig::lan(0, String::new(), 3)
     };
-    let config = sunrise_client::lan::hub::HubConfig {
+    let config = sunrise_sim::lan::hub::HubConfig {
         default_game_mode: 0,
         guest_commands: true,
         force_game_mode: false,
@@ -204,9 +204,7 @@ fn a_chat_line_hidden_from_one_receiver_reaches_the_others() {
             lines(&other);
             let bound = play::ChatTypeBound {
                 chat_type: 0,
-                name: sunrise_client::lan::data::component_nbt(
-                    &Text::literal("guest12").component(),
-                ),
+                name: sunrise_sim::lan::data::component_nbt(&Text::literal("guest12").component()),
                 target: None,
             };
             let say = |game: &mut crate::game::ServerGame<'_>, content: &str| {
@@ -267,7 +265,7 @@ fn place_say_block(game: &mut crate::game::ServerGame<'_>) -> BlockPos {
     game.build_registries();
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
@@ -333,7 +331,7 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
 fn dispatcher_say_filters_the_acting_guests_captured_copy() {
     use super::lan_actions::GuestCommand;
     use play::Clientbound as C;
-    use sunrise_client::scoreboard::{comp_text, tag_to_json};
+    use sunrise_client_core::scoreboard::{comp_text, tag_to_json};
 
     let asked = Asked::default();
     let mods = vec![mod_api::ModEntry::new(
@@ -416,7 +414,7 @@ fn listener_commands_do_not_count_as_command_block_successes() {
                     [true, true],
                     "both listener queries ran"
                 );
-                let sunrise_client::containers::BlockEntity::CommandBlock(block) =
+                let sunrise_level::containers::BlockEntity::CommandBlock(block) =
                     &game.world.block_entities[&(pos.x, pos.y, pos.z)]
                 else {
                     panic!("expected the command block");

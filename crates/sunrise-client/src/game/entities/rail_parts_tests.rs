@@ -4,8 +4,9 @@
 use super::minecarts::Shape;
 use crate::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 /// A serving world with commands, a stone floor at y 63 and its chunk ticking. Returns the
 /// scratch world folder to remove.

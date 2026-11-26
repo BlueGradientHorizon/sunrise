@@ -3,7 +3,7 @@ use crate::game::server_side::lan::tracking_hook_tests::Sent;
 use crate::game::server_side::lan::tracking_hook_tests::at;
 use crate::game::server_side::lan::tracking_hook_tests::tick_until_heard;
 use crate::game::server_side::lan::tracking_hook_tests::with_two_items;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// A stop whose removal waits for a captured sound: the item's sound comes after one from an
 /// emitter the players must be paired with first, so its removal is held until both sounds are out

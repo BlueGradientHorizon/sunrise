@@ -6,10 +6,10 @@ use crate::game::native_entity_refs::tests::{
 };
 use serde_json::{Value, json};
 use std::collections::HashSet;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 use sunrise_core::random::RandomSource;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
     let witness_path = std::env::var_os("SUNRISE_SUMMON_BOLT_NBT_WITNESS").unwrap_or_else(|| {
@@ -42,8 +42,9 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
     let steps = witness["steps"].as_array().unwrap();
     assert!(!steps.is_empty());
 
-    let _language =
-        sunrise_client::lang::isolate_publication(sunrise_client::lang::Language::of("en_us", []));
+    let _language = sunrise_client_core::lang::isolate_publication(
+        sunrise_client_core::lang::Language::of("en_us", []),
+    );
     with_game(|game| {
         prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
         prepare_entity_ticking_neighborhood(game, ChunkPos::new(15, 0));
@@ -74,7 +75,7 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
                     let uniquifier = step["uniquifier"].as_i64().unwrap();
                     let entity_id = step["entity_id"].as_i64().unwrap();
                     let level_seed = step["level_seed"].as_i64().unwrap();
-                    sunrise_client::random_source::set_thread_uniquifier(uniquifier).unwrap();
+                    sunrise_level::random_source::set_thread_uniquifier(uniquifier).unwrap();
                     game.side.next_entity = u32::try_from(entity_id).unwrap();
                     game.world.random.set_seed(level_seed);
                 }

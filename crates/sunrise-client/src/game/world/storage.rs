@@ -1,10 +1,8 @@
 //! Client-side container menus: chest/shulker titles, slots, rendering, and quick-move.
 use super::Game;
-use sunrise_client::{
-    containers::{BlockEntity, is_chest_block},
-    items::ItemStack,
-    text::Text,
-};
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::{BlockEntity, is_chest_block};
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::storage_common::{chest_connected_pos, is_shulker_box};
@@ -196,6 +194,6 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// (`sunrise_client::menu`); false when the menu has none.
     #[allow(dead_code)]
     pub(in crate::game) fn container_quick_move(&mut self, slot: usize) -> bool {
-        self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::QuickMove)
+        self.click_open_inventory(Some(slot), 0, sunrise_sim::menu::Input::QuickMove)
     }
 }

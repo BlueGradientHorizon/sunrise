@@ -3,8 +3,8 @@
 //! T of four iron blocks (arms along X or Z, nothing beside the legs) an iron
 //! golem. Players placing the pumpkin and dispensers share it.
 use super::Game;
-use sunrise_client::Result;
-use sunrise_client::block_pattern::{
+use sunrise_client_core::Result;
+use sunrise_sim::block_pattern::{
     IRON_GOLEM_BASE, IRON_GOLEM_FULL, SNOW_GOLEM_BASE, SNOW_GOLEM_FULL,
 };
 
@@ -139,9 +139,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         if let Some(chest) = chest {
             self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, chest, 2));
-            if let Some(entity) = sunrise_client::containers::BlockEntity::for_block(
-                &self.res.facts().get(chest).name,
-            ) {
+            if let Some(entity) =
+                sunrise_level::containers::BlockEntity::for_block(&self.res.facts().get(chest).name)
+            {
                 self.world
                     .block_entities
                     .insert((below[0], below[1], below[2]), entity);
@@ -214,7 +214,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
         self.side.next_entity += 1;
-        let mut mob = sunrise_client::mobs::Mob::new(
+        let mut mob = sunrise_sim::mobs::Mob::new(
             self.side.next_entity,
             t,
             sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
@@ -265,7 +265,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use std::collections::HashMap;
-    use sunrise_client::block_pattern::{
+    use sunrise_sim::block_pattern::{
         BlockPattern, IRON_GOLEM_BASE, IRON_GOLEM_FULL, SNOW_GOLEM_BASE, SNOW_GOLEM_FULL,
     };
 

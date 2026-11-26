@@ -1,8 +1,8 @@
 //! The locator bar of the players on a served world (lan/waypoints.rs): what
 //! each player looks like to their level's waypoint manager this tick.
 use super::{Game, commands::Target};
-use sunrise_client::lan::waypoints::{self, PLAYER_RANGE};
-use sunrise_client::motion::MotionEvent;
+use sunrise_sim::lan::waypoints::{self, PLAYER_RANGE};
+use sunrise_sim::motion::MotionEvent;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.EntityCallbacks.onTrackingStart`: register from the loaded
@@ -39,7 +39,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    fn waypoint_player(&self, g: &sunrise_client::lan::guest::Guest) -> waypoints::Player {
+    fn waypoint_player(&self, g: &sunrise_sim::lan::guest::Guest) -> waypoints::Player {
         let body = if self.side.lan_acting == Some(g.conn) {
             self.player.as_ref()
         } else {
@@ -107,7 +107,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let locator_bar = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::LOCATOR_BAR);
+            .bool_at(sunrise_client_core::gamerules::vanilla::LOCATOR_BAR);
         if let Some(host) = self.lan.as_mut()
             && let Some(manager) = host.waypoints.get_mut(&level)
         {
@@ -149,7 +149,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let locator_bar = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::LOCATOR_BAR);
+            .bool_at(sunrise_client_core::gamerules::vanilla::LOCATOR_BAR);
         let mut levels: Vec<String> = host.waypoints.keys().cloned().collect();
         for (level, _, _) in &players {
             if !levels.iter().any(|l| l == level) {

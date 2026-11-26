@@ -1,8 +1,8 @@
 #[cfg(test)]
 pub(in crate::game) mod teleport_player_tests {
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]
@@ -75,14 +75,14 @@ pub(in crate::game) mod teleport_rider_tests {
                 .unwrap()
                 .clone();
             // A villager riding a horse, 30 degrees off it.
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 42,
                 horse,
                 Vec3::new(3.0, 64.0, 5.0),
                 0.0,
             ));
             let mut rider =
-                sunrise_client::mobs::Mob::new(43, villager, Vec3::new(3.0, 64.5, 5.0), 30.0);
+                sunrise_sim::mobs::Mob::new(43, villager, Vec3::new(3.0, 64.5, 5.0), 30.0);
             rider.extra.mount = Some(42);
             game.mobs.push(rider);
             // Entity.teleportPassengers: the rider keeps its offset from the
@@ -144,14 +144,14 @@ pub(in crate::game) mod teleport_rider_tests {
                 .get("minecraft:villager")
                 .unwrap()
                 .clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 50,
                 horse2,
                 Vec3::new(10.0, 64.0, 10.0),
                 0.0,
             ));
             let mut rider2 =
-                sunrise_client::mobs::Mob::new(51, villager2, Vec3::new(10.0, 64.5, 10.0), 30.0);
+                sunrise_sim::mobs::Mob::new(51, villager2, Vec3::new(10.0, 64.5, 10.0), 30.0);
             rider2.extra.mount = Some(50);
             game.mobs.push(rider2);
             // Absolute turn: vehicle 0 -> 40, rider keeps its 30-degree offset.
@@ -203,8 +203,8 @@ pub(in crate::game) mod teleport_rider_tests {
     #[ignore = "daily"]
     fn a_vehicle_carries_a_two_level_mob_stack_without_a_seating_tick() {
         use super::super::Target;
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
 
         crate::game::native_entity_refs::tests::with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();

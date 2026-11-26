@@ -1,7 +1,8 @@
 use super::Game;
 use super::level_sounds::LevelSound;
 use mod_api::SoundSource;
-use sunrise_client::{first_person::Hand, mobs::sheep_dye};
+use sunrise_sim::first_person_sim::Hand;
+use sunrise_sim::mobs::sheep_dye;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether `interact_sheep_dye` would act on a client, on a copy of the sheep.

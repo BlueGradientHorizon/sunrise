@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::save::level_mods;
+use sunrise_sim::save::level_mods;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Dispatch the saved list at the earliest Game Host boundary on either side.
@@ -86,7 +86,7 @@ pub(in crate::game) mod tests {
             ("ModId", Tag::String("gone".into())),
             ("ModVersion", Tag::String("1.0.0".into())),
         ]);
-        sunrise_client::save::write_dat(
+        sunrise_sim::save::write_dat(
             &dir.join("level.dat"),
             Tag::compound([
                 (

@@ -8,9 +8,9 @@ use sunrise_client::{
     hud::{HudBatch, rgba},
     pvp::Opt,
     pvp_hud::{self, Layout, Place, WidgetId},
-    text::Text,
     ui,
 };
+use sunrise_client_core::text::Text;
 
 #[derive(Default)]
 pub(in crate::game) struct HudEditor {

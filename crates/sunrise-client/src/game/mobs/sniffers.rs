@@ -1,8 +1,8 @@
 //! Sniffers on the client side: digging particles, block hit sound, and searching sound.
 use super::Game;
-#[allow(unused_imports)]
-use sunrise_client::mobs::{Mob, Species, sniffer};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+#[allow(unused_imports)]
+use sunrise_sim::mobs::{Mob, Species, sniffer};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The sniffer's client-side effects: `Sniffer.emitDiggingParticles`
@@ -59,7 +59,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let ground = [head[0], head[1] - 1, head[2]];
                 let below = self.world.block(ground[0], ground[1], ground[2]);
                 if self.res.facts().get(below).render_shape
-                    != sunrise_client::blocks::RenderShape::Invisible
+                    != sunrise_items::blocks::RenderShape::Invisible
                 {
                     if self
                         .particle_sprite(below, [head[0], head[1] - 1, head[2]])
@@ -79,7 +79,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     if age.is_multiple_of(10) {
                         let sniffer = Some((id, self.mobs[i].kind.id.as_str()));
-                        let hit = sunrise_client::block_sounds::sound_type(
+                        let hit = sunrise_sim::block_sounds::sound_type(
                             &self.loop_context,
                             self.res.facts(),
                             BlockPos::new(ground[0], ground[1], ground[2]),

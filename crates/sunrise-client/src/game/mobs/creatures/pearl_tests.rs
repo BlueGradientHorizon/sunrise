@@ -13,26 +13,26 @@ fn a_pearl_feels_the_water_its_box_touches() {
     if !root.join("entity-types.json").exists() || !root.join("movement-properties.nbt").exists() {
         return;
     }
-    let assets = sunrise_client::assets::Assets::load(&root).unwrap();
+    let assets = sunrise_level::assets::Assets::load(&root).unwrap();
     let render = sunrise_client::assets::RenderAssets::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
         &assets,
     )
     .unwrap();
     let registry = assets.registry;
-    let facts = sunrise_client::blocks::BlockFacts::load(&root, registry).unwrap();
-    let motion = sunrise_client::motion::MotionResources::load(&root, &assets).unwrap();
-    let data = sunrise_client::mobs::MobData::load(
+    let facts = sunrise_items::blocks::BlockFacts::load(&root, registry).unwrap();
+    let motion = sunrise_sim::motion::MotionResources::load(&root, &assets).unwrap();
+    let data = sunrise_sim::mobs::MobData::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
         facts.states.len(),
     )
     .unwrap();
-    let biomes = sunrise_client::biome::Biomes::load(
+    let biomes = sunrise_level::biome::Biomes::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
     )
     .unwrap();
     let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-    let items = sunrise_client::items::Items::load(
+    let items = sunrise_items::items::Items::load(
         &root,
         registry,
         &facts,
@@ -40,9 +40,9 @@ fn a_pearl_feels_the_water_its_box_touches() {
         &defaults,
     )
     .unwrap();
-    let collision = std::sync::Arc::new(sunrise_client::collisions::load(&root, registry).unwrap());
+    let collision = std::sync::Arc::new(sunrise_level::collisions::load(&root, registry).unwrap());
     let suffocation =
-        sunrise_client::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation)
+        sunrise_sim::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation)
             .unwrap();
     let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
     // A pool of still water one block deep at y = 4, from x = 20 on (clear of the
@@ -56,12 +56,12 @@ fn a_pearl_feels_the_water_its_box_touches() {
     }
     let lid_openers = std::collections::HashMap::new();
     let w = MobWorld {
-        side: sunrise_client::motion::dry_side(),
-        mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
+        side: sunrise_sim::motion::dry_side(),
+        mob_maps: sunrise_sim::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
         goal_host: None,
         live_mobs: None,
         teams: Default::default(),
-        professions: sunrise_client::mobs::villager::profession_table(),
+        professions: sunrise_sim::mobs::villager::profession_table(),
         loop_context: &crate::game::test_server_load()
             .loop_context(sunrise_world::native_load_context::LoopSide::Server, []),
         world: &world,

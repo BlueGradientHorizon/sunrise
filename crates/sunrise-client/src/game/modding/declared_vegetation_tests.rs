@@ -99,7 +99,7 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();
@@ -180,13 +180,13 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
             root.prepared().to_path_buf(),
             super::execution_role::ExecutionRole::Client,
             |game| {
-                use sunrise_client::items::ItemStack;
+                use sunrise_items::items::ItemStack;
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "VegetationPrediction").unwrap();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+                game.set_local_mode(sunrise_command::args::GameMode::Survival);
                 let hit = crate::game::Hit {
                     pos: [5, 64, 5],
                     face: [0, 1, 0],

@@ -9,7 +9,7 @@ fn ground_friction_averages_the_blocks_under_the_hull_and_asks_subscribed_parts(
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let registry = game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
         game.world.set(5, 64, 5, stone).unwrap();
@@ -42,7 +42,7 @@ fn a_status_refresh_asks_friction_as_the_chest_boat_it_is() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let wool = game
             .pack
             .assets

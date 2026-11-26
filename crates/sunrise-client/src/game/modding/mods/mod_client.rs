@@ -3,7 +3,7 @@ use crate::game::mods::ModsReload;
 use crate::game::mods::ModsState;
 #[allow(unused_imports)]
 use mod_api::__private::game::*;
-use sunrise_client::lang;
+use sunrise_client_core::lang;
 
 #[path = "package_files_client.rs"]
 pub(in crate::game) mod package_files;

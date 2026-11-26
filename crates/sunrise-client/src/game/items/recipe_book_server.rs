@@ -16,7 +16,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         max: bool,
         dry_run: bool,
     ) -> Option<RecipeTransferCheck> {
-        use sunrise_client::lan::recipes::{clamp_cells, recipe_cells};
+        use sunrise_sim::lan::recipes::{clamp_cells, recipe_cells};
         let (mut result, mut missing, mut craftable) = (None, Vec::new(), Vec::new());
         self.native_menu_transfer(mod_api::__private::MenuTransferCall {
             player,

@@ -4,22 +4,22 @@
 use super::{Game, Result};
 use mod_api::client::particles::PositionSource;
 use std::collections::HashSet;
-use sunrise_client::join_seq::ListStamp;
 use sunrise_client_core::who::EventSource;
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_sim::join_seq::ListStamp;
 use sunrise_world::registry::BlockStateId;
 use {
-    sunrise_client::containers::BlockEntity, sunrise_client::fast_hash::FxHashMap,
-    sunrise_client::fast_hash::FxHashSet, sunrise_client::mobs::Mob,
-    sunrise_client::mobs::MovementEmission as Steps, sunrise_client::mobs::Species,
-    sunrise_client::mobs::Who, sunrise_client::mobs::allay, sunrise_client::mobs::warden,
-    sunrise_client::sculk, sunrise_client::sculk::Context, sunrise_client::sculk::Info,
-    sunrise_client::sculk::SculkEntity, sunrise_client::sculk::SculkKind,
-    sunrise_client::sculk::WardenSpawnTracker, sunrise_level::particle_options::ParticleType,
+    sunrise_level::containers::BlockEntity, sunrise_level::fast_hash::FxHashMap,
+    sunrise_level::fast_hash::FxHashSet, sunrise_level::particle_options::ParticleType,
+    sunrise_level::sculk, sunrise_level::sculk::Context, sunrise_level::sculk::Info,
+    sunrise_level::sculk::SculkEntity, sunrise_level::sculk::SculkKind,
+    sunrise_level::sculk::WardenSpawnTracker, sunrise_sim::mobs::Mob,
+    sunrise_sim::mobs::MovementEmission as Steps, sunrise_sim::mobs::Species,
+    sunrise_sim::mobs::Who, sunrise_sim::mobs::allay, sunrise_sim::mobs::warden,
 };
 
 #[cfg(test)]
@@ -52,7 +52,7 @@ pub(in crate::game) struct Tables {
 /// `SculkSensorBlock.getAnalogOutputSignal`: the last vibration's frequency
 /// while the sensor is active.
 pub(in crate::game) fn sensor_signal(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     behaviours: &sunrise_world::level::Behaviours,
     state: BlockStateId,
     pos: BlockPos,
@@ -572,7 +572,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     m.last_damage.map(|(_, t)| t),
                     m.extra.mount,
                     m.age,
-                    m.species() == Species::Bat && sunrise_client::mobs::bat::resting(m),
+                    m.species() == Species::Bat && sunrise_sim::mobs::bat::resting(m),
                 )
             })
             .collect();
@@ -876,7 +876,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `WardenSpawnTrackerCommand`: clear the player's tracker or set its
     /// warning level.
     pub(in crate::game::server_side) fn cmd_warden_spawn_tracker(&mut self, level: Option<i32>) {
-        use sunrise_client::text::Text;
+        use sunrise_client_core::text::Text;
         let key = match level {
             Some(level) => {
                 self.side.sculk.tracker.set_warning_level(level);
@@ -890,7 +890,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
             self.server_system_message(Text::translate(
                 key,
@@ -1542,7 +1542,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn tick_sculk_entities(&mut self) {
         self.side.sculk.ticks = self.side.sculk.ticks.wrapping_add(1);
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
-        let mut laps = sunrise_client::spans::laps();
+        let mut laps = sunrise_level::spans::laps();
         self.sculk_prepare();
         laps.lap("sculk_prepare");
         self.load_warden_tracker();
@@ -1803,7 +1803,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_WARDENS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_WARDENS)
     }
     /// `SculkShriekerBlockEntity.tryShriek`.
     pub(in crate::game::server_side) fn try_shriek(
@@ -1909,7 +1909,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         z: i32,
         range: i32,
     ) -> Option<(i32, i32, i32)> {
-        use sunrise_client::mobs::data;
+        use sunrise_sim::mobs::data;
         let flags = |b: BlockStateId| self.res.mob_data().state(b);
         let mut search = y;
         let mut above = self.world.block(x, search, z);
@@ -1941,7 +1941,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return false;
         }
-        let others: Vec<sunrise_client::mobs::Seen> = Vec::new();
+        let others: Vec<sunrise_sim::mobs::Seen> = Vec::new();
         let w = self.mob_world_base(&others);
         let min = bounds.min_position();
         let max = bounds.max_position();
@@ -1949,7 +1949,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for x in min.x.floor() as i32..max.x.ceil() as i32 {
             for y in min.y.floor() as i32..max.y.ceil() as i32 {
                 for z in min.z.floor() as i32..max.z.ceil() as i32 {
-                    if w.fluid(x, y, z) != sunrise_client::blocks::Fluid::None {
+                    if w.fluid(x, y, z) != sunrise_items::blocks::Fluid::None {
                         return false;
                     }
                 }
@@ -1985,7 +1985,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `new MobEffectInstance(DARKNESS, 260, 0, false, false)`: no
         // particles and no icon (#11385).
         let effect =
-            sunrise_client::effects::EffectInstance::new("darkness", warden::DARKNESS_DURATION, 0)
+            sunrise_level::effects::EffectInstance::new("darkness", warden::DARKNESS_DURATION, 0)
                 .with_flags(false, false);
         self.apply_player_effect(effect);
     }
@@ -2042,9 +2042,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.native_sculk_bloom(self.dim.id(), [key.0, key.1, key.2]);
         let _ = self.server_process_level_events();
         let c = center(key);
-        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+        self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            particle: crate::lan::server_effects::ServerParticle::simple(ParticleType::SculkSoul),
+            particle: sunrise_sim::lan::server_effects::ServerParticle::simple(
+                ParticleType::SculkSoul,
+            ),
             at: [c[0], c[1] + 0.65, c[2]],
             spread: [0.2, 0.0, 0.2],
             speed: [0.0; 3],
@@ -2064,9 +2066,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         _to: [f64; 3],
         ticks: i32,
     ) {
-        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+        self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            particle: crate::lan::server_effects::ServerParticle::vibration(source, ticks),
+            particle: sunrise_sim::lan::server_effects::ServerParticle::vibration(source, ticks),
             at: from,
             spread: [0.0; 3],
             speed: [0.0; 3],
@@ -2128,16 +2130,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         id: u32,
         owner: Option<Who>,
-        hit: sunrise_client::projectiles::Hit,
+        hit: sunrise_sim::projectiles::Hit,
     ) {
         match hit {
-            sunrise_client::projectiles::Hit::Entity { at, .. } => {
+            sunrise_sim::projectiles::Hit::Entity { at, .. } => {
                 self.projectile_landed_event(id, owner, [at.x, at.y, at.z]);
             }
-            sunrise_client::projectiles::Hit::Block { pos, .. } => {
+            sunrise_sim::projectiles::Hit::Block { pos, .. } => {
                 self.projectile_block_landed_event(id, owner, pos);
             }
-            sunrise_client::projectiles::Hit::None => {}
+            sunrise_sim::projectiles::Hit::None => {}
         }
     }
     /// `Projectile.onHit` on a block: `PROJECTILE_LAND` at block center with post-callback state.
@@ -2261,7 +2263,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn use_redstone_ore(
         &mut self,
         pos: [i32; 3],
-        held: Option<&sunrise_client::items::ItemStack>,
+        held: Option<&sunrise_items::items::ItemStack>,
     ) -> Result<Option<mod_api::InteractionResult>> {
         use mod_api::InteractionResult as Answer;
         if !matches!(
@@ -2335,8 +2337,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             at[1].floor() as i32,
             at[2].floor() as i32,
         );
-        self.res.facts().get(self.world.block(x, y, z)).fluid
-            == sunrise_client::blocks::Fluid::Water
+        self.res.facts().get(self.world.block(x, y, z)).fluid == sunrise_items::blocks::Fluid::Water
     }
     /// `Entity.checkSupportingBlock`: the block under this box closest to the
     /// entity. Everything but the player works it out when it asks (Breeze ground dust too).
@@ -2350,7 +2351,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Vec3::new(min.x, min.y - 1.0e-6, min.z),
             Vec3::new(max.x, min.y, max.z),
         );
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -2570,7 +2571,8 @@ pub(in crate::game) mod tests {
     fn dropped_wool_dampens_its_own_vibrations() {
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, items::ItemStack};
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -2725,10 +2727,8 @@ pub(in crate::game) mod tests {
 
             let level = game.mobs.lift();
             assert_eq!(post(game), [0u32; 0], "another level's list");
-            game.mobs.restore(
-                level,
-                sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-            );
+            game.mobs
+                .restore(level, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
             assert_eq!(post(game), [2, 3], "this level's again");
 
             game.mobs.retain(|m| m.id != 3);
@@ -2830,8 +2830,8 @@ pub(in crate::game) mod command_damage_listener_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
 
     fn selected(game: &crate::game::ServerGame<'_>, key: (i32, i32, i32)) -> Option<(Info, i64)> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&key) else {

@@ -13,8 +13,8 @@ use std::{
     },
     time::Instant,
 };
-use sunrise_client::join_seq::JoinSeq;
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+use sunrise_sim::join_seq::JoinSeq;
 
 struct Sink {
     out: std::io::BufWriter<std::fs::File>,
@@ -72,7 +72,7 @@ trait DigestParts {
     }
 }
 
-impl DigestParts for sunrise_client::mobs::Mob {
+impl DigestParts for sunrise_sim::mobs::Mob {
     fn health_bits(&self) -> Option<u64> {
         Some(u64::from(self.health.to_bits()))
     }
@@ -80,7 +80,7 @@ impl DigestParts for sunrise_client::mobs::Mob {
         Some(&self.random)
     }
 }
-impl DigestParts for sunrise_client::entities::ItemEntity {
+impl DigestParts for sunrise_sim::entities::ItemEntity {
     fn health_bits(&self) -> Option<u64> {
         Some(self.health as u64)
     }
@@ -104,7 +104,7 @@ impl DigestParts for minecarts::Minecart {
         Some(&self.random)
     }
 }
-impl DigestParts for sunrise_client::entities::ArmorStand {
+impl DigestParts for sunrise_sim::entities::ArmorStand {
     fn health_bits(&self) -> Option<u64> {
         Some(u64::from(self.health.to_bits()))
     }
@@ -115,7 +115,7 @@ impl DigestParts for tnt::PrimedTnt {
     }
 }
 impl DigestParts for FallingBlock {}
-impl DigestParts for sunrise_client::entities::ExperienceOrb {
+impl DigestParts for sunrise_sim::entities::ExperienceOrb {
     fn health_bits(&self) -> Option<u64> {
         Some(self.health as u64)
     }
@@ -123,7 +123,7 @@ impl DigestParts for sunrise_client::entities::ExperienceOrb {
         i64::from(self.value)
     }
 }
-impl DigestParts for sunrise_client::projectiles::Projectile {
+impl DigestParts for sunrise_sim::projectiles::Projectile {
     fn own_random(&self) -> Option<&LegacyRandom> {
         Some(&self.random.0)
     }
@@ -214,7 +214,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             let name = self.data_block_name([pos.0, pos.1, pos.2]);
             let tag =
-                sunrise_client::save::block_entity_encode::encode(pos, e, &name, self.res.items());
+                sunrise_sim::save::block_entity_encode::encode(pos, e, &name, self.res.items());
             let mut one = hasher();
             pos.hash(&mut one);
             slot.hash(&mut one);
@@ -279,7 +279,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let num = |v: &str| v.parse::<i64>().map_err(|err| format!("{v}: {err}"));
         let (u, e, s) = (num(u)?, num(e)?, num(s)?);
-        sunrise_client::random_source::set_thread_uniquifier(u)?;
+        sunrise_level::random_source::set_thread_uniquifier(u)?;
         self.side.next_entity = u32::try_from(e).map_err(|err| err.to_string())?;
         sunrise_core::random::RandomSource::set_seed(&mut self.world.random, s);
         JOIN_BASE.store(JoinSeq::upcoming().get(), Ordering::Relaxed);

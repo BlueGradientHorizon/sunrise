@@ -92,7 +92,7 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
         g.build_registries();
         g.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let state = g
             .pack
             .assets
@@ -270,7 +270,7 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
         crate::game::native_guest_turn_tests::place_host(g);
         g.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let anchor = g
             .pack
             .assets
@@ -353,7 +353,7 @@ fn resource_gated_map_on_banner_fires_once_and_toggles_the_real_marker() {
     crate::game::native_guest_turn_tests::with_guests(|g| {
         g.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let banner = g
             .pack
             .assets
@@ -363,7 +363,7 @@ fn resource_gated_map_on_banner_fires_once_and_toggles_the_real_marker() {
         g.world.set(3, 64, 4, banner).unwrap();
         g.world.block_entities.insert(
             (3, 64, 4),
-            sunrise_client::containers::BlockEntity::Banner(sunrise_client::containers::Banner {
+            sunrise_level::containers::BlockEntity::Banner(sunrise_level::containers::Banner {
                 layers: Vec::new(),
                 name: None,
                 components: Default::default(),
@@ -513,7 +513,7 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
             g.build_registries();
             g.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let hit = Hit {
                 pos: [3, 64, 4],
                 face: [0, 1, 0],
@@ -633,7 +633,7 @@ fn block_use_registry_guard_final_hand_matches_original() {
         g.set_mode_id(0);
         g.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let stone = g
             .pack
             .assets
@@ -735,7 +735,7 @@ fn block_use_hive_bottles_report_shrink_and_exhaustion_on_both_routes() {
         g.build_registries();
         g.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let registry = g.pack.assets.registry;
         let hive = registry.default_state("minecraft:beehive").unwrap();
         let mut full = registry.state(hive).unwrap().clone();
@@ -784,7 +784,7 @@ fn block_use_lodestone_reports_component_edit_on_both_routes() {
         g.build_registries();
         g.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let lodestone = g
             .pack
             .assets

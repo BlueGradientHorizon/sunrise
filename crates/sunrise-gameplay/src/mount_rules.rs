@@ -1,5 +1,5 @@
 //! The horse inventory's common rules (`AbstractHorse`, `AbstractNautilus`, `HorseInventoryMenu`).
-use sunrise_client::mobs::{Mob, Species, equine, llama, nautilus};
+use sunrise_sim::mobs::{Mob, Species, equine, llama, nautilus};
 
 /// `AbstractChestedHorse.getInventoryColumns`.
 pub const COLUMNS: usize = 5;

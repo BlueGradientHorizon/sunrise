@@ -2,7 +2,8 @@ use crate::game::{
     in_own_process, native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry,
 };
 use std::sync::Arc;
-use sunrise_client::{level_loading::Reason, world::World};
+use sunrise_client::level_loading::Reason;
+use sunrise_level::world::World;
 use sunrise_protocol::{
     buf::set_bit,
     chunk::{ChunkData, LightData, Paletted, Section, Strategy},

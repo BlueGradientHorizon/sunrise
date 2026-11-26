@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// host's player. The guest's own client plays the pickup sound
     /// (`handleTakeItemEntity`).
     pub(in crate::game) fn guest_arrows(&mut self, gi: usize) {
-        use sunrise_client::arrows::Touch;
+        use sunrise_sim::arrows::Touch;
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -66,7 +66,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         self.creatures.projectiles.restore(
             projectiles,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
         );
         for shot in picked {
             if let Some(arrow) = shot.arrow.as_ref() {
@@ -177,7 +177,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(host) = self.lan.as_ref() {
             host.hub.take_item(orb.id as i32, id, 1, at);
         }
-        let mut random = sunrise_client::random_source::create();
+        let mut random = sunrise_level::random_source::create();
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
         let p = orb.position;
         self.server_play_sound(
@@ -207,7 +207,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 g.game_mode,
                 g.position,
                 g.entity_id,
-                sunrise_client::lan::playerdata::uuid_ints(g.uuid),
+                sunrise_sim::lan::playerdata::uuid_ints(g.uuid),
             )
         };
         if mode == SPECTATOR || self.dropped.is_empty() {

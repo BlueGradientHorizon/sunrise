@@ -6,12 +6,12 @@ use crate::game::{
 };
 use mod_api::{BlockEntityItemError, BlockEntityRef, ResidentBlockEntity};
 use std::collections::HashMap;
-use sunrise_client::{
+use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_items::items::Items;
+use sunrise_level::{
     block_entities::BlockEntityLoan, chunk_map::ChunkMap, fast_hash::FxHashMap,
     world::ModifiedChunks,
 };
-use sunrise_core::nbt::{Compound, JavaString, Tag};
-use sunrise_items::items::Items;
 
 /// Dispatch the one resident server ticker; the scope owns access to the Host.
 pub(in crate::game) fn native_block_entity_tick(
@@ -22,7 +22,7 @@ pub(in crate::game) fn native_block_entity_tick(
 }
 
 pub(in crate::game) fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
-    sunrise_client::block_entity_types::valid(block, entity.id()) == Some(true)
+    sunrise_client_core::block_entity_types::valid(block, entity.id()) == Some(true)
 }
 
 #[derive(Clone, Copy)]
@@ -145,18 +145,18 @@ impl ResidentBlockEntity for ServerBlockEntityData<'_> {
 
     fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool {
         let is_items = key.0.iter().copied().eq("Items".encode_utf16());
-        if ["id", "x", "y", "z", sunrise_client::containers::SHAPES_KEY]
+        if ["id", "x", "y", "z", sunrise_level::containers::SHAPES_KEY]
             .iter()
             .any(|reserved| key.0.iter().copied().eq(reserved.encode_utf16()))
             || (is_items && self.slot_count > 0)
             || value.as_ref().is_some_and(|tag| {
-                matches!(tag, Tag::End) || sunrise_client::nbt_path::too_deep(tag, 1)
+                matches!(tag, Tag::End) || sunrise_client_core::nbt_path::too_deep(tag, 1)
             })
         {
             return false;
         }
         let unchanged = if is_items && !self.entity().items.is_empty() {
-            sunrise_client::save::block_entity_encode::mod_items(self.entity(), self.items) == value
+            sunrise_sim::save::block_entity_encode::mod_items(self.entity(), self.items) == value
         } else {
             self.entity().nbt.get(&key) == value.as_ref()
         };

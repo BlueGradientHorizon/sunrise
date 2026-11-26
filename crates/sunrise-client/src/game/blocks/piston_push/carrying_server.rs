@@ -9,9 +9,9 @@ use crate::game::piston_push::{
     StepHeights,
     carrying::{Rider, support_of},
 };
-use sunrise_client_render::moving_colliders::{self, Prepared};
 use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_world::entity_move::MoverType;
+use sunrise_world::moving_colliders::{self, Prepared};
 
 /// What a server carry pass works on, kept from tick to tick so a pass allocates nothing once
 /// these have grown to the level's size.
@@ -173,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         start: &Prepared,
         steps: &StepHeights,
         riders: &[Rider],
-        stand_grid: &mut Option<sunrise_client::entities::ObstacleGrid>,
+        stand_grid: &mut Option<sunrise_sim::entities::ObstacleGrid>,
     ) {
         let Some(before) = start.placed().find(|p| p.id == collider) else {
             return;

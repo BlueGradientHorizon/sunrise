@@ -1,7 +1,7 @@
 //! The server's ContainerOpenersCounter for declared mod containers.
 use super::Game;
-use sunrise_client::mobs::{Species, Who};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::mobs::{Species, Who};
 
 type Pos = (i32, i32, i32);
 

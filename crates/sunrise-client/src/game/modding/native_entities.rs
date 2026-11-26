@@ -31,7 +31,7 @@ impl super::commands::OtherEntity {
             // Display and Marker have zero-sized physical dimensions.
             sunrise_core::geometry::Aabb::new(self.position, self.position)
         };
-        Some(sunrise_client::pose::SizeAnswer::sized_box(
+        Some(sunrise_sim::pose::SizeAnswer::sized_box(
             self.size_answer,
             dimensions,
             self.position,
@@ -228,7 +228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether an entity may have joined since the last announcement. A join
     /// in another level may cause one harmless walk of this level.
     fn joins_pending(&self) -> bool {
-        sunrise_client::join_seq::JoinSeq::latest() > self.persist.joined_seq
+        sunrise_sim::join_seq::JoinSeq::latest() > self.persist.joined_seq
     }
     /// Tells `native_entity_join_level` once for every entity added since the
     /// last call, of any kind, in insertion order. A mod that cancels takes
@@ -260,7 +260,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         loaded_from_disk: bool,
         watch: u32,
         removed: &[u32],
-        through: Option<sunrise_client::join_seq::JoinSeq>,
+        through: Option<sunrise_sim::join_seq::JoinSeq>,
     ) -> bool {
         if !self.is_logical_server()
             || mod_api::__private::mods().is_empty()
@@ -274,7 +274,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if through.is_none()
             && self.hold_announcement(super::transactions::Announcement::Joins {
                 loaded_from_disk,
-                through: sunrise_client::join_seq::JoinSeq::latest(),
+                through: sunrise_sim::join_seq::JoinSeq::latest(),
             })
         {
             // What an earlier held flush of this level told is constructed already; with a toss
@@ -290,7 +290,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             return true;
         }
-        let latest = sunrise_client::join_seq::JoinSeq::latest();
+        let latest = sunrise_sim::join_seq::JoinSeq::latest();
         let observed = through.map_or(latest, |through| through.min(latest));
         let mut kept = true;
         while let Some((slot, id, seq)) =
@@ -378,12 +378,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the `skipped`.
     fn next_unannounced(
         &self,
-        mark: sunrise_client::join_seq::JoinSeq,
+        mark: sunrise_sim::join_seq::JoinSeq,
         skipped: &[u32],
-        through: Option<sunrise_client::join_seq::JoinSeq>,
-    ) -> Option<(Slot, u32, sunrise_client::join_seq::JoinSeq)> {
+        through: Option<sunrise_sim::join_seq::JoinSeq>,
+    ) -> Option<(Slot, u32, sunrise_sim::join_seq::JoinSeq)> {
         use super::entity::Entity;
-        use sunrise_client::join_seq::{JoinSeq, Joined};
+        use sunrise_sim::join_seq::{JoinSeq, Joined};
         let mut best: Option<(Slot, u32, JoinSeq)> = None;
         let mut offer = |slot: Slot, id: u32, seq: JoinSeq| {
             if skipped.contains(&id) || self.persist.removals.iter().chain(self.persist.destroying_vehicles.iter()).any(|target| {
@@ -497,7 +497,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// silent): everything now in the level counts as announced, and will
     /// be told when it leaves.
     pub(in crate::game) fn native_joins_skip(&mut self) {
-        let observed = sunrise_client::join_seq::JoinSeq::latest();
+        let observed = sunrise_sim::join_seq::JoinSeq::latest();
         if self.is_logical_server() && !mod_api::__private::mods().is_empty() {
             self.assign_pending_join_ids();
             while let Some((slot, id, seq)) =
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn native_roots_keep_the_loaded_id_and_do_not_allocate_twice() {
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         for (kind, nbt) in [
             ("minecraft:tnt", "{fuse:80s}"),
             (
@@ -967,8 +967,8 @@ mod tests {
     fn joins_follow_insertion_order_and_canceled_entities_never_leave() {
         use mod_api::{self, EntityJoinLevelEvent, EntityLeaveLevelEvent, Flow, Hooks};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
 
         type Joins = Arc<Mutex<Vec<(u32, String, bool)>>>;
         struct Observer {
@@ -1048,7 +1048,7 @@ mod tests {
                     true,
                     0,
                 ));
-                game.cushions.push(sunrise_client::entities::Cushion {
+                game.cushions.push(sunrise_sim::entities::Cushion {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
                     id: base + 5,
@@ -1059,7 +1059,7 @@ mod tests {
                     check_interval: 0,
                     custom_name: None,
                 });
-                game.paintings.push(sunrise_client::entities::Painting {
+                game.paintings.push(sunrise_sim::entities::Painting {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
                     id: base + 6,
@@ -1072,7 +1072,7 @@ mod tests {
                     check_interval: 0,
                     ticks: 0,
                 });
-                game.item_frames.push(sunrise_client::entities::ItemFrame {
+                game.item_frames.push(sunrise_sim::entities::ItemFrame {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
                     id: base + 7,
@@ -1091,7 +1091,7 @@ mod tests {
                 });
                 let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
                 dragon.id = base + 8;
-                dragon.join = sunrise_client::join_seq::JoinSeq::next();
+                dragon.join = sunrise_sim::join_seq::JoinSeq::next();
                 game.dragon.replace(dragon);
                 game.side.next_entity = base + 8;
                 game.native_joins_flush(true, 0);

@@ -9,9 +9,9 @@ fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     use crate::game::{
         Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
-    use sunrise_client::{motion::PlayerMotion, sprint::Keys};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_sim::{motion::PlayerMotion, sprint::Keys};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(

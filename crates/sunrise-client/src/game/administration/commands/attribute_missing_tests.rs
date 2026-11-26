@@ -6,7 +6,7 @@
 //! have still works.
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -16,7 +16,7 @@ pub(in crate::game) fn game<'a>(
     game.set_allow_commands(true);
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 100.0, 0.5)).unwrap());
     game.reset_entity_residency();
     crate::game::native_entity_refs::tests::bind_local_player(&mut game, 1, 1);

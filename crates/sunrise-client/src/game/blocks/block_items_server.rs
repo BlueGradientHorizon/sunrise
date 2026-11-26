@@ -1,10 +1,12 @@
 //! Server-owned block entity item helpers and placement tests.
 use super::Game;
-#[allow(unused_imports)]
-use sunrise_client::{
-    block_entity_item, containers::BlockEntity, item_data, items::ItemStack, save,
-};
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
+use sunrise_items::{item_data, items::ItemStack};
+#[allow(unused_imports)]
+use sunrise_level::containers::BlockEntity;
+#[allow(unused_imports)]
+use sunrise_sim::{block_entity_item, save};
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -86,8 +88,9 @@ pub(in crate::game) mod tests {
     fn placed_sculk_item_data_survives_pending_placement() {
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, items::ItemStack};
         use sunrise_core::nbt::Tag;
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.world
@@ -113,7 +116,7 @@ pub(in crate::game) mod tests {
                     Tag::compound([("id", Tag::String(block.into())), (field, Tag::Int(value))]),
                 )]);
                 (stack.damage, stack.extra) =
-                    sunrise_client::item_data::decode_components(Some(&patch));
+                    sunrise_items::item_data::decode_components(Some(&patch));
                 game.apply_placed_item([2, 230, 11], &stack, false);
                 game.sculk_sync_index();
                 let saved = game.block_entity_nbt([2, 230, 11]).unwrap();
@@ -133,7 +136,7 @@ pub(in crate::game) mod tests {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         use mod_api::{self, *};
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+        use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
         const CHILD: &str = "SUNRISE_MOD_BLOCK_ENTITY_ITEM_CHILD";
         if run_fresh_cases(
@@ -270,7 +273,7 @@ pub(in crate::game) mod tests {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         use mod_api::{self, *};
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         const CHILD: &str = "SUNRISE_MOD_PICK_ITEM_CHILD";
         if run_fresh_cases(
@@ -355,7 +358,7 @@ pub(in crate::game) mod plain_name_overlay_tests {
             // as well as the block-tick chunk before forceload asks for it.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())
@@ -545,7 +548,7 @@ pub(in crate::game) mod styled_name_model_tests {
             // The name round trip needs a resident chunk, not terrain generation.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())

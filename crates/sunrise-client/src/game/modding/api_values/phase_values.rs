@@ -7,13 +7,13 @@ impl TryIntoApi for DataLoadOrigin {
     type Api = mod_api::DataLoadOrigin;
     type Error = Infallible;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(sunrise_client_render::api_context::load_origin(*self))
+        Ok(sunrise_level::api_context::load_origin(*self))
     }
 }
 impl TryIntoApi for LoopSide {
     type Api = mod_api::LoopSide;
     type Error = Infallible;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(sunrise_client_render::api_context::loop_side(*self))
+        Ok(sunrise_level::api_context::loop_side(*self))
     }
 }

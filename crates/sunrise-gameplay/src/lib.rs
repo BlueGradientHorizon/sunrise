@@ -1,7 +1,5 @@
 //! Vanilla's logical side: the gameplay the server jar holds, common code included.
 #![forbid(unsafe_code)]
-// Listed in portable.pending (tools/layers.json) until the types it needs move to portable crates.
-extern crate sunrise_client_lib as sunrise_client;
 pub mod allays;
 pub mod block_entity_ticks;
 pub use sunrise_gameplay_common::{

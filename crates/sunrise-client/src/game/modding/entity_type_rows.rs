@@ -24,7 +24,7 @@ impl EntityTypeRows {
         let rows = serde_json::from_slice::<serde_json::Value>(bytes).unwrap_or_default();
         let mut out = Self::default();
         for (id, row) in rows.as_object().into_iter().flatten() {
-            let id = sunrise_client::command::args::normalize(id);
+            let id = sunrise_command::args::normalize(id);
             if row.get("attributes").is_some() {
                 out.living.push(id.clone());
             }

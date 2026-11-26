@@ -4,8 +4,8 @@
 //! `server.toml`'s `[missing_mods] allow = true` says to open it anyway (off by default).
 
 use super::{Game, Result, log};
-use sunrise_client::save::level_mods;
 use sunrise_server_files::missing_mods::MissingMods as Settings;
+use sunrise_sim::save::level_mods;
 
 /// An intentional refusal to open a world without its saved mods, not a crash.
 #[derive(Debug)]
@@ -47,7 +47,7 @@ fn allowed_by_server_toml() -> Result<bool> {
 /// The dedicated server does not load client language layers. Use Sunrise's
 /// bundled English for its own missing-mod diagnostics.
 pub(super) fn in_english<R>(f: impl FnOnce() -> R) -> R {
-    use sunrise_client::lang;
+    use sunrise_client_core::lang;
     lang::scoped(lang::Language::load(&[], lang::DEFAULT), f).0
 }
 
@@ -64,7 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if allowed {
             let (lines, allowed) = in_english(|| {
                 let lines: Vec<String> = missing.iter().map(level_mods::describe).collect();
-                let allowed = sunrise_client::lang::tr(
+                let allowed = sunrise_client_core::lang::tr(
                     "sunrise.missing_mods.server.allowed",
                     &[&level_mods::ALLOW_FLAG],
                 );
@@ -79,7 +79,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         level_mods::forget_answer();
         let mut lines = in_english(|| level_mods::refusal_lines(&missing));
         let last = lines.pop().unwrap_or_default();
-        let heading = in_english(|| sunrise_client::lang::get("sunrise.missing_mods.title"));
+        let heading = in_english(|| sunrise_client_core::lang::get("sunrise.missing_mods.title"));
         log("ERROR", &heading);
         for line in &lines {
             log("ERROR", line);
@@ -129,7 +129,7 @@ mod tests {
             ("ModId", Tag::String("gone".into())),
             ("ModVersion", Tag::String("1.0.0".into())),
         ]);
-        sunrise_client::save::write_dat(
+        sunrise_sim::save::write_dat(
             &dir.join("level.dat"),
             Tag::compound([(
                 "fml",

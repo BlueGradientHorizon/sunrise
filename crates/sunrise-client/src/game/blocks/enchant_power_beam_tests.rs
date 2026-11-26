@@ -13,8 +13,8 @@ use mod_api::{
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::BlockPos;
+use sunrise_level::chunk::Chunk;
 
 const TABLE: [i32; 3] = [8, 64, 8];
 const PROVIDER: [i32; 3] = [12, 64, 8];
@@ -311,8 +311,9 @@ fn block_parts_answer_the_enchanting_power_and_the_beam_colour() {
 pub(in crate::game::client_side) fn enchant_particles(game: &crate::game::ClientGame<'_>) -> usize {
     use sunrise_client::{
         animate_tick::{AnimateContext, animate_tick},
-        particles::{ParticleEngine, ParticleType},
+        particles::ParticleEngine,
     };
+    use sunrise_level::particle_options::ParticleType;
     let mut engine = ParticleEngine::new(
         &sunrise_assets::resource_source::ResourceSource::directory(game.options.resources.clone()),
         &Default::default(),

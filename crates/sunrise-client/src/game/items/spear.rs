@@ -12,7 +12,7 @@ use sunrise_core::geometry::Aabb;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_sim::spear_sim::hits_in_reach;
 use {
-    sunrise_client::attack_strength::delay, sunrise_sim::spear_sim::HIT_FEEDBACK_TICKS,
+    sunrise_sim::attack_strength::delay, sunrise_sim::spear_sim::HIT_FEEDBACK_TICKS,
     sunrise_sim::spear_sim::Kinetic,
 };
 

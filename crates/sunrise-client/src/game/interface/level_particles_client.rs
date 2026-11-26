@@ -1,7 +1,8 @@
 use super::Game;
-use sunrise_client::items::ItemStack;
-use sunrise_client::particles::{self, ParticleOptions, ParticleType};
+use sunrise_client::particles;
 use sunrise_core::{geometry::trig, position::BlockPos, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_world::level::LevelEvent;
 use sunrise_world::registry::BlockStateId;
 
@@ -200,20 +201,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let above_facts = self.res.facts().get(above);
         let evaporates = self.dimension_type().water_evaporates;
         let fluid = if &*above_facts.name == "minecraft:mud" && !evaporates {
-            sunrise_client::blocks::Fluid::Water
+            sunrise_items::blocks::Fluid::Water
         } else {
             above_facts.fluid
         };
         let ty = match fluid {
-            sunrise_client::blocks::Fluid::Water => ParticleType::DrippingDripstoneWater,
-            sunrise_client::blocks::Fluid::Lava => ParticleType::DrippingDripstoneLava,
+            sunrise_items::blocks::Fluid::Water => ParticleType::DrippingDripstoneWater,
+            sunrise_items::blocks::Fluid::Lava => ParticleType::DrippingDripstoneLava,
             // A mod's fluid drips as no fluid above the dripstone would.
-            sunrise_client::blocks::Fluid::None | sunrise_client::blocks::Fluid::Modded
+            sunrise_items::blocks::Fluid::None | sunrise_items::blocks::Fluid::Modded
                 if evaporates =>
             {
                 ParticleType::DrippingDripstoneLava
             }
-            sunrise_client::blocks::Fluid::None | sunrise_client::blocks::Fluid::Modded => {
+            sunrise_items::blocks::Fluid::None | sunrise_items::blocks::Fluid::Modded => {
                 ParticleType::DrippingDripstoneWater
             }
         };

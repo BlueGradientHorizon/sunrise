@@ -4,9 +4,10 @@
 //! its moving piston's saved tag, and a client's copy. `BlockEntities` holds
 //! what is carried (`carry`, `land`).
 use super::{Game, GameLevel};
-use sunrise_client::{block_entities::Carried, save::ChunkExtras};
 use sunrise_core::{geometry::Direction, nbt::Tag, position::BlockPos};
+use sunrise_level::block_entities::Carried;
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, Attachments, attachment_compound};
+use sunrise_sim::save::ChunkExtras;
 use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
 /// The moving piston's saved key for the block entity it carries, with its
@@ -93,7 +94,7 @@ impl GameLevel<'_> {
             .map(|p| (p[0], p[1], p[2]));
         let mut data = super::piston_carry_state::take_position_data(self.world, from);
         let cached = self.positions.hoppers.remove(&from).map(|h| h.cooldown);
-        let is_hopper = sunrise_client::block_entity_types::factory_block(
+        let is_hopper = sunrise_client_core::block_entity_types::factory_block(
             &self
                 .facts
                 .get(self.world.block(from.0, from.1, from.2))
@@ -175,7 +176,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             && let Tag::Compound(map) = &mut tag
         {
             let block = &self.res.facts().get(piston.moved_state).name;
-            let mut carried = sunrise_client::save::block_entity_encode::encode(
+            let mut carried = sunrise_sim::save::block_entity_encode::encode(
                 (pos.x, pos.y, pos.z),
                 entity,
                 block,
@@ -219,7 +220,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             return;
         };
         let block = &self.res.facts().get(piston.moved_state).name;
-        match sunrise_client::save::decode_block_entity_for_block(tag, block) {
+        match sunrise_sim::save::decode_block_entity_for_block(tag, block) {
             Some((_, entity)) => {
                 let attachments = match attachment_compound(tag.get(ATTACHMENTS_KEY)) {
                     Ok(Some(data)) => Some(Attachments::from_nbt(data.clone())),
@@ -260,7 +261,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 pub(in crate::game) mod tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity, items::ItemStack};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
     #[test]
     #[ignore = "daily"]

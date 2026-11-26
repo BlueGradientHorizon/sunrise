@@ -3,9 +3,9 @@
 use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
 use mod_api::{Flow, HitHost, Hooks, Identifier, LivingIncomingDamageEvent};
 use std::sync::{Arc, Mutex};
-use sunrise_client::command::args::GameMode;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 
 /// The damage type tags the listener reads, and what it read for each hit.
 #[derive(Default)]

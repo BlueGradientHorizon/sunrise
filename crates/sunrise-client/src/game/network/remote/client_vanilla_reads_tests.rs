@@ -591,8 +591,8 @@ fn has_channel_follows_what_the_server_negotiated() {
                 // A server that declares the channel too.
                 with_client_game(|game| {
                     assert!(!(&*game as &dyn ClientHost).has_channel(&id));
-                    let local = sunrise_client::raw_payloads::Local::capture(
-                        sunrise_client::raw_payloads::Side::Server,
+                    let local = sunrise_sim::raw_payloads::Local::capture(
+                        sunrise_sim::raw_payloads::Side::Server,
                     )
                     .unwrap();
                     let _connection = super::connect_play_test(game, |reader, writer| {

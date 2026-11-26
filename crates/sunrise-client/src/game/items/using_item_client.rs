@@ -1,11 +1,11 @@
 use super::{Game, Hit, item_use};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side `Consumable.startConsuming`: instant consumables await server sync.
     pub(in crate::game::client_side) fn client_start_eating(
         &mut self,
-        info: &sunrise_client::items::ItemInfo,
+        info: &sunrise_items::items::ItemInfo,
     ) -> bool {
         let Some(stack) = self.held().cloned() else {
             return false;
@@ -13,11 +13,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(consumable) = self.consumable(&stack) else {
             return false;
         };
-        if sunrise_client::item_sync::food(&stack, info.food).is_some()
+        if sunrise_sim::item_sync::food(&stack, info.food).is_some()
             && (self.player.is_none()
                 || !self.can_eat(
                     Some(&stack),
-                    sunrise_client::item_sync::can_always_eat(&stack, info.can_always_eat),
+                    sunrise_sim::item_sync::can_always_eat(&stack, info.can_always_eat),
                 ))
         {
             return false;

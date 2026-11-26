@@ -1,5 +1,6 @@
 use super::{Game, Hit};
-use sunrise_client::{Result, items::ItemStack};
+use sunrise_client_core::Result;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `CampfireBlock.useItemOn` with `held` in the hand that acts, the block

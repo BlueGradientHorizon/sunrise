@@ -35,7 +35,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let entity = self.move_who_id(who);
         // The type name is built only if a listener asks for it (#2414: a
         // move nobody listens to costs one branch and no string).
-        sunrise_client::move_gate::armed_with(
+        sunrise_sim::move_gate::armed_with(
             &self.loop_context,
             entity,
             || self.move_who_kind(who),

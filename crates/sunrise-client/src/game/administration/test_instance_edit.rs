@@ -4,12 +4,11 @@ use super::{
     Game,
     block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action, on_off},
 };
-use sunrise_client::{
-    containers::BlockEntity,
-    structure_block::rotation_ordinal,
+use sunrise_client::ui::EditBox;
+use sunrise_client_core::text::{self, Text};
+use sunrise_level::{
+    containers::BlockEntity, structure_block::rotation_ordinal,
     test_instance_block::TestInstanceBlock,
-    text::{self, Text},
-    ui::EditBox,
 };
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use sunrise_world::worldgen::structure::Rotation;
@@ -67,7 +66,7 @@ fn parse_size(value: &str) -> i32 {
 
 /// `Identifier.tryParse`.
 fn parse_id(value: &str) -> Option<String> {
-    sunrise_client::structure_block::parse_identifier(value)
+    sunrise_level::structure_block::parse_identifier(value)
 }
 
 fn rotation_display(rotation: Rotation) -> Text {
@@ -359,7 +358,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::structure_block::rotation_from_ordinal;
+    use sunrise_level::structure_block::rotation_from_ordinal;
 
     fn editor() -> TestInstanceEditor {
         let mut b = TestInstanceBlock::default();

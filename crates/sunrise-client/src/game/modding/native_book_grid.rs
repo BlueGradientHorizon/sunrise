@@ -1,7 +1,7 @@
 //! A mod menu whose recipe book layout is `Mod`: its part answers the click (`recipe_book_place`)
 //! and places with vanilla's placer through `place_recipe_in_grid`.
 use super::{Game, native_book_backings::Backings, native_book_scope::MenuSnapshot};
-use sunrise_client::{
+use sunrise_sim::{
     menu::{
         Env, Menu,
         place::{

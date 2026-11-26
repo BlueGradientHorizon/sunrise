@@ -6,12 +6,16 @@ use super::{Game, Screen};
 #[allow(unused_imports)]
 use sunrise_client::{
     chat::Commands,
-    command_block::{CommandBlock, Mode},
-    containers::BlockEntity,
     hud::{HudBatch, rgba},
     screen_draw::Measure,
-    text::Text,
     ui,
+};
+#[allow(unused_imports)]
+use sunrise_client_core::text::Text;
+#[allow(unused_imports)]
+use sunrise_level::{
+    command_block::{CommandBlock, Mode},
+    containers::BlockEntity,
 };
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
@@ -547,7 +551,7 @@ pub(in crate::game) mod tests {
             let pos = (1, 64, 1);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let old = game
                 .pack

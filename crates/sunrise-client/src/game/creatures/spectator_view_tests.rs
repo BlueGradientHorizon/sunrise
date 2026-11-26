@@ -2,14 +2,14 @@
 //! one (`LivingEntityRenderer.submit`'s `forceTransparent`), anyone else not at all.
 use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::command::args::GameMode;
-use sunrise_client::mobs::{Mob, MobTypes};
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},
 };
+use sunrise_sim::mobs::{Mob, MobTypes};
 
 /// The prepared vanilla resources.
 fn root() -> std::path::PathBuf {

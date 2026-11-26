@@ -6,15 +6,15 @@
 //! its chunk still does.
 use crate::game::{Options, Progress, Settings, execution_role, load_resources};
 use std::{collections::HashSet, sync::Arc};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{
     entity_nbt,
     mobs::{
         Mob, Species,
         finalize::{self, Attr},
     },
 };
-use sunrise_core::nbt::Tag;
 
 fn with_game(f: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

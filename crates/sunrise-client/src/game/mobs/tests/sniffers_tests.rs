@@ -6,8 +6,8 @@ use super::{Mob, sniffer};
 use crate::game::kill_die_vibration_tests::game as sculk_game;
 use crate::game::sculk::TEST_POSTED_EVENTS;
 use crate::game::{Game, PlayerMotion};
-use sunrise_client::mobs::Who;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_sim::mobs::Who;
 
 fn game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     sculk_game(|game| {
@@ -79,7 +79,7 @@ fn a_silent_sniffer_still_plays_the_local_searching_and_hit_sounds() {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let stone = game
             .pack

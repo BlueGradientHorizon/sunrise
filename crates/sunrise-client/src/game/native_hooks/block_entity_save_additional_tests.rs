@@ -4,16 +4,16 @@ pub(in crate::game) mod tests {
     use mod_api::{BlockEntityPart, BlockEntitySaveAdditionalEvent, Hooks, LevelHost, ModEntry};
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{
-        chunk::{Chunk, LevelShape},
-        containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, SHAPES_KEY},
-        save::SaveDir,
-    };
     use sunrise_core::{
         nbt::{Compound, JavaString, Limits, Tag},
         position::ChunkPos,
     };
+    use sunrise_level::{
+        chunk::{Chunk, LevelShape},
+        containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, SHAPES_KEY},
+    };
     use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
+    use sunrise_sim::save::SaveDir;
     use sunrise_world::region::RegionFile;
 
     thread_local! {

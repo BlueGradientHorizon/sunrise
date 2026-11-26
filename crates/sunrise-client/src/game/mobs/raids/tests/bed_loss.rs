@@ -1,8 +1,9 @@
 //! Real Game raid creation/wave dispatch with a loaded claimed-bed precondition.
 use super::super::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, mobs::Mob, raid::Status};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{mobs::Mob, raid::Status};
 
 #[test]
 #[ignore = "daily"]

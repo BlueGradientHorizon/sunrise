@@ -10,10 +10,6 @@
 //! (`nav_move_to`, `ai.target`), behind the same input boundaries the mob
 //! handles take, and the write handles a `ServerHost` takes do not exist here.
 use super::Game;
-use crate::mobs::{
-    self, Mob, MobWorld, Seen, TargetInfo, Who,
-    part_goals::{BehaviorOp, GoalOp},
-};
 use mod_api::{
     BehaviorCxBackend, EntityRef, EntityTags, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef,
     RandomSource,
@@ -21,6 +17,10 @@ use mod_api::{
 };
 use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_core::random::RandomSource as EngineRandom;
+use sunrise_sim::mobs::{
+    self, Mob, MobWorld, Seen, TargetInfo, Who,
+    part_goals::{BehaviorOp, GoalOp},
+};
 
 #[cfg(test)]
 mod interception_tests;
@@ -182,7 +182,7 @@ impl GoalCx<'_, '_> {
             let (uuid_seen, id) = self.w.selected_player_identity()?;
             let epoch = self.w.goal_host?.epoch()?;
             (self.w.selected_player().is_some()
-                && uuid == sunrise_client::lan::playerdata::ints_uuid(uuid_seen))
+                && uuid == sunrise_sim::lan::playerdata::ints_uuid(uuid_seen))
             .then(|| mod_api::__private::game::player_ref(EntityRef::new(epoch, id), uuid))
         })
     }
@@ -813,7 +813,9 @@ impl mobs::part_goals::GoalHost for Game<'_, crate::game::server_side::ServerSta
             Some(mob) => self.mob_team_scoped(mob, actor, world),
             None => self.native_target_team(self.native_entity_target(source)?)?,
         };
-        Some(sunrise_client::scoreboard::teams_allow_damage(own, other))
+        Some(sunrise_client_core::scoreboard::teams_allow_damage(
+            own, other,
+        ))
     }
 
     fn run_goal(

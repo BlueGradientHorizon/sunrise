@@ -7,13 +7,13 @@ use mod_api::{
     EntityRef, Flow, HitHost, Hooks, LivingIncomingDamageEvent, SoundSource, WorldEpoch,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::command::args::GameMode;
-use sunrise_client::mobs::{Damage, DamageKind, Mob, Who};
-use sunrise_client::motion::PlayerMotion;
+use sunrise_command::args::GameMode;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
+use sunrise_sim::motion::PlayerMotion;
 
 /// The handles the listener draws on, and what it saw of those it is not lent.
 #[derive(Default)]
@@ -104,13 +104,13 @@ fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut crate::game
                     guest_commands: false,
                     force_game_mode: false,
                 },
-                sunrise_client::lan::NetConfig {
+                sunrise_sim::lan::NetConfig {
                     listen: false,
                     announce: false,
                     lod_distance: 0,
-                    ..sunrise_client::lan::NetConfig::lan(0, String::new(), 2)
+                    ..sunrise_sim::lan::NetConfig::lan(0, String::new(), 2)
                 },
-                sunrise_client::lan::hub::HubConfig {
+                sunrise_sim::lan::hub::HubConfig {
                     default_game_mode: 0,
                     guest_commands: false,
                     force_game_mode: false,

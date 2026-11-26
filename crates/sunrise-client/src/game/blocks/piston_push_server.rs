@@ -10,14 +10,14 @@ use crate::game::piston_push::{
     Body, Lid, Push, PushTarget, ShulkerPush, StepHeights, first_axis_direction, pushed_movement,
     shulker_lid,
 };
-use sunrise_client::collisions::{SceneCollisions, with_piston_noclip};
-use sunrise_client::entity_rules::EntityRules;
-use sunrise_client::join_seq::{JoinSeq, Joined};
-use sunrise_client::motion::MotionWorld;
 use sunrise_core::geometry::{
     Aabb, Axis, COLLISION_EPSILON, Direction, ShapeOp, Vec3, entity_collision_bounds,
 };
 use sunrise_core::position::BlockPos;
+use sunrise_level::collisions::{SceneCollisions, with_piston_noclip};
+use sunrise_sim::entity_rules::EntityRules;
+use sunrise_sim::join_seq::{JoinSeq, Joined};
+use sunrise_sim::motion::MotionWorld;
 use sunrise_world::{
     entity_move::MoverType, level::data::PushReaction, move_gate::MoveGate,
     piston_movement::PistonMovement, piston_push,
@@ -137,7 +137,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
                 for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
                     let name = &self.res.facts().get(self.world.block(x, y, z)).name;
-                    if let Some(s) = sunrise_client::projectiles::stuck_speed_of(name) {
+                    if let Some(s) = sunrise_sim::projectiles::stuck_speed_of(name) {
                         stuck = Some(s);
                     }
                 }
@@ -162,7 +162,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let tops = self.creatures.projectiles.update(i, |p| {
                 p.bubble_surfaces.clear();
                 p.bubble_columns_since(from, |at| {
-                    sunrise_client::motion::bubble_column_at(
+                    sunrise_sim::motion::bubble_column_at(
                         world,
                         registry,
                         facts,
@@ -322,7 +322,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         body: Body,
         movement: Vec3,
         no_physics: bool,
-        stand_grid: &mut Option<sunrise_client::entities::ObstacleGrid>,
+        stand_grid: &mut Option<sunrise_sim::entities::ObstacleGrid>,
     ) {
         if target == MoveWho::Player {
             let _ = self.server_move_local_player(mover, movement, false);
@@ -1040,10 +1040,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if authoritative || wanted.y.abs() > 0.0 {
                 let mut paused_hurt = None;
                 let mut mobs = self.mobs.lift();
-                let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
+                let mut lent = sunrise_sim::health::LentLevel::take(&mut self.world);
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let world = self.mob_world_base(&[]);
-                    let mut level = sunrise_client::health::DamageLevel::lent(
+                    let mut level = sunrise_sim::health::DamageLevel::lent(
                         &self.world,
                         self.pack.assets.registry,
                         &mut lent,
@@ -1060,7 +1060,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }));
                 lent.give_back(&mut self.world);
                 self.mobs
-                    .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                    .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 if let Err(payload) = result {
                     std::panic::resume_unwind(payload);
                 }
@@ -1155,7 +1155,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let response = with_entity!(self, handle, entity => {
             self.body_motion(&game_side!(self)).restitute((id, kind),
-                sunrise_client::motion::BodyMove { wanted, moved, effect },
+                sunrise_sim::motion::BodyMove { wanted, moved, effect },
                 entity.get_gravity(), drag, entity.velocity(), entity.body_fall_distance())
         });
         let velocity = self.server_finish_body_restitution((id, kind), feet, response);
@@ -1173,8 +1173,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mover: MoverType,
         movement: Vec3,
         auto_jump: bool,
-    ) -> sunrise_client::Result<Option<Vec3>> {
-        use sunrise_client::landing::PlayerLandingPause;
+    ) -> sunrise_client_core::Result<Option<Vec3>> {
+        use sunrise_sim::landing::PlayerLandingPause;
 
         let Some(player) = self.player.as_ref() else {
             return Ok(None);
@@ -1420,7 +1420,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         wanted: Vec3,
         moved: Vec3,
         tnt: Option<(
-            sunrise_client::collisions::PowderSnowSubject<'static>,
+            sunrise_level::collisions::PowderSnowSubject<'static>,
             sunrise_world::collision_context::CollisionContext<'static>,
         )>,
     ) {
@@ -1452,7 +1452,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             return;
         }
-        let motion = sunrise_client::motion::BodyMotion {
+        let motion = sunrise_sim::motion::BodyMotion {
             world: &self.world,
             collision: self.collision,
             facts: self.res.facts(),
@@ -1476,7 +1476,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             false,
                         )
                     } else {
-                        sunrise_client::motion::BodyMotion::entity_context(id, at)
+                        sunrise_sim::motion::BodyMotion::entity_context(id, at)
                     };
                     (None, context)
                 },
@@ -1484,7 +1484,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
             if let Some(ground) = entity.ground_state_mut() {
                 motion.record_move(
-                    sunrise_client::motion::BodyCollision {
+                    sunrise_sim::motion::BodyCollision {
                         footprint: (at, bounds),
                         movement: (wanted, moved),
                         authoritative,
@@ -1504,9 +1504,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 pub(in crate::game) mod order_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::{geometry::Direction, position::BlockPos};
+    use sunrise_level::chunk::Chunk;
     use sunrise_world::level::pistons::MovingPiston;
 
     #[test]
@@ -1930,8 +1930,9 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         with_role_game(
@@ -2258,7 +2259,7 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
             added_push(game, i, Vec3::ZERO);
             assert!(game.mobs[i].ground.on_ground);
             assert_eq!(game.mobs[i].position, Vec3::new(8.5, 202.0, 4.5));
-            game.mobs[i].set_saddle(Some(sunrise_client::items::ItemStack::new(
+            game.mobs[i].set_saddle(Some(sunrise_items::items::ItemStack::new(
                 "minecraft:saddle",
                 1,
             )));
@@ -2379,8 +2380,8 @@ pub(in crate::game) mod lid_push_tests {
     use super::h255_mob_piston_ground_tests::with_game;
     use super::{EntityHandle, Lid};
 
-    use sunrise_client::mobs::{MobEvent, Species};
     use sunrise_core::geometry::{Aabb, Vec3};
+    use sunrise_sim::mobs::{MobEvent, Species};
 
     fn shulker(game: &mut crate::game::ServerGame<'_>) -> u32 {
         assert!(game.run_command("summon minecraft:shulker 24 200 24 {NoAI:1b}"));

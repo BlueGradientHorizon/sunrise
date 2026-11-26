@@ -9,7 +9,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let (custom, ordinary): (Vec<_>, Vec<_>) = ids.iter().cloned().partition(|id| {
             matches!(
                 self.recipes().recipe(id),
-                Some(sunrise_client::crafting::Recipe::Mod(_))
+                Some(sunrise_sim::crafting::Recipe::Mod(_))
             )
         });
         let mut count = 0;

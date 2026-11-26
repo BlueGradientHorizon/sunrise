@@ -193,11 +193,11 @@ mod tests {
     fn for_player_keeps_the_outer_body_in_its_original_dimension() {
         use crate::game::{Options, Progress, Settings, load_resources};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::{
+        use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::{
             lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
             motion::PlayerMotion,
         };
-        use sunrise_protocol::packets::configuration::ClientInformation;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(

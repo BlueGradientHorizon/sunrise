@@ -19,7 +19,9 @@
 //!
 //! Sorting, which clicks through `slot_click` too, is in `sorting.rs`.
 use crate::game::{Creative, Game, Screen};
-use sunrise_client::{containers::BlockEntity, items::ItemStack, menu::Input};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::menu::Input;
 
 #[cfg(test)]
 #[path = "mouse_tweaks_result_tests.rs"]

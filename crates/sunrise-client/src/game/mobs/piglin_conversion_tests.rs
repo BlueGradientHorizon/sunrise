@@ -5,10 +5,10 @@
 //! inventory and `Mob.convertTo` takes the piglin's place, all before `travel` moves it.
 use super::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
 use std::sync::Arc;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Species, finalize};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Species, finalize};
 
 #[test]
 #[ignore = "daily"]
@@ -27,7 +27,7 @@ fn a_piglin_converting_as_its_admiring_ends_drops_its_stash_and_is_replaced_befo
             game.set_allow_commands(true);
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();

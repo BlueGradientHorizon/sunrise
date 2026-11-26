@@ -62,7 +62,7 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.dragon.discard();
             game.native_joins_skip();
             let id = game
@@ -70,7 +70,7 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
                     "minecraft:ender_dragon",
                     [8.5, 70.0, 8.5],
                     super::super::creatures::SpawnSite::Finalizing(
-                        sunrise_client::mobs::spawn_rules::Reason::SpawnItemUse,
+                        sunrise_sim::mobs::spawn_rules::Reason::SpawnItemUse,
                     ),
                 )
                 .unwrap();
@@ -102,11 +102,10 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
                 (16 * 22 * 16 - left, game.dragon.as_ref().unwrap().in_wall)
             };
             let griefing = |game: &mut crate::game::ServerGame<'_>, on: bool| {
-                assert!(
-                    game.ui
-                        .rules
-                        .set("mob_griefing", sunrise_client::gamerules::Value::Bool(on),)
-                );
+                assert!(game.ui.rules.set(
+                    "mob_griefing",
+                    sunrise_client_core::gamerules::Value::Bool(on),
+                ));
             };
             griefing(game, true);
             // Glass answering yes (not #dragon_immune) breaks, and leaves no wall.

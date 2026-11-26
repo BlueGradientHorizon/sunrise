@@ -1,12 +1,12 @@
 //! Restore the guest's first body without borrowing another player's RNG.
 #[cfg(test)]
 use super::*;
+use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
-use sunrise_client::{
+use sunrise_sim::{
     lan::{guest::Guest, hub::CommittedMove},
     motion::{MotionResources, PlayerMotion},
 };
-use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) fn initialize(resources: &MotionResources, guest: &mut Guest) -> bool {
     let p = Vec3::new(guest.position[0], guest.position[1], guest.position[2]);
@@ -26,9 +26,8 @@ pub(in crate::game) fn initialize(resources: &MotionResources, guest: &mut Guest
     if let Some(motion) = guest.motion.as_mut() {
         motion.health.accepted_hit = accepted_hit;
         motion.health.last_hurt_mob = guest.carried_last_hurt_mob.take();
-        motion.random = sunrise_core::random::EntityRandom::own(
-            sunrise_client::mobs::entity_random(entity_id, p),
-        );
+        motion.random =
+            sunrise_core::random::EntityRandom::own(sunrise_sim::mobs::entity_random(entity_id, p));
     }
     // The first body after joining burns, breathes and falls on as saved.
     let g = &mut *guest;

@@ -464,7 +464,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         self.items().get(&stack.item).is_some_and(|info| {
                             !self
                                 .cooldowns
-                                .is_on_cooldown(&sunrise_client::cooldowns::group(
+                                .is_on_cooldown(&sunrise_items::cooldowns::group(
                                     stack,
                                     info.use_cooldown.as_ref(),
                                 ))
@@ -560,9 +560,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 } else {
                     match self.with_hand(hand, |game| game.cauldron_outcome(hit.pos, held.as_ref()))
                     {
-                        sunrise_client::cauldron::Outcome::Success => InteractionResult::Success,
-                        sunrise_client::cauldron::Outcome::Consume => InteractionResult::Consume,
-                        sunrise_client::cauldron::Outcome::Pass => result,
+                        sunrise_sim::cauldron::Outcome::Success => InteractionResult::Success,
+                        sunrise_sim::cauldron::Outcome::Consume => InteractionResult::Consume,
+                        sunrise_sim::cauldron::Outcome::Pass => result,
                     }
                 };
             // useItemOn on this client, unless a sneak with something in hand
@@ -711,7 +711,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             item if item.ends_with("_spawn_egg") => {
                 // SpawnEggItem.useOn is FAIL when the mob cannot spawn, else
                 // SUCCESS. No Item.use follows to spawn a second mob.
-                if sunrise_client::block_entity_item::item_entity_data(stack, self.res.items())
+                if sunrise_sim::block_entity_item::item_entity_data(stack, self.res.items())
                     .is_some_and(|data| self.spawn_egg_allowed(&data.kind))
                 {
                     self.with_hand(hand, Game::swing_arm);
@@ -801,7 +801,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             });
         if let Some(block) = knot_block {
             let bounds = crate::game::pick_entity::knot_bounds(block);
-            let p = sunrise_client::mobs::leash::knot_state(block).position;
+            let p = sunrise_sim::mobs::leash::knot_state(block).position;
             let (lo, hi) = (bounds.min_position(), bounds.max_position());
             return Some(([[lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]], [p.x, p.y, p.z]));
         }

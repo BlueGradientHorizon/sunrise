@@ -1,6 +1,7 @@
 use super::{Game, spill};
-use sunrise_client::{entities::ItemEntity, items::ItemStack};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ItemEntity;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `new ItemEntity(..)`: the item at the end of `dropped`, not yet joined

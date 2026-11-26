@@ -11,13 +11,10 @@ use crate::game::server_side::trading::merchant_title;
 use crate::game::server_side::trading::on_scroller;
 use crate::game::server_side::trading::scroller_cursor;
 use crate::game::server_side::trading::scroller_rect;
-use sunrise_client::{
-    hud::HudBatch,
-    items::ItemStack,
-    merchant::{self, MerchantOffer, TradeContext},
-    text::Text,
-    widgets::request_cursor,
-};
+use sunrise_client::{hud::HudBatch, widgets::request_cursor};
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::merchant::{self, MerchantOffer, TradeContext};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `MerchantScreen` rendering.
@@ -52,7 +49,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             batch.rect_uv(ox + SHIFT, oy, 276.0, 166.0, r, u32::MAX);
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        let tr = |k: &str, f: &str| sunrise_client::lang::get_or(k, f);
+        let tr = |k: &str, f: &str| sunrise_client_core::lang::get_or(k, f);
         let name = merchant_display_name(progress, &profession, custom);
         // The screen's title is the merchant's name; its label adds the level.
         super::screen_info::name_container(|| name.plain());
@@ -258,7 +255,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // MerchantScreen.extractContents offers the restock message and trade preview before
         // AbstractContainerScreen.extractTooltip. Only the actual slot checks the carried item.
         if deprecated {
-            let text = sunrise_client::lang::get_or(
+            let text = sunrise_client_core::lang::get_or(
                 "merchant.deprecated",
                 "Villagers restock up to two times per day.",
             );
@@ -487,14 +484,18 @@ pub(in crate::game) mod select_on_a_server_tests {
     #[ignore = "daily"]
     fn picking_a_trade_on_a_server_moves_the_payment_here_too() {
         use crate::game::native_entity_refs::tests::with_client_game;
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::merchant::{ItemCost, MerchantOffer};
+        use sunrise_items::items::ItemStack;
         use sunrise_protocol::packets::play::Serverbound as S;
+        use sunrise_sim::merchant::{ItemCost, MerchantOffer};
         with_client_game(|game| {
             let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
             peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
                 .unwrap();
-            game.remote_open_merchant(1, String::new(), sunrise_client::text::Text::literal(""));
+            game.remote_open_merchant(
+                1,
+                String::new(),
+                sunrise_client_core::text::Text::literal(""),
+            );
             let offer = MerchantOffer {
                 base_cost_a: ItemCost {
                     stack: ItemStack::new("minecraft:emerald", 1),
@@ -530,11 +531,7 @@ pub(in crate::game) mod select_on_a_server_tests {
             assert_eq!(picked, [0]);
             // Shift-clicking result predicts the move while merchant effects stay on the server.
             let traded = game.stats.get("custom", "minecraft:traded_with_villager");
-            game.remote_menu_ops(&[(
-                Some(super::RESULT),
-                0,
-                sunrise_client::menu::Input::QuickMove,
-            )]);
+            game.remote_menu_ops(&[(Some(super::RESULT), 0, sunrise_sim::menu::Input::QuickMove)]);
             let mut changed = Vec::new();
             while let Ok((id, bytes)) = peer.recv() {
                 if let Ok(S::ContainerClick(p)) = S::decode(id, &bytes) {

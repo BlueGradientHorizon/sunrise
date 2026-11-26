@@ -6,8 +6,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_items::items::ItemStack;
 
 pub(in crate::game) const CRATE: &str = "placed_probe:crate";
 pub(in crate::game) const SKULL: &str = "minecraft:wither_skeleton_skull";

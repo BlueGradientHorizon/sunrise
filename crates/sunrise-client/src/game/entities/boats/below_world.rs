@@ -66,8 +66,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_tick_discards_the_vehicles_under_the_world() {
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::position::ChunkPos;
+        use sunrise_level::chunk::Chunk;
         for min_y in [-64, 0] {
             crate::game::native_entity_refs::tests::with_game(|g| {
                 g.world.shape.min_y = min_y;
@@ -112,9 +112,10 @@ mod tests {
     #[ignore = "daily"]
     fn saved_deep_end_boat_loads_then_is_discarded_and_extreme_scans_terminate() {
         use super::super::Boat;
-        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
         use sunrise_core::geometry::Vec3;
         use sunrise_core::nbt::Tag;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::motion::PlayerMotion;
         for min_y in [-64, 0] {
             crate::game::native_entity_refs::tests::with_game(|g| {
                 g.world.shape.min_y = min_y;

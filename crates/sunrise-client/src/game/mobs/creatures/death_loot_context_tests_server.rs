@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 #[ignore = "daily"]
 fn death_loot_killer_is_not_the_acting_guest() {
     use crate::game::native_guest_turn_tests::with_guests;
-    use sunrise_client::mobs::Damage;
+    use sunrise_sim::mobs::Damage;
     with_guests(|game| {
         game.side.next_entity = 1000;
         let loot = sunrise_world::loot::LootData::load(
@@ -72,7 +72,7 @@ fn death_loot_killer_is_not_the_acting_guest() {
 #[ignore = "daily"]
 fn death_loot_nested_death_keeps_outer_context() {
     use crate::game::native_guest_turn_tests::with_guests as with_game;
-    use sunrise_client::mobs::{Damage, DamageKind, Who};
+    use sunrise_sim::mobs::{Damage, DamageKind, Who};
     with_game(|game| {
         let loot = sunrise_world::loot::LootData::load(
             &game.options.resources,
@@ -91,7 +91,7 @@ fn death_loot_nested_death_keeps_outer_context() {
         game.set_allow_commands(true);
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         assert!(game.run_command("summon pig 5.5 64 8.5 {NoAI:1b,NoGravity:1b}"));
 
         let mut killer = Mob::new(41, ty.clone(), Vec3::ZERO, 0.0);
@@ -124,7 +124,7 @@ fn death_loot_nested_death_keeps_outer_context() {
 #[ignore = "daily"]
 fn death_loot_uses_call_scoped_source_and_hand() {
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
-    use sunrise_client::mobs::{Damage, DamageKind, Who};
+    use sunrise_sim::mobs::{Damage, DamageKind, Who};
     if run_fresh_cases(
         "game::server_side::creatures_server::death_loot_context_tests::death_loot_uses_call_scoped_source_and_hand",
         "SUNRISE_DEATH_LOOT_CONTEXT_CHILD",
@@ -154,7 +154,7 @@ fn death_loot_uses_call_scoped_source_and_hand() {
                 .unwrap()
                 .clone();
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 11, 123);
             // Reserve the fixture's explicit IDs before spawning experience orbs.
             game.side.next_entity = 1000;

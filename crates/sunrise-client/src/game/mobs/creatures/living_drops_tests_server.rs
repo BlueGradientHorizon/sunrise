@@ -59,7 +59,7 @@ fn the_golems_preserved_equipment_and_a_broken_stand_reach_living_drops() {
                     Vec3::new(0.5, 64.0, 0.5),
                     0.0,
                 );
-                sunrise_client::mobs::transport_items::set_held(
+                sunrise_sim::mobs::transport_items::set_held(
                     &mut golem,
                     Some(ItemStack::new("minecraft:diamond", 1)),
                 );
@@ -84,7 +84,7 @@ fn the_golems_preserved_equipment_and_a_broken_stand_reach_living_drops() {
             assert_eq!(game.dropped.len(), dropped);
             // An armor stand that breaks fires it with nothing in the list.
             game.armor_stands
-                .push(sunrise_client::entities::ArmorStand::new(
+                .push(sunrise_sim::entities::ArmorStand::new(
                     9000,
                     Vec3::new(4.5, 64.0, 4.5),
                     0.0,

@@ -38,11 +38,11 @@ pub(in crate::game) mod player;
 pub(in crate::game) use player::PlayerSectionObserver;
 
 use super::Game;
-use crate::mobs::living::section_writes::PositionWrite;
 use mod_api::__private::game::BackendRefOf;
 use mod_api::{DimensionKey, EntityRef, WorldEpoch};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use sunrise_sim::mobs::living::section_writes::PositionWrite;
 
 #[cfg(test)]
 #[path = "entity_sections/tests.rs"]
@@ -103,7 +103,7 @@ pub(in crate::game) struct EntitySections {
     /// Projectile ids seen by the current pass; kept to forget rows removed during settlement.
     pub(in crate::game) projectile_ids: Vec<u32>,
     /// Projectile ids resident after settlement; kept to avoid a fresh set per pass.
-    pub(in crate::game) projectile_live: sunrise_client::fast_hash::FxHashSet<u32>,
+    pub(in crate::game) projectile_live: sunrise_level::fast_hash::FxHashSet<u32>,
 }
 
 impl EntitySections {
@@ -314,7 +314,7 @@ pub(crate) struct LiveSectionObserver {
     pub(in crate::game) scope: Scope,
 }
 
-impl crate::mobs::living::section_writes::WriteObserver for LiveSectionObserver {
+impl sunrise_sim::mobs::living::section_writes::WriteObserver for LiveSectionObserver {
     fn position_written(
         &mut self,
         id: u32,
@@ -425,7 +425,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             moves.clear();
             return;
         };
-        let mut indices = sunrise_client::fast_hash::FxHashMap::default();
+        let mut indices = sunrise_level::fast_hash::FxHashMap::default();
         indices.extend(
             self.mobs
                 .iter()

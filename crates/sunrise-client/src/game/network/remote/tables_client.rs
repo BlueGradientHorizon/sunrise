@@ -1,6 +1,6 @@
 use super::super::Game;
 use std::{collections::HashMap, sync::Arc};
-use sunrise_client::items::EntityTypeTags;
+use sunrise_items::items::EntityTypeTags;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {

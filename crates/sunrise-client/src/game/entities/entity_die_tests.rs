@@ -2,13 +2,10 @@
 use super::{Options, Progress, Settings, load_resources};
 use crate::game::execution_role;
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    containers::BlockEntity,
-    mobs::{Mob, Who, warden},
-};
 use sunrise_client_core::who::EventSource;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+use sunrise_sim::mobs::{Mob, Who, warden};
 
 fn deaths() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     super::sculk::TEST_POSTED_EVENTS.with(|events| {
@@ -67,7 +64,7 @@ fn with_game(f: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         !game
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
     );
     f(&mut game);
 }

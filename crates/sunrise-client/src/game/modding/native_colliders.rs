@@ -12,16 +12,15 @@ use super::{
 };
 use mod_api::{Collider, ColliderError, EntityRef};
 use std::collections::{HashMap, HashSet};
-use sunrise_client::{
-    colliders::{ColliderState, valid_rotation},
-    fast_hash::FxHashMap,
-};
 use sunrise_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
+use sunrise_level::fast_hash::FxHashMap;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::collider_sync::{self, Message};
+use sunrise_sim::colliders::{ColliderState, valid_rotation};
+use sunrise_world::moving_colliders::History;
 
 /// The save key of an entity's collider, beside its attachments.
 pub(in crate::game) const SAVE_KEY: &str = "SunriseCollider";
@@ -161,17 +160,14 @@ pub(in crate::game) fn origin_bits(origin: Vec3) -> [u64; 3] {
 
 pub(in crate::game) struct Placement {
     pub(in crate::game) keys: Vec<PlacementKey>,
-    pub(in crate::game) prepared: sunrise_client_render::moving_colliders::Prepared,
+    pub(in crate::game) prepared: sunrise_world::moving_colliders::Prepared,
 }
 
 /// The recent frames of each level's colliders, on a server, for the move check of a player a
 /// collider carries.
 #[derive(Default)]
 pub(in crate::game) struct Histories(
-    pub(in crate::game)  HashMap<
-        Dim,
-        std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>,
-    >,
+    pub(in crate::game) HashMap<Dim, std::rc::Rc<std::cell::RefCell<History>>>,
 );
 
 /// The placements of each level's colliders, kept from tick to tick.
@@ -373,8 +369,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The colliders of the server level in place, where they stand now.
     pub(in crate::game) fn placed_moving_colliders(
         &mut self,
-    ) -> sunrise_client_render::moving_colliders::Prepared {
-        use sunrise_client_render::moving_colliders::{Placed, Prepared};
+    ) -> sunrise_world::moving_colliders::Prepared {
+        use sunrise_world::moving_colliders::{Placed, Prepared};
         let level = self.dim;
         let mut any = false;
         self.each_collider(|_, _| {
@@ -438,8 +434,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     #[cfg(test)]
     pub(in crate::game::server_side) fn level_collider_history(
         &self,
-    ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>>
-    {
+    ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_world::moving_colliders::History>>> {
         self.collider_histories.0.get(&self.dim).cloned()
     }
 
@@ -453,7 +448,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        use sunrise_client_render::moving_colliders::{HistoryScope, Scope};
+        use sunrise_world::moving_colliders::{HistoryScope, Scope};
 
         let level = self.collider_level();
         if level.is_some_and(Scope::covers) {
@@ -469,9 +464,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Records the level's colliders as its tick begins into the level's history and answers it.
     pub(in crate::game::server_side) fn collider_history(
         &mut self,
-        placed: &sunrise_client_render::moving_colliders::Prepared,
-    ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>>
-    {
+        placed: &sunrise_world::moving_colliders::Prepared,
+    ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_world::moving_colliders::History>>> {
         let level = self.dim;
         if placed.is_empty() {
             self.collider_histories.0.remove(&level);
@@ -510,7 +504,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The whole collider of the entity `id` to one player who started tracking it.
     pub(in crate::game) fn send_collider_snapshot(
         &mut self,
-        sender: &sunrise_client::lan::conn::PlayerSender,
+        sender: &sunrise_sim::lan::conn::PlayerSender,
         id: u32,
     ) {
         let Some(entry) = self.entity_attachments.collider(id) else {
@@ -524,11 +518,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn send_collider_sync(
         &mut self,
-        senders: &[sunrise_client::lan::conn::PlayerSender],
+        senders: &[sunrise_sim::lan::conn::PlayerSender],
         message: &Message,
     ) {
         use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
-        use sunrise_client::raw_payloads::Endpoint;
+        use sunrise_sim::raw_payloads::Endpoint;
         let body = collider_sync::encode(message);
         for sender in senders {
             let sent = self.queue_current_payload(
@@ -607,12 +601,12 @@ pub(in crate::game) mod tests {
     #[test]
     fn a_client_exempts_the_stack_its_graph_gives_and_meets_a_stranger() {
         use std::sync::Arc;
-        use sunrise_client_render::moving_colliders::{Placed, Prepared, in_level, near};
         use sunrise_core::geometry::{
             Aabb,
             oriented::{ColliderBoxes, Frame, OrientedCollider},
         };
         use sunrise_world::entity_obstruction::EntityIdentity;
+        use sunrise_world::moving_colliders::{Placed, Prepared, in_level, near};
         // 10 and 11 ride 12, and 10 carries the collider; 30 is a stranger.
         let graph = [(10, 12), (11, 12)]
             .into_iter()

@@ -1,7 +1,8 @@
 use crate::game::{Game, Hit, commands_common::Target, remote::movement::MovePacket};
 use mod_api::{EntityRef, LevelRef, PlayerAbilities, PlayerRef};
-use sunrise_client::{command::args::GameMode, items::ItemStack};
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
 use sunrise_world::stepped_interpolation::PosRot;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

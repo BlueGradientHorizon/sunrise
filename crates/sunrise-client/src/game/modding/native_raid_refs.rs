@@ -3,7 +3,7 @@
 //! and client reads return `None` or `false`.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, LevelRef, MobRef, RaidRef, RaidStatus};
-use sunrise_client::{
+use sunrise_sim::{
     lan::playerdata::ints_uuid,
     mobs::Mob,
     raid::{Raid, Raids, Status},
@@ -80,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return None;
         };
         let raider = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-        let id = sunrise_client::mobs::raider::state(raider)?.raid_id?;
+        let id = sunrise_sim::mobs::raider::state(raider)?.raid_id?;
         let level = self.entity_level(mob.entity())?;
         self.level_raid(level, id)
     }
@@ -178,7 +178,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<Vec<EntityRef>> {
         Some(
             self.native_raid_members(raid)?
-                .filter(|m| sunrise_client::mobs::raider::state(m).is_some_and(|s| s.wave == wave))
+                .filter(|m| sunrise_sim::mobs::raider::state(m).is_some_and(|s| s.wave == wave))
                 .map(|m| EntityRef::new(raid.level().epoch(), m.id))
                 .collect(),
         )
@@ -220,8 +220,8 @@ mod tests {
     use super::*;
     use mod_api::{Hooks, RaidStateChangeEvent, ServerHost, WorldEpoch};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::mobs::{Mob, raider};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Mob, raider};
 
     type RaidObservation = (RaidRef, String, Option<RaidStatus>, bool);
     struct RaidObserver(Arc<Mutex<Vec<RaidObservation>>>);
@@ -376,7 +376,7 @@ mod tests {
             assert_eq!(game.raid_groups_spawned(raid), Some(0));
             assert_eq!(
                 game.raid_num_groups(raid),
-                Some(sunrise_client::raid::num_groups(game.difficulty_id()))
+                Some(sunrise_sim::raid::num_groups(game.difficulty_id()))
             );
             assert!(!game.raid_is_started(raid));
             assert!(game.raid_is_active(raid));

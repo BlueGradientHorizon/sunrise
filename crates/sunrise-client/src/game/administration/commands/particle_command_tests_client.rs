@@ -1,10 +1,9 @@
 use crate::game::commands::world_cmds::particle_command_tests::game;
 use mod_api::client::particles::PositionSource;
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    particles::{ParticleLevel, ParticleOptions},
-};
+use sunrise_client::particles::ParticleLevel;
+use sunrise_level::chunk::Chunk;
+use sunrise_level::particle_options::ParticleOptions;
 
 /// The crumbs the command names are queued on the server and drawn on the client:
 /// `TerrainParticle.CrumblingProvider` keeps no particle for options that carry no block.
@@ -46,7 +45,7 @@ pub(in crate::game) fn drawn(
     game: &mut crate::game::ServerGame<'_>,
     command: &str,
 ) -> ParticleOptions {
-    use crate::lan::server_effects::ServerParticleData;
+    use sunrise_sim::lan::server_effects::ServerParticleData;
     game.side.pending_particles.clear();
     assert!(game.run_command(command), "{command}");
     let mut made = std::mem::take(&mut game.side.pending_particles);

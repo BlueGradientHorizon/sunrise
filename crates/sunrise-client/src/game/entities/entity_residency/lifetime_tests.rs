@@ -4,10 +4,11 @@ use std::{
     num::NonZeroU32,
     sync::{Arc, Mutex},
 };
-use sunrise_client::{items::ItemStack, join_seq::RestoreOrder};
+use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
+use sunrise_sim::join_seq::RestoreOrder;
 
 static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",

@@ -1,8 +1,10 @@
 //! The Statistics screen (`StatsScreen`): General, Items and Mobs tabs over
 //! the player's statistics, with the Done button.
 use super::{Game, Screen};
-use sunrise_client::{hud::HudBatch, items::ItemStack, text::Text, ui};
+use sunrise_client::{hud::HudBatch, ui};
+use sunrise_client_core::text::Text;
 use sunrise_core::java_number::{double_to_string, format_decimal2};
+use sunrise_items::items::ItemStack;
 use winit::keyboard::KeyCode;
 
 /// `Stats.CUSTOM` in registration order with its formatter.

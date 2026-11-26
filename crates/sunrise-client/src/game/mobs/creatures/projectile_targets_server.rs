@@ -8,14 +8,14 @@ use crate::game::creatures::projectile_targets::TargetQuery;
 use crate::game::creatures::projectile_targets::extents;
 use crate::game::creatures::projectile_targets::is_pickable_projectile;
 use crate::game::creatures::projectile_targets::knot_bounds;
-use sunrise_client::arrows::ArrowTargets;
-use sunrise_client::mobs::{MobWorld, Who};
-use sunrise_client::projectiles::{
-    Projectile, ProjectileKind, ProjectileWorld, TargetCandidate, TargetOrder,
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
+};
+use sunrise_sim::arrows::ArrowTargets;
+use sunrise_sim::mobs::{MobWorld, Who};
+use sunrise_sim::projectiles::{
+    Projectile, ProjectileKind, ProjectileWorld, TargetCandidate, TargetOrder,
 };
 
 /// Zero-allocation live world view for `ProjectileWorld` and `ArrowTargets`.
@@ -297,7 +297,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         };
         self.creatures.projectiles.update(j, |target| {
             target.deflect(
-                sunrise_client::projectiles::Turn::Direction(dir),
+                sunrise_sim::projectiles::Turn::Direction(dir),
                 [1.0; 3],
                 (hitter_owner, hitter_owner_uuid, hitter_guest),
                 true,
@@ -412,7 +412,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         causing: i32,
         creative: bool,
     ) -> bool {
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type: info.damage_type,
             causing,
             direct: info.direct_id as i32,
@@ -421,7 +421,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
         crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
-                sunrise_client::health::Hurting::Entity(id as i32, kind, source),
+                sunrise_sim::health::Hurting::Entity(id as i32, kind, source),
                 vanilla,
             )
     }
@@ -464,7 +464,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
             out.push((Who::Mob(c.id), extents(c.bounds())));
         }
         for k in self.resident_entities.knots.iter() {
-            let pos = sunrise_client::mobs::leash::knot_state(k.fence).position;
+            let pos = sunrise_sim::mobs::leash::knot_state(k.fence).position;
             out.push((Who::Mob(k.id), knot_bounds(pos)));
         }
         for o in self.side.others.0.iter() {
@@ -484,7 +484,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         let mob_blocked = !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing_target, Some(Target::Mob(_)));
 
         // ArmorStand.hurtServer (igniteForSeconds clears freeze; refusal restores fire_ticks only).
@@ -960,7 +960,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         }
         for k in self.resident_entities.knots.iter() {
             if allows(k.id, false) {
-                let pos = sunrise_client::mobs::leash::knot_state(k.fence).position;
+                let pos = sunrise_sim::mobs::leash::knot_state(k.fence).position;
                 visit(TargetCandidate {
                     who: Who::Mob(k.id),
                     bounds: knot_bounds(pos),

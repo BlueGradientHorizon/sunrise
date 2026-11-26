@@ -4,8 +4,9 @@
 //! item meets no item, so its scan, which would find nothing, is skipped; a
 //! reach near an item scans as before, in the same order, with the same tests,
 //! jumping over the items of the cells it doesn't meet ([`ItemScan`]).
-use sunrise_client::{entities::ItemEntity, fast_hash::FxHashMap, join_seq::JoinSeq};
 use sunrise_core::geometry::Aabb;
+use sunrise_level::fast_hash::FxHashMap;
+use sunrise_sim::{entities::ItemEntity, join_seq::JoinSeq};
 
 /// Cells of 8 blocks on each axis.
 const SHIFT: i32 = 3;
@@ -198,7 +199,7 @@ mod tests {
             health: 5,
             fire_ticks: 0,
             id: 1,
-            stack: sunrise_client::items::ItemStack::new("minecraft:egg", 1),
+            stack: sunrise_items::items::ItemStack::new("minecraft:egg", 1),
             thrower: None,
             target: None,
             position: p,

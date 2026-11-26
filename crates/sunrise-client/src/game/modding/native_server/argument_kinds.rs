@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex, OnceLock},
 };
-use sunrise_client::command::{
+use sunrise_command::{
     CommandError, Dispatcher, MAX_SUGGESTION_TEXT, MAX_SUGGESTION_TOOLTIP, NodeKind, Range, Reader,
     args::Coordinates, snbt,
 };
@@ -419,10 +419,10 @@ fn suggestion_refusal(
 fn provider_suggestions(
     provider: &Arc<dyn mod_api::SuggestionProvider>,
     id: &str,
-    reg: &sunrise_client::command::Registries,
+    reg: &sunrise_command::Registries,
     prefix: &str,
-    arguments: &[sunrise_client::command::ParsedArgument],
-) -> Vec<sunrise_client::command::CustomSuggestion> {
+    arguments: &[sunrise_command::ParsedArgument],
+) -> Vec<sunrise_command::CustomSuggestion> {
     let request = mod_api::SuggestionRequest::new(
         prefix,
         arguments
@@ -445,7 +445,7 @@ fn provider_suggestions(
         Ok(reply) => reply
             .suggestions
             .into_iter()
-            .map(|suggestion| sunrise_client::command::CustomSuggestion {
+            .map(|suggestion| sunrise_command::CustomSuggestion {
                 text: suggestion.text,
                 tooltip: suggestion.tooltip,
                 // The provider answers whole-prefix completions: no replacement offset.
@@ -491,7 +491,7 @@ pub(in crate::game) fn argument_type(node: &Value, arguments: &CommandArguments)
             }
         };
         // Use the validated tree properties rather than calling mod code again.
-        use sunrise_client::command::CustomArgumentKind as Kind;
+        use sunrise_command::CustomArgumentKind as Kind;
         let kind = match node["parser"].as_str() {
             Some("brigadier:integer") => {
                 let (min, max) = integer_bounds(node);
@@ -505,7 +505,7 @@ pub(in crate::game) fn argument_type(node: &Value, arguments: &CommandArguments)
             _ if node["properties"]["type"] == "phrase" => Kind::Quotable,
             _ => Kind::Word,
         };
-        let custom = sunrise_client::command::CustomArgument::new(
+        let custom = sunrise_command::CustomArgument::new(
             id,
             kind,
             move |input| {
@@ -513,7 +513,7 @@ pub(in crate::game) fn argument_type(node: &Value, arguments: &CommandArguments)
                     .map_err(|_| Text::tr("commands.generic.failed", &[]))?
                     .map_err(refused_argument_text)
             },
-            move |reg: &sunrise_client::command::Registries, prefix: &str| {
+            move |reg: &sunrise_command::Registries, prefix: &str| {
                 // The mod's provider decides what this sender may complete; the game keeps
                 // its answer as it comes (`CommandSender::suggest`).
                 let sender = reg.sender.as_ref().map(|sender| {
@@ -557,7 +557,7 @@ pub(in crate::game) fn argument_type(node: &Value, arguments: &CommandArguments)
                             eprintln!("{refusal}");
                             return None;
                         }
-                        Some(sunrise_client::command::CustomSuggestion {
+                        Some(sunrise_command::CustomSuggestion {
                             text: suggestion.text,
                             tooltip: suggestion.tooltip,
                             replace_start: suggestion.replace_start,

@@ -1,12 +1,14 @@
 use super::super::{Game, commands::OtherEntity, persist::ItemDisplayTransformation};
-use sunrise_client::{
-    entity_nbt,
+use sunrise_client_core::{
     nbt_path::int_value,
-    save::{float, number, text},
     scoreboard::{component_tag, tag_to_json},
 };
 use sunrise_core::nbt::Tag;
 use sunrise_items::item_nbt::{item_from_nbt, item_to_nbt};
+use sunrise_sim::{
+    entity_nbt,
+    save::{float, number, text},
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Display.addAdditionalSaveData`: save the settings as the codecs read

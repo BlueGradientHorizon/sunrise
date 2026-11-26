@@ -4,12 +4,13 @@
 //! `ItemFrameRenderer` (the frame model and the item at a 45 degree step).
 use super::{Game, Hit, InteractTarget};
 use sunrise_assets::{bake::bake_model, item_model::OwnerState, resolve::ModelLibrary};
-use sunrise_client::{entities::ItemFrame, items::ItemStack};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ItemFrame;
 /// A baked frame model: (corners in block units, unit UVs, sprite) per quad.
 pub(in crate::game) type FrameModel = Vec<([[f32; 3]; 4], [[f32; 2]; 4], String)>;
 
@@ -116,7 +117,7 @@ pub(in crate::game::server_side) fn visual_rotation_y_degrees(f: &ItemFrame) -> 
         (0, y, _) => (-1, 90 * y),
         _ => (0, 0),
     };
-    crate::camera::wrap_degrees(
+    sunrise_level::camera_math::wrap_degrees(
         180.0 + (two_d * 90) as f32 + f32::from(f.rotation) * 45.0 + correction as f32,
     )
 }
@@ -132,7 +133,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Vec3::new(lo[0], lo[1], lo[2]),
             Vec3::new(hi[0], hi[1], hi[2]),
         );
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -199,8 +200,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let pos: [i32; 3] = std::array::from_fn(|i| hit.pos[i] + hit.face[i]);
         // `ItemFrameItem.mayPlace`: `Level.isInsideBuildHeight(blockPos)`, so a frame is not
         // placed on the top face of the highest block or under the lowest one.
-        if !(sunrise_client::chunk::MIN_Y
-            ..sunrise_client::chunk::MIN_Y + sunrise_client::chunk::HEIGHT)
+        if !(sunrise_level::chunk::MIN_Y
+            ..sunrise_level::chunk::MIN_Y + sunrise_level::chunk::HEIGHT)
             .contains(&pos[1])
         {
             // ItemFrameItem.mayPlace's FAIL.
@@ -223,18 +224,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ticks: 0,
             // `applyComponentsFromItemStack` sets `CUSTOM_NAME`.
             custom_name: stack.data().and_then(|d| d.custom_name.clone()),
-            random: sunrise_client::random_source::entity(),
+            random: sunrise_level::random_source::entity(),
         };
         // `EntityType.createDefaultStackConfig`: the item's `custom_data`, then its
         // `entity_data` merged over the frame (`TypedEntityData.loadInto`), before
         // `survives` runs on the configured frame.
         let kind = frame.kind();
         let own =
-            sunrise_client::entity_nbt::item_frame_to_nbt(&frame, [0; 4], None, self.res.items());
-        let configured =
-            sunrise_client::block_entity_item::stack_configured_entity(stack, kind, &own);
+            sunrise_sim::entity_nbt::item_frame_to_nbt(&frame, [0; 4], None, self.res.items());
+        let configured = sunrise_sim::block_entity_item::stack_configured_entity(stack, kind, &own);
         if let Some(mut loaded) =
-            sunrise_client::entity_nbt::item_frame_from_nbt(&configured, frame.id)
+            sunrise_sim::entity_nbt::item_frame_from_nbt(&configured, frame.id)
         {
             loaded.glow = glow;
             frame = loaded;
@@ -312,7 +312,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.frame_output_changed(p);
         // ItemFrame.interact: BLOCK_CHANGE by the player after setItem or
         // setRotation, then the held item is consumed.
-        let ctx = self.who_context(Some(sunrise_client::mobs::Who::Player), None);
+        let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Player), None);
         self.post_game_event("minecraft:block_change", at, ctx);
         if action == "put" && !self.creative {
             self.consume_held();
@@ -392,7 +392,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob_blocked = !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
             && matches!(source, Some(super::commands::Target::Mob(_)));
         let fixed = self.item_frames[i].fixed;
         if fixed {
@@ -465,20 +465,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // for the item, ItemFrame.dropItem(level, causedBy) for the frame.
         let ctx = match source {
             Some(super::commands::Target::Player) => {
-                self.who_context(Some(sunrise_client::mobs::Who::Player), None)
+                self.who_context(Some(sunrise_sim::mobs::Who::Player), None)
             }
             Some(super::commands::Target::Guest(conn)) => {
                 let who = self
                     .command_guest(conn)
-                    .map(|g| sunrise_client::mobs::Who::Mob(g.entity_id as u32))
-                    .or(Some(sunrise_client::mobs::Who::Player));
+                    .map(|g| sunrise_sim::mobs::Who::Mob(g.entity_id as u32))
+                    .or(Some(sunrise_sim::mobs::Who::Player));
                 self.who_context(who, None)
             }
             Some(super::commands::Target::Mob(id)) => {
-                self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None)
+                self.who_context(Some(sunrise_sim::mobs::Who::Mob(id)), None)
             }
             _ => {
-                let who = by_player.then_some(sunrise_client::mobs::Who::Player);
+                let who = by_player.then_some(sunrise_sim::mobs::Who::Player);
                 self.who_context(who, None)
             }
         };
@@ -522,7 +522,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
             || !by_player
         {
             self.remove_framed_map(f);
@@ -530,7 +530,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
             || (by_player && creative)
         {
             return;
@@ -693,7 +693,7 @@ pub(in crate::game) mod map_limit_tests {
 pub(in crate::game) mod game_event_tests {
     use super::super::game_tests::tests::server_game;
     use super::*;
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
 
     fn frame(id: u32, pos: [i32; 3], item: Option<ItemStack>) -> ItemFrame {
         ItemFrame {
@@ -771,7 +771,7 @@ pub(in crate::game) mod game_event_tests {
         // (eye height 1.62 above the feet).
         let feet = Vec3::new(0.5, 64.5 - 1.62, -1.0);
         game.player =
-            Some(sunrise_client::motion::PlayerMotion::new(game.motion, feet).expect("a player"));
+            Some(sunrise_sim::motion::PlayerMotion::new(game.motion, feet).expect("a player"));
         game.yaw = 0.0;
         game.pitch = 0.0;
 

@@ -228,7 +228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         click: &sunrise_protocol::packets::play::ContainerClick,
     ) -> bool {
         use super::lan_menus::ClickReply;
-        use sunrise_client::lan::menu::Slots;
+        use sunrise_sim::lan::menu::Slots;
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuClicked) {
             return false;
         }
@@ -266,7 +266,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let offhand = guest.offhand.clone();
         let carried = guest.carried.clone();
         let capture_block = |game: &Game<'_, crate::game::server_side::ServerState>,
-                             guest: &sunrise_client::lan::guest::Guest,
+                             guest: &sunrise_sim::lan::guest::Guest,
                              pos: (i32, i32, i32)| {
             (
                 game.world.block_entities.generation(&pos),

@@ -1,8 +1,6 @@
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
-use sunrise_client::{
-    items::ItemStack,
-    mobs::finalize::{MAINHAND, item_stack},
-};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::finalize::{MAINHAND, item_stack};
 
 pub(in crate::game) const TRIDENT: &str = "minecraft:trident";
 pub(in crate::game) const RIPTIDE: &str = "minecraft:riptide";

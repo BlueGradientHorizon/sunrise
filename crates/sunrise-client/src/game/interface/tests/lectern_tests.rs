@@ -3,11 +3,9 @@
 //! `LecternBlockEntity.onBookItemRemove`).
 use super::super::game_tests::tests::server_game;
 use crate::game::{Hit, sculk::TEST_POSTED_EVENTS};
-use sunrise_client::{
-    containers::{BlockEntity, Lectern},
-    items::ItemStack,
-    mobs::Who,
-};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::{BlockEntity, Lectern};
+use sunrise_sim::mobs::Who;
 
 /// A lectern at `pos`: the state's `has_book`, and the entity's book.
 fn lectern(
@@ -35,7 +33,7 @@ fn lectern(
 fn lectern_item() -> ItemStack {
     let text = r#"{"minecraft:block_entity_data":{id:"minecraft:lectern",Book:{id:"minecraft:written_book",count:1,components:{"minecraft:written_book_content":{title:"t",author:"a",pages:["p1","p2"]}}}}}"#;
     let components = sunrise_core::nbt::parse_snbt(text).expect("snbt").0;
-    let (damage, extra) = sunrise_client::item_data::decode_components(Some(&components));
+    let (damage, extra) = sunrise_items::item_data::decode_components(Some(&components));
     ItemStack {
         damage,
         extra,

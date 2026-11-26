@@ -6,8 +6,8 @@ use mod_api::{
     BlockEntityLevelReadAccess, BlockEntityLevelReadScope, BlockEntityReadView, BlockEntityRef,
     BlockEntityTypeKey, HookId, LevelHost, LevelRef,
 };
-use sunrise_client::world::World;
 use sunrise_core::nbt::Compound;
+use sunrise_level::world::World;
 
 fn loaded_payload(
     world: &World,

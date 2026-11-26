@@ -1,7 +1,7 @@
 //! Server-side item entity transaction journal writers.
 use super::Game;
 use crate::game::transactions::{After, KeptItemEntity};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Sets the stack of `id` for an item place. A caller that already has a
@@ -41,7 +41,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         index: usize,
     ) -> (
-        &mut sunrise_client::entities::ItemEntity,
+        &mut sunrise_sim::entities::ItemEntity,
         Option<&mut KeptItemEntity>,
     ) {
         let item = &mut self.dropped[index];

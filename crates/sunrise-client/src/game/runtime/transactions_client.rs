@@ -3,7 +3,7 @@ use crate::game::transactions::{
     After, ClosingPhase, JournaledPlayer, Kept, KeptPlayer, Level, Pos, StorageSettlement, entities,
 };
 use mod_api::TransactionLifecycle;
-use sunrise_client::block_entities::BlockEntityIdentity;
+use sunrise_level::block_entities::BlockEntityIdentity;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_tx_close_storage_transaction(
@@ -13,7 +13,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut level = self.transactions.pop()?;
         let refused = commit
             && level.packets.is_some()
-            && sunrise_client::lan::conn::transaction_packets::Scope::refused();
+            && sunrise_sim::lan::conn::transaction_packets::Scope::refused();
         let commit = commit && !refused;
         let owned = level.owned_scratch.take().and_then(|id| {
             level.scratch_kept.remove(&id);

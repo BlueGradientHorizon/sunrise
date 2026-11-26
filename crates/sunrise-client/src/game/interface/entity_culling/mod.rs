@@ -381,9 +381,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 mod precheck_envelope_tests {
     use super::super::entity_client::mob_render_bounds;
     use std::{path::Path, sync::Arc};
-    use sunrise_client::mobs::{Mob, MobTypes, Species, render};
+    use sunrise_client::mobs::render;
     use sunrise_client::mobs_render::{ClientMobData, ClientMobModels, ClientMobRender};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Mob, MobTypes, Species};
 
     #[test]
     fn vanilla_models_and_animations_stay_inside_the_precheck_envelope() {

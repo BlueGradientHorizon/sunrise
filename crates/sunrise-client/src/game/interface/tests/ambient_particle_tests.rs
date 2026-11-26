@@ -3,8 +3,8 @@
 //! decoded (`Registry.byNameCodec`, `Item.CODEC`), and the attribute files are read before a
 //! level's registries exist, so the level that draws the option makes the lookup.
 use crate::game::native_entity_refs::tests::with_client_game;
-use sunrise_client::particles::ParticleType;
 use sunrise_core::nbt::Tag;
+use sunrise_level::particle_options::ParticleType;
 use sunrise_world::chunk::BlockState;
 use sunrise_world::particle_options::ParticleOptions;
 use sunrise_world::particle_type::ParticleType as PersistentType;

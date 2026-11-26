@@ -263,7 +263,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         destination: Dim,
         was_death: bool,
-        restore_replacement: impl FnOnce(&mut sunrise_client::lan::guest::Guest),
+        restore_replacement: impl FnOnce(&mut sunrise_sim::lan::guest::Guest),
         after_clone: impl FnOnce(&mut Self),
     ) -> bool {
         let Some((i, uuid, name)) = self.lan.as_ref().and_then(|host| {
@@ -620,7 +620,7 @@ mod tests {
                 game.enter_level(dimension).unwrap();
                 game.ui.rules.set(
                     "keep_inventory",
-                    sunrise_client::gamerules::Value::Bool(keep),
+                    sunrise_client_core::gamerules::Value::Bool(keep),
                 );
                 let host = game.lan.as_mut().unwrap();
                 host.hub.guests.update(0, |guest| {
@@ -633,7 +633,7 @@ mod tests {
                     guest
                         .effects
                         .list
-                        .push(sunrise_client::effects::EffectInstance::from_def(
+                        .push(sunrise_level::effects::EffectInstance::from_def(
                             sunrise_client_core::potions::effect_by_index(
                                 mod_api::__private::effect_index(
                                     mod_platform::__private::part_tests::effect_key(
@@ -825,7 +825,7 @@ mod tests {
                         game.enter_level(dim).unwrap();
                         game.side.streaming.insert_remote(
                             &mut game.world,
-                            sunrise_client::chunk::Chunk::empty(0, 0),
+                            sunrise_level::chunk::Chunk::empty(0, 0),
                         );
                         if !death {
                             assert!(
@@ -926,8 +926,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn direct_respawn_clones_in_the_resolved_level_not_the_callers_level() {
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::dimension::Dimension;
+        use sunrise_level::chunk::Chunk;
 
         struct Destination {
             missing: bool,

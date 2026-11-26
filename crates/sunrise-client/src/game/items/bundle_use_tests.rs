@@ -69,7 +69,7 @@ fn bundle_completes_on_tick_200() {
                     vec![(
                         "minecraft:item_interact_finish",
                         [10.5, 64.0, -3.25],
-                        Some(sunrise_client::mobs::Who::Player)
+                        Some(sunrise_sim::mobs::Who::Player)
                     )]
                 )
             });

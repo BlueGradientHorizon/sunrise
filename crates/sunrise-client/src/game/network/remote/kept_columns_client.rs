@@ -1,6 +1,6 @@
 use super::*;
 use crate::game::remote::kept_columns::Column;
-use sunrise_client::{chunk_map::ClientChunkRange, fast_hash::FxHashSet};
+use sunrise_level::{chunk_map::ClientChunkRange, fast_hash::FxHashSet};
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -70,12 +70,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(renderer) = self.side.renderer.0.as_mut() {
             renderer.remove_columns(gone.iter().copied());
         }
-        sunrise_client::chunk::free_columns(freed, gone.len());
+        sunrise_level::chunk::free_columns(freed, gone.len());
         self.side
             .be_anims
             .pots
             .retain(|[x, _, z], _| !gone.contains(&(*x >> 4, *z >> 4)));
-        sunrise_client::spans::time("unload_block_entities", || {
+        sunrise_level::spans::time("unload_block_entities", || {
             for &column in gone.iter() {
                 self.world.block_entities.unload_column(column);
             }

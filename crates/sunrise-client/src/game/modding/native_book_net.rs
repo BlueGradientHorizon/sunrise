@@ -4,8 +4,8 @@ use std::{
     collections::BTreeSet,
     sync::atomic::{AtomicU64, Ordering},
 };
-use sunrise_client::recipe_book::{settings_codec, settings_sync::CHANNEL};
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Clientbound as C};
+use sunrise_sim::recipe_book::{settings_codec, settings_sync::CHANNEL};
 static EPOCH: AtomicU64 = AtomicU64::new(1);
 fn registered() -> BTreeSet<String> {
     mod_api::RecipeBookTypeKey::registered()
@@ -68,7 +68,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         player: mod_api::PlayerRef,
         book: &mod_api::RecipeBookTypeKey,
-        flags: sunrise_client::recipe_book::BookFlags,
+        flags: sunrise_sim::recipe_book::BookFlags,
     ) {
         let Some(host) = self.lan.as_ref() else {
             return;

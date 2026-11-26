@@ -1,6 +1,6 @@
 use crate::game::native_guest_turn_tests::with_guests;
 use std::sync::{Arc, Mutex};
-use sunrise_client::lan::recipes::ContentPart;
+use sunrise_sim::lan::recipes::ContentPart;
 
 struct MachineTypes;
 #[mod_api::__subscriptions]
@@ -44,7 +44,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 for conn in [12, 13] {
                     let (tx, rx) = std::sync::mpsc::channel();
                     game.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
-                        g.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+                        g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                     });
                     receivers.push(rx);
                 }
@@ -60,7 +60,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 assert_eq!(last.last, Some(vec!["recipe_sync_data:grinding".into()]));
                 assert!(host.hub.guest(13).unwrap().recipe_sync.payloads.is_empty());
                 for conn in [12, 13] {
-                    sunrise_client::lan::recipes::send_content(
+                    sunrise_sim::lan::recipes::send_content(
                         game.lan.as_ref().unwrap().hub.guest(conn).unwrap(),
                     );
                 }
@@ -72,7 +72,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 game.sync_recipe_content();
                 assert_eq!(*calls.lock().unwrap(), [12, 13, 12, 13]);
                 for conn in [12, 13] {
-                    sunrise_client::lan::recipes::send_content(
+                    sunrise_sim::lan::recipes::send_content(
                         game.lan.as_ref().unwrap().hub.guest(conn).unwrap(),
                     );
                 }
@@ -122,7 +122,7 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
     );
 }
 
-fn received(rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<Vec<String>> {
+fn received(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<Vec<String>> {
     let mut types = Vec::new();
     for packet in captured_packets(rx) {
         if let sunrise_protocol::packets::play::Clientbound::CustomPayload(payload) = packet {
@@ -136,7 +136,7 @@ fn received(rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<Vec
 }
 
 struct MarkedSelection {
-    senders: Arc<Mutex<std::collections::HashMap<u128, sunrise_client::lan::PlayerSender>>>,
+    senders: Arc<Mutex<std::collections::HashMap<u128, sunrise_sim::lan::PlayerSender>>>,
     decided: Arc<Mutex<Vec<u128>>>,
 }
 
@@ -188,7 +188,7 @@ fn datapack_sync_decision_precedes_join_recipe_packets() {
                 let mut receivers = Vec::new();
                 for conn in [12, 13] {
                     let (tx, rx) = std::sync::mpsc::channel();
-                    let sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+                    let sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                     senders
                         .lock()
                         .unwrap()
@@ -252,7 +252,7 @@ fn datapack_sync_disconnect_before_ask_sends_nothing_and_empty_reload_asks_nobod
                 game.native_lifecycle.world_open_ready().unwrap();
                 let (tx, rx) = std::sync::mpsc::channel();
                 game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
-                    g.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+                    g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                     g.brand = "sunrise".into();
                     g.placed = false;
                 });
@@ -276,10 +276,10 @@ fn datapack_sync_disconnect_before_ask_sends_nothing_and_empty_reload_asks_nobod
 }
 
 fn captured_packets(
-    rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+    rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
 ) -> Vec<sunrise_protocol::packets::play::Clientbound> {
-    use sunrise_client::lan::Out;
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::Out;
     let mut packets = Vec::new();
     for out in rx.try_iter() {
         let bodies = match out {

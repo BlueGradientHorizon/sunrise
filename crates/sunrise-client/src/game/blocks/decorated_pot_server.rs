@@ -2,11 +2,11 @@ use super::{Game, spill};
 use crate::game::decorated_pot::WOBBLE_NEGATIVE;
 use crate::game::decorated_pot::WOBBLE_POSITIVE;
 use crate::game::decorated_pot::unpack_loot;
-use {
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Who, sunrise_client::save,
-    sunrise_level::particle_options::ParticleType,
-};
 use {sunrise_core::nbt::Tag, sunrise_world::loot::ContainerLootContext};
+use {
+    sunrise_items::items::ItemStack, sunrise_level::particle_options::ParticleType,
+    sunrise_sim::mobs::Who, sunrise_sim::save,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `DecoratedPotBlockEntity.loadAdditional`: command edits and BlockInput
@@ -19,7 +19,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 map.insert(key.into(), before.get(key)?.clone());
             }
         }
-        let mut tag = sunrise_client::block_entity_nbt::canonical(&input)?;
+        let mut tag = sunrise_client_core::block_entity_nbt::canonical(&input)?;
         if let Tag::Compound(map) = &mut tag {
             map.remove(&"keepPacked".into());
         }
@@ -127,9 +127,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         // ServerLevel.sendParticles(DUST_PLUME, x + 0.5, y + 1.2, z + 0.5, 7, 0, 0, 0, 0).
         let plume_at = [center[0], f64::from(pos[1]) + 1.2, center[2]];
-        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+        self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            particle: crate::lan::server_effects::ServerParticle::simple(ParticleType::DustPlume),
+            particle: sunrise_sim::lan::server_effects::ServerParticle::simple(
+                ParticleType::DustPlume,
+            ),
             at: plume_at,
             spread: [0.0; 3],
             speed: [0.0; 3],

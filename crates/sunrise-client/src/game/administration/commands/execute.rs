@@ -2,7 +2,7 @@
 //! filtering command sources, then run the final command once per source,
 //! reporting each result to the `store` callbacks of its source.
 use super::{Arg, Context, Dim, Game, R, Target, data::DataRef, err, wrap_degrees};
-use sunrise_client::nbt_path::NbtPath;
+use sunrise_client_core::nbt_path::NbtPath;
 use sunrise_core::geometry::trig;
 use sunrise_core::nbt::Tag;
 
@@ -398,7 +398,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             }
             let facts = facts.get(state);
-            let blocks = facts.legacy_solid || facts.fluid != sunrise_client::blocks::Fluid::None;
+            let blocks = facts.legacy_solid || facts.fluid != sunrise_items::blocks::Fluid::None;
             let leaves = self
                 .pack
                 .assets
@@ -628,7 +628,7 @@ pub(in crate::game) fn is_player_in_place(
     level_player: Option<[i32; 4]>,
 ) -> bool {
     match acting {
-        Some(guest) => sunrise_client::lan::playerdata::ints_uuid(uuid) == guest,
+        Some(guest) => sunrise_sim::lan::playerdata::ints_uuid(uuid) == guest,
         None => Some(uuid) == level_player,
     }
 }
@@ -640,7 +640,7 @@ pub(in crate::game) mod execute_facing_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::is_player_in_place;
-    use sunrise_client::lan::playerdata::ints_uuid;
+    use sunrise_sim::lan::playerdata::ints_uuid;
 
     const OWNER: [i32; 4] = [0, 0, 0, 12];
     const GUEST: [i32; 4] = [0, 0, 0, 13];
@@ -696,8 +696,8 @@ pub(in crate::game) mod passenger_relation_tests {
 pub(in crate::game) mod terminal_fork_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
 
     #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::commands_server::execute::terminal_fork_tests::capture;

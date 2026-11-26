@@ -121,7 +121,7 @@ impl FeatureContext for Placing<'_> {
         for (axis, value) in ["x", "y", "z"].into_iter().zip(pos) {
             placed.insert(axis.into(), Tag::Int(value));
         }
-        sunrise_client::save::decode_block_entity_for_block(&Tag::Compound(placed), &name).is_some()
+        sunrise_sim::save::decode_block_entity_for_block(&Tag::Compound(placed), &name).is_some()
             && self.target.set_block_entity(pos, nbt)
     }
 }

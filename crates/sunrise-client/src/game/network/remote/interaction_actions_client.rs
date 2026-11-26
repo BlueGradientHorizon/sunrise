@@ -19,7 +19,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             },
             false,
         );
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -122,7 +122,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 | "minecraft:trident"
                 | "minecraft:spyglass"
                 | "minecraft:ender_eye"
-        ) || sunrise_client::spear::Kinetic::of(&stack.item).is_some()
+        ) || sunrise_sim::spear_sim::Kinetic::of(&stack.item).is_some()
             || self.blocks_attacks(stack).is_some()
             || self.patched_held_use(stack)
     }
@@ -147,7 +147,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(m) = self
             .mobs
             .iter_mut()
-            .find(|m| m.id == id && m.species() == sunrise_client::mobs::Species::HappyGhast)
+            .find(|m| m.id == id && m.species() == sunrise_sim::mobs::Species::HappyGhast)
         else {
             return;
         };
@@ -209,7 +209,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleAnimate`: a player wakes up, or an entity gets the critical
     /// hit (`CRIT`) or magic critical hit (`ENCHANTED_HIT`) emitter.
     pub(in crate::game::client_side) fn remote_animate(&mut self, id: i32, action: u8) {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_level::particle_options::{ParticleOptions, ParticleType};
         let particle = match action {
             // Player.stopSleepInBed.
             0 => {
@@ -258,7 +258,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || self.side.client_item_use.0.is_some()
             || self
                 .held()
-                .is_some_and(|s| sunrise_client::spear::Kinetic::of(&s.item).is_some())
+                .is_some_and(|s| sunrise_sim::spear_sim::Kinetic::of(&s.item).is_some())
         {
             return;
         }
@@ -391,7 +391,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let spear = self
             .held()
-            .and_then(|s| sunrise_client::spear::Kinetic::of(&s.item));
+            .and_then(|s| sunrise_sim::spear_sim::Kinetic::of(&s.item));
         if spear.is_some() && self.cannot_attack_with_item(self.side.hand_strength.ticker, 0) {
             return false;
         }
@@ -567,7 +567,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if id == "minecraft:bucket" {
             return !self.may_build() || !source(None);
         }
-        if sunrise_client::items::bucket_contents(id).is_some() {
+        if sunrise_items::items::bucket_contents(id).is_some() {
             return !self.may_build() || self.pick().is_none();
         }
         if id == "minecraft:glass_bottle" {

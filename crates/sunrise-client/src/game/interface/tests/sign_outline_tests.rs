@@ -1,19 +1,15 @@
 use super::{BlockEntity, CacheOptions, Vertex, in_own_process};
 use glam::DVec3;
-use sunrise_client::{
-    camera::CameraType,
-    chunk::{Chunk, Light},
-    entities::ArmorStand,
-    gfx::{TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY},
-    items::ItemStack,
-    motion::PlayerMotion,
-    signs::SignData,
-};
+use sunrise_client::gfx::{TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::{Chunk, Light};
+use sunrise_level::{camera_math::CameraType, signs_data::SignData};
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},
 };
+use sunrise_sim::{entities::ArmorStand, motion::PlayerMotion};
 
 #[test]
 #[ignore = "daily"]
@@ -217,12 +213,12 @@ fn check_signs(game: &mut crate::game::ClientGame<'_>) {
             (0, 0, 0),
             BlockEntity::Sign(SignData {
                 hanging,
-                front: sunrise_client::signs::SignText {
+                front: sunrise_level::signs_data::SignText {
                     color: 13,
                     lines: ["A".into(), String::new(), String::new(), String::new()],
                     ..Default::default()
                 },
-                back: sunrise_client::signs::SignText {
+                back: sunrise_level::signs_data::SignText {
                     color: 14,
                     glowing: true,
                     lines: ["B".into(), String::new(), String::new(), String::new()],

@@ -2,12 +2,12 @@
 use super::super::native_entity_refs::tests::with_client_game;
 use mod_api::LivingRef;
 use mod_platform::__private::part_tests::effect_key;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 fn with_client(test: impl FnOnce(&mut crate::game::ClientGame<'_>, LivingRef, i32)) {
     with_client_game(|game| {

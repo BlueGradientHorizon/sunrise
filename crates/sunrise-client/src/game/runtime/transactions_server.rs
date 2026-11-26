@@ -9,15 +9,14 @@ use crate::game::transactions::{
 };
 use mod_api::TransactionLifecycle;
 use std::collections::{HashMap, HashSet};
-use sunrise_client::{
-    block_entities::BlockEntityIdentity,
-    fast_hash::FxHashSet,
-    items::ItemStack,
+use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{block_entities::BlockEntityIdentity, fast_hash::FxHashSet};
+use sunrise_mod_runtime::attachments::Holder;
+use sunrise_sim::{
     join_seq::{JoinSeq, Joined as _},
     mobs::Mob,
 };
-use sunrise_core::position::BlockPos;
-use sunrise_mod_runtime::attachments::Holder;
 
 /// Takes the commit it pushed, and any a listener's left, off the stack when it ends, however
 /// it ends.
@@ -79,7 +78,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut level = self.transactions.pop()?;
         let refused = commit
             && level.packets.is_some()
-            && sunrise_client::lan::conn::transaction_packets::Scope::refused();
+            && sunrise_sim::lan::conn::transaction_packets::Scope::refused();
         let commit = commit && !refused;
         // Expire the loan before replay can reenter mods. Its closed row must never join
         // another journal, even if the current frame's commit is nested.
@@ -422,7 +421,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(level) = level {
             level
                 .save_gate
-                .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
+                .get_or_insert_with(sunrise_sim::join_seq::visibility::PassLease::enter);
         }
         // The chunk that a block entity's or chunk's map marks unsaved (`world_attachments`).
         let chunk = match holder {
@@ -576,7 +575,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let local = self
                     .level
                     .player_uuid
-                    .map(sunrise_client::lan::playerdata::ints_uuid);
+                    .map(sunrise_sim::lan::playerdata::ints_uuid);
                 if local != Some(uuid) {
                     return None;
                 }
@@ -730,7 +729,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let native = (g
             .menu
             .as_ref()
-            .is_some_and(|menu| menu.slots == sunrise_client::lan::menu::Slots::Native)
+            .is_some_and(|menu| menu.slots == sunrise_sim::lan::menu::Slots::Native)
             && !level.native_menu_slots.contains_key(&g.menu_generation))
         .then(|| (g.menu_generation, g.native_menu.clone()));
         if grid.is_none() && native.is_none() {
@@ -1268,7 +1267,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 (Some(entity), Some(now)) => {
                     fn shapes(
                         entity: &BlockEntity,
-                    ) -> Option<&sunrise_client::containers::PublishedShapes> {
+                    ) -> Option<&sunrise_level::containers::PublishedShapes> {
                         match entity {
                             BlockEntity::Mod(entity) => entity.shapes(),
                             _ => None,
@@ -1464,7 +1463,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // A removed window's snapshot is now held by its pending close notice, not
             // by the player. Never restore that window's stacks into a replacement.
-            use sunrise_client::lan::menu::NativeMenuEvent;
+            use sunrise_sim::lan::menu::NativeMenuEvent;
             if !level.native_menu_slots.is_empty() {
                 for event in &mut host.hub.native_menu_events {
                     if let NativeMenuEvent::Closed {
@@ -1894,7 +1893,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 equips,
                 who,
             } => {
-                let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(who)), None);
+                let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Mob(who)), None);
                 self.equip_item_effects(at, sound, equips, ctx);
             }
         }
@@ -2149,7 +2148,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn test_ender_items(&self) -> &[Option<sunrise_client::items::ItemStack>] {
+    pub(in crate::game) fn test_ender_items(&self) -> &[Option<sunrise_items::items::ItemStack>] {
         &self.side.ender_items
     }
     pub(in crate::game) fn test_lan_guest_swaps(&self) -> &[u32] {

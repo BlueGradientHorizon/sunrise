@@ -36,13 +36,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         blow: Option<(String, Option<u32>)>,
         at: [f64; 3],
         trigger: &str,
-    ) -> Option<sunrise_client::advancements::DamageView> {
+    ) -> Option<sunrise_sim::advancements::DamageView> {
         let (damage, attacker) = blow?;
         // The damage's causing entity: the player in place, another guest, or
         // a mob (`DamageSource.getEntity`).
         let source = attacker.and_then(|id| self.guest_entity_view(id, trigger));
-        Some(sunrise_client::advancements::recorded_blow(
-            damage, source, at,
-        ))
+        Some(sunrise_sim::advancements::recorded_blow(damage, source, at))
     }
 }

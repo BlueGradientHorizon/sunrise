@@ -10,8 +10,8 @@ use mod_api::{
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use sunrise_client::containers::BlockEntity;
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_level::containers::BlockEntity;
 
 pub(in crate::game) const POT: &str = "unload_probe:pot";
 /// Chunk (100, 100): far from the spawn, so only its ticket keeps it.
@@ -62,10 +62,10 @@ impl Hooks for Probe {
 }
 
 pub(in crate::game) fn request(world: &Path, create: bool) -> WorldRequest {
-    let rules = std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
+    let rules = std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
     let options = sunrise_sim::world_options::WorldOptions {
-        world_type: sunrise_client::save::WorldPreset::Flat,
-        rules: sunrise_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
+        world_type: sunrise_sim::save::WorldPreset::Flat,
+        rules: sunrise_client_core::gamerules::GameRules::with_registry(rules.clone(), &[]),
         ..Default::default()
     };
     let mut request = WorldRequest::new(
@@ -107,7 +107,7 @@ pub(in crate::game) fn pump_until(game: &mut crate::game::ServerGame<'_>, reside
 #[ignore = "daily"]
 fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
     use crate::game::execution_role::ExecutionRole;
-    use sunrise_client::{chunk::Chunk, containers::ModBlockEntity};
+    use sunrise_level::{chunk::Chunk, containers::ModBlockEntity};
     use sunrise_protocol::connection::Pipe;
     if run_fresh_cases(
         "game::native_hooks::on_chunk_unloaded_tests::a_client_tells_a_forgotten_column_but_not_its_level_going",

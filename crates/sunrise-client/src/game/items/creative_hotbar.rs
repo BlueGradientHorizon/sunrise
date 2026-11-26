@@ -1,8 +1,11 @@
 //! The creative toolbars, `hotbar.nbt` beside `options.txt`: hold the save or
 //! load key and press a hotbar key (`Minecraft.handleKeybinds`).
 use super::Game;
-use sunrise_client::{hotbar, items::ItemStack, keybinds, text::Text};
+use sunrise_client::keybinds;
+use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::hotbar;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the live mapping is held, regardless of the device's current state.

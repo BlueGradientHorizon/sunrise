@@ -102,7 +102,7 @@ fn a_block_is_shown_to_one_player() {
             .hub
             .guests
             .update_connection(13, |g| {
-                g.sender = sunrise_client::lan::PlayerSender::new(tx, Default::default());
+                g.sender = sunrise_sim::lan::PlayerSender::new(tx, Default::default());
             });
         let stone = game
             .pack
@@ -115,7 +115,7 @@ fn a_block_is_shown_to_one_player() {
         assert_eq!(b.show_block(game, [1, 70, 1], shown_state), Ok(()));
         assert_eq!(game.world.block(1, 70, 1), before);
         let mut shown = Vec::new();
-        while let Ok(sunrise_client::lan::Out::Packet(body)) = rx.try_recv() {
+        while let Ok(sunrise_sim::lan::Out::Packet(body)) = rx.try_recv() {
             let mut r = sunrise_protocol::buf::Reader::new(&body);
             let id = r.varint().unwrap();
             if let Ok(C::BlockUpdate(u)) = C::decode(id, r.rest()) {
@@ -140,7 +140,7 @@ fn each_show_block_refusal_has_its_own_name() {
             .hub
             .guests
             .update_connection(13, |g| {
-                g.sender = sunrise_client::lan::PlayerSender::new(tx, Default::default());
+                g.sender = sunrise_sim::lan::PlayerSender::new(tx, Default::default());
             });
         let stone = api_state(game, "minecraft:stone");
         for pos in [
@@ -183,7 +183,7 @@ fn each_show_block_refusal_has_its_own_name() {
             Err(Refusal::NoConnection)
         );
         let mut sent = 0;
-        while let Ok(sunrise_client::lan::Out::Packet(body)) = rx.try_recv() {
+        while let Ok(sunrise_sim::lan::Out::Packet(body)) = rx.try_recv() {
             let mut r = sunrise_protocol::buf::Reader::new(&body);
             let id = r.varint().unwrap();
             sent += matches!(C::decode(id, r.rest()), Ok(C::BlockUpdate(_))) as usize;
@@ -314,8 +314,9 @@ fn latency_reads_what_the_keep_alives_measured() {
 fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() {
     use super::native_client_session::tests::logged_client;
     use mod_api::BlockPos;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
     use sunrise_world::entity_move::MoverType::SelfMovement;
 
     fn setup<S>(game: &mut crate::game::Game<'_, S>) {

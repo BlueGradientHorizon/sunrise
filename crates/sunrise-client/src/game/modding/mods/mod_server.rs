@@ -90,7 +90,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn test_acquire_session_lock(&mut self, root: &std::path::Path) {
-        self.side.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(root).unwrap());
+        self.side.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(root).unwrap());
     }
 
     pub(in crate::game) fn test_clear_session_lock(&mut self) {
@@ -99,14 +99,14 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game) fn test_set_world_recipes(
         &mut self,
-        recipes: sunrise_client::crafting::Recipes,
+        recipes: sunrise_sim::crafting::Recipes,
     ) {
         self.side.world_tables.0.as_mut().unwrap().recipes = recipes;
     }
 
     pub(in crate::game) fn test_update_tickets(
         &mut self,
-        sources: Option<sunrise_client::ticket_levels::Sources>,
+        sources: Option<sunrise_sim::ticket_levels::Sources>,
     ) {
         self.side.tickets.0.update(sources);
     }

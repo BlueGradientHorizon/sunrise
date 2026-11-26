@@ -32,7 +32,7 @@ pub(in crate::game) fn group(g: &mut crate::game::ServerGame<'_>, packets: Vec<S
     g.lan.as_mut().unwrap().hub.guests.update(0, |p| {
         for packet in packets {
             p.inbox
-                .push_back(sunrise_client::lan::guest::InboxItem::Packet(packet, None));
+                .push_back(sunrise_sim::lan::guest::InboxItem::Packet(packet, None));
         }
     });
     // Real Hub queue/collision/event dispatch, before the receipt marker.

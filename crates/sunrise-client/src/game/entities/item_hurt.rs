@@ -1,7 +1,8 @@
 //! Shared server damage for dropped items.
 use super::{Game, commands::Target};
-use sunrise_client::{entities::ItemEntity, health::HurtSource, items::ItemStack, mobs::Who};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{entities::ItemEntity, health::HurtSource, mobs::Who};
 use sunrise_world::damage_source::DamageTypeId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -97,13 +98,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         if crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
-                sunrise_client::health::Hurting::Entity(id as i32, "minecraft:item", source),
+                sunrise_sim::health::Hurting::Entity(id as i32, "minecraft:item", source),
                 vanilla,
             )
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
                 && matches!(causing, Some(Target::Mob(_)))
         {
             return None;

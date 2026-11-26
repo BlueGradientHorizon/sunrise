@@ -51,7 +51,7 @@ pub(in crate::game) fn player_chat_info(
     p: &play::PlayerChat,
     signed: bool,
 ) -> mod_api::PlayerChatInfo {
-    use sunrise_client::scoreboard::{comp_text, tag_to_json};
+    use sunrise_client_core::scoreboard::{comp_text, tag_to_json};
     let filter = match p.filter.0 {
         1 => mod_api::ChatFilter::FullyFiltered,
         2 => mod_api::ChatFilter::Partial(p.filter.1.iter().map(|&w| w as u64).collect()),
@@ -66,7 +66,7 @@ pub(in crate::game) fn player_chat_info(
         unsigned_content: p
             .unsigned_content
             .as_ref()
-            .and_then(|t| sunrise_client_lib::api_text::to_api(&comp_text(&tag_to_json(t))).ok()),
+            .and_then(|t| sunrise_sim::api_text::to_api(&comp_text(&tag_to_json(t))).ok()),
         filter,
     }
 }

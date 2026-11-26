@@ -12,7 +12,7 @@
 //! either hook is listened to.
 use super::Game;
 use std::sync::Arc;
-use sunrise_client::mobs::MobType;
+use sunrise_sim::mobs::MobType;
 
 /// The item entities' type, as the hooks name it.
 pub(in crate::game) const ITEM: &str = "minecraft:item";
@@ -49,7 +49,7 @@ pub(in crate::game) fn place<T>(list: &[T], from: usize, is: impl Fn(&T) -> bool
 /// told during the loop changed the list (`places`, by id), then by its id (`slots`), if it is
 /// still there.
 pub(in crate::game) fn slot_place(
-    places: &Option<sunrise_client::fast_hash::FxHashMap<u32, usize>>,
+    places: &Option<sunrise_level::fast_hash::FxHashMap<u32, usize>>,
     slots: &[u32],
     slot: usize,
 ) -> Option<usize> {
@@ -63,7 +63,7 @@ pub(in crate::game) fn slot_place(
 /// during the loop changed the list.
 pub(in crate::game) fn places_of(
     ids: impl Iterator<Item = u32>,
-) -> sunrise_client::fast_hash::FxHashMap<u32, usize> {
+) -> sunrise_level::fast_hash::FxHashMap<u32, usize> {
     ids.enumerate().map(|(i, id)| (id, i)).collect()
 }
 

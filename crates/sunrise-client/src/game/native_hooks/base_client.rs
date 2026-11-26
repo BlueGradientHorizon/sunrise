@@ -20,7 +20,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// A small local vanilla particle; caller should rate-limit emission.
     pub(in crate::game) fn flame_particle(&mut self, at: [f64; 3], soul: bool) {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_level::particle_options::{ParticleOptions, ParticleType};
         if !self.native_window() || at.iter().any(|v| !v.is_finite()) {
             return;
         }
@@ -371,7 +371,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         }
         let mut stack = ItemStack::new(item, 1);
-        let mut data = sunrise_client::item_data::StackData::default();
+        let mut data = sunrise_items::item_data::StackData::default();
         data.set_other(
             "minecraft:item_model",
             Some(sunrise_core::nbt::Tag::String(model.into())),

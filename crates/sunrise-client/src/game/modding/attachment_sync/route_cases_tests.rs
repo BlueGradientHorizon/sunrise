@@ -87,7 +87,7 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
             game.side.settings.render_distance = 2;
             game.side.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
-                world_type: sunrise_client::save::WorldPreset::Flat,
+                world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
             };
             game.open_integrated(
@@ -172,7 +172,7 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
                         })
                         .encode()
                     };
-                    let holding = sunrise_client::lan::Holding::start();
+                    let holding = sunrise_sim::lan::Holding::start();
                     sender.send(chat("before"));
                     let message = attachment_sync::Message {
                         holder: Holder::Level,
@@ -186,7 +186,7 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
                     server.send_attachment_sync(std::slice::from_ref(&sender), &message);
                     sender.send(chat("after"));
                     drop(holding);
-                    sunrise_client::lan::flush_all([&sender]);
+                    sunrise_sim::lan::flush_all([&sender]);
                 })
                 .unwrap();
             near.reader

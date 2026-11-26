@@ -11,10 +11,10 @@
 //! finding a player behind that id, and find none in a vanilla game.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, RidePlayerRefusal};
-use sunrise_client::lan::entity::Riding;
-use sunrise_client::mobs::{Species, riders};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::packets::play;
+use sunrise_sim::lan::entity::Riding;
+use sunrise_sim::mobs::{Species, riders};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The entity id a player target has: the vehicle id its passengers keep.
@@ -180,7 +180,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let offset = riders::vehicle_attachment(m, width);
         m.seated(vehicle, offset, player_box);
         m.previous = m.position;
-        sunrise_client::mobs::living::teleports::set_pos(m, Vec3::new(x, high[1] - offset, z));
+        sunrise_sim::mobs::living::teleports::set_pos(m, Vec3::new(x, high[1] - offset, z));
         m.velocity = Vec3::ZERO;
         m.fall_distance = 0.0;
         m.ground.on_ground = false;
@@ -272,9 +272,9 @@ mod tests {
     use mod_api::RidePlayerRefusal as Refusal;
     use mod_api::{EntityMountEvent, Flow, Hooks, ServerHost};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::lan::entity::Riding;
-    use sunrise_client::mobs::{Mob, riders};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::lan::entity::Riding;
+    use sunrise_sim::mobs::{Mob, riders};
 
     /// The `entity_mount` calls a test heard: rider, vehicle, mounting.
     type Heard = Arc<Mutex<Vec<(u32, u32, bool)>>>;
@@ -376,7 +376,7 @@ mod tests {
             // The entity stage runs once per loaded chunk, as the unload save's fixture has one.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let (reply, _answer) = std::sync::mpsc::channel();
             let mut save = game.test_begin_server_control_save(true, reply).unwrap();
@@ -397,7 +397,7 @@ mod tests {
         ejected(|game, _| {
             let chunk =
                 game.world.chunks.get(&(0, 0)).cloned().unwrap_or_else(|| {
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0))
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0))
                 });
             game.unload_entities(&[chunk]);
         });
@@ -411,7 +411,7 @@ mod tests {
             host.hub.guests.update(0, |g| g.placed = true);
             // The hub takes a guest out of its list before it reports the leave.
             let guest = host.hub.guests.remove(0);
-            let event = sunrise_client::lan::hub::HostEvent::Left(Box::new(guest));
+            let event = sunrise_sim::lan::hub::HostEvent::Left(Box::new(guest));
             let host = game.lan.take().unwrap();
             game.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
         });

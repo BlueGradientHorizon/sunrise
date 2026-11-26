@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::mobs::{Species, Who};
+use sunrise_sim::mobs::{Species, Who};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Armadillo.mobInteract`: a brush brushes a scute off an adult

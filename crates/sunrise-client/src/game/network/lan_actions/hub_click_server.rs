@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::{lan_menus::ClickReply, stacked_on_other::Pickup};
 use std::cell::RefCell;
-use sunrise_client::menu::StackedOutcome;
+use sunrise_sim::menu::StackedOutcome;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Run the prepared click with the LAN host lifted out of the game, the game lent to it as
@@ -10,7 +10,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn hub_click_run(
         &mut self,
         p: &play::ContainerClick,
-        prepared: &RefCell<Option<sunrise_client::lan::containers::PreparedClick>>,
+        prepared: &RefCell<Option<sunrise_sim::lan::containers::PreparedClick>>,
         answer: Option<&StackedOutcome>,
     ) -> Option<(Vec<ItemStack>, Vec<usize>)> {
         let mut click = prepared.take()?;

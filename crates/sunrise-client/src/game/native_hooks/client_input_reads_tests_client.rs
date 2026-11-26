@@ -2,8 +2,8 @@
 pub(in crate::game) mod tests {
     use crate::game::{Screen, native_entity_refs::tests::with_client_game};
     use mod_api::MappingError;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
     use winit::{event::MouseButton, keyboard::KeyCode};
 
     #[test]

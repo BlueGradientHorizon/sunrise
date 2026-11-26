@@ -86,9 +86,9 @@ impl Hooks for UnchangedAttack {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::native_hooks_client::client_pick::tests::with_pick_game;
 
-pub(in crate::game) fn ranged_stack() -> sunrise_client::items::ItemStack {
+pub(in crate::game) fn ranged_stack() -> sunrise_items::items::ItemStack {
     use sunrise_core::nbt::Tag;
-    let mut stack = sunrise_client::items::ItemStack::new("minecraft:stick", 1);
+    let mut stack = sunrise_items::items::ItemStack::new("minecraft:stick", 1);
     stack.data_mut().set_other(
         "minecraft:attack_range",
         Some(Tag::Compound(
@@ -321,7 +321,7 @@ pub(in crate::game) fn with_picked_cushion(
     mod_platform::testing::with_mods(mods, || {
         with_pick_game("minecraft:cushion", 2.5, |game, server| {
             game.cushions.update(0, |c| c.position.y = 2.5);
-            game.inventory[0] = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
+            game.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
             let stone = game
                 .pack
                 .assets
@@ -450,7 +450,7 @@ fn tick_pick_survives_creative_break_then_use_until_the_next_pick() {
                 [2, 2, 0],
                 "the same tick still uses the old hit"
             );
-            game.inventory[0] = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
+            game.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
             game.remote_use(mod_api::InteractionAttempt::Press);
             assert!(
                 sent_actions(game, server).contains(&("block", 2)),

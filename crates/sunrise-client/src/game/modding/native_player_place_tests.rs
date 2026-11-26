@@ -24,7 +24,7 @@ fn loaded(game: &mut crate::game::ServerGame<'_>) {
     game.options.dedicated = Some(Vec::new());
     game.world.chunks.insert(
         (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
     );
 }
 

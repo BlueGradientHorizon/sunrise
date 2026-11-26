@@ -5,8 +5,8 @@
 //! same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 const VICTIM: &str = "00006094-0000-0000-0000-000000000001";
 const A: &str = "00006094-0000-0000-0000-000000000002";
@@ -130,7 +130,7 @@ fn a_mob_saves_the_mob_that_hurt_it_for_100_ticks() {
 use sunrise_core::nbt::Tag;
 
 fn index(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> usize {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }
@@ -149,7 +149,7 @@ fn fields(game: &mut crate::game::ServerGame<'_>, i: usize) -> (Option<Tag>, Opt
 #[test]
 #[ignore = "daily"]
 fn the_saved_hurt_by_mob_follows_the_live_record_only() {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     let mut resources = None;
     let mut game = game(&mut resources);
     let victim = index(&mut game, VICTIM);
@@ -199,7 +199,7 @@ fn the_saved_hurt_by_mob_follows_the_live_record_only() {
 #[test]
 #[ignore = "daily"]
 fn a_loaded_hurt_by_mob_is_read_back_and_ends_after_100_ticks() {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     let mut resources = None;
     let mut game = game(&mut resources);
     let echo = index(&mut game, ECHO);
@@ -286,7 +286,7 @@ fn a_loaded_hurt_by_mob_naming_no_entity_stays_until_it_arrives() {
 #[test]
 #[ignore = "daily"]
 fn a_loaded_hurt_by_mob_naming_the_mob_itself_resolves_and_ends_after_100_ticks() {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     // `EntityReference.getEntity` looks the UUID up in the level and does not
     // exclude the holder, so `baseTick` ends the record like any other.
     const SELF: &str = "00006094-0000-0000-0000-000000000006";

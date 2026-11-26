@@ -1,15 +1,13 @@
 //! Common command types and data-only helpers shared by server and client modules.
 use super::Game;
-use sunrise_client::{
-    command::CommandError,
-    items::ItemStack,
-    text::{self, Style, Text},
-};
+use sunrise_client_core::text::{self, Style, Text};
+use sunrise_command::CommandError;
 use sunrise_core::{
     geometry::Vec3,
     nbt::Tag,
     version::{BUILD_TIME, DATA_VERSION, STABLE, VANILLA_VERSION, VERSION_ID},
 };
+use sunrise_items::items::ItemStack;
 
 pub(in crate::game) type R<T> = Result<T, CommandError>;
 
@@ -92,7 +90,7 @@ pub(in crate::game) fn teleport_velocity(
 pub(in crate::game) struct OtherEntity {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     pub id: u32,
     pub kind: String,
     pub position: Vec3,
@@ -106,10 +104,10 @@ pub(in crate::game) struct OtherEntity {
     /// A summoned or loaded `minecraft:eye_of_ender`'s flight; None for every other kind.
     pub eye: Option<super::end::SummonedEye>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`).
-    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 
-sunrise_client::impl_joined!(OtherEntity);
+sunrise_sim::impl_joined!(OtherEntity);
 sunrise_mod_runtime::impl_attachment_lifetime!(OtherEntity);
 
 pub(in crate::game) fn err(key: &str, args: &[&dyn std::fmt::Display]) -> CommandError {
@@ -143,9 +141,9 @@ pub(in crate::game) fn formatted_command_failure(message: Text, timestamp: Optio
             }
         }
         let tag = if timestamp.is_some() {
-            sunrise_client::scoreboard::component_tag(&component)
+            sunrise_client_core::scoreboard::component_tag(&component)
         } else {
-            sunrise_client::lan::data::component_nbt(&component)
+            sunrise_sim::lan::data::component_nbt(&component)
         };
         if timestamp.is_some() {
             // The saved component sits under chunk root, block_entities/Entities, and entry.
@@ -275,7 +273,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             shown["count"] = s.count.into();
         }
         // ItemStackTemplate.fromNonEmptyStack keeps the stack's component patch.
-        if let Some(patch) = sunrise_client::item_data::encode_components(s, self.items())
+        if let Some(patch) = sunrise_items::item_data::encode_components(s, self.items())
             && let Ok(components) = sunrise_core::json_nbt::tag_to_json(&patch)
         {
             shown["components"] = components;
@@ -367,7 +365,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             ),
             ("insertion".into(), name.into()),
         ]);
-        sunrise_client::lan::hub::native_player_name_format(
+        sunrise_sim::lan::hub::native_player_name_format(
             &self.loop_context,
             &Text::literal(name),
             &mut shown,

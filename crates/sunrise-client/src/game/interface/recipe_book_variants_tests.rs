@@ -6,12 +6,12 @@
 //! vanilla 26.3 with a real client).
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 const GUEST: &str = "RecipeGuest";
 
@@ -20,7 +20,7 @@ fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> (
     crate::game::ServerGame<'a>,
-    mpsc::Receiver<sunrise_client::lan::Out>,
+    mpsc::Receiver<sunrise_sim::lan::Out>,
 ) {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
@@ -117,19 +117,21 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<Stri
     let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
+        said.iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect(),
     )
 }
 
 /// The display ids of every recipe book Add the guest was sent.
-fn added(rx: &mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<Vec<i32>> {
+fn added(rx: &mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<Vec<i32>> {
     use sunrise_protocol::packets::play::Clientbound as C;
     let mut result = Vec::new();
     for out in rx.try_iter() {
         let bodies = match out {
-            sunrise_client::lan::Out::Packet(body) => vec![body],
-            sunrise_client::lan::Out::Packets(bodies) => bodies,
-            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+            sunrise_sim::lan::Out::Packet(body) => vec![body],
+            sunrise_sim::lan::Out::Packets(bodies) => bodies,
+            sunrise_sim::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
         };
         for body in bodies {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -151,7 +153,7 @@ fn step(game: &mut crate::game::ServerGame<'_>, ticks: usize) {
 
 fn grant(
     game: &mut crate::game::ServerGame<'_>,
-    rx: &mpsc::Receiver<sunrise_client::lan::Out>,
+    rx: &mpsc::Receiver<sunrise_sim::lan::Out>,
     recipe: &str,
 ) -> Vec<Vec<i32>> {
     let _ = added(rx);
@@ -193,14 +195,14 @@ fn a_recipe_with_eight_displays_sends_eight_entries() {
 // Added after the baseline (the authorized adapter): a recipe with several
 // displays still has no ghost (PlaceRecipe is unchanged), and an ordinary
 // recipe's ghost is still sent.
-fn ghosts(rx: &mpsc::Receiver<sunrise_client::lan::Out>) -> usize {
+fn ghosts(rx: &mpsc::Receiver<sunrise_sim::lan::Out>) -> usize {
     use sunrise_protocol::packets::play::Clientbound as C;
     let mut n = 0;
     for out in rx.try_iter() {
         let bodies = match out {
-            sunrise_client::lan::Out::Packet(body) => vec![body],
-            sunrise_client::lan::Out::Packets(bodies) => bodies,
-            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+            sunrise_sim::lan::Out::Packet(body) => vec![body],
+            sunrise_sim::lan::Out::Packets(bodies) => bodies,
+            sunrise_sim::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
         };
         for body in bodies {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);

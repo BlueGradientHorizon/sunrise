@@ -27,7 +27,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(mut bundle) = self.stack_in(slot).cloned() else {
             return;
         };
-        let Some(mut contents) = sunrise_client::bundle::Contents::of(items, &bundle) else {
+        let Some(mut contents) = sunrise_items::bundle::Contents::of(items, &bundle) else {
             return;
         };
         let Some(removed) = contents.remove_one(items) else {
@@ -43,12 +43,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // playRemoveOneSound, then Player.drop and playDropContentsSound at
         // the player's block.
         let pitch = 0.8 + self.world.random.next_float() * 0.4;
-        self.server_play_sound(sunrise_client::bundle::REMOVE_ONE, at, 0.8, pitch);
+        self.server_play_sound(sunrise_items::bundle::REMOVE_ONE, at, 0.8, pitch);
         self.player_drop(removed);
         let block = BlockPos::containing(position);
         let pitch = 0.8 + self.world.random.next_float() * 0.4;
         self.server_play_sound(
-            sunrise_client::bundle::DROP_CONTENTS,
+            sunrise_items::bundle::DROP_CONTENTS,
             [block.x, block.y, block.z].map(|v| f64::from(v) + 0.5),
             0.8,
             pitch,

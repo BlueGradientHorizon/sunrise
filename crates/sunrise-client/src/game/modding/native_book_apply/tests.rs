@@ -1,8 +1,8 @@
 use super::*;
 use mod_api::__private::game::Fields;
 use mod_api::{Hand, HostTransaction, ItemPlace, ItemResource, MenuSlotPlace, ServerHost};
-use sunrise_client::{
-    containers::{BlockEntity, ModBlockEntity, ModMenuType},
+use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModMenuType};
+use sunrise_sim::{
     crafting::{Ingredient, Placement},
     lan::menu::{Menu as Open, Slots},
     recipe_book::{
@@ -28,7 +28,7 @@ fn open_mod_menu(
     }));
     let mut block = ModBlockEntity::new("review:block".into(), Default::default());
     block.items = vec![
-        Some(sunrise_client::items::ItemStack::new("minecraft:dirt", 1)),
+        Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 1)),
         None,
         None,
     ];
@@ -38,7 +38,7 @@ fn open_mod_menu(
     game.world.block_entities.set_mod_containers(
         [(
             game.world.block(pos.0, pos.1, pos.2).0,
-            std::sync::Arc::new(sunrise_client::containers::ModContainer {
+            std::sync::Arc::new(sunrise_level::containers::ModContainer {
                 slots: 3,
                 ..Default::default()
             }),
@@ -283,11 +283,11 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                 open.slots = Slots::Native;
                 open.pos = None;
                 g.native_menu = vec![None; open.size];
-                g.inventory[0] = Some(sunrise_client::items::ItemStack::new(
+                g.inventory[0] = Some(sunrise_items::items::ItemStack::new(
                     "minecraft:shulker_box",
                     1,
                 ));
-                g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
+                g.inventory[9] = Some(sunrise_items::items::ItemStack::new(
                     "minecraft:iron_ore",
                     3,
                 ));

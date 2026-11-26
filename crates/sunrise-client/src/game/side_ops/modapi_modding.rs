@@ -9,12 +9,9 @@ use mod_api::{
 };
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
-use sunrise_client::{
-    items::{ItemStack, Items},
-    lan::PlayerSender,
-    mobs::finalize::EquipmentRead,
-    world::World,
-};
+use sunrise_items::items::{ItemStack, Items};
+use sunrise_level::world::World;
+use sunrise_sim::{lan::PlayerSender, mobs::finalize::EquipmentRead};
 use sunrise_world::{native_load_context::LoopContext, registry::BlockStateId};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

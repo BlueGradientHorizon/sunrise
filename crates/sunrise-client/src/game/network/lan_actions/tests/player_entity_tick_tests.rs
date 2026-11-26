@@ -4,8 +4,9 @@
 
 use mod_api::{EntityTickListenedEvent, EntityTickPreEvent, HostSide, ModEntry, Mods};
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, containers::BlockEntity, lan::menu::Slots, mobs::Mob};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+use sunrise_sim::{lan::menu::Slots, mobs::Mob};
 
 /// A listener's calls, in order: the phase and the entities told.
 type Heard = Arc<Mutex<Vec<(&'static str, Vec<u32>)>>>;

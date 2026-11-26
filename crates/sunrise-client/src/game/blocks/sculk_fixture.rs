@@ -11,19 +11,21 @@ use std::{
     io::Write as _,
     sync::Arc,
 };
-use sunrise_client::{
-    Result,
-    chunk::{Chunk, MIN_Y},
-    command::args::GameMode,
-    containers::BlockEntity,
-    mobs::{Mob, Who},
-    motion::PlayerMotion,
-    sculk::{Info, SculkKind, WardenSpawnTracker},
-};
+use sunrise_client_core::Result;
+use sunrise_command::args::GameMode;
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
+};
+use sunrise_level::{
+    chunk::{Chunk, MIN_Y},
+    containers::BlockEntity,
+    sculk::{Info, SculkKind, WardenSpawnTracker},
+};
+use sunrise_sim::{
+    mobs::{Mob, Who},
+    motion::PlayerMotion,
 };
 use sunrise_world::{chunk::BlockState, level::Ticks, registry::BlockStateId};
 
@@ -135,7 +137,7 @@ pub(in crate::game::server_side) fn parse(text: &str) -> Vec<Scenario> {
 /// appeared, and so does this.
 pub(in crate::game::server_side) fn seed_fresh(m: &mut Mob, seed: i64) {
     m.random.set_seed(seed);
-    sunrise_client::mobs::warden::init_brain(m, seed);
+    sunrise_sim::mobs::warden::init_brain(m, seed);
 }
 pub(in crate::game::server_side) fn d(v: f64) -> String {
     format!("{:x}", v.to_bits())
@@ -343,7 +345,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut chunk = Chunk::empty(cx, cz);
                 for section in &mut chunk.sections {
                     Arc::make_mut(section).biomes = sunrise_core::paletted::PalettedContainer::new(
-                        sunrise_client::chunk::BIOME_STRATEGY,
+                        sunrise_level::chunk::BIOME_STRATEGY,
                         plains,
                     );
                 }
@@ -383,11 +385,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ] {
             self.ui
                 .rules
-                .set(rule, sunrise_client::gamerules::Value::Bool(value));
+                .set(rule, sunrise_client_core::gamerules::Value::Bool(value));
         }
         self.ui.rules.set(
             "random_tick_speed",
-            sunrise_client::gamerules::Value::Int(0),
+            sunrise_client_core::gamerules::Value::Int(0),
         );
         use sunrise_world::food::Difficulty;
         let difficulty = match s.difficulty.as_str() {
@@ -495,7 +497,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 m.extra.set_slot_stack(slot, None);
             }
             if s.trace_events {
-                sunrise_client::mobs::warden::finalize(&mut m, false, &mut Vec::new());
+                sunrise_sim::mobs::warden::finalize(&mut m, false, &mut Vec::new());
             }
             names.insert(id, format!("m{}", sources.len()));
             sources.push(id);
@@ -708,23 +710,23 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
                 "throw_snowball" => {
-                    self.throw_item(&sunrise_client::items::ItemStack::new(
+                    self.throw_item(&sunrise_items::items::ItemStack::new(
                         "minecraft:snowball",
                         1,
                     ))?;
                 }
                 "mob_snowball" => {
                     let owner = *sources.first().ok_or("mob_snowball needs a mob")?;
-                    let mut p = sunrise_client::projectiles::Projectile::new(
-                        sunrise_client::projectiles::ProjectileKind::Snowball,
+                    let mut p = sunrise_sim::projectiles::Projectile::new(
+                        sunrise_sim::projectiles::ProjectileKind::Snowball,
                         Vec3::new(4.5, 201.5, 10.5),
                         Some(Who::Mob(owner)),
                     );
                     p.velocity = Vec3::new(0.0, 0.0, 1.5);
-                    self.handle_mob_events(vec![sunrise_client::mobs::MobEvent::Projectile(p)])?;
+                    self.handle_mob_events(vec![sunrise_sim::mobs::MobEvent::Projectile(p)])?;
                 }
                 "event" => {
-                    let event = sunrise_client::sculk::intern(&words[1])
+                    let event = sunrise_level::sculk::intern(&words[1])
                         .ok_or_else(|| format!("unknown game event {}", words[1]))?;
                     let num = |i: usize| words[i].parse::<f64>().unwrap_or(0.0);
                     let pos = [num(2), num(3), num(4)];
@@ -757,10 +759,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .as_ref()
                         .map(|p| [p.position.x, p.position.y, p.position.z])
                         .unwrap_or_default();
-                    let attack = self.attack_of_who(Some(sunrise_client::mobs::Who::Player));
+                    let attack = self.attack_of_who(Some(sunrise_sim::mobs::Who::Player));
                     let plan = self.prepare_knockback_credit(
                         id as i32,
-                        Some(sunrise_client::mobs::Who::Player),
+                        Some(sunrise_sim::mobs::Who::Player),
                         &attack,
                     );
                     let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
@@ -768,7 +770,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                             amount,
-                            sunrise_client::mobs::Damage::player(at),
+                            sunrise_sim::mobs::Damage::player(at),
                         );
                         self.remember_mob_player_credit(id);
                         self.finish_mob_damage_at(index);
@@ -786,7 +788,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             m.extra.flag = true;
                         } else {
                             // Mob.ate.
-                            sunrise_client::mobs::ai::ate(m, &mut events);
+                            sunrise_sim::mobs::ai::ate(m, &mut events);
                         }
                     }
                     self.handle_mob_events(events)?;

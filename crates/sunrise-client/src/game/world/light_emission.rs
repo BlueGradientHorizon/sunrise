@@ -1,6 +1,6 @@
 //! Role-neutral dynamic light emission queries for the level in place.
 use super::*;
-use sunrise_client::fast_hash::FxHashMap;
+use sunrise_level::fast_hash::FxHashMap;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Query dynamic light emission for chunks newly loaded into this level.
@@ -36,7 +36,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// Store dynamic-light answers on a chunk and mark it for relight when they changed.
     pub(in crate::game) fn apply_chunk_light_emission(
-        world: &mut sunrise_client::world::World,
+        world: &mut sunrise_level::world::World,
         key: (i32, i32),
         pending: bool,
         answers: FxHashMap<u32, u8>,

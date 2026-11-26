@@ -21,23 +21,21 @@ use crate::game::client_side::potions::sound_on_added;
 use crate::game::client_side::potions::splash_distance_sqr;
 use crate::game::client_side::potions::thrown_projectile;
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
-use sunrise_client::health::Attack;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_sim::health::Attack;
 use {
-    sunrise_client::brewing, sunrise_client::effects::EffectAction,
-    sunrise_client::effects::EffectInstance, sunrise_client::effects::OmenTick,
-    sunrise_client::effects::PlayerEffects, sunrise_client::effects::effect_modifier,
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Damage,
-    sunrise_client::mobs::DamageKind, sunrise_client::mobs::Mob,
-    sunrise_client::mobs::MobEffectAction, sunrise_client::mobs::ModEffectTick,
-    sunrise_client::mobs::NamedDamage, sunrise_client::mobs::Who,
-    sunrise_client::projectiles::Projectile, sunrise_client::projectiles::ProjectileKind,
-    sunrise_client::text::Text, sunrise_level::particle_options::ParticleOptions,
-    sunrise_level::particle_options::ParticleType,
+    sunrise_client_core::text::Text, sunrise_items::items::ItemStack, sunrise_level::brewing,
+    sunrise_level::effects::EffectAction, sunrise_level::effects::EffectInstance,
+    sunrise_level::effects::OmenTick, sunrise_level::effects::PlayerEffects,
+    sunrise_level::effects::effect_modifier, sunrise_level::particle_options::ParticleOptions,
+    sunrise_level::particle_options::ParticleType, sunrise_sim::mobs::Damage,
+    sunrise_sim::mobs::DamageKind, sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobEffectAction,
+    sunrise_sim::mobs::ModEffectTick, sunrise_sim::mobs::NamedDamage, sunrise_sim::mobs::Who,
+    sunrise_sim::projectiles::Projectile, sunrise_sim::projectiles::ProjectileKind,
 };
 
 impl CloudSettings {
@@ -64,8 +62,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ];
             let look = super::view_vector(self.yaw, self.pitch);
             // The player's draws come from the world's random.
-            let velocities =
-                sunrise_client::mobs::infested_silverfish(&mut self.world.random, look);
+            let velocities = sunrise_sim::mobs::infested_silverfish(&mut self.world.random, look);
             self.spawn_infested(at, velocities);
         }
     }
@@ -129,7 +126,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.effects_on_death(
                     &ids,
                     bounds,
-                    sunrise_client::save::number(
+                    sunrise_sim::save::number(
                         self.level
                             .player_extra
                             .as_ref()
@@ -270,9 +267,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             p.position.z.floor() as i32,
         );
         let f = self.res.facts().get(self.world.block(bx, by, bz));
-        let eye_in_water = f.fluid == sunrise_client::blocks::Fluid::Water && {
+        let eye_in_water = f.fluid == sunrise_items::blocks::Fluid::Water && {
             let above = self.res.facts().get(self.world.block(bx, by + 1, bz));
-            let height = if above.fluid == sunrise_client::blocks::Fluid::Water {
+            let height = if above.fluid == sunrise_items::blocks::Fluid::Water {
                 1.0
             } else {
                 f64::from(f.fluid_level) / 9.0
@@ -589,7 +586,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ..Default::default()
             };
             let (block_clip, entity_hit) = {
-                use sunrise_client::projectiles::{NearestHit, ProjectileWorld, compute_margin};
+                use sunrise_sim::projectiles::{NearestHit, ProjectileWorld, compute_margin};
                 let live = self.live_proj_world(query, &[]);
                 let block_clip = live.clip(from, to);
                 let entity_end = block_clip.map_or(to, |(at, ..)| at);
@@ -632,9 +629,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Projectile.hitTargetOrDeflectSelf: Breeze deflects without splashing.
                 if let Who::Mob(id) = who
                     && let Some(index) = self.mobs.iter().position(|m| {
-                        m.id == id
-                            && m.alive()
-                            && m.species() == sunrise_client::mobs::Species::Breeze
+                        m.id == id && m.alive() && m.species() == sunrise_sim::mobs::Species::Breeze
                     })
                 {
                     if t.last_deflected_by != Some(id) {
@@ -759,7 +754,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             EffectAction::Heal(mut amount) => {
                 if let Some(player) = self.player.as_ref() {
                     let mut cancel = false;
-                    sunrise_client::hunger::native_living_heal(
+                    sunrise_sim::hunger::native_living_heal(
                         &self.loop_context,
                         player.entity_id as u32,
                         &mut amount,
@@ -896,7 +891,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 brewing::contents_effects(s)
                     .into_iter()
                     .map(|(id, d, amp)| {
-                        (id, sunrise_client::effects::scaled_duration(d, scale), amp)
+                        (id, sunrise_level::effects::scaled_duration(d, scale), amp)
                     })
                     .collect()
             }
@@ -918,7 +913,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Who::Player => {
                 for (id, duration, amp) in effects {
                     if brewing::effect(id).is_some_and(|e| e.instant) {
-                        if let Some(a) = sunrise_client::effects::instant(id, amp, 1.0) {
+                        if let Some(a) = sunrise_level::effects::instant(id, amp, 1.0) {
                             self.apply_effect_action(a);
                         }
                     } else {
@@ -932,7 +927,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let inverted = self.items().entity_type_tags.has_bit(
                     self.mobs[i].kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::INVERTED_HEALING_AND_HARM,
+                    sunrise_items::items::EntityTypeTags::INVERTED_HEALING_AND_HARM,
                 );
                 for (effect, duration, amp) in effects {
                     // A mod's `onEffectAdded` may have changed the mobs.
@@ -1017,7 +1012,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // MobEffectInstance.withScaledDuration: floor(duration * scale), at least 1; an infinite
         // effect stays infinite.
-        let scaled = |duration| sunrise_client::effects::scaled_duration(duration, duration_scale);
+        let scaled = |duration| sunrise_level::effects::scaled_duration(duration, duration_scale);
         match victim {
             Victim::Player(who) => self.as_fight_player(who, |g| {
                 for (id, duration, amp) in effects {
@@ -1025,7 +1020,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         continue;
                     };
                     if e.instant {
-                        if let Some(a) = sunrise_client::effects::instant(id, *amp, 0.5) {
+                        if let Some(a) = sunrise_level::effects::instant(id, *amp, 0.5) {
                             g.apply_indirect_effect_action(a, &cloud_owner);
                         }
                     } else {
@@ -1043,7 +1038,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Undead invert healing and harming.
                 let inverted = self.items().entity_type_tags.has_bit(
                     self.mobs[i].kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::INVERTED_HEALING_AND_HARM,
+                    sunrise_items::items::EntityTypeTags::INVERTED_HEALING_AND_HARM,
                 );
                 for (id, duration, amp) in effects {
                     // A mod's `onEffectAdded` may have changed the mobs.
@@ -1125,7 +1120,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut motion = Vec3::new(c.motion[0], c.motion[1], c.motion[2]);
         // EntityDimensions.scalable: the eye at 0.85 of the height.
         let eye = y + f64::from(0.5_f32 * 0.85);
-        let (water, lava, _) = sunrise_client::entities::update_entity_fluids(
+        let (water, lava, _) = sunrise_sim::entities::update_entity_fluids(
             bounds,
             Vec3::new(x, y, z),
             eye,
@@ -1164,7 +1159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let limit = self
                 .ui
                 .rules
-                .int_at(sunrise_client::gamerules::vanilla::MAX_ENTITY_CRAMMING);
+                .int_at(sunrise_client_core::gamerules::vanilla::MAX_ENTITY_CRAMMING);
             let mut count = 2;
             if limit >= 1 {
                 let near = bounds.inflate(Vec3::new(2.0, 2.0, 2.0));
@@ -1172,7 +1167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .mobs
                     .iter()
                     .filter(|m| {
-                        m.species() == sunrise_client::mobs::Species::Slime
+                        m.species() == sunrise_sim::mobs::Species::Slime
                             && Some(m.id) != bearer
                             && m.bounds().intersects(near)
                     })
@@ -1189,7 +1184,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     super::creatures::SpawnSite::Plain,
                 ) && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
                 {
-                    sunrise_client::mobs::cube::set_size(m, 2);
+                    sunrise_sim::mobs::cube::set_size(m, 2);
                 }
             }
         }
@@ -1278,7 +1273,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         self.apply_drink_effects(stack);
-        self.post_entity_event("minecraft:drink", sunrise_client::mobs::Who::Player);
+        self.post_entity_event("minecraft:drink", sunrise_sim::mobs::Who::Player);
         if !self.creative && self.stack_in(slot) == Some(stack) {
             self.consume_player_slot(slot, 1);
             if !ominous {
@@ -1535,7 +1530,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             {
                 let inverted = undead.has_bit(
                     m.kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::INVERTED_HEALING_AND_HARM,
+                    sunrise_items::items::EntityTypeTags::INVERTED_HEALING_AND_HARM,
                 );
                 hits.push((i, 1.0 - d2.sqrt() / 4.0, inverted));
             }
@@ -1558,7 +1553,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 };
                 let m = &mut self.mobs[i];
-                if harm && m.species() == sunrise_client::mobs::Species::Enderman {
+                if harm && m.species() == sunrise_sim::mobs::Species::Enderman {
                     // `Enderman.hurtServer` for a thrown potion: only water hurts
                     // (`hurtWithCleanWater`), then `repeatedlyTryToTeleport`, which
                     // the AI step runs and which does nothing while it rides.
@@ -1617,7 +1612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 for (id, duration, amp) in effects {
                     let instant = brewing::effect(id).is_some_and(|e| e.instant);
                     if instant {
-                        if let Some(a) = sunrise_client::effects::instant(id, *amp, intensity) {
+                        if let Some(a) = sunrise_level::effects::instant(id, *amp, intensity) {
                             self.apply_indirect_effect_action(a, owner);
                         }
                     } else {
@@ -1791,7 +1786,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             keep
         });
         self.breath_clouds
-            .restore(clouds, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+            .restore(clouds, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
         // A cloud that expired on its own takes its `noPhysics` write with it.
         for id in expired {
             self.forget_entity(id);
@@ -1801,7 +1796,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn use_potion_item(
         &mut self,
         stack: &ItemStack,
-    ) -> sunrise_client::Result<bool> {
+    ) -> sunrise_client_core::Result<bool> {
         match &*stack.item {
             "minecraft:potion" | "minecraft:ominous_bottle" => {
                 self.start_using_item();
@@ -1862,7 +1857,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         1.0,
                     );
                     self.post_entity_event("minecraft:fluid_pickup", Who::Player);
-                    let cloud = sunrise_client::advancements::EntityView {
+                    let cloud = sunrise_sim::advancements::EntityView {
                         kind: "minecraft:area_effect_cloud".into(),
                         position: cloud_at,
                         ..Default::default()
@@ -1881,7 +1876,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Ok(false);
                 };
                 let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-                if self.res.facts().get(state).fluid != sunrise_client::blocks::Fluid::Water {
+                if self.res.facts().get(state).fluid != sunrise_items::blocks::Fluid::Water {
                     return Ok(false);
                 }
                 // The sound at the player, the game event at the water block.
@@ -1916,7 +1911,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
         face: [i32; 3],
         stack: &ItemStack,
-    ) -> sunrise_client::Result<bool> {
+    ) -> sunrise_client_core::Result<bool> {
         if &*stack.item != "minecraft:potion"
             || stack.potion() != Some("minecraft:water")
             || face == [0, -1, 0]
@@ -1936,9 +1931,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 f64::from(pos[1] + 1),
                 f64::from(pos[2]) + r.next_double(),
             ];
-            self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+            self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
                 dimension: self.dim.id(),
-                particle: crate::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
+                particle: sunrise_sim::lan::server_effects::ServerParticle::simple(
+                    ParticleType::Splash,
+                ),
                 at,
                 spread: [0.0; 3],
                 speed: [1.0; 3],
@@ -1990,7 +1987,7 @@ impl PotionState {
 }
 
 /// A mob's content mod effects tick in its own tick (`ai::tick_effects_hurting`).
-impl sunrise_client::mobs::ModEffectTicks for Game<'_, crate::game::server_side::ServerState> {
+impl sunrise_sim::mobs::ModEffectTicks for Game<'_, crate::game::server_side::ServerState> {
     fn tick_mod_effect(
         &self,
         effect: usize,
@@ -2050,7 +2047,7 @@ pub(in crate::game) mod tests {
     use crate::game::client_side::potions::tests::FoodEffectMod;
     use crate::game::client_side::potions::tests::OtherEffectMod;
     use crate::game::client_side::potions::tests::effect_test_mod;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     pub(in crate::game) fn cloud_spawns_during_pass(potion_pass: bool) {
         crate::game::native_entity_refs::tests::with_game(|game| {
@@ -2221,7 +2218,7 @@ pub(in crate::game) mod tests {
             game.tick_potion_clouds();
             assert_eq!(game.breath_clouds[0].age, 1);
 
-            let mut states = sunrise_client::lan::entity::States::default();
+            let mut states = sunrise_sim::lan::entity::States::default();
             game.lan_object_states(&mut states, false, 0);
             let cloud = states
                 .as_slice()
@@ -2362,7 +2359,7 @@ pub(in crate::game) mod tests {
                     );
                     assert!(game.ui.rules.set(
                         "natural_health_regeneration",
-                        sunrise_client::gamerules::Value::Bool(false)
+                        sunrise_client_core::gamerules::Value::Bool(false)
                     ));
                     game.tick_mob_effects();
                     assert_eq!(game.player.as_ref().unwrap().health.food.exhaustion, 2.0);
@@ -2386,7 +2383,7 @@ pub(in crate::game) mod tests {
 
                     game.world.chunks.insert(
                         (0, 0),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                     );
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     let mut mob = Mob::new(12, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
@@ -2524,7 +2521,7 @@ pub(in crate::game) mod tests {
             // Death drops read the server's loot, which a world open loads.
             game.load_server_loot();
             use std::sync::Arc;
-            use sunrise_client::chunk::Chunk;
+            use sunrise_level::chunk::Chunk;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -2590,7 +2587,7 @@ pub(in crate::game) mod cloud_water_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod sound_on_added_tests {
-    use sunrise_client::effects::EffectInstance;
+    use sunrise_level::effects::EffectInstance;
 
     /// `LivingEntity.addEffect` → `MobEffect.onEffectAdded`: Bad Omen, Trial
     /// Omen and Raid Omen sound once when they are new on the player, at its
@@ -2600,7 +2597,7 @@ pub(in crate::game) mod sound_on_added_tests {
     fn a_new_omen_sounds_once_at_the_feet() {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(10.5, 64.0, -3.25),
                 )
@@ -2688,8 +2685,9 @@ pub(in crate::game) mod potion_contents_tests;
 pub(in crate::game) mod mob_absorption_max_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -2859,8 +2857,9 @@ pub(in crate::game) mod mob_absorption_max_tests {
 pub(in crate::game) mod mob_health_boost_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -3056,7 +3055,7 @@ pub(in crate::game) mod mob_health_boost_tests {
                 )));
                 let i = pig(game, n);
                 if tag.starts_with("h205_wolf") {
-                    sunrise_client::mobs::tame::set_tame(&mut game.mobs[i], true);
+                    sunrise_sim::mobs::tame::set_tame(&mut game.mobs[i], true);
                 }
                 ids.push(i);
             }
@@ -3071,7 +3070,7 @@ pub(in crate::game) mod mob_health_boost_tests {
                 [12.0, 20.0, 40.0, 40.0]
             );
             assert_eq!(
-                sunrise_client::mobs::finalize::max_health(&game.mobs[ids[1]]),
+                sunrise_sim::mobs::finalize::max_health(&game.mobs[ids[1]]),
                 20.0,
                 "sizing installs the cube's actual max-health attribute base"
             );
@@ -3081,7 +3080,7 @@ pub(in crate::game) mod mob_health_boost_tests {
                 )));
             }
             assert_eq!(
-                sunrise_client::mobs::finalize::max_health(&game.mobs[ids[3]]),
+                sunrise_sim::mobs::finalize::max_health(&game.mobs[ids[3]]),
                 72.0,
                 "health boost adds to the tamed wolf's attribute base"
             );
@@ -3109,8 +3108,9 @@ pub(in crate::game) mod mob_health_boost_tests {
 pub(in crate::game) mod depleted_absorption_tests {
     use crate::game::{Options, Progress, Settings, commands::Target, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -3371,7 +3371,7 @@ pub(in crate::game) mod arrow_contents {
     use crate::game::{Options, Progress, Settings, execution_role, load_resources};
     use serde_json::{Value, json};
     use std::{path::PathBuf, sync::Arc, time::Instant};
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     fn stack(row: &Value) -> ItemStack {
         let mut stack = ItemStack::new("minecraft:tipped_arrow", 1);
@@ -3501,7 +3501,7 @@ pub(in crate::game) mod arrow_contents {
             arrow.stuck = true;
             let rain = |_| false;
             let scene = game.arrow_scene(&rain);
-            sunrise_client::arrows::tick(&mut arrow, &scene, &[]);
+            sunrise_sim::arrows::tick(&mut arrow, &scene, &[]);
             let st = arrow.arrow.as_ref().unwrap();
             let item599 = st
                 .pickup_item
@@ -3509,7 +3509,7 @@ pub(in crate::game) mod arrow_contents {
                 .trim_start_matches("minecraft:")
                 .to_owned();
             let color599 = st.potion_color().map_or(-1, |v| v as i32);
-            sunrise_client::arrows::tick(&mut arrow, &scene, &[]);
+            sunrise_sim::arrows::tick(&mut arrow, &scene, &[]);
             let st = arrow.arrow.as_ref().unwrap();
             results.push(json!({"id":id,"item599":item599,"color599":color599,"item600":st.pickup_item.item.trim_start_matches("minecraft:"),"color600":st.potion_color().map_or(-1,|v|v as i32)}));
             assert_eq!(

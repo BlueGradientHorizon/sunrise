@@ -4,12 +4,12 @@
 //! `StructureBlock.neighborChanged` and `handleSetStructureBlock`.
 use super::Game;
 use std::collections::HashSet;
-use sunrise_client::{
+use sunrise_client_core::text::Text;
+use sunrise_core::position::BlockPos;
+use sunrise_level::{
     containers::BlockEntity,
     structure_block::{self, SCAN_CORNER_BLOCKS_RANGE, StructureBlock, StructureMode, UpdateType},
-    text::Text,
 };
-use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play;
 use {
     sunrise_core::nbt::{Compound, Tag},

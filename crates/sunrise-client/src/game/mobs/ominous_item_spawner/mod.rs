@@ -3,8 +3,8 @@
 //! 60 to 120 ticks, then falls as an item or is fired straight down as a
 //! projectile (`spawnItem`). Saved with its chunk's entities (persist.rs).
 use super::Game;
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 
 /// `TICKS_BEFORE_ABOUT_TO_SPAWN_SOUND`.
 pub(in crate::game) const ABOUT_TO_SPAWN: i64 = 36;
@@ -16,7 +16,7 @@ pub(in crate::game) const ROTATION_SPEED: f32 = 40.0;
 pub(in crate::game) struct OminousItemSpawner {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
     /// a client.
     pub(in crate::game) id: u32,
@@ -37,7 +37,7 @@ pub(in crate::game) struct OminousItemSpawner {
     pub(in crate::game) raw: Option<Box<sunrise_core::nbt::Tag>>,
 }
 
-sunrise_client::impl_joined!(OminousItemSpawner);
+sunrise_sim::impl_joined!(OminousItemSpawner);
 sunrise_mod_runtime::impl_attachment_lifetime!(OminousItemSpawner);
 
 /// `ProjectileItem.DispenseConfig` of the items fired down: power,
@@ -85,7 +85,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             fire_ticks: 0,
             synced_fire: false,
             has_visual_fire: false,
-            uuid: sunrise_client::save::random_uuid(),
+            uuid: sunrise_sim::save::random_uuid(),
             raw: None,
         });
     }
@@ -100,26 +100,26 @@ impl Game<'_, crate::game::server_side::ServerState> {
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
         let Some((item, at, spawn_item_after)) =
-            sunrise_client::entity_nbt::ominous_item_spawner_from_nbt(&tag)
+            sunrise_sim::entity_nbt::ominous_item_spawner_from_nbt(&tag)
         else {
             return;
         };
         self.side.next_entity += 1;
         let id = self.side.next_entity;
-        let saved = sunrise_client::entity_nbt::uuid(&tag);
+        let saved = sunrise_sim::entity_nbt::uuid(&tag);
         // Its saved UUID and the attachments saved under it (#7398).
         if let Some(state) = transferred {
             self.adopt_transferred_entity_state(id, state);
         }
         self.remember_uuid(id, saved, &tag);
         // Entity.load's `setYRot`, `setXRot`, and `setRot`; the save writes the rotation back from this tag.
-        let rotation = sunrise_client::entity_nbt::loaded_rotation(&tag);
+        let rotation = sunrise_sim::entity_nbt::loaded_rotation(&tag);
         if let sunrise_core::nbt::Tag::Compound(map) = &mut tag {
-            map.insert("Rotation".into(), sunrise_client::save::floats(&rotation));
+            map.insert("Rotation".into(), sunrise_sim::save::floats(&rotation));
         }
         let uuid = self.uuid_for(id);
-        let fire_ticks = sunrise_client::entity_nbt::fire_ticks_from_nbt(&tag);
-        let has_visual_fire = sunrise_client::entity_nbt::flag(&tag, "HasVisualFire");
+        let fire_ticks = sunrise_sim::entity_nbt::fire_ticks_from_nbt(&tag);
+        let has_visual_fire = sunrise_sim::entity_nbt::flag(&tag, "HasVisualFire");
         self.ominous_spawners.push(OminousItemSpawner {
             attachment_lifetime: Default::default(),
             join: Default::default(),
@@ -176,7 +176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         self.ominous_spawners.restore(
             spawners,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
         );
     }
     /// `spawnItem`: a projectile shot down, or an item entity; level event

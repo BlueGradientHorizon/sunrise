@@ -1,12 +1,12 @@
 use super::MobEvent;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[test]
 #[ignore = "daily"]
 fn body_armor_guards_and_break_event_are_preserved() {
-    use sunrise_client::mobs::Mob;
     use sunrise_core::equipment_slot::EquipmentSlot;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
     with_game(|game| {
         let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
         game.mobs.push(Mob::new(21, kind, Vec3::ZERO, 0.0));
@@ -16,7 +16,7 @@ fn body_armor_guards_and_break_event_are_preserved() {
         game.hurt_mob_armor(
             21,
             4.0,
-            &sunrise_client::health::NO_ATTACK.player_source("minecraft:generic", 0),
+            &sunrise_sim::health::NO_ATTACK.player_source("minecraft:generic", 0),
         );
         assert_eq!(game.mobs[0].item_by_slot(EquipmentSlot::Body), Some(sword));
         let resistant = ItemStack::new("minecraft:netherite_chestplate", 1);
@@ -29,7 +29,7 @@ fn body_armor_guards_and_break_event_are_preserved() {
         game.hurt_mob_armor(
             21,
             4.0,
-            &sunrise_client::health::NO_ATTACK.player_source("minecraft:lava", 0),
+            &sunrise_sim::health::NO_ATTACK.player_source("minecraft:lava", 0),
         );
         assert_eq!(
             game.mobs[0].item_by_slot(EquipmentSlot::Body),
@@ -56,7 +56,7 @@ fn body_armor_guards_and_break_event_are_preserved() {
         game.hurt_mob_armor(
             21,
             4.0,
-            &sunrise_client::health::NO_ATTACK.player_source("minecraft:lava", 0),
+            &sunrise_sim::health::NO_ATTACK.player_source("minecraft:lava", 0),
         );
         assert_eq!(
             game.mobs[0]
@@ -81,7 +81,7 @@ fn body_armor_guards_and_break_event_are_preserved() {
         game.hurt_mob_armor(
             21,
             4.0,
-            &sunrise_client::health::NO_ATTACK.player_source("minecraft:lava", 0),
+            &sunrise_sim::health::NO_ATTACK.player_source("minecraft:lava", 0),
         );
         assert_eq!(
             game.mobs[0]
@@ -96,7 +96,7 @@ fn body_armor_guards_and_break_event_are_preserved() {
         game.hurt_mob_armor(
             21,
             4.0,
-            &sunrise_client::health::NO_ATTACK.player_source("minecraft:generic", 0),
+            &sunrise_sim::health::NO_ATTACK.player_source("minecraft:generic", 0),
         );
         assert!(game.mobs[0].item_by_slot(EquipmentSlot::Body).is_none());
         assert_eq!(
@@ -109,9 +109,9 @@ fn body_armor_guards_and_break_event_are_preserved() {
 #[test]
 #[ignore = "daily"]
 fn sun_protection_uses_mob_draw_and_broadcasts_break() {
-    use sunrise_client::mobs::Mob;
     use sunrise_core::equipment_slot::EquipmentSlot;
     use sunrise_core::{geometry::Vec3, random::RandomSource};
+    use sunrise_sim::mobs::Mob;
     with_game(|game| {
         let kind = game
             .res
@@ -255,7 +255,7 @@ fn an_enderman_does_not_take_a_changed_block() {
         let pos = [0, 64, 0];
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         game.world.set(0, 64, 0, dirt).unwrap();
         game.mobs

@@ -1,7 +1,7 @@
 //! Player food and experience reads for native mods (`PlayerRef`).
 use super::Game;
 use mod_api::{PlayerExperience, PlayerRef};
-use sunrise_client::entities::Experience;
+use sunrise_sim::entities::Experience;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `FoodData.needsFood`: the food level is below 20.

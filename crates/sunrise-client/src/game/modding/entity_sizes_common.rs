@@ -1,8 +1,8 @@
 //! Shared `entity_size` helpers used by both server and client sizing passes.
 use super::Game;
 use mod_api::{EntityRef, Pose};
-use sunrise_client::mobs::Mob;
-use sunrise_client::pose::{Dimensions, SizeAnswer};
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::pose::{Dimensions, SizeAnswer};
 
 /// The pose a client sizes its copy of a server mob by (`Entity.getPose`).
 pub(in crate::game) fn synced_pose(m: &Mob) -> Pose {
@@ -44,7 +44,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn ask_body_size(
         &self,
         id: u32,
-        body: &sunrise_client::motion::PlayerMotion,
+        body: &sunrise_sim::motion::PlayerMotion,
     ) -> Option<SizeAnswer> {
         let vanilla = body.pose.dimensions(body.scale).to_array();
         body.pose_fit_sizes
@@ -59,7 +59,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn body_fit_sizes(
         &self,
         id: u32,
-        body: &sunrise_client::motion::PlayerMotion,
+        body: &sunrise_sim::motion::PlayerMotion,
         previous: Option<SizeAnswer>,
     ) -> [Option<SizeAnswer>; 3] {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
@@ -68,7 +68,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let Ok(scale) = body.attributes.computed_value_of("minecraft:scale") else {
             return [None; 3];
         };
-        use sunrise_client::pose::Pose as MotionPose;
+        use sunrise_sim::pose::Pose as MotionPose;
         [
             MotionPose::Standing,
             MotionPose::Crouching,
@@ -82,7 +82,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     pub(in crate::game) fn apply_body_size(
-        body: &mut sunrise_client::motion::PlayerMotion,
+        body: &mut sunrise_sim::motion::PlayerMotion,
         answer: SizeAnswer,
     ) {
         body.size_answer = Some(answer);

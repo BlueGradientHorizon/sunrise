@@ -20,10 +20,10 @@ use sunrise_client::{
     hud::HudBatch,
     keybinds,
     preedit::PreeditEvent,
-    text::{DARK_GRAY, Style, Text},
     ui::{self, EditBox},
     widgets::{self, Kind, Narratable, Target},
 };
+use sunrise_client_core::text::{DARK_GRAY, Style, Text};
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct MountedWidgetsInner {

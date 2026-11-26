@@ -7,11 +7,9 @@ use mod_api::{
     PlayerRef,
     content::crash::{ModCall, enter_native_mod},
 };
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{Species, Who},
-};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Species, Who};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `IShearable.isShearable` as live mob `index`'s entity parts answer it: the answering part's
@@ -153,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     /// A cow that shears into one leather.
     struct LeatherCow;

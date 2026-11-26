@@ -4,25 +4,20 @@ use crate::game::server_side::{passengers::Riders, tnt::tnt_seat};
 use std::collections::HashMap;
 use sunrise_core::geometry::Vec3;
 use {
-    sunrise_client::mobs::drops::is_animal, sunrise_client::mobs::riders,
-    sunrise_level::camera_math::wrap_degrees,
+    sunrise_level::camera_math::wrap_degrees, sunrise_sim::mobs::drops::is_animal,
+    sunrise_sim::mobs::riders,
 };
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The vehicle's attachment for this passenger's actual place in `getPassengers`.
     pub(in crate::game) fn mob_passenger_attachment(
-        vehicle: &sunrise_client::mobs::Mob,
+        vehicle: &sunrise_sim::mobs::Mob,
         rider_is_animal: bool,
         seat: usize,
         count: usize,
     ) -> [f64; 3] {
-        if sunrise_client::mobs::camel::is_camel(vehicle.species()) {
-            sunrise_client::mobs::camel::passenger_attachment_at(
-                vehicle,
-                seat,
-                count,
-                rider_is_animal,
-            )
+        if sunrise_sim::mobs::camel::is_camel(vehicle.species()) {
+            sunrise_sim::mobs::camel::passenger_attachment_at(vehicle, seat, count, rider_is_animal)
         } else {
             riders::passenger_attachment_at(vehicle, seat)
         }
@@ -53,7 +48,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 // Primed TNT's box is 0.98 wide.
                 let offset = riders::vehicle_attachment(m, 0.98);
                 m.seated(id, offset, tnt_box);
-                sunrise_client::mobs::living::teleports::set_pos(m, tnt_seat(pos, offset));
+                sunrise_sim::mobs::living::teleports::set_pos(m, tnt_seat(pos, offset));
                 m.previous = tnt_seat(prev, offset);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
@@ -75,7 +70,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 // Cushion's box is 1 wide.
                 let offset = riders::vehicle_attachment(m, 1.0);
                 let at = Vec3::new(c.position.x, c.position.y + 0.25 - offset, c.position.z);
-                sunrise_client::mobs::living::teleports::snap_to(m, at);
+                sunrise_sim::mobs::living::teleports::snap_to(m, at);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
                 m.ground.on_ground = false;
@@ -109,7 +104,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             let full = count == b.max_passengers();
             let delta = b.delta_rotation;
             let boat_box = b.bounds();
-            let ridden = sunrise_client::motion::RiddenBoat {
+            let ridden = sunrise_sim::motion::RiddenBoat {
                 under_water: b.under_water(),
                 max_y: boat_box.max_position().y,
             };
@@ -129,7 +124,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     };
                     let turns = !self.items().entity_type_tags.has_bit(
                         m.kind.flags.entity_tag_slot,
-                        sunrise_client::items::EntityTypeTags::CAN_TURN_IN_BOATS,
+                        sunrise_items::items::EntityTypeTags::CAN_TURN_IN_BOATS,
                     );
                     (
                         j,
@@ -144,7 +139,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 let m = &mut self.mobs[j];
                 m.seated(id, offset, boat_box);
                 m.fluids.boat = Some((id, ridden));
-                sunrise_client::mobs::living::teleports::set_pos(m, at);
+                sunrise_sim::mobs::living::teleports::set_pos(m, at);
                 m.previous = previous;
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;

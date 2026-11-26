@@ -6,8 +6,9 @@
 //! only the name reads there.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, EntityTags, MobCategory};
-use sunrise_client::{entity_nbt::flag, scoreboard::json_to_tag, text::Text};
+use sunrise_client_core::{scoreboard::json_to_tag, text::Text};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_sim::entity_nbt::flag;
 
 /// The most tags an entity holds (`Entity.addTag`).
 const MAX_TAGS: usize = 1024;
@@ -48,10 +49,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         let nbt = Tag::Compound(nbt);
-        if sunrise_client::nbt_path::too_deep(&nbt, 0) {
+        if sunrise_client_core::nbt_path::too_deep(&nbt, 0) {
             return false;
         }
-        let merged = sunrise_client::data_cmd::merged(&old, &nbt);
+        let merged = sunrise_sim::data_cmd::merged(&old, &nbt);
         merged != old && self.apply_entity_nbt(t, merged).is_ok()
     }
     /// Borrow the entity's scoreboard tags (`Entity.entityTags()`) without the
@@ -282,9 +283,10 @@ mod tests {
     use super::super::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, MobCategory};
-    use sunrise_client::{entities::ArmorStand, mobs::Mob, text::Text};
+    use sunrise_client_core::text::Text;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::{JavaString, Tag};
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     fn push_mob(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> EntityRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
@@ -373,7 +375,7 @@ mod tests {
             let saved = game.entity_nbt(stand).unwrap();
             let loaded = saved
                 .get(&"CustomName".into())
-                .map(sunrise_client::entity_nbt::name_text);
+                .map(sunrise_sim::entity_nbt::name_text);
             assert_eq!(loaded, Some(Text::literal("Sign")));
             assert!(stand.set_custom_name(game, None).unwrap());
             let saved = game.entity_nbt(stand).unwrap();

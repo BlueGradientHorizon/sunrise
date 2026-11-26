@@ -14,12 +14,10 @@ use mod_api::{
     Registrar, RegistrationContext, RespawnPositionEvent, ServerHost,
 };
 use std::sync::{Arc, Mutex, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Out, guest::InboxItem, hub::game_event},
-};
 use sunrise_core::{dimension::Dimension, random::LegacyRandom};
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+use sunrise_sim::lan::{Out, guest::InboxItem, hub::game_event};
 
 fn put_guest_in_end_exit(game: &mut crate::game::ServerGame<'_>) {
     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -220,7 +218,7 @@ fn ordinary_end_exit(available: bool, veto: Option<Dim>, spectator: bool) {
         put_guest_in_end_exit(game);
         if spectator {
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                g.game_mode = sunrise_client::lan::guest::SPECTATOR;
+                g.game_mode = sunrise_sim::lan::guest::SPECTATOR;
             });
             assert!(game.spectator_use_portal(2, 0, [0, 100, 0]));
         } else {
@@ -326,7 +324,8 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
         let slot = game
             .as_guest(2, |g| {
                 let slot = g.held_slot();
-                *g.stack_in_mut(slot) = Some(crate::items::ItemStack::new("minecraft:bow", 1));
+                *g.stack_in_mut(slot) =
+                    Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1));
                 assert!(g.start_using_item());
                 g.add_cooldown(Arc::from("minecraft:ender_pearl"), 1);
                 g.side.destroy_delay = 2;

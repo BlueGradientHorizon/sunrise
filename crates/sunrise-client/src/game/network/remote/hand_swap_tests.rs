@@ -2,10 +2,11 @@ use crate::game::{
     Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     native_entity_refs::tests::with_client_game,
 };
-use sunrise_client::{items::ItemStack, mobs::Mob};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::equipment::{MAINHAND, OFFHAND};
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{Clientbound as C, EntityEvent};
+use sunrise_sim::mobs::Mob;
 
 /// `LivingEntity.handleEntityEvent(55)` is `swapHandItems`: the whole
 /// stacks trade hands, not just their ids.

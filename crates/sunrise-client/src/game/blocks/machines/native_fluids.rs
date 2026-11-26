@@ -6,9 +6,9 @@ use super::Game;
 use super::cauldron_contents::{self, CauldronContent, CauldronContents, EMPTY_CAULDRON};
 use mod_api::{BlockSide, FluidStack, TransactionContext};
 use std::sync::Arc;
-use sunrise_client::containers::{BlockEntity, ModFluidTanks};
 use sunrise_core::geometry::Direction;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_level::containers::{BlockEntity, ModFluidTanks};
 
 /// What holds fluids at a position: a mod block's tanks, or a cauldron
 /// (`CauldronFluids`). An empty cauldron is fillable; a cauldron block with no
@@ -188,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(tanks) = self.world.block_entities.mod_fluids(state.0) {
             return matches!(
                 self.world.block_entities.get(&key),
-                Some(sunrise_client::containers::BlockEntity::Mod(_))
+                Some(sunrise_level::containers::BlockEntity::Mod(_))
             )
             .then(|| FluidAt::Mod(Arc::clone(tanks)));
         }
@@ -544,7 +544,7 @@ mod tests {
     fn a_cauldron_move_the_target_takes_part_of_gives_the_whole_levels_that_fit() {
         use super::super::super::native_entity_refs::tests::with_game;
         use mod_api::{BlockUpdateFlags, FLUIDS, resource_util::move_resources};
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -612,7 +612,7 @@ mod tests {
             BlockKey, BlockUpdateFlags, FLUIDS, FluidKey, FluidResource, Hooks, ModEntry, Mods,
             RegisterCauldronFluidContentEvent, Registrar, RegistrationContext,
         };
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         /// The keys the mod's `register` requested, as a real mod keeps them for its hooks.
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1026,7 +1026,7 @@ mod tests {
             BlockUpdateFlags, FLUIDS, FluidResource, Hooks, ModEntry, Mods, Registrar,
             resource_util::move_resources,
         };
-        use sunrise_client::{
+        use sunrise_level::{
             chunk::Chunk,
             containers::{ModBlockEntity, ModBlockEntityFields},
             fast_hash::FxHashMap,
@@ -1180,10 +1180,10 @@ mod tests {
                     (4, 64, 0),
                     game.world.block_entities.get(&(4, 64, 0)).unwrap().clone(),
                 ));
-                let mut disk = sunrise_client::save::SaveDir::new(
+                let mut disk = sunrise_sim::save::SaveDir::new(
                     std::env::temp_dir()
                         .join(format!("sunrise-fluid-roundtrip-{}", std::process::id())),
-                    sunrise_client::save::LevelShape::OVERWORLD,
+                    sunrise_sim::save::LevelShape::OVERWORLD,
                     Some(Default::default()),
                 );
                 disk.enable_trusted_fluid_load();

@@ -31,7 +31,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `super.tick()` (Player.tick: its effects, death ticks, cooldowns, attack
     /// strength, inventory ticks and PlayerTickEvent.Pre/Post) and doTick's food tick
     /// and statistics; everything else the server does for it still runs.
-    pub(in crate::game) fn guest_body_ticks(&self, g: &sunrise_client::lan::guest::Guest) -> bool {
+    pub(in crate::game) fn guest_body_ticks(&self, g: &sunrise_sim::lan::guest::Guest) -> bool {
         !g.spectator()
             || !touching_unloaded_chunk(g.position, g.dimensions(), |x, z| {
                 self.world.chunks.contains_key(&(x, z))
@@ -375,7 +375,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_guest_connections(
         &mut self,
         across_levels: bool,
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         building_cache(self.lan.as_ref());
         let result = self.tick_guest_connections_inner(across_levels);
         building_cache(None);
@@ -385,7 +385,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_guest_connections_inner(
         &mut self,
         across_levels: bool,
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let Some(host) = self.lan.as_ref() else {
             return Ok(());
         };
@@ -440,8 +440,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             if let Some((colliders, _parts)) = &collision {
-                sunrise_client_render::moving_colliders::in_level(colliders.clone(), || {
-                    sunrise_client::block_contact::in_level(self.tick, Some(dim.id()), || {
+                sunrise_world::moving_colliders::in_level(colliders.clone(), || {
+                    sunrise_sim::block_contact::in_level(self.tick, Some(dim.id()), || {
                         self.tick_guest_connection(conn);
                     });
                 });

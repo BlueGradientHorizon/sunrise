@@ -51,7 +51,7 @@ use super::screen_build::ObservedScreen;
 use crate::game::api_values::{TryIntoApi, TryIntoEngine};
 #[cfg(test)]
 use screen_chars::chars_to_type;
-use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
+use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
 
 pub(in crate::game) struct ContentsChangedGuard<'a, 'game> {
     pub(in crate::game) game: &'a mut crate::game::ServerGame<'game>,
@@ -59,7 +59,7 @@ pub(in crate::game) struct ContentsChangedGuard<'a, 'game> {
 
 /// Write back a `menu_button` cursor edit without revalidating an untouched stack.
 pub(in crate::game) fn apply_menu_button_cursor(
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
     original: &Option<mod_api::ItemStack>,
     cursor: &Option<mod_api::ItemStack>,
     carried: &mut Option<ItemStack>,
@@ -170,7 +170,7 @@ pub(in crate::game) struct OpenNativeMenu {
     /// The mod block whose matching container opened the menu, if any.
     pub(in crate::game) block: Option<String>,
     pub(in crate::game) pos: Option<[i32; 3]>,
-    pub(in crate::game) mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
+    pub(in crate::game) mod_type: Option<&'static sunrise_level::containers::ModMenuType>,
     pub(in crate::game) data: Vec<i32>,
 }
 
@@ -313,7 +313,7 @@ impl OpenNativeScreen {
     pub(in crate::game) fn player_slots(&self) -> usize {
         self.menu
             .mod_type
-            .map_or(36, sunrise_client::containers::ModMenuType::player_slots)
+            .map_or(36, sunrise_level::containers::ModMenuType::player_slots)
     }
 
     pub(in crate::game) fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
@@ -856,14 +856,14 @@ pub(in crate::game) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
 };
 /// The contacts of a simulating entity with a block, as the simulation's own code (client-lib)
 /// reports them.
-pub(in crate::game) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
-    sunrise_client::block_contact::Hooks {
+pub(in crate::game) const BLOCK_CONTACT_HOOKS: sunrise_sim::block_contact::Hooks =
+    sunrise_sim::block_contact::Hooks {
         step_listens: |state| {
             crate::game::api_values::block_state::block_listens(mod_api::HookId::StepOn, state)
         },
         step_on: |level, step, movement| {
             use self::bounce_restitution::StepOnView;
-            use sunrise_client::block_contact::StepLevel;
+            use sunrise_sim::block_contact::StepLevel;
             match level {
                 StepLevel::Server(level) => StepOnView(mod_api::LevelRandomSide::Server(
                     &mut HitLevel(level.reborrow()),
@@ -953,7 +953,7 @@ pub(in crate::game) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Ho
 #[allow(unused_imports)]
 pub(in crate::game) use living_death::hurt_server_args;
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_client::health::mob_source;
+pub(in crate::game) use sunrise_sim::health::mob_source;
 
 /// Whether a native mod's particles can be sent. Block particle types need
 /// a known state (`state_ok`), item particles a validated stack; trail and vibration
@@ -1009,7 +1009,7 @@ pub(in crate::game) fn dimension_id(dimension: LevelDimension) -> &'static str {
 }
 
 /// A mob's kind as the hook points name it (`minecraft:zombie`).
-pub(in crate::game) fn mob_kind(mob: &sunrise_client::mobs::Mob) -> String {
+pub(in crate::game) fn mob_kind(mob: &sunrise_sim::mobs::Mob) -> String {
     crate::game::native_namespaced_id::namespaced(&mob.kind.id)
 }
 
@@ -1089,7 +1089,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Tells the mods of the chunks leaving this level, after their last save.
     pub(in crate::game) fn native_chunks_unloaded(
         &mut self,
-        unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
+        unloaded: &[std::sync::Arc<sunrise_level::chunk::Chunk>],
     ) {
         self.side_chunks_unloaded(unloaded);
     }
@@ -1099,7 +1099,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// level.
     #[cfg(test)]
     pub(in crate::game) fn new_block_entity(&mut self, name: &str) -> Option<BlockEntity> {
-        if sunrise_client::block_entity_types::type_for(name).is_none() {
+        if sunrise_client_core::block_entity_types::type_for(name).is_none() {
             return block_entity_for_block(
                 self.pack.assets.registry,
                 self.res.facts(),
@@ -1186,7 +1186,7 @@ pub(in crate::game) fn mod_menu(name: &str) -> Option<(&'static str, usize)> {
         .into_iter()
         .find(|(menu, _)| *menu == name)
         .or_else(|| {
-            sunrise_client::containers::mod_menu_type(name)
+            sunrise_level::containers::mod_menu_type(name)
                 .filter(|menu| menu.owned_slots.is_none())
                 .map(|menu| (menu.id, menu.slots))
         })
@@ -1348,7 +1348,8 @@ pub(in crate::game) mod tests {
         use super::super::native_entity_refs::tests::{record_key, run_fresh_cases, with_game_at};
         use mod_api::{self, *};
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, containers::BlockEntity, save};
+        use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+        use sunrise_sim::save;
 
         const CHILD: &str = "SUNRISE_DECLARED_BE_GAME_CHILD";
         if run_fresh_cases(
@@ -1531,7 +1532,7 @@ pub(in crate::game) mod tests {
                     assert!(error.contains("be_user"), "{error}");
                     assert!(error.contains("unknown block entity type"), "{error}");
                     assert!(error.contains(id), "{error}");
-                    assert!(sunrise_client::block_entity_types::current().is_none());
+                    assert!(sunrise_client_core::block_entity_types::current().is_none());
                     return;
                 }
                 assert_eq!(keys.shared.get(), keys.own.get());
@@ -1670,8 +1671,8 @@ pub(in crate::game) mod tests {
             return;
         }
         use super::super::{Options, Progress, Settings, load_resources};
-        use sunrise_client::mod_content::{ContentMod, build};
         use sunrise_mod_package::content::{Block, Content};
+        use sunrise_sim::mod_content::{ContentMod, build};
 
         let base = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")

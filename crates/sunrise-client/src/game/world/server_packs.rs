@@ -13,15 +13,17 @@ use std::{
     sync::mpsc::{Receiver, TryRecvError},
 };
 use sunrise_client::{
-    Result,
     confirm_screen::Confirm,
     hud::{HudAtlas, HudBatch, rgba},
     multiplayer, packs,
-    scoreboard::{comp_text, tag_to_json},
     server_packs::{Prompt, ServerPacks, action, download, parse_sha1, valid_url},
-    text::{Text, named_color},
     toasts::SystemToast,
     ui,
+};
+use sunrise_client_core::{
+    Result,
+    scoreboard::{comp_text, tag_to_json},
+    text::{Text, named_color},
 };
 use sunrise_protocol::{packets::configuration::ResourcePackPush, servers};
 
@@ -621,7 +623,7 @@ mod tests {
     ) {
         const ADDRESS: &str = "pack-test.invalid";
         let dir = tempfile::tempdir().unwrap();
-        sunrise_client::logging::set_player_dir(dir.path().to_owned());
+        sunrise_level::logging::set_player_dir(dir.path().to_owned());
         let file = dir.path().join("servers.dat");
         if required {
             // Start the joined shown row at Disabled (`0`) and include an unrelated entry
@@ -953,7 +955,7 @@ mod tests {
                         window.begin_closing_save(false).unwrap();
                         assert!(window.side.pending_save.0.is_some());
                         let dir = tempfile::tempdir().unwrap();
-                        let reporter = sunrise_client::chunk_io::SaveFailureReporter::new(
+                        let reporter = sunrise_sim::chunk_io::SaveFailureReporter::new(
                             true,
                             dir.path(),
                             "test",
@@ -1213,7 +1215,7 @@ mod tests {
                     ClientHost, ClientTickPreEvent, Flow, Hooks, ModEntry, RenderGuiPreEvent,
                     ToastAddEvent,
                 };
-                use sunrise_client::lang;
+                use sunrise_client_core::lang;
 
                 struct VetoingPanicker;
                 #[mod_api::__subscriptions]

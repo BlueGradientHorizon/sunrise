@@ -1,10 +1,10 @@
 use crate::game::commands::Target;
 use crate::game::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
 use serde_json::Value;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::parse_snbt;
 use sunrise_core::position::ChunkPos;
+use sunrise_sim::motion::PlayerMotion;
 
 fn message_text(row: &Value) -> String {
     row["messages"][0]

@@ -1,6 +1,6 @@
 use super::*;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_core::geometry::Direction;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Raw `ClientLevel.addBreakingParticles`: one crumb on the given face, with no sound or hook.
@@ -53,7 +53,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `HoneyBlock.showParticles`: the crumb count of entity event 53 or 54.
     pub(in crate::game::client_side) fn honey_entity_particles(&mut self, at: [f64; 3], event: i8) {
-        let Some(count) = sunrise_client::landing::honey_particle_count(event) else {
+        let Some(count) = sunrise_sim::landing::honey_particle_count(event) else {
             return;
         };
         let Some(honey) = self

@@ -10,18 +10,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 pub(in crate::game) fn authoritative_world_for_mods(
     resources: &crate::game::Resources,
     seed: i64,
-) -> sunrise_client::world::World {
+) -> sunrise_level::world::World {
     let mut world = crate::game::world_for_mods(resources.facts().air, seed);
     world.authoritative_group_lifetime(resources.rest().behaviours.clone());
     world
 }
 
 /// Configure notice collection before this level can receive any block entities.
-pub(in crate::game) fn world_for_mods(
-    air: BlockStateId,
-    seed: i64,
-) -> sunrise_client::world::World {
-    let mut world = sunrise_client::world::World::new(air, seed);
+pub(in crate::game) fn world_for_mods(air: BlockStateId, seed: i64) -> sunrise_level::world::World {
+    let mut world = sunrise_level::world::World::new(air, seed);
     world
         .block_entities
         .set_on_load_enabled(mod_api::__private::has_part_hook(

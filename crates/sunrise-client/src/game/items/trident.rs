@@ -6,20 +6,21 @@
 use super::level_sounds::LevelSound;
 use super::{Game, commands::Target};
 use mod_api::{__private::TransactionFrame, SoundSource};
-#[allow(unused_imports)]
-use sunrise_client::{
-    arrows::{Pickup, back_off, clip_block_hit},
-    collisions::SceneCollisions,
-    enchant::EffectContext,
-    items::ItemStack,
-    join_seq::JoinSeq,
-    mobs::{Damage, DamageKind, Species, Who},
-    projectiles::{Hit, ProjectileWorld},
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,
     random::RandomSource,
+};
+#[allow(unused_imports)]
+use sunrise_items::{enchant::EffectContext, items::ItemStack};
+#[allow(unused_imports)]
+use sunrise_level::collisions::SceneCollisions;
+#[allow(unused_imports)]
+use sunrise_sim::{
+    arrows::{Pickup, back_off, clip_block_hit},
+    join_seq::JoinSeq,
+    mobs::{Damage, DamageKind, Species, Who},
+    projectiles::{Hit, ProjectileWorld},
 };
 
 #[allow(unused_imports)]
@@ -296,8 +297,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             *self.held_mut() = None;
         }
         let start = Vec3::new(eye[0], eye[1] - 0.1, eye[2]);
-        let mut projectile = sunrise_client::projectiles::Projectile::new(
-            sunrise_client::projectiles::ProjectileKind::Snowball,
+        let mut projectile = sunrise_sim::projectiles::Projectile::new(
+            sunrise_sim::projectiles::ProjectileKind::Snowball,
             start,
             Some(Who::Player),
         );
@@ -342,12 +343,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ground: Default::default(),
             fire_ticks: 0,
             fall_distance: 0.0,
-            sound_event: sunrise_client::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
+            sound_event: sunrise_sim::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
             was_touching_water: false,
             age: 0,
             owner: 0,
             guest: self.side.lan_acting,
-            random: sunrise_client::projectiles::unique_random(start),
+            random: sunrise_sim::projectiles::unique_random(start),
             deflected_by: None,
             last_state: None,
         });
@@ -379,8 +380,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn thrower_hit(
         &mut self,
         guest: Option<u32>,
-        victim: &sunrise_client::advancements::EntityView,
-        direct: sunrise_client::advancements::EntityView,
+        victim: &sunrise_sim::advancements::EntityView,
+        direct: sunrise_sim::advancements::EntityView,
         damage: f32,
     ) {
         let Some(conn) = guest.filter(|c| self.side.lan_acting != Some(*c)) else {
@@ -409,7 +410,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         t: &ThrownTrident,
         conn: u32,
         damage: f32,
-        attack: sunrise_client::health::Attack,
+        attack: sunrise_sim::health::Attack,
     ) -> bool {
         if self.lan.is_none() {
             return false;
@@ -456,7 +457,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     eye: Vec3::new(x, y + g.eye_height(), z),
                     touches: !g.dead && !g.spectator(),
                     creative: g.creative(),
-                    uuid: Some(sunrise_client::lan::playerdata::uuid_ints(g.uuid)),
+                    uuid: Some(sunrise_sim::lan::playerdata::uuid_ints(g.uuid)),
                 });
             }
         }
@@ -660,14 +661,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     clip_block_hit(&self.world, self.res.facts(), self.collision, from, flight);
                 let end = clip.map_or(from.add_vector(flight), |(at, _, _)| at);
                 // ProjectileUtil.computeMargin + NearestHit broad-phase over live targets.
-                let margin = sunrise_client::projectiles::compute_margin(t.age as i32);
+                let margin = sunrise_sim::projectiles::compute_margin(t.age as i32);
                 let search_area = Aabb::new(
                     from.add_vector(Vec3::new(-HALF, 0.0, -HALF)),
                     from.add_vector(Vec3::new(HALF, 0.5, HALF)),
                 )
                 .expand_towards(flight)
                 .inflate(Vec3::new(1.0, 1.0, 1.0));
-                let mut best = sunrise_client::projectiles::NearestHit::new();
+                let mut best = sunrise_sim::projectiles::NearestHit::new();
                 if !t.dealt_damage {
                     let query = super::creatures::TargetQuery {
                         include_guests: true,
@@ -769,11 +770,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let mut attack =
                             attacker_id.map_or_else(Default::default, |a| self.attack_of(a as i32));
                         attack.projectile = Some(t.id as i32);
-                        attack.projectile_kind = sunrise_client::health::DirectEntity::Arrow;
+                        attack.projectile_kind = sunrise_sim::health::DirectEntity::Arrow;
                         attack.projectile_type = Some("minecraft:trident");
                         Self::set_projectile_weapon(&mut attack, Some(&t.stack));
                         let trident_source = DamageKind::Named(
-                            sunrise_client::mobs::NamedDamage::registered(
+                            sunrise_sim::mobs::NamedDamage::registered(
                                 &self.health_resources.damage,
                                 "minecraft:trident",
                             )
@@ -791,9 +792,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 let direct = super::dragon::DirectHit {
                                     id: t.id,
                                     position: t.position,
-                                    kind: Some(
-                                        &sunrise_client::projectiles::ProjectileKind::Trident,
-                                    ),
+                                    kind: Some(&sunrise_sim::projectiles::ProjectileKind::Trident),
                                 };
                                 let hurt = |game: &mut Self| {
                                     game.hit_special_full(
@@ -966,7 +965,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         {
                             // LivingEntity.hurtServer: PLAYER_HURT_ENTITY.
                             let victim = self.mob_entity(m);
-                            let direct = sunrise_client::advancements::EntityView {
+                            let direct = sunrise_sim::advancements::EntityView {
                                 kind: "minecraft:trident".into(),
                                 position: [t.position.x, t.position.y, t.position.z],
                                 ..Default::default()
@@ -1191,8 +1190,8 @@ pub(in crate::game) mod impact_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{ThrownTrident, remote_tick};
-    use sunrise_client::{mobs::Who, projectiles::ProjectileWorld};
     use sunrise_core::geometry::{Aabb, Vec3};
+    use sunrise_sim::{mobs::Who, projectiles::ProjectileWorld};
 
     struct Air;
     impl ProjectileWorld for Air {
@@ -1338,7 +1337,7 @@ pub(in crate::game) mod tests {
         .unwrap();
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let water = game
             .pack
@@ -1374,7 +1373,8 @@ pub(in crate::game) mod tests {
     fn a_riptide_from_the_ground_leaves_the_player_in_the_air() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             use std::sync::Arc;
-            use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+            use sunrise_level::chunk::Chunk;
+            use sunrise_sim::motion::PlayerMotion;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

@@ -4,13 +4,13 @@ use mod_api::{
     Registrar, Text,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    lan::PlayerSender,
-    raw_payloads::{Endpoint, Incoming, Side, Transport},
-};
 use sunrise_protocol::{
     packets::{configuration::CustomPayload, play},
     payload_negotiation::Phase,
+};
+use sunrise_sim::{
+    lan::PlayerSender,
+    raw_payloads::{Endpoint, Incoming, Side, Transport},
 };
 
 const GOOD: &str = "payload_panic_probe:good";

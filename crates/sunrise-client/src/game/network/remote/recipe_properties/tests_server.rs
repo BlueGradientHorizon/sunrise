@@ -5,17 +5,17 @@ use crate::game::{
     lan_actions::GuestCommand, native_entity_refs::tests::with_client_game,
     native_guest_turn_tests::with_guests,
 };
-use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_mod_package::content::RECIPE_PRIORITIES_PATH;
 use sunrise_protocol::{
     buf::Reader,
     packets::recipes::{HolderSet, SlotDisplay, UpdateRecipes},
 };
+use sunrise_sim::lan::{Out, PlayerSender};
 
 #[test]
 #[ignore = "daily"]
 fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path();
     let write = cut_pack(root);
@@ -278,7 +278,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
 #[test]
 #[ignore = "daily"]
 fn guest_stonecutter_waits_for_deferred_recipe_publication() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path();
     let write = cut_pack(root);
@@ -313,7 +313,7 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
                     )
                 })
         };
-        let buttons = |map: &sunrise_client::menu::StonecutterButtons| {
+        let buttons = |map: &sunrise_sim::menu::StonecutterButtons| {
             [0, 1].map(|i| map.recipe("minecraft:stick", i).unwrap().to_owned())
         };
         let (old_window, old_buttons) = menu(server).unwrap();

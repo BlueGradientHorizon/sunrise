@@ -13,20 +13,22 @@ use std::{
     cell::{Cell, RefCell},
     sync::{Arc, mpsc},
 };
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::Chunk,
     containers::{
         BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModCrafting, ModLinks,
         ModMenuType,
     },
-    items::ItemStack,
+};
+use sunrise_protocol::packets::play::{Clientbound, ContainerClick, Serverbound};
+use sunrise_sim::{
     lan::{
         Out, PlayerSender,
         menu::{ModCraft, Slots},
     },
     menu::{Input, Kind, Menu},
 };
-use sunrise_protocol::packets::play::{Clientbound, ContainerClick, Serverbound};
 
 /// The menu type the pot opens: a prepared registry slot (`minecraft:generic_9x3`) for a
 /// synthetic mod menu type, so the guest's click names it.
@@ -643,7 +645,7 @@ fn each_part_take_hears_its_live_remainder_before_the_next_take() {
             with_pot_parts(pot_type(SLOTS, None), parts, |game| {
                 SCRIPT.set(TakeScript::CheckLiveRemainder);
                 set(game, &[(0, stone(4))], &[], item("minecraft:stick", 1));
-                click(game, 0, 0, sunrise_client::lan::menu::input::PICKUP);
+                click(game, 0, 0, sunrise_sim::lan::menu::input::PICKUP);
                 assert_eq!(heard(), [took(0, 1, 3), took(0, 1, 2)]);
                 assert_eq!(in_pot(game, 0), 2);
                 assert_eq!(held(game, 0), (0, 1));
@@ -666,7 +668,7 @@ fn a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer() {
                 let stick = item("minecraft:stick", 1);
                 SCRIPT.set(TakeScript::MoveStickToCursor);
                 set(game, &[(0, stone(4))], &[(8, stick.clone())], stick.clone());
-                click(game, 0, 0, sunrise_client::lan::menu::input::PICKUP);
+                click(game, 0, 0, sunrise_sim::lan::menu::input::PICKUP);
                 assert_eq!(heard(), [took(0, 1, 3)]);
                 assert_eq!(in_pot(game, 0), 4);
                 let guest = &game.lan.as_ref().unwrap().hub.guests[0];
@@ -690,7 +692,7 @@ fn closing_on_the_first_part_take_returns_only_its_owed_cursor() {
             with_pot_parts(pot_type(SLOTS, None), parts, |game| {
                 SCRIPT.set(TakeScript::RemoveBackingWithPartCursor);
                 set(game, &[(0, stone(4))], &[], item("minecraft:stick", 1));
-                click(game, 0, 0, sunrise_client::lan::menu::input::PICKUP);
+                click(game, 0, 0, sunrise_sim::lan::menu::input::PICKUP);
                 assert_eq!(heard(), [took(0, 1, 3)]);
                 assert!(game.world.block_entities.get(&POS).is_none());
                 let guest = &game.lan.as_ref().unwrap().hub.guests[0];
@@ -1307,7 +1309,7 @@ fn a_refilled_grid_crafts_again_and_the_reply_includes_the_listener_only_slot() 
 #[test]
 #[ignore = "daily"]
 fn a_partial_mod_craft_keeps_crafting_bookkeeping_but_not_item_crafted() {
-    use sunrise_client::advancements::{Advancement, Criterion, Tree};
+    use sunrise_sim::advancements::{Advancement, Criterion, Tree};
     const ID: &str = "take:crafted";
     const CRITERION: &str = "planks";
     const TRIGGER: &str = "minecraft:recipe_crafted";
@@ -1396,7 +1398,7 @@ fn with_owned_processor(test: impl FnOnce(&mut crate::game::ServerGame<'_>, mpsc
     let mods: Mods = vec![ModEntry::new("take", Box::new(parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 OWNED_MENU.into(),
                 "take".into(),

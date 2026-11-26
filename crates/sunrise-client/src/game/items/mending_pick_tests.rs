@@ -1,6 +1,6 @@
 #![cfg(test)]
 use super::*;
-use sunrise_client::enchant::Enchantments;
+use sunrise_items::enchant::Enchantments;
 
 fn table(id: &str, slots: &[&str], effect: bool) -> Enchantments {
     let effects = if effect {
@@ -138,7 +138,7 @@ impl mod_api::Hooks for GrantMending {
 fn mending_pick_uses_hook_granted_enchantment() {
     crate::game::api_values::install_stack_hooks();
     let _ = sunrise_items::native_enchantment_hooks::install(
-        crate::enchantment_levels::get_enchantment_level,
+        sunrise_sim::enchantment_levels::get_enchantment_level,
     );
     let mods = vec![mod_api::ModEntry::new(
         "grant_mending",

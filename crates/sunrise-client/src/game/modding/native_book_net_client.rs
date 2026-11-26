@@ -1,11 +1,11 @@
 //! Client custom-book synchronization, admitted by its own configuration capability.
 use super::Game;
 use std::collections::BTreeSet;
-use sunrise_client::recipe_book::{
+use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
+use sunrise_sim::recipe_book::{
     settings_codec,
     settings_sync::{CHANNEL, Message},
 };
-use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 
 fn registered() -> BTreeSet<String> {
     mod_api::RecipeBookTypeKey::registered()
@@ -83,7 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             epoch,
             number,
             key: book.as_str().into(),
-            flags: sunrise_client::recipe_book::BookFlags {
+            flags: sunrise_sim::recipe_book::BookFlags {
                 open: flags.open,
                 filtering: flags.filtering,
             },

@@ -62,7 +62,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// with the rain (`rainBrightness = 1 - rainLevel`, their colour's alpha).
     pub(in crate::game::client_side) fn celestial_geometry(
         &self,
-        sky: &sunrise_client::environment::Sky,
+        sky: &sunrise_level::environment::Sky,
         rain: f32,
     ) -> (Vec<Vertex>, Vec<CelestialBody>, Option<(glam::Mat4, f32)>) {
         let body_color =
@@ -598,7 +598,7 @@ fn celestial_frame(angle: f32) -> glam::Mat4 {
 /// quad may come first.
 fn celestial_bodies(
     sprites: &std::collections::HashMap<String, sunrise_client::hud::Rect>,
-    sky: &sunrise_client::environment::Sky,
+    sky: &sunrise_level::environment::Sky,
     moon: &str,
     color: u32,
 ) -> (Vec<Vertex>, Vec<CelestialBody>) {
@@ -729,7 +729,7 @@ mod celestial_body_tests {
             .iter()
             .map(|&name| (name.to_owned(), rect(if name == SUN { 0.25 } else { 0.5 })))
             .collect();
-        let sky = sunrise_client::environment::Sky::default();
+        let sky = sunrise_level::environment::Sky::default();
         let (quads, bodies) = celestial_bodies(&sprites, &sky, MOON, u32::MAX);
         assert_eq!(quads.len(), bodies.len() * 4, "one entry a quad");
         (quads.iter().step_by(4).map(|v| v.uv).collect(), bodies)

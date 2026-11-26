@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::AttachmentAccess;
 
 pub(in crate::game) fn weather_for_level(
-    shape: sunrise_client::chunk::LevelShape,
+    shape: sunrise_level::chunk::LevelShape,
     is_end: bool,
     levels: (f32, f32),
 ) -> (f32, f32) {

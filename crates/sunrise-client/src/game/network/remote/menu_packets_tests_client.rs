@@ -4,8 +4,9 @@ use crate::game::{
     Game, Screen, in_own_process, mount_menu::CHEST, native_entity_refs::tests::with_client_game,
 };
 use std::time::{Duration, Instant};
-use sunrise_client::{hud::HudBatch, items::ItemStack, menu::Input, mobs::Mob};
+use sunrise_client::hud::HudBatch;
 use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::{
     item::Stack,
     packets::play::{
@@ -13,6 +14,7 @@ use sunrise_protocol::{
         Serverbound as S,
     },
 };
+use sunrise_sim::{menu::Input, mobs::Mob};
 
 #[test]
 #[ignore = "daily"]

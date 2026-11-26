@@ -5,12 +5,13 @@ fn tracking_emitters_follow_the_packet_target() {
         Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
         totem::TOTEM_EVENT,
     };
-    use sunrise_client::{motion::PlayerMotion, particles::ParticleType, pose::Pose};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::particle_options::ParticleType;
     use sunrise_protocol::{
         entity_data::{Value, serializer},
         packets::play::{self, Clientbound as C},
     };
+    use sunrise_sim::{motion::PlayerMotion, pose::Pose};
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();

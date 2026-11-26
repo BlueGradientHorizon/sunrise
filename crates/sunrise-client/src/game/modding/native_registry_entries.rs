@@ -1,19 +1,20 @@
 //! `RegistryAccess.lookup` and `HolderLookup.listElements` on the current side's actual tables.
 use mod_api::RegistryEntry;
 use std::{collections::BTreeMap, sync::Arc};
-use sunrise_client::{command::args::normalized, lan::data::SyncData};
+use sunrise_command::args::normalized;
 use sunrise_core::identifier::Identifier;
 use sunrise_protocol::registry::{Builtin, Dynamic};
+use sunrise_sim::lan::data::SyncData;
 
 enum LocalRegistry<'a> {
-    Enchantments(&'a sunrise_client::enchant::Enchantments),
-    Advancements(&'a sunrise_client::advancements::Tree),
-    Rules(&'a sunrise_client::gamerules::RuleRegistry),
+    Enchantments(&'a sunrise_items::enchant::Enchantments),
+    Advancements(&'a sunrise_sim::advancements::Tree),
+    Rules(&'a sunrise_client_core::gamerules::RuleRegistry),
     Json(&'a BTreeMap<String, serde_json::Value>),
     HashJson(&'a std::collections::HashMap<String, serde_json::Value>),
-    Loot(&'a sunrise_client::items::Items),
-    Recipes(&'a sunrise_client::crafting::Recipes),
-    Professions(&'a sunrise_client::mobs::villager::ResolvedProfessions),
+    Loot(&'a sunrise_items::items::Items),
+    Recipes(&'a sunrise_sim::crafting::Recipes),
+    Professions(&'a sunrise_sim::mobs::villager::ResolvedProfessions),
 }
 impl LocalRegistry<'_> {
     fn contains(&self, id: &str) -> bool {
@@ -117,7 +118,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             self.mods.datapack_registries.clone()
         } else if self.remote.is_some() {
             // This set has already been filtered by the offer, sync policy and accepted schema.
-            sunrise_client::datapack_net::received().filter(|set| set.registry_available(registry))
+            sunrise_sim::datapack_net::received().filter(|set| set.registry_available(registry))
         } else {
             None
         }
@@ -170,7 +171,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             return self.level(id).is_some();
         }
         if registry == "minecraft:trial_spawner" {
-            return sunrise_client::mobs::trial_spawner::registry_contains(id).unwrap_or(false);
+            return sunrise_sim::mobs::trial_spawner::registry_contains(id).unwrap_or(false);
         }
         if let Some(found) = self
             .res
@@ -238,7 +239,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             );
         }
         if registry == "minecraft:trial_spawner" {
-            return identifiers(sunrise_client::mobs::trial_spawner::registry_ids()?);
+            return identifiers(sunrise_sim::mobs::trial_spawner::registry_ids()?);
         }
         if let Some(entries) = self.res.behaviours().live_features().and_then(|features| {
             features
@@ -315,9 +316,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             );
         }
         let item_tags = match registry.as_str() {
-            "minecraft:block" => Some(sunrise_client::items::TagRegistry::Block),
-            "minecraft:item" => Some(sunrise_client::items::TagRegistry::Item),
-            "minecraft:fluid" => Some(sunrise_client::items::TagRegistry::Fluid),
+            "minecraft:block" => Some(sunrise_items::items::TagRegistry::Block),
+            "minecraft:item" => Some(sunrise_items::items::TagRegistry::Item),
+            "minecraft:fluid" => Some(sunrise_items::items::TagRegistry::Fluid),
             _ => None,
         };
         if let Some(kind) = item_tags {

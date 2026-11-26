@@ -3,20 +3,20 @@
 //! sky. The dragon fight itself lives in game/mobs/dragon.rs: the podium is
 //! inactive until the dragon dies.
 use super::{Dim, Game};
-use sunrise_client::{
-    Result,
-    containers::BlockEntity,
-    items::ItemStack,
-    mesher::Vertex,
-    mobs::Who,
-    projectiles::{Projectile, ProjectileKind},
-    vanillagen::VanillaTerrain,
-    world_spawn::PlayerSpawnFinder,
-};
+use sunrise_client::mesher::Vertex;
+use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
+};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{
+    mobs::Who,
+    projectiles::{Projectile, ProjectileKind},
+    vanillagen::VanillaTerrain,
+    world_spawn::PlayerSpawnFinder,
 };
 
 use std::{collections::HashMap, sync::Arc};
@@ -131,7 +131,7 @@ pub(in crate::game::server_side) fn fallback_spawn(
 pub(in crate::game) struct EndState {
     /// Ticks until the player can use a gateway again (TheEndGatewayBlockEntity cooldown).
     pub(in crate::game) gateway_cooldown: u32,
-    pub(in crate::game) gateways: HashMap<u32, sunrise_client::end_gateway::Traveller>,
+    pub(in crate::game) gateways: HashMap<u32, sunrise_sim::end_gateway::Traveller>,
     /// The entities that went through a gateway, waiting for its exit.
     pub(in crate::game) arrivals: Vec<GatewayArrival>,
     /// The chunks kept loaded for those arrivals.
@@ -306,9 +306,9 @@ impl SummonedEye {
     /// `setItem`, which keeps one of the saved item, or an eye of ender.
     pub(in crate::game::server_side) fn load(tag: &mut sunrise_core::nbt::Tag) -> Self {
         use sunrise_core::nbt::Tag;
-        let motion = sunrise_client::entity_nbt::loaded_motion(tag);
-        let fire_ticks = sunrise_client::entity_nbt::fire_ticks_from_nbt(tag);
-        let has_visual_fire = sunrise_client::entity_nbt::flag(tag, "HasVisualFire");
+        let motion = sunrise_sim::entity_nbt::loaded_motion(tag);
+        let fire_ticks = sunrise_sim::entity_nbt::fire_ticks_from_nbt(tag);
+        let has_visual_fire = sunrise_sim::entity_nbt::flag(tag, "HasVisualFire");
         if let Tag::Compound(c) = tag {
             let mut item = match c.remove(&"Item".into()) {
                 Some(Tag::Compound(item)) => item,
@@ -743,7 +743,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .rev()
             .find(|&y| {
                 let f = self.res.facts().get(self.world.block(0, y, 0));
-                (f.full_collision || f.fluid != sunrise_client::blocks::Fluid::None)
+                (f.full_collision || f.fluid != sunrise_items::blocks::Fluid::None)
                     && !f.name.ends_with("_leaves")
             })
             .unwrap_or(0);
@@ -1004,7 +1004,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// [`Self::tallest_block`] in the loaded level `world`.
     pub(in crate::game) fn tallest_block_in(
         &self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         around: [i32; 3],
         dist: i32,
         allow_bedrock: bool,
@@ -1038,7 +1038,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         job: GatewayJob,
         target: Vec3,
     ) -> Result<Vec3> {
-        let bottom_center = sunrise_client::end_gateway::bottom_center;
+        let bottom_center = sunrise_sim::end_gateway::bottom_center;
         let find_exit = |game: &Self, exit: [i32; 3]| {
             let p = game.tallest_block([exit[0], exit[1] + 2, exit[2]], 5, false);
             [p[0], p[1] + 1, p[2]]
@@ -1219,7 +1219,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut inside: Vec<(u32, BlockPos)> = Vec::new();
         for (id, to, width, height) in items.into_iter().chain(mobs) {
             let from = self.portals.before.get(&id).copied().unwrap_or(to);
-            let found = sunrise_client::end_gateway::swept_gateway(from, to, width, height, |p| {
+            let found = sunrise_sim::end_gateway::swept_gateway(from, to, width, height, |p| {
                 is_gateway(self, p)
             });
             if let Some(pos) = found {
@@ -1233,7 +1233,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .iter()
             .filter(|p| ticks(p.position))
             .filter_map(|p| {
-                let pos = sunrise_client::end_gateway::pearl_gateway(p, |b| is_gateway(self, b))?;
+                let pos = sunrise_sim::end_gateway::pearl_gateway(p, |b| is_gateway(self, b))?;
                 Some((p.id, p.owner, p.guest, pos))
             })
             .collect();
@@ -1467,7 +1467,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             Arriving::Pearl(mut pearl) => {
-                sunrise_client::end_gateway::place_pearl(&mut pearl, at);
+                sunrise_sim::end_gateway::place_pearl(&mut pearl, at);
                 // ThrownEnderpearl.teleport: placePortalTicket where it came out.
                 self.end.tickets.retain(|(c, _)| *c != key);
                 self.end.tickets.push((key, PORTAL_TICKET));
@@ -1562,7 +1562,7 @@ pub(in crate::game) mod ticking_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::containers::EndGateway;
+    use sunrise_level::containers::EndGateway;
 
     #[test]
     fn a_new_exit_keeps_the_gateways_exact_teleport() {
@@ -1600,7 +1600,7 @@ pub(in crate::game) mod tests {
             let chunk = (platform[0] >> 4, platform[2] >> 4);
             game.world.chunks.insert(
                 chunk,
-                Arc::new(sunrise_client::chunk::Chunk::empty(chunk.0, chunk.1)),
+                Arc::new(sunrise_level::chunk::Chunk::empty(chunk.0, chunk.1)),
             );
             game.side.respawn_config = None;
             game.spawn = None;

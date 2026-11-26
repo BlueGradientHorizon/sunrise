@@ -64,7 +64,7 @@ fn armed_with(answer: Answer) -> (MoveGate, Heard) {
     let mut gate = MoveGate::new();
     let (log, mods) = install(answer);
     mod_platform::testing::with_mods(mods, || {
-        sunrise_client::move_gate::arm(
+        sunrise_sim::move_gate::arm(
             &mut gate,
             &server_context(),
             7,
@@ -145,7 +145,7 @@ fn a_panicking_listener_keeps_the_requested_move_and_is_disabled() {
     let (log, mods) = install(Answer::Panic);
     mod_platform::testing::with_mods(mods, || {
         let mut gate = MoveGate::new();
-        sunrise_client::move_gate::arm(
+        sunrise_sim::move_gate::arm(
             &mut gate,
             &server_context(),
             7,
@@ -157,7 +157,7 @@ fn a_panicking_listener_keeps_the_requested_move_and_is_disabled() {
         assert_eq!(gate.delta(), Vec3::new(1.0, 0.0, 0.0));
         // The poison skips this hook of the mod: this arm hears nobody.
         let mut gate = MoveGate::new();
-        sunrise_client::move_gate::arm(
+        sunrise_sim::move_gate::arm(
             &mut gate,
             &server_context(),
             7,
@@ -196,7 +196,7 @@ fn a_panic_after_a_replacement_keeps_the_accepted_delta() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         let mut gate = MoveGate::new();
-        sunrise_client::move_gate::arm(
+        sunrise_sim::move_gate::arm(
             &mut gate,
             &server_context(),
             7,
@@ -217,7 +217,7 @@ fn without_listeners_the_move_stands() {
     mod_platform::testing::with_mods(
         Vec::<mod_api::ModEntry>::new().into_iter().collect(),
         || {
-            sunrise_client::move_gate::arm(
+            sunrise_sim::move_gate::arm(
                 &mut gate,
                 &server_context(),
                 7,
@@ -263,7 +263,7 @@ fn a_poisoned_move_listener_keeps_its_other_hooks() {
     mod_platform::testing::with_mods(mods, || {
         let context = server_context();
         let mut gate = MoveGate::new();
-        sunrise_client::move_gate::arm(
+        sunrise_sim::move_gate::arm(
             &mut gate,
             &context,
             7,
@@ -355,7 +355,7 @@ fn a_panic_elsewhere_does_not_poison_the_move_listener() {
         );
         // The move listener is not poisoned by that panic.
         let mut gate = MoveGate::new();
-        sunrise_client::move_gate::arm(
+        sunrise_sim::move_gate::arm(
             &mut gate,
             &context,
             7,

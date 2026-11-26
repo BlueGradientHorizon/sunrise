@@ -6,8 +6,8 @@
 //! (tools/test_inline_loot_reference_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 const MISSING_MESSAGE: &str = "Failed to parse structure: Failed to parse either. First: Not a tag id; \
      Second: Failed to parse either. First: Not a list: \"parity:il_none\"; \
@@ -128,7 +128,7 @@ fn give(
     let _ = game.run_command("execute store result score d il run clear @s minecraft:diamond");
     (
         ok,
-        said.first().map(sunrise_client::text::Text::plain),
+        said.first().map(sunrise_client_core::text::Text::plain),
         score(game, "r"),
         score(game, "s"),
         score(game, "d"),
@@ -234,7 +234,7 @@ fn inline_references_follow_the_codec_and_the_reloaded_registry() {
     let said = game.side.chat_capture.take().unwrap_or_default();
     assert_eq!(
         said.first()
-            .map(sunrise_client::text::Text::plain)
+            .map(sunrise_client_core::text::Text::plain)
             .as_deref(),
         Some("Unknown function parity:il_bad")
     );
@@ -243,7 +243,7 @@ fn inline_references_follow_the_codec_and_the_reloaded_registry() {
 #[test]
 #[ignore = "daily"]
 fn pack_functions_admit_inline_references_on_first_open() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let mut resources = None;
     let mut game = game(&mut resources);
     let functions = game

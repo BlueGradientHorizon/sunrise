@@ -3,7 +3,7 @@
 use super::Game;
 use mod_api::{AtlasRegion, ColorResolver, Identifier, LevelReadError};
 use sunrise_client::block_sprites::{BlockSprites, Lookup, SpriteRef};
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -589,7 +589,7 @@ mod biome_tint_tests {
         prelude::BlockStatesHost,
     };
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     const GRASS: u32 = 0xAD_248B;
     const FOLIAGE: u32 = 0x34_D1EF;
@@ -755,8 +755,7 @@ mod block_tint_color_tests {
                 br#"{"biome_colors":{"water":"test:water"}}"#,
             );
             let biomes = Arc::new(
-                sunrise_client::biome::Biomes::load(&ResourceRoot::directory(root.clone()))
-                    .unwrap(),
+                sunrise_level::biome::Biomes::load(&ResourceRoot::directory(root.clone())).unwrap(),
             );
             let source = ResourceSource::directory(root.clone());
             let old = &game.side.client_pack.context;
@@ -789,7 +788,7 @@ mod block_tint_color_tests {
             for (cx, name) in [(0, "minecraft:plains"), (4, "minecraft:cool")] {
                 for dz in -1..=1 {
                     for dx in -1..=1 {
-                        let mut chunk = sunrise_client::chunk::Chunk::empty(cx + dx, dz);
+                        let mut chunk = sunrise_level::chunk::Chunk::empty(cx + dx, dz);
                         for y in 0..96 {
                             for z in 0..4 {
                                 for x in 0..4 {

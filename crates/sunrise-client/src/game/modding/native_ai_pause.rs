@@ -78,9 +78,10 @@ mod tests {
     use super::super::native_entity_refs::tests::{bind_local_player, with_game};
     use mod_api::{EntityRef, MobAiPauseRefusal, MobRef, WorldEpoch};
     use std::sync::Arc;
-    use sunrise_client::mobs::{Damage, DamageKind, Mob, Who};
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::{geometry::Vec3, nbt::Tag};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
+    use sunrise_sim::motion::PlayerMotion;
 
     /// A server level with a stone floor at y 64 over chunk (0, 0) and a
     /// player bound as entity 20.
@@ -162,7 +163,7 @@ mod tests {
             let mut m = game.mobs.pop().unwrap();
             let hit = Damage::of(DamageKind::Generic);
             m.knockback(
-                damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+                damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
                 0.4,
                 0.0,
                 1.0,
@@ -248,9 +249,9 @@ mod tests {
     #[ignore = "daily"]
     fn a_paused_brain_or_goal_mob_runs_no_ai_step_and_holds_no_input() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::mobs::allay;
-        use sunrise_client::mobs::goals::{Cx, Goal};
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::mobs::allay;
+        use sunrise_sim::mobs::goals::{Cx, Goal};
 
         #[derive(Clone, Debug)]
         struct PauseProbe(Arc<[AtomicUsize; 3]>);

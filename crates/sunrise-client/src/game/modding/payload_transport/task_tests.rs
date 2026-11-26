@@ -395,7 +395,7 @@ fn publish_task_server(game: &mut crate::game::ClientGame<'_>) -> u16 {
     game.side.settings.render_distance = 2;
     game.side.settings.simulation_distance = 2;
     let options = sunrise_sim::world_options::WorldOptions {
-        world_type: sunrise_client::save::WorldPreset::Flat,
+        world_type: sunrise_sim::save::WorldPreset::Flat,
         ..Default::default()
     };
     game.open_integrated(
@@ -484,7 +484,7 @@ fn serving_game_drives_configuration_tasks() {
     let crash_home =
         matches!(case, Case::Panic | Case::SendRefusalPanic).then(|| tempfile::tempdir().unwrap());
     if let Some(home) = &crash_home {
-        sunrise_client::crash::install(home.path().to_owned(), "client", || None);
+        sunrise_level::crash::install(home.path().to_owned(), "client", || None);
     }
     let fixture = Arc::new(Fixture::new(case));
     mod_platform::testing::with_mods(
@@ -594,7 +594,7 @@ fn serving_game_drives_configuration_tasks() {
                     }
                 }
                 if let Some(home) = &crash_home {
-                    assert!(!sunrise_client::crash::server_crashed());
+                    assert!(!sunrise_level::crash::server_crashed());
                     assert!(!home.path().join("crash-reports").exists());
                     assert!(mod_api::__private::take_hook_panics().contains(
                         &mod_api::__private::HookPanicReport {
@@ -715,7 +715,7 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
     }
 
     let scratch = tempfile::tempdir().unwrap();
-    sunrise_client::crash::install(scratch.path().to_path_buf(), "client", || None);
+    sunrise_level::crash::install(scratch.path().to_path_buf(), "client", || None);
     let failed = Arc::new(AtomicUsize::new(0));
     let healthy = Arc::new(AtomicUsize::new(0));
     let started = Arc::new(AtomicUsize::new(0));
@@ -792,7 +792,7 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
             assert_eq!(healthy.load(Ordering::Relaxed), 2);
             assert_eq!(started.load(Ordering::Relaxed), 2);
             assert_eq!(discarded.load(Ordering::Relaxed), 1);
-            assert!(!sunrise_client::crash::server_crashed());
+            assert!(!sunrise_level::crash::server_crashed());
             assert!(!scratch.path().join("crash-reports").exists());
             assert_eq!(
                 mod_api::__private::take_hook_panics().as_slice(),

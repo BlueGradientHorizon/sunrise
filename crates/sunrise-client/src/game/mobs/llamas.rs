@@ -2,8 +2,8 @@
 //! `Llama.handleEating` (wheat and hay), chests, carpets, shearing a carpet
 //! off and riding.
 use super::Game;
-use sunrise_client::mobs::{equine, llama};
 use sunrise_core::random::RandomSource;
+use sunrise_sim::mobs::{equine, llama};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Llama.handleEating`: wheat and hay bales heal, age up a baby, raise
@@ -64,12 +64,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game::server_side) fn is_led_by_trader(&self, index: usize) -> bool {
         let m = &self.mobs[index];
-        m.species() == sunrise_client::mobs::Species::TraderLlama
+        m.species() == sunrise_sim::mobs::Species::TraderLlama
             && matches!(
                 m.extra.leash,
-                Some(sunrise_client::mobs::leash::Holder::Mob(id))
+                Some(sunrise_sim::mobs::leash::Holder::Mob(id))
                     if self.mobs.iter().any(|o| o.id == id
-                        && o.species() == sunrise_client::mobs::Species::WanderingTrader)
+                        && o.species() == sunrise_sim::mobs::Species::WanderingTrader)
             )
     }
 }

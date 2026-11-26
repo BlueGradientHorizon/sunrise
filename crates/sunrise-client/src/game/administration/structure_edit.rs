@@ -7,16 +7,18 @@ use super::{
     },
 };
 use sunrise_client::{
-    containers::BlockEntity,
     gizmos::{Gizmos, InvisibleBlock},
+    ui::EditBox,
+};
+use sunrise_client_core::text::Text;
+use sunrise_client_render::block_entity_reach::Reach;
+use sunrise_level::{
+    containers::BlockEntity,
     structure_block::{
         self, RenderMode, StructureBlock, StructureMode, UpdateType, mirror_ordinal,
         rotation_ordinal,
     },
-    text::Text,
-    ui::EditBox,
 };
-use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use sunrise_world::worldgen::structure::{Mirror, Rotation};
 
@@ -441,7 +443,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let (offset, size) = b.renderable_box(padding, self.side_test_rotation(*pos));
                     (
                         RenderMode::Box,
-                        sunrise_client::structure_block::RenderableBox { offset, size },
+                        sunrise_level::structure_block::RenderableBox { offset, size },
                     )
                 }
                 _ => continue,

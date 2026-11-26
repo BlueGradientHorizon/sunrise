@@ -7,12 +7,10 @@ use mod_api::{
     FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
 };
 use std::cell::RefCell;
-use sunrise_client::{
-    items::Items,
-    motion::{FrictionLevel, read_friction},
-    world::World,
-};
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::Items;
+use sunrise_level::world::World;
+use sunrise_sim::motion::{FrictionLevel, read_friction};
 use sunrise_world::{
     fluid::FluidState as EngineFluidState,
     native_load_context::LoopSide,
@@ -26,13 +24,13 @@ pub(crate) struct GameSide<'a> {
     pub(in crate::game) dim: super::Dim,
     /// The level handle of the open world, absent before a world has an epoch.
     pub(in crate::game) level: Option<LevelRef>,
-    pub(in crate::game) facts: &'a sunrise_client::blocks::BlockFacts,
-    pub(in crate::game) biomes: &'a sunrise_client::biome::Biomes,
+    pub(in crate::game) facts: &'a sunrise_items::blocks::BlockFacts,
+    pub(in crate::game) biomes: &'a sunrise_level::biome::Biomes,
     pub(in crate::game) behaviours: &'a sunrise_world::level::Behaviours,
     pub(in crate::game) features: &'a std::sync::Arc<[String]>,
     pub(in crate::game) items: &'a Items,
     pub(in crate::game) damage_types: &'a sunrise_world::damage_source::Catalog,
-    pub(in crate::game) player_equipment: sunrise_client::health::PlayerEquipment<'a>,
+    pub(in crate::game) player_equipment: sunrise_sim::health::PlayerEquipment<'a>,
     /// What a hit on the player in place would read beside this side's own data, as borrows:
     /// assembled into the hit's reads only when a hit builds its level
     /// ([`SideLevel::hit_reads`](sunrise_client::motion::SideLevel::hit_reads)).
@@ -42,16 +40,16 @@ pub(crate) struct GameSide<'a> {
 
 /// The game's tables a hit on the player in place reads that this side does not otherwise hold.
 pub(crate) struct HitBorrows<'a> {
-    pub(in crate::game) living_types: sunrise_client::health::LivingTypeKeys,
+    pub(in crate::game) living_types: sunrise_sim::health::LivingTypeKeys,
     pub(in crate::game) attributes: &'a std::sync::Arc<sunrise_world::attributes::entity::Catalog>,
-    pub(in crate::game) player_effects: &'a sunrise_client::effects::PlayerEffects,
+    pub(in crate::game) player_effects: &'a sunrise_level::effects::PlayerEffects,
     pub(in crate::game) player_uuid: Option<u128>,
     pub(in crate::game) player_attachments: &'a mod_api::Attachments,
     pub(in crate::game) entity_attachments:
-        &'a sunrise_client::fast_hash::FxHashMap<u32, mod_api::Attachments>,
+        &'a sunrise_level::fast_hash::FxHashMap<u32, mod_api::Attachments>,
 }
 
-impl sunrise_client::motion::SideLevel for GameSide<'_> {
+impl sunrise_sim::motion::SideLevel for GameSide<'_> {
     fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
         world.is_loaded_at(pos.x, pos.y, pos.z)
             && super::native_level_world::rain_at(
@@ -72,13 +70,13 @@ impl sunrise_client::motion::SideLevel for GameSide<'_> {
         self.tag_items
     }
 
-    fn player_equipment(&self) -> sunrise_client::health::PlayerEquipment<'_> {
+    fn player_equipment(&self) -> sunrise_sim::health::PlayerEquipment<'_> {
         self.player_equipment
     }
 
-    fn hit_reads(&self) -> Option<sunrise_client::health::HitReads<'_>> {
+    fn hit_reads(&self) -> Option<sunrise_sim::health::HitReads<'_>> {
         let borrows = &self.hit_borrows;
-        Some(sunrise_client::health::HitReads {
+        Some(sunrise_sim::health::HitReads {
             epoch: self.level?.epoch(),
             living_types: borrows.living_types,
             attributes: borrows.attributes,
@@ -118,7 +116,7 @@ impl sunrise_client::motion::SideLevel for GameSide<'_> {
 }
 
 /// The game's own side, for a tick that only reads it: each query builds the borrowed tables.
-impl<__Side: crate::game::Side> sunrise_client::motion::SideLevel for Game<'_, __Side> {
+impl<__Side: crate::game::Side> sunrise_sim::motion::SideLevel for Game<'_, __Side> {
     fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
         game_side!(self, self.side_game_side_meta()).is_raining_at(world, pos)
     }
@@ -131,7 +129,7 @@ impl<__Side: crate::game::Side> sunrise_client::motion::SideLevel for Game<'_, _
         game_side!(self, self.side_game_side_meta()).tag_items
     }
 
-    fn player_equipment(&self) -> sunrise_client::health::PlayerEquipment<'_> {
+    fn player_equipment(&self) -> sunrise_sim::health::PlayerEquipment<'_> {
         acting_equipment!(self)
     }
 
@@ -426,13 +424,13 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::TryIntoApi;
     use std::sync::atomic::Ordering;
-    use sunrise_client::entities::{ArmorStand, StandMedium};
-    use sunrise_client::motion::{MotionWorld, PlayerMotion};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_sim::entities::{ArmorStand, StandMedium};
+    use sunrise_sim::motion::{MotionWorld, PlayerMotion};
     use sunrise_world::living_air::{LivingAirWorld, travel_in_air};
 
     fn item_and_orb(game: &crate::game::ServerGame<'_>) -> (f64, f64) {
-        use sunrise_client::entities::{ExperienceOrb, ItemEntity};
+        use sunrise_sim::entities::{ExperienceOrb, ItemEntity};
         let at = Vec3::new(5.5, 65.0, 5.5);
         let mut item = ItemEntity {
             size_answer: None,
@@ -442,7 +440,7 @@ mod tests {
             health: 5,
             fire_ticks: 0,
             id: 8,
-            stack: sunrise_client::items::ItemStack {
+            stack: sunrise_items::items::ItemStack {
                 item: "minecraft:stone".into(),
                 count: 1,
                 damage: 0,
@@ -519,7 +517,7 @@ mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let floor = BlockPos::new(5, 64, 5);
             // The player's ground travel reads the block through its motion world.
@@ -561,7 +559,7 @@ mod tests {
             };
             // An armor stand moving 0.2 along x on the ground, after one travel: 0.2 × friction × 0.91.
             let travel_stand = |game: &crate::game::ServerGame<'_>, stand: &mut ArmorStand| {
-                let scene = sunrise_client::collisions::SceneCollisions {
+                let scene = sunrise_level::collisions::SceneCollisions {
                     world: &game.world,
                     binding: game.collision,
                     subject: None,
@@ -769,7 +767,7 @@ mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = game.pack.assets.registry;
             let lime = registry.default_state("minecraft:lime_wool").unwrap();
@@ -821,7 +819,7 @@ mod tests {
             RegistrationContext, Tag,
         };
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         if run_fresh_cases(
             "game::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
@@ -937,7 +935,7 @@ mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let dir = tempfile::tempdir().unwrap();
             game.test_acquire_session_lock(dir.path());
@@ -946,7 +944,7 @@ mod tests {
             game.world.set(3, 64, 3, chest).unwrap();
             game.world.block_entities.insert(
                 (3, 64, 3),
-                sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+                sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
             );
             let side = game_side!(game, game.side_game_side_meta());
             let coefficient = |_: sunrise_world::registry::BlockStateId| None;
@@ -993,19 +991,19 @@ mod tests {
     #[ignore = "daily"]
     fn mob_travel_and_both_leash_sites_use_the_parts_answer_once() {
         use super::super::boats::Boat;
-        use sunrise_client::mobs::{Mob, leash};
+        use sunrise_sim::mobs::{Mob, leash};
         let calls = mod_platform::__private::part_tests::friction_game_thread();
         crate::entry::install_client_hooks();
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let at = Vec3::new(5.5, 65.0, 5.5);
             let horse = game.res.mob_types().get("minecraft:horse").unwrap().clone();
             let ghast = game.res.mob_types().get("minecraft:ghast").unwrap().clone();
             game.mobs.push(Mob::new(99, ghast, at, 0.0));
-            let mut damage = sunrise_client::health::TestLevel::new(0);
+            let mut damage = sunrise_sim::health::TestLevel::new(0);
             for (block, drag, spin, listens) in [
                 ("minecraft:stone", 0.10920001, 1.0920001, 0),
                 ("minecraft:white_wool", 0.17836001, 1.7836001, 1),

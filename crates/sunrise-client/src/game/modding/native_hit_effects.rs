@@ -2,7 +2,7 @@
 //! `play_sound_from`): the same `lan_sounds` queue, sound-seed stream and validation as a
 //! `LevelRef`'s sounds, reached through the hit's [`HitEffects`](sunrise_client::health::HitEffects).
 use super::creatures::NativeSound;
-use sunrise_client::health::HitSound;
+use sunrise_sim::health::HitSound;
 
 impl From<HitSound<'_>> for NativeSound {
     fn from(sound: HitSound<'_>) -> Self {

@@ -20,7 +20,7 @@ fn statue_conversion_keeps_the_owner_until_physical_discard() {
     super::super::native_entity_refs::tests::with_game(|game| {
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let kind = game
             .res
             .mob_types()

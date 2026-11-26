@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::native_projectiles::impact_probe::{Action, point, with_probe};
 use std::sync::atomic::Ordering;
-use sunrise_client::mobs::Mob;
+use sunrise_sim::mobs::Mob;
 
 fn cast(game: &mut crate::game::ServerGame<'_>) {
     let mut h = Hook::remote(71, Vec3::new(0.5, 64.5, 0.5), [0, 0, 0, 71]);

@@ -5,11 +5,11 @@
 use super::*;
 use crate::game::{lan::LanSettings, lan_actions::GuestCommand};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 /// A host game with a window player and two other online players.
 fn game_with_two_guests<'a>(

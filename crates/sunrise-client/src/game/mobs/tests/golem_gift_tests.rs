@@ -4,8 +4,9 @@
 //! gift goes through the game's own `MobEvent::Gift` handler. Other slots
 //! keep their chances, and an antenna that already holds an item keeps it.
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, mobs::MobEvent};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::MobEvent;
 
 const EMPTY: &str = "0000609b-0000-0000-0000-000000000001";
 const CHANCES: &str = "0000609b-0000-0000-0000-000000000002";
@@ -38,7 +39,7 @@ fn game<'a>(
 }
 
 fn id(game: &crate::game::ServerGame<'_>, uuid: &str) -> u32 {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap()) {
         Some(crate::game::commands::Target::Mob(id)) => id,
         other => panic!("{other:?}"),
     }
@@ -63,7 +64,7 @@ fn holds(game: &mut crate::game::ServerGame<'_>, uuid: &str, nbt: &str) -> bool 
 }
 
 fn ints(uuid: &str) -> String {
-    let u = sunrise_client::save::uuid_from_text(uuid).unwrap();
+    let u = sunrise_sim::save::uuid_from_text(uuid).unwrap();
     format!("[I;{},{},{},{}]", u[0], u[1], u[2], u[3])
 }
 
@@ -120,7 +121,7 @@ fn the_gift_keeps_the_other_slots_chances() {
         .unwrap();
     let chances = *game.mobs[i].extra.drop_chances.clone().unwrap();
     // EquipmentSlot.VALUES: mainhand, offhand, feet, legs, chest, head, body, saddle.
-    let default = sunrise_client::mobs::drops::DEFAULT_DROP_CHANCE;
+    let default = sunrise_sim::mobs::drops::DEFAULT_DROP_CHANCE;
     assert_eq!(
         chances,
         [0.25, default, default, default, default, 0.5, default, 2.0]
@@ -163,9 +164,9 @@ fn an_antenna_that_holds_an_item_keeps_it_and_its_chance() {
 /// death drop reads it, in `EquipmentSlot.VALUES` order.
 fn effective(game: &crate::game::ServerGame<'_>, uuid: &str) -> Vec<f32> {
     let m = game.mobs.iter().find(|m| m.id == id(game, uuid)).unwrap();
-    sunrise_client::mobs::drops::SLOTS
+    sunrise_sim::mobs::drops::SLOTS
         .iter()
-        .map(|slot| sunrise_client::mobs::drops::drop_chance(m, slot))
+        .map(|slot| sunrise_sim::mobs::drops::drop_chance(m, slot))
         .collect()
 }
 

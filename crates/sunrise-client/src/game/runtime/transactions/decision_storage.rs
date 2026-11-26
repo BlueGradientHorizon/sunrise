@@ -1,7 +1,7 @@
 //! Action state belongs to the existing storage transaction, not a parallel
 //! transaction stack. The resource-free harness uses these same journal methods.
 use super::*;
-use sunrise_client::join_seq::visibility::PassLease;
+use sunrise_sim::join_seq::visibility::PassLease;
 
 /// A marker lives exactly as long as its transaction level. The existing save
 /// admission gate checks passes_settled(), including this lease. In particular

@@ -2,16 +2,17 @@ use crate::game::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
 use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_sim::motion::PlayerMotion;
 
 /// Verifies `Silent:1b` sound suppression and `minecraft:lightning_strike` game-event timing on first server tick.
 #[test]
 #[ignore = "daily"]
 fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
-    let _language =
-        sunrise_client::lang::isolate_publication(sunrise_client::lang::Language::of("en_us", []));
+    let _language = sunrise_client_core::lang::isolate_publication(
+        sunrise_client_core::lang::Language::of("en_us", []),
+    );
     with_game(|game| {
         prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 230.0, 8.5)).unwrap());

@@ -4,27 +4,27 @@
 use crate::game::Dim;
 use serde_json::json;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_core::geometry::Vec3;
-use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
 /// The chat components a guest's connection was sent since the last flush.
-fn chats(receiver: &mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<serde_json::Value> {
+fn chats(receiver: &mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<serde_json::Value> {
     let mut result = Vec::new();
     for sent in receiver.try_iter() {
         let bodies = match sent {
-            sunrise_client::lan::Out::Packet(p) => vec![p],
-            sunrise_client::lan::Out::Packets(p) => p,
-            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+            sunrise_sim::lan::Out::Packet(p) => vec![p],
+            sunrise_sim::lan::Out::Packets(p) => p,
+            sunrise_sim::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
         };
         for body in bodies {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);
             let id = reader.varint().unwrap();
             if let Clientbound::SystemChat(p) = Clientbound::decode(id, reader.rest()).unwrap() {
-                result.push(sunrise_client::scoreboard::tag_to_json(&p.content));
+                result.push(sunrise_client_core::scoreboard::tag_to_json(&p.content));
             }
         }
     }
@@ -35,7 +35,7 @@ fn chats(receiver: &mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<serde_json:
 /// the host's own commands, then what the operator received.
 fn flush_to_operator(
     game: &mut crate::game::ServerGame<'_>,
-    receiver: &mpsc::Receiver<sunrise_client::lan::Out>,
+    receiver: &mpsc::Receiver<sunrise_sim::lan::Out>,
 ) -> Vec<serde_json::Value> {
     game.send_admin_feedback();
     for g in &game.lan.as_ref().unwrap().hub.guests {
@@ -59,7 +59,7 @@ fn lan_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> (
     crate::game::ServerGame<'a>,
-    mpsc::Receiver<sunrise_client::lan::Out>,
+    mpsc::Receiver<sunrise_sim::lan::Out>,
 ) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();

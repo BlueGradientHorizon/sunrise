@@ -40,7 +40,7 @@ impl GameLevel<'_> {
             return;
         };
         let dimension = self.dimension;
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             self.native_on_destroyed_by_push_reaction(
                 ticks, dimension, pos, state, direction, fluid,
             );

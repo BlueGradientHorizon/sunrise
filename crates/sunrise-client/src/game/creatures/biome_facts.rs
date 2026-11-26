@@ -1,11 +1,11 @@
 //! `Game::biome_facts` over what it reads, so a helper thread can ask too.
-use sunrise_client::mobs::{farm::Climate, spawning::BiomeFacts};
+use sunrise_sim::mobs::{farm::Climate, spawning::BiomeFacts};
 
 /// The facts of the biome at a position, for `finalizeSpawn` and the variant rules.
 pub(in crate::game) fn biome_facts_in(
-    world: &sunrise_client::world::World,
-    biomes: &sunrise_client::biome::Biomes,
-    tags: &sunrise_client::mobs::MobData,
+    world: &sunrise_level::world::World,
+    biomes: &sunrise_level::biome::Biomes,
+    tags: &sunrise_sim::mobs::MobData,
     x: i32,
     y: i32,
     z: i32,
@@ -37,7 +37,7 @@ pub(in crate::game) fn biome_facts_in(
         mushroom: b.name == "minecraft:mushroom_fields",
         desert: b.name == "minecraft:desert",
         jungle: has("minecraft:is_jungle"),
-        wolf: sunrise_client::mobs::tame::wolf_variant_for(&b.name, &has),
+        wolf: sunrise_sim::mobs::tame::wolf_variant_for(&b.name, &has),
         full_moon: (world.day_time / 24000).rem_euclid(8) == 0,
         frog: if has("minecraft:spawns_warm_variant_frogs") {
             1

@@ -12,7 +12,7 @@
 use super::After as Effect;
 use mod_api::{__private::TransactionFrame, EntityRef, WorldEpoch};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[path = "menu_owner.rs"]
 mod menu_owner;

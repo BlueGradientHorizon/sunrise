@@ -3,7 +3,7 @@ use super::{Game, shield::OFFHAND_SLOT};
 #[cfg(test)]
 use crate::game::server_side::item_use::ItemUseState;
 use crate::game::server_side::item_use::hand_of;
-use sunrise_client::items::{ItemInfo, ItemStack};
+use sunrise_items::items::{ItemInfo, ItemStack};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
@@ -26,7 +26,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if left.count > 0 {
             return Some(left);
         }
-        sunrise_client::item_sync::use_remainder(stack, Some(info))
+        sunrise_sim::item_sync::use_remainder(stack, Some(info))
     }
     /// `LivingEntityUseItemEvent.Finish` on a server's client, whose
     /// `completeUsingItem` (`handleEntityEvent(9)`) ran for `stack` in `slot`.
@@ -64,10 +64,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .items()
             .get(&stack.item)
             .and_then(|i| i.use_cooldown.clone());
-        let Some(component) = sunrise_client::cooldowns::component(stack, default.as_ref()) else {
+        let Some(component) = sunrise_items::cooldowns::component(stack, default.as_ref()) else {
             return;
         };
-        let group = sunrise_client::cooldowns::group(stack, default.as_ref());
+        let group = sunrise_items::cooldowns::group(stack, default.as_ref());
         self.cooldowns.add(group, component.ticks());
     }
     pub(in crate::game) fn client_consume_held_slot(&mut self, amount: u32) {
@@ -87,11 +87,8 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game) fn stand_in_first_person(game: &mut crate::game::ClientGame<'_>) {
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
-                game.motion,
-                sunrise_core::geometry::Vec3::ZERO,
-            )
-            .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+                .unwrap(),
         );
         game.tick_player_model();
     }
@@ -191,13 +188,13 @@ pub(in crate::game) mod tests {
         }
         fn hold_a_sword(game: &mut crate::game::ClientGame<'_>) {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
                 .unwrap(),
             );
-            game.inventory[game.selected] = Some(sunrise_client::items::ItemStack::new(
+            game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new(
                 "minecraft:iron_sword",
                 1,
             ));
@@ -349,18 +346,18 @@ pub(in crate::game) mod tests {
                     "minecraft:wooden_spear",
                 ] {
                     assert_eq!(
-                        game.item_use_animation(&sunrise_client::items::ItemStack::new(id, 1)),
+                        game.item_use_animation(&sunrise_items::items::ItemStack::new(id, 1)),
                         UseAnimation::Drink
                     );
                 }
                 assert_eq!(
-                    game.item_use_animation(&sunrise_client::items::ItemStack::new(
+                    game.item_use_animation(&sunrise_items::items::ItemStack::new(
                         "minecraft:stick",
                         1
                     )),
                     UseAnimation::None
                 );
-                let mut patched = sunrise_client::items::ItemStack::new("minecraft:bow", 1);
+                let mut patched = sunrise_items::items::ItemStack::new("minecraft:bow", 1);
                 patched.data_mut().set_other(
                     "minecraft:consumable",
                     Some(sunrise_core::nbt::Tag::compound([(
@@ -370,7 +367,7 @@ pub(in crate::game) mod tests {
                 );
                 assert_eq!(game.item_use_animation(&patched), UseAnimation::Drink);
                 use sunrise_core::nbt::Tag;
-                let mut kinetic_stick = sunrise_client::items::ItemStack::new("minecraft:stick", 1);
+                let mut kinetic_stick = sunrise_items::items::ItemStack::new("minecraft:stick", 1);
                 kinetic_stick.data_mut().set_other(
                     "minecraft:kinetic_weapon",
                     Some(Tag::compound([("delay_ticks", Tag::Int(30))])),
@@ -379,8 +376,7 @@ pub(in crate::game) mod tests {
                     game.item_use_state(&kinetic_stick),
                     super::ItemUseState::Spear(_)
                 ));
-                let mut removed =
-                    sunrise_client::items::ItemStack::new("minecraft:wooden_spear", 1);
+                let mut removed = sunrise_items::items::ItemStack::new("minecraft:wooden_spear", 1);
                 removed.data_mut().set_other(
                     "!minecraft:kinetic_weapon",
                     Some(Tag::Compound(Default::default())),
@@ -388,14 +384,14 @@ pub(in crate::game) mod tests {
                 assert_eq!(game.item_use_animation(&removed), UseAnimation::None);
                 assert_eq!(calls.load(Ordering::Relaxed), 9);
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::ZERO,
                     )
                     .unwrap(),
                 );
                 game.inventory[game.selected] =
-                    Some(sunrise_client::items::ItemStack::new("minecraft:bow", 1));
+                    Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1));
                 game.using = Some((game.selected, 0));
                 game.tick_player_model();
                 assert_eq!(
@@ -420,14 +416,14 @@ pub(in crate::game) mod tests {
         crate::game::api_values::install_parts(&[]).unwrap();
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
                 .unwrap(),
             );
             game.inventory[game.selected] =
-                Some(sunrise_client::items::ItemStack::new("minecraft:bow", 1));
+                Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1));
             game.using = Some((game.selected, 0));
             game.tick_player_model();
             game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
@@ -452,7 +448,8 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicU8, Ordering::Relaxed},
         };
-        use sunrise_client::{hud::Rect, items::ItemStack};
+        use sunrise_client::hud::Rect;
+        use sunrise_items::items::ItemStack;
 
         if run_fresh_cases(
             "game::client_side::item_use_client::tests::render_hand_submits_both_skinned_arms_in_draw_order",

@@ -1,7 +1,7 @@
 //! Server-only entity tick helpers (`others` family, server players, section-scope gate).
 use super::Game;
 use crate::game::native_ticks::{KindNames, PLAYER, TickBuffers, TickKind, TickRound, Told};
-use sunrise_client::join_seq::JoinSeq;
+use sunrise_sim::join_seq::JoinSeq;
 
 /// Whether an entity the server keeps without simulating it (`others`) is told its tick here.
 pub(in crate::game) fn other_ticks(kind: &str) -> bool {

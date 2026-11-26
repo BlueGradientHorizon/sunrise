@@ -9,8 +9,9 @@ use std::{
 };
 use sunrise_client::gfx::pack_timing;
 use sunrise_client::held::Source;
-use sunrise_client::{Result, items::ItemStack};
+use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// The control protocol's version (`docs/api/stability.md`): before 1.0 an
@@ -114,7 +115,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         rendered: bool,
         block_entity_work: [u64; 2],
-        spans: &[sunrise_client::spans::Span],
+        spans: &[sunrise_level::spans::Span],
     ) {
         if let Some(flight) = self.side.flight.0.as_mut().filter(|flight| flight.raw) {
             let visited = self.world.block_entities.take_column_unload_entries();
@@ -304,7 +305,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     pub(in crate::game) fn answer(
         &mut self,
-        request: sunrise_client::control::Request,
+        request: sunrise_sim::control::Request,
         event_loop: &dyn EventLoopCtl,
     ) {
         let reply = match self.control_command(&request.line, &request.reply, event_loop) {
@@ -689,13 +690,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                             "auto" => Mode::Auto,
                             _ => Mode::Off,
                         };
-                        sunrise_client::parallel::set_setting(
+                        sunrise_sim::parallel::set_setting(
                             self.side.settings.sunrise.parallel_tick,
                         );
                     }
                     Some(other) => return Err(format!("unknown parallel tick mode {other}").into()),
                 }
-                let (setting, on, auto) = sunrise_client::parallel::status();
+                let (setting, on, auto) = sunrise_sim::parallel::status();
                 Ok(Some(
                     json!({ "ok": true, "setting": setting, "on": on, "auto": auto }),
                 ))
@@ -1520,8 +1521,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_control_hurt_log(&mut self) -> Value {
         fn drain(
             name: &str,
-            hurt_log: &mut Vec<sunrise_client::health::HurtRecord>,
-            attack_log: &mut Vec<sunrise_client::health::AttackRecord>,
+            hurt_log: &mut Vec<sunrise_sim::health::HurtRecord>,
+            attack_log: &mut Vec<sunrise_sim::health::AttackRecord>,
         ) -> Value {
             let hurts: Vec<Value> = hurt_log
                 .drain(..)
@@ -1741,7 +1742,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         status["fight"] = fight;
         status["lod"] = lod;
         // Parallel Tick: the setting, whether the next tick shares its work, and Auto's state.
-        let (setting, on, auto) = sunrise_client::parallel::status();
+        let (setting, on, auto) = sunrise_sim::parallel::status();
         status["parallel_tick"] = json!({ "setting": setting, "on": on, "auto": auto });
         let (target, sampled) = self
             .side

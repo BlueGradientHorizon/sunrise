@@ -1,12 +1,12 @@
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{
     mobs::Who,
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
 };
-use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -91,7 +91,7 @@ pub(in crate::game) fn owner(game: &crate::game::ServerGame<'_>) -> u32 {
 #[test]
 #[ignore = "daily"]
 fn a_landing_orb_posts_hit_ground_after_a_fall() {
-    use sunrise_client::entities::OrbMove;
+    use sunrise_sim::entities::OrbMove;
     with_game(|game| {
         assert!(game.run_command("summon experience_orb 6.5 200 10.5 {Value:1,fall_distance:2d}"));
         let i = game.orbs.len() - 1;
@@ -197,9 +197,9 @@ fn loaded_arrow_first_tick_dispatches_once_with_its_real_owner() {
             assert_eq!(first, expected, "actual first tick, input={flag:?}");
             assert!(game.run_command(&format!(
                 "kill {}",
-                sunrise_protocol::crypto::uuid_string(sunrise_client::lan::playerdata::ints_uuid(
-                    [114, 0, 0, n]
-                ))
+                sunrise_protocol::crypto::uuid_string(sunrise_sim::lan::playerdata::ints_uuid([
+                    114, 0, 0, n
+                ]))
             )));
         }
     });

@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::run_fresh_cases;
-use sunrise_client::{datapack_net, lan::Out};
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+use sunrise_sim::{datapack_net, lan::Out};
 
 struct Synced;
 #[mod_api::__subscriptions]

@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_shader_api::{Api, Manifest, Pack, Primaries, check};
 
 use super::Game;

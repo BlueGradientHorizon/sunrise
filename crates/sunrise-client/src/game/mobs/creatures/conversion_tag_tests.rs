@@ -70,7 +70,7 @@ fn converted_mobs_keep_command_tags_at_the_new_id_and_on_save() {
             .convert_to(
                 &source,
                 &format!("minecraft:{to}"),
-                sunrise_client::mobs::conversion::Params::KEEP_ALL,
+                sunrise_sim::mobs::conversion::Params::KEEP_ALL,
                 false,
                 |_, _| {},
             )
@@ -85,10 +85,10 @@ fn converted_mobs_keep_command_tags_at_the_new_id_and_on_save() {
         let saved = game.mob_tree_nbt(index);
         assert_eq!(saved.get("Tags"), Some(&tags));
         assert_eq!(
-            sunrise_client::entity_nbt::kind(&saved).as_deref(),
+            sunrise_sim::entity_nbt::kind(&saved).as_deref(),
             Some(format!("minecraft:{to}").as_str())
         );
-        assert_ne!(sunrise_client::entity_nbt::uuid(&saved), Some(uuid));
+        assert_ne!(sunrise_sim::entity_nbt::uuid(&saved), Some(uuid));
         assert!(saved.get("sunrise:old_entity_only").is_none());
         game.mobs.remove(index);
         let reloaded = game.load_mob(saved, None).unwrap();

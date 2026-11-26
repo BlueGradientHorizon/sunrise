@@ -7,7 +7,7 @@
 //! to be bound before any subscribed production route may use it.
 use super::{storage::GameHost, *};
 use crate::game::Game;
-use sunrise_client::menu::{Menu as EngineMenu, MutationStamp, Snapshot};
+use sunrise_sim::menu::{Menu as EngineMenu, MutationStamp, Snapshot};
 
 /// Names the guest's inventory owner, never a borrowed menu moved out for dispatch.
 #[derive(Clone, Copy)]

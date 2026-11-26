@@ -2,7 +2,8 @@
 pub(in crate::game) mod player_status_tests {
     use crate::game::client_side::shader_packs::player_status_tests::rain_on_the_player;
     use crate::game::client_side::shader_packs::player_status_tests::stand_player;
-    use sunrise_client::{effects::EffectInstance, motion::MotionWorld};
+    use sunrise_level::effects::EffectInstance;
+    use sunrise_sim::motion::MotionWorld;
 
     /// The player booleans only custom uniforms read follow the window's player (spec 3.4):
     /// `LivingEntity.isAlive`, `Entity.isCurrentlyGlowing` (the Glowing effect fallback),

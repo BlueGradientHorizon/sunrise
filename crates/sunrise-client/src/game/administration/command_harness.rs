@@ -17,11 +17,11 @@ use std::{
     path::Path,
     time::{Duration, Instant},
 };
-use sunrise_client::{Result, text::Text};
+use sunrise_client_core::{Result, text::Text};
 
 /// A message's structured component as `ComponentSerialization.CODEC` writes it.
 pub(in crate::game::server_side) fn canonical_component(text: &Text) -> Value {
-    sunrise_client::scoreboard::canonical_component(&text.component())
+    sunrise_client_core::scoreboard::canonical_component(&text.component())
 }
 
 /// A message as `[text, style]` runs with adjacent equal styles merged; the
@@ -284,7 +284,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if let Some(host) = self.lan.as_mut() {
                         for text in &earned {
                             host.hub
-                                .system_message(sunrise_client::lan::data::component_nbt(
+                                .system_message(sunrise_sim::lan::data::component_nbt(
                                     &text.component(),
                                 ));
                         }
@@ -370,16 +370,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             return Err("projectile type: missing loaded projectile".into());
                         };
                         let actual = *g.persist.uuids.get(&id).ok_or("projectile type: missing actual UUID")?;
-                        if sunrise_client::lan::playerdata::ints_uuid(actual) != uuid {
+                        if sunrise_sim::lan::playerdata::ints_uuid(actual) != uuid {
                             return Err("projectile type: UUID mismatch".into());
                         }
                         let p = g.creatures.projectiles.iter().find(|p| p.id == id)
                             .ok_or("projectile type: missing model")?;
                         // Read the live save adapter's type, not the generic selector alias.
                         // No Duration value is supplied by this admission observation.
-                        let saved = sunrise_client::entity_nbt::arrow_to_nbt(p, actual, None, None, None, g.res.items())
+                        let saved = sunrise_sim::entity_nbt::arrow_to_nbt(p, actual, None, None, None, g.res.items())
                             .ok_or("projectile type: not an actual arrow")?;
-                        Ok(json!({"uuid":actual,"kind":sunrise_client::entity_nbt::kind(&saved)
+                        Ok(json!({"uuid":actual,"kind":sunrise_sim::entity_nbt::kind(&saved)
                             .ok_or("projectile type: missing saved type")?,
                             "pos":[p.position.x,p.position.y,p.position.z],"no_gravity":p.no_gravity}))
                     })?;
@@ -414,7 +414,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .get(&id)
                             .copied()
                             .ok_or("anger state: no saved UUID")?;
-                        if sunrise_client::lan::playerdata::ints_uuid(actual) != uuid {
+                        if sunrise_sim::lan::playerdata::ints_uuid(actual) != uuid {
                             return Err("anger state: UUID mismatch".into());
                         }
                         let m = g
@@ -724,7 +724,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     )?;
                     self.in_owner_level(|g| -> Result<()> {
                         let id = g
-                            .boat_by_uuid(sunrise_client::lan::playerdata::uuid_ints(uuid))
+                            .boat_by_uuid(sunrise_sim::lan::playerdata::uuid_ints(uuid))
                             .ok_or("boat click: missing live boat")?;
                         let owner = g.serving.as_ref().ok_or("boat click: no server")?.owner;
                         let conn = g
@@ -763,7 +763,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     )?;
                     self.in_owner_level(|g| -> Result<()> {
                         let id = g
-                            .mob_by_uuid(sunrise_client::lan::playerdata::uuid_ints(uuid))
+                            .mob_by_uuid(sunrise_sim::lan::playerdata::uuid_ints(uuid))
                             .filter(|id| g.mobs.iter().any(|m| m.id == *id && !m.removed))
                             .ok_or("mob click: missing live mob")?;
                         let owner = g.serving.as_ref().ok_or("mob click: no server")?.owner;
@@ -877,7 +877,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let actual = *g.persist.uuids.get(&id).ok_or("frame map: no UUID")?;
                         let frame = g.item_frames.iter().find(|f| f.id == id)
                             .ok_or("frame map: missing frame")?.clone();
-                        if sunrise_client::lan::playerdata::ints_uuid(actual) != uuid {
+                        if sunrise_sim::lan::playerdata::ints_uuid(actual) != uuid {
                             return Err("frame map: UUID mismatch".into());
                         }
                         let map = g.map(map_id).ok_or("frame map: no backed map")?;
@@ -889,13 +889,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             _ => return Err("frame map: frames is not a list".into()),
                         };
                         let record = records.iter().find(|r|
-                            sunrise_client::save::number(r.get("entity_id")) == Some(i64::from(id)));
+                            sunrise_sim::save::number(r.get("entity_id")) == Some(i64::from(id)));
                         let pos = record.map(|r| match r.get("pos") {
                             Some(sunrise_core::nbt::Tag::IntArray(pos)) => Ok(pos.clone()),
                             _ => Err("frame map: invalid saved position"),
                         }).transpose()?;
                         let rotation = record.map(|r|
-                            sunrise_client::save::number(r.get("rotation"))
+                            sunrise_sim::save::number(r.get("rotation"))
                                 .ok_or("frame map: missing rotation")).transpose()?;
                         Ok(json!({"id":map_id,"uuid":actual,"kind":frame.kind(),"pos":frame.pos,
                             "center":map.center,"scale":map.scale,"dimension":map.dimension,
@@ -951,11 +951,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             }
                             let (_, _, menu, _) = host.menus.get(&conn)
                                 .and_then(|p| p.crafting.table.as_ref()).unwrap();
-                            if menu.kind() != sunrise_client::menu::Kind::Crafting {
+                            if menu.kind() != sunrise_sim::menu::Kind::Crafting {
                                 return Err("craft fixture: wrong menu kind".into());
                             }
                             let guest = host.hub.guest(conn).ok_or("no guest")?;
-                            let stack = |s: Option<&sunrise_client::items::ItemStack>| {
+                            let stack = |s: Option<&sunrise_items::items::ItemStack>| {
                                 s.map(|s| json!([&*s.item, s.count,
                                     s.data().and_then(|d| d.map_id),
                                     s.data().and_then(|d| d.map_post_processing)]))
@@ -982,7 +982,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let directory = g.side.world_root.join("data/minecraft/maps");
                         let maps: Vec<_> = op["ids"].as_array().ok_or("map IDs")?.iter().map(|id| {
                             let path = directory.join(format!("{}.dat", id.as_i64().unwrap()));
-                            sunrise_client::save::read_dat(&path).map(|root| {
+                            sunrise_sim::save::read_dat(&path).map(|root| {
                                 let data = root.get("data").unwrap_or(&root);
                                 let number = |key| match data.get(key) {
                                     Some(Tag::Int(v)) => *v, Some(Tag::Byte(v)) => i32::from(*v), _ => 0,
@@ -992,11 +992,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 };
                                 json!({"scale": number("scale"), "locked": number("locked") != 0,
                                     "center": [number("xCenter"), number("zCenter")],
-                                    "dimension": sunrise_client::save::text(data.get("dimension")),
+                                    "dimension": sunrise_sim::save::text(data.get("dimension")),
                                     "byte_array_length": colors})
                             })
                         }).collect();
-                        let last = sunrise_client::save::read_dat(&directory.join("last_id.dat"))
+                        let last = sunrise_sim::save::read_dat(&directory.join("last_id.dat"))
                             .and_then(|tag| match tag.get("data").and_then(|d| d.get("map")) {
                                 Some(Tag::Int(v)) => Some(*v), _ => None,
                             });
@@ -1041,7 +1041,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         op["pos"][i].as_i64().unwrap_or(0) as i32
                     });
                     let levels = self.harness_owner(|g| {
-                        use sunrise_client::mobs::spawn_rules::SpawnLevel;
+                        use sunrise_sim::mobs::spawn_rules::SpawnLevel;
                         let level = g.natural_level();
                         Ok([
                             level.block_light(pos[0], pos[1], pos[2]),
@@ -1264,7 +1264,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         field("entity_id")?,
                         field("level_seed")?,
                     );
-                    sunrise_client::random_source::set_thread_uniquifier(uniquifier)?;
+                    sunrise_level::random_source::set_thread_uniquifier(uniquifier)?;
                     self.harness_owner(|g| {
                         g.side.next_entity = u32::try_from(entity_id)?;
                         sunrise_core::random::RandomSource::set_seed(

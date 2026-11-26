@@ -1,9 +1,9 @@
 use super::*;
 use crate::game::core_tests::pet_order_tests::WOLF;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::Mob;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Mob;
 
 pub(in crate::game) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -47,7 +47,7 @@ pub(in crate::game) fn game<'a>(
     game.set_mode_id(0);
     let kind = game.res.mob_types().get("minecraft:wolf").unwrap().clone();
     let mut wolf = Mob::new(WOLF, kind, Vec3::new(0.5, 64.0, 2.0), 0.0);
-    sunrise_client::mobs::tame::set_tame(&mut wolf, true);
+    sunrise_sim::mobs::tame::set_tame(&mut wolf, true);
     wolf.extra.owner = Some(game.acting_player_uuid());
     wolf.ground.on_ground = true;
     game.mobs.push(wolf);

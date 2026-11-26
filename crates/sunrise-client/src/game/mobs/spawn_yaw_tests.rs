@@ -7,8 +7,8 @@ use crate::game::creatures::SpawnReason;
 use crate::game::creatures::SpawnSite;
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

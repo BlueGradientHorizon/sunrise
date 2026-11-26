@@ -12,12 +12,10 @@ use std::{
     cell::{Cell, RefCell},
     sync::Arc,
 };
-use sunrise_client::{
-    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
-    items::ItemStack,
-    lan::menu::Slots,
-};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer};
 use sunrise_protocol::packets::play::{ContainerButtonClick, ContainerClick, Serverbound};
+use sunrise_sim::lan::menu::Slots;
 
 #[path = "mod_menu_decisions_tests/container_layout.rs"]
 mod container_layout;
@@ -662,7 +660,7 @@ fn container_click(window: i32, slot: i16, input: i32) -> Serverbound {
 
 /// A menu a mod opened (`Slots::Native`) for guest 12.
 fn open_native_menu(game: &mut crate::game::ServerGame<'_>) -> i32 {
-    use sunrise_client::lan::menu::Menu;
+    use sunrise_sim::lan::menu::Menu;
     let menu = Menu {
         window: 5,
         kind: 2,
@@ -713,7 +711,7 @@ fn with_depot_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
 }
 
 fn with_live_depot_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [(
             QUICK_MOVE_MENU.into(),
             "movemod".into(),
@@ -743,7 +741,7 @@ fn with_live_depot_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
 fn place_depot(game: &mut crate::game::ServerGame<'_>, menu: Option<&str>) {
     game.world.chunks.insert(
         (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
     );
     let state = game
         .pack
@@ -1082,7 +1080,7 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
             None,
         ),
     ];
-    sunrise_client::containers::with_mod_menu_types(menus, || {
+    sunrise_level::containers::with_mod_menu_types(menus, || {
         with_publication_mods(|| {
             with_guests(|game| {
                 open_depot(game);
@@ -1888,7 +1886,7 @@ fn depot_container(game: &mut crate::game::ServerGame<'_>) {
 #[test]
 #[ignore = "daily"]
 fn a_quick_move_cannot_reach_a_player_slot_omitted_from_the_menu() {
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [(
             "minecraft:generic_9x1".into(),
             "movemod".into(),
@@ -1950,7 +1948,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
             None,
         ),
     ];
-    sunrise_client::containers::with_mod_menu_types(menus, || {
+    sunrise_level::containers::with_mod_menu_types(menus, || {
         with_mod(|| {
             with_guests(|game| {
                 let button = |game: &mut crate::game::ServerGame<'_>, window, id| {
@@ -1972,7 +1970,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     let menu = guest.menu.as_mut().unwrap();
                     menu.registry_id = DEPOT_MENU.into();
-                    menu.mod_type = sunrise_client::containers::mod_menu_type(DEPOT_MENU);
+                    menu.mod_type = sunrise_level::containers::mod_menu_type(DEPOT_MENU);
                 });
                 button(game, window, 99);
                 assert_eq!(BUTTONS.get(), 0, "a menu rejects unsupported button IDs");
@@ -2113,10 +2111,10 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
 #[test]
 #[ignore = "daily"]
 fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
-    use sunrise_client::lan::{Out, PlayerSender, menu::input::SWAP};
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::{Out, PlayerSender, menu::input::SWAP};
 
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [(
             DEPOT_MENU.into(),
             "movemod".into(),

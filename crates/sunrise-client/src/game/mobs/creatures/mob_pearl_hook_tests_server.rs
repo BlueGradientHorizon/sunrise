@@ -8,7 +8,7 @@ use std::sync::{
 };
 
 pub(in crate::game) fn run_player_pearl_keeps_acting_context_cancellation_and_mutable_damage() {
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
     let mode = Arc::new(AtomicU8::new(0));
     let mods: mod_api::Mods = vec![ModEntry::new(
         "player-pearl-proof",

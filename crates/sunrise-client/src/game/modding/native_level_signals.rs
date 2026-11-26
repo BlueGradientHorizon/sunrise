@@ -3,8 +3,9 @@ use super::Game;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use mod_api::LevelHost;
 use std::collections::HashMap;
-use sunrise_client::{items::Items, world::World};
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_items::items::Items;
+use sunrise_level::world::World;
 use sunrise_world::{level::signal_access::SignalAccess, registry::BlockStateId};
 
 /// Created for the game's current level (`self.level(self.dim.id())` or after
@@ -38,7 +39,7 @@ pub(in crate::game) fn block_entity_signal(
     pos: BlockPos,
     state: BlockStateId,
 ) -> i32 {
-    if let Some(sunrise_client::containers::BlockEntity::TestBlock(block)) =
+    if let Some(sunrise_level::containers::BlockEntity::TestBlock(block)) =
         world.block_entities.get(&(pos.x, pos.y, pos.z))
     {
         return sunrise_gameplay::test_blocks::own_signal(registry, state, block.powered);
@@ -67,7 +68,7 @@ impl<S: crate::game::Side> SignalAccess for ReadLevel<'_, '_, S> {
             return None;
         }
         match self.game.world.block_entities.get(&(pos.x, pos.y, pos.z))? {
-            sunrise_client::containers::BlockEntity::Mod(entity) => {
+            sunrise_level::containers::BlockEntity::Mod(entity) => {
                 entity.shapes().map(|shapes| shapes.collision().clone())
             }
             _ => None,

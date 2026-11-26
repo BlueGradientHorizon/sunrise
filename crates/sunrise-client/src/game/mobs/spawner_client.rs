@@ -1,15 +1,13 @@
 //! Client-side spawner display mobs, spinning geometry, and particles.
 use super::{Game, spawner::Pos};
-use sunrise_client::{
-    containers::BlockEntity,
-    mobs::{
-        Mob,
-        spawner::{SpawnDataExt, SpawnerExt},
-    },
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::mobs::{
+    Mob,
+    spawner::{SpawnDataExt, SpawnerExt},
+};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The client ticks of these spawners, then the shown mobs of spawners
@@ -139,7 +137,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .assets
                     .registry
                     .state(self.world.block(key.0, key.1, key.2))?;
-                if sunrise_client::block_entity_types::factory_block(&block.name)
+                if sunrise_client_core::block_entity_types::factory_block(&block.name)
                     != "minecraft:trial_spawner"
                 {
                     return None;
@@ -147,8 +145,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let state = block
                     .properties
                     .get("trial_spawner_state")
-                    .and_then(|v| sunrise_client::mobs::trial_spawner::TrialState::from_name(v))
-                    .unwrap_or(sunrise_client::mobs::trial_spawner::TrialState::Inactive);
+                    .and_then(|v| sunrise_sim::mobs::trial_spawner::TrialState::from_name(v))
+                    .unwrap_or(sunrise_sim::mobs::trial_spawner::TrialState::Inactive);
                 state.spinning_mob_speed()?;
                 s.next_spawn_data.as_ref()?.id()?
             }
@@ -193,7 +191,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Some(BlockEntity::Spawner(s)) => {
                     s.display_pose(alpha as f32, mob.width(), mob.height())
                 }
-                Some(BlockEntity::TrialSpawner(s)) => sunrise_client::mobs::spawner::display_pose(
+                Some(BlockEntity::TrialSpawner(s)) => sunrise_sim::mobs::spawner::display_pose(
                     s.o_spin,
                     s.spin,
                     alpha as f32,
@@ -211,7 +209,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let light = self.world.light(key.0, key.1, key.2);
             let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
             self.mark_entity(out.len(), &mob.kind.id);
-            if mob.species() == sunrise_client::mobs::Species::SulfurCube {
+            if mob.species() == sunrise_sim::mobs::Species::SulfurCube {
                 self.sulfur_cube_body_geometry(
                     mob,
                     alpha as f32,

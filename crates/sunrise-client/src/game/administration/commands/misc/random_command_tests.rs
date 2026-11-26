@@ -3,8 +3,8 @@
 use super::*;
 use crate::game::{Dim, game_tests::tests::server_game};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 /// The packets a guest's connection was sent, encoded.
 pub(in crate::game) fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
@@ -28,9 +28,9 @@ pub(in crate::game) fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
         if let Clientbound::SystemChat(p) = Clientbound::decode(id, reader.rest()).unwrap() {
             // The client's own read of the line it is sent.
             out.push(
-                sunrise_client::scoreboard::comp_text(&sunrise_client::scoreboard::tag_to_json(
-                    &p.content,
-                ))
+                sunrise_client_core::scoreboard::comp_text(
+                    &sunrise_client_core::scoreboard::tag_to_json(&p.content),
+                )
                 .plain(),
             );
         }

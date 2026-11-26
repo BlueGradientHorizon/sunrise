@@ -32,13 +32,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Attachment membership uses physical presence (except removed mobs), not the
     /// command resolver's pending-removal masks. Limit resolution to this level.
     pub(in crate::game) fn attachment_entity_exists(&self, id: u32) -> bool {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
+        use sunrise_sim::join_seq::residency::table::EntityLookup;
         matches!(
             self.resident_entities
                 .table
                 .borrow_mut()
                 .entity_lookup(&self.dim.key(), id, |at| {
-                    use sunrise_client::join_seq::residency::Kind;
+                    use sunrise_sim::join_seq::residency::Kind;
                     match at.owner.kind {
                         Kind::Hook | Kind::Player => self
                             .locate_specialized_resident_owner(at)
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if !matches!(
             self.server_resident_entity(id.get()),
-            sunrise_client::join_seq::residency::table::EntityLookup::Found {
+            sunrise_sim::join_seq::residency::table::EntityLookup::Found {
                 value,
                 ..
             } if saved_binding_target(value)
@@ -174,7 +174,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let mod_api::Holder::Entity(id) = holder {
             if self.entity_initialization.active != Some(holder) {
                 use super::entity_residency::SlotAccess;
-                use sunrise_client::join_seq::residency::Kind;
+                use sunrise_sim::join_seq::residency::Kind;
                 let id = std::num::NonZeroU32::new(id).ok_or(AttachmentError::MissingHolder)?;
                 match self.with_resident_slot(&self.dim.key(), id, |_| ()) {
                     SlotAccess::Done(()) => {}

@@ -2,14 +2,15 @@
 //! no world is shared, the pause menu has no Friends button (`friends_shown` is false, as on
 //! another server) and `sunrise-ctl friends` says it isn't there. game/friends.rs is the real one.
 use super::{Game, Screen};
-use sunrise_client::{Result, hud::HudBatch};
+use sunrise_client::hud::HudBatch;
+use sunrise_client_core::Result;
 
 pub const HELP: &[&str] = &[];
 
 /// The pause menu's Friends icon is vanilla's, drawn inactive: its name for the widget tree.
 pub const TITLE: &str = "Play with Friends";
 pub(in crate::game::client_side) fn title() -> String {
-    sunrise_client::lang::get_or("sunrise.friends.title", TITLE)
+    sunrise_client_core::lang::get_or("sunrise.friends.title", TITLE)
 }
 
 #[cfg(feature = "client")]

@@ -2,7 +2,7 @@
 fn the_creative_sync_covers_inventory_menu_slots_5_to_45_once_each() {
     // CreativeInventoryListener sends every InventoryMenu slot but the crafting ones: the
     // armour (5..=8), the inventory (9..=44) and the off hand (45).
-    let stack = |item: &str| Some(sunrise_client::items::ItemStack::new(item, 1));
+    let stack = |item: &str| Some(sunrise_items::items::ItemStack::new(item, 1));
     let inventory: Vec<_> = (0..36)
         .map(|i| stack(&format!("minecraft:item_{i}")))
         .collect();
@@ -35,7 +35,7 @@ fn the_creative_sync_covers_inventory_menu_slots_5_to_45_once_each() {
 
 #[test]
 fn a_server_slot_update_leaves_an_unsent_creative_click_to_be_sent() {
-    let stack = |item: &str| Some(sunrise_client::items::ItemStack::new(item, 1));
+    let stack = |item: &str| Some(sunrise_items::items::ItemStack::new(item, 1));
     let none = || vec![None; crate::game::remote::CREATIVE_SYNCED];
     // Synced: nothing. A click puts a helmet on (entry 37, not sent yet), then the server
     // sets hotbar slot 0 (a pickup): only that entry counts as synced.
@@ -58,7 +58,7 @@ mod give_stack {
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
     use mod_api::CreativeGiveError;
-    use sunrise_client::command::args::GameMode;
+    use sunrise_command::args::GameMode;
     use sunrise_core::nbt::{Compound, JavaString, Tag};
     use sunrise_protocol::item::{Component, Stack};
     use sunrise_protocol::packets::play::Serverbound as S;
@@ -87,8 +87,8 @@ mod give_stack {
         )
     }
 
-    fn engine(item: &str, count: u32) -> Option<sunrise_client::items::ItemStack> {
-        Some(sunrise_client::items::ItemStack::new(item, count))
+    fn engine(item: &str, count: u32) -> Option<sunrise_items::items::ItemStack> {
+        Some(sunrise_items::items::ItemStack::new(item, count))
     }
 
     /// The `SetCreativeModeSlot` packets among `packets`, as the server decodes them.
@@ -365,7 +365,7 @@ mod give_stack {
                     game.inventory[4] = engine("minecraft:stone", 60);
                     game.offhand = engine("minecraft:stone", 60);
                     game.inventory[0] = engine("minecraft:stone", 60);
-                    let mut renamed = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+                    let mut renamed = sunrise_items::items::ItemStack::new("minecraft:stone", 1);
                     renamed.data_mut().custom_name = Some(Tag::String("other".into()));
                     game.inventory[1] = Some(renamed.clone());
                     game.inventory[9] = engine("minecraft:stone", 60);

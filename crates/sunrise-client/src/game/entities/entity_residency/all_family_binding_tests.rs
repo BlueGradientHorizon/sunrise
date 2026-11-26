@@ -5,13 +5,11 @@ use std::{
     num::NonZeroU32,
     sync::{Arc, Mutex},
 };
-use sunrise_client::{
-    items::ItemStack,
-    join_seq::residency::{Kind, table::EntityLookup},
-};
+use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, Holder, index::AttachmentIndex,
 };
+use sunrise_sim::join_seq::residency::{Kind, table::EntityLookup};
 
 static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",
@@ -101,7 +99,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         let mob_id = game.mobs[0].id;
         assert!(game.set_leash(
             crate::game::commands::Target::Mob(mob_id),
-            sunrise_client::mobs::leash::Holder::Knot(fence),
+            sunrise_sim::mobs::leash::Holder::Knot(fence),
             None,
         ));
         let id = game.resident_entities.knots[0].id;
@@ -119,7 +117,7 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
             .push(super::super::general::GeneralRow {
                 id: 4242,
                 uuid: [11, 12, 13, 14],
-                join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+                join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
                 type_slot: 0,
                 position: sunrise_core::geometry::Vec3::ZERO,
                 previous: sunrise_core::geometry::Vec3::ZERO,

@@ -4,7 +4,9 @@ use mod_api::{
 };
 use serde_json::json;
 use std::sync::Arc;
-use sunrise_client::{advancements as a, chunk::Chunk, items::ItemStack as EngineStack};
+use sunrise_items::items::ItemStack as EngineStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::advancements as a;
 
 fn install(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();

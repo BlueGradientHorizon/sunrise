@@ -6,7 +6,7 @@
 //! swapped in (`for_player`), as their own turn, what it tells them going to
 //! their chat.
 use super::{Game, Target};
-use sunrise_client::lan::guest::Guest;
+use sunrise_sim::lan::guest::Guest;
 
 impl Target {
     /// A player, in place or not (`instanceof ServerPlayer`).

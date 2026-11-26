@@ -1,5 +1,5 @@
 use crate::game::{Game, Result};
-use sunrise_client::mobs::MobEvent;
+use sunrise_sim::mobs::MobEvent;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn side_handle_mob_events_reusable(

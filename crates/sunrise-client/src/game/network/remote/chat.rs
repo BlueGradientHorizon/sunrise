@@ -17,7 +17,7 @@ pub(in crate::game) fn chat_type_decorate(
     bound: &play::ChatTypeBound,
     content: &serde_json::Value,
 ) -> serde_json::Value {
-    use sunrise_client::scoreboard::tag_to_json;
+    use sunrise_client_core::scoreboard::tag_to_json;
     let (field, default_key) = match decoration {
         Decoration::Chat => ("chat", "chat.type.text"),
         Decoration::Narration => ("narration", "chat.type.text.narrate"),

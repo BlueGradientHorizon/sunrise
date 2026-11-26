@@ -9,7 +9,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU32, Ordering},
 };
-use sunrise_client::{mobs::equine, sprint::Keys};
+use sunrise_sim::{mobs::equine, sprint::Keys};
 
 /// Cancels every dismount while `keep` is set, and counts the dismounts it hears.
 struct KeepRider {

@@ -6,7 +6,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[test]
 #[ignore = "daily"]

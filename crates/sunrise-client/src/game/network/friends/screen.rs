@@ -6,15 +6,15 @@
 use sunrise_client::{
     hud::{HudAtlas, HudBatch, rgba},
     multiplayer::wrap,
-    text::Text,
     ui,
 };
+use sunrise_client_core::text::Text;
 
 /// The English title: the fallback of [`title`], and what the screen's widgets are named by.
 pub const TITLE: &str = "Play with Friends";
 /// A string of this screen: the language table's, or the English text.
 fn tr(key: &str, english: &str) -> String {
-    sunrise_client::lang::get_or(key, english)
+    sunrise_client_core::lang::get_or(key, english)
 }
 /// The title in the current language.
 pub fn title() -> String {

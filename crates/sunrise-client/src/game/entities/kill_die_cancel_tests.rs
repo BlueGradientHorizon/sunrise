@@ -7,8 +7,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 #[derive(Default)]
 struct Probe {
@@ -80,7 +80,7 @@ fn a_vetoed_kill_keeps_the_mob_and_a_later_kill_dies_once_isolated() {
             let pig = game
                 .mobs
                 .iter()
-                .find(|m| m.species() == sunrise_client::mobs::Species::Pig)
+                .find(|m| m.species() == sunrise_sim::mobs::Species::Pig)
                 .unwrap()
                 .id;
             let calls = |p: &Probe| std::mem::take(&mut *p.calls.lock().unwrap());

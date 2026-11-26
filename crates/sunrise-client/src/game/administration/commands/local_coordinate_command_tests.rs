@@ -23,7 +23,7 @@ fn h149_actual_registered_local_commands_preserve_exact_saved_positions() {
         game.set_allow_commands(true);
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         game.block_ticks
             .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())

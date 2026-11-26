@@ -7,11 +7,13 @@ use super::{
 use mod_api::__private::game::Fields;
 use mod_api::{ItemPlace, MenuSlotBacking, MenuSlotPlace, ServerHost};
 use std::collections::{BTreeMap, BTreeSet};
-use sunrise_client::{
-    containers::BlockEntity, items::ItemStack, lan::menu::SlotBacking,
-    menu::place::custom_plan::MenuPlacement, recipe_book::placement_sync::Refusal,
-};
 use sunrise_core::nbt::Compound;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{
+    lan::menu::SlotBacking, menu::place::custom_plan::MenuPlacement,
+    recipe_book::placement_sync::Refusal,
+};
 type Pos = (i32, i32, i32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::game) struct Key {
@@ -63,7 +65,7 @@ impl Backings {
         // A `Mod` layout names its grid later, so any visible stored slot may be cleared.
         let any_slot = plan.awaits_grid();
         let (main, native, native_menu) = match before.slots {
-            sunrise_client::lan::menu::Slots::Native => {
+            sunrise_sim::lan::menu::Slots::Native => {
                 let native = before
                     .native
                     .as_ref()
@@ -94,7 +96,7 @@ impl Backings {
                     Some((before.conn, before.uuid, before.window)),
                 )
             }
-            sunrise_client::lan::menu::Slots::Block(_) => {
+            sunrise_sim::lan::menu::Slots::Block(_) => {
                 let guest = game
                     .lan
                     .as_ref()
@@ -342,7 +344,7 @@ impl Backings {
     }
     /// Only operation-owned cells are published. Rewriting untouched displayed
     /// slots would restore consumed items when a linked view aliases a source.
-    pub fn changes(&self, menu: &mut sunrise_client::menu::Menu) -> Changes {
+    pub fn changes(&self, menu: &mut sunrise_sim::menu::Menu) -> Changes {
         let mut blocks = BTreeMap::new();
         let mut native = BTreeMap::new();
         for (slot, key) in self.main_keys.iter().enumerate() {

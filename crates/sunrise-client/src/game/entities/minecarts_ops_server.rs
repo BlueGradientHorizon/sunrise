@@ -3,9 +3,10 @@ use super::Game;
 use crate::game::minecarts::{
     CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed, hit::CartHit,
 };
-use sunrise_client::{containers::BlockEntity, items::ItemStack};
 use sunrise_client_core::sound_source::BLOCKS;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `getDismountLocationForPassenger`: beside the cart's motion direction,
@@ -87,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
         {
             return;
         }
@@ -119,9 +120,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn cart_drop(&self, kind: CartKind, id: u32) -> ItemStack {
         let mut stack = ItemStack::new(kind.item(), 1);
         if let Some(name) = self.persist_raw(id).and_then(|raw| raw.get("CustomName")) {
-            let text = sunrise_client::entity_nbt::name_text(name);
-            stack.data_mut().custom_name =
-                Some(sunrise_client::scoreboard::component_tag(&text.component()));
+            let text = sunrise_sim::entity_nbt::name_text(name);
+            stack.data_mut().custom_name = Some(sunrise_client_core::scoreboard::component_tag(
+                &text.component(),
+            ));
         }
         stack
     }
@@ -185,7 +187,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let tnt_prime =
                 self.carts[i].kind == CartKind::Tnt && (fire || speed >= f64::from(0.01f32));
             if tnt_prime {
-                let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+                let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
                 let mut c = self.carts.extract(self.carts[i].join).unwrap();
                 // MinecartTNT.destroy: prime instead of breaking.
                 if c.fuse < 0 {
@@ -207,13 +209,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return true;
                 };
                 let (kind, slots) = (cart.kind, cart.items.len());
-                let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+                let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
                 if self.kill_vehicle_object(target) && !creative {
                     self.entity_killed_event(at, false);
                     if self
                         .ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+                        .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
                     {
                         self.spawn_item_own(self.cart_drop(kind, id), at, 10);
                         self.drop_vehicle_contents(at, &vec![None; slots]);

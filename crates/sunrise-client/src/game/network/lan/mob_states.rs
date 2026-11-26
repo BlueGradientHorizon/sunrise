@@ -7,7 +7,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         hub: &Hub,
         player_entity: Option<i32>,
         speeds: &mut super::super::lan_attributes::SpeedByType,
-        e: &mut sunrise_client::lan::entity::EntityState,
+        e: &mut sunrise_sim::lan::entity::EntityState,
     ) {
         super::super::villager_client::server_meta(
             m,
@@ -19,8 +19,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &self.stations().professions,
         );
         // HappyGhast.aiStep: requiresPrecisePosition while on a still timeout.
-        e.precise = m.species() == sunrise_client::mobs::Species::HappyGhast
-            && sunrise_client::mobs::happy_ghast::on_still_timeout(m);
+        e.precise = m.species() == sunrise_sim::mobs::Species::HappyGhast
+            && sunrise_sim::mobs::happy_ghast::on_still_timeout(m);
         mob_freeze_meta(m, &mut e.meta, &mut e.defaults);
         self.mob_attributes(m, speeds, &mut e.attributes);
     }

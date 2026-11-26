@@ -13,9 +13,9 @@ use super::persist::OffLevel;
 use super::respawn_anchor::RespawnConfig;
 use super::respawn_position::Respawn;
 use super::{Dim, Game, Mob, boats, lan::LanHost, minecarts};
-use sunrise_client::{lan::hub::TickCtx, world_spawn::PlayerSpawnFinder};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::{lan::hub::TickCtx, world_spawn::PlayerSpawnFinder};
 
 /// Why an entity changes level (`entity_travel_to_dimension`'s `cause`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -124,7 +124,7 @@ impl Rideable for Mob {
         self.id
     }
     fn arrive(&mut self, at: Vec3, yaw: f32, _motion: Vec3) {
-        sunrise_client::mobs::living::teleports::snap_to(self, at);
+        sunrise_sim::mobs::living::teleports::snap_to(self, at);
         self.velocity = Vec3::ZERO;
         self.yaw = yaw;
         self.previous_yaw = yaw;
@@ -206,11 +206,11 @@ fn drop_hook(host: &mut LanHost, conn: u32) {
 
 fn take_vehicle<
     T: Rideable
-        + sunrise_client::join_seq::Joined
+        + sunrise_sim::join_seq::Joined
         + sunrise_mod_runtime::attachments::HasAttachmentLifetime,
     const DIRECT: bool,
 >(
-    list: &mut sunrise_client::join_seq::JoinList<T, DIRECT>,
+    list: &mut sunrise_sim::join_seq::JoinList<T, DIRECT>,
     id: u32,
     at: Vec3,
     yaw: f32,
@@ -219,7 +219,7 @@ fn take_vehicle<
     let i = list.iter().position(|v| v.id() == id)?;
     let mut v = list.remove_for_transfer(i);
     v.arrive(at, yaw, motion);
-    v.set_join_seq(sunrise_client::join_seq::JoinSeq::UNJOINED);
+    v.set_join_seq(sunrise_sim::join_seq::JoinSeq::UNJOINED);
     Some(v)
 }
 
@@ -481,13 +481,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .block_entities
                 .get(&(pos[0], pos[1], pos[2]))
                 .is_some_and(|e| {
-                    matches!(e, sunrise_client::containers::BlockEntity::EndGateway(_))
+                    matches!(e, sunrise_level::containers::BlockEntity::EndGateway(_))
                 });
         if !gateway_ok {
             self.as_guest(conn, |g| {
                 g.server_send_overlay_message(
-                    sunrise_client::text::Text::translate("spectator.cannot_teleport", &[])
-                        .with_color(sunrise_client::text::RED),
+                    sunrise_client_core::text::Text::translate("spectator.cannot_teleport", &[])
+                        .with_color(sunrise_client_core::text::RED),
                 );
             });
             return true;
@@ -511,11 +511,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if !self.spectator_exit_exists(&plan) {
                         self.as_guest(conn, |g| {
                             g.server_send_overlay_message(
-                                sunrise_client::text::Text::translate(
+                                sunrise_client_core::text::Text::translate(
                                     "spectator.cannot_teleport",
                                     &[],
                                 )
-                                .with_color(sunrise_client::text::RED),
+                                .with_color(sunrise_client_core::text::RED),
                             );
                         });
                         return true;
@@ -764,9 +764,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let rule = if invulnerable {
-            sunrise_client::gamerules::vanilla::PLAYERS_NETHER_PORTAL_CREATIVE_DELAY
+            sunrise_client_core::gamerules::vanilla::PLAYERS_NETHER_PORTAL_CREATIVE_DELAY
         } else {
-            sunrise_client::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY
+            sunrise_client_core::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY
         };
         let transition = self.ui.rules.int_at(rule).max(0);
         let Some(entry) = self
@@ -1116,7 +1116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .spawn_search
             .as_ref()
             .is_some_and(|search| search.legacy_personal_point);
-        let result = (|| -> sunrise_client::Result<Option<Trip>> {
+        let result = (|| -> sunrise_client_core::Result<Option<Trip>> {
             let own = if let Some(config) = trip.respawn {
                 if let Some(found) = self.find_respawn_and_use(config, consume)? {
                     Some(found)
@@ -1468,7 +1468,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for mut mob in self.move_entity_memory(source, id) {
             let destination =
                 super::vehicle_teleport::passenger_destination(from, at, mob.position);
-            sunrise_client::mobs::living::teleports::snap_to(&mut mob, destination);
+            sunrise_sim::mobs::living::teleports::snap_to(&mut mob, destination);
             let [turned_yaw, pitch] = super::vehicle_teleport::passenger_rotation(
                 rotation,
                 [yaw, rotation[1]],
@@ -1726,7 +1726,7 @@ mod tests {
     #[ignore = "daily"]
     fn guest_portal_entry_uses_body_sleep_and_vehicle() {
         super::super::native_guest_turn_tests::with_guests(|game| {
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             chunk.lit = true;
             game.world.chunks.insert((0, 0), Arc::new(chunk));
             let portal = game
@@ -1749,7 +1749,7 @@ mod tests {
                     g.vehicle = riding.then_some(99);
                     g.motion = body.then(|| {
                         Box::new(
-                            sunrise_client::motion::PlayerMotion::new(
+                            sunrise_sim::motion::PlayerMotion::new(
                                 game.motion,
                                 Vec3::new(3.5, 64.0, 5.5),
                             )
@@ -1760,7 +1760,7 @@ mod tests {
                         g.motion.as_mut().unwrap().set_health(0.0, false).unwrap();
                     }
                 });
-                game.portals.player.process = Some(sunrise_client::nether_portal::Process {
+                game.portals.player.process = Some(sunrise_sim::nether_portal::Process {
                     entry: BlockPos::new(3, 64, 5),
                     time: 8,
                     inside: false,
@@ -2055,7 +2055,7 @@ mod tests {
             assert!(game.entity_ticking_area()(1, 2));
             // Supply the block's real inside notification, then exercise the actual
             // entity portal processor, carrier routing and server trip scheduler.
-            let delay = sunrise_client::nether_portal::ENTITY_DELAY;
+            let delay = sunrise_sim::nether_portal::ENTITY_DELAY;
             game.portals
                 .entities
                 .entry(root)
@@ -2092,7 +2092,7 @@ mod tests {
     /// 26.3 sent the client a cart arriving with motion (0.4, 0, 0).
     #[test]
     fn a_minecart_a_player_rides_keeps_its_clamped_motion_through_a_portal() {
-        let mut carts: sunrise_client::join_seq::JoinList<_> = [minecarts::Minecart::new(
+        let mut carts: sunrise_sim::join_seq::JoinList<_> = [minecarts::Minecart::new(
             3,
             minecarts::CartKind::Rideable,
             Vec3::new(9.9, 100.0, 4.5),
@@ -2113,7 +2113,7 @@ mod tests {
     /// ride the vehicle that is recreated in the other dimension).
     #[test]
     fn the_vehicle_a_player_rides_travels_with_it() {
-        let mut boats: sunrise_client::join_seq::JoinList<_> = [boats::Boat::new(
+        let mut boats: sunrise_sim::join_seq::JoinList<_> = [boats::Boat::new(
             7,
             Arc::from("oak"),
             Vec3::new(0.0, 64.0, 0.0),
@@ -2121,8 +2121,8 @@ mod tests {
         )]
         .into_iter()
         .collect();
-        let mut carts = sunrise_client::join_seq::JoinList::<minecarts::Minecart>::default();
-        let mut mobs = sunrise_client::join_seq::JoinList::<Mob>::default();
+        let mut carts = sunrise_sim::join_seq::JoinList::<minecarts::Minecart>::default();
+        let mut mobs = sunrise_sim::join_seq::JoinList::<Mob>::default();
         let at = Vec3::new(1.5, 65.0, -2.5);
         let boat = take_vehicle(&mut boats, 7, at, 90.0, Vec3::ZERO)
             .expect("the vehicle the player rides travels with it");
@@ -2146,11 +2146,11 @@ mod tests {
 mod transfer_lifetime_tests {
     use super::*;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::join_seq::Joined;
     use sunrise_mod_runtime::attachments::{
         AttachmentLifetime, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
         index::AttachmentIndex,
     };
+    use sunrise_sim::join_seq::Joined;
 
     static VALUE: AttachmentType<i32> = AttachmentType {
         namespace: "test",
@@ -2161,14 +2161,12 @@ mod transfer_lifetime_tests {
         sync: false,
     };
 
-    fn removal<T: Rideable + sunrise_client::join_seq::Joined + HasAttachmentLifetime>(
-        mut owner: T,
-    ) {
+    fn removal<T: Rideable + sunrise_sim::join_seq::Joined + HasAttachmentLifetime>(mut owner: T) {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let mut map = Attachments::default();
         VALUE.set(&mut map, Holder::Entity(owner.id()), 17).unwrap();
         owner.attachment_lifetime().bind(&mut map, &index, 42u32);
-        let mut list: sunrise_client::join_seq::JoinList<T> = [owner].into_iter().collect();
+        let mut list: sunrise_sim::join_seq::JoinList<T> = [owner].into_iter().collect();
         let id = list[0].id();
         let key = ("test".into(), "transfer".into());
         let retained = index.lock().unwrap().snapshot(&key);
@@ -2324,20 +2322,18 @@ mod credits_respawn_tests {
     use super::Dim;
 
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        chunk::Chunk,
-        lan::{
-            Joined, NetConfig, Out, PlayerSender,
-            guest::{Guest, InboxItem, SPECTATOR},
-            hub::HubConfig,
-        },
-    };
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::{
         buf::Reader,
         packets::{
             configuration::ClientInformation,
             play::{self, Clientbound as C, Serverbound as S},
         },
+    };
+    use sunrise_sim::lan::{
+        Joined, NetConfig, Out, PlayerSender,
+        guest::{Guest, InboxItem, SPECTATOR},
+        hub::HubConfig,
     };
     use sunrise_world::registry::BlockStateId;
 

@@ -6,12 +6,12 @@
 //! same on vanilla 26.3 with two real players).
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 const GUEST: &str = "GolemGuest";
 
@@ -119,7 +119,9 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<Stri
     let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
+        said.iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect(),
     )
 }
 
@@ -154,11 +156,11 @@ fn targets_guest(game: &mut crate::game::ServerGame<'_>, ticks: usize) -> bool {
     let id = game
         .mobs
         .iter()
-        .find(|m| m.species() == sunrise_client::mobs::Species::IronGolem)
+        .find(|m| m.species() == sunrise_sim::mobs::Species::IronGolem)
         .expect("the golem")
         .id;
     let golem = game.mobs.iter().find(|m| m.id == id).unwrap();
-    golem.ai.target == Some(sunrise_client::mobs::Who::Player)
+    golem.ai.target == Some(sunrise_sim::mobs::Who::Player)
         && game.lan.as_ref().unwrap().mob_players.get(&id) == Some(&2)
 }
 
@@ -233,7 +235,7 @@ fn control_a_hated_host_does_not_turn_the_golem_on_the_selected_guest() {
     let golem_of = |game: &crate::game::ServerGame<'_>| {
         game.mobs
             .iter()
-            .find(|m| m.species() == sunrise_client::mobs::Species::IronGolem)
+            .find(|m| m.species() == sunrise_sim::mobs::Species::IronGolem)
             .map(|m| (m.id, m.ai.target))
             .unwrap()
     };
@@ -245,7 +247,7 @@ fn control_a_hated_host_does_not_turn_the_golem_on_the_selected_guest() {
         }
     }
     let (golem_id, target) = golem_of(&game);
-    assert_eq!(target, Some(sunrise_client::mobs::Who::Player));
+    assert_eq!(target, Some(sunrise_sim::mobs::Who::Player));
     assert_ne!(
         game.lan.as_ref().unwrap().mob_players.get(&golem_id),
         Some(&2),

@@ -40,7 +40,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(mut r) = self.remote.take() else {
             return;
         };
-        let flying: sunrise_client::fast_hash::FxHashSet<u32> = self
+        let flying: sunrise_level::fast_hash::FxHashSet<u32> = self
             .creatures
             .projectiles
             .iter()
@@ -176,7 +176,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.send(S::PlayerLoaded(Empty));
         }
         // LevelLoadingScreen.onClose.
-        self.say_system_now(&sunrise_client::text::Text::translate(
+        self.say_system_now(&sunrise_client_core::text::Text::translate(
             "narrator.ready_to_play",
             &[],
         ));
@@ -260,7 +260,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let boat = self
             .riding
             .and_then(|id| self.boats.iter().find(|b| b.id == id))
-            .map(|b| sunrise_client::motion::RiddenBoat {
+            .map(|b| sunrise_sim::motion::RiddenBoat {
                 under_water: b.under_water(),
                 max_y: b.bounds().max_position().y,
             });
@@ -467,7 +467,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.eye += (player.dimensions.eye_height - self.eye) * 0.5;
         for event in events {
             match event {
-                sunrise_client::motion::MotionEvent::Emission {
+                sunrise_sim::motion::MotionEvent::Emission {
                     position,
                     state,
                     muffled,
@@ -482,13 +482,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     };
                     self.play_client_player_sound(&sounds.step, volume, pitch);
                 }
-                sunrise_client::motion::MotionEvent::Swim { volume, pitch } => {
+                sunrise_sim::motion::MotionEvent::Swim { volume, pitch } => {
                     self.play_client_player_sound("minecraft:entity.player.swim", volume, pitch);
                 }
                 // Entity.doWaterSplashEffect on the client's own level: the
                 // server's splash skips this player (Player.playSound), and
                 // its particles are the client's own.
-                sunrise_client::motion::MotionEvent::Splash {
+                sunrise_sim::motion::MotionEvent::Splash {
                     high_speed,
                     volume,
                     pitch,
@@ -500,12 +500,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     };
                     self.play_client_player_sound(name, volume, pitch);
                 }
-                sunrise_client::motion::MotionEvent::SplashParticle {
+                sunrise_sim::motion::MotionEvent::SplashParticle {
                     bubble,
                     position,
                     velocity,
                 } => {
-                    use sunrise_client::particles::{ParticleOptions, ParticleType};
+                    use sunrise_level::particle_options::{ParticleOptions, ParticleType};
                     let kind = if bubble {
                         ParticleType::Bubble
                     } else {
@@ -517,7 +517,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         [velocity.x, velocity.y, velocity.z],
                     );
                 }
-                sunrise_client::motion::MotionEvent::Chime { volume, pitch } => {
+                sunrise_sim::motion::MotionEvent::Chime { volume, pitch } => {
                     self.play_client_player_sound(
                         "minecraft:block.amethyst_block.chime",
                         volume,
@@ -527,20 +527,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // NetherPortalBlock.entityInside on the client's own level:
                 // the portal overlay and its trigger sound (the server moves
                 // the player).
-                sunrise_client::motion::MotionEvent::InsidePortal { .. } => {
+                sunrise_sim::motion::MotionEvent::InsidePortal { .. } => {
                     self.client_inside_nether_portal();
                 }
                 // HoneyBlock.maybeDoSlideEffects on the client's own level:
                 // the slide sound, heard here (LocalPlayer.playSound); the
                 // particles come from the server's event 53.
-                sunrise_client::motion::MotionEvent::HoneySlide { sound: true, .. } => {
+                sunrise_sim::motion::MotionEvent::HoneySlide { sound: true, .. } => {
                     self.play_client_player_sound("minecraft:block.honey_block.slide", 1.0, 1.0);
                 }
                 // LivingEntity.causeFallDamage and HoneyBlock.fallOn on the
                 // client's own level: the fall and honey sounds are heard here
                 // (LocalPlayer.playSound); the server's copy skips this player
                 // (Player.playSound).
-                sunrise_client::motion::MotionEvent::Fall(event) => self.block_fall(event),
+                sunrise_sim::motion::MotionEvent::Fall(event) => self.block_fall(event),
                 _ => {}
             }
         }
@@ -603,7 +603,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let in_water = self
             .player
             .as_ref()
-            .is_some_and(|p| p.is_eye_in_fluid(sunrise_client::motion::WATER));
+            .is_some_and(|p| p.is_eye_in_fluid(sunrise_sim::motion::WATER));
         self.side.fog.tick(in_water, self.own_player_is_spectator());
     }
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
@@ -628,7 +628,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn tick_remote_arm_poses(&mut self) {
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
-            if !sunrise_client::mobs::anim::extracts_humanoid(m) {
+            if !sunrise_sim::mobs::anim::extracts_humanoid(m) {
                 continue;
             }
             // Extraction also runs while the world is frozen: derive the use
@@ -807,8 +807,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }));
             rain.clear();
             rain.extend(self.mobs.iter().map(|m| {
-                m.species() == sunrise_client::mobs::Species::Wolf
-                    && sunrise_client::mobs::tame::in_rain(m, &w)
+                m.species() == sunrise_sim::mobs::Species::Wolf
+                    && sunrise_sim::mobs::tame::in_rain(m, &w)
             }));
             // The block under each mob the packs' random-model rules read (a grazing
             // cow), one hair below the feet like `Entity.getBlockStateOn`; nothing
@@ -863,7 +863,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let wither_targets: Vec<(i32, [f64; 3], f64)> = if self
             .mobs
             .iter()
-            .any(|m| m.species() == sunrise_client::mobs::Species::Wither)
+            .any(|m| m.species() == sunrise_sim::mobs::Species::Wither)
         {
             let own = self
                 .remote
@@ -1070,36 +1070,35 @@ impl Game<'_, crate::game::client_side::ClientState> {
             m.previous_head_pitch = m.head_pitch;
             m.previous_limb_speed = m.limb_speed;
             m.age += 1;
-            if m.species() == sunrise_client::mobs::Species::Rabbit {
-                sunrise_client::mobs::rabbit::base_tick(m);
+            if m.species() == sunrise_sim::mobs::Species::Rabbit {
+                sunrise_sim::mobs::rabbit::base_tick(m);
             }
             if matches!(
                 m.species(),
-                sunrise_client::mobs::Species::Horse
-                    | sunrise_client::mobs::Species::Donkey
-                    | sunrise_client::mobs::Species::Mule
-                    | sunrise_client::mobs::Species::SkeletonHorse
-                    | sunrise_client::mobs::Species::ZombieHorse
+                sunrise_sim::mobs::Species::Horse
+                    | sunrise_sim::mobs::Species::Donkey
+                    | sunrise_sim::mobs::Species::Mule
+                    | sunrise_sim::mobs::Species::SkeletonHorse
+                    | sunrise_sim::mobs::Species::ZombieHorse
             ) {
-                sunrise_client::mobs::equine::tail_tick(m);
+                sunrise_sim::mobs::equine::tail_tick(m);
             }
-            if m.species() == sunrise_client::mobs::Species::Creeper {
-                sunrise_client::mobs::hostile::creeper_client_tick(m);
+            if m.species() == sunrise_sim::mobs::Species::Creeper {
+                sunrise_sim::mobs::hostile::creeper_client_tick(m);
             }
             if matches!(
                 m.species(),
-                sunrise_client::mobs::Species::Guardian
-                    | sunrise_client::mobs::Species::ElderGuardian
+                sunrise_sim::mobs::Species::Guardian | sunrise_sim::mobs::Species::ElderGuardian
             ) {
-                sunrise_client::mobs::guardian::client_tick(m);
+                sunrise_sim::mobs::guardian::client_tick(m);
             }
             // PolarBear.tick: the stand animation follows the synched flag.
-            if m.species() == sunrise_client::mobs::Species::PolarBear {
-                sunrise_client::mobs::polar_bear::client_tick(m);
+            if m.species() == sunrise_sim::mobs::Species::PolarBear {
+                sunrise_sim::mobs::polar_bear::client_tick(m);
             }
             // The particles these mobs' own ticks draw on the client side.
             {
-                use sunrise_client::mobs::{
+                use sunrise_sim::mobs::{
                     Species as S, cube, illager, illusioner, nautilus, tame, wither,
                 };
                 match m.species() {
@@ -1135,7 +1134,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // LivingEntity.updateSwingTime.
             m.anim.attack_anim_o = m.anim.attack_anim;
-            sunrise_client::mobs::ai::tick_swing(m);
+            sunrise_sim::mobs::ai::tick_swing(m);
             // Entity.tick: the SteppedInterpolationHandler's step.
             if let Some(at) = stepped
                 .get_mut(&(m.id as i32))
@@ -1164,24 +1163,24 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 *steps -= 1;
             }
             // Fox.tick: the head tilt and crouch follow the synched flags.
-            if m.species() == sunrise_client::mobs::Species::Fox {
-                sunrise_client::mobs::fox::client_tick(m);
+            if m.species() == sunrise_sim::mobs::Species::Fox {
+                sunrise_sim::mobs::fox::client_tick(m);
             }
             // Cat.tick: the lying and relaxing amounts follow the synched flags.
-            if m.species() == sunrise_client::mobs::Species::Cat {
+            if m.species() == sunrise_sim::mobs::Species::Cat {
                 m.anim.vo = m.anim.v;
-                sunrise_client::mobs::tame::cat_amounts(m);
-                sunrise_client::mobs::tame::cat_lying_on_sleeper(m, &sleepers);
+                sunrise_sim::mobs::tame::cat_amounts(m);
+                sunrise_sim::mobs::tame::cat_lying_on_sleeper(m, &sleepers);
             }
             // Chicken.aiStep: the wings follow the server's on-ground flag.
-            if m.species() == sunrise_client::mobs::Species::Chicken {
-                sunrise_client::mobs::farm::chicken_flap(m);
+            if m.species() == sunrise_sim::mobs::Species::Chicken {
+                sunrise_sim::mobs::farm::chicken_flap(m);
             }
             // Parrot.calculateFlapping: the wings follow the server's
             // on-ground flag and the shoulder it sits on (the glide is the
             // server's).
-            if m.species() == sunrise_client::mobs::Species::Parrot {
-                sunrise_client::mobs::parrot::flap(m);
+            if m.species() == sunrise_sim::mobs::Species::Parrot {
+                sunrise_sim::mobs::parrot::flap(m);
             }
             // LivingEntity.updatingUsingItem: the ticks the item has been
             // used before this one. Another player's use particles; a mob's
@@ -1229,33 +1228,33 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 m.body_rotation_tick();
             }
             // Squid.aiStep; WalkAnimationState.update from the horizontal distance.
-            sunrise_client::mobs::aquatic::squid_client_step(m, &mut mob_fx);
+            sunrise_sim::mobs::aquatic::squid_client_step(m, &mut mob_fx);
             let d = sunrise_core::geometry::length(
                 m.position.x - m.previous.x,
                 m.position.z - m.previous.z,
             ) as f32;
-            let (target, factor) = if m.species() == sunrise_client::mobs::Species::Frog {
-                (sunrise_client::mobs::frog::walk_target(m, d), 0.4)
-            } else if sunrise_client::mobs::camel::is_camel(m.species()) {
-                sunrise_client::mobs::camel::walk_target(m, d)
+            let (target, factor) = if m.species() == sunrise_sim::mobs::Species::Frog {
+                (sunrise_sim::mobs::frog::walk_target(m, d), 0.4)
+            } else if sunrise_sim::mobs::camel::is_camel(m.species()) {
+                sunrise_sim::mobs::camel::walk_target(m, d)
             } else {
                 ((d * 4.0).min(1.0), 0.4)
             };
             m.limb_speed += (target - m.limb_speed) * factor;
             m.limb_position += m.limb_speed;
-            if m.species() == sunrise_client::mobs::Species::Rabbit {
-                sunrise_client::mobs::rabbit::post_tick(m);
+            if m.species() == sunrise_sim::mobs::Species::Rabbit {
+                sunrise_sim::mobs::rabbit::post_tick(m);
             }
-            if m.species() == sunrise_client::mobs::Species::Bat {
-                sunrise_client::mobs::bat::setup_animation_states(m);
+            if m.species() == sunrise_sim::mobs::Species::Bat {
+                sunrise_sim::mobs::bat::setup_animation_states(m);
             }
             // The animation states a server computes in its own `ai_step`,
             // and the particles vanilla draws on the client.
-            sunrise_client::mobs::sync::client_tick(m, game_time, &mut mob_fx);
+            sunrise_sim::mobs::sync::client_tick(m, game_time, &mut mob_fx);
             match m.species() {
                 // WitherBoss.aiStep: the side heads turn toward their targets.
-                sunrise_client::mobs::Species::Wither => {
-                    sunrise_client::mobs::wither::client_tick(m, |id| {
+                sunrise_sim::mobs::Species::Wither => {
+                    sunrise_sim::mobs::wither::client_tick(m, |id| {
                         wither_targets
                             .iter()
                             .find(|t| t.0 == id)
@@ -1263,18 +1262,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     });
                 }
                 // Hoglin and piglin `isConverting` outside the Nether.
-                sunrise_client::mobs::Species::Hoglin
-                | sunrise_client::mobs::Species::Piglin
-                | sunrise_client::mobs::Species::PiglinBrute => {
-                    sunrise_client::mobs::piglin::client_converting(m, nether);
+                sunrise_sim::mobs::Species::Hoglin
+                | sunrise_sim::mobs::Species::Piglin
+                | sunrise_sim::mobs::Species::PiglinBrute => {
+                    sunrise_sim::mobs::piglin::client_converting(m, nether);
                 }
-                sunrise_client::mobs::Species::Panda => {
-                    sunrise_client::mobs::panda::client_tick(m, thundering);
+                sunrise_sim::mobs::Species::Panda => {
+                    sunrise_sim::mobs::panda::client_tick(m, thundering);
                 }
                 // Shulker.tick's onPeekAmountChange: the lid moves this
                 // client's player, whose movement is its own.
-                sunrise_client::mobs::Species::Shulker => {
-                    sunrise_client::mobs::shulker::client_push(m, &mut mob_fx);
+                sunrise_sim::mobs::Species::Shulker => {
+                    sunrise_sim::mobs::shulker::client_push(m, &mut mob_fx);
                 }
                 _ => {}
             }
@@ -1511,7 +1510,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // LightningBolt.tick on a client.
             self.client_tick_bolts();
         } else if !frozen_ticking.is_empty() {
-            let ticking_set: sunrise_client::fast_hash::FxHashSet<u32> =
+            let ticking_set: sunrise_level::fast_hash::FxHashSet<u32> =
                 frozen_ticking.iter().map(|&id| id as u32).collect();
             if let Some(r) = self.remote.as_mut() {
                 for a in &mut self.armor_stands {
@@ -1554,7 +1553,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `GuardianRenderer.getEntityToLookAt`: a guardian's eye follows its
     /// synched attack target, else the camera.
     pub(in crate::game::client_side) fn tick_remote_guardian_eyes(&mut self, running: bool) {
-        use sunrise_client::mobs::{Species, Who, guardian};
+        use sunrise_sim::mobs::{Species, Who, guardian};
         if !running {
             return;
         }
@@ -1712,7 +1711,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let input = sent?;
         // Like the block-entity push above, collider displacement belongs in this tick's
         // LocalPlayer.sendChanges, before the client closes the tick on the wire.
-        let start = sunrise_client_render::moving_colliders::Scope::placed();
+        let start = sunrise_world::moving_colliders::Scope::placed();
         self.carry_pass(&start);
         self.observe_carry_age(&start);
         if let Some(input) = input {

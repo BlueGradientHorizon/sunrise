@@ -47,7 +47,7 @@ fn virtual_host_is_the_rewritten_handshake_host() {
                 game.side.settings.render_distance = 2;
                 game.side.settings.simulation_distance = 2;
                 let options = sunrise_sim::world_options::WorldOptions {
-                    world_type: sunrise_client::save::WorldPreset::Flat,
+                    world_type: sunrise_sim::save::WorldPreset::Flat,
                     ..Default::default()
                 };
                 game.open_integrated(
@@ -148,8 +148,7 @@ fn join(port: u16, host: &str, name: &str) -> sunrise_protocol::connection::Conn
     c.send(&login::Serverbound::LoginAcknowledged(Empty).encode())
         .unwrap();
     let local =
-        sunrise_client::raw_payloads::Local::capture(sunrise_client::raw_payloads::Side::Client)
-            .unwrap();
+        sunrise_sim::raw_payloads::Local::capture(sunrise_sim::raw_payloads::Side::Client).unwrap();
     loop {
         let (id, body) = c.recv().unwrap();
         match cfg::Clientbound::decode(id, &body).unwrap() {

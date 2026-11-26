@@ -4,7 +4,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `quickMoveStack` of the open plain menu for a shift-click.
     #[allow(dead_code)]
     pub(in crate::game) fn inventory_quick_move(&mut self, slot: usize) -> bool {
-        self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::QuickMove)
+        self.click_open_inventory(Some(slot), 0, sunrise_sim::menu::Input::QuickMove)
     }
     /// The open menu as the verified engine (`sunrise_client::menu`): the
     /// game's slots are copied in, `run` acts on it, and the slots, carried
@@ -14,8 +14,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn menu_session(
         &mut self,
         run: impl FnOnce(
-            &mut sunrise_client::menu::Menu,
-            &sunrise_client::menu::Env,
+            &mut sunrise_sim::menu::Menu,
+            &sunrise_sim::menu::Env,
             &dyn Fn(usize) -> Option<usize>,
         ) -> Option<bool>,
     ) -> bool {
@@ -27,7 +27,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.player.is_none() {
             return;
         }
-        let (volume, pitch) = if sound == sunrise_client::bundle::INSERT_FAIL {
+        let (volume, pitch) = if sound == sunrise_items::bundle::INSERT_FAIL {
             (1.0, 1.0)
         } else {
             (0.8, 0.8 + self.world.random.next_float() * 0.4)
@@ -67,11 +67,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         run: impl FnOnce(
             &mut Self,
-            &mut sunrise_client::menu::Menu,
+            &mut sunrise_sim::menu::Menu,
             &dyn Fn(usize) -> Option<usize>,
         ) -> Option<bool>,
     ) -> bool {
-        use sunrise_client::menu::{Env, Kind, Menu};
+        use sunrise_sim::menu::{Env, Kind, Menu};
         if !self
             .station
             .as_ref()
@@ -188,7 +188,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         slot: Option<usize>,
         button: i32,
-        input: sunrise_client::menu::Input,
+        input: sunrise_sim::menu::Input,
     ) -> bool {
         if let Some(slot) = slot
             && slot >= Creative::DISPLAY
@@ -198,13 +198,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return true;
         }
         if self.side.screen == Screen::Creative
-            && input == sunrise_client::menu::Input::Throw
+            && input == sunrise_sim::menu::Input::Throw
             && !self.side.drop_spam_throttler.is_under_threshold()
         {
             return true;
         }
         if let Some(slot) = slot
-            && input == sunrise_client::menu::Input::Throw
+            && input == sunrise_sim::menu::Input::Throw
             && self.carried.is_some()
             && self.remote.is_some()
             && ((slot < 9 && self.creative_tab_open()) || self.creative_inventory_open())
@@ -220,9 +220,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         slot: usize,
         button: i32,
-        input: sunrise_client::menu::Input,
+        input: sunrise_sim::menu::Input,
     ) {
-        use sunrise_client::menu::DisplayClick;
+        use sunrise_sim::menu::DisplayClick;
         if self.side.creative_screen.0.tab().search {
             // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
             // setHighlightPos(0), so typing replaces the whole query.
@@ -230,7 +230,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             search.move_cursor_to_end(false);
             search.highlight = 0;
         }
-        if input == sunrise_client::menu::Input::Throw
+        if input == sunrise_sim::menu::Input::Throw
             && !self.side.drop_spam_throttler.is_under_threshold()
         {
             return;
@@ -241,7 +241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_deref()
             .unwrap_or_else(|| self.res.items());
         let max = |s: &ItemStack| catalog.get(&s.item).map_or(64, |i| i.max_stack);
-        match sunrise_client::menu::click_display(
+        match sunrise_sim::menu::click_display(
             &mut self.carried,
             shown.as_ref(),
             max,
@@ -267,7 +267,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// with a left input (matching NeoForge `CommonHooks.onAnvilUpdate` on the client side).
     pub(in crate::game::client_side) fn deliver_client_anvil_update(
         &mut self,
-        menu: &mut sunrise_client::menu::Menu,
+        menu: &mut sunrise_sim::menu::Menu,
     ) -> bool {
         if !menu.anvil_created() || self.is_logical_server() || self.remote.is_none() {
             return false;
@@ -301,9 +301,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Several clicks on one menu instance (a quick craft drag is three).
     pub(in crate::game) fn menu_ops(
         &mut self,
-        ops: &[(Option<usize>, i32, sunrise_client::menu::Input)],
+        ops: &[(Option<usize>, i32, sunrise_sim::menu::Input)],
     ) -> bool {
-        use sunrise_client::menu::Input;
+        use sunrise_sim::menu::Input;
         // BundleMouseActions.onSlotClicked: a Shift click or a swap clears the bundle's selection.
         for &(slot, _, input) in ops {
             if let (Some(slot), Input::QuickMove | Input::Swap) = (slot, input) {
@@ -369,12 +369,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         run: impl FnOnce(
             &Self,
-            &mut sunrise_client::menu::Menu,
-            &sunrise_client::menu::Env,
+            &mut sunrise_sim::menu::Menu,
+            &sunrise_sim::menu::Env,
             &dyn Fn(usize) -> Option<usize>,
         ) -> Option<bool>,
     ) -> bool {
-        use sunrise_client::menu::{Env, Kind, Menu};
+        use sunrise_sim::menu::{Env, Kind, Menu};
         #[derive(Clone, Copy)]
         struct Map {
             container: usize,
@@ -559,7 +559,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     Some(BlockEntity::Mod(_)) => {
                         match self
                             .remote_menu_type()
-                            .and_then(sunrise_client::containers::mod_menu_type)
+                            .and_then(sunrise_level::containers::mod_menu_type)
                         {
                             Some(t) => (Kind::Mod(t), t.slots),
                             None => return false,
@@ -871,12 +871,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Run one client anvil click with live `anvil_update` dispatch at every `createResult`.
     pub(in crate::game::client_side) fn run_client_anvil_click(
         &mut self,
-        menu: &mut sunrise_client::menu::Menu,
+        menu: &mut sunrise_sim::menu::Menu,
         slot: i32,
         button: i32,
-        input: sunrise_client::menu::Input,
+        input: sunrise_sim::menu::Input,
     ) -> std::result::Result<(), &'static str> {
-        use sunrise_client::menu::Env;
+        use sunrise_sim::menu::Env;
         menu.track_results(true);
         let mut rest = {
             let env = Env {

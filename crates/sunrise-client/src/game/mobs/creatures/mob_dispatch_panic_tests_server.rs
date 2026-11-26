@@ -9,15 +9,13 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{
-    chunk::Chunk,
-    join_seq::residency::{
-        Change, Journal, Kind, Owner,
-        table::{EntityLookup, EntityTable, SourceEntity},
-    },
-};
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::Holder;
+use sunrise_sim::join_seq::residency::{
+    Change, Journal, Kind, Owner,
+    table::{EntityLookup, EntityTable, SourceEntity},
+};
 
 #[test]
 #[ignore = "daily"]

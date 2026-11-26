@@ -253,7 +253,7 @@ pub(in crate::game) mod tests {
     pub(super) fn viewed<'a>(
         game: &'a crate::game::ClientGame<'_>,
         level: i32,
-    ) -> Option<&'a sunrise_client::world::World> {
+    ) -> Option<&'a sunrise_level::world::World> {
         Some(&game.remote.as_ref()?.viewed.get(level)?.world)
     }
 

@@ -133,7 +133,7 @@ mod tests {
             ..sunrise_world::loot::PackOverlay::default()
         };
         let ids = ["minecraft:stone", "test:tin", "test:waxed_tin"].map(String::from);
-        let items = sunrise_client::items::Items::empty();
+        let items = sunrise_items::items::Items::empty();
         let registries = WorldRegistries::new(
             [("minecraft:block", ids.as_slice())],
             None,
@@ -206,7 +206,7 @@ mod tests {
             "test:waxed_tin",
         ]
         .map(String::from);
-        let items = sunrise_client::items::Items::empty();
+        let items = sunrise_items::items::Items::empty();
         let registries = WorldRegistries::new(
             [("minecraft:block", ids.as_slice())],
             None,

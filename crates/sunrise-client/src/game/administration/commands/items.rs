@@ -1,14 +1,12 @@
 //! `/item` (ItemCommands) and `if items`/`if slots`: addressing the item
 //! slots of the player, mobs, armor stands, item frames and containers.
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client::{
-    command::{CommandError, args::ItemInput},
-    containers::BlockEntity,
-    items::ItemStack,
-    scoreboard_cmd::Holder,
-    text::Text,
-};
+use sunrise_client_core::text::Text;
+use sunrise_command::{CommandError, args::ItemInput};
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::scoreboard_cmd::Holder;
 
 pub(in crate::game) mod contents;
 pub(in crate::game) mod slot_sources;
@@ -514,8 +512,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // SulfurCube.getEquipmentSlotForItem: swallowable items occupy the body slot.
         if let Slot::Mob(id, "body") = slot
             && self.mobs.iter().find(|m| m.id == *id).is_some_and(|m| {
-                m.species() == sunrise_client::mobs::Species::SulfurCube
-                    && sunrise_client::mobs::sulfur_cube::swallowable(m, &stack.item)
+                m.species() == sunrise_sim::mobs::Species::SulfurCube
+                    && sunrise_sim::mobs::sulfur_cube::swallowable(m, &stack.item)
             })
         {
             return true;
@@ -572,9 +570,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> R<ItemStack> {
         let (damage, extra) = match components
             .as_deref()
-            .map(sunrise_client::item_data::command_components)
+            .map(sunrise_items::item_data::command_components)
         {
-            Some(Ok(tag)) => sunrise_client::item_data::decode_components(Some(&tag)),
+            Some(Ok(tag)) => sunrise_items::item_data::decode_components(Some(&tag)),
             Some(Err(e)) => return Err(CommandError::new(Text::literal(e))),
             None => (0, None),
         };
@@ -614,7 +612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         id: &str,
         components: Option<&str>,
     ) -> R<sunrise_world::component_patch::ComponentMap<String, Tag>> {
-        use sunrise_client::command::{Reader, args::read_identifier, snbt::parse_tag_argument};
+        use sunrise_command::{Reader, args::read_identifier, snbt::parse_tag_argument};
         use sunrise_world::component_patch::{ComponentMap, Patch, Prototype};
         let mut prototype = Vec::new();
         if let Some(item) = self.items().get(id) {
@@ -666,7 +664,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn parse_inline_item_modifier(raw: &str) -> R<serde_json::Value> {
         let (tag, _) =
             sunrise_core::nbt::parse_snbt(raw).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-        let value = sunrise_client::scoreboard::tag_to_json(&tag);
+        let value = sunrise_client_core::scoreboard::tag_to_json(&tag);
         sunrise_world::loot::validate_item_modifier(&value)
             .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
         Ok(value)
@@ -715,13 +713,13 @@ pub(in crate::game) fn edit_components(
     stack: &mut ItemStack,
     f: impl FnOnce(&mut sunrise_core::nbt::Compound),
 ) {
-    let mut c = match sunrise_client::item_data::component_snapshot(stack) {
+    let mut c = match sunrise_items::item_data::component_snapshot(stack) {
         Some(Tag::Compound(c)) => c,
         _ => sunrise_core::nbt::Compound::new(),
     };
     f(&mut c);
     let tag = Tag::Compound(c);
-    let (damage, extra) = sunrise_client::item_data::decode_components(Some(&tag));
+    let (damage, extra) = sunrise_items::item_data::decode_components(Some(&tag));
     stack.damage = damage;
     stack.extra = extra;
     stack.tidy();
@@ -908,8 +906,9 @@ pub(in crate::game) mod list_operation_tests {
 pub(in crate::game) mod stand_equip_event_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity, mobs::Who, sculk::Info};
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity, sculk::Info};
+    use sunrise_sim::mobs::Who;
 
     fn candidate(game: &crate::game::ServerGame<'_>) -> Option<Info> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&(9, 200, 10)) else {
@@ -1010,8 +1009,8 @@ pub(in crate::game) mod mob_equipment_command_tests {
     use crate::game::commands::{Target, data::DataRef};
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
 
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -1320,9 +1319,10 @@ pub(in crate::game) mod mob_equipment_stack_tests {
     use crate::game::commands::{Target, data::DataRef};
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, mobs::finalize};
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::finalize;
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -1388,7 +1388,7 @@ pub(in crate::game) mod mob_equipment_stack_tests {
     fn saved(game: &mut crate::game::ServerGame<'_>, id: u32) -> Tag {
         game.data_of(&DataRef::Entity(Target::Mob(id))).unwrap()
     }
-    fn audit(stack: &sunrise_client::items::ItemStack, value: i32) {
+    fn audit(stack: &sunrise_items::items::ItemStack, value: i32) {
         assert_eq!(
             stack.custom_data().and_then(|c| c.get(&"audit".into())),
             Some(&Tag::Int(value))
@@ -1511,18 +1511,16 @@ pub(in crate::game) mod mob_equipment_stack_tests {
 pub(in crate::game) mod builtin_component_delivery_tests {
     use crate::game::lan::LanHost;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        items::ItemStack,
-        lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
-    };
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
     use sunrise_core::vanilla_bytes::Writer;
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::{
         buf::{Codec, Reader},
         item::{Slot, component},
         packets::{configuration::ClientInformation, play},
     };
+    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[test]
     #[ignore = "daily"]
@@ -1531,7 +1529,7 @@ pub(in crate::game) mod builtin_component_delivery_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.build_registries();
             game.set_allow_commands(true);
@@ -1912,7 +1910,7 @@ pub(in crate::game) mod set_custom_data_tests {
     fn merging_an_empty_tag_into_a_stack_without_custom_data_adds_no_component() {
         let mut stack = ItemStack::new("minecraft:stick", 1);
         set_custom_data(&mut stack, &Tag::Compound(Default::default()));
-        let saved = sunrise_client::item_data::component_snapshot(&stack);
+        let saved = sunrise_items::item_data::component_snapshot(&stack);
         assert!(saved.is_none_or(|c| c.get("minecraft:custom_data").is_none()));
     }
 }

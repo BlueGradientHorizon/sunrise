@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Species};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{Anim, Brain, Mob, MobType, Species};
 
 /// A mob of `species` with the box of its vanilla type, built without the
 /// prepared resources a test machine may not have.

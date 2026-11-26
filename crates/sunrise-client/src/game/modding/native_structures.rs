@@ -4,9 +4,9 @@
 //! places its blocks one at a time.
 use super::{Game, api_values::TryIntoApi};
 use mod_api::Compound;
-use sunrise_client::structure_block::parse_identifier;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::{LegacyRandom, RandomSource, position_seed};
+use sunrise_level::structure_block::parse_identifier;
 use sunrise_world::registry::BlockStateId;
 use sunrise_world::worldgen::structure::{Mirror, Rotation, StateTransforms, StructureTemplate};
 

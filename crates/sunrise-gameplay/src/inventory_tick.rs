@@ -2,9 +2,10 @@
 //! `EntityEquipment.tick` (`LivingEntity.aiStep`) and a player's `Inventory.tick`.
 //! In 26.3 only `CompassItem` and `MapItem` override it, and `MapItem.update`
 //! draws for players only (`game/blocks/maps`), so the compass is the rule here.
-use sunrise_client::{blocks::BlockFacts, items::ItemStack, world::World};
 use sunrise_core::nbt::Tag;
 use sunrise_items::equipment::Equipment;
+use sunrise_items::{blocks::BlockFacts, items::ItemStack};
+use sunrise_level::world::World;
 
 /// `CompassItem.inventoryTick` -> `LodestoneTracker.tick`: a compass tracking
 /// a lodestone in `dim` (the entity's level) that is gone, or out of the
@@ -47,7 +48,7 @@ fn lodestone_target_gone(world: &World, facts: &BlockFacts, dim: &str, stack: &I
     };
     let (Some(target), true) = (
         tracker.get("target"),
-        sunrise_client::save::number(tracker.get("tracked")).is_none_or(|v| v != 0),
+        sunrise_sim::save::number(tracker.get("tracked")).is_none_or(|v| v != 0),
     ) else {
         return false;
     };

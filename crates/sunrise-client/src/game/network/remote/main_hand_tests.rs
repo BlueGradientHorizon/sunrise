@@ -2,12 +2,12 @@ use crate::game::{
     lan::mob_meta, native_entity_refs::tests::with_client_game, remote::tests::spawn_menu_test,
     villager_client::tests::meta_hub,
 };
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::{buf::Reader, connection::Pipe, packets::play::Clientbound};
+use sunrise_sim::{
     lan::entity::{Entities, EntityState, Viewer},
     mobs::Mob,
 };
-use sunrise_core::geometry::Vec3;
-use sunrise_protocol::{buf::Reader, connection::Pipe, packets::play::Clientbound};
 
 #[test]
 #[ignore = "daily"]

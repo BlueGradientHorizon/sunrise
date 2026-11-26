@@ -1,6 +1,6 @@
 #[test]
 fn the_chunk_storage_takes_any_radius_and_centre_a_server_sends() {
-    use sunrise_client::chunk_map::ClientChunkRange;
+    use sunrise_level::chunk_map::ClientChunkRange;
     let in_storage_range =
         |distance, center, x, z| ClientChunkRange::new(center, distance).contains((x, z));
     // Vanilla's storage: radius at least 2, plus 3, each way from the centre.
@@ -22,7 +22,7 @@ fn the_chunk_storage_takes_any_radius_and_centre_a_server_sends() {
 #[test]
 fn the_cache_indexes_negative_slots_on_both_axes() {
     use std::sync::Arc;
-    use sunrise_client::{
+    use sunrise_level::{
         chunk::Chunk,
         chunk_map::{ChunkMap, ClientChunkRange},
     };

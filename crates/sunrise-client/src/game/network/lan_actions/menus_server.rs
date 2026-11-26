@@ -7,7 +7,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn chest_vehicle_still_valid(
         &self,
         id: i32,
-        g: &sunrise_client::lan::guest::Guest,
+        g: &sunrise_sim::lan::guest::Guest,
     ) -> bool {
         let bounds = self
             .carts
@@ -26,7 +26,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// and in reach, or its vehicle exists and is in reach. True with none open.
     pub(in crate::game::server_side) fn container_menu_valid(
         &self,
-        g: &sunrise_client::lan::guest::Guest,
+        g: &sunrise_sim::lan::guest::Guest,
     ) -> bool {
         let Some(host) = self.lan.as_ref() else {
             return true;
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             game.post_block_game_event(
                 event,
                 [pos.0, pos.1, pos.2],
-                Some(sunrise_client::mobs::Who::Player),
+                Some(sunrise_sim::mobs::Who::Player),
                 None,
             );
         };

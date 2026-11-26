@@ -1,11 +1,11 @@
 //! Role-neutral mount helpers shared by server riding, client HUD/guide, and remote vehicles.
 use super::Game;
 use crate::game::server_side::mounts::{seat_of, turned};
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::{
     mobs::{Species, equine},
     sprint::Keys,
 };
-use sunrise_core::geometry::Vec3;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn mount_index(&self) -> Option<usize> {
@@ -15,7 +15,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `PlayerRideableJumping`: horses, camels and nautili (the dash).
     pub(in crate::game) fn jumps(species: Species) -> bool {
-        equine::is_equine(species) || sunrise_client::mobs::nautilus::is_nautilus(species)
+        equine::is_equine(species) || sunrise_sim::mobs::nautilus::is_nautilus(species)
     }
 
     /// `LocalPlayer.jumpableVehicle`: controlled vehicle when it can jump now.
@@ -27,7 +27,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let can_jump = Self::jumps(mount.species())
             && mount.extra.saddled()
             && !(matches!(mount.species(), Species::Camel | Species::CamelHusk)
-                && sunrise_client::mobs::camel::refuse_to_move(mount));
+                && sunrise_sim::mobs::camel::refuse_to_move(mount));
         can_jump.then_some(mount.id)
     }
 
@@ -77,15 +77,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             0
         };
         let m = &self.mobs[i];
-        let mut at = if sunrise_client::mobs::camel::is_camel(m.species()) {
-            seat_of(m, sunrise_client::mobs::camel::passenger_attachment(m))
+        let mut at = if sunrise_sim::mobs::camel::is_camel(m.species()) {
+            seat_of(m, sunrise_sim::mobs::camel::passenger_attachment(m))
         } else {
-            seat_of(m, sunrise_client::mobs::riders::type_attachment(m))
+            seat_of(m, sunrise_sim::mobs::riders::type_attachment(m))
         };
         if is_happy_ghast {
             at = seat_of(
                 m,
-                sunrise_client::mobs::riders::passenger_attachment_at(m, seat_index),
+                sunrise_sim::mobs::riders::passenger_attachment_at(m, seat_index),
             );
         }
         let rear = turned(equine::rear_offset(m), m.yaw);

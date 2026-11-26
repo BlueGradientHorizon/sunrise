@@ -3,12 +3,10 @@
 use super::Game;
 use serde_json::Value;
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::{
-    items::ItemStack,
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_core::equipment_slot::EquipmentSlot;
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_sim::item_models::stack_view;
 
 impl Game<'_, crate::game::client_side::ClientState> {

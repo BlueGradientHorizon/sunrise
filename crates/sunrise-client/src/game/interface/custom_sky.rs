@@ -17,7 +17,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn custom_sky_frame(
         &mut self,
         camera: [f64; 3],
-        sky: &sunrise_client::environment::Sky,
+        sky: &sunrise_level::environment::Sky,
         (rain, thunder): (f32, f32),
         title: bool,
     ) {

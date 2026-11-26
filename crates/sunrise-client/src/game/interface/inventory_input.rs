@@ -153,7 +153,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// slot or the off hand, THROW one or the whole stack.
     pub(in crate::game::client_side) fn inventory_hotkey(&mut self, key: KeyCode) -> bool {
         use sunrise_client::container_screen::{HotbarKey, hotbar_swap};
-        use sunrise_client::menu::Input;
+        use sunrise_sim::menu::Input;
         let Some(size) = self
             .side
             .renderer
@@ -207,13 +207,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return;
         };
-        let _ = self.click_open_inventory(Some(slot), 0, sunrise_client::menu::Input::Clone);
+        let _ = self.click_open_inventory(Some(slot), 0, sunrise_sim::menu::Input::Clone);
     }
     /// The plain inventory mouse press: starts a quick craft drag when a
     /// stack is held, gathers on a double click, else the normal click.
     pub(in crate::game::client_side) fn inventory_press(&mut self, right: bool) -> bool {
         use sunrise_client::container_screen::Target;
-        use sunrise_client::menu::Input;
+        use sunrise_sim::menu::Input;
         self.direct_craft_stop();
         if self.mod_browser_press(right) {
             return true;
@@ -507,7 +507,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn throw_click(
         &mut self,
         right: bool,
-        input: sunrise_client::menu::Input,
+        input: sunrise_sim::menu::Input,
     ) {
         let button = i32::from(right);
         if self.remote.is_some() {
@@ -633,7 +633,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Mouse release: finishes a quick craft drag (one slot is a plain click).
     pub(in crate::game::client_side) fn inventory_release(&mut self) {
-        use sunrise_client::menu::Input;
+        use sunrise_sim::menu::Input;
         let Some((ty, slots)) = self.side.inv_drag.take() else {
             return;
         };

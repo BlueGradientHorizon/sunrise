@@ -3,11 +3,11 @@ use crate::game::{
     boats::Boat,
     minecarts::{CartKind, Minecart},
 };
-use sunrise_client::{
+use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_sim::{
     end_gateway::Traveller,
     projectiles::{Projectile, ProjectileKind},
 };
-use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 #[test]
 #[ignore = "needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE"]
@@ -86,8 +86,8 @@ pub(in crate::game::server_side) fn run_gateway_counters_match_actual_vanilla_me
 fn game_gateway_phases() -> [[i32; 2]; 4] {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::nbt::Tag;
+    use sunrise_level::chunk::Chunk;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -118,7 +118,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
     .unwrap();
     game.build_registries();
     game.options.dedicated = Some(Vec::new());
-    game.world = sunrise_client::world::World::new(game.res.facts().air, 1);
+    game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
     for z in -2..=2 {
         for x in -2..=2 {
             game.world
@@ -158,7 +158,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
     game.side
         .tickets
         .0
-        .update(Some(crate::ticket_levels::Sources {
+        .update(Some(sunrise_sim::ticket_levels::Sources {
             forced: vec![(0, 0)],
             ..Default::default()
         }));

@@ -6,13 +6,16 @@ use crate::game::server_side::armor_stands::skull_kind;
 use crate::game::server_side::armor_stands::*;
 use sunrise_client::{
     cit::{Hand, Kind, Rule},
-    entities::ArmorStand,
-    items::ItemStack,
     mesher::Vertex,
-    mobs::{Mob, Part, anim::Poses},
+    mobs::Part,
     trims::TrimTexture,
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
+    entities::ArmorStand,
+    mobs::{Mob, anim::Poses},
+};
 
 impl ArmorStandAssets {
     /// Trim data of reloaded resources (the models stay).
@@ -32,7 +35,7 @@ impl ArmorStandAssets {
         stack: &ItemStack,
     ) -> Option<TrimTexture> {
         let (material, pattern) =
-            sunrise_client::item_data::trim::named(stack.extra.as_ref()?.trim.as_ref()?)?;
+            sunrise_items::item_data::trim::named(stack.extra.as_ref()?.trim.as_ref()?)?;
         let overrides = self
             .trim_overrides
             .get(asset)
@@ -300,7 +303,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // A head item that is not worn armour.
         if let Some(stack) = &a.equipment[5]
-            && !sunrise_client::item_sync::equippable(stack, self.res.items())
+            && !sunrise_sim::item_sync::equippable(stack, self.res.items())
                 .is_some_and(|e| e.asset_id.is_some() && e.slot == "head")
             && let Some(head) = part_matrix(model, base, poses, "head", 0.0)
         {
@@ -463,7 +466,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             None,
             a.small,
             base,
-            sunrise_client::mobs::ElytraAnimation::RESTING,
+            sunrise_sim::mobs::ElytraAnimation::RESTING,
             false,
             packed,
             self.wings_overlay(a.equipment[4].as_ref()),
@@ -477,7 +480,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         partial: f32,
         poses: &mut Poses,
     ) {
-        use sunrise_client::mobs::anim::{self, ArmPose};
+        use sunrise_sim::mobs::anim::{self, ArmPose};
         let state = anim::State {
             pos: 0.0,
             speed: 0.0,
@@ -536,7 +539,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if map.keys().all(|key| matches!(key.to_string_lossy().as_str(), "slot" | "swappable")))
                 && matches!(tag.get("slot"), Some(sunrise_core::nbt::Tag::String(_)))
                 && tag.get("swappable").is_none_or(|flag| {
-                    sunrise_client::item_data::component_bool(flag).is_some()
+                    sunrise_items::item_data::component_bool(flag).is_some()
                 })
         });
         let slot = if supported {
@@ -556,7 +559,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if let Some(actual) = actual {
             actual
                 .get("swappable")
-                .and_then(sunrise_client::item_data::component_bool)
+                .and_then(sunrise_items::item_data::component_bool)
                 .unwrap_or(true)
         } else {
             equippable
@@ -696,7 +699,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             };
             let Some(asset) =
-                sunrise_client::item_sync::equippable(stack, items).and_then(|e| e.asset_id)
+                sunrise_sim::item_sync::equippable(stack, items).and_then(|e| e.asset_id)
             else {
                 continue;
             };

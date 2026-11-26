@@ -5,13 +5,11 @@ use super::api_values::TryIntoEngine;
 use super::{Game, lan::LanHost, lan_menus::GuestMenus};
 use mod_api::__private::game::*;
 use mod_api::{MenuRef, MenuReplace, ModMenuOpen};
-use sunrise_client::{
-    items::ItemStack,
-    lan::{
-        data::component_nbt,
-        menu::{Menu, NativeMenuEvent, Slots},
-    },
-    text::Text,
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::{
+    data::component_nbt,
+    menu::{Menu, NativeMenuEvent, Slots},
 };
 
 /// The inventory slot (0..9 the hotbar, 9..36 the rest) a click on `slot`
@@ -167,7 +165,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let title = title.try_into_engine(&())?;
         let id = mod_api::__private::menu_key_id(menu).ok_or(OpenMenuError::NotModMenu)?;
         let kind =
-            sunrise_client::containers::mod_menu_type(&id).ok_or(OpenMenuError::NotModMenu)?;
+            sunrise_level::containers::mod_menu_type(&id).ok_or(OpenMenuError::NotModMenu)?;
         if kind.owned_slots.is_some() && kind.crafting.is_some() {
             return Err(OpenMenuError::OwnedSlotsWithCrafting);
         }
@@ -190,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             1 // Client must have negotiated menu_extra revision 1 or higher.
         };
-        if !sunrise_client::containers::menu_reaches(&guest.brand, &id)
+        if !sunrise_level::containers::menu_reaches(&guest.brand, &id)
             || guest.sender.menu_extra_rev < revision
         {
             return Err(OpenMenuError::PlayerUnavailable);
@@ -254,9 +252,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .guest(conn)?
             .menu
             .as_ref()
-            .filter(|m| {
-                m.window == window && m.slots == sunrise_client::lan::menu::Slots::Native
-            })?;
+            .filter(|m| m.window == window && m.slots == sunrise_sim::lan::menu::Slots::Native)?;
         self.player_container_menu(self.player(uuid)?)
             .filter(|menu| menu.fields().window == window)
     }
@@ -299,7 +295,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && let Some(open) = guest
                 .menu
                 .as_ref()
-                .filter(|m| m.slots == sunrise_client::lan::menu::Slots::Native)
+                .filter(|m| m.slots == sunrise_sim::lan::menu::Slots::Native)
         {
             self.request_menu_close(conn, open.window, guest.menu_generation);
         }
@@ -355,7 +351,7 @@ pub(in crate::game) fn open_menu_of(
         // A vehicle's menu is keyed by a stand-in, not a block.
         let pos = m
             .pos
-            .filter(|p| p.1 != sunrise_client::lan::menu::VEHICLE_KEY_Y)
+            .filter(|p| p.1 != sunrise_sim::lan::menu::VEHICLE_KEY_Y)
             .map(|p| [p.0, p.1, p.2]);
         return Some((m.window, menu, pos));
     }
@@ -569,11 +565,11 @@ mod tests {
     use super::*;
     use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
     use std::sync::{Arc, mpsc};
-    use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{
         buf::Reader,
         packets::play::{self, Clientbound as C, Serverbound as S},
     };
+    use sunrise_sim::lan::{Out, PlayerSender};
 
     /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
     fn watched_guest(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
@@ -639,7 +635,7 @@ mod tests {
                             "minecraft:generic_9x3",
                             sunrise_core::nbt::Tag::String("ender".into()),
                             (0, 64, 0),
-                            sunrise_client::lan::menu::Slots::Ender,
+                            sunrise_sim::lan::menu::Slots::Ender,
                             vec![Some(stack.clone())],
                             None,
                         );
@@ -784,7 +780,7 @@ mod tests {
                 });
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let level = game.level("minecraft:overworld").unwrap();
                 for name in [
                     "minecraft:chest",
@@ -940,7 +936,7 @@ mod tests {
             );
             assert!(events.lock().unwrap().is_empty());
             if case == "mount" {
-                game.mobs.push(sunrise_client::mobs::Mob::new(
+                game.mobs.push(sunrise_sim::mobs::Mob::new(
                     31,
                     game.res.mob_types().get("minecraft:horse").unwrap().clone(),
                     sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),
@@ -1168,7 +1164,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_block_entity_menu_parks_only_the_active_guests_cursor() {
         use mod_api::BlockUpdateFlags;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             let rx = watched_guest(game);
@@ -1280,7 +1276,7 @@ mod tests {
                 (3, vec![pending]),
             ] {
                 let mut reloaded = guest(conn);
-                assert!(sunrise_client::lan::playerdata::load(
+                assert!(sunrise_sim::lan::playerdata::load(
                     &mut reloaded,
                     world.path()
                 ));
@@ -1546,7 +1542,7 @@ mod tests {
     /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
     fn with_mod_menu_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "status_package".into(),
@@ -1889,10 +1885,10 @@ mod tests {
             // its active window or sending packets, while a negotiated peer opens it and a vanilla
             // peer keeps stock menus.
             use super::super::lan_actions::MenuOpen;
-            use sunrise_client::containers::{BlockEntity, ModContainer};
+            use sunrise_level::containers::{BlockEntity, ModContainer};
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let mod_pos = (0, 64, 0);
             let stone = game
@@ -1967,7 +1963,7 @@ mod tests {
     #[ignore = "daily"]
     fn refused_swap_resends_the_menu_and_undisplayed_hotbar() {
         for (player_inventory, button, menu_slots) in [(false, 2, 1), (true, 40, 37)] {
-            sunrise_client::containers::with_mod_menu_types(
+            sunrise_level::containers::with_mod_menu_types(
                 [(
                     MOD_MENU.into(),
                     "status_package".into(),
@@ -2018,7 +2014,7 @@ mod tests {
                             state: 0,
                             slot: 0,
                             button,
-                            input: sunrise_client::lan::menu::input::SWAP,
+                            input: sunrise_sim::lan::menu::input::SWAP,
                             changed: vec![],
                             carried: None,
                         });
@@ -2026,10 +2022,7 @@ mod tests {
                         let host = game
                             .lan_process_events(
                                 host,
-                                [sunrise_client::lan::hub::HostEvent::Packet(
-                                    1,
-                                    Box::new(click),
-                                )],
+                                [sunrise_sim::lan::hub::HostEvent::Packet(1, Box::new(click))],
                                 &[],
                                 [0.0; 3],
                             )
@@ -2119,7 +2112,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         mod_platform::testing::with_mods(mods, || {
-            sunrise_client::containers::with_mod_menu_types(
+            sunrise_level::containers::with_mod_menu_types(
                 [(
                     MOD_MENU.into(),
                     "status_package".into(),
@@ -2305,9 +2298,8 @@ mod tests {
                         assert!(sent(&rx).is_empty());
 
                         game.storage_scope(|game, _| {
-                            game.transactions.last_mut().unwrap().packets = Some(
-                                sunrise_client::lan::conn::transaction_packets::Scope::begin(),
-                            );
+                            game.transactions.last_mut().unwrap().packets =
+                                Some(sunrise_sim::lan::conn::transaction_packets::Scope::begin());
                             assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
                             resend(game);
                             assert!(sent(&rx).is_empty());
@@ -2363,7 +2355,7 @@ mod tests {
                                 state: (state - 1) & 0x7FFF,
                                 slot: -999,
                                 button: 0,
-                                input: sunrise_client::lan::menu::input::PICKUP,
+                                input: sunrise_sim::lan::menu::input::PICKUP,
                                 changed: vec![],
                                 carried: None,
                             }),
@@ -2443,15 +2435,15 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn revision_two_blockless_menu_syncs_only_encodable_indices() {
-        use sunrise_client::lan::menu::input::PICKUP;
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
+        use sunrise_sim::lan::menu::input::PICKUP;
 
         const LAST: usize = u16::MAX as usize;
         const OVERFLOW: usize = LAST + 1;
         const FIRST_VALUE: i32 = 123_456;
         const LAST_VALUE: i32 = -80_000;
         const OVERFLOW_VALUE: i32 = 456_789;
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "status_package".into(),

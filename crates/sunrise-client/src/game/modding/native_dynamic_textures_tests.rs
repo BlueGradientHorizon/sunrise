@@ -6,11 +6,8 @@
 use super::resource_tables::dynamic_texture_pool;
 use mod_api::{DynamicTextureError, Hooks, Identifier, ModEntry};
 use mod_platform::testing::with_mods;
-use sunrise_client::{
-    crash::{ModCall, enter_native_mod},
-    gfx::entity_pixel_test::render_hud,
-    hud::HudBatch,
-};
+use sunrise_client::{gfx::entity_pixel_test::render_hud, hud::HudBatch};
+use sunrise_level::crash::{ModCall, enter_native_mod};
 
 const SIZE: [u32; 2] = [64, 64];
 const GREEN: [u8; 4] = [0, 255, 0, 255];

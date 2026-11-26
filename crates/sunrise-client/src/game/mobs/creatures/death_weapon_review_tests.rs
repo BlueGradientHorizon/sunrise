@@ -134,7 +134,7 @@ fn death_weapon_dispenser_arrow_without_recorded_weapon_is_none() {
 }
 
 pub(in crate::game) fn player(game: &mut crate::game::ServerGame<'_>) {
-    game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+    game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     crate::game::native_entity_refs::tests::bind_local_player(game, 11, 123);
 }
 #[test]

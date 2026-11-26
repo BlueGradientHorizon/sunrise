@@ -2,9 +2,9 @@ use super::*;
 
 #[test]
 fn named_damage_keeps_its_registry_id_with_or_without_an_attacker() {
-    let named = sunrise_client::mobs::NamedDamage::new(
+    let named = sunrise_sim::mobs::NamedDamage::new(
         "example:fan_fire",
-        sunrise_client::mobs::NamedDamage::IS_FIRE,
+        sunrise_sim::mobs::NamedDamage::IS_FIRE,
     );
     for attacker in [None, Some(Who::Mob(7)), Some(Who::Player)] {
         assert_eq!(

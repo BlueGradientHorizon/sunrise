@@ -12,8 +12,8 @@
 //! only taking the row out of its list waits for the sweep.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, RemovalReason};
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Removes the entity with no death and no loot (`Entity.discard`): a
@@ -354,8 +354,8 @@ mod tests {
         use super::super::{boats::Boat, native_entity_refs::tests::with_game};
         use mod_api::{EntityLeaveLevelEvent, Hooks, ServerHost};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
 
         /// The entities heard leaving, and whether each read as gone by then.
         #[derive(Clone, Default)]
@@ -416,9 +416,10 @@ mod tests {
     fn discard_other_clears_nbt_and_saved_entity() {
         use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, save::SaveDir};
         use sunrise_core::geometry::Vec3;
         use sunrise_core::nbt::{Compound, Tag};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::save::SaveDir;
 
         with_game(|game| {
             let root = std::path::PathBuf::from(format!(
@@ -477,8 +478,8 @@ mod tests {
     #[ignore = "daily"]
     fn discard_mob_and_refuse_players_and_stale_handles() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::{mobs::Mob, motion::PlayerMotion};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
         with_game(|game| {
             let kind = game
@@ -504,8 +505,9 @@ mod tests {
     #[ignore = "daily"]
     fn spawn_at_location_drops_an_item_above_the_entity() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::{items::ItemStack, mobs::Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::mobs::Mob;
 
         with_game(|game| {
             let kind = game
@@ -557,9 +559,9 @@ mod tests {
     #[ignore = "daily"]
     fn spawn_at_location_offsets_hanging_entities_out_from_the_wall() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::entities::{ItemFrame, Painting};
-        use sunrise_client::items::ItemStack;
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::entities::{ItemFrame, Painting};
 
         with_game(|game| {
             for (id, glow, facing) in [(12, false, 5), (13, true, 4)] {

@@ -5,16 +5,15 @@
 //! with a redstone pulse, the comparator output and taking the book).
 use super::{Game, screen_info};
 use sunrise_client::{
-    containers::BlockEntity,
-    first_person::Hand,
     hud::{HudBatch, rgba},
-    item_data::StackData,
-    items::ItemStack,
-    text::Text,
     ui,
     widgets::{self, Narratable, ScreenInfo},
 };
+use sunrise_client_core::text::Text;
+use sunrise_items::{item_data::StackData, items::ItemStack};
+use sunrise_level::containers::BlockEntity;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
+use sunrise_sim::first_person_sim::Hand;
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) const BLACK: u32 = 0xFF00_0000;
@@ -106,7 +105,7 @@ pub(in crate::game::client_side) fn view_pages(data: Option<&StackData>) -> Vec<
             // A component object, or a component list (`ComponentSerialization`
             // takes both; servers behind ViaVersion send the list form).
             Some(tag @ (sunrise_core::nbt::Tag::Compound(_) | sunrise_core::nbt::Tag::List(_))) => {
-                sunrise_client::entity_nbt::name_text(tag)
+                sunrise_sim::entity_nbt::name_text(tag)
             }
             _ => Text::untrusted(page),
         })
@@ -126,7 +125,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         page: &Text,
         left: f32,
-    ) -> Option<sunrise_client::text::ClickEvent> {
+    ) -> Option<sunrise_client_core::text::ClickEvent> {
         self.book_style_at(page, left)?.click
     }
     /// `ActiveTextCollector` over the page: the style of the character
@@ -135,7 +134,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         page: &Text,
         left: f32,
-    ) -> Option<sunrise_client::text::Style> {
+    ) -> Option<sunrise_client_core::text::Style> {
         let (mx, my) = self.side.cursor;
         let row = ((my - 32.0) / 9.0).floor();
         if row < 0.0 || row >= LINES as f32 {
@@ -159,11 +158,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// (`forcePage`), a web link goes through the confirm-link flow.
     pub(in crate::game::client_side) fn book_follow_link(
         &mut self,
-        link: sunrise_client::text::ClickEvent,
+        link: sunrise_client_core::text::ClickEvent,
         count: usize,
         lectern: Option<(i32, i32, i32)>,
     ) {
-        use sunrise_client::text::ClickEvent;
+        use sunrise_client_core::text::ClickEvent;
         match link {
             ClickEvent::ChangePage(target) => {
                 let target = (target - 1).clamp(0, count.saturating_sub(1) as i32);
@@ -864,7 +863,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn book_control(
         &mut self,
         action: Option<&str>,
-    ) -> sunrise_client::Result<serde_json::Value> {
+    ) -> sunrise_client_core::Result<serde_json::Value> {
         let lectern = match &self.side.book {
             Some(BookScreen::View { lectern, .. }) => *lectern,
             Some(BookScreen::Edit { .. }) => None,
@@ -1442,12 +1441,9 @@ pub(in crate::game) mod lectern_tests;
 pub(in crate::game) mod lectern_signal_tests {
     use super::super::game_tests::tests::server_game;
     use super::lectern_signal;
-    use sunrise_client::{
-        containers::{BlockEntity, Lectern},
-        item_data::WrittenBook,
-        items::ItemStack,
-    };
     use sunrise_core::position::BlockPos;
+    use sunrise_items::{item_data::WrittenBook, items::ItemStack};
+    use sunrise_level::containers::{BlockEntity, Lectern};
     use sunrise_world::level::LevelAccess;
     use sunrise_world::registry::BlockStateId;
 
@@ -1586,7 +1582,8 @@ impl BookScreen {
 #[cfg(test)]
 pub(in crate::game) mod pause_tests {
     use super::BookScreen;
-    use sunrise_client::{text::Text, ui};
+    use sunrise_client::ui;
+    use sunrise_client_core::text::Text;
 
     fn view(lectern: Option<(i32, i32, i32)>) -> BookScreen {
         BookScreen::View {
@@ -1671,7 +1668,7 @@ pub(in crate::game) mod sign_tests {
 pub(in crate::game) mod sign_book_tests;
 
 pub(in crate::game::client_side) fn link_cursor(
-    style: &sunrise_client::text::Style,
+    style: &sunrise_client_core::text::Style,
 ) -> Option<sunrise_client::widgets::Cursor> {
     style
         .click
@@ -1682,8 +1679,8 @@ pub(in crate::game::client_side) fn link_cursor(
 #[cfg(test)]
 pub(in crate::game) mod link_cursor_tests {
     use super::link_cursor;
-    use sunrise_client::text::{ClickEvent, Style, Text};
     use sunrise_client::widgets::Cursor;
+    use sunrise_client_core::text::{ClickEvent, Style, Text};
 
     /// `HoveredTextEffects.TOOLTIP_AND_CURSOR`: a clickable word asks for the
     /// pointing hand; a hover event alone only shows its tooltip.

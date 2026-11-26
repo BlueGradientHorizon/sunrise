@@ -62,7 +62,7 @@ pub(in crate::game) fn load_item_data(
     root: &Path,
     role: ExecutionRole,
     owning_load: OwningLoad,
-) -> sunrise_client::Result<ItemData> {
+) -> sunrise_client_core::Result<ItemData> {
     let _ = role;
     let inputs = LoadInputs::new(builtin_registry_names(root)?, crate::game::mod_data_root());
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(root)?;

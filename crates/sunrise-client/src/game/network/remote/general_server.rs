@@ -18,8 +18,8 @@ pub(in crate::game) mod tests {
         use std::sync::{Arc, Mutex};
         use sunrise_protocol::packets::play::Serverbound as S;
         use {
-            sunrise_client::chunk::Chunk, sunrise_client::motion::PlayerMotion,
-            sunrise_sim::first_person_sim::Hand,
+            sunrise_level::chunk::Chunk, sunrise_sim::first_person_sim::Hand,
+            sunrise_sim::motion::PlayerMotion,
         };
 
         const PACKAGE: &str = "mymod:package";

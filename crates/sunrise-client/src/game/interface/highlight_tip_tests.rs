@@ -3,8 +3,8 @@
 //! its text replaces the selected item's name for as long as the name shows.
 use mod_api::{ClientHost, HighlightTipEvent, Hooks, ItemPart, Registrar, RegistrationContext};
 use std::sync::atomic::{AtomicU32, Ordering};
-use sunrise_client::items::ItemStack;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
 
 static ASKED: AtomicU32 = AtomicU32::new(0);
 

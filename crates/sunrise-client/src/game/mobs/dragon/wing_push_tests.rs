@@ -1,7 +1,8 @@
 //! Wing contacts exercise the real Game damage/equipment and velocity continuation.
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::{items::ItemStack, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]

@@ -5,7 +5,7 @@ use std::{
     num::NonZeroU16,
     sync::LazyLock,
 };
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 const CALLS: u64 = 100_000;
 

@@ -35,7 +35,7 @@ pub(in crate::game) fn with_game(check: impl FnOnce(&mut crate::game::ServerGame
     game.set_allow_commands(true);
     game.world.chunks.insert(
         (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
     );
     game.block_ticks
         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))

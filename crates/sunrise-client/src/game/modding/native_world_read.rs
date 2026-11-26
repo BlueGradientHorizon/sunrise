@@ -3,8 +3,9 @@ use super::native_level_signals::ReadLevel;
 use super::{Dim, Game};
 use mod_api::BlockKey;
 use mod_api::{FluidKey, FluidState, LevelRef, LifecycleContext, UnresolvedFluid};
-use sunrise_client::{items::Items, world::World};
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_items::items::Items;
+use sunrise_level::world::World;
 use sunrise_world::{
     chunk::BlockState,
     fluid::{FluidHeightWorld, FluidKind, FluidState as EngineFluidState},
@@ -27,7 +28,7 @@ pub(in crate::game) fn block_face_sturdy(
     let state = world.block(pos[0], pos[1], pos[2]);
     let direction = super::native_entity_refs::block_face_direction(face);
     if !b.has_cached_support(state) || binding.publishes_shapes(state) {
-        use sunrise_client::collisions::SceneCollisions;
+        use sunrise_level::collisions::SceneCollisions;
         use sunrise_world::{block_support::SupportType, dynamic_support::DynamicSupport};
         let mut scene = SceneCollisions {
             world,
@@ -116,7 +117,7 @@ pub(in crate::game::server_side) fn installed_block_tag_snapshot()
 /// An unavailable owning-thread mapping is not a missing tag.
 pub(in crate::game) fn block_in_tag(block: BlockKey, tag: &str) -> Option<bool> {
     super::api_values::default_state(block)?;
-    let tag = sunrise_client::command::args::normalized(tag);
+    let tag = sunrise_command::args::normalized(tag);
     Some(BLOCK_TAGS.with(|snapshot| {
         snapshot
             .borrow()
@@ -151,8 +152,8 @@ pub(in crate::game) fn api_fluid_state(state: EngineFluidState) -> Option<FluidS
 /// `FluidState.is(TagKey)` over the merged fluid tags. The empty fluid is in none.
 pub(in crate::game) fn fluid_in_tag(items: &Items, fluid: &str, tag: &str) -> bool {
     items.fluid_in_tag(
-        &sunrise_client::command::args::normalized(tag),
-        &sunrise_client::command::args::normalized(fluid),
+        &sunrise_command::args::normalized(tag),
+        &sunrise_command::args::normalized(fluid),
     )
 }
 
@@ -172,7 +173,7 @@ fn fluid_shape(fluid: EngineFluidState, above: Option<EngineFluidState>) -> Opti
 
 /// The fluid a registry id names, with or without `minecraft:`.
 fn fluid_kind(fluid: &str) -> Option<FluidKind> {
-    FluidKind::from_name(&sunrise_client::command::args::normalized(fluid))
+    FluidKind::from_name(&sunrise_command::args::normalized(fluid))
 }
 
 /// The world fluid a registered key names. None for a tank-only fluid, which has no world
@@ -443,8 +444,8 @@ mod tests {
     use super::*;
     use mod_api::LevelHost;
     use std::sync::Arc;
-    use sunrise_client::chunk::{Chunk, Light};
-    use sunrise_client::items::TagRegistry;
+    use sunrise_items::items::TagRegistry;
+    use sunrise_level::chunk::{Chunk, Light};
 
     #[test]
     fn sky_visibility_uses_the_published_sky_layer() {
@@ -578,7 +579,7 @@ mod tests {
         world.set(-1, 64, 1, BlockStateId(1)).unwrap();
         // The Nether's build range starts at y 0 (its level's shape).
         let mut nether = World::new(BlockStateId(0), 0);
-        nether.shape = sunrise_client::chunk::LevelShape::NETHER;
+        nether.shape = sunrise_level::chunk::LevelShape::NETHER;
         nether.chunks.insert((-1, 0), Arc::new(Chunk::empty(-1, 0)));
         let block = read_block(&world, &registry, [-1, 64, 1]).unwrap();
         assert_eq!(block.name, "test:pillar");
@@ -646,8 +647,7 @@ mod tests {
         with_game(|game| {
             let dir =
                 std::env::temp_dir().join(format!("sunrise-tag-reads-{}", std::process::id()));
-            game.side.session_lock.0 =
-                Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
+            game.side.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(&dir).unwrap());
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
@@ -669,7 +669,7 @@ mod tests {
             let engine_members = |registry, tag: &str| {
                 game.native_tag_items().map(|items| {
                     items
-                        .tag_members(registry, &sunrise_client::command::args::normalized(tag))
+                        .tag_members(registry, &sunrise_command::args::normalized(tag))
                         .unwrap_or_default()
                         .to_vec()
                 })
@@ -918,7 +918,7 @@ mod tests {
             {
                 use mod_api::LevelHost;
                 let hit =
-                    super::super::native_hooks::HitLevel(sunrise_client::health::DamageLevel::of(
+                    super::super::native_hooks::HitLevel(sunrise_sim::health::DamageLevel::of(
                         &mut game.world,
                         game.pack.assets.registry,
                         Some(world_items!(game)),
@@ -956,7 +956,7 @@ mod tests {
             {
                 use mod_api::LevelHost;
                 let hit =
-                    super::super::native_hooks::HitLevel(sunrise_client::health::DamageLevel::of(
+                    super::super::native_hooks::HitLevel(sunrise_sim::health::DamageLevel::of(
                         &mut game.world,
                         game.pack.assets.registry,
                         None,

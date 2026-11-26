@@ -15,18 +15,17 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
-use sunrise_client::{
-    advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
-    effects::PlayerEffects,
-    hud::rgba,
-    items::ItemStack,
-    motion::PlayerMotion,
-    text::{self, Style, Text},
-    toasts::Slide,
-};
+use sunrise_client::{hud::rgba, toasts::Slide};
+use sunrise_client_core::text::{self, Style, Text};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_level::effects::PlayerEffects;
 use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_sim::{
+    advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
+    motion::PlayerMotion,
+};
 
 #[cfg(test)]
 pub(in crate::game) mod progress_tests;
@@ -349,8 +348,8 @@ impl adv::World for View<'_, '_> {
             .get(self.0.world.block(p[0], p[1], p[2]))
             .fluid
         {
-            sunrise_client::blocks::Fluid::Water => Some("minecraft:water".into()),
-            sunrise_client::blocks::Fluid::Lava => Some("minecraft:lava".into()),
+            sunrise_items::blocks::Fluid::Water => Some("minecraft:water".into()),
+            sunrise_items::blocks::Fluid::Lava => Some("minecraft:lava".into()),
             _ => None,
         }
     }
@@ -365,7 +364,7 @@ impl adv::World for View<'_, '_> {
     }
     /// `CampfireBlock.isSmokeyPos`: share the beehive smoke test.
     fn smokey(&self, p: [i32; 3]) -> bool {
-        sunrise_client::beehive::smokey(&self.0.mob_world_base(&[]), p)
+        sunrise_sim::beehive::smokey(&self.0.mob_world_base(&[]), p)
     }
     fn block_entity_nbt(&self, p: [i32; 3]) -> Option<sunrise_core::nbt::Tag> {
         self.0.block_entity_nbt(p)
@@ -391,8 +390,8 @@ pub(in crate::game) struct TagSources<'a> {
             std::collections::HashMap<String, std::collections::HashSet<String>>,
         >,
     >,
-    pub(in crate::game) items: &'a sunrise_client::items::Items,
-    pub(in crate::game) mob_data: &'a sunrise_client::mobs::MobData,
+    pub(in crate::game) items: &'a sunrise_items::items::Items,
+    pub(in crate::game) mob_data: &'a sunrise_sim::mobs::MobData,
     pub(in crate::game) damage: &'a sunrise_world::damage_source::Catalog,
     pub(in crate::game) resources: &'a std::path::Path,
 }
@@ -429,7 +428,7 @@ pub(in crate::game::server_side) fn vanilla_structure_tags(
 ) -> &'static Tags {
     static TAGS: std::sync::OnceLock<Tags> = std::sync::OnceLock::new();
     TAGS.get_or_init(|| {
-        sunrise_client::items::load_tags(
+        sunrise_items::items::load_tags(
             root,
             "worldgen/structure",
             &sunrise_world::loot::PackOverlay::NONE,
@@ -577,7 +576,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .progress
             .to_json(&self.adv.tree, sunrise_world::DATA_VERSION);
         if let Ok(text) = serde_json::to_string_pretty(&json) {
-            let _ = sunrise_client::save::write_durable(&path, text.as_bytes());
+            let _ = sunrise_sim::save::write_durable(&path, text.as_bytes());
         }
     }
     /// The player as predicates see it.
@@ -898,11 +897,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             kind: "minecraft:player".into(),
             position: [p.position.x, p.position.y, p.position.z],
             on_fire: p.is_on_fire(),
-            sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
+            sneaking: p.pose == sunrise_sim::pose::Pose::Crouching,
             // Input.shift: the held key, as `BlockItem.place`'s sneaking reads it.
             input_sneak: state.input_sneak,
             sprinting: p.sprinting,
-            swimming: p.pose == sunrise_client::pose::Pose::Swimming,
+            swimming: p.pose == sunrise_sim::pose::Pose::Swimming,
             flying: p.flying,
             on_ground: p.ground.on_ground,
             equipment: eq,
@@ -912,7 +911,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .list
                 .iter()
                 .map(|e| {
-                    let id = sunrise_client::brewing::namespaced(e.id);
+                    let id = sunrise_level::brewing::namespaced(e.id);
                     (id.to_owned(), e.amplifier, e.duration)
                 })
                 .collect(),
@@ -966,7 +965,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// A dropped item as the predicates see it.
     pub(in crate::game::server_side) fn item_entity_view(
         &self,
-        e: &sunrise_client::entities::ItemEntity,
+        e: &sunrise_sim::entities::ItemEntity,
     ) -> EntityView {
         EntityView {
             kind: "minecraft:item".into(),
@@ -978,7 +977,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// `Entity.get`: the mob's live custom-name component and type variants,
     /// alongside the other state the entity predicate asks for.
-    pub(in crate::game) fn mob_entity(&self, m: &sunrise_client::mobs::Mob) -> EntityView {
+    pub(in crate::game) fn mob_entity(&self, m: &sunrise_sim::mobs::Mob) -> EntityView {
         // mainhand, offhand, head, chest, legs, feet.
         let slot = |i: Option<&str>| i.map(|id| item_view(&ItemStack::new(id, 1)));
         let mut equipment: [Option<ItemView>; 7] = Default::default();
@@ -991,7 +990,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         equipment[6] = m.extra.body_stack().map(item_view);
         // Only the new snapshot is adopted; the existing view fields stay as
         // constructed above. Body and other view consumers stay unprojected.
-        use sunrise_client::mobs::finalize;
+        use sunrise_sim::mobs::finalize;
         for (view, slot) in equipment[..6].iter_mut().zip([
             finalize::MAINHAND,
             finalize::OFFHAND,
@@ -1019,7 +1018,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let uuid = self.persist.uuids.get(&m.id).copied().unwrap_or_default();
             let raw = self.persist.raw.get(&m.id);
             let registry = Some(self.pack.assets.registry);
-            let mut tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let mut tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 m,
                 uuid,
                 raw,
@@ -1060,11 +1059,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .iter()
                 .map(|effect| {
                     let (id, duration, amplifier) = (effect.id, effect.duration, effect.amplifier);
-                    let id = sunrise_client::brewing::namespaced(id);
+                    let id = sunrise_level::brewing::namespaced(id);
                     (id.to_owned(), amplifier, duration)
                 })
                 .collect(),
-            components: sunrise_client::mobs::finalize::variant_component(m)
+            components: sunrise_sim::mobs::finalize::variant_component(m)
                 .map(|(id, value)| (id.to_owned(), value))
                 .into_iter()
                 .collect(),
@@ -1168,11 +1167,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn with_advancement_hub<R>(
         &mut self,
         run: impl FnOnce(
-            &mut sunrise_client::lan::hub::Hub,
-            &mut sunrise_client::lan::hub::advancements::AdvancementOwners<'_>,
+            &mut sunrise_sim::lan::hub::Hub,
+            &mut sunrise_sim::lan::hub::advancements::AdvancementOwners<'_>,
         ) -> R,
     ) -> Option<R> {
-        use sunrise_client::lan::hub::advancements::{AdvancementOwners, AdvancementState};
+        use sunrise_sim::lan::hub::advancements::{AdvancementOwners, AdvancementState};
         let host = self.lan.as_mut()?;
         let mut owners = AdvancementOwners::active(
             &self.side.lan_guest_swaps,
@@ -1346,9 +1345,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut hand = self.stack_in(slot).cloned();
         let infinite = self.creative;
         let index = &world_stations!(self).recipe_index;
-        let result = sunrise_client::recipe_book::Settings::knowledge_book_recipes(
-            index, &mut hand, infinite,
-        );
+        let result =
+            sunrise_sim::recipe_book::Settings::knowledge_book_recipes(index, &mut hand, infinite);
         let depleted = hand
             .is_none()
             .then(|| self.stack_in(slot).cloned())
@@ -1405,7 +1403,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SHOW_ADVANCEMENT_MESSAGES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SHOW_ADVANCEMENT_MESSAGES)
         {
             let key = match d.frame {
                 Frame::Task => "chat.type.advancement.task",
@@ -1428,7 +1426,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // The guests hear of the host's advancement too.
                     if let Some(host) = &self.lan {
                         host.hub
-                            .system_message(sunrise_client::lan::data::component_nbt(
+                            .system_message(sunrise_sim::lan::data::component_nbt(
                                 &text.component(),
                             ));
                     }
@@ -2766,7 +2764,7 @@ pub(in crate::game::server_side) fn frame_color(frame: Frame) -> u32 {
 /// siblings): a parsed Text moves a styled root's style down a level once it
 /// has siblings.
 pub(in crate::game::server_side) fn decorate_name(d: &adv::Display) -> Text {
-    let mut component = match sunrise_client::scoreboard::canonical_component(&d.title) {
+    let mut component = match sunrise_client_core::scoreboard::canonical_component(&d.title) {
         Value::String(s) => serde_json::json!({ "text": s }),
         c => c,
     };
@@ -2855,7 +2853,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// An advancement's title or description: a whole component (ComponentSerialization.CODEC),
 /// with its siblings and styles, as a plugin's `{"text":"","extra":[...]}` needs.
 pub(in crate::game) fn text_of(v: &Value) -> Text {
-    sunrise_client::scoreboard::comp_text(v)
+    sunrise_client_core::scoreboard::comp_text(v)
 }
 
 #[cfg(test)]
@@ -2891,12 +2889,11 @@ pub(in crate::game) mod tests {
             game.adv.tree = Arc::new(Tree::load(&scratch.join("data")));
             let origin = sunrise_core::geometry::Vec3::ZERO;
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, origin).unwrap());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, origin).unwrap());
             let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
             helmet.damage = 164;
             game.armor[0] = Some(helmet);
-            let source =
-                sunrise_client::health::NO_ATTACK.player_source("minecraft:falling_anvil", 0);
+            let source = sunrise_sim::health::NO_ATTACK.player_source("minecraft:falling_anvil", 0);
             game.hurt_helmet(&source, 8.0);
             assert_eq!(game.armor[0], None);
             assert!(game.adv.progress.has(ID, "worn"));
@@ -2936,7 +2933,7 @@ pub(in crate::game) mod tests {
         .unwrap();
         game.build_registries();
         let kind = game.res.mob_types()["minecraft:pig"].clone();
-        game.mobs.push(sunrise_client::mobs::Mob::new(
+        game.mobs.push(sunrise_sim::mobs::Mob::new(
             12500,
             kind,
             Vec3::new(4.5, 200.0, 4.5),
@@ -2973,7 +2970,7 @@ pub(in crate::game) mod tests {
                 serde_json::json!("Bob"),
             ),
         ] {
-            let text = sunrise_client::scoreboard::comp_text(&name);
+            let text = sunrise_client_core::scoreboard::comp_text(&name);
             game.mobs[0].custom_name = Some(text.plain());
             game.mobs[0].custom_name_text = Some(text);
             for key in ["components", "minecraft:components"] {
@@ -3022,7 +3019,7 @@ pub(in crate::game) mod tests {
         let kind = game.res.mob_types()["minecraft:zombie"].clone();
         let actor = |id| {
             let mut mob =
-                sunrise_client::mobs::Mob::new(id, kind.clone(), Vec3::new(4.5, 200.0, 4.5), 0.0);
+                sunrise_sim::mobs::Mob::new(id, kind.clone(), Vec3::new(4.5, 200.0, 4.5), 0.0);
             mob.no_ai = true;
             mob.no_gravity = true;
             mob
@@ -3043,7 +3040,7 @@ pub(in crate::game) mod tests {
         game.mobs[0].add_effect_with("minecraft:speed", -1, 2, false, false);
         assert_eq!(
             game.mobs[0].extra.effects,
-            vec![sunrise_client::mobs::StoredEffect::new(
+            vec![sunrise_sim::mobs::StoredEffect::new(
                 "minecraft:speed",
                 -1,
                 2
@@ -3227,7 +3224,7 @@ pub(in crate::game) mod tests {
             id: "quests:board".into(),
             parent: None,
             display: Some(adv::Display {
-                icon: sunrise_client::items::ItemStack::new("minecraft:book", 1),
+                icon: sunrise_items::items::ItemStack::new("minecraft:book", 1),
                 title,
                 description,
                 frame: Frame::Task,
@@ -3255,7 +3252,7 @@ pub(in crate::game) mod tests {
             serde_json::json!("Open the board"),
         );
         let (sent, local) = hover(&a);
-        let sent = sunrise_client::scoreboard::comp_text(&sent);
+        let sent = sunrise_client_core::scoreboard::comp_text(&sent);
         assert_eq!(sent.plain(), "Quest Board\nOpen the board");
         let colors = |t: &Text| t.spans.iter().map(|s| s.style.color).collect::<Vec<_>>();
         let (gold, green) = (Some(text::GOLD), Some(text::GREEN));
@@ -3277,7 +3274,7 @@ pub(in crate::game) mod tests {
         );
         for a in [object, list] {
             let (sent, local) = hover(&a);
-            let sent = sunrise_client::scoreboard::comp_text(&sent);
+            let sent = sunrise_client_core::scoreboard::comp_text(&sent);
             assert_eq!(sent.plain(), "Quest Board\nOpen the board");
             let last = &sent.spans.last().unwrap().style;
             assert_eq!((last.color, last.bold), (Some(text::GOLD), Some(true)));
@@ -3365,7 +3362,7 @@ pub(in crate::game) mod structure_tag_tests {
     use super::View;
     use crate::game::{Options, Progress, Settings, load_resources};
     use serde_json::json;
-    use sunrise_client::advancements::{World, id_matches};
+    use sunrise_sim::advancements::{World, id_matches};
 
     /// `LocationPredicate.structures` names a `#tag`: the game's own
     /// `worldgen/structure` tags, and with a world's data packs theirs over
@@ -3594,9 +3591,9 @@ pub(in crate::game) mod random_chance_command_tests {
 #[cfg(test)]
 pub(in crate::game) mod custom_data_equipment_tests {
     use super::*;
-    use sunrise_client::{mobs::finalize, save};
     use sunrise_core::nbt::{Tag, parse_snbt};
     use sunrise_core::position::BlockPos;
+    use sunrise_sim::{mobs::finalize, save};
 
     fn item_predicate(pattern: &str) -> Value {
         serde_json::json!({"items":"minecraft:stick","count":1,
@@ -3616,7 +3613,7 @@ pub(in crate::game) mod custom_data_equipment_tests {
             game.set_allow_commands(true);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())

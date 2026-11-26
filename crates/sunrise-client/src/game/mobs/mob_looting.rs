@@ -5,17 +5,17 @@
 //! else keep their own loops (`pandas.rs`, `piglins.rs`, `villagers.rs`,
 //! `allays.rs`, `sulfur_cubes.rs`).
 use super::Game;
+use sunrise_gameplay::mob_looting::LootingLevel;
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
-use sunrise_client::mobs::finalize;
-use sunrise_client::{
+use sunrise_sim::mobs::finalize;
+use sunrise_sim::{
     entities::ItemEntity,
-    items::ItemStack,
     mobs::{
         Mob,
         equip::{self, Facts, Slot},
     },
 };
-use sunrise_gameplay::mob_looting::LootingLevel;
 
 impl LootingLevel for Game<'_, crate::game::server_side::ServerState> {
     fn grief_hooked(&self) -> bool {
@@ -80,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Mob.getApproximateAttributeWith` for `stack` in `slot`: each
     /// attribute starts from the mob's own value. (armour, toughness, damage)
     fn attributes(&self, m: &Mob, stack: &ItemStack, slot: Slot) -> (f64, f64, f64) {
-        let modifiers = sunrise_client::item_attributes::attribute_modifiers(stack, self.items());
+        let modifiers = sunrise_sim::item_attributes::attribute_modifiers(stack, self.items());
         let modifiers = &*modifiers;
         (
             equip::attribute_with(modifiers, "minecraft:armor", f64::from(m.kind.armor), slot),

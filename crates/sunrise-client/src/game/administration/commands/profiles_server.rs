@@ -1,5 +1,6 @@
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client::{server::user_lists::NameAndId, text::Text};
+use sunrise_client_core::text::Text;
+use sunrise_server_files::user_lists::NameAndId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// SaveAllCommand. Every save waits for the chunks to be written, so

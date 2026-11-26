@@ -13,21 +13,20 @@ pub(in crate::game) mod placement;
 
 use super::{Game, InteractTarget};
 use std::{collections::HashMap, f32::consts::PI, sync::Arc};
-use sunrise_client::{
-    blocks::Fluid,
-    items::ItemStack,
-    mobs::{
-        Part,
-        leash::{Holder, Pending},
-        riders,
-    },
-    motion::RiddenBoat,
-};
+use sunrise_client::mobs::Part;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
+};
+use sunrise_items::{blocks::Fluid, items::ItemStack};
+use sunrise_sim::{
+    mobs::{
+        leash::{Holder, Pending},
+        riders,
+    },
+    motion::RiddenBoat,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,7 +42,7 @@ pub(in crate::game) struct Boat {
     /// `Entity.xRot`: kept for `/tp` and `Rotation`; the kind turns only in yaw.
     pub pitch: f32,
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub id: u32,
     /// Wood type (`oak`, `bamboo` for the raft).
@@ -126,7 +125,7 @@ pub(in crate::game) struct Boat {
     pub(in crate::game) lerp: Option<DrivenLerp>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 /// `LinearInterpolationHandler` of the boat this client drives: where a server
 /// teleport takes it (`interpolationData`), the steps left, and where the boat
@@ -200,11 +199,11 @@ pub(in crate::game::server_side) fn snowflake_velocity(
 }
 /// `Entity.load`'s `Fire` (a short; 0 when absent).
 pub(in crate::game::server_side) fn saved_fire(tag: &Tag) -> i32 {
-    i32::from(sunrise_client::save::number(tag.get("Fire")).unwrap_or(0) as i16)
+    i32::from(sunrise_sim::save::number(tag.get("Fire")).unwrap_or(0) as i16)
 }
 /// `Entity.load`'s `TicksFrozen` (an int; 0 when absent).
 pub(in crate::game) fn saved_ticks_frozen(tag: &Tag) -> i32 {
-    sunrise_client::save::number(tag.get("TicksFrozen")).unwrap_or(0) as i32
+    sunrise_sim::save::number(tag.get("TicksFrozen")).unwrap_or(0) as i32
 }
 /// `Entity.saveWithoutId`: `TicksFrozen` is written only while positive.
 pub(in crate::game) fn put_ticks_frozen(map: &mut sunrise_core::nbt::Compound, ticks: i32) {
@@ -304,7 +303,7 @@ impl Boat {
             leash_pending: None,
             leash_spin: 0.0,
             age: 0,
-            random: sunrise_client::random_source::entity(),
+            random: sunrise_level::random_source::entity(),
             lerp: None,
         }
     }
@@ -366,7 +365,7 @@ impl Boat {
             Vec3::new(p.x - w, p.y, p.z - w),
             Vec3::new(p.x + w, p.y + HEIGHT, p.z + w),
         );
-        sunrise_client::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
+        sunrise_sim::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
     }
     /// `Entity.saveWithoutId` with `AbstractChestBoat`'s items: the loaded
     /// compound `raw` under the live fields.
@@ -374,9 +373,9 @@ impl Boat {
         &self,
         uuid: [i32; 4],
         raw: Option<&Tag>,
-        items: &crate::items::Items,
+        items: &sunrise_items::items::Items,
     ) -> Tag {
-        let mut tag = sunrise_client::entity_nbt::boat_to_nbt(
+        let mut tag = sunrise_sim::entity_nbt::boat_to_nbt(
             &self.entity_type(),
             self.position,
             self.velocity,
@@ -387,7 +386,7 @@ impl Boat {
             self.chest.then_some(&self.items[..]),
             items,
         );
-        sunrise_client::entity_nbt::write_saved_flags(
+        sunrise_sim::entity_nbt::write_saved_flags(
             &mut tag,
             self.ground.on_ground,
             self.no_gravity,
@@ -564,7 +563,7 @@ pub(in crate::game::server_side) fn registered_boat<'a>(
 /// The boat item and its matching vanilla entity type are both registered.
 pub(in crate::game) fn registered_boat_item<'a>(
     id: &'a str,
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Option<(&'a str, bool)> {
     let boat = registered_boat(id, &items.component_registry)?;
     items.get(id)?;
@@ -967,7 +966,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self
                         .ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                        .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
                 {
                     for &cell in &snow {
                         self.powder_snow_melt(BlockPos::new(cell[0], cell[1], cell[2]));
@@ -981,7 +980,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let now = self.boats.update(i, |b| {
                 if in_snow {
                     b.ticks_frozen = (b.ticks_frozen + 1)
-                        .min(sunrise_client::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+                        .min(sunrise_sim::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
                 }
                 if rain {
                     b.fire_ticks = b.fire_ticks.min(0);
@@ -1015,7 +1014,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let id = self.boats[i].id;
         let invulnerable = self.saved_refuses_damage(id, damage_type, false);
         let kind = self.boats[i].entity_type();
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type,
             causing: 0,
             direct: 0,
@@ -1263,7 +1262,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.world.block_entities.contains_key(&key) {
             self.world
                 .block_entities
-                .insert(key, sunrise_client::containers::BlockEntity::Chest(items));
+                .insert(key, sunrise_level::containers::BlockEntity::Chest(items));
         }
         self.container = Some(key);
         self.server_set_acting_use(false);
@@ -1308,7 +1307,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let sweep = self.sweep_before_hit(&kind, false);
         let chest = self.boats[i].chest;
         let attacker = self.own_entity_id();
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
             direct: attacker,
@@ -1319,7 +1318,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let invulnerable =
             crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
                 .invulnerability_check(
-                    sunrise_client::health::Hurting::Entity(id, &kind, source),
+                    sunrise_sim::health::Hurting::Entity(id, &kind, source),
                     vanilla,
                 );
         let hurt = if invulnerable {
@@ -1336,7 +1335,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
         {
             self.anger_piglins(true);
         }
@@ -1454,7 +1453,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
             {
                 self.spawn_item_own(
                     ItemStack {
@@ -1564,18 +1563,14 @@ pub(in crate::game) mod tests {
                 boat.status = Status::UnderWater;
                 boat.out_of_control = 60.0;
                 game.boats.push(boat);
-                let mut rider = sunrise_client::mobs::Mob::new(
-                    72,
-                    kind.clone(),
-                    Vec3::new(5.0, 190.0, 6.0),
-                    0.0,
-                );
+                let mut rider =
+                    sunrise_sim::mobs::Mob::new(72, kind.clone(), Vec3::new(5.0, 190.0, 6.0), 0.0);
                 rider.extra.mount = Some(71);
                 rider.extra.passenger = true;
                 game.persist
                     .off_level
                     .insert(72, super::super::persist::OffLevel::Mob(rider));
-                let mut child = sunrise_client::mobs::Mob::new(73, kind, Vec3::ZERO, 0.0);
+                let mut child = sunrise_sim::mobs::Mob::new(73, kind, Vec3::ZERO, 0.0);
                 child.extra.mount = Some(72);
                 child.age = 19;
                 game.mobs.push(child);
@@ -1795,15 +1790,15 @@ pub(in crate::game) mod tests {
         );
     }
 }
-sunrise_client::impl_joined!(Boat);
+sunrise_sim::impl_joined!(Boat);
 sunrise_mod_runtime::impl_attachment_lifetime!(Boat);
 #[cfg(test)]
 pub(in crate::game) mod cobweb_tests {
     use super::Boat;
     use crate::game::game_tests::tests::server_game;
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
 
     /// `AbstractBoat.tick`'s `applyEffectsFromBlocks` calls `WebBlock.entityInside`, which
     /// makes the boat stuck: its next move goes a quarter of the speed across and a

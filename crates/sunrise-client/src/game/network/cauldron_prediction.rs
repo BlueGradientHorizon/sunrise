@@ -1,13 +1,13 @@
 //! Shared cauldron client selection. Prediction never invokes authoritative callbacks.
 use super::*;
-use sunrise_client::cauldron::{
-    self,
-    interactions::{Dispatcher, Entry},
-};
 use sunrise_core::vanilla_bytes::Writer;
 use sunrise_protocol::{
     buf::{Codec, Ident, Reader},
     packets::{configuration::CustomPayload, play::Clientbound},
+};
+use sunrise_sim::cauldron::{
+    self,
+    interactions::{Dispatcher, Entry},
 };
 
 pub(super) use sunrise_protocol::packets::custom_payload::{
@@ -18,13 +18,13 @@ pub(super) use sunrise_protocol::packets::custom_payload::{
 /// and resume these clicks. Vanilla and other peers keep their vanilla packets.
 pub(super) fn publish_registrations<'a>(
     table: &cauldron_interactions::Table,
-    guests: impl IntoIterator<Item = &'a sunrise_client::lan::guest::Guest>,
+    guests: impl IntoIterator<Item = &'a sunrise_sim::lan::guest::Guest>,
 ) {
     let mut packet = None;
     for guest in guests {
         let transport = guest.sender.payload_transport();
-        if sunrise_client::raw_payloads::negotiated(transport, ENTRIES_CHANNEL)
-            && sunrise_client::raw_payloads::negotiated(transport, USE_CHANNEL)
+        if sunrise_sim::raw_payloads::negotiated(transport, ENTRIES_CHANNEL)
+            && sunrise_sim::raw_payloads::negotiated(transport, USE_CHANNEL)
         {
             guest.send(packet.get_or_insert_with(|| registration_packet(table)));
         }

@@ -46,7 +46,7 @@ fn remote_clicks_find_slots_past_the_old_large_chest_cutoff() {
 #[test]
 fn large_mod_menu_backing_slots_never_alias_armor_station_or_mount_slots() {
     use crate::game::inventory_slots::{MOD_MENU_SLOT_BASE, container_slot_index};
-    use sunrise_client::containers::ModMenuType;
+    use sunrise_level::containers::ModMenuType;
 
     let with_inv = ModMenuType {
         id: "test:large_with_inv",

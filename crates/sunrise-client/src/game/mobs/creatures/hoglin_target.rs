@@ -30,7 +30,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let proposal =
             self.mobs.iter().find(|m| m.id == mob).and_then(|m| {
-                sunrise_client::mobs::piglin::receive_attack_target(m, target, position)
+                sunrise_sim::mobs::piglin::receive_attack_target(m, target, position)
             });
         if let Some(target) = proposal {
             self.set_event_ai_target(mob, Some(target), player);

@@ -4,9 +4,9 @@
 
 use super::native_entity_refs::tests::with_game;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]
@@ -32,8 +32,7 @@ fn a_mob_presses_a_plate_only_inside_the_simulation_distance() {
         // the simulation distance, and another in chunk (8, 0): loaded and in
         // view, but past it.
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5))
-                .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
         );
         for (cx, x, id) in [(2, 40, 1), (8, 136, 2)] {
             game.world

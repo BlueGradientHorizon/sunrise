@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{ClientHost, Hooks, MovementInputUpdateEvent};
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct Native;

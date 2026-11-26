@@ -117,7 +117,7 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     )
                     .unwrap()
                 };
-                let has_recipe = |sources: &sunrise_client::crafting::ResolvedSources| {
+                let has_recipe = |sources: &sunrise_sim::crafting::ResolvedSources| {
                     sources
                         .recipes
                         .iter()

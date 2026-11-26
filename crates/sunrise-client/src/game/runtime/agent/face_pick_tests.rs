@@ -7,10 +7,11 @@ use crate::game::native_client_session::tests::logged_client;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
 use std::sync::{Arc, Mutex, mpsc};
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::connection::Connection;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::motion::PlayerMotion;
 
 /// A subscribed `client_pick` listener: counts its calls, and can replace the result.
 #[derive(Default)]

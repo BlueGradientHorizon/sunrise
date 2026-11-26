@@ -255,10 +255,10 @@ pub(in crate::game) mod tests {
     use super::super::native_sound_refs::tests::{guest, packets};
     use mod_api::{HostSide, SoundSource};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::lan::{NetConfig, hub::HubConfig};
-    use sunrise_client::mobs::{Mob, MobEvent};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::Clientbound;
+    use sunrise_sim::lan::{NetConfig, hub::HubConfig};
+    use sunrise_sim::mobs::{Mob, MobEvent};
 
     /// Quietens and moves the locked chest, cancels the pig, and turns a
     /// sound bound to an entity into a cow's; logs what it was asked.

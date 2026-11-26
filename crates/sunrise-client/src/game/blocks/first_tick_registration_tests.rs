@@ -6,8 +6,8 @@
 //! vanilla 26.3: it flows 5 ticks after placement).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
@@ -108,7 +108,7 @@ fn early_registration_keeps_saved_ticks_and_ticks_nothing() {
         priority: TickPriority::Normal,
     };
     let mut chunk = Chunk::empty(key.0, key.1);
-    chunk.saved = Some(Arc::new(sunrise_client::chunk::ChunkExtras {
+    chunk.saved = Some(Arc::new(sunrise_level::chunk::ChunkExtras {
         fluid_ticks: vec![saved],
         ..Default::default()
     }));
@@ -169,7 +169,7 @@ fn saved_block_and_fluid_ticks_unpack_when_the_chunk_starts_ticking() {
         priority: TickPriority::Normal,
     };
     let mut chunk = Chunk::empty(key.0, key.1);
-    chunk.saved = Some(Arc::new(sunrise_client::chunk::ChunkExtras {
+    chunk.saved = Some(Arc::new(sunrise_level::chunk::ChunkExtras {
         block_ticks: vec![block],
         fluid_ticks: vec![fluid],
         ..Default::default()

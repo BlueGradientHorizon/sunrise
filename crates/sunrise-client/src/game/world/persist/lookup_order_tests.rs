@@ -136,8 +136,8 @@ pub(in crate::game::server_side) fn run_chunk_loaded_families_keep_vanilla_looku
         lookup.push(snapshot(game));
         // An arrow is fired while the pig is away. It joins its storage with
         // no id, and only gets one after the pig is back.
-        let arrow = sunrise_client::projectiles::Projectile::new(
-            sunrise_client::projectiles::ProjectileKind::Arrow {
+        let arrow = sunrise_sim::projectiles::Projectile::new(
+            sunrise_sim::projectiles::ProjectileKind::Arrow {
                 base_damage: 2.0,
                 critical: false,
                 effect: None,

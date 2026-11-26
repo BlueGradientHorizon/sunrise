@@ -9,11 +9,11 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client::{
-    Result,
-    control::Request,
     creative::Creative,
     widgets::{self, Kind, Node},
 };
+use sunrise_client_core::Result;
+use sunrise_sim::control::Request;
 use winit::event::MouseButton;
 
 pub(in crate::game) const HELP: &[&str] = &[

@@ -3,8 +3,8 @@
 //! These use the same mob state and methods as the game's ordinary host. A
 //! snapshot is intentionally not accepted: it cannot answer these reads.
 use super::{GoalCx, Resolved};
-use crate::mobs::{self, Mob};
 use mod_api::{LivingRef, MobGoalEntry, MobRef, PathType, RaidRef};
+use sunrise_sim::mobs::{self, Mob};
 
 impl GoalCx<'_, '_> {
     fn live_mob(&self, mob: MobRef) -> Option<&Mob> {

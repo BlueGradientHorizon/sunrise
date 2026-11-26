@@ -280,7 +280,7 @@ fn build_cached_entry(
             let names = (0..registry.len() as u32)
                 .filter_map(|id| registry.state(sunrise_world::registry::BlockStateId(id)))
                 .map(|state| state.name.as_str());
-            let mod_namespaces = sunrise_client::save::level_mods::mod_namespaces(names);
+            let mod_namespaces = sunrise_sim::save::level_mods::mod_namespaces(names);
             Ok(Arc::new(CachedEntry {
                 root: key.root,
                 vanilla_root: key.vanilla_root,
@@ -309,7 +309,7 @@ fn cached_language(
     vanilla_root: &Path,
     code: &str,
     dedicated: bool,
-) -> Arc<sunrise_client::lang::Language> {
+) -> Arc<sunrise_client_core::lang::Language> {
     #[derive(PartialEq, Eq)]
     struct LangKey {
         root: PathBuf,
@@ -317,12 +317,12 @@ fn cached_language(
         dedicated: bool,
         stamp: FileStamp,
     }
-    type LangSlot = Arc<OnceLock<Arc<sunrise_client::lang::Language>>>;
+    type LangSlot = Arc<OnceLock<Arc<sunrise_client_core::lang::Language>>>;
     static LANGS: Mutex<Vec<(LangKey, LangSlot)>> = Mutex::new(Vec::new());
 
     let dir = if dedicated { vanilla_root } else { root };
     let lang_code = if dedicated {
-        sunrise_client::lang::DEFAULT.to_owned()
+        sunrise_client_core::lang::DEFAULT.to_owned()
     } else {
         code.to_owned()
     };
@@ -350,11 +350,11 @@ fn cached_language(
     };
     slot.get_or_init(|| {
         let language = if dedicated {
-            sunrise_client::lang::Language::load_default(&vanilla_root.to_path_buf())
+            sunrise_client_core::lang::Language::load_default(&vanilla_root.to_path_buf())
         } else {
             let source =
                 sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf());
-            sunrise_client::lang::Language::load(&[&source], code)
+            sunrise_client_core::lang::Language::load(&[&source], code)
         };
         Arc::new(language)
     })
@@ -363,13 +363,13 @@ fn cached_language(
 
 pub(in crate::game) fn cached_structure_spawns(
     root: &Path,
-) -> sunrise_client::mobs::spawn_selection::StructureSpawns {
+) -> sunrise_sim::mobs::spawn_selection::StructureSpawns {
     type SpawnKey = (PathBuf, FileStamp, FileStamp);
-    type SpawnSlot = Arc<OnceLock<sunrise_client::mobs::spawn_selection::StructureSpawns>>;
+    type SpawnSlot = Arc<OnceLock<sunrise_sim::mobs::spawn_selection::StructureSpawns>>;
     static SPAWNS: Mutex<Vec<(SpawnKey, SpawnSlot)>> = Mutex::new(Vec::new());
 
     let Ok(canon) = std::fs::canonicalize(root) else {
-        return sunrise_client::mobs::spawn_selection::StructureSpawns::load(root);
+        return sunrise_sim::mobs::spawn_selection::StructureSpawns::load(root);
     };
     let key = (
         canon.clone(),
@@ -392,7 +392,7 @@ pub(in crate::game) fn cached_structure_spawns(
             slot
         }
     };
-    slot.get_or_init(|| sunrise_client::mobs::spawn_selection::StructureSpawns::load(&canon))
+    slot.get_or_init(|| sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&canon))
         .clone()
 }
 
@@ -446,14 +446,14 @@ fn hydrate_hit(
         sunrise_client::sprites::set_texture_budget(key.texture_budget_mib);
         sunrise_client::sprites::set_labpbr_maps(key.labpbr_maps);
     }
-    sunrise_client::chunk::set_block_states(cached.pack.assets.registry.len());
+    sunrise_level::chunk::set_block_states(cached.pack.assets.registry.len());
     if !mod_api::__private::parts_installation::parts_installed() {
         mod_platform::__private::part_tests::install_parts_fixture(&[])
             .map_err(|errors| errors.join("\n"))?;
     }
     replay_iterated_registries(&cached.iterated)?;
     // Mods that requested custom entity-type keys change `type_key` slots inside `Resources`.
-    let entity_keys_match = sunrise_client::health::LivingTypeKeys::resolve()
+    let entity_keys_match = sunrise_sim::health::LivingTypeKeys::resolve()
         == cached.resources.living_type_keys()
         && cached
             .resources
@@ -464,7 +464,7 @@ fn hydrate_hit(
         return Ok(None);
     }
     publish_entity_type_defaults(&cached.resources.core.motion.attributes);
-    sunrise_client::save::level_mods::set_block_namespaces(Some(cached.mod_namespaces.clone()));
+    sunrise_sim::save::level_mods::set_block_namespaces(Some(cached.mod_namespaces.clone()));
     let registry = api_values::resolve_cached_block_definitions(cached.pack.assets.registry)?;
     let _ = sunrise_world::poi::extend(Vec::new());
     crate::game::machines::cauldron_contents::install(
@@ -473,10 +473,10 @@ fn hydrate_hit(
     #[cfg(feature = "client")]
     if let Some(client_pack) = &client_pack {
         sunrise_client::pack_palette::set(&client_pack.polytone_colors);
-        sunrise_client::brewing::set_pack_colors(client_pack.polytone_colors.effects.clone());
+        sunrise_level::brewing::set_pack_colors(client_pack.polytone_colors.effects.clone());
     }
     if !skip_lang {
-        sunrise_client::lang::set_shared(cached_language(
+        sunrise_client_core::lang::set_shared(cached_language(
             &cached.root,
             &cached.vanilla_root,
             &settings.language,
@@ -484,7 +484,7 @@ fn hydrate_hit(
         ));
     }
     api_values::resolve_item_registry(cached.resources.items())?;
-    sunrise_client::mobs::trial_spawner::load_registry(&cached.root);
+    sunrise_sim::mobs::trial_spawner::load_registry(&cached.root);
 
     let mut pack = cached.pack.clone();
     if !std::ptr::eq(registry, cached.pack.assets.registry) {
@@ -579,7 +579,7 @@ fn hydrate_hit(
 #[allow(clippy::too_many_arguments)]
 pub(in crate::game) fn load(
     roots: packs::PackRoots,
-    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &Path,
     settings: &Settings,

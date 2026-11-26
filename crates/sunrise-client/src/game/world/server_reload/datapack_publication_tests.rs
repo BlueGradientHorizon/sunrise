@@ -55,7 +55,7 @@ fn write(path: &Path, text: &str) {
 #[ignore = "daily"]
 fn recipe_priority_layer_is_named_and_applied_through_reload() {
     use sunrise_mod_package::content::RECIPE_PRIORITIES_PATH;
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path();
     let pack = root.join("datapacks/priority_fixture");
@@ -120,7 +120,7 @@ fn power(game: &crate::game::ServerGame<'_>) -> DatapackValue {
 #[test]
 #[ignore = "daily"]
 fn datapack_game_open_reload_and_exhaustion_are_atomic() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path();
     for (name, value) in [("base", 3), ("override", 7)] {
@@ -224,7 +224,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                     &old
                 ));
                 assert!(std::sync::Arc::ptr_eq(
-                    &sunrise_client::datapack_net::served().unwrap(),
+                    &sunrise_sim::datapack_net::served().unwrap(),
                     &old
                 ));
                 assert_eq!(power(game), DatapackValue::Int(7));
@@ -254,7 +254,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 assert!(game.run_command("reload"));
                 assert_eq!(power(game), DatapackValue::Int(9));
                 assert_eq!(
-                    sunrise_client::datapack_net::served(),
+                    sunrise_sim::datapack_net::served(),
                     game.mods.datapack_registries
                 );
                 assert!(game.run_command("reload"));
@@ -284,7 +284,7 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
 #[ignore = "daily"]
 fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
     use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game_at};
-    use sunrise_client::lan::data::BIOME_REGISTRY;
+    use sunrise_sim::lan::data::BIOME_REGISTRY;
 
     // World open replaces the process-wide wire snapshot for the session.
     if run_fresh_cases(
@@ -342,7 +342,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
         &pack.join("data/registry_test/damage_type/fixture.json"),
         r#"{"message_id":"fixture","scaling":"never","exhaustion":0}"#,
     );
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     with_game_at(resources, |game| {
         game.load_world(request(&world)).unwrap();
         let sync = crate::game::lan::sync::cached_reload_sync().unwrap();
@@ -357,7 +357,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
             .unwrap();
         assert_eq!(
             biome.data,
-            Some(sunrise_client::lan::data::json_to_nbt(&winner))
+            Some(sunrise_sim::lan::data::json_to_nbt(&winner))
         );
     });
 }
@@ -367,7 +367,7 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
 #[test]
 #[ignore = "daily"]
 fn refused_reload_names_the_pack_and_keeps_the_old_generation() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path();
     let pack = root.join("datapacks/override");
@@ -412,7 +412,7 @@ fn refused_reload_names_the_pack_and_keeps_the_old_generation() {
                         &initial
                     ));
                     assert_eq!(
-                        sunrise_client::datapack_net::served(),
+                        sunrise_sim::datapack_net::served(),
                         game.mods.datapack_registries
                     );
                 }
@@ -431,7 +431,7 @@ mod datapack_game_delivery_tests;
 
 // Each case uses real world open/reload, not a preloaded membership predicate.
 fn with_membership_fixture(run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Path)) {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path();
     for name in ["base", "later"] {

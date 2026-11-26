@@ -24,11 +24,9 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use sunrise_client::{
-    fast_hash::FxHashMap,
-    mesher::Vertex,
-    mobs::{Mob, MobType},
-};
+use sunrise_client::mesher::Vertex;
+use sunrise_level::fast_hash::FxHashMap;
+use sunrise_sim::mobs::{Mob, MobType};
 
 /// The player's entity type: its renderers are the player models', so its layers go to those.
 const PLAYER: &str = "minecraft:player";

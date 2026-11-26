@@ -25,13 +25,15 @@ pub(in crate::game::client_side) use mod_api::ClientHost;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::time::Duration;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::entities::ExperienceOrb;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::particles::{
-    FireworkExplosion, ParticleOptions, ParticleType,
-};
+pub(in crate::game::client_side) use sunrise_client::particles::FireworkExplosion;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_level::particle_options::{
+    ParticleOptions, ParticleType,
+};
+#[allow(unused_imports)]
+pub(in crate::game::client_side) use sunrise_sim::entities::ExperienceOrb;
 
 /// `particle_count` and `clear_particles` through the client host. The count covers every
 /// live group. A clear reads 0 at once and empties every group, its queue and emitters
@@ -120,9 +122,9 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
                 );
             game.pack.item_models = std::sync::Arc::clone(&renderer.models);
             let at = game.side.particles.0.camera;
-            let item = sunrise_client::entities::ItemEntity::new(
+            let item = sunrise_sim::entities::ItemEntity::new(
                 1,
-                sunrise_client::items::ItemStack::new("minecraft:stick", 1),
+                sunrise_items::items::ItemStack::new("minecraft:stick", 1),
                 Vec3::new(at[0], at[1], at[2]),
                 Vec3::ZERO,
                 0.0,
@@ -150,9 +152,9 @@ pub(in crate::game) fn add_frame_particles(game: &mut crate::game::ClientGame<'_
         );
     }
     let at = game.side.particles.0.camera;
-    let item = sunrise_client::entities::ItemEntity::new(
+    let item = sunrise_sim::entities::ItemEntity::new(
         1,
-        sunrise_client::items::ItemStack::new("minecraft:stick", 1),
+        sunrise_items::items::ItemStack::new("minecraft:stick", 1),
         Vec3::new(at[0], at[1], at[2]),
         Vec3::ZERO,
         0.0,
@@ -211,18 +213,18 @@ pub(in crate::game) fn frame_scene(
     game.side.settings.extras.dynamic_lights = true;
     game.side.settings.sunrise.particle_culling =
         sunrise_client::graphics::ParticleCullingMode::Off;
-    let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+    let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
     chunk.lit = true;
     game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
-    let mut player = sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+    let mut player = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
     player.position = Vec3::new(0.5, 64.0, 0.5);
     game.previous_position = player.position;
     game.player = Some(player);
     game.side.particles.0.camera = [0.5, 65.5, 1.5];
     // Ordinary (non-particle) entity geometry and an unrelated item light.
-    game.dropped.push(sunrise_client::entities::ItemEntity::new(
+    game.dropped.push(sunrise_sim::entities::ItemEntity::new(
         2,
-        sunrise_client::items::ItemStack::new("minecraft:torch", 1),
+        sunrise_items::items::ItemStack::new("minecraft:torch", 1),
         Vec3::new(0.5, 65.0, 4.5),
         Vec3::ZERO,
         0.0,

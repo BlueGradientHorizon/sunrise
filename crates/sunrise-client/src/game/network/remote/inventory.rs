@@ -61,8 +61,8 @@ pub(in crate::game) fn creative_sync_slot(i: usize) -> i16 {
 /// swap or a result move with no room left) is `Prediction.PREDICTED`.
 /// None when the engine refuses a click.
 pub(in crate::game) fn predict_clicks(
-    m: &mut sunrise_client::menu::Menu,
-    env: &sunrise_client::menu::Env,
+    m: &mut sunrise_sim::menu::Menu,
+    env: &sunrise_sim::menu::Env,
     clicks: &[(i16, i32, Input)],
 ) -> Option<(Vec<Predicted>, bool)> {
     predict_clicks_with(m, env, clicks, None)
@@ -71,10 +71,10 @@ pub(in crate::game) fn predict_clicks(
 /// Like [`predict_clicks`], applying `last_stacked` (and `env.slot_rules`) to the final click of
 /// `clicks` when client prediction decided a resolved pickup via `ItemPart::item_stacked_on_other`.
 pub(in crate::game) fn predict_clicks_with(
-    m: &mut sunrise_client::menu::Menu,
-    env: &sunrise_client::menu::Env,
+    m: &mut sunrise_sim::menu::Menu,
+    env: &sunrise_sim::menu::Env,
     clicks: &[(i16, i32, Input)],
-    last_stacked: Option<&sunrise_client::menu::StackedOutcome>,
+    last_stacked: Option<&sunrise_sim::menu::StackedOutcome>,
 ) -> Option<(Vec<Predicted>, bool)> {
     let mut predicted = Vec::with_capacity(clicks.len());
     let mut dropped = false;
@@ -83,12 +83,12 @@ pub(in crate::game) fn predict_clicks_with(
         let before = menu_items(m);
         let thrown = m.dropped.len();
         let step_env = if index == last {
-            sunrise_client::menu::Env {
+            sunrise_sim::menu::Env {
                 stacked: last_stacked,
                 ..*env
             }
         } else {
-            sunrise_client::menu::Env {
+            sunrise_sim::menu::Env {
                 stacked: None,
                 ..*env
             }
@@ -101,7 +101,7 @@ pub(in crate::game) fn predict_clicks_with(
     Some((predicted, dropped))
 }
 
-pub(in crate::game) fn menu_items(m: &sunrise_client::menu::Menu) -> Vec<Option<ItemStack>> {
+pub(in crate::game) fn menu_items(m: &sunrise_sim::menu::Menu) -> Vec<Option<ItemStack>> {
     (0..m.slot_count()).map(|i| m.slot(i).cloned()).collect()
 }
 
@@ -109,7 +109,7 @@ pub(in crate::game) fn menu_items(m: &sunrise_client::menu::Menu) -> Vec<Option<
 /// `MultiPlayerGameMode.handleContainerInput`'s changed slots, in the order the packet writes them.
 pub(in crate::game) fn changed_slots(
     before: &[Option<ItemStack>],
-    m: &sunrise_client::menu::Menu,
+    m: &sunrise_sim::menu::Menu,
 ) -> Vec<(i16, Option<ItemStack>)> {
     let changed: Vec<i16> = (0..m.slot_count())
         .filter(|&i| m.slot(i) != before.get(i).and_then(Option::as_ref))
@@ -168,7 +168,7 @@ pub(in crate::game) fn open_hash_order(keys: &[i16]) -> Vec<i16> {
 /// Map a menu slot to Sunrise's inventory screen slot ids.
 pub(in crate::game) fn inventory_screen_slot(menu: &str, slot: i32) -> Option<usize> {
     crate::game::inventory_screen_slot_with_type(menu, slot, || {
-        sunrise_client::containers::mod_menu_type(menu)
+        sunrise_level::containers::mod_menu_type(menu)
     })
 }
 
@@ -176,7 +176,7 @@ pub(in crate::game) fn inventory_screen_slot(menu: &str, slot: i32) -> Option<us
 pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
     menu: &str,
     slot: i32,
-    mod_type: impl FnOnce() -> Option<&'m sunrise_client::containers::ModMenuType>,
+    mod_type: impl FnOnce() -> Option<&'m sunrise_level::containers::ModMenuType>,
 ) -> Option<usize> {
     let s = usize::try_from(slot).ok()?;
     // A container of `n` slots, then the inventory and the hotbar.

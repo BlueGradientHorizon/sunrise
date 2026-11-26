@@ -2,8 +2,8 @@
 //! real resources: it rides a blow that hurt, on the local difficulty's chance.
 use super::*;
 use crate::game::*;
-use sunrise_client::mobs::{Who, ai::do_hurt_target, goals::Cx};
 use sunrise_core::random::LegacyRandom;
+use sunrise_sim::mobs::{Who, ai::do_hurt_target, goals::Cx};
 use sunrise_world::food::Difficulty;
 
 fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -51,7 +51,7 @@ fn blows(cases: &[Case]) -> Vec<(i32, f32)> {
             g.mobs.push(m);
             // The mob out of the level while its own blow runs, as in its tick.
             let mut mobs = std::mem::take(&mut g.mobs);
-            let mut test_level = sunrise_client::health::TestLevel::new(0);
+            let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
             let mut events = Vec::new();
             {

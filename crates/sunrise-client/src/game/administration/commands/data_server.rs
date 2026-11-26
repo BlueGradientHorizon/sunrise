@@ -4,13 +4,15 @@ use crate::game::commands::data::set_key;
 use crate::game::commands::data::strip_finalize_tree;
 pub(in crate::game::server_side) use crate::game::commands::data::summon_type_name;
 #[allow(unused_imports)]
-use sunrise_client::{
-    containers::BlockEntity,
+use sunrise_client_core::text::Text;
+use sunrise_core::nbt::{Compound, Tag};
+#[allow(unused_imports)]
+use sunrise_level::containers::BlockEntity;
+#[allow(unused_imports)]
+use sunrise_sim::{
     entity_nbt,
     save::{self, random_uuid},
-    text::Text,
 };
-use sunrise_core::nbt::{Compound, Tag};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.load` of new data (`EntityDataAccessor.setData`): the entity is
@@ -61,7 +63,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     Some(self.pack.assets.registry),
                 )
                 .ok_or_else(stale)?;
-                sunrise_client::mobs::armor::prepare(&new, &self.motion.attributes);
+                sunrise_sim::mobs::armor::prepare(&new, &self.motion.attributes);
                 self.resolve_loaded_profession(&mut new);
                 let unresolved = self
                     .stations()
@@ -76,11 +78,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         Some(Tag::Compound(_))
                     );
                     let keep_liked_player =
-                        unreadable_brain && slot.species() == sunrise_client::mobs::Species::Allay;
+                        unreadable_brain && slot.species() == sunrise_sim::mobs::Species::Allay;
                     // Runtime identity and lifetime stay on the resident owner.
                     new.join = slot.join;
                     new.random = slot.random.clone();
-                    let old = sunrise_client::join_seq::store_back(slot, new);
+                    let old = sunrise_sim::join_seq::store_back(slot, new);
                     // Entity.load does not replace the live passenger graph or
                     // the runtime seating state, even for an off-level vehicle.
                     slot.extra.mount = old.extra.mount;
@@ -93,14 +95,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     slot.rider = old.rider;
                     // Runtime-only state (AI, animation) carries over.
                     // Reset saved armadillo sensors from the resident random.
-                    if slot.species() == sunrise_client::mobs::Species::Armadillo
+                    if slot.species() == sunrise_sim::mobs::Species::Armadillo
                         && tag.get("Brain").is_some()
                     {
-                        sunrise_client::mobs::armadillo::delay_sensors(slot);
+                        sunrise_sim::mobs::armadillo::delay_sensors(slot);
                     }
                     // Entity.load keeps the unsaved Allay.jukeboxPos and
                     // DATA_DANCING of the entity it loads into.
-                    if slot.species() == sunrise_client::mobs::Species::Allay {
+                    if slot.species() == sunrise_sim::mobs::Species::Allay {
                         slot.extra.flag = old.extra.flag;
                         if let (Some(st), Some(was)) =
                             (slot.extra.allay.as_mut(), old.extra.allay.as_ref())
@@ -127,13 +129,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     slot.in_powder_snow = old.in_powder_snow;
                     // Entity.load updates saved data on the existing entity;
                     // lastTradedPlayer is transient and survives a live NoAI edit.
-                    if slot.species() == sunrise_client::mobs::Species::Villager {
-                        sunrise_client::mobs::villager::ext_mut(slot).last_traded_player =
-                            sunrise_client::mobs::villager::ext(&old)
+                    if slot.species() == sunrise_sim::mobs::Species::Villager {
+                        sunrise_sim::mobs::villager::ext_mut(slot).last_traded_player =
+                            sunrise_sim::mobs::villager::ext(&old)
                                 .and_then(|ext| ext.last_traded_player);
                     }
-                    if slot.species() == sunrise_client::mobs::Species::Shulker {
-                        sunrise_client::mobs::shulker::keep_eased_peek(slot, &old);
+                    if slot.species() == sunrise_sim::mobs::Species::Shulker {
+                        sunrise_sim::mobs::shulker::keep_eased_peek(slot, &old);
                     }
                     if unreadable_brain
                         && let (Some(st), Some(was)) =
@@ -153,8 +155,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     slot.previous = slot.position;
                     // Wolf.readAdditionalSaveData initializes persistent anger at
                     // the live level clock, just as load_mob does on admission.
-                    if slot.species() == sunrise_client::mobs::Species::Wolf {
-                        sunrise_client::mobs::adopt_anger_end(slot, self.world.game_time);
+                    if slot.species() == sunrise_sim::mobs::Species::Wolf {
+                        sunrise_sim::mobs::adopt_anger_end(slot, self.world.game_time);
                     } else {
                         // `readPersistentAngerSaveData` set the end time as written.
                         slot.extra.anger_stamp = Some((slot.extra.anger, slot.age));
@@ -193,7 +195,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     new.join = slot.join;
                     new.bob_offset = slot.bob_offset;
                     new.random = slot.random.clone();
-                    sunrise_client::join_seq::store_back(slot, new);
+                    sunrise_sim::join_seq::store_back(slot, new);
                 }
             }
             Target::Fangs(id) => {
@@ -206,8 +208,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         f.fire_ticks = entity_nbt::fire_ticks_from_nbt(&tag);
                         f.has_visual_fire = entity_nbt::flag(&tag, "HasVisualFire");
                         f.yaw = entity_nbt::rotation(&tag)[0];
-                        f.warmup =
-                            sunrise_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
+                        f.warmup = sunrise_sim::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
                         f.owner = owner;
                     });
                 }
@@ -219,7 +220,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // and its place in the level's join order.
                     new.first_tick = slot.first_tick;
                     new.join = slot.join;
-                    sunrise_client::join_seq::store_back(slot, new);
+                    sunrise_sim::join_seq::store_back(slot, new);
                 }
                 self.merge_portal_cooldown(id, &tag);
             }
@@ -245,7 +246,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                     let item = new.item.take();
                     new.set_item(item);
-                    sunrise_client::join_seq::store_back(&mut self.item_frames[i], new);
+                    sunrise_sim::join_seq::store_back(&mut self.item_frames[i], new);
                 }
             }
             Target::Boat(id) => {
@@ -284,7 +285,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     entity_nbt::falling_block_from_nbt(&tag).ok_or_else(stale)?;
                 let state = self.state_from_nbt(&state).ok_or_else(stale)?;
                 let (no_gravity, drop_item) = entity_nbt::falling_block_flags(&tag);
-                let damage = sunrise_client::falling_block::Damage::from_nbt(
+                let damage = sunrise_sim::falling_block::Damage::from_nbt(
                     &tag,
                     self.res.facts().get(state).name.ends_with("anvil"),
                 );
@@ -337,7 +338,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 tnt.fuse = super::super::persist::tnt_fuse(&tag);
                 tnt.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                 tnt.fall_distance =
-                    sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0);
+                    sunrise_sim::save::float(tag.get("fall_distance")).unwrap_or(0.0);
                 tnt.no_gravity = entity_nbt::flag(&tag, "NoGravity");
                 tnt.power = entity_nbt::tnt_power(&tag);
                 tnt.block_state = block_state;
@@ -678,7 +679,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .iter()
                     .find(|p| p.id == id)
                     .and_then(|p| match &p.kind {
-                        sunrise_client::projectiles::ProjectileKind::ShulkerBullet {
+                        sunrise_sim::projectiles::ProjectileKind::ShulkerBullet {
                             target: Some(who),
                             ..
                         } => Some(*who),
@@ -686,7 +687,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     });
                 let target = who.and_then(|who| self.save_who_uuid(who));
                 let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                let owner = if p.owner == Some(sunrise_client::mobs::Who::Player) {
+                let owner = if p.owner == Some(sunrise_sim::mobs::Who::Player) {
                     player_uuid
                 } else {
                     None
@@ -893,10 +894,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     // A serialization view, not a second resident entity.
-                    join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+                    join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
                     id,
                     kind: "minecraft:leash_knot".into(),
-                    position: sunrise_client::mobs::leash::knot_state(fence).position,
+                    position: sunrise_sim::mobs::leash::knot_state(fence).position,
                     yaw: 0.0,
                     pitch: 0.0,
                     item_transformation: None,
@@ -945,7 +946,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let name = self.data_block_name(pos);
         let before =
-            sunrise_client::save::block_entity_encode::encode(key, e, &name, self.res.items());
+            sunrise_sim::save::block_entity_encode::encode(key, e, &name, self.res.items());
         if let Tag::Compound(c) = &mut tag {
             for k in ["id", "x", "y", "z"] {
                 if let Some(v) = before.get(k) {
@@ -958,7 +959,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let rolled = self.take_loot_table(key, &tag, &mut new);
         let after =
-            sunrise_client::save::block_entity_encode::encode(key, &new, &name, self.res.items());
+            sunrise_sim::save::block_entity_encode::encode(key, &new, &name, self.res.items());
         // The lock is outside the model: a tag that only changes it still
         // changes the block entity.
         let lock_changed = self.world.block_lock(key) != tag.get("lock");
@@ -997,7 +998,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn saved_player_uuid(&self) -> Option<[i32; 4]> {
         self.side
             .lan_acting_uuid
-            .map(sunrise_client::lan::playerdata::uuid_ints)
+            .map(sunrise_sim::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid)
     }
     pub(in crate::game) fn set_data_of(&mut self, r: &DataRef, tag: Tag) -> R<()> {
@@ -1312,7 +1313,7 @@ pub(in crate::game) mod modern_literal_tests {
                 } else {
                     ["data modify storage ", &target, " v set value ", modern].concat()
                 };
-                let dispatcher = sunrise_client::command::vanilla::game_dispatcher();
+                let dispatcher = sunrise_command::vanilla::game_dispatcher();
                 assert!(
                     dispatcher
                         .parse(&command, &game.ui.registries)
@@ -1373,7 +1374,7 @@ pub(in crate::game) mod falling_live_adoption_tests {
                 falling.start_pos = BlockPos::new(9, 201, 11);
                 falling.stuck = Vec3::new(0.2, 0.3, 0.4);
                 falling.portal.cooldown = 17;
-                falling.portal.process = Some(sunrise_client::nether_portal::Process {
+                falling.portal.process = Some(sunrise_sim::nether_portal::Process {
                     entry: BlockPos::new(8, 199, 8),
                     time: 7,
                     inside: true,

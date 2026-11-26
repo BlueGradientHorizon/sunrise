@@ -171,7 +171,7 @@ fn native_process_environment_in_registration_and_game_hosts() {
             Dist::Client
         },
         sunrise_core::VANILLA_VERSION.to_owned(),
-        crate::crash::version(),
+        sunrise_level::crash::version(),
         enabled,
     );
     let observed = Arc::new(Mutex::new(Observed::default()));

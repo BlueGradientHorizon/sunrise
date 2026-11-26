@@ -1,7 +1,7 @@
 //! Breeze particles (`Breeze.tick`): block dust at its feet while it stands,
 //! a burst of twenty while it slides and a short trail along a long jump.
 use super::{BlockStateId, Game};
-use sunrise_client::mobs::Mob;
+use sunrise_sim::mobs::Mob;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Breeze.emitGroundParticles`'s block: `getInBlockState`, else

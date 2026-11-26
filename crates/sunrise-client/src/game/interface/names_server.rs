@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::mobs::Who;
+use sunrise_sim::mobs::Who;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A named name tag names the mob under the crosshair.
@@ -12,7 +12,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let text = h.data()?.other("minecraft:custom_name");
                 Some((
                     h.custom_name()?,
-                    text.map(sunrise_client::entity_nbt::name_text),
+                    text.map(sunrise_sim::entity_nbt::name_text),
                 ))
             })
         else {

@@ -27,7 +27,7 @@ pub(in crate::game) mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let gravel = game
                 .pack
                 .assets
@@ -72,7 +72,7 @@ pub(in crate::game) mod tests {
             game.side.lan_acting_entity = None;
             game.side.lan_acting = None;
             let origin = sunrise_core::geometry::Vec3::ZERO;
-            let mut host = sunrise_client::motion::PlayerMotion::new(game.motion, origin).unwrap();
+            let mut host = sunrise_sim::motion::PlayerMotion::new(game.motion, origin).unwrap();
             host.entity_id = 7;
             game.player = Some(host);
             with_mods(mods(None), || {

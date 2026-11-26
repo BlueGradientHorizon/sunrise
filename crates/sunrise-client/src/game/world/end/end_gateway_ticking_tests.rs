@@ -6,10 +6,10 @@
 use crate::game::Dim;
 use crate::game::game_tests::tests::server_game;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::entities::ItemEntity;
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::entities::ItemEntity;
 
 fn item(id: u32, at: Vec3) -> ItemEntity {
     ItemEntity {
@@ -64,7 +64,7 @@ fn items_past_the_simulation_distance_enter_no_end_gateway() {
     // distance, chunk (8, 0) loaded and in view but past it. In each, an item
     // lies in an End gateway block.
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
     );
     for (id, cx, x) in [(1, 2, 40), (2, 8, 136)] {
         game.world
@@ -102,14 +102,14 @@ fn items_past_the_simulation_distance_enter_no_end_gateway() {
 #[test]
 #[ignore = "daily"]
 fn a_ticking_gateway_counts_its_age_in_its_block_entity() {
-    use sunrise_client::containers::BlockEntity;
+    use sunrise_level::containers::BlockEntity;
     let mut game_resources = None;
     let mut game = server_game(&mut game_resources);
     game.build_registries();
     game.set_allow_commands(true);
     game.dim = Dim::End;
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
     );
     game.world
         .chunks

@@ -4,8 +4,8 @@
 //! (tools/test_dragon_fireball_motion_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -52,7 +52,9 @@ fn pos(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> String {
     game.side.chat_capture = Some(Vec::new());
     assert!(game.run_command(&format!("data get entity {uuid} Pos")));
     let said = game.side.chat_capture.take().unwrap_or_default();
-    said.iter().map(sunrise_client::text::Text::plain).collect()
+    said.iter()
+        .map(sunrise_client_core::text::Text::plain)
+        .collect()
 }
 
 const DRAGON: &str = "0000d127-0000-0000-0000-000000000001";

@@ -1,7 +1,7 @@
 use super::*;
 pub(in crate::game::server_side) use crate::game::lan_actions::guest_body::initialize;
-use sunrise_client::{lan::hub::CommittedMove, landing::PlayerLandingPause, motion::ServerTravel};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::{lan::hub::CommittedMove, landing::PlayerLandingPause, motion::ServerTravel};
 
 /// The server copy of the acting guest's body, borrowing its player and the level from `game`.
 /// A macro so that the borrow can end where the game itself is needed (a hook's owning host)
@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     w.scene.chunks.contains_key(&(x, z))
                 })
             {
-                let landed = (|| -> sunrise_client::Result<_> {
+                let landed = (|| -> sunrise_client_core::Result<_> {
                     // Entity.doCheckFallDamage queries support again before fallOn.
                     w.check_supporting_block(accepted.on_ground, movement)?;
                     let pos = w.legacy_on_position()?;
@@ -192,17 +192,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) {
         for event in events {
             match event {
-                MotionEvent::Health(sunrise_client::health::HealthEvent::DamageBroadcast {
+                MotionEvent::Health(sunrise_sim::health::HealthEvent::DamageBroadcast {
                     source,
                 }) => self.guest_damage_broadcast(conn, source),
                 MotionEvent::HurtSound(sound) => self.guest_hurt_sound(conn, sound),
-                MotionEvent::Fall(sunrise_client::landing::FallEvent::Particles {
+                MotionEvent::Fall(sunrise_sim::landing::FallEvent::Particles {
                     state,
                     position,
                     count,
                     speed,
                 }) => self.server_landing_dust(state, position, count, speed),
-                MotionEvent::Fall(sunrise_client::landing::FallEvent::Sound {
+                MotionEvent::Fall(sunrise_sim::landing::FallEvent::Sound {
                     sound,
                     position: Some(pos),
                     volume,
@@ -217,7 +217,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.send_level_sound(LevelSound::new(name, at, volume, pitch), None);
                     }
                 }
-                MotionEvent::Fall(sunrise_client::landing::FallEvent::Sound {
+                MotionEvent::Fall(sunrise_sim::landing::FallEvent::Sound {
                     sound,
                     volume,
                     pitch,
@@ -227,7 +227,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.send_level_sound(LevelSound::new(name, at, volume, pitch), Some(conn));
                     }
                 }
-                MotionEvent::Fall(sunrise_client::landing::FallEvent::FlyableFall {
+                MotionEvent::Fall(sunrise_sim::landing::FallEvent::FlyableFall {
                     distance,
                     multiplier,
                 }) => {
@@ -242,8 +242,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         });
                     }
                 }
-                MotionEvent::Fall(sunrise_client::landing::FallEvent::Broadcast(event))
-                    if sunrise_client::landing::honey_particle_count(event as i8).is_some() =>
+                MotionEvent::Fall(sunrise_sim::landing::FallEvent::Broadcast(event))
+                    if sunrise_sim::landing::honey_particle_count(event as i8).is_some() =>
                 {
                     if let Some(host) = self.lan.as_ref()
                         && let Some(id) = host.hub.guest(conn).map(|g| g.entity_id)
@@ -251,7 +251,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         host.hub.entity_event(id, event as i8);
                     }
                 }
-                MotionEvent::Fall(sunrise_client::landing::FallEvent::BlockFallSound {
+                MotionEvent::Fall(sunrise_sim::landing::FallEvent::BlockFallSound {
                     position,
                     state,
                 }) => {
@@ -387,7 +387,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     &game.loop_context,
                     crate::game::entity::damage_level_of!(
                         game,
-                        &sunrise_client::health::NO_ATTACK,
+                        &sunrise_sim::health::NO_ATTACK,
                         no_push,
                         None,
                         acting_equipment!(game)
@@ -511,7 +511,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // This tick's events so far, kept if the hook leaves no acting player.
                 let mut collected = std::mem::take(&mut w.player.events);
                 let answer = match step {
-                    Some(step) if sunrise_client::breathing::heard() => {
+                    Some(step) if sunrise_sim::breathing::heard() => {
                         game.ask_player_breath(step).map(|breath| (step, breath))
                     }
                     step => step.map(|step| (step, step.vanilla)),
@@ -592,7 +592,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &game.loop_context,
                 crate::game::entity::damage_level_of!(
                     game,
-                    &sunrise_client::health::NO_ATTACK,
+                    &sunrise_sim::health::NO_ATTACK,
                     no_push,
                     None,
                     acting_equipment!(game)
@@ -645,7 +645,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Entity.restituteMovementAfterCollisions: GameEvent.BOUNCE.
             for event in &events {
                 if matches!(event, MotionEvent::Bounce { .. }) {
-                    game.post_entity_event("minecraft:bounce", sunrise_client::mobs::Who::Player);
+                    game.post_entity_event("minecraft:bounce", sunrise_sim::mobs::Who::Player);
                 }
             }
         });
@@ -676,7 +676,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) {
         // Player.causeFallDamage: a fall of 2 blocks or more counts.
         for event in events {
-            if let MotionEvent::Fall(sunrise_client::landing::FallEvent::Statistic(cm)) = event {
+            if let MotionEvent::Fall(sunrise_sim::landing::FallEvent::Statistic(cm)) = event {
                 self.award_custom_stat("fall_one_cm", *cm);
             }
         }

@@ -231,7 +231,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .filter_map(|(name, data)| {
                 Some((
                     name.as_str(),
-                    sunrise_client::scoreboard::tag_to_json(data.as_ref()?),
+                    sunrise_client_core::scoreboard::tag_to_json(data.as_ref()?),
                 ))
             })
             .collect();

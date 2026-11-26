@@ -6,7 +6,7 @@ use sunrise_core::geometry::Vec3;
 /// A player-sized body at (3.5, 64, 5.5): stone in its column (3, 64..=65, 5) and on its west,
 /// north and south sides, so east is the one free side.
 fn walled(game: &mut crate::game::ServerGame<'_>) {
-    let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+    let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
     chunk.lit = true;
     game.world.chunks.insert((0, 0), Arc::new(chunk));
     let stone = game
@@ -66,10 +66,9 @@ fn a_block_in_a_players_exclusions_does_not_push_it_out() {
     crate::game::native_guest_turn_tests::with_guests(|game| {
         walled(game);
         let mut body =
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5))
-                .unwrap();
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5)).unwrap();
         let nudge = |game: &crate::game::ServerGame<'_>,
-                     body: &sunrise_client::motion::PlayerMotion| {
+                     body: &sunrise_sim::motion::PlayerMotion| {
             crate::game::closest_space_nudge(
                 body,
                 &game.world,
@@ -90,11 +89,9 @@ fn a_block_in_a_players_exclusions_does_not_push_it_out() {
 #[test]
 #[ignore = "daily"]
 fn a_carried_guests_eyes_are_tested_against_the_collider_as_it_stands_now() {
-    use sunrise_client_render::moving_colliders::{
-        History, HistoryScope, Placed, Prepared, in_level,
-    };
     use sunrise_core::geometry::carried::Carried;
     use sunrise_core::geometry::oriented::{ColliderBoxes, Frame, OrientedCollider};
+    use sunrise_world::moving_colliders::{History, HistoryScope, Placed, Prepared, in_level};
     const COLLIDER: u32 = 9_999;
     let placed_at = |x: f64| {
         let boxes = ColliderBoxes::new(vec![sunrise_core::geometry::Aabb::new(

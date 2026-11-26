@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use sunrise_client::gamepad::MenuJob;
 use sunrise_client::gamepad::{self, Button, RadialMode, RadialStick, Rumble};
 use sunrise_client::pad_glyph::Glyph;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_client_input::radial::{self, RadialAction, Slot};
 use sunrise_client_render::radial_overlay::{self, Dial, Seen, Toggles, View};
 
@@ -261,7 +261,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some((page, slot)) = self.side.pad.0.radial_said.poll(at, now) {
             let slot = pages.page(page).slot(slot);
             let caption = sunrise_client_render::radial_overlay::slot_caption(slot)
-                .unwrap_or_else(|| sunrise_client::lang::get("sunrise.radial.empty"));
+                .unwrap_or_else(|| sunrise_client_core::lang::get("sunrise.radial.empty"));
             self.say_system_now(&Text::literal(caption));
         }
     }
@@ -552,7 +552,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The toggles the overlay shows the state of.
     fn pad_radial_toggles(&self) -> Toggles {
-        use sunrise_client::camera::CameraType;
+        use sunrise_level::camera_math::CameraType;
         Toggles {
             view: match self.side.camera_type {
                 CameraType::FirstPerson => View::FirstPerson,

@@ -12,7 +12,7 @@ fn reported_sitting(game: &crate::game::ServerGame<'_>) -> serde_json::Value {
 fn the_mobs_command_reports_the_sitting_pose() {
     with_game(|game| {
         let kind = game.res.mob_types().get("minecraft:wolf").unwrap().clone();
-        let mut wolf = sunrise_client::mobs::Mob::new(5, kind, Vec3::new(8.0, 65.0, 8.0), 0.0);
+        let mut wolf = sunrise_sim::mobs::Mob::new(5, kind, Vec3::new(8.0, 65.0, 8.0), 0.0);
         // A guest's copy: the pose bit came in the metadata; the order never does.
         wolf.extra.sitting = false;
         wolf.extra.sitting_pose = true;

@@ -3,14 +3,14 @@ use super::super::Pos;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::*;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    chunk::Chunk,
-    containers::{BlockEntity, ModBlockEntity, ModContainer, ModContainerInsertRule},
-    items::ItemStack,
-};
 use sunrise_core::{
     geometry::Vec3,
     position::{BlockPos, ChunkPos},
+};
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
+    chunk::Chunk,
+    containers::{BlockEntity, ModBlockEntity, ModContainer, ModContainerInsertRule},
 };
 
 const HOPPER: Pos = (8, 64, 8);
@@ -601,10 +601,7 @@ fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
                 ("z", Tag::Int(pos[2])),
                 (
                     "item",
-                    sunrise_client::save::item_to_nbt(
-                        &ItemStack::new(item, 3),
-                        &Default::default(),
-                    ),
+                    sunrise_sim::save::item_to_nbt(&ItemStack::new(item, 3), &Default::default()),
                 ),
             ]);
             spill::put_saved_entity(&mut game.world, pos, tag.clone());
@@ -637,7 +634,7 @@ fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
         game.enter_level(Dim::Nether).unwrap();
         let tag = spill::saved_entity(&game.world, pos).unwrap();
         assert_eq!(
-            sunrise_client::save::item_from_nbt(tag.get("item").unwrap()),
+            sunrise_sim::save::item_from_nbt(tag.get("item").unwrap()),
             Some(ItemStack::new("minecraft:stone", 2))
         );
     });
@@ -651,7 +648,7 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
         native_entity_refs::tests::{fixture_root, with_game_role},
     };
     use mod_api::content::crash::current_native_mod;
-    use sunrise_client::crash;
+    use sunrise_level::crash;
 
     const FLAG: &str = "SUNRISE_CAPABILITY_PROVIDER_OWNER_CHILD";
     const DISCOVERY: [i32; 3] = [1, 64, 0];
@@ -1538,7 +1535,7 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
             game.side
                 .tickets
                 .0
-                .update(Some(sunrise_client::ticket_levels::Sources {
+                .update(Some(sunrise_sim::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()
                 }));
@@ -1973,7 +1970,7 @@ fn dropper_routes_saved_pot_directly_even_with_a_storage_provider() {
                     ("z", Tag::Int(8)),
                     (
                         "item",
-                        sunrise_client::save::item_to_nbt(
+                        sunrise_sim::save::item_to_nbt(
                             &ItemStack::new("minecraft:stone", 63),
                             &Default::default(),
                         ),
@@ -1984,7 +1981,7 @@ fn dropper_routes_saved_pot_directly_even_with_a_storage_provider() {
             game.dispense_from(BlockPos::new(8, 64, 8), state).unwrap();
             let saved = spill::saved_entity(&game.world, pot).unwrap();
             assert_eq!(
-                sunrise_client::save::item_from_nbt(saved.get("item").unwrap())
+                sunrise_sim::save::item_from_nbt(saved.get("item").unwrap())
                     .unwrap()
                     .count,
                 64

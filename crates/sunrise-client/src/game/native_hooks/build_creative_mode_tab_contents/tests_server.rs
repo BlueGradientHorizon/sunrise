@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::lan::LanHost;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::definition;
-use sunrise_client::lan::{
+use sunrise_sim::lan::{
     Lan, NetConfig,
     chunks::ChunkEncoder,
     data::SyncData,
@@ -22,7 +22,7 @@ pub(in crate::game) fn install_dedicated_holders(
             &game.options.resources,
             &PackOverlay::new(&files),
             game.res.item_defaults(),
-            &sunrise_client::crafting::ResolvedSources::default(),
+            &sunrise_sim::crafting::ResolvedSources::default(),
         )
         .unwrap(),
     );

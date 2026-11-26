@@ -1,7 +1,7 @@
 //! Opening and closing a local world from the client: the title screen's actions, entering a
 //! world on the server thread, and saving and leaving it on exit.
 use super::*;
-use sunrise_client::save::level_mods;
+use sunrise_sim::save::level_mods;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `onAbort`: the confirm screen's Back or Escape reopens the Data
@@ -130,7 +130,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(dir) = create.and_then(|o| o.pack_dir.as_deref()) {
             let world = std::env::current_dir()?.join("saves").join(folder);
             let packs = create.map_or(&[][..], |o| &o.data_packs[..]);
-            if let Err(e) = sunrise_client::datapack::install(dir, &world, packs) {
+            if let Err(e) = sunrise_level::datapack::install(dir, &world, packs) {
                 log::warn!("Sunrise: data packs for {folder}: {e}");
             }
             let _ = std::fs::remove_dir_all(dir);
@@ -145,7 +145,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 log::warn!("Sunrise: data packs for {folder}: {}: {e}", world.display());
             } else {
                 let disabled: Vec<String> =
-                    sunrise_client::datapack::feature_packs(&self.vanilla_root())
+                    sunrise_level::datapack::feature_packs(&self.vanilla_root())
                         .into_iter()
                         .map(|p| p.id)
                         .filter(|id| !o.data_packs.contains(id))
@@ -161,13 +161,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if create.is_none() {
             let game_dir = std::env::current_dir()?;
             let world = game_dir.join("saves").join(folder);
-            if let Err(e) = sunrise_client::datapack::install_new_world_packs(&game_dir, &world) {
+            if let Err(e) = sunrise_level::datapack::install_new_world_packs(&game_dir, &world) {
                 log::warn!("Sunrise: data packs for {folder}: {e}");
             }
         }
         // IntegratedServer.initServer's line, which other launchers read in `latest.log` to
         // offer the world again.
-        sunrise_client::logging::write_as(
+        sunrise_level::logging::write_as(
             "Server thread",
             log::Level::Info,
             &format!(
@@ -202,7 +202,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side
             .perf
-            .finish(&sunrise_client::logging::game_home(), settings);
+            .finish(&sunrise_level::logging::game_home(), settings);
     }
 
     pub(in crate::game::client_side) fn save_for_exit(&mut self) -> Result<()> {

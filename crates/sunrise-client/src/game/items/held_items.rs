@@ -195,13 +195,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         {
             return None;
         }
-        sunrise_client::spear::Kinetic::of(&stack.item).map(|_| {
+        sunrise_sim::spear_sim::Kinetic::of(&stack.item).map(|_| {
             serde_json::json!({
-                "min_reach": sunrise_client::spear::REACH.min,
-                "max_reach": sunrise_client::spear::REACH.max,
-                "min_creative_reach": sunrise_client::spear::REACH.min_creative,
-                "max_creative_reach": sunrise_client::spear::REACH.max_creative,
-                "hitbox_margin": sunrise_client::spear::REACH.hitbox_margin,
+                "min_reach": sunrise_sim::spear_sim::REACH.min,
+                "max_reach": sunrise_sim::spear_sim::REACH.max,
+                "min_creative_reach": sunrise_sim::spear_sim::REACH.min_creative,
+                "max_creative_reach": sunrise_sim::spear_sim::REACH.max_creative,
+                "hitbox_margin": sunrise_sim::spear_sim::REACH.hitbox_margin,
             })
         })
     }
@@ -265,8 +265,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             ]);
         for (stack, slot) in equipped {
             let Some(stack) = stack else { continue };
-            for row in sunrise_client::item_attributes::attribute_modifiers(stack, items).iter() {
-                if sunrise_client::living_attributes::modifier_applies(&row.slot, slot) {
+            for row in sunrise_sim::item_attributes::attribute_modifiers(stack, items).iter() {
+                if sunrise_sim::living_attributes::modifier_applies(&row.slot, slot) {
                     to_add.push((
                         row.attribute.clone(),
                         row.id.clone(),
@@ -340,7 +340,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             let e = &self.stations().enchantments;
             let mut random = sunrise_core::random::LegacyRandom::new(0);
             for (_, def) in self.health_resources.damage.entries() {
-                let ctx = sunrise_client::enchant::EffectContext {
+                let ctx = sunrise_items::enchant::EffectContext {
                     items: Some(self.items()),
                     damage_type: Some(&def.name),
                     this: Some("minecraft:player"),
@@ -387,7 +387,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 at.z.floor() as i32,
             ))
             .fluid
-            == sunrise_client::blocks::Fluid::Water;
+            == sunrise_items::blocks::Fluid::Water;
         let inertia = f64::from(if water { 0.8_f32 } else { 0.99_f32 });
         t.velocity = Vec3::new(
             t.velocity.x * inertia,
@@ -448,8 +448,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Horizontal attacker slowdown and sprint stop after `causeExtraKnockback`.
     pub(in crate::game) fn attacker_slowdown(&mut self) {
         if let Some(player) = self.player.as_mut() {
-            player.velocity.x *= sunrise_client::attack_strength::ATTACKER_SLOWDOWN;
-            player.velocity.z *= sunrise_client::attack_strength::ATTACKER_SLOWDOWN;
+            player.velocity.x *= sunrise_sim::attack_strength::ATTACKER_SLOWDOWN;
+            player.velocity.z *= sunrise_sim::attack_strength::ATTACKER_SLOWDOWN;
         }
         self.stop_sprint_after_extra_knockback();
     }
@@ -458,15 +458,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn blocks_attacks(
         &self,
         stack: &ItemStack,
-    ) -> Option<std::borrow::Cow<'_, sunrise_client::items::BlocksAttacks>> {
+    ) -> Option<std::borrow::Cow<'_, sunrise_items::items::BlocksAttacks>> {
         let component =
-            sunrise_client::items::BlocksAttacks::of_stack(stack, self.items().get(&stack.item));
+            sunrise_items::items::BlocksAttacks::of_stack(stack, self.items().get(&stack.item));
         let ability = super::item_abilities::ability::SHIELD_BLOCK;
         let blocks = self.stack_can_perform(stack, ability, component.is_some());
         match component {
             Some(component) if blocks => Some(component),
             None if blocks => Some(std::borrow::Cow::Borrowed(
-                sunrise_client::items::BlocksAttacks::bare(),
+                sunrise_items::items::BlocksAttacks::bare(),
             )),
             _ => None,
         }
@@ -528,11 +528,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Projectile.isPickable` (with `ShulkerBullet` and `AbstractArrow` overrides).
     pub(in crate::game) fn projectile_is_pickable(
         &self,
-        p: &sunrise_client::projectiles::Projectile,
+        p: &sunrise_sim::projectiles::Projectile,
     ) -> bool {
         if matches!(
             p.kind,
-            sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
+            sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
         ) {
             return true;
         }
@@ -545,7 +545,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Projectile.getPickRadius`: `this.isPickable() ? 1.0F : 0.0F`.
     pub(in crate::game) fn projectile_pick_radius(
         &self,
-        p: &sunrise_client::projectiles::Projectile,
+        p: &sunrise_sim::projectiles::Projectile,
     ) -> f64 {
         if self.projectile_is_pickable(p) {
             super::deflect::PICK_RADIUS
@@ -707,7 +707,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `EntityFluidInteraction`: compare the eyes with the camera fluid surface.
     pub(in crate::game) fn mining_eyes_in_water(&self) -> bool {
-        use sunrise_client::blocks::Fluid;
+        use sunrise_items::blocks::Fluid;
         let Some(eye) = self.eye_position() else {
             return false;
         };
@@ -740,7 +740,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &self,
         stack: &ItemStack,
     ) -> Option<super::consume::ItemConsumable> {
-        sunrise_client::item_sync::consumable(stack, self.items())
+        sunrise_sim::item_sync::consumable(stack, self.items())
     }
 
     /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
@@ -779,7 +779,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         use sunrise_core::use_animation::UseAnimation;
         let info = self.items().get(&stack.item);
         let kinetic =
-            sunrise_client::spear::UseTiming::of_stack(stack, info.and_then(|i| i.kinetic_timing));
+            sunrise_sim::spear_sim::UseTiming::of_stack(stack, info.and_then(|i| i.kinetic_timing));
         let fixed = match &*stack.item {
             "minecraft:bow" => Some(UseAnimation::Bow),
             "minecraft:crossbow" => Some(UseAnimation::Crossbow),
@@ -844,7 +844,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `ItemStack.getUseDuration`.
     pub(in crate::game) fn use_duration(&self, stack: &ItemStack) -> i32 {
         let info = self.items().get(&stack.item);
-        let (patched_ticks, patched_blocks) = sunrise_client::item_sync::patched_use(stack);
+        let (patched_ticks, patched_blocks) = sunrise_sim::item_sync::patched_use(stack);
         let mut duration = match &*stack.item {
             "minecraft:bow" | "minecraft:crossbow" | "minecraft:trident" => 72_000,
             "minecraft:spyglass" => 1200,
@@ -1087,7 +1087,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             p.position.z.floor() as i32,
         );
         let water = self.res.facts().get(self.world.block(x, y, z)).fluid
-            == sunrise_client::blocks::Fluid::Water;
+            == sunrise_items::blocks::Fluid::Water;
         let (at, top) = (p.position, p.bounds().max_position().y);
         water || self.side_in_rain(at, top)
     }
@@ -1139,11 +1139,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     pub(in crate::game) fn water_height(&self, x: i32, y: i32, z: i32) -> Option<(f32, bool)> {
         let f = self.res.facts().get(self.world.block(x, y, z));
-        if f.fluid != sunrise_client::blocks::Fluid::Water {
+        if f.fluid != sunrise_items::blocks::Fluid::Water {
             return None;
         }
         let above = self.res.facts().get(self.world.block(x, y + 1, z));
-        let h = if above.fluid == sunrise_client::blocks::Fluid::Water {
+        let h = if above.fluid == sunrise_items::blocks::Fluid::Water {
             1.0
         } else {
             f32::from(f.fluid_level) / 9.0
@@ -1157,7 +1157,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         from: Vec3,
         to: Vec3,
     ) -> Option<sunrise_core::geometry::BlockHit> {
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -1287,7 +1287,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                             self.dropped
                                 .iter()
                                 .find(|i| i.id == id)
-                                .map(|i| (i.position, sunrise_client::entities::ItemEntity::WIDTH))
+                                .map(|i| (i.position, sunrise_sim::entities::ItemEntity::WIDTH))
                         })
                 };
                 return match hooked {
@@ -1319,12 +1319,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         if !in_water && !ground.on_ground {
             velocity = velocity.add_vector(Vec3::new(0.0, -f64::from(0.03_f32), 0.0));
         }
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
         };
-        let mut gate = sunrise_client::move_gate::armed(
+        let mut gate = sunrise_sim::move_gate::armed(
             &self.loop_context,
             id,
             "minecraft:fishing_bobber",
@@ -1332,7 +1332,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             velocity,
         );
         let wanted = gate.delta();
-        if let Ok(moved) = sunrise_client::move_gate::scene_resolve(
+        if let Ok(moved) = sunrise_sim::move_gate::scene_resolve(
             &mut gate,
             &mut scene,
             bounds(position),
@@ -1364,7 +1364,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 }
 
 /// `ProjectileWeaponItem.ARROW_ONLY`: `stack.is(ItemTags.ARROWS)`.
-pub(in crate::game) fn is_arrow(items: &sunrise_client::items::Items, stack: &ItemStack) -> bool {
+pub(in crate::game) fn is_arrow(items: &sunrise_items::items::Items, stack: &ItemStack) -> bool {
     items.item_in_tag("minecraft:arrows", &stack.item)
 }
 
@@ -1373,7 +1373,7 @@ pub(in crate::game) fn projectile_slot(
     weapon: &str,
     hands: [(usize, Option<&ItemStack>); 2],
     inventory: &[Option<ItemStack>],
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Option<usize> {
     let held = |s: &ItemStack| {
         is_arrow(items, s)
@@ -1393,12 +1393,12 @@ fn dye_slot_stack(target: &ItemStack, dye: usize) -> ItemStack {
     let mut stack = target.clone();
     stack.count = 1;
     let current = stack.data().and_then(|data| data.dyed_color);
-    stack.data_mut().dyed_color = Some(sunrise_client::crafting::apply_dyes(current, &[dye]));
+    stack.data_mut().dyed_color = Some(sunrise_sim::crafting::apply_dyes(current, &[dye]));
     stack
 }
 
 fn resolve_mod_book_slot_with(
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
     enchantments: &sunrise_items::enchant::Enchantments,
     slot: &mod_api::RecipeSlotDisplay,
 ) -> Vec<ItemStack> {
@@ -1433,7 +1433,7 @@ fn resolve_mod_book_slot_with(
         Slot::WithAnyPotion(source) => resolve_mod_book_slot_with(items, enchantments, source)
             .into_iter()
             .flat_map(|stack| {
-                sunrise_client::brewing::POTIONS
+                sunrise_level::brewing::POTIONS
                     .iter()
                     .map(move |p| stack.clone().with_potion(&format!("minecraft:{}", p.id)))
             })
@@ -1473,7 +1473,7 @@ fn resolve_mod_book_slot_with(
             pattern,
         } => {
             let materials = resolve_mod_book_slot_with(items, enchantments, material);
-            let pattern = sunrise_client::crafting::RecipeTrimPattern::Reference(pattern.clone());
+            let pattern = sunrise_sim::crafting::RecipeTrimPattern::Reference(pattern.clone());
             let bases = resolve_mod_book_slot_with(items, enchantments, base);
             if bases.is_empty() || materials.is_empty() {
                 return Vec::new();
@@ -1489,7 +1489,7 @@ fn resolve_mod_book_slot_with(
                     let material = random
                         .next_int_bound(i32::try_from(materials.len()).ok()?)
                         .ok()? as usize;
-                    sunrise_client::stations::apply_trim(
+                    sunrise_sim::stations::apply_trim(
                         enchantments,
                         &bases[base],
                         &materials[material],

@@ -12,11 +12,11 @@ use mod_api::{
     LivingView,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::command::args::GameMode;
-use sunrise_client::mobs::{Damage, DamageKind, Who};
-use sunrise_client::motion::PlayerMotion;
-use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{Damage, DamageKind, Who};
+use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
 
 /// The probe's attachment, set to different values on the players.
 static MARK: AttachmentType<i32> = AttachmentType {
@@ -169,7 +169,8 @@ fn blast(
     player: bool,
     guest: Option<u32>,
 ) {
-    game.side.combat.0.blast_owner = Some((owner, sunrise_client::text::Text::literal("owner")));
+    game.side.combat.0.blast_owner =
+        Some((owner, sunrise_client_core::text::Text::literal("owner")));
     game.side.combat.0.blast_owner_player = player;
     game.side.combat.0.blast_guest = guest;
     game.server_explode(at, 3.0, super::explosion::BlockInteraction::Keep, false)
@@ -223,7 +224,7 @@ fn explosion(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
 
 fn thorns(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     let zombie = summon_mob(game, "minecraft:zombie", "{NoAI:1b}");
-    let mut chest = sunrise_client::items::ItemStack::new("minecraft:diamond_chestplate", 1);
+    let mut chest = sunrise_items::items::ItemStack::new("minecraft:diamond_chestplate", 1);
     chest.data_mut().enchantments = vec![("minecraft:thorns".into(), 255)];
     game.armor[1] = Some(chest);
     MARK.set(game, Holder::Player(7), 9).unwrap();
@@ -235,7 +236,7 @@ fn sting(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     // A server level whose chunks around the origin are loaded, so the mob tick runs there.
     game.options.dedicated = Some(Vec::new());
     for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-        let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+        let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
         chunk.lit = true;
         game.world.chunks.insert((x, z), Arc::new(chunk));
     }
@@ -315,7 +316,7 @@ fn wind(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
 }
 
 fn trident(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
@@ -328,7 +329,7 @@ fn trident(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
     assert!(game.run_command("forceload add 0 0"));
     game.player.as_mut().unwrap().position = Vec3::new(0.5, 64.0, 8.5);
     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-    game.mobs.push(sunrise_client::mobs::Mob::new(
+    game.mobs.push(sunrise_sim::mobs::Mob::new(
         72,
         kind,
         Vec3::new(3.0, 64.0, 0.5),
@@ -338,7 +339,7 @@ fn trident(game: &mut crate::game::ServerGame<'_>, seen: &Mutex<Vec<Seen>>) {
         sunrise_gameplay::trident::ThrownTrident::remote(71, Vec3::new(0.5, 64.5, 0.5), 0.0, 0.0);
     t.velocity = Vec3::new(4.0, 0.0, 0.0);
     t.owner = 7;
-    t.owner_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(7));
+    t.owner_uuid = Some(sunrise_sim::lan::playerdata::uuid_ints(7));
     t.left_owner = true;
     game.tridents.push(t);
     MARK.set(game, Holder::Player(7), 9).unwrap();

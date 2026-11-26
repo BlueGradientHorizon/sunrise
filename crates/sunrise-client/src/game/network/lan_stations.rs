@@ -10,13 +10,11 @@ use super::{
 };
 use crate::game::{api_values::TryIntoApi, transactions::After};
 use mod_api::item::menu::AnvilCraftInputs;
-use sunrise_client::{
-    containers::BlockEntity,
-    items::ItemStack,
-    menu::{GrindstoneTakeEdits, Kind, Menu, QuickCraftDrag},
-};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::menu::{GrindstoneTakeEdits, Kind, Menu, QuickCraftDrag};
 
 /// A guest's open workstation menu.
 #[derive(Clone)]
@@ -149,7 +147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         conn: u32,
         window: Option<i32>,
-        op: impl FnOnce(&mut Menu, &sunrise_client::menu::Env),
+        op: impl FnOnce(&mut Menu, &sunrise_sim::menu::Env),
     ) -> bool {
         self.lan_station_op_clicked(conn, window, None, op)
     }
@@ -200,7 +198,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         window: Option<i32>,
         click: Option<super::lan_pickup::Click>,
-        op: impl FnOnce(&mut Menu, &sunrise_client::menu::Env),
+        op: impl FnOnce(&mut Menu, &sunrise_sim::menu::Env),
     ) -> bool {
         let Some((owner, mut gs)) = self
             .lan
@@ -423,7 +421,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         conn: u32,
         window: i32,
-        op: impl FnOnce(&mut Menu, &sunrise_client::menu::Env),
+        op: impl FnOnce(&mut Menu, &sunrise_sim::menu::Env),
     ) -> bool {
         self.lan_lectern_op_clicked(conn, window, None, op)
     }
@@ -434,7 +432,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         conn: u32,
         window: i32,
         click: Option<super::lan_pickup::Click>,
-        op: impl FnOnce(&mut Menu, &sunrise_client::menu::Env),
+        op: impl FnOnce(&mut Menu, &sunrise_sim::menu::Env),
     ) -> bool {
         let Some((key, drag)) = self
             .lan
@@ -561,8 +559,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 } else {
                     let amount = take.vanilla_amount(&self.menu_env());
                     self.journal_level_random();
-                    sunrise_client::stations::grindstone_xp_roll(amount, &mut self.world.random)
-                        as i32
+                    sunrise_sim::stations::grindstone_xp_roll(amount, &mut self.world.random) as i32
                 };
                 GrindstoneTakeEdits::initial(xp)
             };
@@ -598,7 +595,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .unwrap_or((0, 0, 0, String::new()));
         let bookcases = self.count_bookshelves(gs.pos);
         let offers = if mod_api::__private::mods().is_empty() {
-            sunrise_client::stations::enchant_offers(
+            sunrise_sim::stations::enchant_offers(
                 &self.stations().enchantments,
                 self.items(),
                 seed,
@@ -609,7 +606,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // EnchantmentLevelSetEvent for each row as getEnchantmentCost drew
             // it; the offers are then made with the levels the mods left.
             let mut drawn = [None; 3];
-            sunrise_client::stations::enchant_offers_leveled(
+            sunrise_sim::stations::enchant_offers_leveled(
                 &self.stations().enchantments,
                 self.items(),
                 seed,
@@ -637,7 +634,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
             }
-            sunrise_client::stations::enchant_offers_leveled(
+            sunrise_sim::stations::enchant_offers_leveled(
                 &self.stations().enchantments,
                 self.items(),
                 seed,
@@ -654,7 +651,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if costs[i] != offers.costs[i]
                 && let Some(stack) = gs.menu.slot(0)
             {
-                clues[i] = sunrise_client::stations::enchant_clue(
+                clues[i] = sunrise_sim::stations::enchant_clue(
                     &self.stations().enchantments,
                     self.items(),
                     seed,
@@ -711,7 +708,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let need = button as i32 + 1;
         // The enchantments the item got, for PlayerEnchantItemEvent.
         let given = mod_api::__private::listened(mod_api::HookId::PlayerEnchantItem).then(|| {
-            sunrise_client::stations::enchantment_list(
+            sunrise_sim::stations::enchantment_list(
                 &self.stations().enchantments,
                 self.items(),
                 seed,
@@ -811,7 +808,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 menu.registry_id.clone(),
                 g.menu_generation,
                 match menu.slots {
-                    sunrise_client::lan::menu::Slots::Block(pos) => Some(pos),
+                    sunrise_sim::lan::menu::Slots::Block(pos) => Some(pos),
                     _ => None,
                 },
                 !g.spectator() && menu.still_valid(&host.hub.loop_context, &self.world, g),
@@ -1126,7 +1123,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Menu validation accepted these registry ids; convert once at the packet boundary.
         let [primary_key, secondary_key] = powers.each_ref().map(|power| {
             power.as_ref().map(|(_, id)| {
-                let def = sunrise_client::brewing::effect(id).expect("validated beacon effect");
+                let def = sunrise_level::brewing::effect(id).expect("validated beacon effect");
                 mod_api::__private::effect_key_by_index(def.index)
                     .expect("effects resolved at load")
             })
@@ -1334,7 +1331,7 @@ pub(in crate::game) mod anvil_tests {
             with_guests(|game| {
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let [x, y, z] = POS;
                 let state = game
                     .pack

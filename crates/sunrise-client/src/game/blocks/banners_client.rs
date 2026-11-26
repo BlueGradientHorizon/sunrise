@@ -1,6 +1,6 @@
 use super::Game;
 use crate::game::banners::layer_textures;
-use sunrise_client::containers::BlockEntity;
+use sunrise_level::containers::BlockEntity;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The pattern textures and tints of the banner at `pos`, bottom first.

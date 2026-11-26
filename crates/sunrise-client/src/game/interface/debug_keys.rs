@@ -4,15 +4,17 @@
 use super::{Game, Screen};
 use std::time::{Duration, Instant};
 use sunrise_client::{
-    Result,
-    command::args::GameMode,
     debug_keys::{CrashNotice, DebugAction, DebugHost, KeyAction, OpenScreen},
     debug_overlay,
     gizmos::Gizmos,
     hud::HudBatch,
     hud_layout, keybinds,
+};
+use sunrise_client_core::{
+    Result,
     text::{ClickEvent, Style, Text},
 };
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::packets::play::{
@@ -34,7 +36,7 @@ pub(in crate::game::client_side) fn warm_debug_cpu() {
     let _ = std::thread::Builder::new()
         .name("debug-cpu-name".into())
         .spawn(|| {
-            DEBUG_CPU.get_or_init(sunrise_client::crash::cpu);
+            DEBUG_CPU.get_or_init(sunrise_level::crash::cpu);
         });
 }
 
@@ -232,7 +234,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Some(CrashNotice::Crash) => {
                 // Minecraft.emergencySaveAndCrash: the world is saved, then the
                 // game stops; main writes the crash report.
-                let crash = sunrise_client::crash::DebugCrash::new();
+                let crash = sunrise_level::crash::DebugCrash::new();
                 if let Err(e) = self.save_for_exit() {
                     log::error!("the emergency save before the crash failed: {e}");
                 }
@@ -552,7 +554,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "system",
                 [format!(
                     "CPU: {}",
-                    DEBUG_CPU.get_or_init(sunrise_client::crash::cpu)
+                    DEBUG_CPU.get_or_init(sunrise_level::crash::cpu)
                 )],
             );
             let info = &r.info;
@@ -695,7 +697,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::REDUCED_DEBUG_INFO)
+                .bool_at(sunrise_client_core::gamerules::vanilla::REDUCED_DEBUG_INFO)
             || self.remote.as_ref().is_some_and(|r| r.reduced_debug_info)
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
@@ -896,7 +898,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // `KeyboardHandler`: `TextureUtil.getDebugTexturePath` is the game
                 // folder's `screenshots/debug`; `TextureManager.dumpAllSheets` then
                 // writes every dumpable texture there and the chat names the folder.
-                let dir = sunrise_client::logging::player_dir()
+                let dir = sunrise_level::logging::player_dir()
                     .join("screenshots")
                     .join("debug");
                 match self
@@ -1061,7 +1063,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn copy_create_block_command(&mut self, pos: [i32; 3], state: &str, tag: Option<&Tag>) {
         let mut description = state.to_owned();
         if let Some(tag) = tag {
-            description.push_str(&sunrise_client::snbt::to_snbt(tag));
+            description.push_str(&sunrise_client_core::snbt::to_snbt(tag));
         }
         self.set_clipboard(&format!(
             "/setblock {} {} {} {description}",
@@ -1080,7 +1082,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
             command.push(' ');
-            command.push_str(&sunrise_client::snbt::pretty(&tag).plain());
+            command.push_str(&sunrise_client_core::snbt::pretty(&tag).plain());
         }
         self.set_clipboard(&command);
     }
@@ -1299,7 +1301,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if hide_camera == Some(p.id) {
                 continue;
             }
-            use sunrise_client::projectiles::ProjectileKind as K;
+            use sunrise_sim::projectiles::ProjectileKind as K;
             let (size, eye) = match p.kind {
                 K::Arrow { .. } | K::Trident => (0.5, 0.13),
                 K::Snowball

@@ -13,9 +13,9 @@ use mod_api::{
     ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
 use {
-    sunrise_client::items::ItemStack, sunrise_client::items::Items, sunrise_client::menu::Menu,
-    sunrise_client::mobs::finalize, sunrise_client::mobs::finalize::EquipmentRead,
-    sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_items::items::Items,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::menu::Menu, sunrise_sim::mobs::finalize,
+    sunrise_sim::mobs::finalize::EquipmentRead,
 };
 
 /// An occupied inventory cell, addressed within the resolved player's own storage.
@@ -983,12 +983,10 @@ pub(in crate::game) mod tests {
         ItemResource, MenuRef, TransactionError,
     };
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        items::ItemStack,
-        lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    };
     use sunrise_core::geometry::Direction;
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     /// A world open to LAN on a dedicated server, as a guest's actions run.
     pub(in crate::game) fn open_to_lan(game: &mut crate::game::ServerGame<'_>) {
@@ -1235,7 +1233,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_bucket_fills_and_empties_whole_through_its_place_and_splits_off_its_stack() {
         use mod_api::{BlockUpdateFlags, FLUIDS, ITEM_FLUIDS, resource_util::move_resources};
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         with_game(|game| {
             open_to_lan(game);
             game.world
@@ -1398,7 +1396,7 @@ pub(in crate::game) mod tests {
             .get("minecraft:zombie")
             .unwrap()
             .clone();
-        game.mobs.push(sunrise_client::mobs::Mob::new(
+        game.mobs.push(sunrise_sim::mobs::Mob::new(
             30,
             kind,
             sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
@@ -1411,8 +1409,9 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn worn_component_edit_is_quiet_and_reaches_tracking() {
         use mod_api::{EquipmentSlot, Tag};
-        use sunrise_client::{item_data::trim, lan::Out, mobs::gear};
+        use sunrise_items::item_data::trim;
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+        use sunrise_sim::{lan::Out, mobs::gear};
 
         with_game(|game| {
             open_to_lan(game);
@@ -1431,7 +1430,7 @@ pub(in crate::game) mod tests {
             game.side
                 .tickets
                 .0
-                .update(Some(sunrise_client::ticket_levels::Sources {
+                .update(Some(sunrise_sim::ticket_levels::Sources {
                     players: vec![(40, 40)],
                     view_distance: 2,
                     simulation_distance: 2,
@@ -1810,12 +1809,12 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn player_cursor_edit_syncs_set_cursor_item_once() {
         use mod_api::{MenuReplace, Tag};
-        use sunrise_client::lan::Out;
         use sunrise_protocol::{
             buf::Reader,
             item::{Component, component},
             packets::play::Clientbound as C,
         };
+        use sunrise_sim::lan::Out;
 
         fn cursor_packets(rx: &mpsc::Receiver<Out>) -> Vec<Option<sunrise_protocol::item::Stack>> {
             rx.try_iter()
@@ -1940,7 +1939,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(instrument.get(name), direct_instrument.get(name), "{name}");
             }
             assert_eq!(
-                sunrise_client::component::name_text(instrument.get("description").unwrap())
+                sunrise_client_core::component::name_text(instrument.get("description").unwrap())
                     .plain(),
                 "Test Horn"
             );
@@ -2039,13 +2038,14 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn cursor_edit_interleaved_with_stale_component_hash_click_still_syncs() {
         use mod_api::{BlockUpdateFlags, Tag};
-        use sunrise_client::{chunk::Chunk, lan::Out};
+        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::{
             buf::Reader,
             item::Hashed,
             packets::play::{Clientbound as C, ContainerClick, Serverbound as S},
             registry::SyncedNames,
         };
+        use sunrise_sim::lan::Out;
 
         fn drain_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
             rx.try_iter()
@@ -2350,7 +2350,7 @@ pub(in crate::game) mod tests {
 
         with_game(|game| {
             open_to_lan(game);
-            let banner = sunrise_client::mobs::raider::ominous_banner();
+            let banner = sunrise_sim::mobs::raider::ominous_banner();
             let original = encode_extra_components(&banner).unwrap();
             let mut player = guest(1);
             player.inventory[3] = Some(banner);
@@ -2381,7 +2381,7 @@ pub(in crate::game) mod tests {
             );
             let compact = banner(game);
             assert!(compact.data().unwrap().ominous_banner);
-            let mut named = sunrise_client::mobs::raider::ominous_banner();
+            let mut named = sunrise_sim::mobs::raider::ominous_banner();
             named.data_mut().set_other(
                 "minecraft:custom_name",
                 Some(Tag::String("Named Raid Banner".into())),
@@ -2426,7 +2426,7 @@ pub(in crate::game) mod tests {
             }
             // Writing the last differing value restores the stock representation,
             // so a resource reconstructed from the same components compares equal.
-            let fresh = sunrise_client::mobs::raider::ominous_banner();
+            let fresh = sunrise_sim::mobs::raider::ominous_banner();
             let prototype = fresh.try_into_api().unwrap();
             game.storage_transaction(|host, tx| {
                 place.edit(host, tx, |stack| {
@@ -2444,7 +2444,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn nested_equipment_rollback_restores_the_live_modifiers_not_the_quiet_stack() {
         use mod_api::{EquipmentSlot, Tag};
-        use sunrise_client::mobs::gear;
+        use sunrise_sim::mobs::gear;
 
         with_game(|game| {
             let id = zombie(game);
@@ -2663,7 +2663,7 @@ pub(in crate::game) mod tests {
     ) -> mod_api::Tag {
         use mod_api::Tag;
         let mob = game.mobs.iter().find(|mob| mob.id == entity).unwrap();
-        let saved = sunrise_client::entity_nbt::mob_to_nbt(
+        let saved = sunrise_sim::entity_nbt::mob_to_nbt(
             mob,
             [0, 0, 0, 1],
             None,
@@ -2846,7 +2846,7 @@ pub(in crate::game) mod tests {
         use mod_api::EquipmentSlot;
         with_game(|game| {
             zombie(game);
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 31,
                 game.res
                     .mob_types()
@@ -3262,8 +3262,8 @@ pub(in crate::game) mod tests {
     fn crafted_by_map_reservations_follow_nested_commit_and_abort() {
         use super::Menu;
         use crate::game::maps::{MapData, map_id};
-        use sunrise_client::save::read_dat;
         use sunrise_core::nbt::Tag;
+        use sunrise_sim::save::read_dat;
 
         super::super::native_guest_turn_tests::with_guests(|game| {
             let save = tempfile::tempdir().unwrap();
@@ -3365,7 +3365,7 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game::server_side) fn with_crafted_by_handler_map(
         accepts_replacement: bool,
-        on_insert: Option<sunrise_client::lan::PlayerSender>,
+        on_insert: Option<sunrise_sim::lan::PlayerSender>,
         test: impl FnOnce(&mut crate::game::ServerGame<'_>, ItemPlace, i32, mod_api::ItemStack),
     ) {
         use crate::game::maps::MapData;
@@ -3387,7 +3387,7 @@ pub(in crate::game) mod tests {
 
         struct MapSlotHandler {
             inner: AttachedItems,
-            on_insert: Option<sunrise_client::lan::PlayerSender>,
+            on_insert: Option<sunrise_sim::lan::PlayerSender>,
         }
 
         impl ResourceHandler<ItemResource> for MapSlotHandler {
@@ -3446,7 +3446,7 @@ pub(in crate::game) mod tests {
 
         struct MapStorage {
             accepts_replacement: bool,
-            on_insert: Option<sunrise_client::lan::PlayerSender>,
+            on_insert: Option<sunrise_sim::lan::PlayerSender>,
         }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for MapStorage {
@@ -3625,7 +3625,7 @@ pub(in crate::game) mod tests {
     fn crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat() {
         use crate::game::maps::MapData;
         use std::sync::{atomic::AtomicUsize, mpsc};
-        use sunrise_client::lan::{PlayerSender, conn::transaction_packets::Scope};
+        use sunrise_sim::lan::{PlayerSender, conn::transaction_packets::Scope};
 
         const CASE: &str = "SUNRISE_CRAFTED_BY_PACKET_REFUSAL_CASE";
         if crate::game::native_entity_refs::tests::run_fresh_cases(
@@ -3722,7 +3722,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_chest_menus_slots_write_the_chest_and_the_inventory_and_an_abort_puts_them_back() {
         use mod_api::BlockUpdateFlags;
-        use sunrise_client::{chunk::Chunk, lan::menu::Slots};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::lan::menu::Slots;
         with_game(|game| {
             open_to_lan(game);
             game.world
@@ -3811,7 +3812,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_chests_menu_over_the_furnace_set_in_its_place_reaches_none_of_its_slots() {
         use mod_api::BlockUpdateFlags;
-        use sunrise_client::{chunk::Chunk, lan::menu::Slots};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::lan::menu::Slots;
         with_game(|game| {
             open_to_lan(game);
             game.world
@@ -3984,7 +3986,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_furnace_menus_fuel_slot_takes_one_bucket_as_its_slot_does() {
         use mod_api::BlockUpdateFlags;
-        use sunrise_client::{chunk::Chunk, lan::menu::Slots};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::lan::menu::Slots;
         with_game(|game| {
             open_to_lan(game);
             game.world
@@ -4360,8 +4363,8 @@ pub(in crate::game) mod tests {
     fn reading_and_writing_vehicle_slots_unpack_pending_loot() {
         use super::super::boats::Boat;
         use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
-        use sunrise_client::save::PendingContainerLoot;
         use sunrise_core::{geometry::Vec3, nbt::Tag};
+        use sunrise_sim::save::PendingContainerLoot;
         with_game(|game| {
             game.load_server_loot();
             let pos = Vec3::new(1.0, 65.0, 2.0);
@@ -4680,7 +4683,7 @@ pub(in crate::game) mod tests {
         facing: &str,
         stack: Option<ItemStack>,
     ) {
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
@@ -4706,7 +4709,7 @@ pub(in crate::game) mod tests {
         y: f64,
     ) {
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        game.mobs.push(sunrise_client::mobs::Mob::new(
+        game.mobs.push(sunrise_sim::mobs::Mob::new(
             id,
             kind,
             sunrise_core::geometry::Vec3::new(0.5, y, 0.5),
@@ -4896,7 +4899,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_dropper_puts_into_a_mod_entity_in_front_of_it() {
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         let bin = Bin::default();
         with_bin_pigs(&bin, |game| {
             game.options.dedicated = Some(Vec::new());
@@ -4940,8 +4943,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_crafter_puts_into_a_mod_entity_and_dispenses_only_what_it_refuses() {
         use mod_api::BlockUpdateFlags;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::{position::BlockPos, random::RandomSource as _};
+        use sunrise_level::chunk::Chunk;
 
         let bin = Bin::default();
         with_bin_pigs(&bin, |game| {
@@ -5050,8 +5053,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn an_armor_stands_equipment_moves_through_the_handler() {
         use mod_api::EquipmentSlot;
-        use sunrise_client::entities::ArmorStand;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ArmorStand;
         with_game(|game| {
             game.armor_stands.push(ArmorStand::new(40, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(41, Vec3::ZERO, 0.0));
@@ -5152,7 +5155,7 @@ pub(in crate::game) mod tests {
         game: &mut crate::game::ServerGame<'_>,
     ) -> mod_api::LevelRef {
         use mod_api::BlockUpdateFlags;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         open_to_lan(game);
         game.world
             .chunks
@@ -5476,7 +5479,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_strict_slot_refuses_what_the_plain_slot_spreads() {
         use mod_api::BlockUpdateFlags;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         with_game(|game| {
             open_to_lan(game);
             game.world

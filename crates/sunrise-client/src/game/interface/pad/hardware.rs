@@ -474,7 +474,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .riding
             .and_then(|id| self.mobs.iter().find(|m| m.id == id));
         let mount = mount.map_or("", |m| m.kind.id.as_str());
-        let feel = |stack: Option<&sunrise_client::items::ItemStack>| match stack
+        let feel = |stack: Option<&sunrise_items::items::ItemStack>| match stack
             .map(|s| (s, &*s.item))
         {
             Some((s, "minecraft:crossbow")) if s.data().is_some_and(|d| !d.charged.is_empty()) => {
@@ -492,7 +492,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .items()
                     .get(&s.item)
                     .and_then(|i| i.use_cooldown.as_ref());
-                let group = sunrise_client::cooldowns::group(s, default);
+                let group = sunrise_items::cooldowns::group(s, default);
                 if self.cooldowns.is_on_cooldown(&group) {
                     TriggerFeel::Locked
                 } else {

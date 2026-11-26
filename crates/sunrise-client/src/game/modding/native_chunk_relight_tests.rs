@@ -4,7 +4,7 @@
 use super::native_entity_refs::tests::with_game;
 use mod_api::{ChunkRefusal, LevelRef, WorldEpoch};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 /// A stone roof over the chunk (100, 100), all eight neighbours loaded around it.
 fn roofed<S: crate::game::Side>(game: &mut super::Game<'_, S>)

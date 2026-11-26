@@ -4,9 +4,9 @@
 //! bottle and a spawn egg used on a block pass in adventure mode otherwise.
 use crate::game::game_tests::tests::server_game;
 use crate::game::{Game, GuestUse, Hit};
-use sunrise_client::command::args::GameMode;
-use sunrise_client::items::ItemStack;
+use sunrise_command::args::GameMode;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
 
@@ -335,7 +335,7 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         let _pipe = crate::game::native_client_session::tests::logged_client(game);
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(0.5, 4.0, 0.5),
             )
@@ -343,7 +343,7 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
         );
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         game.set_local_mode(GameMode::Adventure);
         let log = [2, 4, 3];

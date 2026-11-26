@@ -8,7 +8,8 @@ use mod_api::{
     RenderPlayerPostEvent, RenderPlayerPreEvent,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{mesher::Vertex, mobs::Mob};
+use sunrise_client::mesher::Vertex;
+use sunrise_sim::mobs::Mob;
 
 /// What the mod heard, in order, and which entities it cancels.
 #[derive(Default)]
@@ -204,7 +205,8 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
 #[test]
 #[ignore = "daily"]
 fn a_spectator_following_an_entity_submits_no_local_body() {
-    use sunrise_client::{camera::CameraType, command::args::GameMode};
+    use sunrise_command::args::GameMode;
+    use sunrise_level::camera_math::CameraType;
     use sunrise_protocol::packets::play::{Clientbound, SetCamera};
 
     let heard = Arc::default();
@@ -314,7 +316,7 @@ fn entity_draw_order_after_client_packets() {
 }
 
 pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets() {
-    use sunrise_client::camera::CameraType;
+    use sunrise_level::camera_math::CameraType;
     use sunrise_protocol::{
         entity_data::{
             ITEM_ENTITY_ITEM, Value,
@@ -574,7 +576,7 @@ fn a_canceled_entity_draws_no_name_tag() {
 fn place_stone_floor(game: &mut crate::game::ClientGame<'_>) {
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     let stone = game
         .pack
         .assets
@@ -675,14 +677,14 @@ fn a_culled_entity_is_asked_neither_hook() {
 /// Admit this window's player in third person with entity id 4321.
 fn admit_own_player(game: &mut crate::game::ClientGame<'_>, spectator: bool) {
     let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
-    let mut player = sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap();
+    let mut player = sunrise_sim::motion::PlayerMotion::new(game.motion, at).unwrap();
     player.entity_id = 4321;
     game.player = Some(player);
     game.previous_position = at;
     if let Some(remote) = game.remote.as_mut() {
         remote.entity_id = 4321;
     }
-    game.side.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
+    game.side.camera_type = sunrise_level::camera_math::CameraType::ThirdPersonBack;
     game.resident_entities.local_player.renew();
     game.tick_player_model();
     game.side.player_model.as_mut().unwrap().extra.spectator = spectator;

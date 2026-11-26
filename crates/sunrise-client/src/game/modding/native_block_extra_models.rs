@@ -78,7 +78,7 @@ mod tests {
                 .unwrap();
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             ClientRenderClientHost::set_block_extra_models(game, [0, 64, 0], &[held]).unwrap();
             let stale = mod_api::__private::built::model_ref(generation + 1, slot);

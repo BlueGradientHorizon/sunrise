@@ -133,10 +133,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         delta: [f64; 3],
         cause: MoveCause,
     ) -> Option<[f64; 3]> {
-        if !self.is_logical_server() || !sunrise_client::move_gate::valid_mod_move_delta(delta) {
+        if !self.is_logical_server() || !sunrise_sim::move_gate::valid_mod_move_delta(delta) {
             return None;
         }
-        let mover = sunrise_client::move_gate::mover_of(cause)?;
+        let mover = sunrise_sim::move_gate::mover_of(cause)?;
         let t = self.native_entity_target(entity)?;
         if matches!(t, Target::Player | Target::Guest(_)) {
             let conn = match t {
@@ -342,7 +342,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     fn player_motion_mut(
         &mut self,
         target: Target,
-    ) -> Option<(u32, &mut sunrise_client::motion::PlayerMotion)> {
+    ) -> Option<(u32, &mut sunrise_sim::motion::PlayerMotion)> {
         let conn = match target {
             Target::Player => self.side.lan_acting,
             Target::Guest(conn) => Some(conn),
@@ -437,8 +437,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn moves_and_pushes_a_live_mob() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
 
         with_game(|game| {
             let kind = game
@@ -448,7 +448,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .clone();
             let mut mob = Mob::new(12, kind, Vec3::ZERO, 0.0);
-            mob.ai.nav.path = Some(sunrise_client::mobs::path::Path {
+            mob.ai.nav.path = Some(sunrise_sim::mobs::path::Path {
                 nodes: Vec::new(),
                 next: 0,
                 target: [1, 64, 1],
@@ -487,11 +487,7 @@ pub(in crate::game) mod tests {
             assert!(!entity.teleport_to(game, [f64::NAN, 0.0, 0.0], None));
             assert!(!entity.push(game, [0.0, f64::INFINITY, 0.0]));
             game.armor_stands
-                .push(sunrise_client::entities::ArmorStand::new(
-                    13,
-                    Vec3::ZERO,
-                    0.0,
-                ));
+                .push(sunrise_sim::entities::ArmorStand::new(13, Vec3::ZERO, 0.0));
             let stand = game.entity(13).unwrap();
             assert!(!stand.set_rotation(game, 30.0, 10.0));
             game.side
@@ -514,7 +510,7 @@ pub(in crate::game) mod tests {
             let marker = game.entity(14).unwrap();
             assert_eq!(marker.head_yaw(game), Some(0.0));
             assert!(!marker.set_head_yaw(game, 10.0));
-            game.paintings.push(sunrise_client::entities::Painting {
+            game.paintings.push(sunrise_sim::entities::Painting {
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
                 id: 15,

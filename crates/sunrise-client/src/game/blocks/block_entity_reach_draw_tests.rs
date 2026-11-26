@@ -4,10 +4,10 @@
 //! own geometry whether anything is drawn from that camera. The End gateway, which draws through
 //! the frame's renderer, is asked the frame's off-screen selection instead.
 use std::sync::Arc;
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::Chunk,
     containers::{Beacon, BlockEntity},
-    items::ItemStack,
 };
 use sunrise_world::piston_shape::MovingPistonState;
 
@@ -40,7 +40,7 @@ fn drawn(
         "minecraft:campfire" | "minecraft:soul_campfire" => (
             block.to_owned(),
             Some(BlockEntity::Campfire(Box::new(
-                sunrise_client::chunk::block_entity::Campfire {
+                sunrise_level::chunk::block_entity::Campfire {
                     items: [item(), None, None, None],
                     ..Default::default()
                 },
@@ -49,7 +49,7 @@ fn drawn(
         b if b.ends_with("_shelf") => (
             block.to_owned(),
             Some(BlockEntity::Shelf(Box::new(
-                sunrise_client::chunk::block_entity::Shelf {
+                sunrise_level::chunk::block_entity::Shelf {
                     items: [item(), None, None],
                     ..Default::default()
                 },
@@ -58,7 +58,7 @@ fn drawn(
         "minecraft:suspicious_sand" => (
             "minecraft:suspicious_sand[dusted=1]".to_owned(),
             Some(BlockEntity::Brushable(Box::new(
-                sunrise_client::chunk::block_entity::Brushable {
+                sunrise_level::chunk::block_entity::Brushable {
                     item: item(),
                     hit_direction: Some(1),
                     ..Default::default()

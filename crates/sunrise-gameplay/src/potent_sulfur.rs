@@ -1,13 +1,13 @@
 //! Potent sulfur's pass grid, geyser states, level-seed random and areas, which need no Game.
-use sunrise_client::{
-    block_entities::Pos,
-    join_seq::{JoinList, ListStamp},
-    mobs::{Mob, seen_grid::SeenGrid},
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::{PositionalRandom, RandomSource, XoroshiroRandom},
+};
+use sunrise_level::block_entities::Pos;
+use sunrise_sim::{
+    join_seq::{JoinList, ListStamp},
+    mobs::{Mob, seen_grid::SeenGrid},
 };
 
 /// The mobs' boxes for one block entity pass, built when a geyser's gas first

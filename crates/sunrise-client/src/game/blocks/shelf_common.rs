@@ -1,10 +1,10 @@
 //! Common shelf front-face hit test shared by server swaps and client prediction.
 use super::{Game, Hit, machines::dir_from_name};
-use sunrise_client::containers::BlockEntity;
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
 };
+use sunrise_level::containers::BlockEntity;
 use sunrise_world::level::hit_slot;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

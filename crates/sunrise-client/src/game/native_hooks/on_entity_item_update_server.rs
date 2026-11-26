@@ -93,7 +93,7 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
     fn target(&self) -> Option<u128> {
         self.game.dropped[self.index]
             .target
-            .map(sunrise_client::lan::playerdata::ints_uuid)
+            .map(sunrise_sim::lan::playerdata::ints_uuid)
     }
     fn owner(&self) -> Option<mod_api::EntityRef> {
         self.game.item_entity_owner(self.subject)
@@ -113,7 +113,7 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
     fn set_target(&mut self, target: Option<u128>) -> bool {
         self.game.journal_set_item_target(
             self.index,
-            target.map(sunrise_client::lan::playerdata::uuid_ints),
+            target.map(sunrise_sim::lan::playerdata::uuid_ints),
         );
         true
     }

@@ -12,7 +12,7 @@ fn write(path: &Path, bytes: impl AsRef<[u8]>) {
 #[test]
 #[ignore = "daily"]
 fn generic_processor_and_referencing_pool_accept_pillar_block_properties() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let pack = scratch.path().join("datapacks/processors");
     write(
@@ -48,7 +48,7 @@ fn generic_processor_and_referencing_pool_accept_pillar_block_properties() {
             Some(1),
             true,
             None,
-            Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         )
         .unwrap();
         request.save_root = scratch.path().to_owned();

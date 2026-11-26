@@ -2,10 +2,10 @@
 //! light TNT for a player whose held stack's `can_break` does not name it,
 //! and `ItemStack.useOn`'s `can_place_on` is what lets a placement through.
 use crate::game::{Hit, game_tests::tests::server_game};
-use sunrise_client::command::args::GameMode;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::Who;
+use sunrise_command::args::GameMode;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Who;
 
 type Posted = (&'static str, [f64; 3], Option<Who>);
 
@@ -62,7 +62,7 @@ fn client_game<'a>(
     .unwrap();
     game.world.chunks.insert(
         (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
     );
     game.player = None;
     Some(game)
@@ -121,7 +121,7 @@ fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
     assert!(
         game.ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
     );
     let pos = [2, 4, 2];
     let tnt = game

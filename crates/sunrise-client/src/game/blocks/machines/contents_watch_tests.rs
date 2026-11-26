@@ -2,8 +2,8 @@
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::*;
 use std::sync::{Arc, Mutex};
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::BlockPos;
+use sunrise_level::chunk::Chunk;
 
 const SOURCE: [i32; 3] = [0, 64, 0];
 const SECOND: [i32; 3] = [2, 64, 0];

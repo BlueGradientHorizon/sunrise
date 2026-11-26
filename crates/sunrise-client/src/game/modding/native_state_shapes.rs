@@ -1,8 +1,8 @@
 //! Shape queries for a supplied state without replacing the block in the world.
 use super::Game;
 use mod_api::BlockShapeKind;
-use sunrise_client::{collisions::SceneCollisions, world::World};
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
+use sunrise_level::{collisions::SceneCollisions, world::World};
 use sunrise_level::{fast_hash::FxHashMap, shulker_box::Shulker};
 use sunrise_world::{
     block_collision::BlockCollisionRegistry,
@@ -52,11 +52,11 @@ pub(in crate::game) enum Outline<'a> {
     Published(&'a VoxelShape),
     Declared(&'a VoxelShape, EntityContextKind),
     Dynamic([f64; 6]),
-    Default(&'a sunrise_client::blocks::StateFacts),
+    Default(&'a sunrise_items::blocks::StateFacts),
 }
 
 pub(in crate::game) fn outline_offset(
-    facts: &sunrise_client::blocks::BlockFacts,
+    facts: &sunrise_items::blocks::BlockFacts,
     state: BlockStateId,
     x: i32,
     z: i32,
@@ -92,7 +92,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             )
         };
         if let Some(shape) =
-            sunrise_client::collisions::published_outline(world, self.collision, state, pos)
+            sunrise_level::collisions::published_outline(world, self.collision, state, pos)
         {
             // Published outlines already followed the template's outline offset before
             // declarations added their own channels.

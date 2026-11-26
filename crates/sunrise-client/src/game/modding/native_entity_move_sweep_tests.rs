@@ -181,7 +181,7 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
             game.set_allow_commands(true);
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             for x in 0..16 {
                 for z in 0..16 {
                     chunk.set(x, 8, z, stone.0);
@@ -308,9 +308,9 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
             // Existing residents whose spawn packets were already announced
             // (as the ordered tick's own test sets it): the round's TNT and
             // falling blocks go in the first pass.
-            game.side.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
+            game.side.ordered.announced = sunrise_sim::join_seq::JoinSeq::MAX;
             game.begin_ordered_ticks();
-            game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
+            game.run_ordered_ticks(sunrise_sim::join_seq::JoinSeq::MAX, false)
                 .unwrap();
             game.tick_general().unwrap();
             let heard = std::mem::take(&mut *log.lock().unwrap());
@@ -347,7 +347,7 @@ fn an_arrow_in_flight_fires_nothing_and_a_piston_push_fires_once() {
             game.set_allow_commands(true);
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             for x in 0..16 {
                 for z in 0..16 {
                     chunk.set(x, 8, z, stone.0);
@@ -388,7 +388,7 @@ fn the_off_walk_movers_fire_too() {
             game.set_allow_commands(true);
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             for x in 0..16 {
                 for z in 0..16 {
                     chunk.set(x, 8, z, stone.0);
@@ -422,7 +422,7 @@ fn the_off_walk_movers_fire_too() {
             // The player window: also off the walk, moved by its own
             // `move_self` through the server's own simulation of it. The
             // fixture's game carries no player until one moves in.
-            use sunrise_client::motion::PlayerMotion;
+            use sunrise_sim::motion::PlayerMotion;
             if game
                 .player
                 .as_ref()
@@ -440,12 +440,12 @@ fn the_off_walk_movers_fire_too() {
                 sunrise_core::geometry::Vec3::new(0.5, 0.0, 0.0);
             log.lock().unwrap().clear();
             {
-                use sunrise_client::motion::MotionWorld;
+                use sunrise_sim::motion::MotionWorld;
                 let mut player = game.player.take().unwrap();
                 let mut world =
-                    std::mem::replace(&mut game.world, sunrise_client::world::World::new(stone, 0));
+                    std::mem::replace(&mut game.world, sunrise_level::world::World::new(stone, 0));
                 MotionWorld {
-                    side: sunrise_client::motion::dry_side(),
+                    side: sunrise_sim::motion::dry_side(),
                     entities: &[],
                     player: &mut player,
                     scene: &mut world,
@@ -504,7 +504,7 @@ fn a_drowning_dolphins_goal_move_fires_too() {
             let registry = &game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             for x in 0..16 {
                 for z in 0..16 {
                     chunk.set(x, 8, z, stone.0);

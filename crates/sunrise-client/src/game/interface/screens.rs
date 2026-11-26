@@ -2,12 +2,14 @@
 use super::screen_build::{PauseInputs, PauseLayout};
 use super::{Game, Screen, api_values::TryIntoApi};
 use sunrise_client::{
-    Result,
     confirm_screen::Confirm,
     hud::{HudBatch, rgba},
-    text::{self, ClickEvent, Text},
     ui,
     widgets::{self, ScreenInfo},
+};
+use sunrise_client_core::{
+    Result,
+    text::{self, ClickEvent, Text},
 };
 use sunrise_core::nbt::Tag;
 use winit::keyboard::KeyCode;
@@ -1292,7 +1294,7 @@ mod tests {
     /// link.
     #[test]
     fn a_death_causes_link_is_the_glyph_under_the_pointer() {
-        use sunrise_client::text::{ClickEvent, Style, Text};
+        use sunrise_client_core::text::{ClickEvent, Style, Text};
         let link = Style {
             click: Some(ClickEvent::OpenUrl("https://example.com".into())),
             ..Style::default()

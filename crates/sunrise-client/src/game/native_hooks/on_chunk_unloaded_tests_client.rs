@@ -1,7 +1,7 @@
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use crate::game::native_hooks::on_chunk_unloaded_tests::*;
 use std::time::Duration;
-use sunrise_client::containers::BlockEntity;
+use sunrise_level::containers::BlockEntity;
 
 #[test]
 #[ignore = "daily"]

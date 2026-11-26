@@ -6,7 +6,7 @@ use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_item_places::tests::{guest, open_to_lan};
 use mod_api::HostSide;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, effects::EffectInstance};
+use sunrise_level::{chunk::Chunk, effects::EffectInstance};
 
 pub(in crate::game) struct Log(pub(in crate::game) Arc<Mutex<Vec<(&'static str, u128)>>>);
 #[mod_api::__subscriptions]
@@ -21,11 +21,7 @@ impl mod_api::Hooks for Log {
 
 /// A loaded guest at `x` in chunk row z = 0 with 100 ticks of luck. `guest`
 /// gives connection `conn` the UUID `conn + 122`.
-pub(in crate::game) fn placed(
-    conn: u32,
-    x: f64,
-    game_mode: i32,
-) -> sunrise_client::lan::guest::Guest {
+pub(in crate::game) fn placed(conn: u32, x: f64, game_mode: i32) -> sunrise_sim::lan::guest::Guest {
     let mut g = guest(conn);
     g.loaded = true;
     g.position = [x, 64.0, 8.5];

@@ -52,7 +52,7 @@ pub(crate) struct Options {
     pub(in crate::game) dedicated: Option<Vec<String>>,
     /// `--transfers SETTINGS`: a dedicated server takes a proxy's hand-over requests
     /// (`server.toml`'s `[transfer]`, which sunrise-server passes; lan/arrivals.rs).
-    pub(in crate::game) transfers: Option<sunrise_client::lan::arrivals::Settings>,
+    pub(in crate::game) transfers: Option<sunrise_sim::lan::arrivals::Settings>,
     /// `--benchmark SCENARIO`: run the benchmark, write its report and quit.
     pub(in crate::game) benchmark: Option<String>,
     /// `--benchmark-set SWITCH=VALUE`: a graphics choice for the travel benchmark.
@@ -64,7 +64,7 @@ pub(crate) struct Options {
     /// What this Game executes; independent of its current server connection.
     pub(in crate::game) execution_role: execution_role::ExecutionRole,
     /// The server's report source survives returned errors until the launch reports them.
-    pub(crate) save_failure_diagnostics: sunrise_client::chunk_io::SaveFailureDiagnostics,
+    pub(crate) save_failure_diagnostics: sunrise_sim::chunk_io::SaveFailureDiagnostics,
     /// `--fullscreen` (vanilla's): the window opens fullscreen whatever options.txt says,
     /// as vanilla's DisplayData does, without saving it there.
     pub(in crate::game) fullscreen: bool,
@@ -86,10 +86,10 @@ impl Options {
     pub(in crate::game) fn player_name(&self) -> String {
         self.player_name.clone().unwrap_or_else(|| {
             std::env::current_dir().map_or_else(
-                |_| sunrise_client::offline_name::generate(0),
+                |_| sunrise_sim::offline_name::generate(0),
                 |_| {
-                    sunrise_client::offline_name::load_or_create(
-                        &sunrise_client::logging::player_dir(),
+                    sunrise_sim::offline_name::load_or_create(
+                        &sunrise_level::logging::player_dir(),
                     )
                 },
             )
@@ -99,7 +99,7 @@ impl Options {
     /// A bad command line is a [`launch_api::UsageError`] (exit code 2, no crash report).
     pub(in crate::game) fn read(mut o: Self) -> Result<Self> {
         if o.pregen {
-            sunrise_client::command::vanilla::set_sunrise_commands(true);
+            sunrise_command::vanilla::set_sunrise_commands(true);
         }
         // The launcher's account: online-mode servers need it. A bad file
         // only leaves the game offline.
@@ -166,7 +166,7 @@ impl Options {
         Self::from_launch(LaunchArguments::parse(
             args,
             &std::env::current_dir()?,
-            &sunrise_client::logging::game_home(),
+            &sunrise_level::logging::game_home(),
             std::env::var_os("SUNRISE_HOME").as_deref(),
         )?)
     }
@@ -243,7 +243,7 @@ impl Options {
                         return Ok(None);
                     }
                     "--launch-api" => {
-                        println!("{}", launch_api::reply(&sunrise_client::crash::version()));
+                        println!("{}", launch_api::reply(&sunrise_level::crash::version()));
                         return Ok(None);
                     }
                     "--fullscreen" => o.fullscreen = true,
@@ -258,7 +258,7 @@ impl Options {
                         o.headless = true;
                         o.offscreen = true;
                     }
-                    "--control" => o.control = Some(sunrise_client::control::default_path()),
+                    "--control" => o.control = Some(sunrise_sim::control::default_path()),
                     // Single player always runs on its server thread: a launcher's saved arguments
                     // may still name the old switches.
                     "--server-thread" | "--game-tests" => {}
@@ -342,7 +342,7 @@ impl Options {
                             "--control-socket" => o.control = Some(value.into()),
                             "--transfers" => {
                                 o.transfers =
-                                    Some(sunrise_client::lan::arrivals::Settings::parse(&value)?)
+                                    Some(sunrise_sim::lan::arrivals::Settings::parse(&value)?)
                             }
                             "--time" => o.time = Some(value.parse()?),
                             "--weather" => o.weather = Some(value),

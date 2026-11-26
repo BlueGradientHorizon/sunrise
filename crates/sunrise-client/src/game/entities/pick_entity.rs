@@ -5,8 +5,8 @@ pub(in crate::game) mod pick_sections;
 use super::Game;
 use super::pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment};
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
-use sunrise_client::save::uuid_text;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::save::uuid_text;
 
 pub(in crate::game) use crate::game::pick_entity_common::{
     AttackRangePickResult, CrosshairDecision, CrosshairEntityHit, aabb_extents, knot_bounds,

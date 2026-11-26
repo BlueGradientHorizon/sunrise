@@ -1,11 +1,12 @@
 //! A chunk's way to disk and back: the snapshot with its block entities, the chunk's NBT, its
 //! bytes and their compression, then the reverse. No file is written or read.
 use super::{super::Game, Recorder, world::FLOOR};
-use sunrise_client::{Result, save};
+use sunrise_client_core::Result;
 use sunrise_core::{
     nbt::{self, Limits},
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_sim::save;
 use sunrise_world::compression::Compression;
 
 const RADIUS: i32 = 2;

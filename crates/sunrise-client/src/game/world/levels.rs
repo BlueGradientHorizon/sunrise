@@ -25,24 +25,24 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sunrise_client::join_seq::{
+use sunrise_client_core::Result;
+use sunrise_level::spans::time as span;
+use sunrise_level::world::World;
+use sunrise_level::{block_entity_ticks::BlockEntityTicks, chunk_streamer::ChunkStreamer};
+use sunrise_sim::join_seq::{
     Joined,
     residency::{
         Journal, Kind, Owner,
         table::{EntityLookup, Location, SourceEntity},
     },
 };
-use sunrise_client::spans::time as span;
-use sunrise_client::{
-    Result,
+use sunrise_sim::{
     random_tick_sections::RandomTickSections,
     save::SaveDir,
     tick_chunk_membership::TickChunkMembership,
     ticket_levels::{ChunkTickets, PortalTicket},
     vanillagen::VanillaTerrain,
-    world::World,
 };
-use sunrise_level::{block_entity_ticks::BlockEntityTicks, chunk_streamer::ChunkStreamer};
 use sunrise_world::level::{LevelEvent, Ticks};
 
 const BUILTIN_LEVEL_ORDER: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
@@ -51,7 +51,7 @@ const BUILTIN_LEVEL_ORDER: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
 pub(in crate::game) struct EntityCountView<'a> {
     pub(in crate::game) fixed: [(&'static str, usize); 19],
     pub(in crate::game) mobs: &'a [Mob],
-    pub(in crate::game) projectiles: &'a [sunrise_client::projectiles::Projectile],
+    pub(in crate::game) projectiles: &'a [sunrise_sim::projectiles::Projectile],
     pub(in crate::game) general: &'a super::general::GeneralRows,
     pub(in crate::game) others: &'a [commands::OtherEntity],
 }
@@ -215,35 +215,34 @@ pub(in crate::game) struct Parked {
     random_tick_sections: RandomTickSections,
     level_events: Vec<LevelEvent>,
     /// Entity portal processes and cooldowns belong to this level's entities.
-    pub(in crate::game) portal_states: HashMap<u32, sunrise_client::nether_portal::PortalState>,
-    falling: sunrise_client::join_seq::JoinList<FallingBlock, false>,
-    paintings: sunrise_client::join_seq::JoinList<sunrise_client::entities::Painting>,
-    item_frames: sunrise_client::join_seq::JoinList<sunrise_client::entities::ItemFrame>,
-    armor_stands: sunrise_client::join_seq::JoinList<sunrise_client::entities::ArmorStand>,
-    cushions: sunrise_client::join_seq::JoinList<sunrise_client::entities::Cushion>,
-    others: sunrise_client::join_seq::ResidentList<commands::OtherEntity>,
+    pub(in crate::game) portal_states: HashMap<u32, sunrise_sim::nether_portal::PortalState>,
+    falling: sunrise_sim::join_seq::JoinList<FallingBlock, false>,
+    paintings: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Painting>,
+    item_frames: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ItemFrame>,
+    armor_stands: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ArmorStand>,
+    cushions: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Cushion>,
+    others: sunrise_sim::join_seq::ResidentList<commands::OtherEntity>,
     fangs: super::fangs::FangState,
-    pub(in crate::game) boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
-    pub(in crate::game) carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
-    bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
-    crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
+    pub(in crate::game) boats: sunrise_sim::join_seq::JoinList<boats::Boat, false>,
+    pub(in crate::game) carts: sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
+    bolts: sunrise_sim::join_seq::ResidentList<lightning::Bolt>,
+    crystals: sunrise_sim::join_seq::JoinList<dragon::Crystal>,
     dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
-    breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
-    tridents: sunrise_client::join_seq::JoinList<trident::ThrownTrident>,
-    rockets: sunrise_client::join_seq::JoinList<fireworks::Rocket>,
-    ominous_spawners:
-        sunrise_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    tnts: sunrise_client::join_seq::JoinList<tnt::PrimedTnt>,
+    breath_clouds: sunrise_sim::join_seq::ResidentList<dragon::Breath>,
+    tridents: sunrise_sim::join_seq::JoinList<trident::ThrownTrident>,
+    rockets: sunrise_sim::join_seq::JoinList<fireworks::Rocket>,
+    ominous_spawners: sunrise_sim::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
+    tnts: sunrise_sim::join_seq::JoinList<tnt::PrimedTnt>,
     general: super::general::GeneralStore,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
-    pub(in crate::game) mobs: sunrise_client::join_seq::JoinList<Mob>,
+    pub(in crate::game) mobs: sunrise_sim::join_seq::JoinList<Mob>,
     /// The entity ids of the level's fence knots (`knot_ids`).
     knot_ids: HashMap<[i32; 3], u32>,
     broken_knots: Vec<[i32; 3]>,
-    knots: sunrise_client::join_seq::JoinList<super::leads::Knot>,
-    projectiles: sunrise_client::join_seq::JoinList<sunrise_client::projectiles::Projectile, false>,
-    dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
-    orbs: sunrise_client::join_seq::JoinList<ExperienceOrb>,
+    knots: sunrise_sim::join_seq::JoinList<super::leads::Knot>,
+    projectiles: sunrise_sim::join_seq::JoinList<sunrise_sim::projectiles::Projectile, false>,
+    dropped: sunrise_sim::join_seq::JoinList<ItemEntity>,
+    orbs: sunrise_sim::join_seq::JoinList<ExperienceOrb>,
     persist: persist::EntityMemory,
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     lid_openers: HashMap<(i32, i32, i32), i32>,
@@ -253,7 +252,7 @@ pub(in crate::game) struct Parked {
     lan_critical_hits: Vec<(Option<u32>, i32, bool)>,
     /// The hub's tracked entities of this level (`LanHost::states`), as its last tick described
     /// them: what its players' moves are checked against before this tick describes them again.
-    lan_states: sunrise_client::lan::entity::States,
+    lan_states: sunrise_sim::lan::entity::States,
     /// Only the per-level parts of these are used (`swap_level`).
     anims: BlockEntityTicks,
     pub(in crate::game) raiding: Raiding,
@@ -265,8 +264,8 @@ pub(in crate::game) struct Parked {
     pub(in crate::game) idle: u32,
     /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
     /// last told of it (`LanHost::border_sent`).
-    border: sunrise_client::worldborder::WorldBorder,
-    border_sent: Option<sunrise_client::lan::border::Sent>,
+    border: sunrise_level::worldborder::WorldBorder,
+    border_sent: Option<sunrise_sim::lan::border::Sent>,
 }
 
 impl Parked {
@@ -309,8 +308,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         debug_assert!(self.resident_entities.table.try_borrow_mut().is_ok());
         if matches!(
             location.owner.kind,
-            sunrise_client::join_seq::residency::Kind::Player
-                | sunrise_client::join_seq::residency::Kind::Hook
+            sunrise_sim::join_seq::residency::Kind::Player
+                | sunrise_sim::join_seq::residency::Kind::Hook
         ) {
             if *dimension != self.dim.key() {
                 let dim = match *dimension {
@@ -412,7 +411,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             g.placed
                 && !g.released
                 && Dim::from_id(&g.dimension) == self.dim
-                && sunrise_client::lan::playerdata::uuid_ints(g.uuid) == uuid
+                && sunrise_sim::lan::playerdata::uuid_ints(g.uuid) == uuid
         })
     }
 
@@ -460,8 +459,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     ) -> Option<SourceEntity<(Target, bool)>> {
         if matches!(
             at.owner.kind,
-            sunrise_client::join_seq::residency::Kind::Player
-                | sunrise_client::join_seq::residency::Kind::Hook
+            sunrise_sim::join_seq::residency::Kind::Player
+                | sunrise_sim::join_seq::residency::Kind::Hook
         ) {
             return self.locate_specialized_resident_owner(at);
         }
@@ -596,7 +595,7 @@ pub(in crate::game) struct TickTiming {
     pub wall_ms: f32,
     pub cpu_ms: Option<f32>,
     /// Spans recorded inside the tick only, in observation order.
-    pub raw: Vec<sunrise_client::spans::Span>,
+    pub raw: Vec<sunrise_level::spans::Span>,
 }
 
 /// The levels not in place, by dimension.
@@ -841,13 +840,13 @@ impl Levels {
     pub(in crate::game::server_side) fn parked_border(
         &self,
         dim: Dim,
-    ) -> Option<&sunrise_client::worldborder::WorldBorder> {
+    ) -> Option<&sunrise_level::worldborder::WorldBorder> {
         self.parked.get(&dim).map(|level| &level.border)
     }
 
     pub(in crate::game::server_side) fn install_profession_save_snapshots(
         &self,
-        table: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
+        table: Arc<sunrise_sim::mobs::villager::ResolvedProfessions>,
     ) {
         for level in self.parked.values() {
             level.save.install_profession_snapshot(table.clone());
@@ -989,7 +988,7 @@ fn box_parked(
     locator: Option<Arc<VanillaTerrain>>,
     save: Arc<SaveDir>,
     seed: i64,
-    border: sunrise_client::worldborder::WorldBorder,
+    border: sunrise_level::worldborder::WorldBorder,
 ) -> Box<Parked> {
     Box::new(Parked {
         world,
@@ -1456,7 +1455,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             };
             if let Some(mut mob) = mob {
-                mob.join = sunrise_client::join_seq::JoinSeq::UNJOINED;
+                mob.join = sunrise_sim::join_seq::JoinSeq::UNJOINED;
                 moved.push(mob);
             }
         }
@@ -1571,13 +1570,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The parts outside every level get spans of their own, so that a slow
         // tick's line and `sunrise-report` say when a mod's tick hook took it.
         if server {
-            let _span = sunrise_client::spans::guard("mod_configs_poll");
+            let _span = sunrise_level::spans::guard("mod_configs_poll");
             self.native_configs_poll();
         }
         if let Some(running) = running
             && server
         {
-            let _span = sunrise_client::spans::guard("mods_server_tick_start");
+            let _span = sunrise_level::spans::guard("mods_server_tick_start");
             self.native_lifecycle_server_tick_start(running);
         }
         let observe_level =
@@ -1588,18 +1587,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for phase in server_tick_phases(&order) {
             let ServerTickPhase::Level(k, dim) = phase else {
                 if running.is_some() && self.lan.is_some() {
-                    let holding = sunrise_client::lan::Holding::start();
-                    result = sunrise_client::spans::time("lan_guest_connections", || {
+                    let holding = sunrise_sim::lan::Holding::start();
+                    result = sunrise_level::spans::time("lan_guest_connections", || {
                         self.tick_guest_connections(true)
                     });
                     if result.is_ok()
                         && let Some(host) = self.lan.as_mut()
                     {
-                        sunrise_client::spans::time("lan_end_tick", || host.hub.end_tick());
+                        sunrise_level::spans::time("lan_end_tick", || host.hub.end_tick());
                     }
                     drop(holding);
                     if let Some(host) = self.lan.as_ref() {
-                        sunrise_client::lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
+                        sunrise_sim::lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
                     }
                 }
                 break;
@@ -1612,7 +1611,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Dim::End => 3,
                 Dim::Extra(_) => 0,
             });
-            let _level_span = sunrise_client::spans::guard(match dim {
+            let _level_span = sunrise_level::spans::guard(match dim {
                 Dim::Overworld => "level_overworld",
                 Dim::Nether => "level_the_nether",
                 Dim::End => "level_the_end",
@@ -1635,29 +1634,29 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if running == Some(true) {
                 self.side.streaming.purge_unknown_tickets();
             }
-            sunrise_client::spans::time("dedicated_streaming", || {
+            sunrise_level::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
             self.tick_spawn_tickets(running == Some(true), true);
-            sunrise_client::spans::time("update_world", || self.server_update_world());
+            sunrise_level::spans::time("update_world", || self.server_update_world());
             // The end of ServerChunkCache.tick, after its unloads: `clearCache`. A paused or held
             // server ticks no level.
             if running.is_some() {
                 self.side.streaming.clear_full_lookups();
             }
-            let tick_span = sunrise_client::spans::guard("level_tick");
+            let tick_span = sunrise_level::spans::guard("level_tick");
             // This level's moving colliders, solid to its movers for this tick only.
             let colliders = self.placed_moving_colliders();
             let parts = self.collision_parts();
             let history = self
                 .collider_history(&colliders)
-                .map(sunrise_client_render::moving_colliders::HistoryScope::enter);
+                .map(sunrise_world::moving_colliders::HistoryScope::enter);
             result = {
-                let _scope = sunrise_client_render::moving_colliders::Scope::enter_level(
+                let _scope = sunrise_world::moving_colliders::Scope::enter_level(
                     self.collider_level(),
                     colliders.clone(),
                 );
-                sunrise_client::block_contact::in_level(
+                sunrise_sim::block_contact::in_level(
                     self.tick,
                     (self.serving.is_some() || self.options.dedicated.is_some())
                         .then_some(dim.id()),
@@ -1679,7 +1678,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             drop(history);
             // Then the bodies standing on a collider that moved are carried with it.
             if result.is_ok() && !paused {
-                sunrise_client::block_contact::in_level(
+                sunrise_sim::block_contact::in_level(
                     self.tick,
                     (self.serving.is_some() || self.options.dedicated.is_some())
                         .then_some(dim.id()),
@@ -1697,11 +1696,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             #[cfg(feature = "state-digest")]
             self.state_digest_tick(dim, running);
-            sunrise_client::spans::time("server_debug", || self.publish_server_debug(dim));
+            sunrise_level::spans::time("server_debug", || self.publish_server_debug(dim));
             // An entity that crossed into a level that already ticked this
             // server tick is in it when the tick ends (`addDuringTeleport`).
             if running == Some(true) {
-                let _span = sunrise_client::spans::guard("late_portal_arrivals");
+                let _span = sunrise_level::spans::guard("late_portal_arrivals");
                 let mut moved = false;
                 for &earlier in &order[..k] {
                     if !self.arrival_chunks(earlier).is_empty() && self.enter_level(earlier).is_ok()
@@ -1740,7 +1739,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The levels mods asked to open or close: now that no level is in the middle of a tick.
         self.apply_runtime_levels();
         let closed = if should_run_idle_maintenance(paused) {
-            let _span = sunrise_client::spans::guard("close_idle_levels");
+            let _span = sunrise_level::spans::guard("close_idle_levels");
             self.close_idle_levels()
         } else {
             Ok(())
@@ -1752,7 +1751,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `ServerTickEnd`: an errored tick or an idle-close failure (at
         // the `?` above) never reaches this site.
         {
-            let _span = sunrise_client::spans::guard("mods_server_tick_end");
+            let _span = sunrise_level::spans::guard("mods_server_tick_end");
             self.native_lifecycle_server_tick_end(paused);
         }
         Ok(())
@@ -1782,25 +1781,25 @@ impl Game<'_, crate::game::server_side::ServerState> {
         paused: bool,
         record: impl FnOnce(TickTiming),
     ) -> Result<Duration> {
-        if self.options.spikes.is_none() && !sunrise_client::spans::recording_here() {
+        if self.options.spikes.is_none() && !sunrise_level::spans::recording_here() {
             let started = Instant::now();
             self.tick_server(paused)?;
             return Ok(started.elapsed());
         }
         // Discard between-tick work (such as the chunk pump) before timing this tick.
-        sunrise_client::spans::take_raw();
-        let cpu = sunrise_client::spans::thread_cpu();
+        sunrise_level::spans::take_raw();
+        let cpu = sunrise_level::spans::thread_cpu();
         let started = Instant::now();
         let result = self.tick_server(paused);
         let method = started.elapsed();
         let wall = method.as_secs_f32() * 1000.0;
-        let cpu = sunrise_client::spans::thread_cpu()
+        let cpu = sunrise_level::spans::thread_cpu()
             .zip(cpu)
             .map(|(end, start)| (end - start).as_secs_f32() * 1000.0);
         // Taken every tick: nothing else takes this thread's spans.
-        let raw = sunrise_client::spans::take_raw();
+        let raw = sunrise_level::spans::take_raw();
         // The spans go to the slow ring; whose packets or events took the tick stays in the owner's log.
-        let notes = sunrise_client::spans::take_notes();
+        let notes = sunrise_level::spans::take_notes();
         if let Some(threshold) = self.options.spikes
             && wall > threshold
             && !notes.is_empty()
@@ -1985,7 +1984,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// chunk too; and at least the chunks its expiry waits for
     /// (`portal_ticket_can_expire`).
     pub(in crate::game::server_side) fn portal_ticket_areas(&self) -> Vec<((i32, i32), i32)> {
-        let block_ticking = i32::from(sunrise_client::ticket_levels::BLOCK_TICKING);
+        let block_ticking = i32::from(sunrise_sim::ticket_levels::BLOCK_TICKING);
         self.side
             .tickets
             .0
@@ -2351,7 +2350,7 @@ mod tests {
     use super::*;
 
     fn dirty_test_chunk(game: &mut crate::game::ServerGame<'_>) {
-        let chunk = sunrise_client::chunk::Chunk::with_layout(0, 0, game.world.layout());
+        let chunk = sunrise_level::chunk::Chunk::with_layout(0, 0, game.world.layout());
         game.world.chunks.insert((0, 0), Arc::new(chunk));
         game.world.modified.insert((0, 0));
     }
@@ -2368,7 +2367,7 @@ mod tests {
     #[ignore = "daily"]
     fn save_all_succeeds_after_reported_failures_in_multiple_levels() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_client::save::{Level, LevelShape};
+        use sunrise_sim::save::{Level, LevelShape};
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
                 let root = tempfile::tempdir().unwrap();
@@ -2416,7 +2415,7 @@ mod tests {
     fn an_idle_level_closes_after_reporting_a_record_failure() {
         use crate::game::native_entity_refs::tests::with_game;
         use mod_api::{RuntimeGenerator, RuntimeLevel};
-        use sunrise_client::save::LevelShape;
+        use sunrise_sim::save::LevelShape;
         crate::game::in_own_process(
             "game::server_side::levels::tests::an_idle_level_closes_after_reporting_a_record_failure",
             || {
@@ -2474,7 +2473,7 @@ mod tests {
 
     #[test]
     fn built_in_levels_stay_open_while_unloading_chunks_and_custom_levels_idle_close() {
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         use sunrise_world::registry::BlockStateId;
 
         let custom = Dim::Extra(mod_api::__private::dimension_key("test_idle:custom"));
@@ -2743,7 +2742,7 @@ mod tests {
     #[ignore = "daily"]
     fn slow_ticks_enter_the_ring_and_not_the_log() {
         use crate::game::{Options, Progress, Settings, load_resources};
-        use sunrise_client::server_perf::{ServerPerf, TickDetail, WorldCounts};
+        use sunrise_sim::server_perf::{ServerPerf, TickDetail, WorldCounts};
         log::set_logger(&LogCapture).expect("no other logger in this test run");
         log::set_max_level(log::LevelFilter::Info);
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -2871,8 +2870,8 @@ mod tests {
             ValidateTicketsEvent,
         };
         use std::sync::atomic::{AtomicBool, Ordering};
-        use sunrise_client::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
-        use sunrise_client::save::dimension_dir;
+        use sunrise_level::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
+        use sunrise_sim::save::dimension_dir;
 
         const OWNER: [i32; 3] = [2, 64, 3];
         struct Quarry(Arc<AtomicBool>);
@@ -3048,10 +3047,8 @@ mod tests {
         use crate::game::{lan::LanSettings, lan_actions::GuestCommand};
         use mod_api::{Hooks, LevelLoadEvent, LevelUnloadEvent, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::{
-            lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-            server::user_lists::{BanList, IpBanList, OpList, WhiteList},
-        };
+        use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
         const BUILT_INS: [&str; 3] = [
             "minecraft:overworld",
@@ -3116,7 +3113,7 @@ mod tests {
                 autosave: true,
             })));
             game.ui.dispatcher = crate::game::chat_common::SessionDispatcher(Arc::new(
-                sunrise_client::command::vanilla::build_for(false, true),
+                sunrise_command::vanilla::build_for(false, true),
             ));
             game.lan_host(
                 LanSettings {
@@ -3165,9 +3162,9 @@ mod tests {
             guest.loaded = true;
             guest.dimension = Dim::Overworld.id().into();
             // Creative: no fall or suffocation where the teleports below land.
-            guest.game_mode = sunrise_client::lan::guest::CREATIVE;
+            guest.game_mode = sunrise_sim::lan::guest::CREATIVE;
             guest.motion = Some(Box::new(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
                 )
@@ -3533,9 +3530,9 @@ mod tests {
             assert!(loaded, "the new chunk (13, 0) was not generated");
             game.save_game().unwrap();
         }
-        let save = sunrise_client::save::SaveDir::new(
-            sunrise_client::save::dimension_dir(&world, "minecraft:overworld"),
-            sunrise_client::chunk::LevelShape::OVERWORLD,
+        let save = sunrise_sim::save::SaveDir::new(
+            sunrise_sim::save::dimension_dir(&world, "minecraft:overworld"),
+            sunrise_level::chunk::LevelShape::OVERWORLD,
             Some(Default::default()),
         );
         let blending = |x, z| {
@@ -3727,7 +3724,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ADVANCE_WEATHER)
+                .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_WEATHER)
             {
                 self.world.weather.tick_timers(&mut self.world.random);
             }

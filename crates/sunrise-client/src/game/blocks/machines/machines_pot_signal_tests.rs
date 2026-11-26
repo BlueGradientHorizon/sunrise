@@ -3,7 +3,7 @@
 //! saved block entity, so a comparator beside it has to read that tag.
 use super::*;
 use crate::game::{game_tests::tests::server_game, spill};
-use sunrise_client::save;
+use sunrise_sim::save;
 use sunrise_world::level::LevelAccess;
 
 /// `getRedstoneSignalFromBlockEntity` for the block at `pos`, the path a

@@ -15,12 +15,9 @@ use super::{Game, native_block_entity_draw::BlockEntityDraw};
 use glam::{DVec3, Mat4};
 use mod_api::{EntityRenderState, FrameModel, HookId};
 use std::cell::RefCell;
-use sunrise_client::{
-    block_entity_render::diffuse_lights,
-    fast_hash::FxHashSet,
-    mesher::Vertex,
-    mobs::{Mob, Species, anim, render, villager},
-};
+use sunrise_client::{block_entity_render::diffuse_lights, mesher::Vertex, mobs::render};
+use sunrise_level::fast_hash::FxHashSet;
+use sunrise_sim::mobs::{Mob, Species, anim, villager};
 
 /// What the frame's entity pass decided about the mods' render hooks: whether any mod listens to
 /// the pair (asked once a frame), and the entities a pre hook canceled.
@@ -129,7 +126,7 @@ pub(in crate::game) fn entity_render_state(m: &Mob, id: u32, partial: f32) -> En
         id,
         partial,
         age: pose.age,
-        yaw: m.previous_yaw + sunrise_client::mobs::living::wrap(m.yaw - m.previous_yaw) * partial,
+        yaw: m.previous_yaw + sunrise_sim::mobs::living::wrap(m.yaw - m.previous_yaw) * partial,
         pitch: pose.x_rot,
         living: Some(living.into()),
         tnt_fuse: None,

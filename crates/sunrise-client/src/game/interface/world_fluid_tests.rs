@@ -4,8 +4,8 @@ use super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::WorldFluid;
 use mod_api::{FluidPart, FluidRulesEvent, Hooks, LevelHost, ModEntry, Registrar};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::BlockPos;
+use sunrise_level::chunk::Chunk;
 use sunrise_world::{chunk::BlockState, fluid::FluidKind, registry::BlockStateId};
 
 const THICK_ROW: i32 = 8;
@@ -96,14 +96,14 @@ fn a_mods_fluid_is_placed_flows_is_collected_and_saved() {
 
             // A bucket's ray and the client's block facts see a source, not water or lava.
             let facts = game.res.facts();
-            assert_eq!(facts.get(oil).fluid, sunrise_client::blocks::Fluid::Modded);
+            assert_eq!(facts.get(oil).fluid, sunrise_items::blocks::Fluid::Modded);
             assert_eq!(facts.get(oil).fluid_level, 8);
             assert_eq!(facts.get(flowing).fluid_level, 7);
-            assert_eq!(facts.get(water).fluid, sunrise_client::blocks::Fluid::Water);
+            assert_eq!(facts.get(water).fluid, sunrise_items::blocks::Fluid::Water);
 
             // Its bucket places it.
             let (content, sound, _) =
-                sunrise_client::items::bucket_contents("oily:oil_bucket").unwrap();
+                sunrise_items::items::bucket_contents("oily:oil_bucket").unwrap();
             let at = BlockPos::new(4, 64, 4);
             let placed = game.with_level(|b, level, ticks| {
                 b.bucket_empty(level, ticks, at, None, content, sound, false, false)
@@ -152,8 +152,8 @@ fn a_mods_fluid_is_placed_flows_is_collected_and_saved() {
             game.world.set(2, 64, 1, flowing).unwrap();
             let biomes = game.res.biomes().clone();
             let chunk = game.world.chunks.get(&(0, 0)).unwrap();
-            let saved = sunrise_client::save::encode(chunk, registry, &biomes, &Default::default());
-            let loaded = sunrise_client::save::decode(&saved, registry, &biomes).unwrap();
+            let saved = sunrise_sim::save::encode(chunk, registry, &biomes, &Default::default());
+            let loaded = sunrise_sim::save::decode(&saved, registry, &biomes).unwrap();
             assert_eq!(loaded.block(1, 64, 1), oil);
             assert_eq!(loaded.block(2, 64, 1), flowing);
         });

@@ -627,8 +627,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn sample_movement_keys(
         &self,
         stick: Option<[f32; 2]>,
-    ) -> sunrise_client::sprint::Keys {
-        use sunrise_client::sprint::Keys;
+    ) -> sunrise_sim::sprint::Keys {
+        use sunrise_sim::sprint::Keys;
         let mut keys = Keys {
             forward: self.mapped_key_down("key.forward"),
             backward: self.mapped_key_down("key.back"),

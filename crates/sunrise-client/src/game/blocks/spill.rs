@@ -7,14 +7,12 @@ use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Game, GameLevel};
 use mod_api::EntityRef;
 use std::collections::HashMap;
-use sunrise_client::{
-    block_entity_item, block_entity_nbt,
-    containers::BlockEntity,
-    furnace::FurnaceCooking,
-    items::{BlockLootRoll, ItemStack, Items},
-};
+use sunrise_client_core::block_entity_nbt;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::{BlockLootRoll, ItemStack, Items};
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{block_entity_item, furnace::FurnaceCooking};
 use {
     sunrise_core::nbt::{Compound, Tag},
     sunrise_world::{
@@ -50,7 +48,7 @@ pub(in crate::game) fn source_snapshot(
 }
 
 pub(in crate::game) fn world_source(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     pos: [i32; 3],
     block: &str,
     encode: impl FnOnce((i32, i32, i32), &BlockEntity, &str) -> Tag,
@@ -62,8 +60,8 @@ pub(in crate::game) fn world_source(
             // Sparse storage can omit an empty block entity, but its type's
             // implicit components still belong to the loot source. Use the
             // factory's entity identity, which need not match the block's id.
-            sunrise_client::block_entity_types::type_for(block)
-                .or_else(|| sunrise_client::lan::chunks::block_entity_type(block))
+            sunrise_client_core::block_entity_types::type_for(block)
+                .or_else(|| sunrise_sim::lan::chunks::block_entity_type(block))
                 .map(|kind| {
                     Tag::compound([
                         ("id", Tag::String(kind.into())),
@@ -90,7 +88,7 @@ impl Pending {
     }
     pub(in crate::game::server_side) fn record_from(
         &mut self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         pos: [i32; 3],
         saved: Tag,
     ) {
@@ -124,7 +122,7 @@ impl Pending {
                 damage: 0,
                 extra: None,
             }),
-            Some(t) => sunrise_client::save::item_from_nbt(t),
+            Some(t) => sunrise_sim::save::item_from_nbt(t),
             None => None,
         };
         self.pot.insert(
@@ -194,10 +192,10 @@ impl DropState {
     /// `setNoGravity` and its age).
     pub(in crate::game::server_side) fn apply(
         self,
-        item: sunrise_client::entities::ItemEntity,
-    ) -> sunrise_client::entities::ItemEntity {
-        let uuid = sunrise_client::lan::playerdata::uuid_ints;
-        sunrise_client::entities::ItemEntity {
+        item: sunrise_sim::entities::ItemEntity,
+    ) -> sunrise_sim::entities::ItemEntity {
+        let uuid = sunrise_sim::lan::playerdata::uuid_ints;
+        sunrise_sim::entities::ItemEntity {
             thrower: self.thrower.map(uuid),
             target: self.target.map(uuid),
             no_gravity: self.no_gravity,
@@ -210,8 +208,8 @@ impl DropState {
 /// The one ItemEntity constructor random sequence, shared by immediate and
 /// deferred spawning: UUID, bob offset, yaw, then optional default motion.
 pub(in crate::game) fn prepare_item_random(velocity: Option<[f64; 3]>) -> ItemRandom {
-    let mut own = sunrise_client::random_source::entity();
-    let uuid = sunrise_client::save::insecure_uuid(&mut own);
+    let mut own = sunrise_level::random_source::entity();
+    let uuid = sunrise_sim::save::insecure_uuid(&mut own);
     let bob = own.next_float() * std::f32::consts::PI * 2.0;
     let yaw = own.next_float() * 360.0;
     let velocity = velocity.unwrap_or_else(|| {
@@ -256,7 +254,7 @@ pub(in crate::game) enum BlockDropEntity<'a> {
 
 impl<'a> BlockDropEntity<'a> {
     pub(in crate::game) fn at(
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         key: (i32, i32, i32),
         data: Option<&'a Compound>,
     ) -> Self {
@@ -640,7 +638,7 @@ pub(in crate::game::server_side) fn pop_position_from_face(
 /// The block entity at `pos` Sunrise keeps as it was loaded, if any
 /// (campfires, decorated pots, chiseled bookshelves, shelves).
 pub(in crate::game) fn saved_entity(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     pos: [i32; 3],
 ) -> Option<sunrise_core::nbt::Tag> {
     use sunrise_core::nbt::Tag;
@@ -672,7 +670,7 @@ pub(in crate::game::server_side) fn packed_block_entity_payload(tag: Tag) -> Opt
 /// Keep `tag` as the block entity at its position Sunrise does not model,
 /// replacing the one there.
 pub(in crate::game) fn put_saved_entity(
-    world: &mut sunrise_client::world::World,
+    world: &mut sunrise_level::world::World,
     pos: [i32; 3],
     tag: sunrise_core::nbt::Tag,
 ) {
@@ -681,7 +679,7 @@ pub(in crate::game) fn put_saved_entity(
 
 /// Restore a saved-only block entity, or remove the tag created by a tentative write.
 pub(in crate::game::server_side) fn set_saved_entity(
-    world: &mut sunrise_client::world::World,
+    world: &mut sunrise_level::world::World,
     pos: [i32; 3],
     tag: Option<sunrise_core::nbt::Tag>,
 ) {
@@ -804,17 +802,14 @@ impl GameLevel<'_> {
         };
         let location = |condition: &serde_json::Value| {
             let centre = origin.map(|c| f64::from(c) + 0.5);
-            let at = sunrise_client::advancements::location_check_position(
-                condition,
-                Some(origin),
-                centre,
-            );
+            let at =
+                sunrise_sim::advancements::location_check_position(condition, Some(origin), centre);
             // `LocationPredicate.matches`: nothing matches in an unloaded chunk.
             Some(
                 level
                     .world
                     .loaded(at[0].floor() as i32, at[2].floor() as i32)
-                    && sunrise_client::advancements::location(&condition["predicate"], at, &level),
+                    && sunrise_sim::advancements::location(&condition["predicate"], at, &level),
             )
         };
         let mut random = self.world.random.clone();
@@ -880,7 +875,7 @@ impl GameLevel<'_> {
             .as_ref()
             .filter(|_| machine)
             .and_then(|(_, tool)| tool.clone());
-        let roll = sunrise_client::items::BlockLootRoll {
+        let roll = sunrise_items::items::BlockLootRoll {
             held: tool.as_ref(),
             dynamic: &dynamic,
             breaker: self.drop_breaker_at == Some(pos),
@@ -937,7 +932,7 @@ impl GameLevel<'_> {
             copied.record_saved(at, &tag);
         }
         let dynamic = copied.dynamic(at);
-        let roll = sunrise_client::items::BlockLootRoll {
+        let roll = sunrise_items::items::BlockLootRoll {
             held: tool,
             dynamic: &dynamic,
             breaker: entity.is_some(),
@@ -1166,7 +1161,7 @@ impl GameLevel<'_> {
                             f64::from(pos.z) + 0.5,
                         ];
                         for (count, experience) in f.recipe_experience(self.recipes) {
-                            let xp = sunrise_client::containers::create_experience(
+                            let xp = sunrise_level::containers::create_experience(
                                 count,
                                 experience,
                                 &mut self.world.random,
@@ -1356,15 +1351,13 @@ impl GameLevel<'_> {
                     sunrise_world::loot::ContainerLootContext::default(),
                 );
                 let mut items = vec![None; slots];
-                items[0] = tag
-                    .get("item")
-                    .and_then(sunrise_client::save::item_from_nbt);
+                items[0] = tag.get("item").and_then(sunrise_sim::save::item_from_nbt);
                 items
             }
             PreRemove::Contents { slots, .. } => {
-                sunrise_client::save::decode_items(tag.get("Items"), slots)
+                sunrise_sim::save::decode_items(tag.get("Items"), slots)
             }
-            PreRemove::Campfire => sunrise_client::save::decode_items(tag.get("Items"), 4),
+            PreRemove::Campfire => sunrise_sim::save::decode_items(tag.get("Items"), 4),
             _ => return,
         };
         for stack in items {
@@ -1462,7 +1455,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         spawns: Vec<Spawn>,
         orbs: Vec<([f64; 3], u32, i32)>,
     ) {
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         for spawn in spawns {
             self.push_item_entity(
                 spawn.stack,
@@ -1484,7 +1477,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.side.spill.0.is_empty() {
             return;
         }
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let mut spill = std::mem::take(&mut self.side.spill.0);
         self.finish_piston_position_changes(std::mem::take(&mut spill.piston_positions));
         let used = std::mem::take(&mut spill.used);
@@ -1571,7 +1564,7 @@ mod tests {
         check: impl FnOnce(&mut GameLevel<'_>, &mut sunrise_core::random::LevelRandom),
     ) {
         use std::sync::Arc;
-        use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
+        use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "removal",
             Box::new(RemovalMod(mode)),
@@ -1582,7 +1575,7 @@ mod tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let state = game
                     .pack
                     .assets
@@ -1628,8 +1621,8 @@ mod tests {
     #[ignore = "daily"]
     fn removal_uses_the_same_random_state_for_lazy_and_padded_slots() {
         use std::sync::Arc;
-        use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
         use sunrise_core::random::LegacyRandom;
+        use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
 
         crate::game::native_entity_refs::tests::with_game(|game| {
             let state = game
@@ -1780,7 +1773,7 @@ mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let dirt = registry.default_state("minecraft:dirt").unwrap();
             let ore = registry.default_state("minecraft:diamond_ore").unwrap();
@@ -1829,7 +1822,7 @@ mod tests {
     fn disabled_block_drops_draw_offsets_without_constructing_items() {
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::{Arc, Mutex};
-        use sunrise_client::random_source::record_seeds;
+        use sunrise_level::random_source::record_seeds;
 
         struct Observe(Arc<Mutex<Vec<usize>>>);
         #[mod_api::__subscriptions]
@@ -1853,11 +1846,10 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                assert!(
-                    game.ui
-                        .rules
-                        .set("block_drops", sunrise_client::gamerules::Value::Bool(false),)
-                );
+                assert!(game.ui.rules.set(
+                    "block_drops",
+                    sunrise_client_core::gamerules::Value::Bool(false),
+                ));
                 let dirt = game
                     .pack
                     .assets
@@ -1976,7 +1968,7 @@ mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let stone = game
                 .pack
                 .assets
@@ -2005,7 +1997,7 @@ mod tests {
             };
 
             let ((baseline, baseline_after), entity_seeds) =
-                sunrise_client::random_source::record_seeds(|| break_of(game));
+                sunrise_level::random_source::record_seeds(|| break_of(game));
             assert_eq!(baseline.items.len(), 2);
             assert!(baseline.items[0].random.is_some());
             assert!(baseline.items[1].random.is_some());
@@ -2019,7 +2011,7 @@ mod tests {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 let (heard, after) =
-                    sunrise_client::random_source::replay_seeds(Arc::clone(&entity_seeds), || {
+                    sunrise_level::random_source::replay_seeds(Arc::clone(&entity_seeds), || {
                         break_of(game)
                     });
                 assert!(entity_seeds.complete());
@@ -2087,7 +2079,7 @@ mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let ore = registry.default_state("minecraft:diamond_ore").unwrap();
             let dirt = registry.default_state("minecraft:dirt").unwrap();
@@ -2153,8 +2145,8 @@ mod tests {
         use mod_platform::__private::part_tests::{HOARD, HOARD_ASKED, game_thread};
         use std::sync::Arc;
         use std::sync::atomic::Ordering;
-        use sunrise_client::chunk::Chunk;
-        use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
         crate::game::native_entity_refs::tests::with_game(|game| {
             let _mods = game_thread();
             game.options.dedicated = Some(Vec::new());
@@ -2229,8 +2221,8 @@ mod tests {
         use mod_platform::__private::part_tests::{HOARD, HOARD_ASKED};
         use std::sync::Arc;
         use std::sync::atomic::Ordering;
-        use sunrise_client::chunk::Chunk;
-        use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
         let Some(root) = crate::game::native_entity_refs::tests::declared_part_root(
             "game::server_side::spill::tests::a_block_entity_removing_itself_in_its_tick_runs_resident_removal",
         ) else {
@@ -2294,8 +2286,9 @@ mod tests {
             );
         });
     }
-    use sunrise_client::{block_entity_item, item_data, mobs::raider, save};
     use sunrise_core::nbt::Tag;
+    use sunrise_items::item_data;
+    use sunrise_sim::{block_entity_item, mobs::raider, save};
 
     #[test]
     fn a_used_run_is_retold_in_place() {
@@ -2403,7 +2396,7 @@ mod tests {
             assert_eq!(banner.layers.len(), item_data::OMINOUS_LAYERS.len());
             let mut pending = Pending::default();
             pending.record_saved([pos.0, pos.1, pos.2], &saved);
-            let mut items = sunrise_client::items::Items::for_tests(Default::default());
+            let mut items = sunrise_items::items::Items::for_tests(Default::default());
             items.set_loot_tables(std::sync::Arc::new([(
                 "test:banner".to_owned(),
                 serde_json::json!({"type":"minecraft:empty","pools":[{"rolls":1,"entries":[{
@@ -2425,13 +2418,13 @@ mod tests {
                     .remove(0)
             });
             assert!(dropped.data().unwrap().ominous_banner);
-            assert!(sunrise_client::banner::tooltip_layers(&dropped).is_empty());
+            assert!(sunrise_sim::banner::tooltip_layers(&dropped).is_empty());
             assert_eq!(
                 sunrise_client::item_tooltip::name_line(&dropped, &|_| None),
                 "Ominous Banner"
             );
             assert_eq!(
-                sunrise_client::stations::rarity(&dropped, "common"),
+                sunrise_sim::stations::rarity(&dropped, "common"),
                 "uncommon"
             );
             assert_eq!(
@@ -2454,7 +2447,7 @@ mod crafter_drop_name_tests {
             game.set_allow_commands(true);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())
@@ -2464,7 +2457,7 @@ mod crafter_drop_name_tests {
             assert!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                    .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
             );
             let clock = game.world.game_time;
             let mut unexpected = Vec::new();

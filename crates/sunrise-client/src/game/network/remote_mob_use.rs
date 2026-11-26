@@ -5,13 +5,11 @@
 //! interaction; this is what the client's copy of the mob answers.
 use super::Game;
 use sunrise_client::actions::Action;
-use sunrise_client::{
-    first_person::Hand,
-    mobs::{Species, armadillo, equine, llama, nautilus, panda, villager},
-};
 use sunrise_client_gameplay::remote::mob_use::{
     ages_on_food, copper_golem_takes, iron_golem_takes, mob_swings, nautilus_takes,
 };
+use sunrise_sim::first_person_sim::Hand;
+use sunrise_sim::mobs::{Species, armadillo, equine, llama, nautilus, panda, villager};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether mob `i` takes a right click with `hand`'s item on this
@@ -163,8 +161,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Species::SulfurCube => {
                 item == "minecraft:bucket"
                     && !baby
-                    && !sunrise_client::mobs::sulfur_cube::primed(m)
-                    && !sunrise_client::mobs::sulfur_cube::swallowable(m, item)
+                    && !sunrise_sim::mobs::sulfur_cube::primed(m)
+                    && !sunrise_sim::mobs::sulfur_cube::swallowable(m, item)
             }
             // Tadpole.mobInteract: frog food (not while age locked), else the bucket.
             Species::Tadpole => {
@@ -241,8 +239,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let feet = [m.position.x, m.position.y, m.position.z];
         let (width, height) = (f64::from(m.width()), f64::from(m.height()));
-        let options = sunrise_client::particles::ParticleOptions::simple(
-            sunrise_client::particles::ParticleType::HappyVillager,
+        let options = sunrise_level::particle_options::ParticleOptions::simple(
+            sunrise_level::particle_options::ParticleType::HappyVillager,
         );
         let mut spawned = Vec::new();
         sunrise_level::particle_options::around_self(
@@ -263,7 +261,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     fn mob(kind: &str) -> Option<Mob> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -272,7 +270,7 @@ mod tests {
         if !root.join("entity-types.json").exists() {
             return None;
         }
-        let data = sunrise_client::mobs::MobTypes::load(&root).ok()?;
+        let data = sunrise_sim::mobs::MobTypes::load(&root).ok()?;
         let kind = Arc::new(data.types.get(kind)?.clone());
         Some(Mob::new(
             1,

@@ -5,7 +5,7 @@
 use crate::game::commands::Target;
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 use sunrise_world::food::Difficulty;
 
 pub(in crate::game) const BREEZE_BURST: &str = "minecraft:entity.breeze.wind_burst";
@@ -116,7 +116,7 @@ fn a_mobs_burst_leaves_vehicles_alone_with_mob_griefing_off() {
             !game
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
         );
         // The rule change re-derives the difficulty from the game's
         // (`Game::sync_rules`), which no level.dat set here.

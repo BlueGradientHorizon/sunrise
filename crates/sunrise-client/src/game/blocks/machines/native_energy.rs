@@ -6,8 +6,8 @@
 use super::Game;
 use mod_api::{BlockSide, TransactionContext};
 use std::sync::Arc;
-use sunrise_client::containers::{BlockEntity, ModEnergyBuffer};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_level::containers::{BlockEntity, ModEnergyBuffer};
 
 /// The amount in `nbt`: the int `energy`, as `SimpleEnergyHandler` saves it;
 /// anything else, or a negative, reads as empty.
@@ -155,12 +155,12 @@ mod tests {
             resource_util::move_resources,
         };
         use mod_platform::__private::part_tests::{ROBOT_FLUID, game_thread};
-        use sunrise_client::chunk::Chunk;
-        use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields};
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::fast_hash::FxHashMap;
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::{Direction, Vec3};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
+        use sunrise_level::fast_hash::FxHashMap;
+        use sunrise_sim::entities::ArmorStand;
+        use sunrise_sim::mobs::Mob;
         with_game(|game| {
             let _mods = game_thread();
             // Installing the capability fixture replaces the registry snapshot.
@@ -303,10 +303,10 @@ mod tests {
     fn a_buffers_energy_moves_by_its_sides_and_limits_and_an_abort_puts_it_back() {
         use super::super::super::native_entity_refs::tests::with_game;
         use mod_api::{BlockUpdateFlags, ENERGY, move_energy};
-        use sunrise_client::chunk::Chunk;
-        use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields};
-        use sunrise_client::fast_hash::FxHashMap;
         use sunrise_core::geometry::Direction;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
+        use sunrise_level::fast_hash::FxHashMap;
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world

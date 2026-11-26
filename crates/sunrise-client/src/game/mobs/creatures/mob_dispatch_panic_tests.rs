@@ -2,14 +2,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{
+use sunrise_mod_runtime::attachments::AttachmentType;
+use sunrise_sim::{
     join_seq::JoinSeq,
     join_seq::residency::{
         Owner,
         table::{EntityLookup, EntityTable, SourceEntity},
     },
 };
-use sunrise_mod_runtime::attachments::AttachmentType;
 
 pub(in crate::game) const LEVEL_VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "mob-panic-test",

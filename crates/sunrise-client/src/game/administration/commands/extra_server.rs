@@ -5,15 +5,13 @@ use crate::game::commands::extra::num;
 use crate::game::commands::extra::tr_error;
 use crate::game::commands::extra::two_places;
 use std::time::Instant;
-use sunrise_client::{
-    lan::waypoints::Icon,
-    text::{Style, Text},
-};
+use sunrise_client_core::text::{Style, Text};
 use sunrise_level::profile_lookup::{NameOrId, Resolve, ResolvedProfile};
 use sunrise_protocol::packets::{
     Empty,
     play::{self, Clientbound as C, DialogHolder},
 };
+use sunrise_sim::lan::waypoints::Icon;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Changes a player target's `postEffects`; whether `change` did, which
@@ -202,7 +200,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ));
         }
         // The player in place: a guest's own profile while their command runs.
-        let id = sunrise_client::lan::playerdata::ints_uuid(self.acting_uuid());
+        let id = sunrise_sim::lan::playerdata::ints_uuid(self.acting_uuid());
         let name = self.acting_player_name().to_owned();
         self.report_resolved_profile(
             "commands.fetchprofile.entity.success",
@@ -517,9 +515,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .iter()
                 .find(|m| m.id == id && !m.removed)
                 .map_or(0.0, |m| {
-                    sunrise_client::mobs::finalize::value(
+                    sunrise_sim::mobs::finalize::value(
                         m,
-                        sunrise_client::mobs::finalize::Attr::WaypointTransmitRange,
+                        sunrise_sim::mobs::finalize::Attr::WaypointTransmitRange,
                     )
                 });
         }

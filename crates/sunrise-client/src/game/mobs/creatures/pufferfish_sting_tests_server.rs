@@ -1,7 +1,7 @@
-use sunrise_client::mobs::Mob;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::Clientbound;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::motion::PlayerMotion;
 
 /// The game events the stung player's client was sent, as `(event, parameter)`.
 pub(in crate::game) fn stings(game: &crate::game::ServerGame<'_>) -> Vec<(u8, f32)> {

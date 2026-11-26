@@ -7,7 +7,7 @@ fn relative_item_teleports_keep_only_relative_horizontal_motion() {
     with_game(|game| {
         game.ui.registries.permission = 4;
         game.spawn_item_own(
-            sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+            sunrise_items::items::ItemStack::new("minecraft:stone", 1),
             [0.0, 64.0, 0.0],
             10,
         );
@@ -31,7 +31,7 @@ fn an_item_teleported_into_another_level_arrives_there_still() {
     with_game(|game| {
         game.ui.registries.permission = 4;
         game.spawn_item_own(
-            sunrise_client::items::ItemStack::new("minecraft:stick", 3),
+            sunrise_items::items::ItemStack::new("minecraft:stick", 3),
             [0.0, 64.0, 0.0],
             10,
         );
@@ -63,7 +63,7 @@ pub(in crate::game) fn run_portal_arrival_effects_command_items_merge_immediatel
         game.build_registries();
         game.set_allow_commands(true);
         game.spawn_item_own(
-            sunrise_client::items::ItemStack::new("minecraft:stick", 5),
+            sunrise_items::items::ItemStack::new("minecraft:stick", 5),
             [0.5, 70.0, 0.5],
             10,
         );
@@ -72,7 +72,7 @@ pub(in crate::game) fn run_portal_arrival_effects_command_items_merge_immediatel
         let incoming_uuid = game.uuid_for(game.dropped[0].id);
         game.enter_level(crate::game::Dim::Nether).unwrap();
         game.spawn_item_own(
-            sunrise_client::items::ItemStack::new("minecraft:stick", 3),
+            sunrise_items::items::ItemStack::new("minecraft:stick", 3),
             [1.5, 70.0, 1.5],
             10,
         );

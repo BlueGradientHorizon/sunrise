@@ -22,13 +22,13 @@ fn parse(text: &str) -> Result<Settings, String> {
 pub(in crate::game::server_side) fn choose(
     world: &std::path::Path,
     config: &std::path::Path,
-) -> sunrise_client::Result<()> {
+) -> sunrise_client_core::Result<()> {
     let settings = match std::fs::read_to_string(config) {
         Ok(text) => parse(&text).map_err(|e| format!("server.toml: {e}"))?,
         Err(why) if why.kind() == std::io::ErrorKind::NotFound => Settings::default(),
         Err(why) => return Err(format!("server.toml: {why}").into()),
     };
-    sunrise_client::save::biome_regions::choose(
+    sunrise_sim::save::biome_regions::choose(
         world,
         settings.missing == Missing::Vanilla,
         settings.adopt_installed,

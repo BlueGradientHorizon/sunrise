@@ -10,13 +10,13 @@ use crate::game::client_side::lightning::Bolt;
 use crate::game::client_side::lightning::StrikeState;
 use crate::game::client_side::lightning::thunder_strike_column;
 use crate::game::client_side::lightning::*;
-use sunrise_client::advancements::EntityView;
-use sunrise_client::mobs::{Damage, DamageKind, Species};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_sim::advancements::EntityView;
+use sunrise_sim::mobs::{Damage, DamageKind, Species};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.findLightningRod`: `PoiManager.findClosest` over the
@@ -158,7 +158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if let Some(uuid) = uuid {
                 self.score
                     .board
-                    .entity_removed(&sunrise_client::save::uuid_text(uuid));
+                    .entity_removed(&sunrise_sim::save::uuid_text(uuid));
             }
             self.forget_entity(id);
         }
@@ -320,7 +320,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// Server-side `LightningBolt.tick` for every bolt.
     pub(in crate::game) fn server_tick_bolts(&mut self) {
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let ticking = self.entity_ticking_area();
         let ids: Vec<u32> = self.bolts.iter().map(|b| b.id).collect();
         for id in ids {
@@ -633,7 +633,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mount: Option<u32>,
         from_command: bool,
     ) -> Option<u32> {
-        let pos = sunrise_client::entity_nbt::position(&tag).unwrap_or(Vec3::ZERO);
+        let pos = sunrise_sim::entity_nbt::position(&tag).unwrap_or(Vec3::ZERO);
         let at = [
             pos.x.clamp(-3.000_051_2e7, 3.000_051_2e7),
             pos.y.clamp(-2.0e7, 2.0e7),
@@ -649,7 +649,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let id = self.take_entity_id();
         let (mut bolt, constructor_uuid) = Bolt::new(id, at, false);
         bolt.apply_nbt(&tag);
-        let uuid = sunrise_client::entity_nbt::entity_uuid(&tag).unwrap_or(constructor_uuid);
+        let uuid = sunrise_sim::entity_nbt::entity_uuid(&tag).unwrap_or(constructor_uuid);
         if self.is_loaded_uuid_in_level(uuid) {
             return None;
         }
@@ -727,7 +727,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             if let Some(outcome) = outcome {
                 let old = self.mobs[i].clone();
-                let params = sunrise_client::mobs::conversion::Params {
+                let params = sunrise_sim::mobs::conversion::Params {
                     keep_equipment: false,
                     preserve_can_pick_up_loot: old.species() == Species::Pig,
                 };
@@ -753,7 +753,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     m.damage(
                         crate::game::entity::damage_level_of!(
                             self,
-                            &sunrise_client::health::NO_ATTACK,
+                            &sunrise_sim::health::NO_ATTACK,
                             no_push,
                             None
                         ),
@@ -775,7 +775,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if m.extra.variant > 0 {
                         m.extra.vector[0] = -1.0;
                         m.extra.variant =
-                            sunrise_client::mobs::copper_golem::weather_previous(m.extra.variant);
+                            sunrise_sim::mobs::copper_golem::weather_previous(m.extra.variant);
                         self.persist.force_meta(m.id, 16);
                     }
                 }
@@ -792,7 +792,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             m.damage(
                 crate::game::entity::damage_level_of!(
                     self,
-                    &sunrise_client::health::NO_ATTACK,
+                    &sunrise_sim::health::NO_ATTACK,
                     no_push,
                     None
                 ),
@@ -844,7 +844,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 EntityHandle::Boat(i) => {
                     let id = self.boats[i].id;
                     let kind = self.boats[i].entity_type();
-                    let source = sunrise_client::health::HurtSource {
+                    let source = sunrise_sim::health::HurtSource {
                         damage_type: "minecraft:lightning_bolt",
                         causing: bolt as i32,
                         direct: bolt as i32,
@@ -857,7 +857,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 EntityHandle::Cart(i) => {
                     let (id, kind) = (self.carts[i].id, self.carts[i].kind.id());
-                    let source = sunrise_client::health::HurtSource {
+                    let source = sunrise_sim::health::HurtSource {
                         damage_type: "minecraft:lightning_bolt",
                         causing: bolt as i32,
                         direct: bolt as i32,
@@ -870,7 +870,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 EntityHandle::Orb(i) => {
                     let id = self.orbs[i].id;
-                    let source = sunrise_client::health::HurtSource {
+                    let source = sunrise_sim::health::HurtSource {
                         damage_type: "minecraft:lightning_bolt",
                         causing: bolt as i32,
                         direct: bolt as i32,
@@ -996,7 +996,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let trap = self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
                 && self.world.random.next_double() < difficulty * 0.01
                 && !below.ends_with("lightning_rod");
             if !self.lightning_strike_allowed(None, pos, "weather") {
@@ -1029,8 +1029,8 @@ pub(in crate::game) mod tests {
     use crate::game::native_entity_refs::tests::collect_entities_in;
     use mod_api::{self, ServerHost};
     use std::sync::Arc;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]
@@ -1155,7 +1155,7 @@ pub(in crate::game) mod tests {
                 .convert_to(
                     &old,
                     "minecraft:zombified_piglin",
-                    sunrise_client::mobs::conversion::Params::KEEP_ALL,
+                    sunrise_sim::mobs::conversion::Params::KEEP_ALL,
                     false,
                     |_, _| {},
                 )
@@ -1199,7 +1199,7 @@ pub(in crate::game) mod tests {
                 ));
                 if player {
                     game.inventory[game.selected] =
-                        Some(sunrise_client::items::ItemStack::new("minecraft:shears", 1));
+                        Some(sunrise_items::items::ItemStack::new("minecraft:shears", 1));
                     assert!(
                         game.interact_mob(Some(super::super::InteractTarget {
                             id: id as i32,
@@ -1232,7 +1232,7 @@ pub(in crate::game) mod tests {
                 game.convert_to(
                     &old,
                     "minecraft:cow",
-                    sunrise_client::mobs::conversion::Params::KEEP_ALL,
+                    sunrise_sim::mobs::conversion::Params::KEEP_ALL,
                     false,
                     |_, _| {}
                 )

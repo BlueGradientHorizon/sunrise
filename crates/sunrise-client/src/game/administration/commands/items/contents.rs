@@ -144,7 +144,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Component::Container => slots.len() < 256,
             Component::Charged => slots.len() < 1024,
             // Contents whose weight overflows vanilla's `Fraction` take nothing more.
-            Component::Bundle => sunrise_client::bundle::Contents::from_items(
+            Component::Bundle => sunrise_items::bundle::Contents::from_items(
                 self.res.items(),
                 slots.iter().flatten().cloned().collect(),
             )
@@ -162,7 +162,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return true;
         }
         let Some(item) = item else { return true };
-        if !sunrise_client::menu::container_items::can_be_in_bundle(&self.loop_context, item) {
+        if !sunrise_sim::menu::container_items::can_be_in_bundle(&self.loop_context, item) {
             return false;
         }
         let rest = slots
@@ -171,7 +171,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|(i, _)| *i != index)
             .filter_map(|(_, s)| s.clone())
             .collect();
-        sunrise_client::bundle::Contents::from_items(self.res.items(), rest)
+        sunrise_items::bundle::Contents::from_items(self.res.items(), rest)
             .is_some_and(|contents| contents.room_for(self.res.items(), item) >= item.count)
     }
     /// ComponentSlotCollection.modifySlots: visit occupied slots only, then

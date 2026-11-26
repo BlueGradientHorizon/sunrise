@@ -1,7 +1,7 @@
 //! Merchant handles for villagers temporarily lent to an AI tick.
 use super::GoalCx;
-use crate::mobs::{Mob, Species, villager::VILLAGER_TYPES};
 use mod_api::{MerchantOffer, MerchantRef, PlayerRef};
+use sunrise_sim::mobs::{Mob, Species, villager::VILLAGER_TYPES};
 
 impl GoalCx<'_, '_> {
     fn lent_merchant(&self, merchant: MerchantRef) -> Option<&Mob> {

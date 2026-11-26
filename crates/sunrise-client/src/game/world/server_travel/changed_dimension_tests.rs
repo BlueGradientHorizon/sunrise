@@ -14,12 +14,10 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize},
 };
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
 const CONN: u32 = 12;
 const UUID: u128 = 120;
@@ -135,8 +133,7 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut crate::game::ServerGa
         guest.loaded = true;
         guest.health = 20.0;
         guest.motion = Some(Box::new(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5))
-                .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.5, 64.0, 5.5)).unwrap(),
         ));
         game.lan.as_mut().unwrap().hub.guests.push(guest);
         test(game);
@@ -261,7 +258,7 @@ fn overworld_to_nether() -> Vec<(String, String)> {
 #[test]
 #[ignore = "daily"]
 fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     with_server(ExecutionRole::DedicatedServer, |game| {
         let inventory_cursor = ItemStack::new("minecraft:iron_ingot", 3);
@@ -307,7 +304,7 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
 #[ignore = "daily"]
 fn a_cross_level_teleport_survives_cursor_overflow_removing_an_earlier_guest() {
     use mod_api::{EntityJoinLevelEvent, Flow, PlayerRef};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     struct RemoveFake(Arc<Mutex<Option<PlayerRef>>>);
     #[mod_api::__subscriptions]
@@ -382,8 +379,9 @@ fn a_cross_level_teleport_survives_cursor_overflow_removing_an_earlier_guest() {
 #[ignore = "daily"]
 fn a_failed_cross_level_trip_closes_the_retired_client_window() {
     use mod_api::{BlockUpdateFlags, EntityJoinLevelEvent, Flow};
-    use sunrise_client::{items::ItemStack, lan::Out};
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::{buf::Reader, ids::play::clientbound};
+    use sunrise_sim::lan::Out;
 
     const CHEST: [i32; 3] = [4, 64, 5];
     struct OpenOnOverflow;

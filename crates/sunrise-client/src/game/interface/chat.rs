@@ -12,27 +12,27 @@ use sunrise_client::{
         Chat, ChatAction, ChatScreen, ChatSource, Commands, QUEUE_EXPAND_ID, SYSTEM_INDICATOR,
         normalize_chat_message,
     },
-    command::{ArgType, Dispatcher, MOD_COMMAND},
     hud::HudBatch,
     screen_draw::Measure,
-    text::{ClickEvent, Style, Text},
 };
+use sunrise_client_core::text::{ClickEvent, Style, Text};
+use sunrise_command::{ArgType, Dispatcher, MOD_COMMAND};
 
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
 /// game's own, plus the commands native mods own (`chat_tree_for`).
 pub(in crate::game::client_side) fn chat_tree(
     remote: &Option<super::remote::Remote>,
-) -> &sunrise_client::command::Dispatcher {
+) -> &sunrise_command::Dispatcher {
     match remote.as_ref() {
         Some(server) => &server.chat_tree,
-        None => sunrise_client::command::vanilla::game_dispatcher(),
+        None => sunrise_command::vanilla::game_dispatcher(),
     }
 }
 /// The arguments of a typed `/profiler` the client answers itself: only when the chat tree's `profiler` is Sunrise's, else the server or mod that owns the name runs it.
 pub(in crate::game::client_side) fn sunrise_profiler_args<'a>(
     message: &'a str,
-    server_tree: Option<&sunrise_client::command::Dispatcher>,
+    server_tree: Option<&sunrise_command::Dispatcher>,
 ) -> Option<&'a str> {
     let args = message
         .strip_prefix('/')
@@ -47,9 +47,9 @@ use winit::keyboard::KeyCode;
 /// rest of the line as typed (`Dispatcher::with_mod_commands`), so the chat
 /// box colours and completes them as it does the game's own.
 pub(in crate::game::client_side) fn with_native_commands(
-    base: &sunrise_client::command::Dispatcher,
+    base: &sunrise_command::Dispatcher,
     names: &[&str],
-) -> sunrise_client::command::Dispatcher {
+) -> sunrise_command::Dispatcher {
     // A name the tree already has keeps that command (colour, completion).
     base.with_mod_commands(
         names
@@ -152,11 +152,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// rather than at each keystroke, and asking the mods then, not per key.
     pub(in crate::game) fn chat_tree_for(
         &mut self,
-        base: Option<&sunrise_client::command::Dispatcher>,
-    ) -> sunrise_client::command::Dispatcher {
+        base: Option<&sunrise_command::Dispatcher>,
+    ) -> sunrise_command::Dispatcher {
         let base = match base {
             Some(tree) => tree,
-            None => sunrise_client::command::vanilla::game_dispatcher(),
+            None => sunrise_command::vanilla::game_dispatcher(),
         };
         let mut commands = Vec::new();
         self.native_register_client_commands(&mut commands);
@@ -183,7 +183,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         super::native_server::register_dispatcher(
             &mut tree_with_mods,
             &tree,
-            sunrise_client::command::MOD_COMMAND,
+            sunrise_command::MOD_COMMAND,
             &arguments,
         );
         with_studio_commands(&with_native_commands(&tree_with_mods, &["studio"])).with_profiler()
@@ -613,7 +613,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mouse: (i32, i32),
         (x, y, w, h): (i32, i32, i32, i32),
     ) -> Vec<sunrise_client::screen_draw::Draw> {
-        let label = Text::literal(sunrise_client::lang::get_or(
+        let label = Text::literal(sunrise_client_core::lang::get_or(
             "multiplayer.stopSleeping",
             "Leave Bed",
         ));
@@ -1238,7 +1238,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Vec<(Text, u32)> {
         let mut lines = Vec::new();
         if let Some(name) = entity.get("name") {
-            let name = sunrise_client::component::to_text(name, &mut |s| Text::literal(s));
+            let name = sunrise_client_core::component::to_text(name, &mut |s| Text::literal(s));
             lines.push((name, u32::MAX));
         }
         let id = entity
@@ -1364,7 +1364,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn component_hover_effect(
         &mut self,
         batch: &mut HudBatch,
-        style: &sunrise_client::text::Style,
+        style: &sunrise_client_core::text::Style,
         at: (f32, f32),
     ) {
         if self.component_hover_canceled(batch, style, at) {
@@ -1377,7 +1377,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if let Some(stack) = style
             .hover_item
             .as_deref()
-            .and_then(sunrise_client::item_data::stack_from_hover)
+            .and_then(sunrise_items::item_data::stack_from_hover)
             .filter(|s| self.items().get(&s.item).is_some())
         {
             self.draw_stack_tooltip(batch, &stack, at.0, at.1);
@@ -1395,13 +1395,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn component_hover_canceled(
         &self,
         batch: &mut HudBatch,
-        style: &sunrise_client::text::Style,
+        style: &sunrise_client_core::text::Style,
         at: (f32, f32),
     ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ComponentHover) {
             return false;
         }
-        let Some(hover) = sunrise_client_lib::api_text::style_hover(style) else {
+        let Some(hover) = sunrise_sim::api_text::style_hover(style) else {
             return false;
         };
         let mut cancel = false;
@@ -1438,7 +1438,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.side.screenshot_sequence.0.is_some() {
             return None;
         }
-        let dir = sunrise_client::logging::player_dir().join("screenshots");
+        let dir = sunrise_level::logging::player_dir().join("screenshots");
         if std::fs::create_dir_all(&dir).is_err() {
             return None;
         }
@@ -1532,7 +1532,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.post_screenshot_chat(screenshot_cancel_line(message));
             return None;
         }
-        let root = sunrise_client::logging::player_dir().join("screenshots");
+        let root = sunrise_level::logging::player_dir().join("screenshots");
         self.side
             .chat_ui
             .screenshot_writes
@@ -1627,14 +1627,12 @@ pub(in crate::game) mod tests {
     use super::*;
     use crate::game::chat_common::{overworld_timelines, summonable_entities};
     use std::sync::Arc;
-    use sunrise_client::{
-        chat::{ChatAbilities, ChatVisibility},
-        command::Registries,
-    };
+    use sunrise_client::chat::{ChatAbilities, ChatVisibility};
+    use sunrise_command::Registries;
 
     #[test]
     fn a_typed_profiler_is_the_clients_unless_the_server_owns_the_name() {
-        let vanilla = sunrise_client::command::vanilla::game_dispatcher();
+        let vanilla = sunrise_command::vanilla::game_dispatcher();
         let ours = vanilla.with_profiler();
         assert_eq!(
             super::sunrise_profiler_args("/profiler share", Some(&ours)),
@@ -1676,7 +1674,7 @@ pub(in crate::game) mod tests {
         sunrise_protocol::item::custom::install(1000, vec!["example:marker".into()]).unwrap();
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
@@ -1850,7 +1848,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn a_client_commands_usage_is_parsed_by_the_chat_tree() {
         let reg = Registries::default();
-        let vanilla = sunrise_client::command::vanilla::game_dispatcher();
+        let vanilla = sunrise_command::vanilla::game_dispatcher();
         let commands = [mod_api::Command::new("xmode <mode:word>")];
         let arguments = super::super::native_server::command_arguments();
         let (tree, _, problems) = super::super::native_server::client_command_tree(
@@ -1863,14 +1861,11 @@ pub(in crate::game) mod tests {
         super::super::native_server::register_dispatcher(
             &mut chat,
             &tree,
-            sunrise_client::command::MOD_COMMAND,
+            sunrise_command::MOD_COMMAND,
             &arguments,
         );
         let parse = chat.parse("xmode fast", &reg);
-        assert_eq!(
-            parse.executable().unwrap().1,
-            sunrise_client::command::MOD_COMMAND
-        );
+        assert_eq!(parse.executable().unwrap().1, sunrise_command::MOD_COMMAND);
         assert!(
             chat.parse("xmode", &reg).executable().is_err(),
             "needs its mode"
@@ -1897,7 +1892,7 @@ pub(in crate::game) mod tests {
             assert!(tree.find("studio").is_some());
             assert_eq!(
                 tree.parse("studio start", &reg).executable().unwrap().1,
-                sunrise_client::command::MOD_COMMAND
+                sunrise_command::MOD_COMMAND
             );
             let parse = tree.parse("stu", &reg);
             let offered = tree.client_suggestions(&parse, 3, &reg).1;
@@ -1911,7 +1906,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn native_mod_commands_join_the_chat_tree() {
         let reg = Registries::default();
-        let vanilla = sunrise_client::command::vanilla::game_dispatcher();
+        let vanilla = sunrise_command::vanilla::game_dispatcher();
         let plain = with_native_commands(vanilla, &[]);
         assert_eq!(plain.nodes.len(), vanilla.nodes.len());
         assert!(plain.find("flyspeed").is_none());
@@ -1919,10 +1914,7 @@ pub(in crate::game) mod tests {
         assert!(tree.find("flyspeed").is_some());
         // The rest of the line goes to the mod, as `native_command` gets it.
         let parse = tree.parse("flyspeed 4", &reg);
-        assert_eq!(
-            parse.executable().unwrap().1,
-            sunrise_client::command::MOD_COMMAND
-        );
+        assert_eq!(parse.executable().unwrap().1, sunrise_command::MOD_COMMAND);
         let parse = tree.parse("fly", &reg);
         let offered: Vec<String> = tree
             .client_suggestions(&parse, 3, &reg)
@@ -1944,7 +1936,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn studio_command_tree_suggests_subcommands_and_arguments() {
         let reg = Registries::default();
-        let base = sunrise_client::command::vanilla::game_dispatcher();
+        let base = sunrise_command::vanilla::game_dispatcher();
         let tree = with_studio_commands(base);
         let suggestions = |input: &str| {
             let parse = tree.parse(input, &reg);
@@ -2031,19 +2023,19 @@ pub(in crate::game) mod tests {
         assert!(summonable.contains(&"minecraft:wind_charge".to_string()));
         assert!(summonable.contains(&"minecraft:breeze_wind_charge".to_string()));
 
-        assert!(sunrise_client::command::args::resource_matches(
+        assert!(sunrise_command::args::resource_matches(
             "wind",
             "minecraft:wind_charge"
         ));
-        assert!(sunrise_client::command::args::resource_matches(
+        assert!(sunrise_command::args::resource_matches(
             "wind",
             "minecraft:breeze_wind_charge"
         ));
-        assert!(sunrise_client::command::args::resource_matches(
+        assert!(sunrise_command::args::resource_matches(
             "minecraft:wind_charg",
             "minecraft:wind_charge"
         ));
-        assert!(!sunrise_client::command::args::resource_matches(
+        assert!(!sunrise_command::args::resource_matches(
             "minecraft:wind_charg",
             "minecraft:breeze_wind_charge"
         ));
@@ -2053,7 +2045,7 @@ pub(in crate::game) mod tests {
             summonable,
             ..Default::default()
         };
-        let vanilla = sunrise_client::command::vanilla::game_dispatcher();
+        let vanilla = sunrise_command::vanilla::game_dispatcher();
 
         let parse = vanilla.parse("summon wind", &reg);
         let (_range, suggestions) = vanilla.client_suggestions(&parse, "summon wind".len(), &reg);
@@ -2078,7 +2070,7 @@ pub(in crate::game) mod tests {
             ..Default::default()
         };
         reg.fill_from_exported(&exported);
-        let tree = sunrise_client::command::vanilla::game_dispatcher();
+        let tree = sunrise_command::vanilla::game_dispatcher();
         for input in ["playsound test:sample", "stopsound @s master test:sample"] {
             let parse = tree.parse(input, &reg);
             let (_, options) = tree.client_suggestions(&parse, input.len(), &reg);
@@ -2177,7 +2169,7 @@ pub(in crate::game) mod tests {
         let m = Measure(&font);
         let registries = Registries::default();
         let c = Commands {
-            dispatcher: sunrise_client::command::vanilla::game_dispatcher(),
+            dispatcher: sunrise_command::vanilla::game_dispatcher(),
             registries: &registries,
         };
         let (width, height) = (427.0, 240.0);

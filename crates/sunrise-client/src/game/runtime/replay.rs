@@ -9,11 +9,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use sunrise_client::{
-    Result,
     packet_source::{PacketSource, TimestampedPacket},
     studio::{Metadata, ReplayDriver},
-    text::Text,
 };
+use sunrise_client_core::{Result, text::Text};
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound, registry::SyncedNames};
 
 /// Decode a recorded play packet against the same registry view as live play.
@@ -35,7 +34,7 @@ pub(in crate::game) struct Replay {
     /// The packet replay playing, if any.
     pub(in crate::game) driver: Option<Box<dyn PacketSource>>,
     /// Camera perspective to restore after leaving replay playback.
-    pub(in crate::game) previous_camera_type: Option<sunrise_client::camera::CameraType>,
+    pub(in crate::game) previous_camera_type: Option<sunrise_level::camera_math::CameraType>,
     /// Replay opened from the title screen owns the synthetic remote session.
     pub(in crate::game) standalone: bool,
     pub(in crate::game) last_tick: Option<std::time::Instant>,
@@ -747,7 +746,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.replay.standalone = standalone;
         }
         self.replay.driver = Some(Box::new(driver));
-        self.side.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+        self.side.camera_type = sunrise_level::camera_math::CameraType::FirstPerson;
         self.side.title.0 = None;
         self.side.screen = Screen::Playing;
         self.commit_screen_transition();
@@ -798,7 +797,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.reset_studio_hand_state();
             // A title-screen replay has no previous world perspective to
             // restore. Start the next world in first person with visible hands.
-            self.side.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+            self.side.camera_type = sunrise_level::camera_math::CameraType::FirstPerson;
             if let Some(title) = self.side.title.0.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }
@@ -906,7 +905,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|v| v.iter().map(|(n, _)| n.clone()).collect())
             .unwrap_or_else(|| biome_names.clone());
 
-        let encoder = crate::lan::chunks::ChunkEncoder::with_signs(
+        let encoder = sunrise_sim::lan::chunks::ChunkEncoder::with_signs(
             self.res.facts().states.iter().map(|s| {
                 (
                     s.name.clone(),

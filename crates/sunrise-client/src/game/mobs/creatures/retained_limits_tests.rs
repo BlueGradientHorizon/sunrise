@@ -3,8 +3,8 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 
 pub(in crate::game) const ZOMBIE: u32 = 71;
 pub(in crate::game) const TARGET_GUEST: u32 = 12;

@@ -3,11 +3,11 @@
 //! width, Up/Down/Enter move between lines, Escape or Done closes.
 use super::Game;
 use sunrise_client::{
-    containers::BlockEntity,
     hud::{HudBatch, rgba},
-    signs::editor_sprite,
     ui::EditBox,
 };
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::signs_data::editor_sprite;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
 
@@ -77,7 +77,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let (x, y, z) = edit.pos;
         let near = self.eye_position().is_some_and(|eye| {
-            sunrise_client::lan::guest::within_block_range(eye, self.reach() + 4.0, [x, y, z])
+            sunrise_sim::lan::guest::within_block_range(eye, self.reach() + 4.0, [x, y, z])
         });
         let sign = matches!(
             self.world.block_entities.get(&edit.pos),
@@ -535,7 +535,7 @@ pub(in crate::game) mod tests {
     /// The Done button said "Done" in every language (#1927).
     #[test]
     fn done_button_reads_the_selected_language() {
-        use sunrise_client::lang::{Language, ResourceSource, scoped};
+        use sunrise_client_core::lang::{Language, ResourceSource, scoped};
         struct Vanilla;
         impl ResourceSource for Vanilla {
             fn read(&self, path: &str) -> Option<Vec<u8>> {

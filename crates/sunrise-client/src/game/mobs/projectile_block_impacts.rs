@@ -1,7 +1,8 @@
 //! Block callbacks shared by thrown projectiles and fishing bobbers.
 use super::{Game, creatures::ProjectileHitter};
-use sunrise_client::{Result, mobs::Who};
+use sunrise_client_core::Result;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_sim::mobs::Who;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The common block-state callbacks before projectile-specific breaking.
@@ -45,7 +46,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && (p.guest.is_none() || p.guest == self.side.lan_acting)
             {
                 self.award_custom_stat("target_hit", 1);
-                let projectile = sunrise_client::advancements::EntityView {
+                let projectile = sunrise_sim::advancements::EntityView {
                     kind: p.kind.to_owned(),
                     position: [p.position.x, p.position.y, p.position.z],
                     ..Default::default()

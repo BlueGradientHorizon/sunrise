@@ -7,8 +7,8 @@ use std::{path::PathBuf, time::Duration};
 use sunrise_client::{
     packet_source::PacketSource,
     studio::{ReplayDriver, TimelineAction},
-    text::Text,
 };
+use sunrise_client_core::text::Text;
 
 /// Studio's state in a `Game`: the replay editor's free camera, timeline and top bar. Studio is a
 /// Sunrise extra (docs/layers.md: the replay editor) on top of the platform's replay

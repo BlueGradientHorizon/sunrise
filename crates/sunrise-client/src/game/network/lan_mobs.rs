@@ -4,16 +4,16 @@
 //! guest it targets until it lets go. What it then does to `Who::Player`
 //! (hits, pushes, fire, its projectiles) runs with that guest swapped in.
 use super::Game;
-use sunrise_client::{
-    mobs::{MobEvent, Who},
-    projectiles::{Hit, Projectile},
-};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_gameplay::lan::mob_players::guest_view;
 pub(in crate::game) use sunrise_gameplay::lan::mob_players::{
     GuestViews, Present, acts_on_player, guest_bounds, omen_of, player_for,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::{
+    mobs::{MobEvent, Who},
+    projectiles::{Hit, Projectile},
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// How mobs see each guest in play (`player_view` with the guest swapped
@@ -52,7 +52,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if guest.is_fake() {
             return None;
         }
-        let uuid = sunrise_client::lan::playerdata::uuid_ints(guest.uuid);
+        let uuid = sunrise_sim::lan::playerdata::uuid_ints(guest.uuid);
         let id = u32::try_from(guest.entity_id).ok()?;
         Some((uuid, id))
     }
@@ -272,7 +272,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     &g.effects
                 };
                 Present {
-                    uuid: sunrise_client::lan::playerdata::uuid_ints(g.uuid),
+                    uuid: sunrise_sim::lan::playerdata::uuid_ints(g.uuid),
                     position: g.position,
                     eye: [x, y + g.eye_height(), z],
                     height: g.dimensions().height,
@@ -288,7 +288,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub fn acting_uuid(&self) -> [i32; 4] {
         self.side
             .lan_acting_uuid
-            .map(sunrise_client::lan::playerdata::uuid_ints)
+            .map(sunrise_sim::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid)
             .unwrap_or_default()
     }
@@ -297,8 +297,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::mobs::{Mob, PlayerView};
     use sunrise_gameplay::lan::mob_players::choose;
+    use sunrise_sim::mobs::{Mob, PlayerView};
 
     #[test]
     fn a_guests_view_keeps_who_hurt_them_and_who_they_hurt() {
@@ -469,7 +469,7 @@ mod tests {
         holder.uuid = [1, 2, 3, 4];
         let mut nearby = view(1.0, false);
         nearby.uuid = [5, 6, 7, 8];
-        cow.extra.leash = Some(sunrise_client::mobs::leash::Holder::Player);
+        cow.extra.leash = Some(sunrise_sim::mobs::leash::Holder::Player);
         cow.extra.leash_player = Some(holder.uuid);
         let guests = vec![(7, holder.clone()), (8, nearby.clone())];
         assert_eq!(player_for(&cow, None, &guests, None), Some(7));
@@ -484,7 +484,7 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
-        let types = sunrise_client::mobs::MobTypes::load(&root).ok()?;
+        let types = sunrise_sim::mobs::MobTypes::load(&root).ok()?;
         let t = std::sync::Arc::new(types.types.get(kind)?.clone());
         Some(Mob::new(1, t, MOB, 0.0))
     }

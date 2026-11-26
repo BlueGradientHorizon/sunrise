@@ -12,8 +12,9 @@ use super::{
     natural_spawning,
 };
 use mod_api::{EntityRef, EntitySpawn, LevelRef, SpawnBody, SpawnFlags, SpawnLimits};
-use sunrise_client::{items::ItemStack, lan::playerdata::uuid_ints, projectiles::Projectile};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{lan::playerdata::uuid_ints, projectiles::Projectile};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `LevelRef::spawn_entity`: a thrown projectile, a mob or a general row of
@@ -63,7 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if owner.is_some() {
                     return None;
                 }
-                let kind = sunrise_client::command::args::normalized(kind);
+                let kind = sunrise_command::args::normalized(kind);
                 if self.difficulty_id() == 0
                     && self
                         .res
@@ -175,7 +176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             position: pos,
             velocity,
             rotation: rotation.unwrap_or([0.0; 2]),
-            uuid: sunrise_client::save::insecure_uuid(&mut sunrise_client::random_source::entity()),
+            uuid: sunrise_sim::save::insecure_uuid(&mut sunrise_level::random_source::entity()),
             owner,
             envelope: GeneralTypeEnvelope {
                 type_key: kind.to_owned(),
@@ -260,9 +261,9 @@ mod tests {
         WorldEpoch,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::mobs::spawn_selection::{Category, Counted, SpawnPlayer, SpawnState};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::spawn_selection::{Category, Counted, SpawnPlayer, SpawnState};
 
     /// What a spawn told the mods, in order.
     type Heard = Arc<Mutex<Vec<String>>>;
@@ -484,7 +485,7 @@ mod tests {
             // Projectile.shoot: atan2(x, z) and atan2(y, horizontal), in degrees.
             assert!((p.yaw - 45.0).abs() < 1.0e-4 && p.pitch.abs() < 1.0e-6);
             assert_eq!(p.item.as_ref().map(|item| item.count), Some(1));
-            assert_eq!(p.owner, Some(sunrise_client::mobs::Who::Mob(cow.id())));
+            assert_eq!(p.owner, Some(sunrise_sim::mobs::Who::Mob(cow.id())));
             assert!(!p.left_owner);
             // A type that isn't thrown, and an owner in no level, refuse.
             assert_eq!(

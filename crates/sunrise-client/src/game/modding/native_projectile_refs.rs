@@ -4,13 +4,13 @@
 //! in lists of their own.
 use super::{Game, commands::Target};
 use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::{
     arrows::Pickup,
     lan::playerdata::{ints_uuid, uuid_ints},
     mobs::Who,
     projectiles::{OwnerFields, Projectile, ProjectileKind, Turn},
 };
-use sunrise_core::geometry::Vec3;
 
 /// Where a projectile handle's entity lives.
 #[derive(Clone, Copy)]
@@ -404,14 +404,14 @@ mod tests {
     };
     use super::*;
     use mod_api::WorldEpoch;
-    use sunrise_client::{mobs::Mob, motion::PlayerMotion};
     use sunrise_core::random::RandomSource;
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     #[test]
     #[ignore = "daily"]
     fn a_boat_owned_snowball_excludes_its_owner_until_it_leaves() {
-        use sunrise_client::projectiles::{Hit, ProjectileWorld};
         use sunrise_core::geometry::Aabb;
+        use sunrise_sim::projectiles::{Hit, ProjectileWorld};
         struct Air(Vec<(Who, Aabb)>);
         impl ProjectileWorld for Air {
             fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_vehicle_owned_trident_does_not_scale_damage_as_a_living_attacker() {
-        use sunrise_client::projectiles::Hit;
+        use sunrise_sim::projectiles::Hit;
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -781,7 +781,7 @@ mod tests {
             let saved = game.uuid_for(boat_id);
             let tag = game.rockets[0].to_nbt([9; 4], None, None, game.res.items());
             let back = Rocket::from_nbt(
-                sunrise_client::entity_nbt::firework_rocket_from_nbt(&tag, None).unwrap(),
+                sunrise_sim::entity_nbt::firework_rocket_from_nbt(&tag, None).unwrap(),
             );
             assert_eq!(back.owner_uuid, Some(saved));
         });

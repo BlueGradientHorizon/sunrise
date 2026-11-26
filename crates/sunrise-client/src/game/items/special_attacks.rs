@@ -1,6 +1,6 @@
 //! Accepted melee hits on special targets and their shared attacker tail.
 use super::{dragon::Hurt, minecarts::CartHit, *};
-use sunrise_client::mobs::DamageKind;
+use sunrise_sim::mobs::DamageKind;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Player.attack's cost after an accepted special-entity hurt. Hanging
@@ -70,7 +70,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (damage, scale, _, magic) = self.melee_damage(kind, false, Some(id as u32));
         let sweep = self.sweep_before_hit(kind, false);
         let attacker = self.own_entity_id();
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
             direct: attacker,
@@ -80,7 +80,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);
         if !crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
-                sunrise_client::health::Hurting::Entity(id, kind, source),
+                sunrise_sim::health::Hurting::Entity(id, kind, source),
                 vanilla,
             )
             && self.hurt_cart_result(i, damage, self.creative, burning, CartHit::player())

@@ -1,6 +1,6 @@
 use super::Game;
 use crate::game::jigsaw_blocks::Pos;
-use sunrise_client::{
+use sunrise_level::{
     containers::BlockEntity,
     jigsaw_block::{JigsawBlock, JointType},
 };
@@ -24,7 +24,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: Pos,
         tag: &Tag,
     ) -> Option<(Pos, BlockEntity)> {
-        let (key, mut entity) = sunrise_client::save::decode_block_entity_replacing(
+        let (key, mut entity) = sunrise_sim::save::decode_block_entity_replacing(
             tag,
             &self.data_block_name([pos.0, pos.1, pos.2]),
             self.world.block_entities.get(&pos),
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use sunrise_client::containers::BlockEntity;
+    use sunrise_level::containers::BlockEntity;
 
     /// A single-player jigsaw edit is applied by the game that is its own
     /// server, as `handleSetJigsawBlock` does there, and marks the chunk.

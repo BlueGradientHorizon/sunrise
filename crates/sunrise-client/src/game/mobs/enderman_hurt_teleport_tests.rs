@@ -1,11 +1,9 @@
 //! `Enderman.hurtServer` teleports inside the hurt the game layer deals.
 use super::{Options, Progress, Settings, explosion::BlockInteraction, load_resources};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    mobs::{Mob, MobEvent},
-};
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::{Mob, MobEvent};
 
 /// A game over 5x5 empty chunks around (0, 0) with a stone floor at y = 3:
 /// every enderman teleport from (8.5, 4, 8.5) lands on it or fails.
@@ -138,11 +136,11 @@ fn an_infested_endermans_silverfish_come_out_where_it_was_hurt() {
     let hurt = |seed| {
         let mut mob = enderman(&game, 600, at, seed);
         mob.add_effect("minecraft:infested", 200, 0);
-        let mut level = sunrise_client::health::TestLevel::new(0);
+        let mut level = sunrise_sim::health::TestLevel::new(0);
         mob.damage(
             &mut level.level(),
             1.0,
-            sunrise_client::mobs::Damage::of(sunrise_client::mobs::DamageKind::Generic),
+            sunrise_sim::mobs::Damage::of(sunrise_sim::mobs::DamageKind::Generic),
         );
         mob
     };
@@ -193,7 +191,7 @@ fn shulker(game: &crate::game::ServerGame<'_>, id: u32, at: Vec3, seed: i64) -> 
 #[test]
 #[ignore = "daily"]
 fn a_shulker_bullets_hit_teleports_an_open_shulker_before_it_returns() {
-    use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
+    use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let mut resources = None;
     let mut game = floored_game(&mut resources, &root);
@@ -220,7 +218,7 @@ fn a_shulker_bullets_hit_teleports_an_open_shulker_before_it_returns() {
         game.projectile_hit(
             &bullet,
             Hit::Entity {
-                who: sunrise_client::mobs::Who::Mob(id),
+                who: sunrise_sim::mobs::Who::Mob(id),
                 at: Vec3::new(at.x, at.y + 0.5, at.z),
             },
         )
@@ -267,7 +265,7 @@ fn a_teleporting_shulker_leaves_its_rider_behind() {
             .unwrap()
             .clone();
         game.mobs.push(zombie);
-        sunrise_client::mobs::riders::link(&mut game.mobs, rider, id);
+        sunrise_sim::mobs::riders::link(&mut game.mobs, rider, id);
         game.settle_hurt_teleports().unwrap();
         let s = game.mobs.iter().find(|m| m.id == id).unwrap();
         let z = game.mobs.iter().find(|m| m.id == rider).unwrap();
@@ -327,7 +325,7 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
         let mut events = Vec::new();
         {
             let world = game.mob_world_base(&others);
-            sunrise_client::mobs::shulker::run_pending_teleports(
+            sunrise_sim::mobs::shulker::run_pending_teleports(
                 &mut mob,
                 &world,
                 &mut level_random,
@@ -382,14 +380,17 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
         });
         assert_eq!(
             posted,
-            [(old_center, Some(sunrise_client::mobs::Who::Mob(id)))],
+            [(old_center, Some(sunrise_sim::mobs::Who::Mob(id)))],
             "seed {seed}: the teleport event is posted from the shulker at its old position"
         );
         // The sensor above the old block holds that vibration.
         game.side.chat_capture = Some(Vec::new());
         assert!(game.run_command("data get block 8 5 8 listener.selector.event"));
         let said = game.side.chat_capture.take().unwrap_or_default();
-        let said: String = said.iter().map(sunrise_client::text::Text::plain).collect();
+        let said: String = said
+            .iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect();
         assert!(
             said.contains("minecraft:teleport") && said.contains("[8.5d, 4.5d, 8.5d]"),
             "seed {seed}: the sensor did not hear the teleport: {said}"

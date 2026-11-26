@@ -3,7 +3,7 @@
 //! every path that calls it (use, the inventory menu, the creative screen,
 //! the swap-hands key, dispensers), for the host and for LAN guests.
 use super::Game;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// The equipment slots `onEquipItem` can act on, as `EquipmentSlot` names:
 /// the armour (`Player.doesEmitEquipEvent`: these emit the game event) and

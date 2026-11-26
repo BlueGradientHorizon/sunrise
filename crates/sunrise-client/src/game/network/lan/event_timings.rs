@@ -16,7 +16,7 @@ pub(in crate::game) fn note_event(
         return;
     };
     let ms = started.elapsed().as_secs_f32() * 1000.0;
-    sunrise_client::spans::note(ms, || describe_event(host, &kind, detail.as_ref()));
+    sunrise_level::spans::note(ms, || describe_event(host, &kind, detail.as_ref()));
     let (name, conn, player) = kind;
     timings.add(name, (conn, player), detail, ms);
 }
@@ -36,7 +36,7 @@ pub(in crate::game) fn describe_burst(
         "{} x {} under {} ms each",
         burst.count,
         burst.kind,
-        sunrise_client::spans::NOTE_MS
+        sunrise_level::spans::NOTE_MS
     );
     if let Some(d) = &burst.detail {
         line.push_str(&format!(" ({d})"));

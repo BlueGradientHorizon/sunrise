@@ -76,8 +76,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-#[cfg(test)]
-use sunrise_client::mobs::Damage;
 use sunrise_client_core::gamerules::Value as GameRuleValue;
 use sunrise_client_core::suggestion::Suggestion;
 use sunrise_core::{
@@ -86,25 +84,27 @@ use sunrise_core::{
     position::BlockPos,
     ticks::{ScheduleResult, TickPriority},
 };
+#[cfg(test)]
+use sunrise_sim::mobs::Damage;
 use sunrise_world::level::BonemealCheck;
 #[allow(unused_imports)]
 use winit::{event::MouseButton, keyboard::KeyCode};
 use {
-    sunrise_client::atlas_sources::qualified, sunrise_client::biome::BiomeColors,
-    sunrise_client::biome::SpawnEntry, sunrise_client::block_entities::Pos,
-    sunrise_client::containers::BlockEntity, sunrise_client::containers::MOD_MENUS,
-    sunrise_client::containers::ModBlockEntityFields, sunrise_client::crafting::Ingredient,
-    sunrise_client::crafting::recipe_result, sunrise_client::extras::Corner,
-    sunrise_client::extras_hud::Corners, sunrise_client::fast_hash::FxHashMap,
-    sunrise_client::health::Attack, sunrise_client::health::DamageContainer,
-    sunrise_client::health::DamageHooks, sunrise_client::health::DamageLevel,
-    sunrise_client::health::HurtSource, sunrise_client::health::Hurting,
-    sunrise_client::health::Knock, sunrise_client::health::ShieldBlock,
-    sunrise_client::health::Victim, sunrise_client::hud::HudBatch, sunrise_client::hud::rgba,
-    sunrise_client::items::ItemStack, sunrise_client::keybinds, sunrise_client::mobs::Who,
-    sunrise_client::mod_list, sunrise_client::music::Music, sunrise_client::music::MusicLayer,
-    sunrise_client::text::Text, sunrise_level::particle_options::ParticleOptions,
-    sunrise_level::particle_options::ParticleType, sunrise_sim::first_person_sim::Hand,
+    sunrise_client::atlas_sources::qualified, sunrise_client::extras::Corner,
+    sunrise_client::extras_hud::Corners, sunrise_client::hud::HudBatch, sunrise_client::hud::rgba,
+    sunrise_client::keybinds, sunrise_client::music::Music, sunrise_client::music::MusicLayer,
+    sunrise_client_core::text::Text, sunrise_items::items::ItemStack,
+    sunrise_level::biome::BiomeColors, sunrise_level::biome::SpawnEntry,
+    sunrise_level::block_entities::Pos, sunrise_level::containers::BlockEntity,
+    sunrise_level::containers::MOD_MENUS, sunrise_level::containers::ModBlockEntityFields,
+    sunrise_level::fast_hash::FxHashMap, sunrise_level::particle_options::ParticleOptions,
+    sunrise_level::particle_options::ParticleType, sunrise_mod_package::mod_list,
+    sunrise_sim::crafting::Ingredient, sunrise_sim::crafting::recipe_result,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
+    sunrise_sim::health::DamageContainer, sunrise_sim::health::DamageHooks,
+    sunrise_sim::health::DamageLevel, sunrise_sim::health::HurtSource,
+    sunrise_sim::health::Hurting, sunrise_sim::health::Knock, sunrise_sim::health::ShieldBlock,
+    sunrise_sim::health::Victim, sunrise_sim::mobs::Who,
 };
 use {
     sunrise_core::{

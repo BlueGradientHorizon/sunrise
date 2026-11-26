@@ -6,11 +6,11 @@ use sunrise_core::geometry::Vec3;
 #[ignore = "daily"]
 fn selector_reads_independent_host_and_guest_progress() {
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
+    use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::{
         lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
         motion::PlayerMotion,
     };
-    use sunrise_protocol::packets::configuration::ClientInformation;
     crate::game::native_entity_refs::tests::with_game(|game| {
         let scratch = std::env::temp_dir().join(format!(
             "sunrise-guest-selector-{}-{}",
@@ -92,9 +92,9 @@ fn selector_reads_independent_host_and_guest_progress() {
         );
         let select = |g: &mut crate::game::ServerGame<'_>, condition: &str| {
             let text = format!("@a[advancements={{{ROOT}={condition}}}]");
-            let s = sunrise_client::command::selector::parse(
-                &mut sunrise_client::command::Reader::new(&text),
-                &sunrise_client::command::args::Registries::default(),
+            let s = sunrise_command::selector::parse(
+                &mut sunrise_command::Reader::new(&text),
+                &sunrise_command::args::Registries::default(),
                 true,
             )
             .unwrap();

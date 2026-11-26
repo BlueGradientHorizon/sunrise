@@ -184,7 +184,7 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
                 // Prevent the other cart's own tick from changing the hook's write.
                 game.riding = Some(73);
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                let mut rider = sunrise_client::mobs::Mob::new(72, kind, start, 0.0);
+                let mut rider = sunrise_sim::mobs::Mob::new(72, kind, start, 0.0);
                 rider.extra.mount = Some(71);
                 game.persist
                     .off_level
@@ -274,7 +274,7 @@ fn disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks() {
                 game.reset_entity_residency();
                 assert!(game.ui.rules.set(
                     "tnt_explodes",
-                    sunrise_client::gamerules::Value::Bool(false),
+                    sunrise_client_core::gamerules::Value::Bool(false),
                 ));
                 let start = Vec3::new(0.5, 64.25, 0.5);
                 let stone = game
@@ -285,7 +285,7 @@ fn disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks() {
                     .unwrap();
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 game.world.set(0, 63, 0, stone).unwrap();
                 let mut cart = Minecart::new(71, CartKind::Tnt, start);
@@ -297,9 +297,8 @@ fn disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks() {
                 cart.fall_distance = 10.0;
                 game.carts.push(cart);
                 if ridden {
-                    game.player = Some(
-                        sunrise_client::motion::PlayerMotion::new(game.motion, start).unwrap(),
-                    );
+                    game.player =
+                        Some(sunrise_sim::motion::PlayerMotion::new(game.motion, start).unwrap());
                     super::super::native_entity_refs::tests::bind_local_player(game, 70, 70);
                     game.riding = Some(71);
                     assert!(game.tick_cart_riding(Keys::default()));

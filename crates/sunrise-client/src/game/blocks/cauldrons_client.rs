@@ -9,7 +9,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         pos: [i32; 3],
         held: Option<&ItemStack>,
-    ) -> sunrise_client::cauldron::Outcome {
+    ) -> sunrise_sim::cauldron::Outcome {
         self.client_cauldron_prediction(pos, held).0
     }
 }

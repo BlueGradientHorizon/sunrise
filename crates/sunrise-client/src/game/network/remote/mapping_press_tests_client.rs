@@ -103,7 +103,7 @@ pub(in crate::game) fn with_callback_game(
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_client_game(|game| {
-            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+            game.set_local_mode(sunrise_command::args::GameMode::Survival);
             game.side.title.0 = None;
             game.side.screen = Screen::Playing;
             game.remote.as_mut().unwrap().loaded_sent = true;

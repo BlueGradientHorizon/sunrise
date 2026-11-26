@@ -9,18 +9,17 @@ use crate::game::creatures::thrown_item_axes;
 use crate::game::creatures::thrown_item_quad;
 use crate::game::creatures::*;
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::{
-    Result,
-    graphics::EntityCullingMode,
-    mesher::Vertex,
-    mobs::{Mob, MobEvent, Species, Who},
-    projectiles::{Projectile, ProjectileKind},
-};
+use sunrise_client::{graphics::EntityCullingMode, mesher::Vertex};
+use sunrise_client_core::Result;
 use sunrise_client_render::render_geometry::EntitySpan;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig::Mth},
     position::BlockPos,
     random::RandomSource,
+};
+use sunrise_sim::{
+    mobs::{Mob, MobEvent, Species, Who},
+    projectiles::{Projectile, ProjectileKind},
 };
 
 #[path = "living_draw_client.rs"]
@@ -31,10 +30,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_arrow_event(
         &mut self,
         at: Vec3,
-        event: sunrise_client::arrows::ArrowEvent,
+        event: sunrise_sim::arrows::ArrowEvent,
     ) {
-        use sunrise_client::arrows::{ArrowEvent, ArrowParticle};
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+        use sunrise_sim::arrows::{ArrowEvent, ArrowParticle};
         let kind = |k| match k {
             ArrowParticle::Bubble => ParticleType::Bubble,
             ArrowParticle::Crit => ParticleType::Crit,
@@ -68,7 +67,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_arrow_scene<'s>(
         &'s self,
         rain: &'s dyn Fn(BlockPos) -> bool,
-    ) -> sunrise_client::arrows::ArrowScene<'s, 's> {
+    ) -> sunrise_sim::arrows::ArrowScene<'s, 's> {
         self.arrow_scene_with(rain, None, &())
     }
     pub(in crate::game) fn client_shulker_lid_push(
@@ -170,7 +169,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             paused: self.pause,
             first_person: self.side.camera_type.is_first_person(),
             third_person_reversed: self.side.camera_type
-                == sunrise_client::camera::CameraType::ThirdPersonFront,
+                == sunrise_level::camera_math::CameraType::ThirdPersonFront,
             ..Default::default()
         });
         MobDrawFrame {
@@ -273,8 +272,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         width: f64,
         height: f64,
     ) {
-        let options = sunrise_client::particles::ParticleOptions::simple(
-            sunrise_client::particles::ParticleType::Poof,
+        let options = sunrise_level::particle_options::ParticleOptions::simple(
+            sunrise_level::particle_options::ParticleType::Poof,
         );
         for _ in 0..20 {
             let r = self.side.particles.0.level_random();
@@ -291,8 +290,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// that swims along, and bubbles up the beam to its target. The server
     /// never draws them, so the mob's own random stays untouched.
     pub(in crate::game::client_side) fn guardian_bubbles(&mut self) {
-        use sunrise_client::mobs::guardian;
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+        use sunrise_sim::mobs::guardian;
         let mut swimming = Vec::new();
         let mut beams = Vec::new();
         for m in &self.mobs {
@@ -344,10 +343,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Handle client-produced `MobEvent` visuals and local movement effects.
     pub(in crate::game) fn handle_client_mob_events(
         &mut self,
-        events: &mut Vec<sunrise_client::mobs::MobEvent>,
+        events: &mut Vec<sunrise_sim::mobs::MobEvent>,
     ) {
-        use sunrise_client::mobs::MobEvent;
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+        use sunrise_sim::mobs::MobEvent;
         for event in events.drain(..) {
             match event {
                 MobEvent::Sound(name, at, volume, pitch) => {
@@ -453,7 +452,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// thrown item where it broke, at rest for a snowball, scattered by the
     /// client entity's random (the particle engine's here) for an egg.
     pub(in crate::game::client_side) fn item_burst(&mut self, at: [f64; 3], item: &str) {
-        let options = self.item_particle(&sunrise_client::items::ItemStack::new(item, 1));
+        let options = self.item_particle(&sunrise_items::items::ItemStack::new(item, 1));
         let egg = item == "minecraft:egg";
         for _ in 0..8 {
             let v = if egg {
@@ -593,7 +592,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let m = glam::Mat4::from_translation(c)
                     * glam::Mat4::from_rotation_y((a.yaw - 90.0).to_radians())
                     * glam::Mat4::from_rotation_z((a.pitch + 90.0).to_radians());
-                let poses = sunrise_client::mobs::anim::Poses::new(model);
+                let poses = sunrise_sim::mobs::anim::Poses::new(model);
                 sunrise_client::mobs::render::draw(
                     model,
                     m,
@@ -623,7 +622,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 {
                     use sunrise_core::geometry::trig;
                     let tc = a.age as f32 + alpha as f32;
-                    let mut poses = sunrise_client::mobs::anim::Poses::new(model);
+                    let mut poses = sunrise_sim::mobs::anim::Poses::new(model);
                     poses.yrot("main", a.yaw.to_radians());
                     poses.xrot("main", a.pitch.to_radians());
                     let light = (packed & 0xFF) | ((15 * 16) << 8);
@@ -676,7 +675,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     "entity/wither/wither"
                 };
                 if let (Some(model), Some(r)) = (model, atlas.sprites.get(tex).copied()) {
-                    let mut poses = sunrise_client::mobs::anim::Poses::new(model);
+                    let mut poses = sunrise_sim::mobs::anim::Poses::new(model);
                     poses.yrot("head", a.yaw.to_radians());
                     poses.xrot("head", a.pitch.to_radians());
                     let base = glam::Mat4::from_translation(c)

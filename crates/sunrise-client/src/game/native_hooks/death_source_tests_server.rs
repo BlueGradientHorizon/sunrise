@@ -6,8 +6,9 @@ use crate::game::native_hooks::death_source_tests::mob;
 use crate::game::native_hooks::death_source_tests::observed;
 use crate::game::native_hooks::death_source_tests::player_arrow;
 use std::sync::Arc;
-use sunrise_client::{items::ItemStack, mobs::Who, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{mobs::Who, motion::PlayerMotion};
 
 #[test]
 #[ignore = "daily"]

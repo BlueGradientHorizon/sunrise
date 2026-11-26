@@ -1,8 +1,10 @@
 use crate::game::server_side::use_hand::scaffolding_inside_tests::name;
 use crate::game::server_side::use_hand::scaffolding_inside_tests::*;
 use crate::game::{Hit, game_tests::tests::server_game};
-use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 
 /// A player standing inside a scaffolding block, looking straight up: the eye
 /// is inside the block's outline (a full block while scaffolding is in hand),

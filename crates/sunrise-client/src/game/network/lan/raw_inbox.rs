@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn resume_raw_inbox(
         &mut self,
         hub: &mut Hub,
-        entities: &[sunrise_client::lan::entity::EntityState],
+        entities: &[sunrise_sim::lan::entity::EntityState],
         spawn: [f64; 3],
     ) -> Vec<HostEvent> {
         // Raw transactions finished above. Reborrow current world state only
@@ -39,7 +39,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         mut host: LanHost,
         mut events: Vec<HostEvent>,
-        entities: &[sunrise_client::lan::entity::EntityState],
+        entities: &[sunrise_sim::lan::entity::EntityState],
         spawn: [f64; 3],
     ) -> Option<LanHost> {
         let source = self.dim;
@@ -51,7 +51,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 other_entities.as_slice()
             };
-            let back = sunrise_client::spans::time("lan_events", || {
+            let back = sunrise_level::spans::time("lan_events", || {
                 self.lan_process_events(host, events, active_entities, active_spawn)
             });
             let Some(back) = back else {

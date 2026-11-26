@@ -4,7 +4,7 @@ use super::{
     collision_source::{Mover, boat, cart, cart_reach, player},
     commands::Target,
 };
-use sunrise_client::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
+use sunrise_sim::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Fills `out` with the entities that can be solid to a player as `Entity.canBeCollidedWith`
@@ -36,16 +36,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// [`Self::entity_collisions`] for an armor stand, which mobs can ride (`/ride`): each mob's
     /// box comes with the vehicle at the bottom of what it rides, so the stand leaves its own
     /// riders out (`isPassengerOfSameVehicle`, through the grid's `near_except`).
-    pub(in crate::game) fn stand_entity_collisions(
-        &self,
-    ) -> sunrise_client::entities::ObstacleGrid {
+    pub(in crate::game) fn stand_entity_collisions(&self) -> sunrise_sim::entities::ObstacleGrid {
         let mut boxes = Vec::new();
         let mut roots = Vec::new();
         self.each_solid(Mover::Passive, |c, mob| {
             boxes.push(c.bounds);
             roots.push(mob.and_then(|j| c.mount.and_then(|_| self.mob_root_vehicle(j))));
         });
-        sunrise_client::entities::ObstacleGrid::with_roots(boxes, roots)
+        sunrise_sim::entities::ObstacleGrid::with_roots(boxes, roots)
     }
 
     pub(in crate::game) fn server_boat_collision_root(

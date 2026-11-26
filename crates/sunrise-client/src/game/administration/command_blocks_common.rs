@@ -3,8 +3,8 @@ use super::{
     Game,
     minecarts::{CartKind, Minecart},
 };
-use sunrise_client::{command_block::CommandBlock, containers::BlockEntity};
 use sunrise_gameplay::command_blocks::state_of;
+use sunrise_level::{command_block::CommandBlock, containers::BlockEntity};
 use sunrise_world::chunk::BlockState;
 
 pub(in crate::game) type Pos = (i32, i32, i32);

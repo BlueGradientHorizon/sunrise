@@ -7,14 +7,12 @@
 use super::*;
 use crate::game::{Options, Progress, Settings, lan::LanHost, load_resources};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
-    lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
-    signs::SignData,
-};
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_level::signs_data::SignData;
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 const A: u32 = 2;
 const B: u32 = 3;
@@ -390,7 +388,7 @@ fn a_placed_sign_with_a_translated_line_opens_no_editor() {
     // The sign item's text (`DataComponents.SIGN_TEXT_FRONT`, which
     // `SignBlockEntity.applyImplicitComponents` puts on the placed sign).
     let mut stack = ItemStack::new("minecraft:oak_sign", 1);
-    let front = sunrise_client::command::snbt::parse_fully(
+    let front = sunrise_command::snbt::parse_fully(
         r#"{messages:[{translate:"item.minecraft.stick"},"","",""]}"#,
     )
     .unwrap();

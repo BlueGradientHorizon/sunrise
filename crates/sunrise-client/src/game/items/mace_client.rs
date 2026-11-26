@@ -1,7 +1,7 @@
 use super::Game;
 use crate::game::server_side::mace::KNOCKBACK_RADIUS;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_core::{position::BlockPos, random::RandomSource};
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Level event 2013 (`ParticleUtils.spawnSmashAttackParticles`): dust

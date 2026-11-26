@@ -46,7 +46,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let block = self.world.block(pos[0], pos[1], pos[2]);
         if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&key) {
             if m.id() == name
-                && sunrise_client::block_entity_types::valid(
+                && sunrise_client_core::block_entity_types::valid(
                     &self.res.facts().get(block).name,
                     name,
                 ) == Some(true)
@@ -80,14 +80,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for (k, v) in ["x", "y", "z"].into_iter().zip(pos) {
             full.insert(k.into(), Tag::Int(v));
         }
-        if let Some((_, mut loaded)) =
-            sunrise_client::save::decode_block_entity(&Tag::Compound(full))
+        if let Some((_, mut loaded)) = sunrise_sim::save::decode_block_entity(&Tag::Compound(full))
         {
             keep_client_state(self.world.block_entities.get(&key), &mut loaded);
             let command_block = matches!(loaded, BlockEntity::CommandBlock(_));
             self.world.block_entities.insert(key, loaded);
             if source == BlockEntityDataSource::Chunk {
-                sunrise_client::spans::note_block_entity_loads(1);
+                sunrise_level::spans::note_block_entity_loads(1);
             }
             self.side_update_spawner_display(key);
             // The section is drawn again with what the block entity shows.
@@ -109,7 +108,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             !self.is_logical_server(),
             "remote_open_command_block called on Server role"
         );
-        let Some(pos) = sunrise_client::lan::data::decode_open_command_block(data) else {
+        let Some(pos) = sunrise_sim::lan::data::decode_open_command_block(data) else {
             return;
         };
         if self.command_block_open_at(pos) {
@@ -160,7 +159,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 // With no previous state this is a column load/adoption, not a block edit.
                 if previous.is_none() {
-                    sunrise_client::spans::note_block_entity_loads(1);
+                    sunrise_level::spans::note_block_entity_loads(1);
                 }
                 self.world.block_entities.replace(pos, entity)
             }

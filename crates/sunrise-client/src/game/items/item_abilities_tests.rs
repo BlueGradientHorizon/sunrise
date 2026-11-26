@@ -2,10 +2,10 @@
 use super::item_abilities::ability;
 use mod_api::{CanPerformActionEvent, Hooks, Host, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::{Direction, Vec3};
 use sunrise_core::use_animation::UseAnimation;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Mob;
 
 /// A part of `item` that grants the abilities in `grants` and denies the ones in `denies`.
 #[derive(Clone)]
@@ -43,10 +43,10 @@ fn field(game: &mut crate::game::ServerGame<'_>) {
     game.options.dedicated = Some(Vec::new());
     game.native_lifecycle
         .begin_open(mod_api::Authority::IntegratedServer);
-    game.world = sunrise_client::world::World::new(game.res.facts().air, 1);
+    game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     let pumpkin = game
         .pack
         .assets

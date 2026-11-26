@@ -1,7 +1,7 @@
 //! Reads that combine a lent mob with authoritative game state.
 use super::{GoalCx, Resolved};
-use crate::mobs::Mob;
 use mod_api::EntityRef;
+use sunrise_sim::mobs::Mob;
 
 impl GoalCx<'_, '_> {
     pub(super) fn r_entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]> {

@@ -4,7 +4,7 @@
 //! follows a changed answer install one on their thread for one closure ([`replaced`]),
 //! never process-wide.
 use std::{cell::Cell, thread::LocalKey};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 pub(in crate::game) type Harm = fn(i32, i32) -> bool;
 pub(in crate::game) type AddSlot =

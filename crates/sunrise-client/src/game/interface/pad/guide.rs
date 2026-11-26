@@ -6,15 +6,15 @@ use super::super::{Game, Screen};
 use serde_json::{Value, json};
 use sunrise_client::actions::Action;
 use sunrise_client::{
-    first_person::Hand,
     gamepad::{GuideDetail, Rect},
     gameplay_guide::{self, Active, Facts, MenuFacts, Row, Target, Under, Verb},
     hud::HudBatch,
     hud_kit::hint::{self, HintRow, Look, Side},
     hud_kit::plate::Plate,
-    items::ItemStack,
-    mobs::{Species, equine, llama},
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::first_person_sim::Hand;
+use sunrise_sim::mobs::{Species, equine, llama};
 
 /// A row as last drawn, for `pad status`.
 pub(in crate::game) struct Shown {
@@ -44,7 +44,7 @@ fn guide_equippable(
         };
         let swappable = tag
             .get("swappable")
-            .and_then(sunrise_client::item_data::component_bool)
+            .and_then(sunrise_items::item_data::component_bool)
             .unwrap_or(true);
         return Some((slot, swappable));
     }
@@ -188,12 +188,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let crafter = slot == 309
                 && matches!(
                     self.container_kind(),
-                    Some(sunrise_client::containers::BlockEntity::Crafter(..))
+                    Some(sunrise_level::containers::BlockEntity::Crafter(..))
                 );
             let furnace_output = slot == 302
                 && matches!(
                     self.container_kind(),
-                    Some(sunrise_client::containers::BlockEntity::Furnace(..))
+                    Some(sunrise_level::containers::BlockEntity::Furnace(..))
                 );
             if crafter {
                 // NonInteractiveResultSlot.
@@ -235,7 +235,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|r| {
                 let with = r.with.and_then(|w| self.glyph(w));
                 let glyphs = with.into_iter().chain(self.glyph(r.of));
-                HintRow::new(glyphs, sunrise_client::lang::get(r.caption))
+                HintRow::new(glyphs, sunrise_client_core::lang::get(r.caption))
             })
             .collect();
         // Glyphs against the view's edge, captions towards the middle.
@@ -338,7 +338,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let on_ground = p.ground.on_ground;
         let in_water = p.fluids.was_touching_water;
-        let crouching = p.pose == sunrise_client::pose::Pose::Crouching;
+        let crouching = p.pose == sunrise_sim::pose::Pose::Crouching;
         Facts {
             spectator,
             target,
@@ -573,7 +573,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn pad_guide_item_use(&mut self, block: Option<&super::super::Hit>) -> Option<Verb> {
         let stack = self.held().cloned()?;
         let info = self.items().get(&stack.item)?.clone();
-        let group = sunrise_client::cooldowns::group(&stack, info.use_cooldown.as_ref());
+        let group = sunrise_items::cooldowns::group(&stack, info.use_cooldown.as_ref());
         if self.cooldowns.is_on_cooldown(&group) {
             return None;
         }
@@ -590,7 +590,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     return Some(Verb::Place);
                 }
             }
-            let places_on_block = (sunrise_client::items::bucket_contents(&info.id).is_some()
+            let places_on_block = (sunrise_items::items::bucket_contents(&info.id).is_some()
                 && id != "bucket")
                 || id.ends_with("_boat")
                 || id.ends_with("_raft")
@@ -668,7 +668,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // They need a block or fluid the click's own ray finds.
             "bucket" | "glass_bottle" => return None,
             _ if id.ends_with("_boat") || id.ends_with("_raft") => return None,
-            _ if sunrise_client::items::bucket_contents(&info.id).is_some() => return None,
+            _ if sunrise_items::items::bucket_contents(&info.id).is_some() => return None,
             _ if info.blocks_attacks.is_some() => Verb::Raise,
             _ if let Some(consumable) = &info.consumable => {
                 if info.food.is_some() && !self.can_eat(Some(&stack), info.can_always_eat) {
@@ -724,7 +724,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod guide_equippable_tests {
     use super::guide_equippable;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     #[test]
     fn a_stack_swappable_flag_comes_from_its_equippable() {

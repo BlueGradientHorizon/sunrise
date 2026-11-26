@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::first_person::SwingAnimation;
+use sunrise_sim::first_person_sim::SwingAnimation;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A locally requested swing sends Punch only when the item's Part permits it.

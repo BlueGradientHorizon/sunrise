@@ -94,7 +94,7 @@ impl StartupAdmission {
     pub(in crate::game) fn open(
         mods: &ModsState,
         refused: Vec<MissingJar>,
-    ) -> sunrise_client::Result<Self> {
+    ) -> sunrise_client_core::Result<Self> {
         let native = mods
             .native
             .packages()
@@ -394,8 +394,8 @@ pub(in crate::game) mod tests {
         mods: &ModsState,
         path: &Path,
     ) -> (Content, sunrise_assets::resource_source::ResourceRoot) {
-        use sunrise_client::mod_content::ContentMod;
         use sunrise_client::mod_content_client::resolved_resources;
+        use sunrise_sim::mod_content::ContentMod;
         let id = &mods.selected[0].package.manifest.id;
         let content = read_contents(&[ContentRequest {
             path,

@@ -8,7 +8,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         conn: u32,
         command: &str,
-        signed: Option<Vec<(String, sunrise_client::lan::hub::chat::ChatMessage)>>,
+        signed: Option<Vec<(String, sunrise_sim::lan::hub::chat::ChatMessage)>>,
     ) {
         // The mods hear every command first, and may stop it.
         let mut canceled = false;
@@ -28,7 +28,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.send_to(
                 conn,
                 &C::SystemChat(play::SystemChat {
-                    content: sunrise_client::lan::data::component_nbt(&line.component()),
+                    content: sunrise_sim::lan::data::component_nbt(&line.component()),
                     overlay: false,
                 }),
             );
@@ -250,7 +250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn run_guest_command_told(
         &mut self,
         c: GuestCommand,
-    ) -> Option<(bool, Vec<sunrise_client::text::Text>)> {
+    ) -> Option<(bool, Vec<sunrise_client_core::text::Text>)> {
         let (ok, mut lines) = self.with_guest_swap(c.conn, self.dim, |game| {
             game.side.chat_capture = Some(Vec::new());
             let level = std::mem::replace(&mut game.ui.registries.permission, c.permission);
@@ -281,7 +281,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.send_to(
                 c.conn,
                 &C::SystemChat(play::SystemChat {
-                    content: sunrise_client::lan::data::component_nbt(&line.component()),
+                    content: sunrise_sim::lan::data::component_nbt(&line.component()),
                     overlay: false,
                 }),
             );
@@ -320,7 +320,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         for (line, source) in lines {
-            let content = sunrise_client::lan::data::component_nbt(&line.component());
+            let content = sunrise_sim::lan::data::component_nbt(&line.component());
             for g in host
                 .hub
                 .guests

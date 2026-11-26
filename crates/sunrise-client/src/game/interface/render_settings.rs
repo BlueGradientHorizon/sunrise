@@ -228,7 +228,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// its own server thread, which hands its generator over directly.
     pub(in crate::game::client_side) fn server_far_terrain(
         &self,
-    ) -> Option<sunrise_client::lod_net::Offer> {
+    ) -> Option<sunrise_sim::lod_net::Offer> {
         if self.integrated.is_some() {
             return None;
         }

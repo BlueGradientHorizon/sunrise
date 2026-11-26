@@ -7,8 +7,9 @@ use std::sync::{
 };
 
 use mod_api::{self, Flow, Hooks, ItemDrop, LivingDropsEvent, ServerHost};
-use sunrise_client::{entities::ItemEntity, items::ItemStack, lan::playerdata::uuid_ints};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{entities::ItemEntity, lan::playerdata::uuid_ints};
 
 use super::spill::{BlockItemDrop, DropState, prepare_item_random};
 
@@ -145,8 +146,8 @@ fn golem_dies(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> Vec<ItemE
         .clone();
     game.side.next_entity += 1;
     let position = Vec3::new(at[0], at[1], at[2]);
-    let mut golem = sunrise_client::mobs::Mob::new(game.side.next_entity, kind, position, 0.0);
-    sunrise_client::mobs::transport_items::set_held(
+    let mut golem = sunrise_sim::mobs::Mob::new(game.side.next_entity, kind, position, 0.0);
+    sunrise_sim::mobs::transport_items::set_held(
         &mut golem,
         Some(ItemStack::new("minecraft:diamond", 1)),
     );
@@ -223,8 +224,8 @@ fn item_world(game: &mut crate::game::ServerGame<'_>) {
     game.load_server_loot();
     game.native_lifecycle
         .begin_open(mod_api::Authority::IntegratedServer);
-    game.world = sunrise_client::world::World::new(game.res.facts().air, 1);
-    let column = Arc::new(sunrise_client::chunk::Chunk::empty(0, 0));
+    game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
+    let column = Arc::new(sunrise_level::chunk::Chunk::empty(0, 0));
     game.world.chunks.insert((0, 0), column);
 }
 

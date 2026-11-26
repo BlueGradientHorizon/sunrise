@@ -23,7 +23,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .map(|q| q.extra.variant);
         let at = [p.position.x, p.position.y, p.position.z].map(|c| c.floor() as i32);
         let facts = self.biome_facts(at[0], at[1], at[2]);
-        let fresh = sunrise_client::mobs::rabbit::random_variant(
+        let fresh = sunrise_sim::mobs::rabbit::random_variant(
             facts.white_rabbit,
             facts.gold_rabbit,
             &mut self.world.random,

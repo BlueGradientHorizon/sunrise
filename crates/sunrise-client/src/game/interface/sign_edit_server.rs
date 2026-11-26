@@ -4,7 +4,7 @@ use super::{
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use {
-    sunrise_client::containers::BlockEntity, sunrise_client::items::ItemStack,
+    sunrise_items::items::ItemStack, sunrise_level::containers::BlockEntity,
     sunrise_level::signs_data::ClickAction, sunrise_level::signs_data::DYE_TEXT,
     sunrise_level::signs_data::click_action,
 };
@@ -483,8 +483,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// action bar. A guest gets a packet, so its own client translates it.
     pub(in crate::game::server_side) fn sign_click_actions_disabled(&mut self) {
         self.server_send_overlay_message(
-            sunrise_client::text::Text::translate("sign.click_actions_disabled", &[])
-                .with_color(sunrise_client::text::RED),
+            sunrise_client_core::text::Text::translate("sign.click_actions_disabled", &[])
+                .with_color(sunrise_client_core::text::RED),
         );
     }
     /// `SignBlockEntity.playerIsTooFarAwayToEdit`: a player who left is no
@@ -498,10 +498,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let me = self
             .level
             .player_uuid
-            .map(sunrise_client::lan::playerdata::ints_uuid);
+            .map(sunrise_sim::lan::playerdata::ints_uuid);
         if me == Some(who) && self.player.is_some() {
             return self.eye_position().is_some_and(|eye| {
-                sunrise_client::lan::guest::within_block_range(eye, self.reach() + 4.0, at)
+                sunrise_sim::lan::guest::within_block_range(eye, self.reach() + 4.0, at)
             });
         }
         self.lan.as_ref().is_some_and(|host| {
@@ -514,7 +514,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.getUUID` of the acting player: the one a sign remembers as its
     /// editor.
     pub(in crate::game::server_side) fn sign_editor_uuid(&mut self) -> u128 {
-        sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
+        sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid())
     }
     /// `SignText.hasEditableText` of the side the player faces: if every line is
     /// plain text, the editor rewrites nothing a player would miss.

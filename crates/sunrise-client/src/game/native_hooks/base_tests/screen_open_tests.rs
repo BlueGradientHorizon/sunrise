@@ -165,7 +165,7 @@ pub(in crate::game) fn with_game_of(
     with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
@@ -449,7 +449,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             *game.test_renderer_mut() = Some(renderer);
             *game.test_title_mut() = None;
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )

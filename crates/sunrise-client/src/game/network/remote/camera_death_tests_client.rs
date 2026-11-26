@@ -1,11 +1,12 @@
 use crate::game::native_entity_refs::tests::with_client_game;
 use crate::game::remote::RemoteDimensionEntry;
-use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
+use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn run_a_spectated_dying_living_entity_squeezes_the_fov_26_3() {
     let path = std::env::var("SUNRISE_CAMERA_DEATH_WITNESS")

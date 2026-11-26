@@ -46,7 +46,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map_or(0, |properties| properties.light_level);
         fluid_box_look(
             id,
-            sunrise_client::mod_content::fluid_look(id).as_ref(),
+            sunrise_sim::mod_content::fluid_look(id).as_ref(),
             luminosity,
             |sprite| {
                 layers

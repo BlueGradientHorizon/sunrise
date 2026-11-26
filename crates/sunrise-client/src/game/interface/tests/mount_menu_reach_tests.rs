@@ -6,13 +6,13 @@
 //! `Game::lan_mount_valid`, the window's own copy by `Game::tick_mount_menu`.
 use super::super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, PlayerSender, guest::Guest},
     mobs::{Mob, Species},
     motion::PlayerMotion,
 };
-use sunrise_core::geometry::Vec3;
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 const DONKEY: u32 = 7;
 

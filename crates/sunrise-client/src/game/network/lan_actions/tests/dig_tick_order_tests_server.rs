@@ -5,17 +5,17 @@ use crate::game::lan_actions::tick::dig_tick_order_tests::Observe;
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_item_places::tests::{guest, open_to_lan};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]
 fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
-    use sunrise_client::advancements::Tree;
-    use sunrise_client::effects::EffectInstance;
-    use sunrise_client::lan::{ServerAdvancements, data::SyncData};
+    use sunrise_level::effects::EffectInstance;
+    use sunrise_sim::advancements::Tree;
+    use sunrise_sim::lan::{ServerAdvancements, data::SyncData};
     use sunrise_world::loot::PackOverlay;
 
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let heard = Arc::default();
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new(
@@ -72,7 +72,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                     hub.reload_resources(Arc::new(sync), owners)
                 });
 
-                let levitation = sunrise_client::brewing::effect("levitation").unwrap().id;
+                let levitation = sunrise_level::brewing::effect("levitation").unwrap().id;
                 for (conn, ticks) in [(1, 19), (4, 20)] {
                     let mut player = guest(conn);
                     player.dimension = game.dim.id().into();

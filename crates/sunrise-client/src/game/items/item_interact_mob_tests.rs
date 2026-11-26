@@ -8,8 +8,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{
     merchant::{ItemCost, MerchantOffer, Trader},
     mobs::Mob,
 };

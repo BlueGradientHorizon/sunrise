@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use crate::game::Game;
 use mod_api::{PlayerRef, SwimmingCheck};
-use sunrise_client::{chunk::Chunk, items::ItemStack};
 use sunrise_items::creative_catalog::{Catalog, Holders};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn side_fire_pending_block_entity_loads(&mut self) {

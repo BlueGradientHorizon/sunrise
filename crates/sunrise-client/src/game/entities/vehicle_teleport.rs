@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cart_dismount_mob(
         &self,
         vehicle: u32,
-        rider: &sunrise_client::mobs::Mob,
+        rider: &sunrise_sim::mobs::Mob,
     ) -> Option<Vec3> {
         self.cart_dismount_point_from(self.cart_object(vehicle)?, rider)
     }
@@ -96,7 +96,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn cart_dismount_point_from(
         &self,
         cart: &super::minecarts::Minecart,
-        rider: &sunrise_client::mobs::Mob,
+        rider: &sunrise_sim::mobs::Mob,
     ) -> Option<Vec3> {
         use sunrise_core::geometry::Aabb;
         let direction =
@@ -158,8 +158,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The horse search for a mount and rider currently lent out of the mob list.
     pub(in crate::game::server_side) fn horse_dismount_mobs(
         &self,
-        mount: &sunrise_client::mobs::Mob,
-        rider: &sunrise_client::mobs::Mob,
+        mount: &sunrise_sim::mobs::Mob,
+        rider: &sunrise_sim::mobs::Mob,
     ) -> Option<Vec3> {
         use sunrise_core::geometry::{Aabb, trig};
         if !is_horse(mount.species()) {
@@ -224,7 +224,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// `Entity.teleportPassengers` on a mob dismounted during a transition.
     pub(in crate::game) fn snap_mob_passengers(&mut self, root: u32) {
-        use sunrise_client::mobs::riders;
+        use sunrise_sim::mobs::riders;
         let Some(vehicle) = self.mob_object(root) else {
             return;
         };
@@ -244,7 +244,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             let attachment = Self::mob_passenger_attachment(
                 self.mob_object(root).unwrap(),
-                sunrise_client::mobs::drops::is_animal(m.species()),
+                sunrise_sim::mobs::drops::is_animal(m.species()),
                 seat,
                 children.len(),
             );
@@ -252,7 +252,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let m = self.mob_object_mut(id).unwrap();
             m.seated(root, offset, vehicle_box);
             let at = riders::seat(attachment, offset, position, yaw);
-            sunrise_client::mobs::living::teleports::snap_to(m, at);
+            sunrise_sim::mobs::living::teleports::snap_to(m, at);
         }
         for (_, child, player) in children {
             if !player {
@@ -309,7 +309,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         rotation: Option<[f32; 2]>,
         turn_riders: bool,
         motion: TeleportMotion,
-    ) -> sunrise_client::Result<Option<bool>> {
+    ) -> sunrise_client_core::Result<Option<bool>> {
         if let Target::General(id) = target {
             // Entity.teleport's stopRiding(): a targeted rider leaves its vehicle first.
             if self.dim != destination
@@ -369,7 +369,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         at: [f64; 3],
         rotation: Option<[f32; 2]>,
         motion: TeleportMotion,
-    ) -> sunrise_client::Result<Option<bool>> {
+    ) -> sunrise_client_core::Result<Option<bool>> {
         let (Target::Item(id)
         | Target::Tnt(id)
         | Target::Trident(id)
@@ -413,7 +413,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return Ok(Some(false));
             };
             game.native_leaves_flush();
-            let [yaw, pitch] = sunrise_client::entity_nbt::rotation(&tag);
+            let [yaw, pitch] = sunrise_sim::entity_nbt::rotation(&tag);
             // PositionMoveRotation.calculateAbsolute: an axis the teleport
             // does not set keeps the entity's own, the pitch is clamped.
             let [yaw, pitch] = rotation.map_or([yaw, pitch], |[y, p]| {
@@ -423,7 +423,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ]
             });
             let kept = match motion {
-                TeleportMotion::Keep => sunrise_client::entity_nbt::motion(&tag),
+                TeleportMotion::Keep => sunrise_sim::entity_nbt::motion(&tag),
                 TeleportMotion::Stop => Vec3::ZERO,
             };
             let to = Vec3::new(at[0], at[1], at[2]);
@@ -462,7 +462,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         rotation: Option<[f32; 2]>,
         turn_riders: bool,
         motion: TeleportMotion,
-    ) -> sunrise_client::Result<bool> {
+    ) -> sunrise_client_core::Result<bool> {
         let Some(root) = vehicle_id(target) else {
             return Ok(false);
         };
@@ -746,7 +746,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut carried = None;
         if let Some(m) = self.mob_object_mut(id) {
             let from = m.position;
-            sunrise_client::mobs::living::teleports::snap_to(m, transition.position_for(from));
+            sunrise_sim::mobs::living::teleports::snap_to(m, transition.position_for(from));
             m.velocity = transition.velocity_for(m.velocity);
             carried = Some((from, m.position));
             if let Some([yaw, pitch]) = transition.rotation_for([m.yaw, m.head_pitch]) {

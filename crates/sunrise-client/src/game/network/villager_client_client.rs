@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use sunrise_client::mobs::villager::ResolvedProfessions;
+use sunrise_sim::mobs::villager::ResolvedProfessions;
 
 impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn client_professions(

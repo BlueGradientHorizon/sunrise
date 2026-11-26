@@ -10,7 +10,7 @@ use crate::game::{
     native_projectiles::impact_probe::{Action, with_probe},
 };
 use std::sync::{Arc, atomic::Ordering};
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]

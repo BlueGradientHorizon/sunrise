@@ -11,8 +11,8 @@
 //! (`spawn_entity` drops a mob with the same id before adding one), so the
 //! answer is always the linear search's.
 
-use sunrise_client::fast_hash::FxHashMap;
-use sunrise_client::mobs::Mob;
+use sunrise_level::fast_hash::FxHashMap;
+use sunrise_sim::mobs::Mob;
 
 #[derive(Default)]
 pub struct MobIndex {
@@ -57,7 +57,7 @@ impl MobIndex {
     /// The mob with this id, as `mobs.iter_mut().find(|m| m.id == id)`.
     pub fn get_mut<'a>(
         &mut self,
-        mobs: &'a mut sunrise_client::join_seq::JoinList<Mob>,
+        mobs: &'a mut sunrise_sim::join_seq::JoinList<Mob>,
         id: u32,
     ) -> Option<&'a mut Mob> {
         let i = self.find(mobs, id)?;

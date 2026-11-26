@@ -2,11 +2,11 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{
     MobEvent, TargetChange,
     player_selection::{PlayerSelection, TickPlayer},
 };
-use sunrise_core::geometry::Vec3;
 
 struct Redirect(Arc<Mutex<Option<LivingRef>>>);
 

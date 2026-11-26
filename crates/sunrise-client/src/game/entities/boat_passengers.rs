@@ -8,13 +8,15 @@
 use super::{Game, boats::Boat, commands::Target, lan_mobs::guest_bounds};
 use std::cell::{Cell, Ref, RefCell};
 #[allow(unused_imports)]
-use sunrise_client::{
-    fast_hash::FxHashMap,
+use sunrise_client_core::scoreboard::pushable_by;
+use sunrise_core::geometry::{Aabb, Vec3};
+#[allow(unused_imports)]
+use sunrise_level::fast_hash::FxHashMap;
+#[allow(unused_imports)]
+use sunrise_sim::{
     join_seq::ListStamp,
     mobs::{BoxReach, Mob, Species, Who, riders, seen_grid::SeenGrid},
-    scoreboard::pushable_by,
 };
-use sunrise_core::geometry::{Aabb, Vec3};
 
 /// `Entity.boardingCooldown` once a mob leaves its boat.
 pub(in crate::game) const BOARDING_COOLDOWN: i32 = 60;
@@ -370,7 +372,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && m.width() < super::boats::WIDTH as f32
                     && !self.items().entity_type_tags.has_bit(
                         m.kind.flags.entity_tag_slot,
-                        sunrise_client::items::EntityTypeTags::CANNOT_BE_PUSHED_ONTO_BOATS,
+                        sunrise_items::items::EntityTypeTags::CANNOT_BE_PUSHED_ONTO_BOATS,
                     );
                 if boards {
                     // startRiding fails quietly (no push) while the mob's
@@ -395,7 +397,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 .iter_mut()
                                 .find(|m| m.id == mob && !m.removed && m.extra.mount.is_none())
                         {
-                            sunrise_client::mobs::shulker::on_start_riding(m);
+                            sunrise_sim::mobs::shulker::on_start_riding(m);
                             m.extra.mount = Some(id);
                             m.extra.passenger = true;
                             m.ai.nav.stop();
@@ -548,7 +550,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => unreachable!("only boats and carts have vehicle containers"),
         };
         self.unpack_loot(loot, None);
-        let take = |at: Vec3, items: &mut [Option<sunrise_client::items::ItemStack>]| {
+        let take = |at: Vec3, items: &mut [Option<sunrise_items::items::ItemStack>]| {
             (
                 at.components(),
                 items.iter_mut().map(Option::take).collect::<Vec<_>>(),
@@ -610,7 +612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             m.extra.mount = None;
             m.extra.passenger = false;
             m.extra.boarding_cooldown = BOARDING_COOLDOWN;
-            sunrise_client::mobs::living::teleports::snap_to(m, at);
+            sunrise_sim::mobs::living::teleports::snap_to(m, at);
             self.snap_mob_passengers(rider);
         }
         self.dismount_general_passengers(id);
@@ -730,7 +732,7 @@ mod tests {
         with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             let mut cow = Mob::new(77, kind, Vec3::ZERO, 0.0);
-            sunrise_client::mobs::finalize::set_baby(&mut cow, true);
+            sunrise_sim::mobs::finalize::set_baby(&mut cow, true);
             game.mobs.push(cow);
             let mob = game.mob(game.entity(77).unwrap()).unwrap();
             let area = Aabb::new(Vec3::new(0.3, 0.0, 0.0), Vec3::new(0.4, 1.0, 0.1));
@@ -903,10 +905,10 @@ mod off_level_tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let boat = Boat::new(71, "oak".into(), Vec3::new(1.0, 80.0, 0.5), 0.0);
-            let mut ghost = sunrise_client::mobs::Mob::new(72, pig.clone(), Vec3::ZERO, 0.0);
+            let mut ghost = sunrise_sim::mobs::Mob::new(72, pig.clone(), Vec3::ZERO, 0.0);
             ghost.extra.mount = Some(71);
             ghost.extra.vehicle_order = 0;
-            let mut resident = sunrise_client::mobs::Mob::new(73, pig, Vec3::ZERO, 0.0);
+            let mut resident = sunrise_sim::mobs::Mob::new(73, pig, Vec3::ZERO, 0.0);
             resident.extra.mount = Some(71);
             resident.extra.vehicle_order = 1;
             let offset = riders::vehicle_attachment(&resident, 1.375);
@@ -927,7 +929,7 @@ mod off_level_tests {
 mod boat_callback_review_tests {
     use super::*;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     struct MutateRider {
         discard: bool,

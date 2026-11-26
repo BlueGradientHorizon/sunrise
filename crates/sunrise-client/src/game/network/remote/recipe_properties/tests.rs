@@ -24,7 +24,7 @@ pub(in crate::game) fn place_stonecutter(server: &mut crate::game::ServerGame<'_
     server
         .world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     let state = server
         .pack
         .assets

@@ -4,7 +4,7 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
     use crate::game::native_entity_refs::tests::{record_key, run_fresh_cases, with_game_at};
     use mod_api::{self, *};
     use std::sync::{Arc, Mutex, OnceLock};
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
     if run_fresh_cases(
         "game::stateful_block_entity_tests::stateful_creation_uses_actual_state_and_preserves_existing_entity",

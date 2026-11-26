@@ -4,11 +4,11 @@
 use super::super::{Audio, Options, Progress, Screen, Settings, load_resources};
 use crate::game::native_entity_refs::tests::run_fresh_cases;
 use sunrise_client::actions::Action;
-use sunrise_client::command::args::GameMode;
 use sunrise_client::gamepad::{Button, PadState};
 use sunrise_client::held::Source;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 

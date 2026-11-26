@@ -9,7 +9,7 @@ use sunrise_protocol::entity_data::Value;
 
 /// `Interaction`'s synced data and box (`DATA_WIDTH`, `DATA_HEIGHT`, `DATA_RESPONSE`).
 pub(in crate::game) struct RemoteInteraction {
-    pub join: sunrise_client::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     pub position: Vec3,
     pub previous: Vec3,
     pub yaw: f32,
@@ -42,7 +42,7 @@ impl RemoteInteraction {
             0.0
         };
         Self {
-            join: sunrise_client::join_seq::JoinSeq::next(),
+            join: sunrise_sim::join_seq::JoinSeq::next(),
             position: pos,
             previous: pos,
             yaw,
@@ -308,7 +308,7 @@ impl PlayerAction {
         let Tag::IntArray(player) = tag.get("player")? else {
             return None;
         };
-        let timestamp = sunrise_client::save::number(tag.get("timestamp"))?;
+        let timestamp = sunrise_sim::save::number(tag.get("timestamp"))?;
         Some(Self {
             player: player.as_slice().try_into().ok()?,
             timestamp,
@@ -337,17 +337,17 @@ pub(in crate::game) struct InteractionState {
 impl InteractionState {
     /// `Interaction.readAdditionalSaveData`: the dimensions, optional action records and response.
     pub fn from_tag(tag: &sunrise_core::nbt::Tag) -> Self {
-        let float = |key| sunrise_client::save::float(tag.get(key)).unwrap_or(1.0) as f32;
+        let float = |key| sunrise_sim::save::float(tag.get(key)).unwrap_or(1.0) as f32;
         Self {
             width: float("width"),
             height: float("height"),
-            response: sunrise_client::entity_nbt::flag(tag, "response"),
+            response: sunrise_sim::entity_nbt::flag(tag, "response"),
             attack: PlayerAction::from_tag(tag.get("attack")),
             interaction: PlayerAction::from_tag(tag.get("interaction")),
         }
     }
     /// `Interaction.addAdditionalSaveData`: the settings, and each action when set.
-    pub fn write(&self, c: &mut sunrise_client::entity_nbt::EntityTagWriter) {
+    pub fn write(&self, c: &mut sunrise_sim::entity_nbt::EntityTagWriter) {
         use sunrise_core::nbt::Tag;
         c.insert("width".into(), Tag::Float(self.width.to_bits()));
         c.insert("height".into(), Tag::Float(self.height.to_bits()));

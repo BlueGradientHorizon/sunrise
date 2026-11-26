@@ -8,8 +8,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize},
 };
-use sunrise_client::lan::{Joined, PlayerSender, guest::Guest};
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
 /// One heard moment: start or stop, the spectator's UUID and name, the target's id, and where
 /// the spectator's entity stood when the listener ran.

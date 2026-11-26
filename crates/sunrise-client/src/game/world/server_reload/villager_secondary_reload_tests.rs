@@ -1,7 +1,7 @@
 use super::*;
 use mod_api::{DataPackFilesEvent, Registrar, RegistrationContext, ServerHost};
-use sunrise_client::mobs::{self, Mob};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{self, Mob};
 
 const TAG: &str = "sunrise:villager_secondary_poi/farmer";
 struct Tags(Arc<AtomicBool>);
@@ -30,7 +30,7 @@ impl Hooks for Missing {
 fn memory(game: &crate::game::ServerGame<'_>, mob: &mut Mob) -> Option<Vec<[i32; 3]>> {
     let mut world = game.mob_world_base(&[]);
     world.mob_griefing = false;
-    let mut test_level = sunrise_client::health::TestLevel::new(0);
+    let mut test_level = sunrise_sim::health::TestLevel::new(0);
     let mut level = test_level.level();
     for time in 0..100 {
         world.game_time = time;
@@ -67,7 +67,7 @@ fn fixture(run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<AtomicBool>, 
                         if !game.world.chunks.contains_key(&chunk) {
                             game.world.chunks.insert(
                                 chunk,
-                                Arc::new(sunrise_client::chunk::Chunk::empty(chunk.0, chunk.1)),
+                                Arc::new(sunrise_level::chunk::Chunk::empty(chunk.0, chunk.1)),
                             );
                         }
                         for y in 62..=66 {
@@ -96,7 +96,7 @@ fn fixture(run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<AtomicBool>, 
                 let mut mob = Mob::new(901, kind, Vec3::new(0.0, 64.0, 0.0), 0.0);
                 mobs::villager::set_profession(
                     &mut mob,
-                    sunrise_client::mobs::villager::profession_table(),
+                    sunrise_sim::mobs::villager::profession_table(),
                     5,
                 );
                 // Keep the full brain from resetting an untraded farmer with no primary POI.

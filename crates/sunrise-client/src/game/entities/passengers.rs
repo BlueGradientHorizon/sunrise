@@ -4,11 +4,11 @@
 //! Saving riders under `Passengers` lives in `persist.rs`.
 use super::Game;
 use std::collections::HashMap;
-use sunrise_client::mobs::{Species, riders};
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_sim::mobs::{Species, riders};
 
 /// The mobs riding each vehicle, by the vehicle's id: their indices, in the mobs' order.
 pub(in crate::game) type Riders = HashMap<u32, Vec<usize>>;
@@ -396,8 +396,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     continue;
                 };
                 let vehicle = &self.mobs[j];
-                let place = if sunrise_client::mobs::camel::is_camel(vehicle.species())
-                    || vehicle.species() == sunrise_client::mobs::Species::HappyGhast
+                let place = if sunrise_sim::mobs::camel::is_camel(vehicle.species())
+                    || vehicle.species() == sunrise_sim::mobs::Species::HappyGhast
                     || vehicle.kind.passenger_attachments.len() > 1
                 {
                     self.passenger_place(v, self.mobs[i].id)
@@ -406,7 +406,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let attach = Self::mob_passenger_attachment(
                     vehicle,
-                    sunrise_client::mobs::drops::is_animal(self.mobs[i].species()),
+                    sunrise_sim::mobs::drops::is_animal(self.mobs[i].species()),
                     place.0,
                     place.1,
                 );
@@ -420,7 +420,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     vehicle.rider.is_some() || self.riding == Some(v),
                     self.items().entity_type_tags.has_bit(
                         rider.kind.flags.entity_tag_slot,
-                        sunrise_client::items::EntityTypeTags::NON_CONTROLLING_RIDER,
+                        sunrise_items::items::EntityTypeTags::NON_CONTROLLING_RIDER,
                     ),
                 );
                 let takes_body = riders::takes_vehicle_body(vehicle, rider, controlling);
@@ -429,7 +429,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let m = &mut self.mobs[i];
                 let offset = riders::vehicle_attachment(m, vehicle_width);
                 m.seated(v, offset, vehicle_box);
-                sunrise_client::mobs::living::teleports::set_pos(
+                sunrise_sim::mobs::living::teleports::set_pos(
                     m,
                     riders::seat(attach, offset, pos, yaw),
                 );
@@ -531,7 +531,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 at,
                 true,
                 super::creatures::SpawnSite::Finalizing(
-                    sunrise_client::mobs::spawn_rules::Reason::Triggered,
+                    sunrise_sim::mobs::spawn_rules::Reason::Triggered,
                 ),
             ) else {
                 continue;
@@ -561,7 +561,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             at,
             true,
             super::creatures::SpawnSite::Finalizing(
-                sunrise_client::mobs::spawn_rules::Reason::Triggered,
+                sunrise_sim::mobs::spawn_rules::Reason::Triggered,
             ),
         )?;
         let m = self.mobs.iter_mut().find(|m| m.id == id)?;
@@ -575,8 +575,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let special = self.local_difficulty(at).special();
         // `SkeletonTrapGoal.enchant`: the weapon and the helmet, always.
         for slot in [
-            sunrise_client::mobs::finalize::MAINHAND,
-            sunrise_client::mobs::finalize::HEAD,
+            sunrise_sim::mobs::finalize::MAINHAND,
+            sunrise_sim::mobs::finalize::HEAD,
         ] {
             self.enchant_item(id, slot, special);
         }
@@ -628,7 +628,7 @@ pub(in crate::game) mod player_seat_tests {
 #[cfg(test)]
 pub(in crate::game) mod off_level_tests {
     use super::*;
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]
@@ -1021,7 +1021,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     struct DiscardVehicleOnDismount(Arc<AtomicUsize>);
     #[mod_api::__subscriptions]
@@ -1223,7 +1223,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     game.side.settings.simulation_distance = 4;
                     game.side.settings.render_distance = 12;
                     game.player = Some(
-                        sunrise_client::motion::PlayerMotion::new(
+                        sunrise_sim::motion::PlayerMotion::new(
                             game.motion,
                             Vec3::new(8.5, 200.0, 8.5),
                         )
@@ -1235,7 +1235,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     );
                     game.world
                         .chunks
-                        .insert((8, 0), Arc::new(sunrise_client::chunk::Chunk::empty(8, 0)));
+                        .insert((8, 0), Arc::new(sunrise_level::chunk::Chunk::empty(8, 0)));
                     game.update_chunk_tickets();
                     assert!(game.entity_ticking_area()(2, 3));
                     assert!(!game.entity_ticking_area()(136, 3));
@@ -1324,7 +1324,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                 with_vehicle_tree(cart, false, |game| {
                     game.mobs.clear();
                     game.player = Some(
-                        sunrise_client::motion::PlayerMotion::new(
+                        sunrise_sim::motion::PlayerMotion::new(
                             game.motion,
                             Vec3::new(2.0, 190.0, 3.0),
                         )
@@ -1642,7 +1642,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                     set_vehicle_test_attachment(game);
                     let vehicle = game.entity(71).unwrap();
                     let uuid = [160, 0, 0, 71];
-                    let holder = sunrise_client::save::uuid_text(uuid);
+                    let holder = sunrise_sim::save::uuid_text(uuid);
                     game.persist.uuids.insert(71, uuid);
                     game.score.board.set(&holder, "boundary", 7);
                     assert!(game.native_joins_flush(false, 0));
@@ -1800,7 +1800,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
                 mod_platform::testing::with_mods(mods, || {
                     with_vehicle_tree(cart, true, |game| {
                         game.side.next_entity = game.side.next_entity.max(100);
-                        let items = vec![Some(sunrise_client::items::ItemStack::new(
+                        let items = vec![Some(sunrise_items::items::ItemStack::new(
                             "minecraft:diamond",
                             5,
                         ))];
@@ -2006,7 +2006,7 @@ pub(in crate::game) mod nested_vehicle_discard_tests {
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(mode != 0, true, |game| {
                     let uuid = [160, 0, 0, 71];
-                    let holder = sunrise_client::save::uuid_text(uuid);
+                    let holder = sunrise_sim::save::uuid_text(uuid);
                     game.persist.uuids.insert(71, uuid);
                     game.score.board.set(&holder, "retained", 7);
                     if mode == 0 {
@@ -2488,7 +2488,7 @@ pub(in crate::game) mod content_seat_tests {
             let mut kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             Arc::make_mut(&mut kind).passenger_attachments =
                 vec![[1.0, 2.0, 3.0], [-1.0, 4.0, 5.0]];
-            let vehicle = sunrise_client::mobs::Mob::new(1, kind, Vec3::ZERO, 0.0);
+            let vehicle = sunrise_sim::mobs::Mob::new(1, kind, Vec3::ZERO, 0.0);
             assert_eq!(
                 riders::passenger_attachment_at(&vehicle, 0),
                 [1.0, 2.0, 3.0]
@@ -2523,7 +2523,7 @@ pub(in crate::game) mod trap_scatter_tests {
     #[ignore = "daily"]
     fn spring_skeleton_trap_draws_scatter_from_trap_horse_after_each_rider() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         let mut resources = None;
         let mut game = super::super::game_tests::tests::server_game(&mut resources);
@@ -2551,7 +2551,7 @@ pub(in crate::game) mod trap_scatter_tests {
         assert!(!horse.extra.trap);
         assert_eq!(horse.random.next_long(), expected_horse_rng.next_long());
 
-        let extra_horses: Vec<&sunrise_client::mobs::Mob> = game
+        let extra_horses: Vec<&sunrise_sim::mobs::Mob> = game
             .mobs
             .iter()
             .filter(|m| m.species() == Species::SkeletonHorse && m.id != trap_id)
@@ -2577,7 +2577,7 @@ pub(in crate::game) mod trap_scatter_tests {
             sunrise_core::random::LevelRandom::for_level(sunrise_core::random::LegacyRandom::new(5))
         };
         game.world.random = seeded();
-        game.enchant_item(id, sunrise_client::mobs::finalize::MAINHAND, 0.5);
+        game.enchant_item(id, sunrise_sim::mobs::finalize::MAINHAND, 0.5);
         assert_eq!(game.world.random.next_long(), seeded().next_long());
     }
 }

@@ -1,4 +1,4 @@
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// #13541: a portal's `ClientboundRespawnPacket` keeps the attribute modifiers
 /// (`KEEP_ATTRIBUTE_MODIFIERS`): `handleRespawn` gives the new `LocalPlayer`

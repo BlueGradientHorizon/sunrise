@@ -3,12 +3,9 @@ use super::{Game, item_draw::owner_at};
 use crate::game::fireworks::FIREWORK_EXPLODE_EVENT;
 use crate::game::fireworks::Rocket;
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::{
-    block_entity_render::vertex_light,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-};
+use sunrise_client::{block_entity_render::vertex_light, mesher::Vertex};
 use sunrise_core::random::RandomSource;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `FireworkEntityRenderer.submit`: ground item facing camera, lit at the rocket's probe.
@@ -173,7 +170,7 @@ pub(in crate::game) mod tests {
         use sunrise_protocol::packets::play::{Clientbound as C, EntityEvent};
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5))
                     .unwrap(),
             );
             let (quiet_at, loud_at) = ([6.5, 201.5, 10.5], [12.5, 201.5, 10.5]);

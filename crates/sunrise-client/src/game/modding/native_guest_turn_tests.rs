@@ -11,12 +11,12 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize, Ordering},
 };
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     mobs::Mob,
 };
-use sunrise_core::geometry::Vec3;
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 pub(in crate::game) fn with_guests(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_guests_at(super::native_entity_refs::tests::fixture_root(), test);
@@ -87,8 +87,8 @@ pub(in crate::game) fn register_test_menu(
     game: &mut crate::game::ServerGame<'_>,
     id: &str,
 ) -> mod_api::MenuKey {
-    use sunrise_client::lan::data::SyncData;
     use sunrise_protocol::registry::Ids;
+    use sunrise_sim::lan::data::SyncData;
 
     let current = game.lan.as_ref().unwrap().hub.sync_data();
     let mut sync = SyncData::empty();
@@ -448,11 +448,11 @@ fn a_players_move_by_stops_at_a_boat() {
 #[test]
 #[ignore = "daily"]
 fn a_players_move_by_is_the_mover_a_colliders_stack_exempts() {
-    use sunrise_client_render::moving_colliders::{Placed, Prepared, Scope};
     use sunrise_core::geometry::{
         Aabb,
         oriented::{ColliderBoxes, Frame, OrientedCollider},
     };
+    use sunrise_world::moving_colliders::{Placed, Prepared, Scope};
     with_guests(|game| {
         game.as_guest(13, |_| {}).unwrap();
         let b = game.player(13).unwrap();
@@ -521,7 +521,7 @@ fn a_players_move_by_falls_through_a_happy_ghast_that_is_not_held_still() {
 #[test]
 #[ignore = "daily"]
 fn another_guests_menu_and_push_work_during_a_turn() {
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     with_guests(|game| {
         for conn in [12, 13] {
@@ -596,8 +596,8 @@ fn another_guests_menu_and_push_work_during_a_turn() {
 #[ignore = "daily"]
 fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
     use std::sync::mpsc;
-    use sunrise_client::lan::Out;
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::Out;
 
     if super::native_entity_refs::tests::run_fresh_cases(
         "game::server_side::native_guest_turn_tests::velocity_writes_send_only_the_owning_player_the_replacement_motion",
@@ -747,7 +747,9 @@ fn another_guests_services_work_during_a_turn() {
         native_inventories::NativeInventoryKind::{Ender, Player},
     };
     use mod_api::{CriterionContext, CriterionTest, CriterionTestError, TriggerCriterionError};
-    use sunrise_client::{advancements as adv, command::args::Selector, items::ItemStack};
+    use sunrise_command::args::Selector;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::advancements as adv;
 
     struct Accept;
     impl CriterionTest for Accept {
@@ -897,8 +899,8 @@ fn another_guests_services_work_during_a_turn() {
 #[test]
 #[ignore = "daily"]
 fn nested_guest_turns_restore_each_equipment_store() {
-    use sunrise_client::items::ItemStack;
     use sunrise_items::equipment::{BODY, SADDLE};
+    use sunrise_items::items::ItemStack;
 
     with_guests(|game| {
         let stack = |id| Some(ItemStack::new(id, 1));
@@ -952,7 +954,7 @@ fn another_guests_live_merchant_session_is_visible_during_a_turn() {
         native_merchant_refs::tests::{offer, spawn},
         trading::MerchantState,
     };
-    use sunrise_client::merchant::{Session, Trader};
+    use sunrise_sim::merchant::{Session, Trader};
 
     with_guests(|game| {
         let villager = spawn(game, 40, "minecraft:villager");
@@ -1107,8 +1109,8 @@ fn a_mounted_guests_turn_publishes_its_teleport_without_dismounting() {
 #[ignore = "daily"]
 fn server_services_preserve_identity_and_message_delivery() {
     use mod_api::{ServerHost, Text};
-    use sunrise_client::lan::announced_channels::REGISTER;
     use sunrise_protocol::packets::play::Clientbound as C;
+    use sunrise_sim::lan::announced_channels::REGISTER;
     with_guests(|game| {
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;
         guests.update(0, |g| {
@@ -1242,7 +1244,7 @@ fn server_services_preserve_identity_and_message_delivery() {
 #[ignore = "daily"]
 fn canonical_permissions_preserve_owner_and_fake_player_reads() {
     use mod_api::GameMode;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     with_guests(|game| {
         let _serving = super::integrated::tests::install_serving(game, false);
@@ -1250,14 +1252,14 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
         let mut body = PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
         body.entity_id = 99;
         game.player = Some(body);
-        game.set_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_mode(sunrise_command::args::GameMode::Creative);
         let owner = game.player(99).unwrap();
         for (allow, permission) in [(false, 0), (true, 4)] {
             game.set_allow_commands(allow);
             assert_eq!(owner.permission_level(game), Some(permission));
             assert_eq!(owner.can_use_game_master_blocks(game), Some(allow));
         }
-        game.set_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_mode(sunrise_command::args::GameMode::Survival);
         assert_eq!(owner.permission_level(game), Some(4));
         assert_eq!(owner.can_use_game_master_blocks(game), Some(false));
 
@@ -1313,7 +1315,7 @@ pub(in crate::game::server_side) fn level_uuids(game: &crate::game::ServerGame<'
 /// The host in place, with a body and UUID 99.
 pub(in crate::game::server_side) fn place_host(game: &mut crate::game::ServerGame<'_>) {
     let mut body =
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
     body.entity_id = 99;
     game.player = Some(body);
     game.level.player_uuid = Some([0, 0, 0, 99]);
@@ -1436,12 +1438,12 @@ fn tick_advancement_notice_precedes_recipe_reward() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("tick.json"), r#"{"criteria":{"seen":{"trigger":"minecraft:tick"}},"rewards":{"recipes":["testmod:reward"]}}"#).unwrap();
     with_guests(|game| {
-        let mut sync = sunrise_client::lan::data::SyncData::empty();
-        sync.advancements = sunrise_client::lan::ServerAdvancements::load(
+        let mut sync = sunrise_sim::lan::data::SyncData::empty();
+        sync.advancements = sunrise_sim::lan::ServerAdvancements::load(
             &scratch,
             &sunrise_world::loot::PackOverlay::NONE,
             // Rewards must name a recipe registered in the server's index.
-            sunrise_client::lan::recipes::BookProjections::single_shapeless("testmod:reward"),
+            sunrise_sim::lan::recipes::BookProjections::single_shapeless("testmod:reward"),
         );
         let reload = std::env::var("SUNRISE_ADVANCEMENT_ORDER_CHILD").as_deref() == Ok("reload");
         let host = game.lan.as_mut().unwrap();
@@ -1512,7 +1514,7 @@ fn a_vetoed_drop_gives_the_stack_back() {
     use super::api_values::TryIntoApi;
     use mod_api::{Flow, Hooks, ItemTossEvent, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     struct Veto;
     #[mod_api::__subscriptions]
@@ -1591,7 +1593,7 @@ fn guest_damage_unwind_restores_and_next_same_connection_hit_lands() {
                 })
                 .unwrap();
             game.as_guest(13, |g| {
-                use sunrise_client::command::args::GameMode;
+                use sunrise_command::args::GameMode;
                 g.set_game_mode(GameMode::Creative);
                 g.set_game_mode(GameMode::Survival);
             })
@@ -1676,14 +1678,14 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                     })
                     .unwrap();
                 game.as_guest(conn, |g| {
-                    use sunrise_client::command::args::GameMode;
+                    use sunrise_command::args::GameMode;
                     g.set_game_mode(GameMode::Creative);
                     g.set_game_mode(GameMode::Survival);
                 })
                 .unwrap();
             }
             let outer = game.side.lan_acting;
-            let feedback = || vec![sunrise_client::text::Text::literal("outer feedback")];
+            let feedback = || vec![sunrise_client_core::text::Text::literal("outer feedback")];
             game.side.chat_capture = Some(feedback());
             let hit = |game: &mut crate::game::ServerGame<'_>| {
                 assert_eq!(game.side.chat_capture, Some(Vec::new()));
@@ -1711,7 +1713,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                         .chat_capture
                         .as_mut()
                         .unwrap()
-                        .push(sunrise_client::text::Text::literal("guest feedback"));
+                        .push(sunrise_client_core::text::Text::literal("guest feedback"));
                     panic!("engine panic during a messaged turn");
                 })
             }))
@@ -1832,7 +1834,7 @@ pub(in crate::game::server_side) fn summon_stand(
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     let (sunrise_core::nbt::Tag::Compound(tag), _) =
         sunrise_core::nbt::parse_snbt("{NoGravity:1b}").unwrap()
     else {
@@ -1902,7 +1904,7 @@ fn run_command_checks_the_line_at_the_level_given() {
 fn run_command_runs_as_the_entity_from_where_it_is() {
     use super::native_inventories::NativeInventoryKind::Player;
     use mod_api::PermissionLevel::Gamemasters;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     with_command_guests("run_command_runs_as_the_entity_from_where_it_is", |game| {
         game.build_registries();
@@ -2004,7 +2006,8 @@ fn run_command_answers_false_for_a_bad_line_or_a_stale_handle() {
 fn run_command_refuses_a_player_whose_level_is_parked() {
     use super::native_inventories::NativeInventoryKind::Player;
     use mod_api::PermissionLevel::Owners;
-    use sunrise_client::{gamerules::vanilla::SEND_COMMAND_FEEDBACK, items::ItemStack};
+    use sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK;
+    use sunrise_items::items::ItemStack;
 
     let name = "run_command_refuses_a_player_whose_level_is_parked";
     with_command_guests(name, |game| {

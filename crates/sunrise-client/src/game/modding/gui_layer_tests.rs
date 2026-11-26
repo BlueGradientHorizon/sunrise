@@ -12,13 +12,10 @@ use mod_api::{
     client::hud_layout::GuiDraw, content::crash::current_native_mod,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    chunk::Chunk,
-    gui_layers::VanillaGuiLayer,
-    hud::HudBatch,
-    motion::{MotionWorld, PlayerMotion, WATER, dry_side},
-};
+use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::{MotionWorld, PlayerMotion, WATER, dry_side};
 
 #[path = "gui_layer_tests/hidden_panic.rs"]
 mod hidden_panic;
@@ -290,7 +287,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         game.side.title.0 = None;
         game.side.screen = super::Screen::Playing;
         game.side.chat_ui.hide_gui = false;
-        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_local_mode(sunrise_command::args::GameMode::Survival);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
         player.set_health(12.0, false).unwrap();
         player
@@ -313,9 +310,9 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             (true, false, true),
         ] {
             game.set_local_mode(if creative {
-                sunrise_client::command::args::GameMode::Creative
+                sunrise_command::args::GameMode::Creative
             } else {
-                sunrise_client::command::args::GameMode::Survival
+                sunrise_command::args::GameMode::Survival
             });
             game.side.chat_ui.hide_gui = hidden;
             if under_water && !game.player.as_ref().unwrap().is_eye_in_fluid(WATER) {
@@ -661,7 +658,7 @@ fn enter_test_world(game: &mut crate::game::ClientGame<'_>) {
     game.side.title.0 = None;
     game.set_screen(Screen::Playing);
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(
+        sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
         )
@@ -673,7 +670,8 @@ fn enter_test_world(game: &mut crate::game::ClientGame<'_>) {
 #[ignore = "daily"]
 fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
     use mod_api::{HotbarAttackIndicatorProgressEvent, ItemDecorationsEvent, ItemPart, Registrar};
-    use sunrise_client::{items::ItemStack, mobs::Mob};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::mobs::Mob;
 
     const HOTBAR: &str = "minecraft:hotbar";
     const CASE: &str = "SUNRISE_HOTBAR_ATTACK_INDICATOR_FIXTURE";
@@ -966,9 +964,9 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
                 );
             }
             let mode = if frame.variant == Variant::Spectator {
-                sunrise_client::command::args::GameMode::Spectator
+                sunrise_command::args::GameMode::Spectator
             } else {
-                sunrise_client::command::args::GameMode::Survival
+                sunrise_command::args::GameMode::Survival
             };
             // A client of a server takes its mode from the server: only its local mode changes.
             game.set_local_mode(mode);
@@ -1094,11 +1092,8 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
 #[ignore = "daily"]
 fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
     use std::sync::atomic::{AtomicBool, Ordering};
-    use sunrise_client::{
-        chat::ChatSource,
-        hud::rgba,
-        text::{Style, Text},
-    };
+    use sunrise_client::{chat::ChatSource, hud::rgba};
+    use sunrise_client_core::text::{Style, Text};
 
     let test =
         "game::client_side::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
@@ -1598,7 +1593,8 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
 #[ignore = "daily"]
 fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
     use std::time::{Duration, Instant};
-    use sunrise_client::{text::Text, toasts::SystemToast};
+    use sunrise_client::toasts::SystemToast;
+    use sunrise_client_core::text::Text;
 
     const OWNER: &str = "broken_hud";
     let test = "game::client_side::gui_layer_tests::a_panicking_hud_painter_shows_its_error_toast_under_f1";

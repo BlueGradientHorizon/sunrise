@@ -6,7 +6,7 @@
 use super::Game;
 use crate::game::level_control_hooks::LevelControl;
 use mod_api::LevelRef;
-use sunrise_client::worldborder::{MAX_CENTER, MAX_SIZE};
+use sunrise_level::worldborder::{MAX_CENTER, MAX_SIZE};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `WorldBorder.setCenter(x, z)`; the border-center hook hears it. The centre it already

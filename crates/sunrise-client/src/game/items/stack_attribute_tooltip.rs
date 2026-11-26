@@ -6,8 +6,8 @@ use sunrise_client::item_tooltip::{
     AttributeStyle, AttributeTooltipContext, AttributeTooltipListener, NoAttributeListener,
     attribute_tooltip,
 };
-use sunrise_client::items::ItemStack;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
 use sunrise_world::attributes::Tooltip;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -26,14 +26,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The item's own modifiers, then its enchantments' for each slot
         // group (`ItemStack.forEachModifier`).
         let mut modifiers =
-            sunrise_client::item_attributes::attribute_modifiers(stack, self.items()).into_owned();
+            sunrise_sim::item_attributes::attribute_modifiers(stack, self.items()).into_owned();
         modifiers.extend(self.active_enchantment_definitions().modifier_rows(stack));
         let player_base = (!nested).then(|| {
             [
                 self.player_attribute_base("minecraft:attack_damage", 1.0),
                 self.player_attribute_base(
                     "minecraft:attack_speed",
-                    sunrise_client::attack_strength::BASE_ATTACK_SPEED,
+                    sunrise_sim::attack_strength::BASE_ATTACK_SPEED,
                 ),
             ]
         });

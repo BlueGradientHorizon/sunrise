@@ -22,14 +22,14 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::chunk::Chunk;
 use sunrise_core::random::LegacyRandom;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]
 fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
     use crate::game::native_entity_refs::tests::bind_local_player;
-    use sunrise_client::{
+    use sunrise_sim::{
         advancements::{Advancement, Criterion, Rewards, Tree},
         motion::PlayerMotion,
     };
@@ -231,7 +231,7 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
         game.native_joins_skip();
         let run = |game: &mut crate::game::ServerGame<'_>, change: bool| {
             let mut baby = Mob::new(base + 3, kind.clone(), Vec3::new(0.5, 64.0, 0.0), 0.0);
-            sunrise_client::mobs::finalize::set_baby(&mut baby, true);
+            sunrise_sim::mobs::finalize::set_baby(&mut baby, true);
             game.dispatch_pending_children(
                 mod_api::HookId::BabyEntitySpawn,
                 true,
@@ -299,7 +299,7 @@ pub(in crate::game) fn breed_pair_credited(
         None,
         None,
         None,
-        sunrise_client::mobs::BreedExperience::Deferred,
+        sunrise_sim::mobs::BreedExperience::Deferred,
     );
     (base + 1, base + 2, child)
 }
@@ -368,9 +368,9 @@ pub(in crate::game) fn cube(
         0.0,
     );
     if mob.species() == Species::SulfurCube {
-        sunrise_client::mobs::sulfur_cube::set_size(&mut mob, size, true);
+        sunrise_sim::mobs::sulfur_cube::set_size(&mut mob, size, true);
     } else {
-        sunrise_client::mobs::cube::set_size(&mut mob, size);
+        sunrise_sim::mobs::cube::set_size(&mut mob, size);
     }
     mob.random = LegacyRandom::new(seed);
     mob

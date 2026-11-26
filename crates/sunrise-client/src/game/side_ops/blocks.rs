@@ -1,9 +1,10 @@
 //! Role dispatchers owned by lane `blocks` (`side_ops/blocks.rs`).
 use crate::game::{Game, piston_push, stations_common};
-use sunrise_client::{Result, containers::BlockEntity};
-use sunrise_client_render::moving_colliders::Prepared;
+use sunrise_client_core::Result;
 use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_level::containers::BlockEntity;
 use sunrise_world::entity_move::MoverType;
+use sunrise_world::moving_colliders::Prepared;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn side_encode_live_block_entity(

@@ -1,7 +1,7 @@
 #[cfg(test)]
 use crate::game::server_side::crossbow::ARROW;
 #[allow(unused_imports)]
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -73,7 +73,7 @@ pub(in crate::game) mod tests {
                 .unwrap();
         game.creative = true;
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(10.5, 64.0, -3.25),
             )

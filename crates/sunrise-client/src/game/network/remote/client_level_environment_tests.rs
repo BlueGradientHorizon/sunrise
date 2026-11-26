@@ -3,7 +3,7 @@ use crate::game::{
     packs::stage_pack,
 };
 use std::sync::Arc;
-use sunrise_client::environment::Sample;
+use sunrise_level::environment::Sample;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},
@@ -60,7 +60,7 @@ pub(in crate::game) fn send_types(
             .map(|(name, json)| {
                 (
                     (*name).into(),
-                    Some(sunrise_client::scoreboard::json_to_tag(json)),
+                    Some(sunrise_client_core::scoreboard::json_to_tag(json)),
                 )
             })
             .collect(),
@@ -141,7 +141,7 @@ impl CloudPack {
     pub(in crate::game) fn pack(&self) -> sunrise_client::packs::Pack {
         sunrise_client::packs::pack_for(
             "server/cloud_heights".into(),
-            sunrise_client::text::Text::literal("cloud heights"),
+            sunrise_client_core::text::Text::literal("cloud heights"),
             sunrise_client::packs::Source::Dir(self.0.clone()),
             sunrise_client::packs::RESOURCE_FORMAT,
         )
@@ -183,21 +183,21 @@ pub(in crate::game) fn reload(
 /// The frame's sample at the camera: the dimension's value, as no biome sets the height.
 pub(in crate::game) fn drawn(
     game: &crate::game::ClientGame<'_>,
-) -> sunrise_client::environment::Sky {
+) -> sunrise_level::environment::Sky {
     game.view_environment().sample(&Sample::default())
 }
 
 /// Gameplay's sample at the camera.
 pub(in crate::game) fn gameplay(
     game: &crate::game::ClientGame<'_>,
-) -> sunrise_client::environment::Sky {
+) -> sunrise_level::environment::Sky {
     game.dim_environment().sample(&Sample::default())
 }
 
 /// The joined level's gameplay and frame environments.
 pub(in crate::game) type Built = (
-    Arc<sunrise_client::environment::Environment>,
-    Option<Arc<sunrise_client::environment::Environment>>,
+    Arc<sunrise_level::environment::Environment>,
+    Option<Arc<sunrise_level::environment::Environment>>,
 );
 
 pub(in crate::game) fn built(game: &crate::game::ClientGame<'_>) -> Built {

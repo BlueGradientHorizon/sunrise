@@ -35,13 +35,12 @@ use sunrise_protocol::{
 };
 use sunrise_world::entity_move::EntityMoveWorld;
 use {
-    sunrise_client::containers::BlockEntity, sunrise_client::entities::Experience,
-    sunrise_client::items::ItemStack, sunrise_client::lan::guest::SPECTATOR,
-    sunrise_client::lan::hub::TickCtx, sunrise_client::lan::menu::Rules,
-    sunrise_client::lan::menu::Slots, sunrise_client::motion::MotionEvent,
-    sunrise_client::motion::MotionWorld, sunrise_client::motion::PlayerMotion,
-    sunrise_client::pose::Dimensions, sunrise_sim::first_person_sim::Hand,
-    sunrise_sim::first_person_sim::SwingAnimation,
+    sunrise_items::items::ItemStack, sunrise_level::containers::BlockEntity,
+    sunrise_sim::entities::Experience, sunrise_sim::first_person_sim::Hand,
+    sunrise_sim::first_person_sim::SwingAnimation, sunrise_sim::lan::guest::SPECTATOR,
+    sunrise_sim::lan::hub::TickCtx, sunrise_sim::lan::menu::Rules, sunrise_sim::lan::menu::Slots,
+    sunrise_sim::motion::MotionEvent, sunrise_sim::motion::MotionWorld,
+    sunrise_sim::motion::PlayerMotion, sunrise_sim::pose::Dimensions,
 };
 
 #[path = "attack_checks_server.rs"]
@@ -99,28 +98,28 @@ pub(in crate::game) mod tick;
 pub(in crate::game) mod turns;
 
 impl Rules for ItemRules<'_> {
-    fn items(&self) -> &sunrise_client::items::Items {
+    fn items(&self) -> &sunrise_items::items::Items {
         self.0
     }
-    fn enchantments(&self) -> &sunrise_client::enchant::Enchantments {
+    fn enchantments(&self) -> &sunrise_items::enchant::Enchantments {
         self.1
     }
     fn max_stack(&self, item: &str) -> u32 {
         self.0.get(item).map_or(64, |i| i.max_stack)
     }
-    fn slot_rules(&self) -> Option<&dyn sunrise_client::menu::SlotRules> {
+    fn slot_rules(&self) -> Option<&dyn sunrise_sim::menu::SlotRules> {
         self.2
     }
-    fn stacked(&self) -> Option<&sunrise_client::menu::StackedOutcome> {
+    fn stacked(&self) -> Option<&sunrise_sim::menu::StackedOutcome> {
         self.3
     }
     fn mod_container_insert_rule(
         &self,
         slot: usize,
-        current: Option<&sunrise_client::items::ItemStack>,
-        offered: &sunrise_client::items::ItemStack,
+        current: Option<&sunrise_items::items::ItemStack>,
+        offered: &sunrise_items::items::ItemStack,
     ) -> bool {
-        sunrise_client::containers::mod_container_insert_allowed(
+        sunrise_level::containers::mod_container_insert_allowed(
             self.4.get(slot).copied().unwrap_or_default(),
             current,
             offered,
@@ -163,8 +162,9 @@ pub(in crate::game) mod tests {
         use super::MenuOpen;
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, lan::guest::GuestKind};
         use sunrise_core::nbt::Tag;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::lan::guest::GuestKind;
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -240,11 +240,9 @@ pub(in crate::game) mod tests {
             Arc, Mutex,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::{
-            chunk::Chunk,
-            lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-        };
+        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::packets::{configuration::ClientInformation, play};
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
         if run_fresh_cases(
             "game::server_side::lan_actions_server::tests::block_parts_pick_and_use_on_the_server_and_for_a_guest",
@@ -481,7 +479,7 @@ pub(in crate::game) mod tests {
                 };
                 game.world.set(0, 64, 4, lever).unwrap();
                 game.inventory[game.selected] =
-                    Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
+                    Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
                 for (answer, item_uses, powered, swings) in [
                     (Answer::Success, 0, false, 1),
                     (Answer::SuccessServer, 0, false, 1),
@@ -539,7 +537,7 @@ pub(in crate::game) mod tests {
                     (Some(Answer::Pass), cauldron, "minecraft:water_bucket", 4),
                 ] {
                     game.world.set(5, 64, 4, cauldron).unwrap();
-                    game.inventory[game.selected] = Some(sunrise_client::items::ItemStack::new(
+                    game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new(
                         "minecraft:water_bucket",
                         1,
                     ));
@@ -566,9 +564,9 @@ pub(in crate::game) mod tests {
                 game.world.set(6, 64, 4, jukebox).unwrap();
                 game.world.block_entities.insert(
                     (6, 64, 4),
-                    sunrise_client::containers::BlockEntity::Jukebox(
-                        sunrise_client::containers::Jukebox {
-                            items: [Some(sunrise_client::items::ItemStack::new(
+                    sunrise_level::containers::BlockEntity::Jukebox(
+                        sunrise_level::containers::Jukebox {
+                            items: [Some(sunrise_items::items::ItemStack::new(
                                 "minecraft:music_disc_13",
                                 1,
                             ))],
@@ -589,7 +587,7 @@ pub(in crate::game) mod tests {
                 assert!(game.use_hand(Some(&jukebox_hit)).unwrap());
                 assert!(matches!(
                     game.world.block_entities.get(&(6, 64, 4)),
-                    Some(sunrise_client::containers::BlockEntity::Jukebox(j)) if j.record().is_some()
+                    Some(sunrise_level::containers::BlockEntity::Jukebox(j)) if j.record().is_some()
                 ));
                 *user.empty_answer.lock().unwrap() = None;
                 let calls = user.clicks.lock().unwrap().len();
@@ -597,7 +595,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(user.clicks.lock().unwrap().len(), calls + 1);
                 assert!(matches!(
                     game.world.block_entities.get(&(6, 64, 4)),
-                    Some(sunrise_client::containers::BlockEntity::Jukebox(j)) if j.record().is_none()
+                    Some(sunrise_level::containers::BlockEntity::Jukebox(j)) if j.record().is_none()
                 ));
                 assert!(
                     game.dropped
@@ -677,7 +675,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(game.world.block(8, 64, 4), floor_lever);
                 *user.answer.lock().unwrap() = Some(Answer::TryWithEmptyHand);
                 game.hand = Hand::Off;
-                game.offhand = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
+                game.offhand = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
                 let calls = user.empty_clicks.lock().unwrap().len();
                 assert!(game.use_hand(Some(&replaced_hit)).unwrap());
                 assert_eq!(user.empty_clicks.lock().unwrap().len(), calls);
@@ -695,7 +693,7 @@ pub(in crate::game) mod tests {
                     .unwrap();
                 game.world.set(11, 64, 4, ore).unwrap();
                 game.inventory[game.selected] =
-                    Some(sunrise_client::items::ItemStack::new("minecraft:stone", 1));
+                    Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1));
                 let ore_hit = super::super::Hit {
                     pos: [11, 64, 4],
                     point: [11.5, 65.0, 4.5],
@@ -713,7 +711,7 @@ pub(in crate::game) mod tests {
                 );
                 *user.answer.lock().unwrap() = Some(Answer::TryWithEmptyHand);
                 game.inventory[game.selected] =
-                    Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
+                    Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
 
                 // The hook precedes the pot's wobble and the bookshelf's removal.
                 let pot = game
@@ -751,11 +749,11 @@ pub(in crate::game) mod tests {
                     )
                     .unwrap();
                 game.world.set(9, 64, 4, shelf).unwrap();
-                let mut books = Box::<sunrise_client::containers::ChiseledBookshelf>::default();
-                books.items[0] = Some(sunrise_client::items::ItemStack::new("minecraft:book", 1));
+                let mut books = Box::<sunrise_level::containers::ChiseledBookshelf>::default();
+                books.items[0] = Some(sunrise_items::items::ItemStack::new("minecraft:book", 1));
                 game.world.block_entities.insert(
                     (9, 64, 4),
-                    sunrise_client::containers::BlockEntity::ChiseledBookshelf(books),
+                    sunrise_level::containers::BlockEntity::ChiseledBookshelf(books),
                 );
                 let shelf_hit = super::super::Hit {
                     pos: [9, 64, 4],
@@ -767,19 +765,19 @@ pub(in crate::game) mod tests {
                 assert!(game.use_hand(Some(&shelf_hit)).unwrap());
                 assert!(matches!(
                     game.world.block_entities.get(&(9, 64, 4)),
-                    Some(sunrise_client::containers::BlockEntity::ChiseledBookshelf(b)) if b.items[0].is_some()
+                    Some(sunrise_level::containers::BlockEntity::ChiseledBookshelf(b)) if b.items[0].is_some()
                 ));
                 *user.empty_answer.lock().unwrap() = None;
                 assert!(game.use_hand(Some(&shelf_hit)).unwrap());
                 assert!(matches!(
                     game.world.block_entities.get(&(9, 64, 4)),
-                    Some(sunrise_client::containers::BlockEntity::ChiseledBookshelf(b)) if b.items[0].is_none()
+                    Some(sunrise_level::containers::BlockEntity::ChiseledBookshelf(b)) if b.items[0].is_none()
                 ));
 
                 // The real guest packet reaches empty use with the guest's UUID.
                 game.world.set(0, 64, 4, lever).unwrap();
                 {
-                    let value = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
+                    let value = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
                     game.lan
                         .as_mut()
                         .unwrap()
@@ -914,10 +912,10 @@ pub(in crate::game) mod tests {
                 // its data gives the part's diamond carrying the chest's contents.
                 game.world.set(3, 64, 0, chest).unwrap();
                 let mut slots = vec![None; 27];
-                slots[0] = Some(sunrise_client::items::ItemStack::new("minecraft:apple", 2));
+                slots[0] = Some(sunrise_items::items::ItemStack::new("minecraft:apple", 2));
                 game.world.block_entities.insert(
                     (3, 64, 0),
-                    sunrise_client::containers::BlockEntity::Chest(slots),
+                    sunrise_level::containers::BlockEntity::Chest(slots),
                 );
                 game.lan_guest_packet(
                     12,
@@ -930,7 +928,7 @@ pub(in crate::game) mod tests {
                 let picked = guest.inventory[guest.selected].as_ref().unwrap();
                 assert_eq!(&*picked.item, "minecraft:diamond");
                 let Some(sunrise_core::nbt::Tag::Compound(components)) =
-                    sunrise_client::item_data::component_snapshot(picked)
+                    sunrise_items::item_data::component_snapshot(picked)
                 else {
                     panic!("the chest's data is on the diamond");
                 };
@@ -953,7 +951,7 @@ pub(in crate::game) mod tests {
                 game.world.set(2, 64, 0, hive).unwrap();
                 game.world.block_entities.insert(
                     (2, 64, 0),
-                    sunrise_client::containers::BlockEntity::Beehive(Box::default()),
+                    sunrise_level::containers::BlockEntity::Beehive(Box::default()),
                 );
                 game.creative = true;
                 game.break_block([2, 64, 0]).unwrap();
@@ -972,7 +970,7 @@ pub(in crate::game) mod tests {
     fn fake_body_does_not_count_toward_sleep() {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
@@ -993,9 +991,9 @@ pub(in crate::game) mod tests {
 pub(in crate::game) mod respawn_world_point_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
     /// PlayerList.respawn sends world respawn data, independently of the personal landing.
     #[test]
@@ -1142,12 +1140,10 @@ pub(in crate::game) mod guest_close_listener_tests {
     use crate::game::lan_actions::guest_close_listener_tests::selected;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        chunk::Chunk,
-        lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    };
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[test]
     #[ignore = "daily"]

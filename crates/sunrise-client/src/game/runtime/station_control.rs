@@ -2,7 +2,8 @@
 //! drive the workstation screens (`sunrise-ctl click-slot 600`, ...).
 use super::{Game, Screen};
 use serde_json::{Value, json};
-use sunrise_client::{Result, items::ItemStack};
+use sunrise_client_core::Result;
+use sunrise_items::items::ItemStack;
 
 pub(in crate::game) const HELP: &[&str] = &[
     "xp LEVELS                      add (or remove) experience levels",
@@ -38,7 +39,7 @@ fn stack_json(s: &ItemStack) -> Value {
         "repair_cost": s.repair_cost(),
         "custom_name": s.custom_name(),
         "potion": s.potion(),
-        "trim": s.data().and_then(|d| d.trim.as_ref()).and_then(sunrise_client::item_data::trim::named).map(|(m, p)| json!([m, p])),
+        "trim": s.data().and_then(|d| d.trim.as_ref()).and_then(sunrise_items::item_data::trim::named).map(|(m, p)| json!([m, p])),
     })
 }
 
@@ -126,7 +127,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !self.set_state_named(pos, &name, &[])? {
                     return Err(format!("cannot place {name}").into());
                 }
-                if let Some(entity) = sunrise_client::containers::BlockEntity::for_block(&name) {
+                if let Some(entity) = sunrise_level::containers::BlockEntity::for_block(&name) {
                     self.world
                         .block_entities
                         .insert((pos[0], pos[1], pos[2]), entity);
@@ -214,10 +215,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let effect = if arg(1)? == "clear" {
                     None
                 } else {
-                    let def = sunrise_client::brewing::effect(arg(1)?).ok_or("unknown effect")?;
+                    let def = sunrise_level::brewing::effect(arg(1)?).ok_or("unknown effect")?;
                     let seconds: i32 = arg(2)?.parse()?;
                     let amp: i32 = words.get(3).map_or(Ok(0), |a| a.parse())?;
-                    Some(sunrise_client::effects::EffectInstance::new(
+                    Some(sunrise_level::effects::EffectInstance::new(
                         def.id,
                         seconds * 20,
                         amp,
@@ -238,7 +239,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             "trade" => {
                 let profession = arg(1)?.trim_start_matches("minecraft:").to_owned();
-                if !sunrise_client::mobs::villager::profession_table()
+                if !sunrise_sim::mobs::villager::profession_table()
                     .entries()
                     .iter()
                     .any(|p| p.trade_set.as_deref() == Some(profession.as_str()))
@@ -256,7 +257,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "mount-menu" => {
                 let eye = self.eye_position().ok_or("no player")?;
                 let index = (0..self.mobs.len())
-                    .filter(|&i| sunrise_client::mobs::equine::is_equine(self.mobs[i].species()))
+                    .filter(|&i| sunrise_sim::mobs::equine::is_equine(self.mobs[i].species()))
                     .min_by(|&a, &b| {
                         let d = |i: usize| {
                             let c = self.mobs[i].center();

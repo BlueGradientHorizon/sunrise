@@ -1,7 +1,7 @@
 //! Common beacon constants, color/base queries, and beam scan shared by server and client.
 use super::{Game, stations_common::Kind};
-use sunrise_client::containers::{Beacon, BlockEntity};
 use sunrise_core::position::BlockPos;
+use sunrise_level::containers::{Beacon, BlockEntity};
 use sunrise_level::dyes::{DYE_DIFFUSE, DYE_NAMES};
 use sunrise_world::registry::BlockStateId;
 

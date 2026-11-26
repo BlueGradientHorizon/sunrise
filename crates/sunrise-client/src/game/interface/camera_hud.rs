@@ -5,8 +5,8 @@ use crate::game::gui_paint_items::HotbarSource;
 use crate::game::remote_camera::CameraPlayer;
 use mod_api::client::hud_layout::HeartKind;
 use sunrise_client::hud_layout::{AirInputs, FoodInputs, HealthInputs, HotbarInputs};
-use sunrise_client::mobs::finalize::{self, Attr};
 use sunrise_items::equipment::OFFHAND;
+use sunrise_sim::mobs::finalize::{self, Attr};
 
 /// `FoodData`'s defaults, which a client keeps for every player but itself.
 const REMOTE_FOOD: i32 = 20;
@@ -335,7 +335,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         air: p.air,
                         max_air: MAX_AIR,
                         // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
-                        under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                        under_water: p.is_eye_in_fluid(sunrise_sim::motion::WATER),
                     },
                     Some([p.position.x, p.position.y, p.position.z]),
                 ))

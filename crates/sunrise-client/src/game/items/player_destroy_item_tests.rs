@@ -217,7 +217,7 @@ fn continuations_preserve_listener_hand_writes(
     // A broken steering stick must not install its fishing rod over the new stack.
     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
     game.mobs
-        .push(sunrise_client::mobs::Mob::new(21, pig, Vec3::ZERO, 0.0));
+        .push(sunrise_sim::mobs::Mob::new(21, pig, Vec3::ZERO, 0.0));
     game.riding = Some(21);
     let mut stick = named_stack("minecraft:carrot_on_a_stick", 1);
     stick.damage = 24;
@@ -315,7 +315,7 @@ fn run_isolated() {
             game.selected = 0;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             // Both hands, partial consumption, and creative preservation.
             for hand in Hand::BOTH {
                 game.with_hand(hand, |game| {
@@ -380,7 +380,7 @@ fn run_isolated() {
             // Native entity interaction: the last wheat is eaten by an adult cow.
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.clear();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 42,
                 kind,
                 Vec3::new(0.5, 64.0, 2.5),
@@ -429,12 +429,12 @@ fn run_isolated() {
             let mut player = PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap();
             player.entity_id = 71;
             game.player = Some(player);
-            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+            game.set_local_mode(sunrise_command::args::GameMode::Survival);
             game.selected = 0;
             game.side.screen = Screen::Playing;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             // Both hands, partial consumption, and creative preservation.
             for hand in Hand::BOTH {
                 game.with_hand(hand, |game| {

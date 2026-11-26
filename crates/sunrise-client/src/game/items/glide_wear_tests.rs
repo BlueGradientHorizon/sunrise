@@ -17,11 +17,11 @@ fn glide(hand: usize, creative: bool, components: Option<&str>) -> u32 {
                 1,
             );
             if let Some(components) = components {
-                let tag = sunrise_client::item_data::command_components(components).unwrap();
-                let (_, extra) = sunrise_client::item_data::decode_components(Some(&tag));
+                let tag = sunrise_items::item_data::command_components(components).unwrap();
+                let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
                 stack.extra = extra;
             }
-            let body = sunrise_client::motion::PlayerMotion::new(
+            let body = sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(3.0, 80.0, 5.0),
             )

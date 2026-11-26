@@ -7,9 +7,10 @@
 use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
 use super::{Game, commands::Target};
 use mod_api::{ClipBlock, ClipFluid, ClipHit, EntityRef, LevelWriteError};
-use sunrise_client::{collisions::SceneCollisions, motion::player_context};
 use sunrise_core::geometry::{Aabb, Axis, Vec3};
 use sunrise_core::position::BlockPos;
+use sunrise_level::collisions::SceneCollisions;
+use sunrise_sim::motion::player_context;
 
 /// `Entity.calculateViewVector` for a look turned `pitch_offset` degrees down: the unit
 /// vector along `yaw` and `pitch + pitch_offset`.
@@ -56,7 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn native_client_player(
         &self,
         t: Target,
-    ) -> Option<&sunrise_client::motion::PlayerMotion> {
+    ) -> Option<&sunrise_sim::motion::PlayerMotion> {
         self.remote.as_ref()?;
         (t == Target::Player).then_some(())?;
         self.player.as_ref()
@@ -119,7 +120,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Mob(id) => self
                 .mobs
                 .iter()
-                .any(|m| m.id == id && sunrise_client::mobs::equine::controlled(m)),
+                .any(|m| m.id == id && sunrise_sim::mobs::equine::controlled(m)),
             _ => false,
         }
     }
@@ -451,7 +452,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     pub(in crate::game) fn native_target_guest(
         &self,
         t: Target,
-    ) -> Option<&sunrise_client::lan::guest::Guest> {
+    ) -> Option<&sunrise_sim::lan::guest::Guest> {
         match t {
             Target::Player => self.command_guest(crate::game::Side::lan_acting(&self.side)?),
             Target::Guest(conn) => self.command_guest(conn),
@@ -568,7 +569,8 @@ pub(in crate::game) mod tests {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::BlockFace;
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, mobs::Mob};
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::mobs::Mob;
         with_game(|game| {
             game.world
                 .chunks
@@ -696,13 +698,13 @@ pub(in crate::game) mod tests {
     fn set_on_ground_refreshes_the_live_footprint_without_moving_the_body() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use std::sync::Arc;
-        use sunrise_client::{
-            chunk::Chunk,
+        use sunrise_core::position::BlockPos;
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::{
             entities::{ArmorStand, ItemEntity},
-            items::ItemStack,
             projectiles::{Projectile, ProjectileKind},
         };
-        use sunrise_core::position::BlockPos;
 
         if run_fresh_cases(
             "game::server_side::native_entity_motion::tests::set_on_ground_refreshes_the_live_footprint_without_moving_the_body",
@@ -815,7 +817,7 @@ pub(in crate::game) mod tests {
             Dim, native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
         };
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         if run_fresh_cases(
             "game::server_side::native_entity_motion::tests::set_on_ground_follows_the_server_players_parked_and_acting_bodies",
@@ -909,7 +911,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn reset_fall_distance_forgets_a_fall_for_mobs_carts_and_players() {
         use super::super::minecarts::{CartKind, Minecart};
-        use sunrise_client::mobs::Mob;
+        use sunrise_sim::mobs::Mob;
         fn fake_fall<'a>(game: &'a mut crate::game::ServerGame<'_>) -> &'a mut f64 {
             let host = game.lan.as_mut().unwrap();
             let conn = host.hub.guests.iter().find(|g| g.uuid == 2).unwrap().conn;
@@ -956,7 +958,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn only_a_mount_its_rider_controls_takes_the_riders_speed() {
         use super::super::commands::Target;
-        use sunrise_client::mobs::{Mob, equine::Rider};
+        use sunrise_sim::mobs::{Mob, equine::Rider};
         super::super::native_entity_refs::tests::with_game(|game| {
             for (id, name) in [(30, "minecraft:horse"), (31, "minecraft:pig")] {
                 let kind = game.res.mob_types().get(name).unwrap().clone();

@@ -9,7 +9,7 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
         inputs: [Option<&EngineStack>; 3],
         cancel: &mut bool,
-    ) -> crate::menu::GrindstonePlaceEdits {
+    ) -> sunrise_sim::menu::GrindstonePlaceEdits {
         use mod_api::item::menu::{GrindstonePlaceEdits, GrindstonePlaceInputs};
 
         let Ok([top, bottom, vanilla_output]) = inputs.try_into_api() else {
@@ -48,16 +48,16 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
                 None
             }
         };
-        crate::menu::GrindstonePlaceEdits { output, xp }
+        sunrise_sim::menu::GrindstonePlaceEdits { output, xp }
     }
     pub(in crate::game) fn api_grindstone_take(
         &mut self,
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        take: &crate::menu::PendingGrindstoneTake,
+        take: &sunrise_sim::menu::PendingGrindstoneTake,
         cancel: &mut bool,
-    ) -> crate::menu::GrindstoneTakeEdits {
+    ) -> sunrise_sim::menu::GrindstoneTakeEdits {
         use mod_api::item::menu::{GrindstoneTakeEdits, GrindstoneTakeInputs};
 
         let initial_xp = if take.xp >= 0 {
@@ -65,10 +65,10 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
         } else {
             let amount = take.vanilla_amount(&self.menu_env());
             self.journal_level_random();
-            crate::stations::grindstone_xp_roll(amount, &mut self.world.random) as i32
+            sunrise_sim::stations::grindstone_xp_roll(amount, &mut self.world.random) as i32
         };
         let Ok([top, bottom]) = [take.top.as_ref(), take.bottom.as_ref()].try_into_api() else {
-            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
+            return sunrise_sim::menu::GrindstoneTakeEdits::initial(initial_xp);
         };
         let inputs = GrindstoneTakeInputs {
             top: top.as_ref(),
@@ -88,10 +88,10 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
         if panicked {
             log::error!("grindstone_take: listener panicked at {pos:?}");
             *cancel = false;
-            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
+            return sunrise_sim::menu::GrindstoneTakeEdits::initial(initial_xp);
         }
         if *cancel {
-            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
+            return sunrise_sim::menu::GrindstoneTakeEdits::initial(initial_xp);
         }
         let new_top = match edits.new_top.try_into_engine(self.items()) {
             Ok(stack) => stack,
@@ -109,7 +109,7 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
                 None
             }
         };
-        crate::menu::GrindstoneTakeEdits {
+        sunrise_sim::menu::GrindstoneTakeEdits {
             xp: edits.xp,
             new_top,
             new_bottom,
@@ -120,7 +120,7 @@ impl super::Game<'_, crate::game::server_side::ServerState> {
 impl super::Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn api_block_entity_update_tag(
         pos: [i32; 3],
-        entity: &crate::containers::ModBlockEntity,
+        entity: &sunrise_level::containers::ModBlockEntity,
         tag: &mut Option<sunrise_core::nbt::Compound>,
     ) {
         if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityUpdateTag) {

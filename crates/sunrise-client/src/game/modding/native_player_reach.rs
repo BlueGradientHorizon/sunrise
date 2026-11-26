@@ -57,8 +57,9 @@ mod tests {
     use crate::game::native_guest_turn_tests::with_guests;
     use mod_api::{EntityReach, EntityRef, GameMode, Hand, LivingRef};
     use std::sync::Arc;
-    use sunrise_client::{items::ItemStack, mobs::Mob};
     use sunrise_core::{geometry::Vec3, nbt::Tag};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::mobs::Mob;
 
     /// Each reach rule on both sides of its boundary, for a survival guest with an empty hand
     /// (range 3.0, no attack range component) whose eyes are at (3, 65.62, 5). Pigs stand level
@@ -87,7 +88,7 @@ mod tests {
             // The fixture leaves the guest without a body, and a player's attributes live on
             // it: give one, as a joined player's record keeps.
             let body =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                     .unwrap();
             game.lan
                 .as_mut()
@@ -193,8 +194,8 @@ mod tests {
             assert_eq!(reach(game, stale, EntityReach::Interact), None);
 
             // A guest of the hub whose level is the nether: another level, None.
-            use sunrise_client::lan::{Joined, PlayerSender, guest::Guest};
             use sunrise_protocol::packets::configuration::ClientInformation;
+            use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
             let (tx, _rx) = std::sync::mpsc::channel();
             use std::sync::atomic::{AtomicI32, AtomicUsize};
             let mut guest = Guest::new(
@@ -236,8 +237,8 @@ mod tests {
             native_client_session::tests::logged_client,
             native_entity_refs::tests::with_client_game,
         };
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_protocol::packets::play;
+        use sunrise_sim::motion::PlayerMotion;
 
         with_client_game(|game| {
             let _server = logged_client(game);

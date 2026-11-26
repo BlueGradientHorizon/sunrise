@@ -84,10 +84,10 @@ fn resource_root(scratch: &std::path::Path) -> std::path::PathBuf {
     let package = sunrise_mod_package::Package::read(&module).unwrap();
     let content = sunrise_mod_package::Content::read(&module, &package.manifest).unwrap();
     let root = scratch.join("resources");
-    sunrise_client::mod_content::build(
+    sunrise_sim::mod_content::build(
         &base,
         std::path::Path::new(""),
-        &[sunrise_client::mod_content::ContentMod {
+        &[sunrise_sim::mod_content::ContentMod {
             id: "tank".into(),
             content,
             jars: vec![],

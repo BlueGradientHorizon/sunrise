@@ -8,13 +8,10 @@ use serde_json::Value;
 use std::sync::Arc;
 #[cfg(test)]
 use std::time::Instant;
-use sunrise_client::{
-    advancements::{self as adv, Frame, Progress, Tree},
-    hud::HudBatch,
-    items::ItemStack,
-    text::Text,
-    toasts::Slide,
-};
+use sunrise_client::{hud::HudBatch, toasts::Slide};
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::advancements::{self as adv, Frame, Progress, Tree};
 
 #[path = "icons_client.rs"]
 pub(in crate::game) mod icons;
@@ -245,7 +242,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         a: sunrise_protocol::packets::play::Advancement,
     ) -> adv::Advancement {
-        use sunrise_client::scoreboard::tag_to_json;
+        use sunrise_client_core::scoreboard::tag_to_json;
         let display = a.display.map(|d| adv::Display {
             icon: self.remote_advancement_icon(d.icon),
             title: tag_to_json(&d.title),

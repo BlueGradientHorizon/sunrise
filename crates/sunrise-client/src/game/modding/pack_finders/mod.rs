@@ -7,10 +7,10 @@ use mod_api::{
 };
 use sunrise_assets::resource_source::{ResourceSource, stays_inside};
 use sunrise_client::{
-    datapack::DataPack,
     pack_screen::{PackInfo, Source as ScreenSource, load_icon},
     packs::{self, Pack, Position, Source},
 };
+use sunrise_level::datapack::DataPack;
 
 #[cfg(test)]
 mod tests;
@@ -128,8 +128,8 @@ impl PackDiscoveryContext for StartupDiscovery {
 }
 impl mod_api::prelude::TextHost for StartupDiscovery {
     fn text_string(&self, text: &mod_api::Text) -> String {
-        sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {
-            sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
+        sunrise_client_core::lang::scoped(sunrise_client_core::lang::Language::default(), || {
+            sunrise_sim::api_text::to_engine_inprocess(text).plain()
         })
         .0
     }
@@ -189,8 +189,8 @@ pub(in crate::game::server_side) fn data_repository(
     resources: &std::path::Path,
     additional: &[std::sync::Arc<DataPack>],
 ) -> Vec<DataPack> {
-    let mut packs = sunrise_client::datapack::discover_with_features(world, resources);
+    let mut packs = sunrise_level::datapack::discover_with_features(world, resources);
     packs.extend(additional.iter().map(|pack| (**pack).clone()));
-    packs.sort_by(|a, b| sunrise_client::datapack::compare_ids(&a.id, &b.id));
+    packs.sort_by(|a, b| sunrise_level::datapack::compare_ids(&a.id, &b.id));
     packs
 }

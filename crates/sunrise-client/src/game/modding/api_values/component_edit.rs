@@ -7,8 +7,8 @@ use super::{
 use crate::game::native_living_refs::with_equipment_view;
 use mod_api::__private::game::{ComponentEdit, ItemComponentEdits, edit_item_components};
 use mod_api::{ItemComponentEditor, ItemPlaceEditError, StackWriteError};
-use sunrise_client::mobs::finalize::EquipmentRead;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_sim::mobs::finalize::EquipmentRead;
 
 const DAMAGE: &str = "minecraft:damage";
 const REMOVED_DAMAGE: &str = "!minecraft:damage";
@@ -266,7 +266,7 @@ mod tests {
                 let mut resident = EngineStack::new("minecraft:stick", 1);
                 let (prepared, _) = edit(&resident, id, value(Tag::Int(7))).unwrap().unwrap();
                 prepared.apply(&mut resident);
-                let original = sunrise_client::item_data::component_snapshot(&resident).unwrap();
+                let original = sunrise_items::item_data::component_snapshot(&resident).unwrap();
                 assert_eq!(original.get(id), Some(&value(Tag::Int(7))), "{id}");
                 assert!(
                     matches!(
@@ -278,7 +278,7 @@ mod tests {
                     "{id}"
                 );
                 assert_eq!(
-                    sunrise_client::item_data::component_snapshot(&resident),
+                    sunrise_items::item_data::component_snapshot(&resident),
                     Some(original)
                 );
             }

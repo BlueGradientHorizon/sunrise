@@ -8,12 +8,9 @@ mod remote_tests;
 
 use super::{Game, Screen, advancements::text_of};
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
-use sunrise_client::{
-    advancements::{Frame, Tree},
-    hud::HudBatch,
-    text::{Style, Text},
-    ui,
-};
+use sunrise_client::{hud::HudBatch, ui};
+use sunrise_client_core::text::{Style, Text};
+use sunrise_sim::advancements::{Frame, Tree};
 
 const INSIDE_W: i32 = 234;
 const INSIDE_H: i32 = 113;

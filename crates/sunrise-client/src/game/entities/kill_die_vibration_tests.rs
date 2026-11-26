@@ -4,9 +4,9 @@
 //! measures the same on vanilla 26.3: the sensor's listener holds the event
 //! before any world tick).
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::Who;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Who;
 
 pub(in crate::game) const PIG: &str = "00000251-0000-0000-0000-000000000001";
 
@@ -43,7 +43,9 @@ pub(in crate::game) fn run(
     let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
+        said.iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect(),
     )
 }
 
@@ -76,7 +78,7 @@ fn a_killed_stand_keeps_its_source_in_the_sensor() {
         let stand = game.armor_stands.last().unwrap().id;
         assert!(game.run_command("kill 00000251-0000-0000-0000-000000000002"));
         assert!(!game.armor_stands.iter().any(|entity| entity.id == stand));
-        let Some(sunrise_client::containers::BlockEntity::Sculk(sensor)) =
+        let Some(sunrise_level::containers::BlockEntity::Sculk(sensor)) =
             game.world.block_entities.get(&(8, 100, 8))
         else {
             panic!("sensor missing");
@@ -97,7 +99,7 @@ fn a_killed_mob_posts_its_death_before_the_command_returns() {
         let pig = game
             .mobs
             .iter()
-            .find(|m| m.species() == sunrise_client::mobs::Species::Pig)
+            .find(|m| m.species() == sunrise_sim::mobs::Species::Pig)
             .unwrap()
             .id;
         let time = game.world.game_time;

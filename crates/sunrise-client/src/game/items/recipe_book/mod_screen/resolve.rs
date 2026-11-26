@@ -1,7 +1,8 @@
 //! Resource-backed resolution of mod recipe displays.
 use crate::game::Game;
 use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
-use sunrise_client::{crafting::Ingredient, items::ItemStack, menu::place::Stacked};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{crafting::Ingredient, menu::place::Stacked};
 
 pub(super) struct Resolver<'a, 'w> {
     game: &'a Game<'w, crate::game::client_side::ClientState>,
@@ -47,11 +48,11 @@ fn dye_stack(target: &ItemStack, dye: usize) -> ItemStack {
     let mut stack = target.clone();
     stack.count = 1;
     let current = stack.data().and_then(|data| data.dyed_color);
-    stack.data_mut().dyed_color = Some(sunrise_client::crafting::apply_dyes(current, &[dye]));
+    stack.data_mut().dyed_color = Some(sunrise_sim::crafting::apply_dyes(current, &[dye]));
     stack
 }
 
-impl sunrise_client::recipe_book::mod_presentation::DisplayResolver for Resolver<'_, '_> {
+impl sunrise_sim::recipe_book::mod_presentation::DisplayResolver for Resolver<'_, '_> {
     fn resolve(&self, slot: &Slot) -> Vec<ItemStack> {
         Resolver::resolve(self, slot)
     }
@@ -77,7 +78,7 @@ impl sunrise_client::recipe_book::mod_presentation::DisplayResolver for Resolver
                 .iter()
                 .map(|(_, amount)| *amount)
                 .collect();
-            return sunrise_client::menu::place::can_craft_matching(
+            return sunrise_sim::menu::place::can_craft_matching(
                 &mut counts,
                 ingredients.len(),
                 |candidate, ingredient| {

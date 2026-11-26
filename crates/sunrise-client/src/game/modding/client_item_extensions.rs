@@ -11,10 +11,9 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
-use sunrise_client::{
-    fast_hash::FxHashMap,
-    mobs::{Part, Polygon},
-};
+use sunrise_client::mobs::Part;
+use sunrise_client::mobs::Polygon;
+use sunrise_level::fast_hash::FxHashMap;
 
 pub(in crate::game) static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> =
     LazyLock::new(|| {
@@ -341,7 +340,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// the stack cannot cross the API boundary, or the provider panics.
     pub(in crate::game::client_side) fn item_tooltip_font(
         &self,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
     ) -> Cow<'static, mod_api::Identifier> {
         use super::api_values::TryIntoApi;
         let default = Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID);
@@ -374,7 +373,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
         trim: Option<super::equipment_piece::MaterialBinding<'a>>,
         mut texture: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
         mut emissive: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
@@ -950,7 +949,7 @@ mod tests {
                     sunrise_client::mobs::render::draw(
                         model,
                         glam::Mat4::IDENTITY,
-                        &sunrise_client::mobs::anim::Poses::new(model),
+                        &sunrise_sim::mobs::anim::Poses::new(model),
                         m.binding.uv,
                         m.color,
                         0xF0F0,

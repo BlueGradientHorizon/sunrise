@@ -7,8 +7,8 @@
 //! (tools/test_mob_landing_support_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -80,7 +80,7 @@ fn drop_pig(x: f64) -> (f32, Option<[i32; 3]>, f64) {
     let pig = game
         .mobs
         .iter()
-        .find(|m| m.species() == sunrise_client::mobs::Species::Pig)
+        .find(|m| m.species() == sunrise_sim::mobs::Species::Pig)
         .expect("the pig");
     assert!(pig.ground.on_ground, "the pig has landed");
     let support = pig.ground.supporting_block.map(|p| [p.x, p.y, p.z]);

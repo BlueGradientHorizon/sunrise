@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE"]
@@ -50,7 +50,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
         .begin_open(mod_api::Authority::IntegratedServer);
     game.native_lifecycle.world_open_ready().unwrap();
     game.options.dedicated = Some(Vec::new());
-    game.world = sunrise_client::world::World::new(game.res.facts().air, 1);
+    game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
     for z in -2..=2 {
         for x in -2..=2 {
             game.world
@@ -95,7 +95,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     game.side
         .tickets
         .0
-        .update(Some(crate::ticket_levels::Sources::default()));
+        .update(Some(sunrise_sim::ticket_levels::Sources::default()));
     game.handle_vehicle_portals();
     game.handle_entity_portals();
     game.handle_portals(false, true);
@@ -105,7 +105,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
     game.side
         .tickets
         .0
-        .update(Some(crate::ticket_levels::Sources {
+        .update(Some(sunrise_sim::ticket_levels::Sources {
             forced: vec![(0, 0)],
             ..Default::default()
         }));
@@ -158,7 +158,7 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
             .portals
             .arrivals
             .iter()
-            .find(|a| sunrise_client::save::text(a.tag.get("id")).as_deref() == Some(kind))
+            .find(|a| sunrise_sim::save::text(a.tag.get("id")).as_deref() == Some(kind))
             .unwrap();
         let restored = arrival_from_tag(&arrival_tag(arrival)).unwrap();
         let counter = counter(&restored.tag);
@@ -180,5 +180,5 @@ pub(in crate::game::server_side) fn run_portal_contact_and_waiting_handoff_match
 }
 
 fn counter(tag: &Tag) -> i32 {
-    sunrise_client::save::number(tag.get("PortalCooldown")).unwrap() as i32
+    sunrise_sim::save::number(tag.get("PortalCooldown")).unwrap() as i32
 }

@@ -2,9 +2,9 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use sunrise_client::mobs::{Who, leash::Holder};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_sim::mobs::{Who, leash::Holder};
 
 #[derive(Deserialize)]
 pub(in crate::game) struct Witness {
@@ -101,7 +101,7 @@ pub(in crate::game) fn setup_game<'a>(
     assert!(game.run_command("difficulty normal"));
     // The Java oracle has a live player as the owner of its creative arrows and fireballs.
     let mut player =
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 12.5)).unwrap();
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 12.5)).unwrap();
     player.client_loaded = true;
     game.player = Some(player);
     crate::game::native_entity_refs::tests::bind_local_player(&mut game, 1, 1);
@@ -135,7 +135,7 @@ pub(in crate::game) fn reset_arena(game: &mut crate::game::ServerGame<'_>, targe
     if target.starts_with("leash_knot") {
         let _ = game.run_command("setblock 3 64 4 minecraft:oak_fence");
     }
-    game.set_mode(sunrise_client::command::args::GameMode::Spectator);
+    game.set_mode(sunrise_command::args::GameMode::Spectator);
     if let Some(p) = game.player.as_mut() {
         p.position = Vec3::new(0.5, 64.0, 12.5);
         p.velocity = Vec3::ZERO;
@@ -191,9 +191,9 @@ pub(in crate::game) fn summon_projectile(
     }
     let owned = proj.ends_with("_owned") || proj.ends_with("_creative");
     if proj.ends_with("_creative") {
-        game.set_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_mode(sunrise_command::args::GameMode::Creative);
     } else if proj.ends_with("_owned") {
-        game.set_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_mode(sunrise_command::args::GameMode::Survival);
     }
     let base = proj
         .trim_end_matches("_creative")

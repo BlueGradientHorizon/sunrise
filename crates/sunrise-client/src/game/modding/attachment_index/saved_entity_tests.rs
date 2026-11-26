@@ -69,7 +69,7 @@ fn saved_spit_and_bullet_query_before_access_and_round_trip() {
             let saved = saved
                 .iter()
                 .flat_map(|(_, tags)| tags)
-                .find(|tag| sunrise_client::entity_nbt::uuid(tag) == Some(uuid))
+                .find(|tag| sunrise_sim::entity_nbt::uuid(tag) == Some(uuid))
                 .unwrap_or_else(|| panic!("{kind} saved without its UUID"))
                 .clone();
             assert!(game.entity_discard(entity));

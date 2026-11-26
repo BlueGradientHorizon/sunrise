@@ -42,7 +42,7 @@ fn frame_adoption(glow_first: bool) {
     .unwrap();
     game.build_registries();
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(
+        sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(4.5, 100.0, 4.5),
         )
@@ -66,7 +66,7 @@ fn frame_adoption(glow_first: bool) {
             ("ItemRotation", Tag::Byte(3)),
             (
                 "Item",
-                sunrise_client::save::item_to_nbt(
+                sunrise_sim::save::item_to_nbt(
                     &ItemStack {
                         count: 2,
                         ..stack.clone()
@@ -110,7 +110,7 @@ fn frame_adoption(glow_first: bool) {
                 .find(|f| f.id == id)
                 .unwrap()
                 .clone();
-            let mut tag = sunrise_client::entity_nbt::item_frame_to_nbt(
+            let mut tag = sunrise_sim::entity_nbt::item_frame_to_nbt(
                 &frame,
                 *game.persist.uuids.get(&id).unwrap(),
                 None,
@@ -134,7 +134,7 @@ fn frame_adoption(glow_first: bool) {
                     }
                     fields.insert(
                         "Item".into(),
-                        sunrise_client::save::item_to_nbt(&next, &Default::default()),
+                        sunrise_sim::save::item_to_nbt(&next, &Default::default()),
                     );
                 }
                 "empty" => {

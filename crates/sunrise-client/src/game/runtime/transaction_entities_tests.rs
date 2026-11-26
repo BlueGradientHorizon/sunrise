@@ -10,9 +10,11 @@ use mod_api::{
     AttachmentType, EntityConstructingEvent, EntityJoinLevelEvent, EntityLeaveLevelEvent,
     EntityRef, Flow, Hooks, HostSide, HostTransaction, RemovalReason, ServerHost,
 };
-use sunrise_client::{chunk::Chunk, items::ItemStack, mobs::StoredEffect};
 use sunrise_core::nbt::{Tag, parse_snbt};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::Holder;
+use sunrise_sim::mobs::StoredEffect;
 
 use super::{Dim, commands::Target, lan_entities::ENTITY_ID_HEADROOM};
 
@@ -457,7 +459,7 @@ fn a_killed_mobs_oozing_spawns_only_at_commit() {
         let at = game.mobs.iter().position(|m| m.id == zombie).unwrap();
         (game.mobs[at].extra.effects).push(StoredEffect::new("minecraft:oozing", 600, 0));
         let slimes = |game: &crate::game::ServerGame<'_>| {
-            let slime = sunrise_client::mobs::Species::Slime;
+            let slime = sunrise_sim::mobs::Species::Slime;
             game.mobs.iter().filter(|m| m.species() == slime).count()
         };
         let zombie = game.entity(zombie).unwrap();
@@ -676,7 +678,7 @@ fn an_aborted_spawn_is_in_no_tracking_pass() {
         game.side.next_entity = 100;
         let _rx = super::lan::world_spawn_sync_tests::host_for(game);
         let tracked = |game: &mut crate::game::ServerGame<'_>, id: u32| {
-            let mut states = sunrise_client::lan::entity::States::default();
+            let mut states = sunrise_sim::lan::entity::States::default();
             game.lan_entities(&mut states, false, 0, None);
             states.as_slice().iter().any(|e| e.id == id as i32)
         };
@@ -784,7 +786,7 @@ fn exhausted_ids_refuse_every_mod_spawn() {
         }),
     ];
     with_observer(NAME, |game| {
-        let player = sunrise_client::motion::PlayerMotion::new(
+        let player = sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(1.5, 70.0, 1.5),
         );
@@ -1189,7 +1191,7 @@ fn an_exhausted_level_pop_draws_nothing_from_the_level_random() {
 #[test]
 #[ignore = "daily"]
 fn a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts() {
-    use sunrise_client::join_seq::residency::table::EntityLookup;
+    use sunrise_sim::join_seq::residency::table::EntityLookup;
     const NAME: &str = "game::server_side::transaction_entities_tests::a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts";
     with_observer(NAME, |game| {
         game.enter_level(Dim::Nether).unwrap();

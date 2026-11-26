@@ -15,18 +15,18 @@ use super::super::*;
 use super::name_tag_at;
 use crate::game::creatures::render_fixture::mob;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::entities::ArmorStand;
 use sunrise_client::hud::HudBatch;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Mob, Species, Who};
-use sunrise_client::motion::PlayerMotion;
-use sunrise_client::save::uuid_text;
-use sunrise_client::scoreboard as sb;
-use sunrise_client::text::Text;
+use sunrise_client_core::scoreboard as sb;
+use sunrise_client_core::text::Text;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::entities::ArmorStand;
+use sunrise_sim::mobs::{Mob, Species, Who};
+use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::save::uuid_text;
 
 /// `EntityTypes.SNIFFER`: `.sized(1.9F, 1.75F).nameTagOffset(2.05F)`. The tag
 /// hangs 2.05 above the feet where every other type hangs it at its box
@@ -58,7 +58,7 @@ fn a_sniffers_tag_hangs_from_its_name_tag_attachment() {
     // `Sniffer.DIGGING_DIMENSIONS` is built without the attachment, so a
     // digging sniffer's tag falls back to its lower box: 1.35 + 0.5.
     let mut digging = mob(4, "minecraft:sniffer", Species::Sniffer, 1.9, 1.75);
-    digging.extra.variant = sunrise_client::mobs::sniffer::DIGGING;
+    digging.extra.variant = sunrise_sim::mobs::sniffer::DIGGING;
     assert!(
         (tag_height(&digging) - 1.85).abs() < 1e-6,
         "got {}",
@@ -287,7 +287,7 @@ fn a_trades_title_draws_the_names_style() {
     // `MerchantScreen.extractLabels` draws the menu's title, the merchant's
     // `getDisplayName()`: a name with a colour keeps it, instead of coming out
     // in the screen's grey (-12566464).
-    let session = sunrise_client::merchant::Session::new(Vec::new(), true);
+    let session = sunrise_sim::merchant::Session::new(Vec::new(), true);
     game.open_remote_merchant(session, Some(Text::colored("Bob", 0xFF_0000)));
     let mut batch = HudBatch::new([854, 480], game.side.settings.gui_scale_inputs());
     assert!(game.draw_merchant(&mut batch));
@@ -336,7 +336,7 @@ fn a_creative_player_keeps_the_tag_it_names_a_stand_with() {
     let named = game.armor_stands[0]
         .custom_name
         .as_ref()
-        .map(sunrise_client::text::Text::plain);
+        .map(sunrise_client_core::text::Text::plain);
     assert_eq!(named.as_deref(), Some("Bob"));
     // Survival spends one.
     game.set_mode_id(0);

@@ -2,8 +2,10 @@
 //! side effects, experience levels, and brewing stand server ticking).
 use super::Game;
 use crate::game::stations_common::{Kind, Station};
-use sunrise_client::{brewing, containers::BlockEntity, items::ItemStack, stations};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{brewing, containers::BlockEntity};
+use sunrise_sim::stations;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Server arm of [`Game::side_station_changed`].
@@ -33,7 +35,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let hover = s.inputs[0]
                     .as_ref()
                     .map(|i| {
-                        sunrise_client::lang::returned_to_server(|| {
+                        sunrise_client_core::lang::returned_to_server(|| {
                             self.stack_hover_name_text(i).plain()
                         })
                     })
@@ -276,7 +278,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn tick_brewing_stand(
         &mut self,
         pos: (i32, i32, i32),
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let fuel = self.brewing_fuel_remainder(pos);
         let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) else {
             return Ok(());

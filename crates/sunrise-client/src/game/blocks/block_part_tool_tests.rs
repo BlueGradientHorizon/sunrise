@@ -3,7 +3,8 @@
 use crate::game::{Hit, native_guest_turn_tests};
 use mod_api::{BlockHit, Hand};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, items::ItemStack};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 fn hit_on(pos: [i32; 3]) -> Hit {
     Hit {

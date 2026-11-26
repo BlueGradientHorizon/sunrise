@@ -1,19 +1,17 @@
 //! Common jukebox helpers shared by server simulation and client playback/prediction.
 use super::Game;
-use sunrise_client::{
-    containers::{BlockEntity, Jukebox},
-    items::ItemStack,
-    mobs::Species,
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::{BlockEntity, Jukebox};
+use sunrise_sim::mobs::Species;
 
 /// The stack's `jukebox_playable` component (`JukeboxPlayable`), else the item's default one.
 pub(in crate::game) fn jukebox_playable(
     record: &ItemStack,
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Option<Option<String>> {
     let data = record.data();
     if data
@@ -32,15 +30,15 @@ pub(in crate::game) fn jukebox_playable(
 /// `JukeboxSong.fromStack`: the song the disc names, by its id.
 pub(in crate::game) fn song_of_record(
     record: &ItemStack,
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Option<String> {
     jukebox_playable(record, items).flatten()
 }
 
 /// The jukebox's redstone signal (15 while a song plays) and comparator output.
 pub(in crate::game) fn jukebox_signals(
-    world: &sunrise_client::world::World,
-    items: &sunrise_client::items::Items,
+    world: &sunrise_level::world::World,
+    items: &sunrise_items::items::Items,
     pos: BlockPos,
 ) -> Option<(i32, i32)> {
     match world.block_entities.get(&(pos.x, pos.y, pos.z)) {

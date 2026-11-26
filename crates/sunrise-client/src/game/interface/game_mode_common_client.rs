@@ -1,5 +1,6 @@
 use super::Game;
-use sunrise_client::{command::args::GameMode, items::ItemStack};
+use sunrise_command::args::GameMode;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.canHurtPlayer()` and `hasExperience()` (`localPlayerMode.isSurvival()`).

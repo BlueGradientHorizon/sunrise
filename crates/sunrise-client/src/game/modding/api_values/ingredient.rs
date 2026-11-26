@@ -34,7 +34,7 @@ fn convert_tree<T, U, E>(
     }
 }
 
-impl TryIntoApi for crate::crafting::Ingredient {
+impl TryIntoApi for sunrise_sim::crafting::Ingredient {
     type Api = mod_api::Ingredient;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -55,18 +55,18 @@ impl TryIntoApi for crate::crafting::Ingredient {
     }
 }
 impl TryIntoEngine for mod_api::Ingredient {
-    type Engine = crate::crafting::Ingredient;
+    type Engine = sunrise_sim::crafting::Ingredient;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         convert_tree(
             self,
             |node| node.children.as_ref(),
             |node, children| {
-                let mut ingredient = crate::crafting::Ingredient {
+                let mut ingredient = sunrise_sim::crafting::Ingredient {
                     compiled: None,
                     component_defaults: items.component_defaults.clone(),
                     shown: node.display.as_ref().and_then(|display| {
-                        crate::crafting::Ingredient::resolve_display(display, items)
+                        sunrise_sim::crafting::Ingredient::resolve_display(display, items)
                     }),
                     items: node.items.clone(),
                     order: node.order.clone(),

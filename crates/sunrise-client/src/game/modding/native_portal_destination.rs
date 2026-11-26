@@ -10,8 +10,8 @@ use crate::game::{
     nether_portal::{Plan, PortalSide, end_portal_rotation},
 };
 use mod_api::{LevelRef, PortalAngle, PortalError, PortalExit, PortalRotation, PortalShape};
-use sunrise_client::containers::BlockEntity;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_level::containers::BlockEntity;
 use sunrise_world::level::portal_travel::FoundRectangle;
 
 /// How far `largest_rectangle_around` reads from a block: the portal's limit in both directions.
@@ -180,7 +180,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         Ok(Probe::Fixed(
             source.dim,
-            sunrise_client::end_gateway::bottom_center(target),
+            sunrise_sim::end_gateway::bottom_center(target),
             PortalRotation::new(PortalAngle::Turn(0.0), PortalAngle::Turn(0.0)),
         ))
     }
@@ -279,7 +279,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     const SIZE: [f64; 2] = [0.98, 0.98];
     const ENTRY: [i32; 3] = [8, 70, 8];

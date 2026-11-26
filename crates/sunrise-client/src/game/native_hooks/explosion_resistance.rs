@@ -35,7 +35,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         let mut resistance = None;
         let pos = BlockPos::new(pos[0], pos[1], pos[2]);
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             self.with_level(|_, level, _| {
                 level.native_explosion_resistance(pos, state, explosion, &mut resistance);
             });

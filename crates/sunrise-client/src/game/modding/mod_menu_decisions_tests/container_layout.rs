@@ -11,8 +11,10 @@ use mod_api::{
     Mods, Registrar,
 };
 use std::{cell::Cell, sync::Arc};
-use sunrise_client::{chunk::Chunk, containers, items::ItemStack, save};
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{chunk::Chunk, containers};
+use sunrise_sim::save;
 
 const BLOCK: &str = "layout_test:machine";
 const MENU: &str = "layout_test:menu";

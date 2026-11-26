@@ -5,9 +5,9 @@ use mod_api::{
     Hooks, ModEntry, Mods, PlayerKickedEvent, PlayerLoggedOutEvent, PlayerRef, ServerHost, Text,
 };
 use std::sync::{Arc, Mutex, mpsc::Receiver};
-use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+use sunrise_sim::lan::{Out, PlayerSender};
 
 #[derive(Default)]
 struct Notices {
@@ -134,7 +134,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                 game.side.level_pass = Default::default();
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
-                sunrise_client::lan::flush_all(
+                sunrise_sim::lan::flush_all(
                     game.lan
                         .as_ref()
                         .unwrap()
@@ -164,7 +164,7 @@ fn fake_kicks_leave_once_with_the_first_reason() {
                 game.side.level_pass = Default::default();
                 game.tick_lan_packets();
                 // Packet draining holds sends until the full tick's flush boundary.
-                sunrise_client::lan::flush_all(
+                sunrise_sim::lan::flush_all(
                     game.lan
                         .as_ref()
                         .unwrap()

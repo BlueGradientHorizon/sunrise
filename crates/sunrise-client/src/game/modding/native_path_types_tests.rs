@@ -5,11 +5,11 @@ use mod_api::{
     LevelHost, PathComputationType, PathType, Registrar,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{
     Mob,
     path::{Evaluator, Finder},
 };
-use sunrise_core::geometry::Vec3;
 
 struct Thorny;
 #[mod_api::sunrise_part]
@@ -171,14 +171,11 @@ fn chest_level(game: &mut crate::game::ServerGame<'_>, items: usize) {
     game.world.set(3, 64, 1, chest).unwrap();
     let mut contents = vec![None; 27];
     for slot in contents.iter_mut().take(items) {
-        *slot = Some(sunrise_client::items::ItemStack::new(
-            "minecraft:diamond",
-            3,
-        ));
+        *slot = Some(sunrise_items::items::ItemStack::new("minecraft:diamond", 3));
     }
     game.world.block_entities.insert(
         (3, 64, 1),
-        sunrise_client::containers::BlockEntity::Chest(contents),
+        sunrise_level::containers::BlockEntity::Chest(contents),
     );
 }
 
@@ -200,7 +197,7 @@ fn a_block_part_reads_a_block_entity_through_its_owning_level() {
         game.enter_level(crate::game::Dim::Nether).unwrap();
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         chest_level(game, 2);
         assert_eq!(
@@ -227,7 +224,7 @@ fn cache_follows_update_flags_and_direct_block_entity_notifications() {
             .unwrap();
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         game.world.block_log = None;
         game.world.enable_path_type_cache();
         let calls = Cell::new(0);
@@ -295,7 +292,7 @@ fn with_parts(
         with_game(|game| {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.resolve_block_paths();
             test(game);
         })

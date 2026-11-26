@@ -5,8 +5,8 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{
-    command::args::GameMode,
+use sunrise_command::args::GameMode;
+use sunrise_sim::{
     motion::PlayerMotion,
     projectiles::{Hit, Projectile, ProjectileKind, ThrownType},
 };
@@ -101,7 +101,7 @@ fn remaining_hit_callers_observe_refusals_and_zero_damage() {
             }
             fresh_player(game, GameMode::Spectator);
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            let mut corpse = sunrise_client::mobs::Mob::new(903, kind, Vec3::ZERO, 0.0);
+            let mut corpse = sunrise_sim::mobs::Mob::new(903, kind, Vec3::ZERO, 0.0);
             corpse.health = 0.0;
             game.mobs.push(corpse);
             let mut rocket = Rocket::remote(902, Vec3::ZERO, Vec3::ZERO);
@@ -188,7 +188,7 @@ fn remaining_hit_callers_observe_refusals_and_zero_damage() {
 
             // A blast's entity query includes resident dead and not-yet-loaded
             // network players, unlike the combat-target helper formerly used here.
-            use sunrise_client::lan::{NetConfig, hub::HubConfig};
+            use sunrise_sim::lan::{NetConfig, hub::HubConfig};
             game.lan_host(
                 crate::game::lan::LanSettings {
                     port: 0,

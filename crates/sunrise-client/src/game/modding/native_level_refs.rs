@@ -8,13 +8,13 @@ use mod_api::{
     BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
     Identifier, LevelRef, LightLayer, MapState, PlayerRef, RespawnData, TicketController, Vec3,
 };
-use sunrise_client::world::World;
 use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
 };
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk_streamer::{ChunkState, ChunkStreamer};
+use sunrise_level::world::World;
 use sunrise_world::registry::BlockStateId;
 
 fn block_pos([x, y, z]: [i32; 3]) -> BlockPos {
@@ -45,7 +45,7 @@ pub(in crate::game) fn world_brightness(world: &World, layer: LightLayer, pos: [
 
 /// A mod's registry id or `#tag`, namespaced as a command argument is.
 fn normalized_selector(id: &str) -> String {
-    use sunrise_client::command::args::normalized;
+    use sunrise_command::args::normalized;
     match id.strip_prefix('#') {
         Some(tag) => format!("#{}", normalized(tag)),
         None => normalized(id).into_owned(),
@@ -997,7 +997,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         let world = self.native_level_read_world(level)?;
         let [x, y, z] = pos;
         world.is_loaded_at(x, y, z).then(|| {
-            let flow = sunrise_client::entities::fluid_flow(
+            let flow = sunrise_sim::entities::fluid_flow(
                 world,
                 &self.res.motion().fluids,
                 &self.loop_context,
@@ -1267,7 +1267,8 @@ mod tests {
         use super::super::native_guest_turn_tests::with_guests;
         use mod_api::{BlockHit, BlockToolModificationEvent, Flow, Hand, Hooks, Host};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::{chunk::Chunk, items::ItemStack};
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::chunk::Chunk;
 
         struct Observer(Arc<Mutex<Vec<bool>>>);
         #[mod_api::__subscriptions]
@@ -1376,8 +1377,8 @@ mod tests {
     fn shared_level_signal_dispatches_and_clamps_part_output() {
         use mod_api::Host;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::geometry::Direction;
+        use sunrise_level::chunk::Chunk;
 
         mod_platform::__private::part_tests::signal_game_thread();
         with_game(|game| {
@@ -1407,8 +1408,8 @@ mod tests {
     fn shared_level_signal_reads_live_comparator_and_refuses_other_levels() {
         use mod_api::Host;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::geometry::Direction;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.world
@@ -1450,7 +1451,7 @@ mod tests {
     #[ignore = "daily"]
     fn respawn_data_maps_and_ticks_write_through_the_handle_and_refuse_others() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             let level = game.level("minecraft:overworld").unwrap();
@@ -1552,7 +1553,7 @@ mod tests {
     #[ignore = "daily"]
     fn loaded_chunks_lists_the_level_in_order_without_loading() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             let level = game.level("minecraft:overworld").unwrap();
@@ -1628,7 +1629,7 @@ mod tests {
     #[ignore = "daily"]
     fn height_reads_server_levels_and_the_joined_client_level() {
         use mod_api::Host;
-        use sunrise_client::chunk::LevelShape;
+        use sunrise_level::chunk::LevelShape;
         use sunrise_protocol::connection::Pipe;
 
         with_game(|game| {
@@ -1671,7 +1672,7 @@ mod tests {
     #[ignore = "daily"]
     fn block_state_reads_stored_ids_and_refuses_unloaded_positions() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.world
@@ -1709,7 +1710,7 @@ mod tests {
     fn fluid_flow_reads_the_current_that_pushes_entities() {
         use mod_api::Vec3;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.world
@@ -1745,7 +1746,7 @@ mod tests {
     /// source).
     fn pool(game: &mut crate::game::ServerGame<'_>, fluids: &[([i32; 3], &str, &str)]) -> i32 {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         game.world
             .chunks
@@ -1940,7 +1941,7 @@ mod tests {
             assert_eq!(game.level_forced_chunks(level), Some(vec![]));
             // A synchronous load leaves existing columns for the normal owner
             // update to save and unload, including their entity data.
-            let old = std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(-40, 40));
+            let old = std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(-40, 40));
             game.world.chunks.insert((-40, 40), old.clone());
             game.world.modified.insert((-40, 40));
             assert!(!game.chunk_loaded(far));
@@ -1995,7 +1996,7 @@ mod tests {
 
         with_game(|game| {
             use std::sync::Arc;
-            use sunrise_client::{chunk::Chunk, world::World};
+            use sunrise_level::{chunk::Chunk, world::World};
 
             game.options.headless = true;
             game.side.streaming.radius = 0;
@@ -2180,7 +2181,7 @@ mod tests {
     fn a_level_rng_draws_survive_transaction_abort_on_active_and_parked_levels() {
         use crate::game::journal_level_write::JournalLevelWrite;
         use mod_api::ObjectiveRenderType;
-        use sunrise_client::text::Text;
+        use sunrise_client_core::text::Text;
         use sunrise_core::random::{LegacyRandom, LevelRandom, RandomSource};
 
         with_game(|game| {
@@ -2309,7 +2310,7 @@ mod tests {
         self, ChunkLoadError, Hooks, ModEntry, Registrar, ServerHost, TicketController,
         ValidateTicketsEvent, testing,
     };
-    use sunrise_client::mod_chunk_tickets::{ModTicket, TicketOwner};
+    use sunrise_level::mod_chunk_tickets::{ModTicket, TicketOwner};
 
     /// Registers three controllers: `quarry` and `drill` validate, `plain` doesn't. `quarry`'s
     /// validation prunes the block at [1, 64, 1]; each validation tells what it was shown.
@@ -2390,7 +2391,7 @@ mod tests {
     #[ignore = "daily"]
     fn water_tickets_hydrate_real_farmland_and_preserve_vanilla_water_and_rain() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_machines(|game| {
             game.install_live_features();
@@ -2570,7 +2571,8 @@ mod tests {
     #[ignore = "daily"]
     fn water_tickets_are_not_restored_with_saved_farmland() {
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, save::SaveDir, world::World};
+        use sunrise_level::{chunk::Chunk, world::World};
+        use sunrise_sim::save::SaveDir;
 
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
@@ -3074,10 +3076,10 @@ mod tests {
     {
         use mod_api::TicketOwner::Block;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-        use sunrise_client::mobs::spawn_selection::{Category, SpawnPlayer, SpawnState};
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::mobs::spawn_selection::{Category, SpawnPlayer, SpawnState};
+        use sunrise_sim::motion::PlayerMotion;
         with_machines(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             for cx in 6..=10 {
@@ -3198,13 +3200,10 @@ mod tests {
                 let world =
                     std::env::temp_dir().join(format!("sunrise-validate-{}", std::process::id()));
                 game.side.world_root = world.clone();
-                let root = sunrise_client::save::dimension_dir(&world, other.id());
-                let save = sunrise_client::save::SaveDir::new(
-                    root,
-                    other.shape(),
-                    Some(Default::default()),
-                );
-                let mut tickets = sunrise_client::mod_chunk_tickets::ModTickets::default();
+                let root = sunrise_sim::save::dimension_dir(&world, other.id());
+                let save =
+                    sunrise_sim::save::SaveDir::new(root, other.shape(), Some(Default::default()));
+                let mut tickets = sunrise_level::mod_chunk_tickets::ModTickets::default();
                 tickets.insert(saved("machines:quarry", [1, 64, 1], (7, 7)));
                 tickets.insert(saved("machines:quarry", [9, 64, 9], (8, 8)));
                 save.save_mod_tickets(&tickets, |slot| {
@@ -3280,7 +3279,7 @@ mod tests {
     fn light_and_loaded_reads_match_the_games_query_and_load_nothing() {
         use mod_api::LevelHost;
         use std::sync::Arc;
-        use sunrise_client::chunk::{Chunk, Light};
+        use sunrise_level::chunk::{Chunk, Light};
 
         with_game(|game| {
             let mut chunk = Chunk::empty(0, 0);
@@ -3336,7 +3335,7 @@ mod tests {
     #[ignore = "daily"]
     fn check_light_queues_the_cell_with_the_light_edits() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         with_game(|game| {
             game.world
@@ -3367,7 +3366,7 @@ pub(in crate::game) mod environment_read_tests {
     };
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     fn paint_biome<S>(game: &mut crate::game::Game<'_, S>, name: &str) {
         let biome = world_biomes!(game).id(name);
@@ -3518,7 +3517,7 @@ pub(in crate::game) mod environment_read_tests {
 
     pub(in crate::game::server_side) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state()
      {
-        use sunrise_client::chunk::LevelShape;
+        use sunrise_level::chunk::LevelShape;
         use sunrise_protocol::connection::Pipe;
 
         with_game(|game| {
@@ -3608,7 +3607,7 @@ pub(in crate::game) mod environment_read_tests {
 
     pub(in crate::game::server_side) fn run_closest_biome_uses_the_named_generator_without_loading_resident_chunks()
      {
-        use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
+        use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
 
         with_game(|game| {
             game.enter_level(Dim::Nether).unwrap();
@@ -3726,7 +3725,7 @@ pub(in crate::game) mod environment_read_tests {
     pub(in crate::game::server_side) fn run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks()
      {
         use mod_api::StructureSearch;
-        use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
+        use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
 
         with_game(|game| {
             let directory = game.options.resources.join("worldgen");
@@ -3831,7 +3830,7 @@ pub(in crate::game) mod environment_read_tests {
     pub(in crate::game::server_side) fn run_level_environment_reads_match_vanilla_vectors() {
         use serde_json::{Value, json};
         use std::collections::HashMap;
-        use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
+        use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
 
         let fixture = |name: &str, variable: &str| {
             let path = std::env::var_os(variable)

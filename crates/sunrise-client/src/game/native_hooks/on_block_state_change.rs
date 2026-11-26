@@ -60,7 +60,7 @@ impl GameLevel<'_> {
             return;
         }
         for state in self.state_change_listeners(old, new) {
-            if let Err(error) = sunrise_client::crash::contain(|| {
+            if let Err(error) = sunrise_level::crash::contain(|| {
                 self.native_on_block_state_change(self.dimension, pos, state, old, new, predicted);
             }) {
                 log::warn!("on_block_state_change callback failed: {error}");

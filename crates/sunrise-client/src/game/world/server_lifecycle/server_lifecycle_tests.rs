@@ -30,9 +30,9 @@ struct PanicAt {
 
 struct StoppedProbe {
     serving_stopped: Box<dyn Fn() -> bool + Send + Sync>,
-    lan: std::sync::Weak<sunrise_client::lan::Shared>,
+    lan: std::sync::Weak<sunrise_sim::lan::Shared>,
     root: std::path::PathBuf,
-    save: Arc<sunrise_client::save::SaveDir>,
+    save: Arc<sunrise_sim::save::SaveDir>,
 }
 
 #[test]
@@ -41,8 +41,8 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
     if in_child("integrated_stop_finishes_after_an_unencodable_record") {
         return;
     }
-    use sunrise_client::save::{LevelShape, SaveDir, SessionLock};
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+    use sunrise_sim::save::{LevelShape, SaveDir, SessionLock};
 
     struct SaveEvents(Arc<Mutex<Vec<&'static str>>>);
     #[mod_api::__subscriptions]
@@ -132,7 +132,7 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
             );
             assert!(disk.load_entities(deleted.0, deleted.1).unwrap().is_empty());
             assert_eq!(
-                sunrise_client::save::Level::read(root.path()).unwrap().name,
+                sunrise_sim::save::Level::read(root.path()).unwrap().name,
                 "saved on exit after record failure"
             );
             game.side.save.0.flush().unwrap();
@@ -151,8 +151,8 @@ fn integrated_stop_propagates_metadata_errors_even_after_a_record_failure() {
     if in_child("integrated_stop_propagates_metadata_errors_even_after_a_record_failure") {
         return;
     }
-    use sunrise_client::save::{LevelShape, SaveDir, SessionLock};
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+    use sunrise_sim::save::{LevelShape, SaveDir, SessionLock};
 
     with_mods(Vec::new().into(), || {
         with_game(|game| {
@@ -256,7 +256,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             if let Some(probe) = self.2.lock().unwrap().as_ref() {
                 assert!((probe.serving_stopped)(), "serving retired before Stopped");
                 assert!(probe.lan.upgrade().is_none(), "LAN dropped before Stopped");
-                let saved = sunrise_client::save::Level::read(&probe.root).unwrap();
+                let saved = sunrise_sim::save::Level::read(&probe.root).unwrap();
                 assert_eq!(saved.name, "lifecycle final save");
                 assert!(
                     probe.save.raw_chunk(0, 0).is_some(),
@@ -265,7 +265,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                 assert_eq!(self.0.lock().unwrap().last(), Some(&"saved"));
                 // Storage is released before the notification, even if the
                 // final-save listener itself panicked after writing metadata.
-                let _lock = sunrise_client::save::SessionLock::acquire(&probe.root).unwrap();
+                let _lock = sunrise_sim::save::SessionLock::acquire(&probe.root).unwrap();
             }
             self.0.lock().unwrap().push("stopped");
         }
@@ -316,9 +316,9 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         ));
                         std::fs::create_dir_all(&root).unwrap();
                         game.side.world_root = root.clone();
-                        game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+                        game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
                             root.clone(),
-                            sunrise_client::save::LevelShape::OVERWORLD,
+                            sunrise_sim::save::LevelShape::OVERWORLD,
                             Some(Default::default()),
                         ));
                         game.level.name = "lifecycle final save".into();
@@ -326,7 +326,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             !matches!(case, "unopened" | "before-start" | "locked-unadopted");
                         if adopted || case == "locked-unadopted" {
                             game.side.session_lock.0 =
-                                Some(sunrise_client::save::SessionLock::acquire(&root).unwrap());
+                                Some(sunrise_sim::save::SessionLock::acquire(&root).unwrap());
                         }
                         // The lock is held while tags are readable, before the prepared
                         // level replaces the placeholder. Only adoption may save.
@@ -341,10 +341,9 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             // Nothing queues these metadata/block changes. A flush
                             // without the final save must leave the old name and no chunk.
                             game.level.name = "lifecycle final save".into();
-                            game.world.chunks.insert(
-                                (0, 0),
-                                Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
-                            );
+                            game.world
+                                .chunks
+                                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                             let stone = game
                                 .pack
                                 .assets
@@ -472,7 +471,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "{dedicated} {case}"
                             );
                         } else if !matches!(case, "save-error" | "before-start") {
-                            let saved = sunrise_client::save::Level::read(&root).unwrap();
+                            let saved = sunrise_sim::save::Level::read(&root).unwrap();
                             assert_eq!(saved.name, "lifecycle final save");
                         }
                         std::fs::remove_dir_all(root).unwrap();

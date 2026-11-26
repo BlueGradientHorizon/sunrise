@@ -122,15 +122,16 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                 assert!(game.side.mod_clear_particles.get());
                                 assert_eq!(
                                     game.side.requested_camera_type.get(),
-                                    Some(sunrise_client::camera::CameraType::ThirdPersonFront)
+                                    Some(sunrise_level::camera_math::CameraType::ThirdPersonFront)
                                 );
                             }
                             let sound = FIRST_SOUND.get().unwrap();
                             // Keep requests already pending on entry, including the sound from
                             // the successful draw. Discard the failed draw's requests only.
                             for incoming in [false, true, false] {
-                                let camera = incoming
-                                    .then_some(sunrise_client::camera::CameraType::ThirdPersonBack);
+                                let camera = incoming.then_some(
+                                    sunrise_level::camera_math::CameraType::ThirdPersonBack,
+                                );
                                 game.side.screen_blur_requested.set(incoming);
                                 game.side.mod_clear_particles.set(incoming);
                                 game.side.requested_camera_type.set(camera);

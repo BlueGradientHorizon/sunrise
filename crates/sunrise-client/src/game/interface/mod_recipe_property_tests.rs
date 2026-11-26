@@ -3,7 +3,7 @@
 mod tests {
     use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::{connection::Pipe, packets::recipes::UpdateRecipes};
     struct Input;
     #[mod_api::sunrise_part]
@@ -56,12 +56,12 @@ mod tests {
                 );
                 let stack = ItemStack::new("minecraft:emerald", 1);
                 let accepts = |game: &crate::game::ClientGame<'_>, stack: &ItemStack| {
-                    sunrise_client::menu::apply_menu_slot_rules(
-                        Some(game as &dyn sunrise_client::menu::SlotRules),
+                    sunrise_sim::menu::apply_menu_slot_rules(
+                        Some(game as &dyn sunrise_sim::menu::SlotRules),
                         "pot:menu",
                         0,
                         stack,
-                        sunrise_client::menu::SlotContext::default(),
+                        sunrise_sim::menu::SlotContext::default(),
                         (true, true, 64),
                         64,
                     )

@@ -3,12 +3,13 @@
 use super::{Dim, native_colliders::SAVE_KEY};
 use mod_api::{Collider, ColliderBox, ColliderError, EntityRef};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::{entities::ItemEntity, items::ItemStack};
 use sunrise_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::entities::ItemEntity;
 
 fn deck() -> Collider {
     Collider {
@@ -249,15 +250,13 @@ fn a_call_into_another_level_reads_that_levels_colliders_and_restores_the_caller
                 Vec3::new(at[0] - 0.5, 69.2, at[2] - 0.5),
                 Vec3::new(at[0] + 0.5, 69.8, at[2] + 0.5),
             );
-            sunrise_client_render::moving_colliders::near(EntityIdentity(0), bounds, &mut found);
+            sunrise_world::moving_colliders::near(EntityIdentity(0), bounds, &mut found);
             found.len()
         };
         // The overworld's colliders are the caller's scope.
         let placed = game.placed_moving_colliders();
-        let _scope = sunrise_client_render::moving_colliders::Scope::enter_level(
-            game.collider_level(),
-            placed,
-        );
+        let _scope =
+            sunrise_world::moving_colliders::Scope::enter_level(game.collider_level(), placed);
         assert_eq!((meets(spot), meets(other)), (1, 0));
         game.enter_level(Dim::Nether).unwrap();
         game.in_this_levels_colliders(|_| {
@@ -302,9 +301,7 @@ fn tick_level_moving(
     moving: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
     let placed = game.placed_moving_colliders();
-    sunrise_client_render::moving_colliders::in_level(placed.clone(), || {
-        game.tick_world(true).unwrap()
-    });
+    sunrise_world::moving_colliders::in_level(placed.clone(), || game.tick_world(true).unwrap());
     moving(game);
     // Then the bodies on a collider that moved are carried with it, as the level's tick does.
     game.carry_pass(&placed);
@@ -372,7 +369,7 @@ fn a_collider_is_not_solid_to_its_own_vehicle_stack() {
         exempt.sort_unstable();
         assert_eq!(exempt, vec![a, b, c]);
         let mut stands_on = |id: u32| {
-            use sunrise_client_render::moving_colliders::{in_level, near};
+            use sunrise_world::moving_colliders::{in_level, near};
             let mut found = Vec::new();
             in_level(game.placed_moving_colliders(), || {
                 near(
@@ -467,8 +464,8 @@ fn siblings_riding_one_vehicle_share_a_stack() {
         let placed = game.placed_moving_colliders();
         let meets = |id: u32| {
             let mut found = Vec::new();
-            sunrise_client_render::moving_colliders::in_level(placed.clone(), || {
-                sunrise_client_render::moving_colliders::near(
+            sunrise_world::moving_colliders::in_level(placed.clone(), || {
+                sunrise_world::moving_colliders::near(
                     sunrise_world::entity_obstruction::EntityIdentity(u64::from(id)),
                     sunrise_core::geometry::Aabb::new(
                         Vec3::new(1.0, 69.5, 1.0),
@@ -929,7 +926,7 @@ fn a_carried_vehicle_takes_its_passengers_and_theirs_with_it() {
         let (top, _) = stand_with_id(game, [8.5, 72.0, 8.0]);
         let update = |game: &mut crate::game::ServerGame<'_>,
                       id: u32,
-                      f: &dyn Fn(&mut sunrise_client::mobs::Mob)| {
+                      f: &dyn Fn(&mut sunrise_sim::mobs::Mob)| {
             let at = game.mobs.iter().position(|m| m.id == id).expect("a pig");
             game.mobs.update(at, |m| f(m));
         };

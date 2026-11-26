@@ -43,10 +43,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let on_block = matches!(self.side.guest_use, Some(GuestUse::OnBlock { .. }));
         let mut block_hit = block_hit;
         let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
-        let block_phase = sunrise_client::spans::guard("use_block");
+        let block_phase = sunrise_level::spans::guard("use_block");
         if let Some(hit) = block_hit {
             let held = self.held().cloned();
-            let answer = sunrise_client::spans::time("use_mods", || {
+            let answer = sunrise_level::spans::time("use_mods", || {
                 self.right_click_block(hit, self.hand, held.as_ref())
             });
             match answer {
@@ -113,12 +113,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Ok(true);
                 }
                 match self.use_on_cauldron(hit.pos)? {
-                    sunrise_client::cauldron::Outcome::Success => {
+                    sunrise_sim::cauldron::Outcome::Success => {
                         self.swing_arm();
                         return Ok(true);
                     }
-                    sunrise_client::cauldron::Outcome::Consume => return Ok(true),
-                    sunrise_client::cauldron::Outcome::Pass => {}
+                    sunrise_sim::cauldron::Outcome::Consume => return Ok(true),
+                    sunrise_sim::cauldron::Outcome::Pass => {}
                 }
                 if let Some(placed) = self.use_on_campfire(hit.pos)? {
                     if placed {
@@ -355,7 +355,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             block_hit = None;
         }
         drop(block_phase);
-        let _item_phase = sunrise_client::spans::guard("use_item");
+        let _item_phase = sunrise_level::spans::guard("use_item");
         let stack = self.held().cloned();
         let info = stack
             .as_ref()
@@ -373,7 +373,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .zip(info.as_ref())
                 .is_none_or(|(stack, info)| {
                     self.cooldowns
-                        .is_on_cooldown(&sunrise_client::cooldowns::group(
+                        .is_on_cooldown(&sunrise_items::cooldowns::group(
                             stack,
                             info.use_cooldown.as_ref(),
                         ))
@@ -561,7 +561,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // BowItem.use: ArrowNockEvent, then FAIL without ammunition.
             let found_projectile = self.get_projectile(&stack).is_some();
             let has_ammo = found_projectile || self.creative;
-            let player = sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid());
+            let player = sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid());
             let name = self.acting_player_name().to_owned();
             let (hand, mut cancel) = (self.hand, false);
             self.native_arrow_nock(player, &name, &stack, hand, has_ammo, &mut cancel);
@@ -691,12 +691,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn apply_consume_effect(
         &mut self,
-        consumed: &sunrise_client::items::ItemStack,
-        effect: &sunrise_client::items::ConsumeEffect,
+        consumed: &sunrise_items::items::ItemStack,
+        effect: &sunrise_items::items::ConsumeEffect,
         mob: Option<mod_api::LivingRef>,
         user: mod_api::EntityRef,
     ) -> Option<bool> {
-        use sunrise_client::items::ConsumeEffect;
+        use sunrise_items::items::ConsumeEffect;
         Some(match effect {
             ConsumeEffect::ApplyEffects {
                 effects,
@@ -722,7 +722,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 let mut changed = false;
                 for eff in effects {
-                    let Some(def) = sunrise_client::brewing::effect(&eff.id) else {
+                    let Some(def) = sunrise_level::brewing::effect(&eff.id) else {
                         continue;
                     };
                     if let Some(living) = mob {
@@ -737,7 +737,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         );
                         changed |= self.living_add_effect(living, &effect);
                     } else {
-                        let mut instance = sunrise_client::effects::EffectInstance::new(
+                        let mut instance = sunrise_level::effects::EffectInstance::new(
                             def.id,
                             eff.duration,
                             eff.amplifier,
@@ -758,10 +758,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut changed = false;
                 for effect in effects {
                     changed |= match mob {
-                        Some(living) => sunrise_client::brewing::effect(effect)
+                        Some(living) => sunrise_level::brewing::effect(effect)
                             .and_then(|def| mod_api::__private::effect_key_by_index(def.index))
                             .is_some_and(|key| self.living_remove_effect(living, key)),
-                        None => sunrise_client::brewing::effect(effect)
+                        None => sunrise_level::brewing::effect(effect)
                             .is_some_and(|def| self.remove_player_effects(Some(def.index))),
                     };
                 }
@@ -836,7 +836,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let effect = dispenser::tipped_effect(&ammo).or_else(|| {
             (&*ammo.item == "minecraft:spectral_arrow").then_some(("minecraft:glowing", 200))
         });
-        let kind = sunrise_client::projectiles::ProjectileKind::Arrow {
+        let kind = sunrise_sim::projectiles::ProjectileKind::Arrow {
             base_damage: 2.0 + power_bonus,
             critical: power >= 1.0,
             effect,
@@ -861,10 +861,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for index in 0..count {
             let angle = offset + direction * index.div_ceil(2) as f32 * step;
             direction = -direction;
-            let mut arrow = sunrise_client::projectiles::Projectile::new(
+            let mut arrow = sunrise_sim::projectiles::Projectile::new(
                 kind.clone(),
                 p,
-                Some(sunrise_client::mobs::Who::Player),
+                Some(sunrise_sim::mobs::Who::Player),
             );
             // AbstractArrow's constructor asks the weapon for its piercing count.
             let pierce = self.bow_pierce(stack, &ammo);
@@ -873,11 +873,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // of a volley is the player's to take; else setOwner(player) lets
             // it be picked up.
             if let Some(a) = arrow.arrow.as_mut() {
-                a.set_item(&sunrise_client::arrows::drawn_ammo(
+                a.set_item(&sunrise_sim::arrows::drawn_ammo(
                     &ammo,
                     self.creative || infinity || index > 0,
                 ));
-                a.set_owner(Some(sunrise_client::mobs::Who::Player));
+                a.set_owner(Some(sunrise_sim::mobs::Who::Player));
                 a.fired_from_weapon = weapon.clone();
                 a.pierce = pierce;
             }
@@ -895,7 +895,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             );
             self.spawn_projectile(arrow, &ammo);
             let (player, name, projectile) = (
-                sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
+                sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid()),
                 self.acting_player_name().to_owned(),
                 self.side.next_entity,
             );
@@ -932,7 +932,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// for `weapon`: the arrows a shot draws (1, plus Multishot's 2) and the
     /// spread they fan over (0, plus Multishot's 10 degrees).
     pub(in crate::game::server_side) fn bow_volley(&mut self, weapon: &ItemStack) -> (usize, f32) {
-        let ctx = sunrise_client::enchant::EffectContext {
+        let ctx = sunrise_items::enchant::EffectContext {
             this: Some("minecraft:player"),
             items: Some(world_items!(self)),
             ..Default::default()
@@ -961,7 +961,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         weapon: &ItemStack,
         ammo: &ItemStack,
     ) -> u8 {
-        let ctx = sunrise_client::enchant::EffectContext {
+        let ctx = sunrise_items::enchant::EffectContext {
             tool: Some(&ammo.item),
             items: Some(world_items!(self)),
             ..Default::default()

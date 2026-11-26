@@ -2,8 +2,8 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::motion::{MotionWorld, PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
 #[test]
 #[ignore = "daily"]
@@ -40,7 +40,7 @@ fn replayed_landing_reads_restitution_again_and_moves_identically() {
         super::tests::with_game(|game| {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let glass = game
                 .pack
                 .assets

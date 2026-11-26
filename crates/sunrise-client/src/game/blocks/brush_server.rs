@@ -1,7 +1,8 @@
 use super::{Game, Hit, decorated_pot};
-use sunrise_client::{containers::BlockEntity, save};
 use sunrise_core::random::RandomSource;
 use sunrise_gameplay::brushing::{USE_DURATION, completion_state};
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::save;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `BrushableBlockEntity.brush`: whether the block changed (the brush wears).
@@ -146,7 +147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// hand of `slot` acting.
     pub(in crate::game::server_side) fn tick_brush(
         &mut self,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
         slot: usize,
         ticks: u32,
     ) {

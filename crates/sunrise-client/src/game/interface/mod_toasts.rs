@@ -6,10 +6,10 @@ use super::{Game, toast_manager::Toast};
 use mod_api::{AddToastError, Identifier, ModToast, ToastIcon, ToastKind};
 use sunrise_client::{
     hud::HudBatch,
-    items::ItemStack,
     toasts::{SystemToast, SystemToastLayout},
 };
-use sunrise_client_lib::api_text::to_engine;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::api_text::to_engine;
 
 pub(in crate::game) struct Pending {
     pub(in crate::game) toast: SystemToast,

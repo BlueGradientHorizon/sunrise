@@ -1,7 +1,7 @@
 //! Common loaded-column heightmap queries shared by server block edits and client views.
 use super::Game;
 use mod_api::Heightmap;
-use sunrise_client::world::World;
+use sunrise_level::world::World;
 use sunrise_world::{
     heightmap::HeightmapType, registry::BlockStateId, worldgen::terrain::TerrainBlockStates,
 };

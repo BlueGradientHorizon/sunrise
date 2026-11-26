@@ -15,18 +15,18 @@ use super::{
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use sunrise_client::collisions::{PowderSnowSubject, SceneCollisions};
-#[allow(unused_imports)]
-use sunrise_client::entities::{ArmorStand, ExperienceOrb, ItemEntity, ItemFrame};
-use sunrise_client::entity_rules::EntityRules;
-use sunrise_client::join_seq::JoinSeq;
-use sunrise_client::join_seq::Joined as _;
-use sunrise_client::mobs::{Mob, Species};
-use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::geometry::{Aabb, Direction, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource as _;
+use sunrise_level::collisions::{PowderSnowSubject, SceneCollisions};
+#[allow(unused_imports)]
+use sunrise_sim::entities::{ArmorStand, ExperienceOrb, ItemEntity, ItemFrame};
+use sunrise_sim::entity_rules::EntityRules;
+use sunrise_sim::join_seq::JoinSeq;
+use sunrise_sim::join_seq::Joined as _;
+use sunrise_sim::mobs::{Mob, Species};
+use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 use sunrise_world::{
     block_collision_scan::CollisionScanError, collision_context::CollisionContext,
     ground_support::GroundState, level::data::PushReaction, move_gate::MoveGate, piston_push,
@@ -112,11 +112,11 @@ pub(in crate::game) trait Entity: EntityRules {
         None
     }
     /// What `entity_size` last answered for it ([`Self::vanilla_dimensions`]).
-    fn size_answer(&self) -> Option<sunrise_client::pose::SizeAnswer> {
+    fn size_answer(&self) -> Option<sunrise_sim::pose::SizeAnswer> {
         None
     }
     /// Keep `answer`: its box takes it while it holds.
-    fn set_size_answer(&mut self, _answer: sunrise_client::pose::SizeAnswer) {}
+    fn set_size_answer(&mut self, _answer: sunrise_sim::pose::SizeAnswer) {}
     /// What a selector finds this entity as (`@e`), or `None` for one it cannot
     /// name yet. Required, so a new kind states which.
     fn selector_target(&self) -> Option<Target>;
@@ -160,7 +160,7 @@ pub(in crate::game) trait Entity: EntityRules {
         _tags: &sunrise_items::items::EntityTypeTags,
     ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
-            sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
+            sunrise_sim::motion::BodyMotion::entity_context(self.id(), self.position()),
             Some(PowderSnowSubject {
                 fall_distance: self.body_fall_distance(),
                 ..Default::default()
@@ -170,7 +170,7 @@ pub(in crate::game) trait Entity: EntityRules {
     /// Update the live owner's retained support. None is `Entity.setOnGround`'s null movement.
     fn update_retained_ground(
         &mut self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
         tags: &sunrise_items::items::EntityTypeTags,
         on_ground: bool,
@@ -302,15 +302,15 @@ pub(in crate::game) trait Entity: EntityRules {
     /// each fluid added to its velocity. One body for every kind.
     fn push_by_fluid(
         &mut self,
-        world: &sunrise_client::world::World,
-        fluids: &sunrise_client::motion::FluidResources,
+        world: &sunrise_level::world::World,
+        fluids: &sunrise_sim::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
     ) -> (f64, f64) {
         if !self.is_pushed_by_fluid() {
             return (0.0, 0.0);
         }
         let (bounds, at, eye) = (self.bounds(), self.position(), self.fluid_eye_y());
-        let (water, lava, _) = sunrise_client::entities::update_entity_fluids(
+        let (water, lava, _) = sunrise_sim::entities::update_entity_fluids(
             bounds,
             at,
             eye,
@@ -325,9 +325,9 @@ pub(in crate::game) trait Entity: EntityRules {
     /// column lifts or drags every kind alike.
     fn push_by_bubble_column(
         &mut self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         registry: &sunrise_world::registry::BlockRegistry,
-        facts: &sunrise_client::blocks::BlockFacts,
+        facts: &sunrise_items::blocks::BlockFacts,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
     ) -> bool {
         self.push_by_bubble_column_over(world, registry, facts, collision, |_| {})
@@ -336,14 +336,14 @@ pub(in crate::game) trait Entity: EntityRules {
     /// each column block it lies in (for the bubbles at the top).
     fn push_by_bubble_column_over(
         &mut self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         registry: &sunrise_world::registry::BlockRegistry,
-        facts: &sunrise_client::blocks::BlockFacts,
+        facts: &sunrise_items::blocks::BlockFacts,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
         surface: impl FnMut(BlockPos),
     ) -> bool {
         let bounds = self.bounds();
-        sunrise_client::motion::bubble_column_push_over(
+        sunrise_sim::motion::bubble_column_push_over(
             world,
             registry,
             facts,
@@ -445,7 +445,7 @@ pub(in crate::game) struct ItemInside<'a, 'g> {
     pub(in crate::game) item: &'a mut ItemEntity,
 }
 
-impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
+impl sunrise_sim::block_contact::InsideWalk for ItemInside<'_, '_> {
     type Effects = mod_api::InsideEffects;
     type Error = ();
     fn bounds_at(&self, at: Vec3) -> Aabb {
@@ -474,10 +474,10 @@ impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
         &mut self,
         _state: sunrise_world::registry::BlockStateId,
         _at: sunrise_core::position::BlockPos,
-    ) -> sunrise_client::block_contact::InsideShape {
+    ) -> sunrise_sim::block_contact::InsideShape {
         // `getEntityInsideCollisionShape` is the whole block for every block
         // an item meets, as the item's own sweep always treated it.
-        sunrise_client::block_contact::InsideShape::Full
+        sunrise_sim::block_contact::InsideShape::Full
     }
     fn entity_inside(
         &mut self,
@@ -500,7 +500,7 @@ pub(in crate::game) struct ProjectileInside<'a, 'g> {
     pub(in crate::game) shot: &'a mut Projectile,
 }
 
-impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
+impl sunrise_sim::block_contact::InsideWalk for ProjectileInside<'_, '_> {
     type Effects = mod_api::InsideEffects;
     type Error = ();
     fn bounds_at(&self, at: Vec3) -> Aabb {
@@ -529,8 +529,8 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
         &mut self,
         _state: sunrise_world::registry::BlockStateId,
         _at: sunrise_core::position::BlockPos,
-    ) -> sunrise_client::block_contact::InsideShape {
-        sunrise_client::block_contact::InsideShape::Full
+    ) -> sunrise_sim::block_contact::InsideShape {
+        sunrise_sim::block_contact::InsideShape::Full
     }
     fn entity_inside(
         &mut self,
@@ -556,13 +556,13 @@ pub(in crate::game) mod render_bounds_tests {
         let mut stand = ArmorStand::new(1, Vec3::new(4.0, 64.0, -2.0), 90.0);
         stand.show_arms = true;
         stand.pose[2] = [180.0, 0.0, 45.0];
-        stand.equipment[0] = Some(sunrise_client::items::ItemStack {
+        stand.equipment[0] = Some(sunrise_items::items::ItemStack {
             item: "minecraft:iron_sword".into(),
             count: 1,
             damage: 0,
             extra: None,
         });
-        stand.equipment[5] = Some(sunrise_client::items::ItemStack {
+        stand.equipment[5] = Some(sunrise_items::items::ItemStack {
             item: "minecraft:banner".into(),
             count: 1,
             damage: 0,
@@ -637,10 +637,10 @@ macro_rules! stored_size {
         fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
             Some($vanilla(self))
         }
-        fn size_answer(&self) -> Option<sunrise_client::pose::SizeAnswer> {
+        fn size_answer(&self) -> Option<sunrise_sim::pose::SizeAnswer> {
             self.size_answer
         }
-        fn set_size_answer(&mut self, answer: sunrise_client::pose::SizeAnswer) {
+        fn set_size_answer(&mut self, answer: sunrise_sim::pose::SizeAnswer) {
             self.size_answer = Some(answer);
         }
     };
@@ -737,7 +737,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         id: u32,
         feet: Vec3,
-        contact: sunrise_client::motion::BodyContact,
+        contact: sunrise_sim::motion::BodyContact,
     ) {
         // FarmlandBlock draws the level's float before checking LivingEntity.
         match &*self.res.facts().get(contact.state).name {
@@ -760,7 +760,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         (id, kind): (u32, &str),
         feet: Vec3,
-        response: sunrise_client::motion::BodyRestitution,
+        response: sunrise_sim::motion::BodyRestitution,
     ) -> Vec3 {
         let Some(bounce) = response.bounce else {
             return response.velocity;
@@ -780,8 +780,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 1.0,
             );
         }
-        let movement = sunrise_client::block_contact::bounce(
-            &mut sunrise_client::health::DamageLevel::of(
+        let movement = sunrise_sim::block_contact::bounce(
+            &mut sunrise_sim::health::DamageLevel::of(
                 &mut self.world,
                 self.pack.assets.registry,
                 Some(world_items!(self)),
@@ -789,7 +789,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &self.damage_hooks,
             )
             .no_push(),
-            sunrise_client::block_contact::Contact {
+            sunrise_sim::block_contact::Contact {
                 entity: id as i32,
                 kind,
                 state: bounce.state,
@@ -828,7 +828,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         entity: (u32, &str),
         feet: Vec3,
-        response: sunrise_client::motion::BodyRestitution,
+        response: sunrise_sim::motion::BodyRestitution,
     ) -> Vec3 {
         self.finish_body_restitution(entity, feet, response)
     }
@@ -840,7 +840,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ground: &sunrise_world::ground_support::GroundState,
         velocity: &mut Vec3,
     ) -> Vec<mod_api::EntityWrite> {
-        use sunrise_client::block_contact::{StepLevel, step_listens, step_on};
+        use sunrise_sim::block_contact::{StepLevel, step_listens, step_on};
         let side = game_side!(self);
         let motion = self.body_motion(&side);
         let Some(step) = motion.step_contact(entity, footprint, ground, velocity) else {
@@ -849,7 +849,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !step_listens(step.contact.state) {
             return Vec::new();
         }
-        let mut level = sunrise_client::health::DamageLevel::of(
+        let mut level = sunrise_sim::health::DamageLevel::of(
             &mut self.world,
             self.pack.assets.registry,
             Some(world_items!(self)),
@@ -904,7 +904,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the queued writes into this item, its own tick. Nothing runs without a
     /// listening part: one `any_inside` test is the whole cost.
     pub(in crate::game) fn sweep_item_inside(&mut self, item: &mut ItemEntity) {
-        if !sunrise_client::block_contact::HOOKS
+        if !sunrise_sim::block_contact::HOOKS
             .get()
             .is_some_and(|hooks| (hooks.any_inside)())
         {
@@ -917,8 +917,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             to: inside.item.position,
             original: None,
         };
-        let mut visited = crate::fast_hash::FxHashSet::default();
-        let _ = sunrise_client::block_contact::sweep_movements(
+        let mut visited = sunrise_level::fast_hash::FxHashSet::default();
+        let _ = sunrise_sim::block_contact::sweep_movements(
             &mut inside,
             &[movement],
             &mut visited,
@@ -974,7 +974,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// item's is: the shared walk over its move, the staged fire over a lent
     /// level, and the flush into this projectile's own tick.
     pub(in crate::game) fn sweep_projectile_inside(&mut self, shot: &mut Projectile) {
-        if !sunrise_client::block_contact::HOOKS
+        if !sunrise_sim::block_contact::HOOKS
             .get()
             .is_some_and(|hooks| (hooks.any_inside)())
         {
@@ -987,8 +987,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             to: inside.shot.position,
             original: None,
         };
-        let mut visited = crate::fast_hash::FxHashSet::default();
-        let _ = sunrise_client::block_contact::sweep_movements(
+        let mut visited = sunrise_level::fast_hash::FxHashSet::default();
+        let _ = sunrise_sim::block_contact::sweep_movements(
             &mut inside,
             &[movement],
             &mut visited,
@@ -1060,10 +1060,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         precise: bool,
         effects: &mut mod_api::InsideEffects,
     ) {
-        let Some(dimension) = sunrise_client::block_contact::current_level() else {
+        let Some(dimension) = sunrise_sim::block_contact::current_level() else {
             return;
         };
-        if !sunrise_client::block_contact::HOOKS
+        if !sunrise_sim::block_contact::HOOKS
             .get()
             .is_some_and(|hooks| (hooks.inside_listens)(state))
         {
@@ -1071,8 +1071,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let mut staged = mod_api::InsideEffects::default();
         let mut writes = Vec::new();
-        let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
-        let mut level = sunrise_client::health::DamageLevel::lent(
+        let mut lent = sunrise_sim::health::LentLevel::take(&mut self.world);
+        let mut level = sunrise_sim::health::DamageLevel::lent(
             &self.world,
             self.pack.assets.registry,
             &mut lent,
@@ -1082,7 +1082,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         )
         .with_effects(crate::game::entity::hit_effects_of!(self, None))
         .with_reads(crate::game::entity::hit_reads_of!(self));
-        if let Some(hooks) = sunrise_client::block_contact::HOOKS.get() {
+        if let Some(hooks) = sunrise_sim::block_contact::HOOKS.get() {
             (hooks.inside_fire)(
                 &mut level,
                 dimension,
@@ -1097,7 +1097,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         lent.give_back(&mut self.world);
         effects.absorb_step(staged);
-        sunrise_client::block_contact::inside_written(state, at, writes);
+        sunrise_sim::block_contact::inside_written(state, at, writes);
     }
 }
 
@@ -1170,7 +1170,7 @@ macro_rules! define_entity_handles {
         /// Every list moved out of `Game`, for [`for_each_entity_mut`]: the
         /// world stays readable while the entities change.
         pub(in crate::game) struct TakenEntities {
-            $(pub(in crate::game) $field: sunrise_client::join_seq::JoinList<$ty, { $crate::game::entity::direct_entity_edit!($kind) }>,)*
+            $(pub(in crate::game) $field: sunrise_sim::join_seq::JoinList<$ty, { $crate::game::entity::direct_entity_edit!($kind) }>,)*
         }
 
 
@@ -1235,7 +1235,7 @@ macro_rules! define_entity_handles {
             pub(in crate::game::server_side) fn restore_entities(&mut self, taken: TakenEntities) {
                 $({
                     let expected = self$(.$list)+.len() + taken.$field.len();
-                    self$(.$list)+.restore(taken.$field, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                    self$(.$list)+.restore(taken.$field, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                     debug_assert_eq!(self$(.$list)+.len(), expected);
                 })*
             }
@@ -1465,7 +1465,7 @@ pub(in crate::game) fn draw_runs(
 }
 
 entity_lists!(define_entity_handles,);
-sunrise_client::impl_joined!(FallingBlock);
+sunrise_sim::impl_joined!(FallingBlock);
 
 macro_rules! entity_access {
     (shared, $list:expr, $index:expr, $entity:ident, $body:expr) => {{
@@ -1516,7 +1516,7 @@ macro_rules! hit_effects_of {
     // A site whose `$game` is borrowed whole queues into its own `$sounds`, which it appends to
     // `creatures.lan_sounds` once the level is dropped (the seeds are still drawn at the call).
     ($game:ident, $lend:expr, in $sounds:expr) => {
-        sunrise_client::health::HitEffects::new(
+        sunrise_sim::health::HitEffects::new(
             &mut $sounds,
             $game.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
@@ -1525,7 +1525,7 @@ macro_rules! hit_effects_of {
         )
     };
     ($game:ident, $lend:expr) => {
-        sunrise_client::health::HitEffects::new(
+        sunrise_sim::health::HitEffects::new(
             &mut $game.side.pending_native_sounds,
             $game.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
@@ -1543,7 +1543,7 @@ macro_rules! hit_reads_of {
         $game
             .native_lifecycle
             .epoch()
-            .map(|epoch| sunrise_client::health::HitReads {
+            .map(|epoch| sunrise_sim::health::HitReads {
                 epoch,
                 living_types: $game.res.living_type_keys(),
                 attributes: &$game.motion.attributes,
@@ -1566,7 +1566,7 @@ pub(in crate::game) use hit_reads_of;
 macro_rules! causer_decision {
     ($game:ident, $causing:expr) => {{
         let causing: i32 = $causing;
-        let listened = causing != 0 && sunrise_client::health::hit_host_listened();
+        let listened = causing != 0 && sunrise_sim::health::hit_host_listened();
         let mob = listened
             .then(|| $game.mobs.iter().position(|m| m.id as i32 == causing))
             .flatten();
@@ -1597,20 +1597,20 @@ macro_rules! victim_and_causer {
                     .mobs
                     .get_disjoint_mut([index, other])
                     .expect("the victim and its causer are two mobs");
-                (victim, sunrise_client::health::HitLend::mob(causer))
+                (victim, sunrise_sim::health::HitLend::mob(causer))
             }
             Some(_) => (&mut $game.mobs[index], None),
             None => (
                 &mut $game.mobs[index],
                 if listened {
-                    sunrise_client::health::HitLend::attacking_player(
+                    sunrise_sim::health::HitLend::attacking_player(
                         $game.player.as_mut(),
                         causing,
                         &$game.potions.effects,
                         acting_equipment!($game),
                     )
                     .or_else(|| {
-                        sunrise_client::health::HitLend::parked_guest(
+                        sunrise_sim::health::HitLend::parked_guest(
                             $game.lan.as_ref().map(|lan| &lan.hub),
                             parked?,
                         )
@@ -1637,9 +1637,9 @@ macro_rules! player_victim_causer {
                 .mobs
                 .get_mut(index)
                 .filter(|m| m.id as i32 == causing)
-                .and_then(sunrise_client::health::HitLend::mob),
+                .and_then(sunrise_sim::health::HitLend::mob),
             None => parked.and_then(|conn| {
-                sunrise_client::health::HitLend::parked_guest(
+                sunrise_sim::health::HitLend::parked_guest(
                     $game.lan.as_ref().map(|lan| &lan.hub),
                     conn,
                 )
@@ -1659,7 +1659,7 @@ pub(in crate::game) use player_victim_causer;
 /// it cannot lend one).
 macro_rules! damage_level_of {
     ($game:ident, $attack:expr, no_push, $lend:expr $(, $equipment:expr)?) => {
-        &mut sunrise_client::health::DamageLevel::of(
+        &mut sunrise_sim::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
             Some(server_world_items!($game)),
@@ -1674,7 +1674,7 @@ macro_rules! damage_level_of {
         $(.with_player_equipment($equipment))?
     };
     ($game:ident, $attack:expr, $credit:expr, $lend:expr) => {
-        &mut sunrise_client::health::DamageLevel::of(
+        &mut sunrise_sim::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
             Some(server_world_items!($game)),
@@ -1694,12 +1694,12 @@ pub(in crate::game) use damage_level_of;
 /// borrowing only the fields it reads (`Game::acting_uuid`'s).
 macro_rules! player_resolver {
     ($game:ident) => {
-        sunrise_client::health::PlayerResolver {
+        sunrise_sim::health::PlayerResolver {
             in_place: $game.player.is_some().then(|| {
                 $game
                     .side
                     .lan_acting_uuid
-                    .map(sunrise_client::lan::playerdata::uuid_ints)
+                    .map(sunrise_sim::lan::playerdata::uuid_ints)
                     .or($game.level.player_uuid)
                     .unwrap_or_default()
             }),
@@ -1893,7 +1893,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         load_entity_of_any_kind!(self, kind, uuid, player_uuid, tag, &mut state)
             .or_else(|tag| {
                 self.load_unlisted_transferred(
-                    Self::chunk_of(sunrise_client::entity_nbt::position(&tag).unwrap_or_default()),
+                    Self::chunk_of(sunrise_sim::entity_nbt::position(&tag).unwrap_or_default()),
                     kind,
                     uuid,
                     tag,
@@ -1989,7 +1989,7 @@ impl Entity for Mob {
         }
         let moved = self.position.add_vector(movement);
         if self.species() == Species::Shulker {
-            crate::mobs::shulker::client_set_pos(self, moved.x, moved.y, moved.z);
+            sunrise_sim::mobs::shulker::client_set_pos(self, moved.x, moved.y, moved.z);
         } else {
             self.position = moved;
         }
@@ -2074,7 +2074,7 @@ impl Entity for Mob {
         !self.alive()
             || blast.spared == Some(self.id)
             || (self.species() == Species::Warden
-                && sunrise_client::mobs::warden::digging_or_emerging(self))
+                && sunrise_sim::mobs::warden::digging_or_emerging(self))
     }
     /// `getEyeHeight` of the mob as it stands: a baby's, a slime's or a
     /// phantom's own scaled eye height, not the adult kind's. The blast's box
@@ -2729,7 +2729,7 @@ impl Entity for FallingBlock {
         _tags: &sunrise_items::items::EntityTypeTags,
     ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
-            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+            sunrise_sim::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
                 fall_distance: self.fall_distance,
                 falling_block: true,
@@ -2818,7 +2818,7 @@ impl Entity for Projectile {
         _tags: &sunrise_items::items::EntityTypeTags,
     ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
-            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+            sunrise_sim::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
                 fall_distance: self.fall_distance(),
                 ..Default::default()
@@ -2833,8 +2833,8 @@ impl Entity for Projectile {
     fn portal_after_move(&self) -> bool {
         !matches!(
             self.kind,
-            sunrise_client::projectiles::ProjectileKind::LlamaSpit
-                | sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
+            sunrise_sim::projectiles::ProjectileKind::LlamaSpit
+                | sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
         )
     }
     fn rotation(&self) -> [f32; 2] {
@@ -2911,7 +2911,7 @@ impl Entity for Projectile {
                 uuid,
                 player_uuid
             ),
-            id if sunrise_client::entity_nbt::throwable_kind(id).is_some() => {
+            id if sunrise_sim::entity_nbt::throwable_kind(id).is_some() => {
                 load_with_transfer!(
                     game,
                     transferred,
@@ -2939,10 +2939,10 @@ impl Entity for Projectile {
         !super::nether_portal::is_arrow(self) || !self.stuck || self.previous != self.position
     }
     fn selector_target(&self) -> Option<Target> {
-        use sunrise_client::projectiles::ProjectileKind as K;
+        use sunrise_sim::projectiles::ProjectileKind as K;
         // The kinds /data can write (entity_nbt).
         let selectable = self.is_arrow()
-            || sunrise_client::entity_nbt::saved_with_chunk(self)
+            || sunrise_sim::entity_nbt::saved_with_chunk(self)
             || matches!(
                 self.kind,
                 K::LargeFireball { .. }
@@ -3159,7 +3159,7 @@ impl Entity for ThrownTrident {
             Vec3::new(p.x - 0.25, p.y, p.z - 0.25),
             Vec3::new(p.x + 0.25, p.y + 0.5, p.z + 0.25),
         );
-        sunrise_client::pose::SizeAnswer::sized_box(
+        sunrise_sim::pose::SizeAnswer::sized_box(
             self.size_answer,
             THROWN_TRIDENT_DIMENSIONS,
             p,
@@ -3233,8 +3233,8 @@ impl EntityRules for FallingBlock {
 #[cfg(test)]
 pub(in crate::game) mod no_gravity_stand_tests {
     use super::Entity as _;
-    use sunrise_client::entities::ArmorStand;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::entities::ArmorStand;
 
     #[test]
     fn a_no_gravity_stand_is_not_swept_for_the_blocks_it_is_in() {
@@ -3281,11 +3281,11 @@ pub(in crate::game) mod load_claim_tests {
             "minecraft:cushion",
             "minecraft:painting",
         ];
-        for def in sunrise_client::mobs::species::ALL {
+        for def in sunrise_sim::mobs::species::ALL {
             let id = format!("minecraft:{}", def.name);
             assert!(!others.contains(&id.as_str()), "{id}");
             assert!(
-                sunrise_client::entity_nbt::throwable_kind(&id).is_none(),
+                sunrise_sim::entity_nbt::throwable_kind(&id).is_none(),
                 "{id}"
             );
             assert!(super::super::boats::any_boat_wood(&id).is_none(), "{id}");
@@ -3322,10 +3322,10 @@ pub(in crate::game) mod join_order_tests {
     use crate::game::{
         boats::Boat, creatures::render_fixture::mob, fireworks::Rocket, trident::ThrownTrident,
     };
-    use sunrise_client::entities::ArmorStand;
-    use sunrise_client::join_seq::{JoinList, JoinSeq};
-    use sunrise_client::mobs::{Mob, Species};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::entities::ArmorStand;
+    use sunrise_sim::join_seq::{JoinList, JoinSeq};
+    use sunrise_sim::mobs::{Mob, Species};
 
     fn at() -> Vec3 {
         Vec3::new(0.5, 100.0, 0.5)
@@ -3484,7 +3484,7 @@ pub(in crate::game) mod join_order_tests {
     /// Entities of an undrawn family do not split a run.
     #[test]
     fn an_undrawn_family_splits_no_run() {
-        use sunrise_client::projectiles::{Projectile, ProjectileKind};
+        use sunrise_sim::projectiles::{Projectile, ProjectileKind};
         let mut lists = Lists::default();
         lists.stand(1);
         let mut projectiles = JoinList::<Projectile, false>::default();
@@ -3515,7 +3515,7 @@ pub(in crate::game) mod join_order_tests {
         let taken = lists.tridents.lift();
         let before: Vec<_> = taken
             .iter()
-            .map(sunrise_client::join_seq::Joined::join_seq)
+            .map(sunrise_sim::join_seq::Joined::join_seq)
             .collect();
         let mut back = JoinList::default();
         for t in taken {
@@ -3525,7 +3525,7 @@ pub(in crate::game) mod join_order_tests {
         let after: Vec<_> = lists
             .tridents
             .iter()
-            .map(sunrise_client::join_seq::Joined::join_seq)
+            .map(sunrise_sim::join_seq::Joined::join_seq)
             .collect();
         assert_eq!(before, after);
         assert_eq!(lists.walk().unwrap(), joined);
@@ -3540,7 +3540,7 @@ pub(in crate::game) mod join_order_tests {
         assert!(matches!(lists.walk(), Err(JoinOrderError::OutOfOrder(_))));
         let (mut lists, _) = mixed();
         lists.stands.push(ArmorStand::new(9, at(), 0.0));
-        lists.stands[2].join = sunrise_client::join_seq::JoinSeq::UNJOINED;
+        lists.stands[2].join = sunrise_sim::join_seq::JoinSeq::UNJOINED;
         assert_eq!(
             lists.walk(),
             Err(JoinOrderError::Unjoined(EntityHandle::ArmorStand(2)))
@@ -3551,7 +3551,7 @@ pub(in crate::game) mod join_order_tests {
 #[cfg(test)]
 pub(in crate::game) mod set_rotation_tests {
     use super::Entity as _;
-    use sunrise_client::entities::ExperienceOrb;
+    use sunrise_sim::entities::ExperienceOrb;
 
     /// `Entity.teleportSetPosition`: yaw as given, pitch clamped to -90..90, on
     /// every kind (the ones with no field of their own used to drop it).

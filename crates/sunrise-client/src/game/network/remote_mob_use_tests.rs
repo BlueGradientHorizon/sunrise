@@ -1,7 +1,6 @@
 use crate::game::native_entity_refs::tests::with_client_game;
 use {
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Mob,
-    sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_sim::first_person_sim::Hand, sunrise_sim::mobs::Mob,
 };
 
 #[test]
@@ -12,7 +11,7 @@ fn remote_mob_takes_only_adult_piglin_currency_with_free_offhand() {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             g.connect_local(pipe, "PiglinUseTest").unwrap();
             g.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     g.motion,
                     sunrise_core::geometry::Vec3::new(4.5, 100.0, 4.5),
                 )

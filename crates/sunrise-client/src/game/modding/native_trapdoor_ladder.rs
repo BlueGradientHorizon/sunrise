@@ -19,7 +19,7 @@ pub(crate) fn makes_open_trapdoor_above_climbable(
         return;
     };
     mod_api::dispatch_makes_open_trapdoor_above_climbable(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         state,
         pos,
         trapdoor,

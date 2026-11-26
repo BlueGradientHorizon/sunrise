@@ -1,6 +1,6 @@
 use super::{Arg, Context, Game, R, Target, err};
 use crate::game::chat_common::PLAYER_NAME;
-use sunrise_client::text::{self, Text};
+use sunrise_client_core::text::{self, Text};
 use sunrise_core::random::RandomSource;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -99,7 +99,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // the source's own copy with the captured output it has (`/say`'s).
             let captured = self.side.chat_capture.as_ref().and(self.side.lan_acting);
             if let Some(host) = &self.lan {
-                let content = sunrise_client::lan::data::component_nbt(&line.component());
+                let content = sunrise_sim::lan::data::component_nbt(&line.component());
                 match captured {
                     Some(conn) => host.hub.system_message_except(content, conn),
                     None => host.hub.system_message(content),

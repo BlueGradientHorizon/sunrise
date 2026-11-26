@@ -149,13 +149,13 @@ pub(in crate::game) mod render_tooltip_texture_tests {
                 let plain = vertex_bits(&plain_batch);
 
                 let mut styled = ItemStack::new(&case.item, 1);
-                let given = sunrise_client::item_data::command_components(&format!(
+                let given = sunrise_items::item_data::command_components(&format!(
                     "[tooltip_style='{}']",
                     case.tooltip_style
                 ))
                 .unwrap();
                 (styled.damage, styled.extra) =
-                    sunrise_client::item_data::decode_components(Some(&given));
+                    sunrise_items::item_data::decode_components(Some(&given));
 
                 let mut inserted = Vec::with_capacity(case.draws.len());
                 for (index, draw) in case.draws.iter().enumerate() {

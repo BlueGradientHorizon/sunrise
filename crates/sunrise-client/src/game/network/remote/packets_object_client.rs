@@ -74,10 +74,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // Entity.getTeam: a mob is on a team by its UUID, a player by
         // its profile name (`Game::scoreboard_name`).
-        self.persist.uuids.insert(
-            p.id as u32,
-            sunrise_client::lan::playerdata::uuid_ints(p.uuid),
-        );
+        self.persist
+            .uuids
+            .insert(p.id as u32, sunrise_sim::lan::playerdata::uuid_ints(p.uuid));
         let holder = if kind == "minecraft:player" {
             Holder::Player(p.uuid)
         } else {
@@ -199,7 +198,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // lead (this player, another player, a mob or a fence knot), for
         // the rope.
         let me = self.remote.as_ref().map(|r| r.entity_id);
-        use sunrise_client::mobs::leash::Holder;
+        use sunrise_sim::mobs::leash::Holder;
         let holder = match p.dest {
             0 => None,
             d if Some(d) == me => Some(Holder::Player),
@@ -241,7 +240,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // ClientPacketListener.handleSwingAnimation: the entity swings
         // (LivingEntity.swing, which a swing in its first half ignores).
         let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
-        let animation = sunrise_client::first_person::SwingAnimation {
+        let animation = sunrise_sim::first_person_sim::SwingAnimation {
             kind: p.kind.clamp(0, 255) as u8,
             duration: p.duration,
         };
@@ -293,7 +292,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // `ClientPacketListener.random`, the listener's own stream: a
         // pickup pitch is never a draw of the level's.
         if let Some(o) = orb_at {
-            let mut r = sunrise_client::random_source::create();
+            let mut r = sunrise_level::random_source::create();
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
             self.side.audio.0.play(
                 "minecraft:entity.experience_orb.pickup",
@@ -302,7 +301,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 pitch,
             );
         } else if let Some(at) = at {
-            let mut r = sunrise_client::random_source::create();
+            let mut r = sunrise_level::random_source::create();
             let pitch = ((r.next_float() - r.next_float()) * 0.7 + 1.0) * 2.0;
             self.side
                 .audio

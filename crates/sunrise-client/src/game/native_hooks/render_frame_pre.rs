@@ -37,7 +37,8 @@ pub(in crate::game) mod tests {
         sync::{Arc, Mutex},
         time::Duration,
     };
-    use sunrise_client::{clock::FixedStep, title::Title};
+    use sunrise_client::title::Title;
+    use sunrise_sim::clock::FixedStep;
 
     #[derive(Default)]
     struct Heard {

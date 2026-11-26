@@ -15,9 +15,9 @@ use std::{
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     item_render::{ItemRenderState, OwnedSpecialModelFactory, install_special_model_factories},
-    items::ItemStack,
     mesher::Vertex,
 };
+use sunrise_items::items::ItemStack;
 
 /// Full sky and block light, as the frame packs it.
 const LIGHT: u32 = 0x00F0_00F0;

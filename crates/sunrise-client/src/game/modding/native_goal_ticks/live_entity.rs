@@ -8,8 +8,8 @@ use super::super::{
     native_entity_state::{POSES, max_air},
 };
 use super::{GoalCx, Resolved};
-use crate::mobs::Mob;
 use mod_api::{EntityRef, EntityTags, MobCategory};
+use sunrise_sim::mobs::Mob;
 
 impl GoalCx<'_, '_> {
     pub(super) fn r_entity_tags(&self, entity: EntityRef) -> Option<EntityTags<'_>> {
@@ -179,7 +179,7 @@ impl GoalCx<'_, '_> {
 
     pub(super) fn r_entity_pose(&self, entity: EntityRef) -> Option<&'static str> {
         POSES
-            .get(usize::from(crate::mobs::sync::pose_id(
+            .get(usize::from(sunrise_sim::mobs::sync::pose_id(
                 self.entity_mob(entity)?,
             )))
             .copied()
@@ -217,8 +217,8 @@ impl GoalCx<'_, '_> {
     }
     pub(super) fn r_entity_sound_source(&self, entity: EntityRef) -> Option<mod_api::SoundSource> {
         let mob = self.entity_mob(entity)?;
-        let evil = mob.species() == crate::mobs::Species::Rabbit
-            && mob.extra.variant == crate::mobs::rabbit::EVIL;
+        let evil = mob.species() == sunrise_sim::mobs::Species::Rabbit
+            && mob.extra.variant == sunrise_sim::mobs::rabbit::EVIL;
         Some(if evil || hostile_species(mob.species()) {
             mod_api::SoundSource::Hostile
         } else {
@@ -231,7 +231,7 @@ impl GoalCx<'_, '_> {
         if mob.extra.leash_pending.is_some() {
             return None;
         }
-        use crate::mobs::leash::Holder;
+        use sunrise_sim::mobs::leash::Holder;
         Some(match mob.extra.leash {
             None => mod_api::LeashHolder::Unleashed,
             Some(Holder::Knot(pos)) => mod_api::LeashHolder::Knot(pos),
@@ -239,7 +239,7 @@ impl GoalCx<'_, '_> {
                 self.lookup_entity(id).or_else(|| self.host.entity(id))?,
             ),
             Some(Holder::Player) => {
-                let uuid = sunrise_client::lan::playerdata::ints_uuid(mob.extra.leash_player?);
+                let uuid = sunrise_sim::lan::playerdata::ints_uuid(mob.extra.leash_player?);
                 mod_api::LeashHolder::Entity(
                     self.lookup_player(uuid)
                         .or_else(|| self.host.player(uuid))?

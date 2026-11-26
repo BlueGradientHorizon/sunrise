@@ -186,10 +186,10 @@ pub(in crate::game) mod tests {
         atomic::{AtomicI32, AtomicUsize},
         mpsc::Receiver,
     };
-    use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::mobs::Mob;
 
     pub(in crate::game::server_side) fn guest(
         conn: u32,

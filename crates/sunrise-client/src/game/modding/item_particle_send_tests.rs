@@ -16,7 +16,7 @@ fn stack_particle_crosses_server_packet_and_resolves_apple() {
         let level = game.level(game.dim.id()).unwrap();
         assert!(level.send_particles(game, &options, None, [0.0, 64.0, 0.0], [0.2; 3], 0.0, 5));
         let queued = game.side.pending_particles.pop().unwrap();
-        let mut sync = sunrise_client::lan::data::SyncData::empty();
+        let mut sync = sunrise_sim::lan::data::SyncData::empty();
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         sync.builtin = sunrise_protocol::registry::Builtin::load(
             &sunrise_protocol::registry::Builtin::find(&root).unwrap(),
@@ -73,7 +73,7 @@ fn stack_particle_crosses_server_packet_and_resolves_apple() {
             Some("minecraft:apple")
         );
         let received =
-            sunrise_client::item_sync::from_network(&network_stack, &sync.builtin, &sync.dynamic);
+            sunrise_sim::item_sync::from_network(&network_stack, &sync.builtin, &sync.dynamic);
         assert_eq!(&*received.item, "minecraft:apple");
         assert_eq!(
             game.item_particle_options(&received).unwrap().item,

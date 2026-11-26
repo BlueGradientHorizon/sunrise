@@ -1,6 +1,6 @@
 use super::Game;
 use crate::game::durability::Wearer;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `damage_stack` for the stack the living entity `id` wears.

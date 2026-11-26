@@ -7,10 +7,10 @@ use super::Game;
 use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::lan::hub::Hub;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::lan::hub::Hub;
 #[cfg(test)]
-use sunrise_client::server_perf::MemoryCost;
+use sunrise_sim::server_perf::MemoryCost;
 
 pub(in crate::game) use crate::game::memory_common::*;
 
@@ -84,7 +84,7 @@ pub(in crate::game::server_side) fn player_census(hub: &Hub) -> Players {
 
 pub(in crate::game::server_side) fn chunk_send_census(hub: &Hub) -> ChunkSend {
     let [sections, heights] = hub.encoder.cache_census();
-    let frames = sunrise_client::lan::conn::shared_frame_census();
+    let frames = sunrise_sim::lan::conn::shared_frame_census();
     let cached = |(entries, bytes): (usize, usize)| Cached {
         entries,
         size_mb: mb(bytes),
@@ -111,16 +111,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The entities of every level by type; a record's bytes are its struct and the buffers its fields own.
     pub(in crate::game::server_side) fn entity_census(&self) -> Entities {
         let record = [
-            size_of::<sunrise_client::entities::ItemEntity>(),
-            size_of::<sunrise_client::entities::ExperienceOrb>(),
-            size_of::<sunrise_client::projectiles::Projectile>(),
+            size_of::<sunrise_sim::entities::ItemEntity>(),
+            size_of::<sunrise_sim::entities::ExperienceOrb>(),
+            size_of::<sunrise_sim::projectiles::Projectile>(),
             size_of::<super::minecarts::Minecart>(),
             size_of::<super::boats::Boat>(),
         ];
         let mut by_type: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-        let mut level = |mobs: &[sunrise_client::mobs::Mob], loose: [usize; 5]| {
+        let mut level = |mobs: &[sunrise_sim::mobs::Mob], loose: [usize; 5]| {
             for m in mobs.iter().filter(|m| !m.removed) {
-                let bytes = size_of::<sunrise_client::mobs::Mob>()
+                let bytes = size_of::<sunrise_sim::mobs::Mob>()
                     + size_of_val(&*m.ai)
                     + vec_bytes(&m.outbox)
                     + string_bytes(&m.custom_name)
@@ -231,7 +231,7 @@ pub(in crate::game) mod tests {
     use serde_json::json;
     use std::sync::{Arc, mpsc::channel};
     use std::task::Poll;
-    use sunrise_client::chunk::{Light, Section};
+    use sunrise_level::chunk::{Light, Section};
 
     #[test]
     fn sharing_counts_a_section_only_once_across_both_censuses() {
@@ -315,7 +315,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_servers_report_names_its_entities_and_players_and_leaves_the_rest_unattributed() {
         use crate::game::test_pos_guest_tests::{GUEST, game};
-        use sunrise_client::mobs::Mob;
+        use sunrise_sim::mobs::Mob;
         let mut resources = None;
         let mut game = game(&mut resources);
         game.options.dedicated = Some(Vec::new());
@@ -338,7 +338,7 @@ pub(in crate::game) mod tests {
         // while its reader is still to come: this one outlives the report.
         let (tx, queue) = channel();
         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+            guest.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
             guest.sender.send(vec![0; 3 << 20]);
         });
         let report = game.memory_report();

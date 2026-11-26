@@ -180,7 +180,7 @@ pub(in crate::game) mod tests {
                     &[(m_pose(game, i), vanilla, vanilla)]
                 );
                 // Grown down to a baby: asked again, from the size it had.
-                sunrise_client::mobs::finalize::set_baby(&mut game.mobs[i], true);
+                sunrise_sim::mobs::finalize::set_baby(&mut game.mobs[i], true);
                 game.native_mob_sizes();
                 let calls = calls.lock().unwrap();
                 assert_eq!(calls.len(), 2);
@@ -263,7 +263,7 @@ pub(in crate::game) mod tests {
                     assert_eq!((path_mob.width, path_mob.height), (0.0, 0.0));
                     let world = game.mob_world_base(&[]);
                     assert!(world.no_collision(mob.bounds()));
-                    use sunrise_client::mobs::path::{Evaluator, Finder};
+                    use sunrise_sim::mobs::path::{Evaluator, Finder};
                     for evaluator in [Evaluator::Walk, Evaluator::Swim { breach: true }] {
                         let finder = Finder::new(&world, &path_mob, evaluator);
                         let _ = finder.walk_path_type(1, 70, 3);
@@ -292,10 +292,10 @@ pub(in crate::game) mod tests {
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
                     ready.send(()).unwrap();
-                    use sunrise_client::mobs::path::{Evaluator, Finder, PathType};
+                    use sunrise_sim::mobs::path::{Evaluator, Finder, PathType};
                     game.world
                         .chunks
-                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                     let registry = &game.pack.assets.registry;
                     let stone = registry.default_state("minecraft:stone").unwrap();
                     let fence = registry.default_state("minecraft:oak_fence").unwrap();
@@ -374,11 +374,11 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn pose_fit_uses_the_resolved_crouch_size_including_cloned_motion() {
-        use sunrise_client::{
+        use sunrise_core::geometry::Vec3;
+        use sunrise_sim::{
             motion::{MotionWorld, PlayerMotion},
             pose::Pose as MotionPose,
         };
-        use sunrise_core::geometry::Vec3;
         for subscribed in [false, true] {
             let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let mods: mod_api::Mods = if subscribed {
@@ -394,7 +394,7 @@ pub(in crate::game) mod tests {
                 with_game(|game| {
                     game.world
                         .chunks
-                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                     let stone = game
                         .pack
                         .assets
@@ -552,7 +552,7 @@ pub(in crate::game) mod tests {
                     .begin_open(mod_api::Authority::RemoteClient);
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 test(game, &seen);
             });
         });
@@ -859,9 +859,9 @@ pub(in crate::game) mod tests {
     fn server_entities_ask_and_their_boxes_take_the_answer() {
         use crate::game::collision_source::Mover;
         use crate::game::minecarts::{CartKind, Minecart};
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ArmorStand;
+        use sunrise_sim::projectiles::{Projectile, ProjectileKind};
         if in_fresh_process("server_entities_ask_and_their_boxes_take_the_answer") {
             return;
         }
@@ -872,7 +872,7 @@ pub(in crate::game) mod tests {
             game.carts
                 .push(Minecart::new(9002, CartKind::Rideable, other_at));
             game.spawn_item(
-                sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+                sunrise_items::items::ItemStack::new("minecraft:stone", 1),
                 [4.5, 70.0, 4.5],
                 [0.0; 3],
                 0,
@@ -968,7 +968,7 @@ pub(in crate::game) mod tests {
         with_server(true, |game, _| {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let at = Vec3::new(8.5, 64.0, 8.5);
             let pig = game
                 .spawn_mob_spawned(
@@ -1004,7 +1004,7 @@ pub(in crate::game) mod tests {
                 fire_ticks: 0,
                 sync_velocity: false,
                 stuck: Vec3::ZERO,
-                damage: sunrise_client::falling_block::Damage::anvil(),
+                damage: sunrise_sim::falling_block::Damage::anvil(),
                 saved: None,
             });
             game.native_entity_sizes();
@@ -1038,7 +1038,7 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap();
             let i = game.mobs.iter().position(|m| m.id == id).unwrap();
-            sunrise_client::mobs::finalize::set_baby(&mut game.mobs[i], true);
+            sunrise_sim::mobs::finalize::set_baby(&mut game.mobs[i], true);
             let calf = game.mobs[i].vanilla_dims();
             // One tick from growing up (`AgeableMob.aiStep`: ++age).
             game.mobs[i].extra.age = -1;

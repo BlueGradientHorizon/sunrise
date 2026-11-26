@@ -9,7 +9,7 @@ mod command_exploration_map_tests {
         let mut game_resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut game_resources);
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(4.5, 200.0, 4.5),
             )
@@ -28,8 +28,8 @@ mod command_exploration_map_tests {
         ));
         let _ = std::fs::remove_dir_all(&game.side.world_root);
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let terrain = sunrise_client::vanillagen::VanillaTerrain::new(
-            sunrise_client::vanillagen::TerrainResources {
+        let terrain = sunrise_sim::vanillagen::VanillaTerrain::new(
+            sunrise_sim::vanillagen::TerrainResources {
                 dir: &root.join("worldgen"),
                 data: Some(&game.pack.data_changes),
                 registry: game.pack.assets.registry,
@@ -92,8 +92,8 @@ mod command_exploration_map_tests {
             .cloned();
         game.save_maps();
         let saved =
-            sunrise_client::save::read_dat(&game.side.world_root.join("data/minecraft/maps/0.dat"));
-        let counter = sunrise_client::save::read_dat(
+            sunrise_sim::save::read_dat(&game.side.world_root.join("data/minecraft/maps/0.dat"));
+        let counter = sunrise_sim::save::read_dat(
             &game.side.world_root.join("data/minecraft/maps/last_id.dat"),
         );
         let headers = saved.as_ref().and_then(|t| t.get("data")).map(|d| {
@@ -134,7 +134,9 @@ mod command_exploration_map_tests {
 #[cfg(test)]
 mod added_preservation_tests {
     use serde_json::json;
-    use sunrise_client::{containers::BlockEntity, items::ItemStack, structure_blocks};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::BlockEntity;
+    use sunrise_sim::structure_blocks;
     use sunrise_world::loot::{ExplorationMap, LootStack};
 
     fn game<'a>(
@@ -143,7 +145,7 @@ mod added_preservation_tests {
     ) -> crate::game::ServerGame<'a> {
         let mut game = crate::game::game_tests::tests::server_game(resources);
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(4.5, 200.0, 4.5),
             )

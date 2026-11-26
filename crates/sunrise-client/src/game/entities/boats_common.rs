@@ -4,17 +4,16 @@ use crate::game::server_side::boats::{
     Boat, HEIGHT, Status, powder_snow_stuck, reached_cells, registered_boat_item, wrap_degrees_f64,
 };
 use std::{io, sync::Arc};
-use sunrise_client::{
-    blocks::Fluid,
-    collisions::{EntityCollisions, SceneCollisions, no_collision_with_context},
-    entity_rules::EntityRules,
-    items::ItemStack,
-    motion::{BubbleColumn, bubble_column_at},
-};
 use sunrise_core::{
     geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
     position::BlockPos,
     random::RandomSource,
+};
+use sunrise_items::{blocks::Fluid, items::ItemStack};
+use sunrise_level::collisions::{EntityCollisions, SceneCollisions, no_collision_with_context};
+use sunrise_sim::{
+    entity_rules::EntityRules,
+    motion::{BubbleColumn, bubble_column_at},
 };
 use sunrise_world::{
     collision_context::CollisionContext,
@@ -317,15 +316,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 return Some(());
             }
             // The water's shape, through the shared fluid shape cache.
-            sunrise_client::entities::water_clip(
-                &self.loop_context,
-                &self.world,
-                fluids,
-                from,
-                to,
-                p,
-            )
-            .then_some(())
+            sunrise_sim::entities::water_clip(&self.loop_context, &self.world, fluids, from, to, p)
+                .then_some(())
         });
         if matches!(hit, Ok(Some(()))) {
             0.0
@@ -595,7 +587,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             border: Some((self.border.geometry(), [b.position.x, b.position.z])),
         };
         let movement = b.take_movement();
-        let mut gate = sunrise_client::move_gate::armed_with(
+        let mut gate = sunrise_sim::move_gate::armed_with(
             &self.loop_context,
             b.id,
             || std::borrow::Cow::Owned(b.entity_type()),
@@ -603,7 +595,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             movement,
         );
         let movement = gate.delta();
-        if let Ok(moved) = sunrise_client::move_gate::entities_resolve(
+        if let Ok(moved) = sunrise_sim::move_gate::entities_resolve(
             &mut gate,
             &mut scene,
             b.bounds(),
@@ -618,7 +610,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 b.position.z + moved.z,
             );
             let side = game_side!(self, self.side_game_side_fields());
-            let motion = sunrise_client::motion::BodyMotion {
+            let motion = sunrise_sim::motion::BodyMotion {
                 world: &self.world,
                 collision: self.collision,
                 facts: self.res.facts(),
@@ -628,13 +620,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             };
             if !gate.skipped() {
                 motion.record_move(
-                    sunrise_client::motion::BodyCollision {
+                    sunrise_sim::motion::BodyCollision {
                         footprint: (b.position, b.bounds()),
                         movement: (movement, moved),
                         authoritative: true,
-                        context: sunrise_client::motion::BodyMotion::entity_context(
-                            b.id, b.position,
-                        ),
+                        context: sunrise_sim::motion::BodyMotion::entity_context(b.id, b.position),
                         subject: None,
                     },
                     &mut b.ground,
@@ -645,7 +635,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             let entity = (b.id, b.entity_type_name());
             let response = motion.restitute(
                 entity,
-                sunrise_client::motion::BodyMove {
+                sunrise_sim::motion::BodyMove {
                     wanted: movement,
                     moved,
                     effect,
@@ -801,7 +791,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 .name;
             b.stuck = match name {
                 "minecraft:powder_snow" => powder_snow_stuck(),
-                "minecraft:cobweb" => sunrise_client::falling_block::web_multiplier(),
+                "minecraft:cobweb" => sunrise_sim::falling_block::web_multiplier(),
                 _ => continue,
             };
             b.fall_distance = 0.0;

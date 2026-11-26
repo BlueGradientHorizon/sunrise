@@ -1,7 +1,6 @@
 //! `profile` against the server this window is connected to (docs/perf-platform.md §4.2): the request over `sunrise:perf`, its answer, and the warnings a refusal leaves in the client's capture.
 use super::Game;
 use super::profile_capture_server::{reply_text, reports_dir, shown};
-use crate::Result;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -10,9 +9,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sunrise_client::client_perf::request::{
     Failed, GpuSwitch, ProfileSide, StartOptions, Started, Stopped,
 };
-use sunrise_client::perf_net::{CHANNEL, Outcome, Refusal, Reply, Request, Unsent, Wanted};
+use sunrise_client_core::Result;
 use sunrise_perf_format::{FieldSender, PartMerger, RawSend, files, v1::WarningCode};
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
+use sunrise_sim::perf_net::{CHANNEL, Outcome, Refusal, Reply, Request, Unsent, Wanted};
 
 const MARK_SERVER_STARTED: &str = "server_started";
 
@@ -35,11 +35,11 @@ fn refusal_text(why: Refusal) -> String {
             "the server could not write the profile; see its log",
         ),
     };
-    sunrise_client::lang::get_or(key, default)
+    sunrise_client_core::lang::get_or(key, default)
 }
 
 fn not_sunrise_text() -> String {
-    sunrise_client::lang::get_or(
+    sunrise_client_core::lang::get_or(
         "sunrise.perf.not_sunrise",
         "this server isn't running Sunrise",
     )
@@ -93,7 +93,7 @@ pub(in crate::game) struct Incoming {
 }
 
 fn part_text() -> String {
-    sunrise_client::lang::get_or(
+    sunrise_client_core::lang::get_or(
         "sunrise.perf.part_incomplete",
         "the server's part of the profile did not arrive whole",
     )
@@ -305,7 +305,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// The next bytes of the server's file.
     fn part_chunk(&mut self, chunk: &[u8]) {
-        use sunrise_client::perf_net::Received;
+        use sunrise_sim::perf_net::Received;
         if self.side.profile.incoming.is_none() {
             return;
         }

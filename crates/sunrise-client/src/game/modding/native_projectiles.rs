@@ -8,14 +8,14 @@ use super::{
     native_hooks::mob_kind,
 };
 use std::ops::Range;
-use sunrise_client::{
+use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_level::fast_hash::{FxHashMap, FxHashSet};
+use sunrise_sim::{
     arrows::{ArrowEvent, ArrowSound},
-    fast_hash::{FxHashMap, FxHashSet},
     join_seq::{JoinList, JoinSeq},
     mobs::Who,
     projectiles::{Hit, Projectile},
 };
-use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 #[cfg(test)]
 #[path = "native_projectiles/impact_probe.rs"]
@@ -95,7 +95,7 @@ impl Drop for ProjectileDispatch<'_, '_> {
             self.game
                 .creatures
                 .projectiles
-                .restore(pass, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+                .restore(pass, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
         }
     }
 }
@@ -374,7 +374,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Close the already-lifted pass, not a new one over the spawn buffer.
         self.creatures.projectiles.restore(
             projectiles.take_owned_pass(),
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
         );
         let mut canceled = Vec::with_capacity(impacts.len());
         for impact in &impacts {
@@ -565,7 +565,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let from = p.position;
             {
                 let rain = self.arrow_rain();
-                sunrise_client::arrows::apply_block_contact(
+                sunrise_sim::arrows::apply_block_contact(
                     &mut p,
                     &self.arrow_scene(&rain),
                     BlockPos::new(pos[0], pos[1], pos[2]),
@@ -603,7 +603,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut p = self.creatures.projectiles[i].clone();
         let keep = {
             let rain = self.arrow_rain();
-            sunrise_client::arrows::finish_block_contact(&mut p, &self.arrow_scene(&rain))
+            sunrise_sim::arrows::finish_block_contact(&mut p, &self.arrow_scene(&rain))
         };
         let events = p
             .arrow
@@ -649,8 +649,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rain = self.arrow_rain();
         let scene = self.arrow_scene(&rain);
         let (keep, _) = if p.arrow.is_some() {
-            let mut scratch = sunrise_client::arrows::ArrowHitScratch::new();
-            sunrise_client::arrows::tick_through_live(&mut p, &scene, &live, &mut scratch)
+            let mut scratch = sunrise_sim::arrows::ArrowHitScratch::new();
+            sunrise_sim::arrows::tick_through_live(&mut p, &scene, &live, &mut scratch)
         } else {
             p.tick_through(&live)
         };
@@ -679,7 +679,7 @@ mod nested_spawn_tests {
     const CASE: &str = "SUNRISE_PROJECTILE_NESTED_SPAWN_CASE";
 
     fn impact_handoff_balances_the_pass(park: bool) {
-        use sunrise_client::join_seq::residency::{Change, Journal, Kind, Owner};
+        use sunrise_sim::join_seq::residency::{Change, Journal, Kind, Owner};
         crate::game::native_entity_refs::tests::with_game(|game| {
             if park {
                 game.enter_level(crate::game::Dim::Nether).unwrap();
@@ -693,7 +693,7 @@ mod nested_spawn_tests {
                 .projectiles
                 .bind_residency(&journal, owner, |p| (p.id, p.join));
             let mut shot = Projectile::new(
-                sunrise_client::projectiles::ProjectileKind::Egg,
+                sunrise_sim::projectiles::ProjectileKind::Egg,
                 Vec3::new(3.5, 80.0, 3.5),
                 None,
             );
@@ -703,7 +703,7 @@ mod nested_spawn_tests {
             let mut pass = game.creatures.projectiles.lift();
             let mut child = pass[0].clone();
             child.id = 72;
-            child.join = sunrise_client::join_seq::JoinSeq::UNJOINED;
+            child.join = sunrise_sim::join_seq::JoinSeq::UNJOINED;
             game.creatures.projectiles.push(child);
             let child_join = game.creatures.projectiles[0].join;
             game.native_settle_impacts(
@@ -716,7 +716,7 @@ mod nested_spawn_tests {
             assert_eq!(pass.iter().map(|p| p.id).collect::<Vec<_>>(), [71, 72]);
             game.creatures
                 .projectiles
-                .restore(pass, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+                .restore(pass, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
             if park {
                 game.enter_level(crate::game::Dim::Overworld).unwrap();
             }
@@ -783,7 +783,7 @@ mod nested_spawn_tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             fn shot(id: u32) -> Projectile {
                 let mut p = Projectile::new(
-                    sunrise_client::projectiles::ProjectileKind::Egg,
+                    sunrise_sim::projectiles::ProjectileKind::Egg,
                     sunrise_core::geometry::Vec3::new(3.5, 80.0, 3.5),
                     None,
                 );
@@ -792,7 +792,7 @@ mod nested_spawn_tests {
             }
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
@@ -821,7 +821,7 @@ mod nested_spawn_tests {
             assert_eq!(taken[2].join, join);
             game.creatures
                 .projectiles
-                .restore(taken, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+                .restore(taken, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
             game.tick_projectiles().unwrap();
             let spawned = game
                 .creatures

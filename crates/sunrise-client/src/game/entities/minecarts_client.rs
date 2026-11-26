@@ -11,11 +11,11 @@ use crate::game::minecarts::emit_model_faces;
 use crate::game::minecarts::shown_unless_air;
 use sunrise_client::{
     mesher::Vertex,
-    mobs::anim::Poses,
-    random_source,
     sound_engine::{CartSound, PlayResult, SoundInstance, Sounds},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_level::random_source;
+use sunrise_sim::mobs::anim::Poses;
 use sunrise_world::registry::BlockStateId;
 
 impl CartKind {
@@ -401,7 +401,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some(state) = c
             .custom_display
             .as_ref()
-            .and_then(|tag| sunrise_client::entity_nbt::state_from_nbt(registry, tag))
+            .and_then(|tag| sunrise_sim::entity_nbt::state_from_nbt(registry, tag))
         {
             return Some(state);
         }

@@ -18,10 +18,10 @@
 //! (`refuse_locked_container`). With no operation in flight the check is
 //! one load of an empty set.
 
-use crate::carrier_store::{MAX_CARRIERS, Store};
 use crate::game::Game;
-use crate::save::block_entity_encode;
 use sunrise_core::position::BlockPos;
+use sunrise_sim::carrier_store::{MAX_CARRIERS, Store};
+use sunrise_sim::save::block_entity_encode;
 use sunrise_world::carrier::codec;
 use sunrise_world::carrier::contact::RigidTransform;
 use sunrise_world::carrier::model::{Carrier, Cell, Invalid, LocalPos, MAX_CELLS};
@@ -125,8 +125,8 @@ impl std::fmt::Display for TransferError {
 /// jukeboxes, beacons, campfires, daylight detectors, conduits,
 /// gateways) and world-dependent ones refuse the assembly until
 /// slice 4's adapters exist.
-fn block_entity_is_passive(entity: &sunrise_client::chunk::block_entity::BlockEntity) -> bool {
-    use sunrise_client::chunk::block_entity::BlockEntity;
+fn block_entity_is_passive(entity: &sunrise_level::chunk::block_entity::BlockEntity) -> bool {
+    use sunrise_level::chunk::block_entity::BlockEntity;
     matches!(
         entity,
         BlockEntity::Chest(_)
@@ -180,9 +180,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         uuid: u128,
         cells: &[BlockPos],
     ) -> Result<(), TransferError> {
-        use crate::carrier_store::{CellImage, OpKind, encode_operation, envelope_preflight};
-        use crate::carrier_store::{Operation, OperationCell};
-        use sunrise_client::join_seq::visibility::PassLease;
+        use sunrise_sim::carrier_store::{CellImage, OpKind, encode_operation, envelope_preflight};
+        use sunrise_sim::carrier_store::{Operation, OperationCell};
+        use sunrise_sim::join_seq::visibility::PassLease;
 
         // A remote guest's mirror never transfers: the server's own
         // transfer reaches it through synchronization, so a guest's
@@ -246,8 +246,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
         let mut store = match Store::open_with_capacity(&self.side.world_root, capacity) {
-            Ok(crate::carrier_store::Opened::Live(store)) => store,
-            Ok(crate::carrier_store::Opened::NeverUsed) => {
+            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
+            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => {
                 // The gate reads the flag captured at world open, not
                 // the folder's existence now: a data folder created
                 // this session does not pass for an old one.
@@ -424,7 +424,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         store
             .write_carrier(uuid, generation, &carrier_bytes)
             .map_err(|e| TransferError::Store(e.to_string()))?;
-        let read_back = crate::carrier_store::read_bounded(
+        let read_back = sunrise_sim::carrier_store::read_bounded(
             &store.carrier_path(uuid, generation),
             codec::MAX_INPUT_BYTES,
         )
@@ -498,11 +498,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         translation: [i32; 3],
         rotation: [f64; 4],
     ) -> Result<(), TransferError> {
-        use crate::carrier_store::{
+        use sunrise_core::nbt::{self, Tag};
+        use sunrise_sim::carrier_store::{
             CellImage, OpKind, Operation, OperationCell, cube_symmetry_rotation, envelope_preflight,
         };
-        use sunrise_client::join_seq::visibility::PassLease;
-        use sunrise_core::nbt::{self, Tag};
+        use sunrise_sim::join_seq::visibility::PassLease;
 
         // A remote guest's mirror never transfers: the server's own
         // transfer reaches it through synchronization, so a guest's
@@ -535,7 +535,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
         let mut store = match Store::open_with_capacity(&self.side.world_root, capacity) {
-            Ok(crate::carrier_store::Opened::Live(store)) => store,
+            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
             _ => {
                 return Err(TransferError::Store(
                     "the carrier store does not open".into(),
@@ -548,7 +548,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "the journal does not list this carrier".into(),
             ));
         }
-        let carrier_bytes = crate::carrier_store::read_bounded(
+        let carrier_bytes = sunrise_sim::carrier_store::read_bounded(
             &store.carrier_path(uuid, generation),
             codec::MAX_INPUT_BYTES,
         )
@@ -664,7 +664,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             dimension: self.dim.id().to_string(),
             cells: operation_cells.clone(),
         };
-        let encoded = crate::carrier_store::encode_operation(&operation)
+        let encoded = sunrise_sim::carrier_store::encode_operation(&operation)
             .map_err(|_| TransferError::Envelope)?;
 
         store
@@ -774,7 +774,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// replaceable, with no block entity.
     fn revalidate_destinations(
         &mut self,
-        cells: &[crate::carrier_store::OperationCell],
+        cells: &[sunrise_sim::carrier_store::OperationCell],
     ) -> Result<(), TransferError> {
         for cell in cells {
             let pos = cell.world;
@@ -828,7 +828,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// entity, read straight from the live world.
     fn revalidate_cells(
         &self,
-        cells: &[crate::carrier_store::OperationCell],
+        cells: &[sunrise_sim::carrier_store::OperationCell],
         registry: &sunrise_world::registry::BlockRegistry,
     ) -> Result<(), TransferError> {
         for cell in cells {
@@ -880,11 +880,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// does not pass for an old one — and a transfer that never
     /// finished recovers before the first tick and any player. A
     /// refusal fails the open, and no save runs after it.
-    pub(in crate::game::server_side) fn carrier_world_opened(&mut self) -> crate::Result<()> {
+    pub(in crate::game::server_side) fn carrier_world_opened(
+        &mut self,
+    ) -> sunrise_client_core::Result<()> {
         self.world.carrier_data_existed_at_open = self.side.world_root.join("data").is_dir();
         self.side.carrier_retention_snapshot = match Store::open(&self.side.world_root) {
-            Ok(crate::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
-            Ok(crate::carrier_store::Opened::NeverUsed) => Vec::new(),
+            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
+            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => Vec::new(),
             Err(error) => {
                 self.world.carrier_fences.mark_broken();
                 return Err(format!("world load refused: {error}").into());
@@ -902,7 +904,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn carrier_break_block(
         &mut self,
         pos: [i32; 3],
-    ) -> crate::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         if self.world.carrier_fences.locks_cell(&pos) {
             return Err("a carrier transfer holds this cell".into());
         }
@@ -915,10 +917,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// autosave uses. A refusal fails the world's load with a clear
     /// message — and nothing saves after it: the open itself aborts,
     /// while the store stays exactly as recovery found it.
-    pub(in crate::game::server_side) fn carrier_recover_all_levels(&mut self) -> crate::Result<()> {
+    pub(in crate::game::server_side) fn carrier_recover_all_levels(
+        &mut self,
+    ) -> sunrise_client_core::Result<()> {
         // No pending operation: no level is touched at all.
-        let dimension = match crate::carrier_store::Store::open(&self.side.world_root) {
-            Ok(crate::carrier_store::Opened::Live(store)) => {
+        let dimension = match sunrise_sim::carrier_store::Store::open(&self.side.world_root) {
+            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => {
                 match store.journal().in_progress.as_ref() {
                     Some(op) => op.dimension.clone(),
                     // No pending operation — but retention still runs: the
@@ -930,7 +934,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
             }
-            Ok(crate::carrier_store::Opened::NeverUsed) => return Ok(()),
+            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => return Ok(()),
             Err(error) => return Err(format!("world load refused: {error}").into()),
         };
         // Recovery enters the operation's own dimension and no other: a
@@ -978,8 +982,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the storage layer, run from world open. Errors are logged and
     /// swallowed: cleanup is retention work, never a load refusal.
     fn carrier_cleanup(&mut self) {
-        let mut store = match crate::carrier_store::Store::open(&self.side.world_root) {
-            Ok(crate::carrier_store::Opened::Live(store)) => store,
+        let mut store = match sunrise_sim::carrier_store::Store::open(&self.side.world_root) {
+            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
             _ => return,
         };
         if let Err(error) = store.cleanup() {
@@ -991,9 +995,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// store's in-progress operation replays against this level's region
     /// directory, and only if the operation names this level.
     fn carrier_recover_current(&mut self) -> Result<(), String> {
-        let mut store = match crate::carrier_store::Store::open(&self.side.world_root) {
-            Ok(crate::carrier_store::Opened::Live(store)) => store,
-            Ok(crate::carrier_store::Opened::NeverUsed) => return Ok(()),
+        let mut store = match sunrise_sim::carrier_store::Store::open(&self.side.world_root) {
+            Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store,
+            Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => return Ok(()),
             Err(error) => return Err(error.to_string()),
         };
         if store.journal().in_progress.is_none() {
@@ -1002,8 +1006,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // SaveDir::root is the dimension folder; the regions live in its
         // region/ child.
         let region = self.side.save.0.root.join("region");
-        let states = crate::carrier_store::RegistryStates::new(self.pack.assets.registry);
-        crate::carrier_store::recover(&mut store, &region, &states, self.dim.id())
+        let states = sunrise_sim::carrier_store::RegistryStates::new(self.pack.assets.registry);
+        sunrise_sim::carrier_store::recover(&mut store, &region, &states, self.dim.id())
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -1011,7 +1015,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Saves every affected chunk and waits for the writer's barrier, so
     /// the sectors are on disk with the regions synced.
     #[cfg_attr(not(test), allow(dead_code))]
-    fn save_affected(&mut self, cells: &[BlockPos]) -> crate::Result<()> {
+    fn save_affected(&mut self, cells: &[BlockPos]) -> sunrise_client_core::Result<()> {
         let mut keys = Vec::new();
         for pos in cells {
             let key = (pos.x >> 4, pos.z >> 4);
@@ -1069,7 +1073,7 @@ mod tests {
             std::env::temp_dir().join(format!("sunrise-carrier-transfer-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("data")).unwrap();
-        crate::save::write_dat(
+        sunrise_sim::save::write_dat(
             &root.join("level.dat"),
             sunrise_core::nbt::Tag::compound([(
                 "Data",
@@ -1086,7 +1090,7 @@ mod tests {
             game.world.carrier_data_existed_at_open = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             let air = registry.default_state("minecraft:air").unwrap();
@@ -1131,7 +1135,7 @@ mod tests {
         with_game(|game| {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let fenced = [4, 64, 4];
             game.world.carrier_fences.lock_cell(fenced);
             game.world.carrier_fences.lock_carrier(7);
@@ -1187,14 +1191,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -1227,22 +1231,22 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let furnace = registry.default_state("minecraft:furnace").unwrap();
             game.world.set(4, 64, 4, furnace).unwrap();
             game.world.block_entities.insert(
                 (4, 64, 4),
-                sunrise_client::chunk::block_entity::BlockEntity::Furnace(
-                    sunrise_client::chunk::block_entity::Furnace {
-                        kind: sunrise_client::chunk::block_entity::FurnaceKind::Furnace,
+                sunrise_level::chunk::block_entity::BlockEntity::Furnace(
+                    sunrise_level::chunk::block_entity::Furnace {
+                        kind: sunrise_level::chunk::block_entity::FurnaceKind::Furnace,
                         items: [None, None, None],
                         lit_remaining: 0,
                         lit_total: 0,
@@ -1282,14 +1286,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             // Eight live index entries are allowed; tombstones have their
@@ -1307,7 +1311,8 @@ mod tests {
                 )
                 .unwrap_or_else(|e| panic!("cycle {i}: {e}"));
             }
-            let crate::carrier_store::Opened::Live(store) = Store::open(&root).unwrap() else {
+            let sunrise_sim::carrier_store::Opened::Live(store) = Store::open(&root).unwrap()
+            else {
                 panic!("must open");
             };
             assert_eq!(store.journal().tombstones.len(), 10);
@@ -1335,14 +1340,14 @@ mod tests {
         with_game(|game| {
             game.side.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.carrier_fences.capacity_override = Some(0);
@@ -1353,7 +1358,7 @@ mod tests {
             assert!(error.to_string().contains("CarrierCapacityReopenNeeded"));
             assert_eq!(game.world.block(4, 64, 4), chest);
             assert!(!game.world.carrier_fences.locks_cell(&[4, 64, 4]));
-            let crate::carrier_store::Opened::Live(store) =
+            let sunrise_sim::carrier_store::Opened::Live(store) =
                 Store::open_with_capacity(&root, 0).unwrap()
             else {
                 panic!("must open")
@@ -1372,28 +1377,28 @@ mod tests {
         with_game(|game| {
             game.side.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             let air = registry.default_state("minecraft:air").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
-            let entity = sunrise_client::chunk::block_entity::BlockEntity::Chest(vec![
+            let entity = sunrise_level::chunk::block_entity::BlockEntity::Chest(vec![
                 None,
-                Some(sunrise_client::items::ItemStack {
+                Some(sunrise_items::items::ItemStack {
                     item: "minecraft:stone".into(),
                     count: 3,
                     damage: 0,
                     extra: None,
                 }),
             ]);
-            let tag = sunrise_client::save::block_entity_encode::encode(
+            let tag = sunrise_sim::save::block_entity_encode::encode(
                 (4, 64, 4),
                 &entity,
                 "minecraft:chest",
@@ -1419,15 +1424,15 @@ mod tests {
                 game.carrier_disassemble(7, 1, [4, 64, 4], [1.0, 0.0, 0.0, 0.0]),
                 Err(TransferError::SavedBlockEntity([4, 64, 4]))
             ));
-            let images = [crate::carrier_store::OperationCell {
+            let images = [sunrise_sim::carrier_store::OperationCell {
                 world: [4, 64, 4],
                 local: [0, 0, 0],
-                before: crate::carrier_store::CellImage {
+                before: sunrise_sim::carrier_store::CellImage {
                     name: "minecraft:chest".to_string(),
                     properties: Vec::new(),
                     entity: None,
                 },
-                after: crate::carrier_store::CellImage {
+                after: sunrise_sim::carrier_store::CellImage {
                     name: "minecraft:air".to_string(),
                     properties: Vec::new(),
                     entity: None,
@@ -1450,42 +1455,42 @@ mod tests {
         with_game(|game| {
             game.side.world_root = root.clone();
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
-            let entity = sunrise_client::chunk::block_entity::BlockEntity::Chest(vec![
+            let entity = sunrise_level::chunk::block_entity::BlockEntity::Chest(vec![
                 None,
-                Some(sunrise_client::items::ItemStack {
+                Some(sunrise_items::items::ItemStack {
                     item: "minecraft:stone".into(),
                     count: 3,
                     damage: 0,
                     extra: None,
                 }),
             ]);
-            let tag = sunrise_client::save::block_entity_encode::encode(
+            let tag = sunrise_sim::save::block_entity_encode::encode(
                 (4, 64, 4),
                 &entity,
                 "minecraft:chest",
                 &Default::default(),
             );
             spill::put_saved_entity(&mut game.world, [4, 64, 4], tag.clone());
-            let images = [crate::carrier_store::OperationCell {
+            let images = [sunrise_sim::carrier_store::OperationCell {
                 world: [4, 64, 4],
                 local: [0, 0, 0],
-                before: crate::carrier_store::CellImage {
+                before: sunrise_sim::carrier_store::CellImage {
                     name: "minecraft:chest".to_string(),
                     properties: Vec::new(),
                     entity: None,
                 },
-                after: crate::carrier_store::CellImage {
+                after: sunrise_sim::carrier_store::CellImage {
                     name: "minecraft:air".to_string(),
                     properties: Vec::new(),
                     entity: None,
@@ -1504,7 +1509,7 @@ mod tests {
     /// The store's default capacity is the contract's 4,096.
     #[test]
     fn the_default_index_capacity_is_4096() {
-        use crate::carrier_store::MAX_CARRIERS;
+        use sunrise_sim::carrier_store::MAX_CARRIERS;
         assert_eq!(MAX_CARRIERS, 4096);
         // The public constructors carry the default; a store built with
         // it enforces the same bound at encode, visible by refusing an
@@ -1513,7 +1518,7 @@ mod tests {
             std::env::temp_dir().join(format!("sunrise-capacity-default-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("data")).unwrap();
-        let mut journal = crate::carrier_store::Journal::default();
+        let mut journal = sunrise_sim::carrier_store::Journal::default();
         for i in 0..=MAX_CARRIERS as u128 {
             journal.carriers.push((i, 1));
         }
@@ -1537,14 +1542,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -1558,8 +1563,8 @@ mod tests {
             game.carrier_recover_all_levels().unwrap();
 
             // Clean: no tombstone, no carrier file, no operation.
-            let store = match crate::carrier_store::Store::open(&root).unwrap() {
-                crate::carrier_store::Opened::Live(store) => store,
+            let store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
+                sunrise_sim::carrier_store::Opened::Live(store) => store,
                 _ => panic!("the store must open"),
             };
             assert!(store.journal().in_progress.is_none());
@@ -1592,14 +1597,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             for pos in sparse {
@@ -1657,14 +1662,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             // Oak stairs, facing north, half bottom — not the default
             // (the default stairs face north only by luck; resolve the
@@ -1734,14 +1739,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             let air = registry.default_state("minecraft:air").unwrap();
@@ -1749,13 +1754,13 @@ mod tests {
             game.world.set(6, 64, 4, chest).unwrap();
             game.world.block_entities.insert(
                 (4, 64, 4),
-                sunrise_client::chunk::block_entity::BlockEntity::Chest(Vec::new()),
+                sunrise_level::chunk::block_entity::BlockEntity::Chest(Vec::new()),
             );
             game.world.block_entities.insert(
                 (6, 64, 4),
-                sunrise_client::chunk::block_entity::BlockEntity::Chest(vec![
+                sunrise_level::chunk::block_entity::BlockEntity::Chest(vec![
                     None,
-                    Some(sunrise_client::items::ItemStack {
+                    Some(sunrise_items::items::ItemStack {
                         item: "minecraft:stone".into(),
                         count: 3,
                         damage: 0,
@@ -1772,15 +1777,19 @@ mod tests {
             );
 
             // Recovery, as the next open runs it.
-            let mut store = match crate::carrier_store::Store::open(&root).unwrap() {
-                crate::carrier_store::Opened::Live(store) => store,
+            let mut store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
+                sunrise_sim::carrier_store::Opened::Live(store) => store,
                 _ => panic!("the store must reopen"),
             };
             let region = root.join("dimensions/minecraft/overworld/region");
-            let states = crate::carrier_store::RegistryStates::new(registry);
-            let report =
-                crate::carrier_store::recover(&mut store, &region, &states, "minecraft:overworld")
-                    .unwrap();
+            let states = sunrise_sim::carrier_store::RegistryStates::new(registry);
+            let report = sunrise_sim::carrier_store::recover(
+                &mut store,
+                &region,
+                &states,
+                "minecraft:overworld",
+            )
+            .unwrap();
             assert_eq!(report.applied + report.verified, 1);
             assert!(store.journal().in_progress.is_none());
 
@@ -1829,14 +1838,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -1857,15 +1866,19 @@ mod tests {
 
             // Recovery, as the next open runs it: the operation replays,
             // the journal commits and the chest is air in the world.
-            let mut store = match crate::carrier_store::Store::open(&root).unwrap() {
-                crate::carrier_store::Opened::Live(store) => store,
+            let mut store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
+                sunrise_sim::carrier_store::Opened::Live(store) => store,
                 _ => panic!("the store must reopen"),
             };
             let region = root.join("dimensions/minecraft/overworld/region");
-            let states = crate::carrier_store::RegistryStates::new(registry);
-            let report =
-                crate::carrier_store::recover(&mut store, &region, &states, "minecraft:overworld")
-                    .unwrap();
+            let states = sunrise_sim::carrier_store::RegistryStates::new(registry);
+            let report = sunrise_sim::carrier_store::recover(
+                &mut store,
+                &region,
+                &states,
+                "minecraft:overworld",
+            )
+            .unwrap();
             // The interrupted save left the post-state on disk, so the
             // reopen verifies it rather than replaying — either way the
             // operation commits and exactly one side owns the chest.
@@ -1901,14 +1914,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -1941,14 +1954,18 @@ mod tests {
 
             // Recovery, as the next open runs it: the operation replays
             // or verifies, commits, and the chest has exactly one owner.
-            let mut store = match crate::carrier_store::Store::open(&root).unwrap() {
-                crate::carrier_store::Opened::Live(store) => store,
+            let mut store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
+                sunrise_sim::carrier_store::Opened::Live(store) => store,
                 _ => panic!("the store must reopen"),
             };
-            let states = crate::carrier_store::RegistryStates::new(registry);
-            let report =
-                crate::carrier_store::recover(&mut store, &region, &states, "minecraft:overworld")
-                    .unwrap();
+            let states = sunrise_sim::carrier_store::RegistryStates::new(registry);
+            let report = sunrise_sim::carrier_store::recover(
+                &mut store,
+                &region,
+                &states,
+                "minecraft:overworld",
+            )
+            .unwrap();
             assert_eq!(report.applied + report.verified, 1);
             assert!(store.journal().in_progress.is_none());
         });
@@ -1968,7 +1985,7 @@ mod tests {
             game.world.carrier_data_existed_at_open = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             let air = registry.default_state("minecraft:air").unwrap();
@@ -2008,7 +2025,7 @@ mod tests {
             game.world.carrier_data_existed_at_open = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -2018,7 +2035,7 @@ mod tests {
             game.world.set(10, 64, 10, chest).unwrap();
             game.world.block_entities.insert(
                 (10, 64, 10),
-                sunrise_client::chunk::block_entity::BlockEntity::Chest(Vec::new()),
+                sunrise_level::chunk::block_entity::BlockEntity::Chest(Vec::new()),
             );
             match game.carrier_disassemble(5, 1, [10, 64, 10], [1.0, 0.0, 0.0, 0.0]) {
                 Err(TransferError::DestinationOccupied(pos)) => assert_eq!(pos, [10, 64, 10]),
@@ -2045,7 +2062,7 @@ mod tests {
             game.world.carrier_data_existed_at_open = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -2080,7 +2097,7 @@ mod tests {
         with_game(|game| {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             let stone = registry.default_state("minecraft:stone").unwrap();
@@ -2091,15 +2108,15 @@ mod tests {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
-            let images = [crate::carrier_store::OperationCell {
+            let images = [sunrise_sim::carrier_store::OperationCell {
                 world: [4, 64, 4],
                 local: [0, 0, 0],
-                before: crate::carrier_store::CellImage {
+                before: sunrise_sim::carrier_store::CellImage {
                     name: "minecraft:chest".to_string(),
                     properties,
                     entity: None,
                 },
-                after: crate::carrier_store::CellImage {
+                after: sunrise_sim::carrier_store::CellImage {
                     name: "minecraft:air".to_string(),
                     properties: Vec::new(),
                     entity: None,
@@ -2139,14 +2156,14 @@ mod tests {
             // The transfer happens in the Nether, opened on demand.
             game.enter_level(crate::game::Dim::Nether).unwrap();
             assert_eq!(game.dim, crate::game::Dim::Nether);
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/the_nether"),
-                sunrise_client::save::LevelShape::NETHER,
+                sunrise_sim::save::LevelShape::NETHER,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.world.set(4, 64, 4, chest).unwrap();
             game.world.carrier_fences.fail_flush = true;
             let failed = game.carrier_assemble(11, &[BlockPos::new(4, 64, 4)]);
@@ -2223,10 +2240,10 @@ mod tests {
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
             // A prepared operation whose journal names minecraft:nope.
-            let mut store = crate::carrier_store::Store::first_use(&root, true).unwrap();
+            let mut store = sunrise_sim::carrier_store::Store::first_use(&root, true).unwrap();
             store
                 .begin(
-                    crate::carrier_store::OpKind::Assemble,
+                    sunrise_sim::carrier_store::OpKind::Assemble,
                     12,
                     1,
                     "minecraft:nope",
@@ -2274,18 +2291,18 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            let save = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            let save = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let dirt = registry.default_state("minecraft:dirt").unwrap();
-            let mut pre_chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut pre_chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             pre_chunk.set(4, 64, 4, stone.0);
             let pre = Arc::new(pre_chunk);
-            let mut post_chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut post_chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             post_chunk.set(4, 64, 4, dirt.0);
             let post = Arc::new(post_chunk);
 
@@ -2333,7 +2350,7 @@ mod tests {
             game.world.carrier_data_existed_at_open = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -2341,7 +2358,7 @@ mod tests {
             // Under the obligation — the transfer's own state between
             // acquire and release — every route refuses.
             {
-                let _lease = sunrise_client::join_seq::visibility::PassLease::enter();
+                let _lease = sunrise_sim::join_seq::visibility::PassLease::enter();
                 assert!(game.save_game_with(true).is_err(), "autosave");
                 assert!(game.save_level(true).is_err(), "save-all");
                 game.side.levels.0.request_save(game.dim);
@@ -2371,14 +2388,14 @@ mod tests {
             // The fixture world pre-exists with its data folder, as an
             // opened world would.
             game.world.carrier_data_existed_at_open = true;
-            game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/overworld"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let chest = registry.default_state("minecraft:chest").unwrap();
             game.world.set(4, 64, 4, chest).unwrap();
@@ -2387,8 +2404,8 @@ mod tests {
 
             // save-all with its flush, and no pending operation.
             assert!(game.save_game_with(true).is_ok());
-            let store = match crate::carrier_store::Store::open(&root).unwrap() {
-                crate::carrier_store::Opened::Live(store) => store,
+            let store = match sunrise_sim::carrier_store::Store::open(&root).unwrap() {
+                sunrise_sim::carrier_store::Opened::Live(store) => store,
                 _ => panic!("the store must open"),
             };
             assert!(
@@ -2421,8 +2438,8 @@ mod tests {
                     .unwrap();
             assert_eq!(original, restored, "the chunk bytes copy identically");
             // And the copy's store opens with the carrier listed.
-            match crate::carrier_store::Store::open(&copy).unwrap() {
-                crate::carrier_store::Opened::Live(store) => {
+            match sunrise_sim::carrier_store::Store::open(&copy).unwrap() {
+                sunrise_sim::carrier_store::Opened::Live(store) => {
                     assert!(store.journal().lists(14, 1));
                 }
                 _ => panic!("the copy's store must open"),
@@ -2480,7 +2497,7 @@ mod tests {
             "DataVersion".into(),
             sunrise_core::nbt::Tag::Int(sunrise_world::DATA_VERSION),
         );
-        crate::save::write_dat(
+        sunrise_sim::save::write_dat(
             &root.join("level.dat"),
             sunrise_core::nbt::Tag::compound([("Data", sunrise_core::nbt::Tag::Compound(data))]),
         )
@@ -2491,7 +2508,7 @@ mod tests {
     /// holding it refuses, releasing it admits again.
     #[test]
     fn the_save_obligation_gates_saves() {
-        use sunrise_client::join_seq::visibility::{PassLease, passes_settled};
+        use sunrise_sim::join_seq::visibility::{PassLease, passes_settled};
         let _lease = PassLease::enter();
         assert!(!passes_settled());
         assert!(crate::game::ServerGame::admit_entity_save().is_err());
@@ -2515,7 +2532,7 @@ mod tests {
             game.world.carrier_data_existed_at_open = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             game.world.set(4, 64, 4, stone).unwrap();

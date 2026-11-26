@@ -36,7 +36,7 @@ fn teleport_and_rotate_resolve_pitch_at_their_own_boundary() {
         .get("minecraft:zombie")
         .unwrap()
         .clone();
-    game.mobs.push(sunrise_client::mobs::Mob::new(
+    game.mobs.push(sunrise_sim::mobs::Mob::new(
         42,
         kind,
         sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),
@@ -118,8 +118,8 @@ fn teleport_and_rotate_resolve_pitch_at_their_own_boundary() {
 #[ignore = "daily"]
 fn teleport_to_the_current_position_marks_the_player_for_sync() {
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
 
     with_game(|game| {
         let at = Vec3::new(0.5, 64.0, 0.5);

@@ -2,7 +2,7 @@
 use crate::game::*;
 use mod_api::{Hooks, PlayerInventoryChangedEvent, ServerHost};
 use std::sync::Mutex;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 type Heard = (u128, Vec<Option<(String, u32)>>);
 

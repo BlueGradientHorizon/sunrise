@@ -5,7 +5,7 @@ use crate::game::native_entity_refs::tests::collect_all_entities;
 use mod_api::{Hooks, ItemPickedUpEvent, ItemPickedUpPostEvent, ModEntry, ServerHost, TriState};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[derive(Default)]
 pub(in crate::game) struct State {

@@ -8,8 +8,8 @@ use super::{
 };
 use core::ops::ControlFlow;
 use mod_api::{EntityRef, LevelReadError, LevelRef};
-use sunrise_client::join_seq::residency::table::SectionSearch;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::join_seq::residency::table::SectionSearch;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelRenderer.destroyBlockProgress` for this client's own view only.
@@ -174,7 +174,7 @@ pub(in crate::game) mod tests {
     fn client_box_queries_use_live_display_positions_and_section_order() {
         use mod_api::Host;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::{
             connection::Pipe,
             entity_data::Value,
@@ -333,8 +333,8 @@ pub(in crate::game) mod tests {
     fn client_crossings_land_in_tick_order_and_before_hooks_read_them() {
         use mod_api::{Hooks, Host, HostSide, ModEntry, PlayerTickPostEvent};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::chunk::Chunk;
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::{
             connection::Pipe,
             entity_data::Value,
@@ -509,7 +509,7 @@ pub(in crate::game) mod tests {
                     }
                     "rider" => {
                         let mut local =
-                            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO)
+                            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO)
                                 .unwrap();
                         local.entity_id = 7;
                         local.position = Vec3::new(15.5, 65.5, 3.0);
@@ -528,7 +528,7 @@ pub(in crate::game) mod tests {
                         // No teleport duration: the display snaps, and its rider with it.
                         sync(game, 92, [40.5, 65.5, 3.0]);
                         let seat = game.player.as_ref().unwrap().position;
-                        use sunrise_client::join_seq::residency::table::SectionKey;
+                        use sunrise_sim::join_seq::residency::table::SectionKey;
                         assert_eq!(
                             SectionKey::at(seat.components()),
                             SectionKey::at([40.5, 65.5, 3.0])

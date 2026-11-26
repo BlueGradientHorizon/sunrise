@@ -1,12 +1,12 @@
 use super::guest;
 use crate::game::lan_actions::guest_body::tests::fall_reset::CRITERIA;
 use std::{path::Path, sync::Arc};
-use sunrise_client::{
+use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{
     advancements::Tree,
-    chunk::Chunk,
     lan::{NetConfig, hub::HubConfig},
 };
-use sunrise_core::position::ChunkPos;
 
 /// A server with one survival guest in the air at 12.5 110 12.5, over a stone floor at y 99.
 pub(in crate::game) fn scene<'a>(

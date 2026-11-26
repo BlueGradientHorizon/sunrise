@@ -86,7 +86,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             | Target::Cloud(_) => None,
             // LeashFenceKnotEntity.recalculateBoundingBox, at the knot's centre.
             Target::Knot(id) => self.natural_knot(id).map(|fence| {
-                let knot = sunrise_client::mobs::leash::knot_state(fence);
+                let knot = sunrise_sim::mobs::leash::knot_state(fence);
                 let (p, half) = (knot.position, knot.width / 2.0);
                 Aabb::new(
                     Vec3::new(p.x - half, p.y, p.z - half),

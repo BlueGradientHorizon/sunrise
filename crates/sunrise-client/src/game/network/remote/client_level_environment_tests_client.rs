@@ -15,8 +15,8 @@ use sunrise_protocol::connection::Pipe;
 fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
     use glam::DVec3;
     use serde_json::json;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::BlockPos;
+    use sunrise_level::chunk::Chunk;
 
     let precipitation_at = |game: &Game<'_, crate::game::client_side::ClientState>, x, y, z| {
         crate::game::weather::precipitation_at(

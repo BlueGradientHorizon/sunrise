@@ -1,8 +1,9 @@
 use super::Game;
 use crate::game::server_side::lan_particles::decode_mod_particle;
 use crate::game::server_side::lan_particles::particle_position_source;
-use sunrise_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
+use sunrise_client::particles::ExplosionParticle;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::{
     entity_data::{Particle, ParticleData, PositionSource as NetworkPositionSource},
     packets::play::{self},
@@ -156,7 +157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             None => ParticleOptions::simple(ty),
             Some(ParticleData::Item(stack)) => {
                 let remote = self.remote.as_ref()?;
-                let stack = sunrise_client::item_sync::from_network(
+                let stack = sunrise_sim::item_sync::from_network(
                     stack,
                     &remote.builtin,
                     &remote.registries,

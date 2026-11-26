@@ -140,13 +140,11 @@
       "sunrise-level",
       "sunrise-sim",
       "sunrise-system",
-      "sunrise-bench"
+      "sunrise-bench",
+      "sunrise-gameplay"
     ],
     "pending": {
-      "_doc": "Engine crates that still take a non-portable crate, until the types they need move down. Entries only go away.",
-      "sunrise-gameplay": [
-        "sunrise-client-lib"
-      ]
+      "_doc": "Engine crates that still take a non-portable crate, until the types they need move down. Entries only go away."
     },
     "forbidden": [
       "arboard",

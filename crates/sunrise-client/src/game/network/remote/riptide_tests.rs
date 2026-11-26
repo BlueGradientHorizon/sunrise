@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::mpsc::Receiver;
-use sunrise_client::lan::Out;
 use sunrise_protocol::buf::Reader;
+use sunrise_sim::lan::Out;
 
 pub(in crate::game) const OWNER: u32 = 12;
 pub(in crate::game) const START: Vec3 = Vec3::new(4.5, 64.0, 4.5);

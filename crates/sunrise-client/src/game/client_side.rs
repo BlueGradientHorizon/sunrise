@@ -1297,7 +1297,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) weather_parameters: sunrise_client::weather::ParameterCache,
     pub(in crate::game::client_side) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
     pub(in crate::game::client_side) lod_source_attempted: bool,
-    pub(in crate::game::client_side) lod_observe: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
+    pub(in crate::game::client_side) lod_observe: sunrise_level::fast_hash::FxHashSet<(i32, i32)>,
     /// The server level far terrain keeps the chunks of.
     pub(in crate::game::client_side) lod_level: Option<String>,
     /// The detail revision, centre and radius `Lod::update` last had covered for.
@@ -1305,7 +1305,7 @@ pub(in crate::game) struct ClientState {
     /// Whether the view's columns have all arrived, and how new it is: large
     /// translucent pages wait for both before they shrink (`set_terrain_loading`).
     pub(in crate::game::client_side) view_arrival: sunrise_level::chunk_streamer::ViewArrival,
-    pub(in crate::game::client_side) drop_spam_throttler: sunrise_client::menu::DropSpamThrottler,
+    pub(in crate::game::client_side) drop_spam_throttler: sunrise_sim::menu::DropSpamThrottler,
     /// `yRotO` / `xRotO` of the local player: the view at the start of the tick,
     /// moved by `Entity.turn` and a boat's `clampRotation` as the view is
     /// (`LocalPlayer.getRopeHoldPosition` eases the held lead from it).
@@ -1563,7 +1563,7 @@ pub(in crate::game) struct ClientState {
     /// Whether the main and off hand's slots were set to a new stack that
     /// the hand doesn't show yet (`Game::hand_stack_replaced`).
     pub(in crate::game::client_side) hands_replaced: [bool; 2],
-    pub(in crate::game::client_side) hand_strength: sunrise_client::attack_strength::AttackStrength,
+    pub(in crate::game::client_side) hand_strength: sunrise_sim::attack_strength::AttackStrength,
     pub(in crate::game::client_side) look: look::LookCache,
     pub(in crate::game::client_side) tutorial: tutorial::Tutorial,
     pub(in crate::game) toast_manager: toast_manager::ToastManager,
@@ -1611,7 +1611,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) polytone_post_ticks: f64,
     /// The last expression context built (what the packs' expressions read), kept across frames
     /// so its strings are rewritten in place instead of allocated each frame.
-    pub(in crate::game::client_side) expression_frame: sunrise_client::environment::Frame,
+    pub(in crate::game::client_side) expression_frame: sunrise_level::environment::Frame,
     /// `GameRenderer.spectatedEntityPostEffect` (`checkEntityPostEffect`).
     pub(in crate::game) spectated_post_effect: Option<&'static str>,
     /// `GameRenderer.spectatedEntityEffectActive` (`toggleSpectatorPostEffect`).
@@ -1670,7 +1670,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) agent_control_on: bool,
     /// When an agent's last command came.
     pub(in crate::game::client_side) agent_last: Option<Instant>,
-    pub(in crate::game::client_side) frame_stats: sunrise_client::control::FrameStats,
+    pub(in crate::game::client_side) frame_stats: sunrise_sim::control::FrameStats,
     /// This thread's and all threads' allocation counts at the last rendered frame.
     pub(in crate::game::client_side) alloc_mark: Option<(
         sunrise_threads::alloc_count::Counts,
@@ -1784,9 +1784,9 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) stats_ui: stats_screen::StatsUi,
     /// The Server Links screens' state (game/network/server_links.rs).
     pub(in crate::game::client_side) links_ui: server_links::LinksUi,
-    pub(in crate::game::client_side) camera_type: sunrise_client::camera::CameraType,
+    pub(in crate::game::client_side) camera_type: sunrise_level::camera_math::CameraType,
     pub(in crate::game::client_side) requested_camera_type:
-        std::cell::Cell<Option<sunrise_client::camera::CameraType>>,
+        std::cell::Cell<Option<sunrise_level::camera_math::CameraType>>,
     /// The local player as a model (third person, the inventory).
     pub(in crate::game::client_side) player_model: Option<Mob>,
 
@@ -1797,7 +1797,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) server_packs: ClientOnly<server_packs::ServerPackState>,
     /// The window's inbox for server notices, kept across world disconnects.
     pub(in crate::game::client_side) client_reports:
-        ClientOnly<Arc<sunrise_client::chunk_io::Reports>>,
+        ClientOnly<Arc<sunrise_sim::chunk_io::Reports>>,
     /// A command the player didn't type, waiting for their answer
     /// (game/network/remote_chat.rs).
     pub(in crate::game::client_side) command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
@@ -2420,7 +2420,7 @@ impl crate::game::Side for ClientState {
         &self,
         remote: &'a Option<crate::game::remote::Remote>,
         _res: &'a crate::game::Resources,
-    ) -> Option<&'a sunrise_client::items::Items> {
+    ) -> Option<&'a sunrise_items::items::Items> {
         remote.as_ref().and_then(|remote| remote.tags.as_ref())
     }
 }

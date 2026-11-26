@@ -1,20 +1,20 @@
 //! The wither on the game side: building it (`WitherSkullBlock.checkSpawn`),
 //! its boss bar, and its skulls hitting and exploding.
 use super::Game;
-use sunrise_client::block_pattern::{BlockPattern, PatternMatch, WITHER_FULL};
-use sunrise_client::{
-    items::ItemStack,
+use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::block_pattern::{BlockPattern, PatternMatch, WITHER_FULL};
+use sunrise_sim::{
     mobs::{Damage, DamageKind, Species, Who},
     projectiles::{Projectile, ProjectileKind},
 };
-use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.createWitherRose`: a mob a wither killed leaves a wither
     /// rose where it stood (with mobGriefing, on air that can hold it), else
     /// drops one.
-    pub(in crate::game) fn create_wither_rose(&mut self, m: &sunrise_client::mobs::Mob) {
+    pub(in crate::game) fn create_wither_rose(&mut self, m: &sunrise_sim::mobs::Mob) {
         // getKillCredit: the player who last hurt it, else the last mob (kept
         // for 100 ticks).
         let wither = match m.ai.last_hurt_by {
@@ -133,7 +133,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn check_wither_spawn(
         &mut self,
         placed: [i32; 3],
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         // The transaction journals ordinary state and entity changes, not this
         // pattern's flag-2 writes, destroy events and subsequent neighbour pass.
         // The mod placement preflight refuses a completing formation before it writes.
@@ -158,7 +158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         found: PatternMatch,
         cells: &[[i32; 3]],
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         // Clear the pattern, the wither appears on the middle of the bottom
         // row facing along the pattern's forwards axis, then neighbours update.
         self.clear_pattern_blocks(cells)?;
@@ -176,7 +176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let id = self.create_triggered("minecraft:wither", at, yaw);
         if let Some(m) = id.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
             m.persistent = true;
-            sunrise_client::mobs::wither::make_invulnerable(m);
+            sunrise_sim::mobs::wither::make_invulnerable(m);
         }
         // SUMMONED_ENTITY for each player within 50 blocks of the wither's box.
         self.trigger_summoned(id, 50.0);
@@ -189,11 +189,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn wither_skull_hit(
         &mut self,
         p: &Projectile,
-        hit: sunrise_client::projectiles::Hit,
+        hit: sunrise_sim::projectiles::Hit,
         at: [f64; 3],
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let who = match hit {
-            sunrise_client::projectiles::Hit::Entity { who, .. } => Some(who),
+            sunrise_sim::projectiles::Hit::Entity { who, .. } => Some(who),
             _ => None,
         };
         // Projectile.getOwner: none once the owner is gone.
@@ -351,7 +351,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // caps a destroyable block's resistance at 0.8 (`isDangerous`).
         if matches!(
             p.kind,
-            sunrise_client::projectiles::ProjectileKind::WitherSkull { dangerous: true }
+            sunrise_sim::projectiles::ProjectileKind::WitherSkull { dangerous: true }
         ) {
             self.side.combat.0.blast_resistance_cap = Some(0.8);
         }
@@ -367,7 +367,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .with_entity(
                             p.id,
                             "minecraft:wither_skull",
-                            sunrise_client::health::DirectEntity::Projectile,
+                            sunrise_sim::health::DirectEntity::Projectile,
                         ),
                 )
             })
@@ -413,7 +413,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // The player (or the guest acting now) who owns the skull.
             Some(Who::Player) if p.guest.is_none() || p.guest == self.side.lan_acting => {
-                self.apply_effect_action(sunrise_client::effects::EffectAction::Heal(5.0));
+                self.apply_effect_action(sunrise_level::effects::EffectAction::Heal(5.0));
             }
             _ => {}
         }

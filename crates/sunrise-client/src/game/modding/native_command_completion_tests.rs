@@ -6,17 +6,15 @@
 use super::native_server::{CommandArguments, command_tree, register_dispatcher};
 use crate::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    command::{MOD_COMMAND, Registries},
-    lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
-};
+use sunrise_command::{MOD_COMMAND, Registries};
 use sunrise_core::vanilla_bytes::Writer;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     buf::{Codec, Reader},
     ids,
     packets::{configuration::ClientInformation, play},
 };
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 /// The warps the test mod publishes, with the level each one is for: `spawn` for everyone,
 /// `secret` for an owner.
@@ -125,11 +123,8 @@ fn install_warps(game: &mut crate::game::ServerGame<'_>) {
         mod_api::Command::new("warp go <name:test:warp>"),
         mod_api::Command::op("warp admin <name:test:warp>", 4),
     ];
-    let (tree, _, problems) = command_tree(
-        &commands,
-        &sunrise_client::command::Dispatcher::new(),
-        &arguments,
-    );
+    let (tree, _, problems) =
+        command_tree(&commands, &sunrise_command::Dispatcher::new(), &arguments);
     assert!(problems.is_empty(), "{problems:?}");
     let mut dispatcher = (*game.ui.dispatcher.0).clone();
     register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
@@ -288,7 +283,7 @@ fn a_providers_answer_reaches_the_player_without_passing_through_the_completion_
                 mod_api::Command::new("warp go <name:test:warp>"),
                 mod_api::Command::new("probe <value:word>"),
             ],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
@@ -338,7 +333,7 @@ fn an_identifier_listener_replies_on_the_wire_and_leaves_room_for_the_next_argum
         let arguments = CommandArguments::new();
         let (tree, _, problems) = command_tree(
             &[mod_api::Command::new("probe <value:id> <count:integer>")],
-            &sunrise_client::command::Dispatcher::new(),
+            &sunrise_command::Dispatcher::new(),
             &arguments,
         );
         assert!(problems.is_empty(), "{problems:?}");
@@ -384,7 +379,7 @@ fn an_identifier_listener_replies_on_the_wire_and_leaves_room_for_the_next_argum
         let (context, _) = parsed.executable().unwrap();
         assert_eq!(
             context.get("value"),
-            Some(&sunrise_client::command::Arg::Str("example:stone".into()))
+            Some(&sunrise_command::Arg::Str("example:stone".into()))
         );
     });
 }
@@ -431,7 +426,7 @@ fn a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quota
     crate::game::in_own_process(
         "game::native_command_completion_tests::a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quotable_string",
         || {
-            use sunrise_client::command::{Arg, Dispatcher, network};
+            use sunrise_command::{Arg, Dispatcher, network};
             let arguments = CommandArguments::from([(
                 "test:quest_object".to_owned(),
                 Arc::new(QuestObject) as Arc<dyn mod_api::CommandArgumentType>,
@@ -485,7 +480,7 @@ fn a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quota
             let (mut game, rx) = game_with_guest(&mut resources, "QuestTester");
             // Vanilla's en_us text for `readerExpectedEndOfQuote`, in the game's language.
             assert_eq!(
-                sunrise_client::text::Text::tr("parsing.quote.expected.end", &[]).plain(),
+                sunrise_client_core::text::Text::tr("parsing.quote.expected.end", &[]).plain(),
                 "Unclosed quoted string"
             );
             game.ui.dispatcher.0 = Arc::new(dispatcher);

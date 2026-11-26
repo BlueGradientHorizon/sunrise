@@ -6,11 +6,11 @@ use sunrise_client::{
         TEXT_POLYGON_OFFSET_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_DRAW_FLIP,
         TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY,
     },
-    items::ItemStack,
     mesher::Vertex,
-    text::Text,
     text_display::{self, CachedQuads, TextDisplayData},
 };
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::entity_data::Value;
 use sunrise_world::registry::BlockStateId;
 
@@ -46,7 +46,7 @@ impl Shows {
 
 pub(in crate::game) struct RemoteTextDisplay {
     pub data: TextDisplayData,
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     pub(in crate::game) shows: Shows,
     /// Pending synced sub-state fields (`BlockDisplay` id 23, `ItemDisplay` ids 23-24).
     pub(in crate::game) pending_block: Option<BlockStateId>,
@@ -273,7 +273,7 @@ impl RemoteTextDisplay {
         let pos = glam::DVec3::from(position);
         let mut display = Self {
             data: Default::default(),
-            join: sunrise_client::join_seq::JoinSeq::next(),
+            join: sunrise_sim::join_seq::JoinSeq::next(),
             shows,
             pending_block: None,
             pending_item: None,
@@ -410,8 +410,8 @@ impl RemoteTextDisplay {
     /// `Camera.alignWithEntity` snapshot when the camera follows this display (`SetCamera`).
     pub(in crate::game::client_side) fn camera_entity(
         &self,
-    ) -> sunrise_client::camera::CameraEntity {
-        sunrise_client::camera::CameraEntity {
+    ) -> sunrise_level::camera_math::CameraEntity {
+        sunrise_level::camera_math::CameraEntity {
             position: self.position.to_array(),
             previous: self.previous.to_array(),
             x_rot: self.rotation[1],
@@ -471,7 +471,7 @@ impl RemoteTextDisplay {
     /// `DisplayRenderer.getBlockLightLevel`/`getSkyLightLevel` as packed 8-bit `(sky << 4) | block`.
     pub(in crate::game::client_side) fn packed_light(
         &self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         pos: glam::DVec3,
     ) -> u8 {
         if self.data.brightness == -1 {
@@ -567,7 +567,7 @@ impl RemoteTextDisplay {
             match (id, value) {
                 (0, Value::Byte(v)) => self.shared_flags = *v as u8,
                 (2, Value::OptText(Some(tag))) | (2, Value::Text(tag)) => {
-                    self.custom_name = Some(sunrise_client::entity_nbt::name_text(tag));
+                    self.custom_name = Some(sunrise_sim::entity_nbt::name_text(tag));
                 }
                 (2, Value::OptText(None)) => self.custom_name = None,
                 (3, Value::Bool(v)) => self.custom_name_visible = *v,
@@ -843,7 +843,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && let Some(p) = self.player.as_mut()
             {
                 let scale =
-                    p.dimensions.width / sunrise_client::pose::Pose::Standing.dimensions(1.0).width;
+                    p.dimensions.width / sunrise_sim::pose::Pose::Standing.dimensions(1.0).width;
                 let (seat, _) = super::remote_vehicles::generic_player_seat(at, at, scale);
                 p.position = seat;
                 self.previous_position = seat;
@@ -1093,7 +1093,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `DisplayRenderer.getBlockLightLevel` and `getSkyLightLevel`: the
     /// brightness override, else the light at the entity (block light 15 when on fire).
     pub(in crate::game::client_side) fn display_light(
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         d: &TextDisplayData,
         position: glam::DVec3,
         on_fire: bool,
@@ -1512,7 +1512,7 @@ pub(in crate::game) mod tests {
         let atlas = sunrise_client::hud::HudAtlas::boot();
         let mut display = RemoteTextDisplay::new(Shows::Text, [0.0, 0.0, 5.0], 0.0);
         let d = TextDisplayData {
-            text: std::sync::Arc::new(sunrise_client::text::Text::literal("Culled")),
+            text: std::sync::Arc::new(sunrise_client_core::text::Text::literal("Culled")),
             ..Default::default()
         };
         let cache = CachedQuads::new(&atlas, &d, 0);
@@ -1536,7 +1536,7 @@ pub(in crate::game) mod tests {
     fn cached_text_quads_match_fresh_and_invalidate() {
         let atlas = sunrise_client::hud::HudAtlas::boot();
         let mut d = TextDisplayData {
-            text: std::sync::Arc::new(sunrise_client::text::Text::literal("Hologram")),
+            text: std::sync::Arc::new(sunrise_client_core::text::Text::literal("Hologram")),
             ..Default::default()
         };
         let cache = CachedQuads::new(&atlas, &d, 0);
@@ -1556,7 +1556,7 @@ pub(in crate::game) mod tests {
             match change {
                 0 => {
                     changed.text =
-                        std::sync::Arc::new(sunrise_client::text::Text::literal("Changed"))
+                        std::sync::Arc::new(sunrise_client_core::text::Text::literal("Changed"))
                 }
                 1 => changed.text = std::sync::Arc::new((*d.text).clone().bold()),
                 2 => changed.opacity = 40,
@@ -1570,12 +1570,12 @@ pub(in crate::game) mod tests {
         assert!(!cache.matches(&d, 1, atlas.font.epoch(), atlas.revision));
         assert!(!cache.matches(&d, 0, atlas.font.epoch() + 1, atlas.revision));
         assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision + 1));
-        d.text = std::sync::Arc::new(sunrise_client::text::Text::legacy("§kSecret"));
+        d.text = std::sync::Arc::new(sunrise_client_core::text::Text::legacy("§kSecret"));
         let cache = CachedQuads::new(&atlas, &d, 0);
         assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
         // A plugin hologram sends `§k` inside a literal JSON string: the font
         // resolves it, so its glyphs still change every frame.
-        d.text = std::sync::Arc::new(sunrise_client::text::Text::literal("§kSecret"));
+        d.text = std::sync::Arc::new(sunrise_client_core::text::Text::literal("§kSecret"));
         let cache = CachedQuads::new(&atlas, &d, 0);
         assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
     }
@@ -1584,7 +1584,7 @@ pub(in crate::game) mod tests {
     fn transformed_text_bounds_reach_into_view_but_not_from_behind() {
         let atlas = sunrise_client::hud::HudAtlas::boot();
         let d = TextDisplayData {
-            text: std::sync::Arc::new(sunrise_client::text::Text::literal("Wide hologram")),
+            text: std::sync::Arc::new(sunrise_client_core::text::Text::literal("Wide hologram")),
             ..Default::default()
         };
         let cache = CachedQuads::new(&atlas, &d, 0);

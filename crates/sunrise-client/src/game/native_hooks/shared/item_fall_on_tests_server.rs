@@ -17,7 +17,7 @@ fn a_dropped_item_lands_on_a_fall_on_part() {
     let heard = Lands::default();
     let mods: mod_api::Mods = vec![ModEntry::new("lands", Box::new(Mod(heard.clone())))].into();
     crate::game::api_values::install_parts(&mods).unwrap();
-    let _ = sunrise_client::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
     with_mods(mods, || {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -25,7 +25,7 @@ fn a_dropped_item_lands_on_a_fall_on_part() {
             let (stone, air) = (state("minecraft:stone"), state("minecraft:air"));
             for x in -1..=1 {
                 for z in -1..=1 {
-                    let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                    let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                     chunk.lit = true;
                     game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
                 }
@@ -44,8 +44,8 @@ fn a_dropped_item_lands_on_a_fall_on_part() {
             let mut destructions = 0;
             for _ in 0..80 {
                 game.side.ticked_entities_through = u32::MAX;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some(game.dim.id()),
                     || {
                         game.tick_items();
@@ -84,7 +84,7 @@ fn item_fall_on_returns_progressed_level_loan_after_part_panic() {
     )]
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
-    let _ = sunrise_client::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
     let mut loaded = 0;
     for dimension in [crate::game::Dim::Overworld, crate::game::Dim::Nether] {
         let scratch =
@@ -102,7 +102,7 @@ fn item_fall_on_returns_progressed_level_loan_after_part_panic() {
                     .unwrap();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let pos = BlockPos::new(1, 64, 1);
                 game.world.set(pos.x, pos.y, pos.z, stone).unwrap();
                 *game.world.random = sunrise_core::random::LegacyRandom::new(12345);
@@ -111,8 +111,8 @@ fn item_fall_on_returns_progressed_level_loan_after_part_panic() {
                     .unwrap();
                 game.world.attachment_syncs.insert(mod_api::Holder::Level);
                 let land = |game: &mut crate::game::ServerGame<'_>| {
-                    sunrise_client::block_contact::in_level(
-                        sunrise_client::parallel::TickThread::mint(),
+                    sunrise_sim::block_contact::in_level(
+                        sunrise_sim::parallel::TickThread::mint(),
                         Some(game.dim.id()),
                         || game.item_fall_on(42, pos, 5.0),
                     );

@@ -2,7 +2,7 @@
 
 use super::Game;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 pub(in crate::game) use sunrise_gameplay::crash_save::CrashSave;
 
@@ -43,7 +43,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         run_error: Option<&str>,
     ) -> Result<()> {
         // There will be no next server tick; do not keep logs for another world.
-        sunrise_client::logging::stop_tap();
+        sunrise_level::logging::stop_tap();
         let mut failure = None;
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         if let Err(payload) =

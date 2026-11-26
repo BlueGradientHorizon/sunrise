@@ -34,7 +34,7 @@ pub(crate) fn rotate(
         Rotation::Clockwise180 => StructureRotation::Clockwise180,
         Rotation::Counterclockwise90 => StructureRotation::Counterclockwise90,
     };
-    if let Err(error) = sunrise_client::crash::contain(|| {
+    if let Err(error) = sunrise_level::crash::contain(|| {
         native_worldgen_parts::with_host(|host| {
             mod_api::world::rotation::native_rotate(host, asked, pos, rotation, &mut rotated);
         });

@@ -1,12 +1,12 @@
 //! Foxes and dolphins: what they take from the ground and where they go for it, on `MobLevel`.
 use crate::{item_areas::ItemAreas, mob_level::MobLevel};
-use sunrise_client::mobs::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{
     Species, dolphin,
     equip::Slot,
     finalize::{self, set_drop_chance, set_item_stack},
     fox,
 };
-use sunrise_core::geometry::Vec3;
 
 /// `Fox.ALLOWED_ITEMS` and the looting block of `Mob.aiStep` for foxes, once a tick.
 pub fn tick_foxes(level: &mut impl MobLevel) {
@@ -132,7 +132,7 @@ pub fn tick_dolphins(level: &mut impl MobLevel) {
                                 e.position.z.floor() as i32,
                             ))
                             .fluid
-                            == sunrise_client::blocks::Fluid::Water
+                            == sunrise_items::blocks::Fluid::Water
                 })
                 .map(|e| [e.position.x, e.position.y, e.position.z])
         } else {
@@ -143,7 +143,7 @@ pub fn tick_dolphins(level: &mut impl MobLevel) {
 }
 
 /// `Fox.isConsumableFood`.
-fn fox_food(items: &sunrise_client::items::Items, item: &str) -> bool {
+fn fox_food(items: &sunrise_items::items::Items, item: &str) -> bool {
     items
         .get(item)
         .is_some_and(|i| i.food.is_some() && i.consumable.is_some())
@@ -200,14 +200,15 @@ mod tests {
     use super::*;
     use crate::mob_level::MobParts;
     use std::sync::Arc;
-    use sunrise_client::{
+    use sunrise_items::{
         blocks::BlockFacts,
-        entities::ItemEntity,
-        fast_hash::FxHashSet,
         items::{ItemStack, Items},
+    };
+    use sunrise_level::{fast_hash::FxHashSet, world::World};
+    use sunrise_sim::{
+        entities::ItemEntity,
         join_seq::JoinList,
         mobs::{Anim, Brain, Mob, MobType},
-        world::World,
     };
     use sunrise_world::registry::BlockStateId;
 

@@ -1,7 +1,7 @@
 use super::{Error, id, optional, s, string, uuid, uuid_tag};
 use mod_api::text::{TextProfile, TextProfileProperty};
-use sunrise_client::api_text::{valid_profile_name, valid_profile_property};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_sim::api_text::{valid_profile_name, valid_profile_property};
 
 // ResolvableProfile also reads the PlayerSkin.Patch fields, which have no
 // dedicated API member. Only those known fields cross in profile metadata.

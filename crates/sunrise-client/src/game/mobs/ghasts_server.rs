@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::mobs::happy_ghast;
+use sunrise_sim::mobs::happy_ghast;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `HappyGhast.mobInteract`. Returns whether the click was used.
@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let id = self.mobs[index].id;
             // `startRiding` without `force` asks `canAddPassenger`: a fifth rider is refused.
             let aboard = self.seated_passengers(id).len();
-            if !sunrise_client::mobs::riders::can_add_passenger(&self.mobs[index], aboard)
+            if !sunrise_sim::mobs::riders::can_add_passenger(&self.mobs[index], aboard)
                 || !self.native_may_board(id)
             {
                 return true;

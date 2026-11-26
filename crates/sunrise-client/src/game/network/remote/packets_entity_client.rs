@@ -115,7 +115,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let hop = {
                 let m = self.mob_index.get_mut(&mut self.mobs, p.id as u32);
                 if let Some(m) = m
-                    && m.species() == sunrise_client::mobs::Species::Rabbit
+                    && m.species() == sunrise_sim::mobs::Species::Rabbit
                 {
                     let sample = (
                         m.position,
@@ -123,7 +123,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         f64::from(m.width()),
                         m.ground.supporting_block.map(|p| [p.x, p.y, p.z]),
                     );
-                    sunrise_client::mobs::rabbit::hop_event(m);
+                    sunrise_sim::mobs::rabbit::hop_event(m);
                     Some(sample)
                 } else {
                     None
@@ -142,7 +142,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if p.event == 19
             && let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
         {
-            sunrise_client::mobs::aquatic::squid_cycle_event(m);
+            sunrise_sim::mobs::aquatic::squid_cycle_event(m);
         }
         // LivingEntity.handleEntityEvent 55: another player swapped
         // its main and off hand (`swapHandItems`).
@@ -153,7 +153,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // LivingEntity.handleEntityEvent 47 to 52, 65 and 68: an
         // equipped item broke (onEquippedItemBroken).
-        if let Some(slot) = sunrise_client::mobs::item_break::equipment_break_slot(p.event) {
+        if let Some(slot) = sunrise_sim::mobs::item_break::equipment_break_slot(p.event) {
             self.remote_equipment_break(p.id, slot);
         }
         // EntityEvent.DEATH: start the death animation.
@@ -175,7 +175,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // The events that start a mob's animation (the warden's).
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
-            sunrise_client::mobs::sync::entity_event(m, p.event as u8);
+            sunrise_sim::mobs::sync::entity_event(m, p.event as u8);
         }
         // LivingEntity.handleEntityEvent 46: portal particles from the
         // old position to the new one (chorus fruit, an enderman).
@@ -211,11 +211,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .find(|pr| pr.id == p.id as u32)
                 .and_then(|pr| {
                     let item = match pr.kind {
-                        sunrise_client::projectiles::ProjectileKind::Snowball => {
-                            "minecraft:snowball"
-                        }
-                        sunrise_client::projectiles::ProjectileKind::Egg => "minecraft:egg",
-                        sunrise_client::projectiles::ProjectileKind::Thrown(t) => t.item,
+                        sunrise_sim::projectiles::ProjectileKind::Snowball => "minecraft:snowball",
+                        sunrise_sim::projectiles::ProjectileKind::Egg => "minecraft:egg",
+                        sunrise_sim::projectiles::ProjectileKind::Thrown(t) => t.item,
                         _ => return None,
                     };
                     Some(([pr.position.x, pr.position.y, pr.position.z], item))
@@ -230,7 +228,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Entity events 53 and 54: honey crumbs while sliding, and the
         // ten from a landing (`HoneyBlock.showSlideParticles` /
         // `showJumpParticles`).
-        if sunrise_client::landing::honey_particle_count(p.event).is_some() {
+        if sunrise_sim::landing::honey_particle_count(p.event).is_some() {
             let at = if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
                 self.player
                     .as_ref()
@@ -305,12 +303,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     m.glowing = flags & 0x40 != 0;
                 }
                 (2, Value::OptText(name)) => {
-                    let text = name.as_ref().map(sunrise_client::entity_nbt::name_text);
-                    m.custom_name = text.as_ref().map(sunrise_client::text::Text::plain);
+                    let text = name.as_ref().map(sunrise_sim::entity_nbt::name_text);
+                    m.custom_name = text.as_ref().map(sunrise_client_core::text::Text::plain);
                     m.custom_name_text = text;
                 }
                 (2, Value::Text(name)) => {
-                    let text = sunrise_client::entity_nbt::name_text(name);
+                    let text = sunrise_sim::entity_nbt::name_text(name);
                     m.custom_name = Some(text.plain());
                     m.custom_name_text = Some(text);
                 }
@@ -335,7 +333,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.remote_mob_data(id, single);
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32)
-            && m.species() == sunrise_client::mobs::Species::Creeper
+            && m.species() == sunrise_sim::mobs::Species::Creeper
         {
             match (index, value) {
                 // Creeper.DATA_SWELL_DIR, DATA_IS_POWERED, DATA_IS_IGNITED.
@@ -351,9 +349,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 (7, Value::Int(ticks)) => m.ticks_frozen = *ticks,
                 // Strider.DATA_SUFFOCATING (after AgeableMob's two
                 // and DATA_BOOST_TIME): a cold strider shakes.
-                (19, Value::Bool(cold))
-                    if m.species() == sunrise_client::mobs::Species::Strider =>
-                {
+                (19, Value::Bool(cold)) if m.species() == sunrise_sim::mobs::Species::Strider => {
                     m.extra.flag = *cold;
                 }
                 _ => {}

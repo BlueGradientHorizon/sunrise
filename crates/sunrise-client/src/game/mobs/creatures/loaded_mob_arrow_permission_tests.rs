@@ -1,8 +1,8 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::{entity_nbt, save};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
+use sunrise_sim::{entity_nbt, save};
 
 fn parse(text: &str) -> Tag {
     let (tag, used) = sunrise_core::nbt::parse_snbt(text).unwrap();
@@ -22,7 +22,7 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
         // Supply the synthetic chunk before forceload's synchronous load barrier.
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
@@ -30,12 +30,12 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
         assert!(
             game.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
         );
         assert!(
             game.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
         );
         assert!(game.run_command(
             "summon pig 14.5 200 14.5 {UUID:[I;197,0,0,1],NoAI:1b,NoGravity:1b,Health:10f}"
@@ -67,7 +67,7 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
             if game
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
                 != griefing
             {
                 assert!(game.run_command(&format!("gamerule mob_griefing {griefing}")));
@@ -75,7 +75,7 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
             assert_eq!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
                 griefing
             );
             assert!(game.run_command(&format!("setblock {x} 199 {z} end_stone")));

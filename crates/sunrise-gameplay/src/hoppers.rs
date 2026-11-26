@@ -1,9 +1,11 @@
 //! Hopper state and the item-column caches, with the block queries they share.
-use sunrise_client::{containers::BlockEntity, items::ItemStack, mobs::Mob, world::World};
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::{containers::BlockEntity, world::World};
+use sunrise_sim::mobs::Mob;
 use sunrise_world::registry::BlockStateId;
 
 pub type Pos = (i32, i32, i32);
@@ -35,7 +37,7 @@ impl HopperState {
     /// `HopperBlockEntity.loadAdditional`: only the cooldown is saved; the
     /// last tick time starts at zero for the new block entity.
     pub fn load(tag: &sunrise_core::nbt::Tag) -> Self {
-        let canonical = sunrise_client::block_entity_nbt::canonical(tag);
+        let canonical = sunrise_client_core::block_entity_nbt::canonical(tag);
         let cooldown = match canonical.as_ref().and_then(|t| t.get("TransferCooldown")) {
             Some(sunrise_core::nbt::Tag::Int(value)) => *value,
             _ => -1,
@@ -47,7 +49,7 @@ impl HopperState {
 /// The cooldown of the hopper at `pos`, from its state or its saved block entity, over the hoppers' state and the world.
 pub fn hopper_cooldown_in(
     hoppers: &std::collections::HashMap<Pos, HopperState>,
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     pos: Pos,
 ) -> i32 {
     hoppers.get(&pos).map_or_else(
@@ -110,13 +112,13 @@ pub fn room(limit: u32, current: Option<&ItemStack>, stack: &ItemStack) -> u32 {
 pub struct ItemColumns {
     /// The item count and last item id when last asked, if built.
     seen: Option<(usize, Option<u32>)>,
-    cells: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
+    cells: sunrise_level::fast_hash::FxHashSet<(i32, i32)>,
 }
 impl ItemColumns {
     /// Whether an item's box may reach into column (x, z).
     pub fn may_reach(
         &mut self,
-        items: &[sunrise_client::entities::ItemEntity],
+        items: &[sunrise_sim::entities::ItemEntity],
         x: i32,
         z: i32,
     ) -> bool {
@@ -145,7 +147,7 @@ impl ItemColumns {
     /// Whether an item's box may reach into any column of x0..=x1, z0..=z1.
     pub fn may_reach_area(
         &mut self,
-        items: &[sunrise_client::entities::ItemEntity],
+        items: &[sunrise_sim::entities::ItemEntity],
         (x0, x1): (i32, i32),
         (z0, z1): (i32, i32),
     ) -> bool {
@@ -161,14 +163,14 @@ impl ItemColumns {
 /// between questions costs no more than the scans did.
 #[derive(Default)]
 pub struct StampedItemColumns {
-    stamp: Option<sunrise_client::join_seq::ListStamp>,
+    stamp: Option<sunrise_sim::join_seq::ListStamp>,
     columns: ItemColumns,
 }
 impl StampedItemColumns {
     /// [`ItemColumns::may_reach_area`] for the items as they are now.
     pub fn may_reach_area(
         &mut self,
-        items: &sunrise_client::join_seq::JoinList<sunrise_client::entities::ItemEntity>,
+        items: &sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ItemEntity>,
         xs: (i32, i32),
         zs: (i32, i32),
     ) -> bool {
@@ -192,9 +194,9 @@ pub fn cat_sitting_above(mobs: &[Mob], key: Pos) -> bool {
         ),
     );
     mobs.iter().any(|m| {
-        m.species() == sunrise_client::mobs::Species::Cat
+        m.species() == sunrise_sim::mobs::Species::Cat
             && m.alive()
-            && sunrise_client::mobs::tame::cat_sitting(m)
+            && sunrise_sim::mobs::tame::cat_sitting(m)
             && m.bounds().intersects(area)
     })
 }

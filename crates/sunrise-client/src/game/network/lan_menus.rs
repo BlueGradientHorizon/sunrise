@@ -18,7 +18,7 @@ pub(in crate::game) struct GuestMenus {
     /// The workstation menu the guest has open (game/network/lan_stations.rs).
     pub(in crate::game) station: MenuOwner<Option<GuestStation>>,
     /// The transient menu engine, kept between clicks for drag state.
-    pub(in crate::game) owned_menu: Option<(u64, Box<sunrise_client::menu::Menu>)>,
+    pub(in crate::game) owned_menu: Option<(u64, Box<sunrise_sim::menu::Menu>)>,
     /// The trading window is live even while the guest's player state is on loan.
     pub(in crate::game) merchant: MenuOwner<Option<super::lan_trading::GuestMerchant>>,
     /// The outer `menu_clicked` decision. Nested default routing can decide a pickup on `hub`.

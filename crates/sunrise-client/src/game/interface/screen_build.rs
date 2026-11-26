@@ -958,7 +958,7 @@ mod tests {
             game.side.settings.gui_scale = 3;
             let m = sunrise_client::screen_draw::Measure(&game.side.gui.atlas.font);
             let c = Commands {
-                dispatcher: sunrise_client::command::vanilla::game_dispatcher(),
+                dispatcher: sunrise_command::vanilla::game_dispatcher(),
                 registries: &game.ui.registries,
             };
             let abilities = ChatAbilities::new(ChatVisibility::Full);
@@ -1003,9 +1003,8 @@ mod tests {
             game.container = None;
             game.craft_size = 2;
             game.side.title.0 = None;
-            game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
-                "speed", 200, 0,
-            )];
+            game.potions.effects.list =
+                vec![sunrise_level::effects::EffectInstance::new("speed", 200, 0)];
             let batch = HudBatch::new(
                 [320, 240],
                 GuiScale {
@@ -1490,9 +1489,8 @@ mod tests {
                 game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
-                game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
-                    "speed", 200, 0,
-                )];
+                game.potions.effects.list =
+                    vec![sunrise_level::effects::EffectInstance::new("speed", 200, 0)];
                 game.side.frames = 11;
                 game.build_screen();
                 assert_eq!(
@@ -1612,7 +1610,8 @@ mod tests {
     #[ignore = "daily"]
     fn room_preserves_vanilla_thresholds_without_listeners_and_on_fit_refusal() {
         use mod_api::{ClientHost, Hooks, ModEntry, ScreenRoomEvent};
-        use sunrise_client::{hud::HudBatch, recipe_book::BookType};
+        use sunrise_client::hud::HudBatch;
+        use sunrise_sim::recipe_book::BookType;
         struct Oversized;
         #[mod_api::__subscriptions]
         impl Hooks for Oversized {
@@ -1748,7 +1747,7 @@ mod tests {
                 game.native_lifecycle
                     .begin_open(mod_api::Authority::RemoteClient);
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::ZERO,
                     )
@@ -1760,7 +1759,7 @@ mod tests {
                 game.side.screen = Screen::Inventory;
                 game.side.settings.gui_scale = 1;
                 game.side.settings.force_unicode = false;
-                let crafting = sunrise_client::recipe_book::BookType::Crafting.index();
+                let crafting = sunrise_sim::recipe_book::BookType::Crafting.index();
                 game.level.recipe_book.recipes.clear();
                 game.level.recipe_book.open[crafting] = false;
 
@@ -1776,9 +1775,8 @@ mod tests {
 
                 // EffectsInInventory at 320 x 240: leftPos + imageWidth + 2,
                 // shifted five pixels right by the subscriber, one compact row.
-                game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
-                    "speed", 200, 0,
-                )];
+                game.potions.effects.list =
+                    vec![sunrise_level::effects::EffectInstance::new("speed", 200, 0)];
                 game.build_screen_at(small);
                 let compact = ScreenRegion::new(Kind::Effects, [255.0, 37.0, 32.0, 32.0]);
                 assert_eq!(render(game, small), [compact]);
@@ -1820,7 +1818,7 @@ mod tests {
                 // Vanilla's painted 26 x 32 tabs are in two rows. The player
                 // can use the operator utilities, including the tab in column five.
                 game.potions.effects.list.clear();
-                game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+                game.set_local_mode(sunrise_command::args::GameMode::Creative);
                 game.ui.registries.permission = 2;
                 game.side.settings.operator_items_tab = true;
                 game.side.screen = Screen::Creative;
@@ -1840,15 +1838,14 @@ mod tests {
                 assert_eq!(tabs, expected);
 
                 // AnvilScreen does not paint the inventory's EffectsInInventory panel.
-                game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
-                game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
-                    "speed", 200, 0,
-                )];
+                game.set_local_mode(sunrise_command::args::GameMode::Survival);
+                game.potions.effects.list =
+                    vec![sunrise_level::effects::EffectInstance::new("speed", 200, 0)];
                 game.remote_open_station(
                     1,
                     "minecraft:anvil".into(),
                     crate::game::stations::Kind::Anvil,
-                    sunrise_client::text::Text::literal("Anvil"),
+                    sunrise_client_core::text::Text::literal("Anvil"),
                     [0; 3],
                 );
                 game.build_screen_at(small);

@@ -3,8 +3,8 @@ use crate::game::creatures::world_view::MobWorldSideParams;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 use sunrise_client::actions::Action;
-use sunrise_client::mobs::{MobWorld, PlayerView, Seen, Species, Vehicle};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::mobs::{MobWorld, PlayerView, Seen, Species, Vehicle};
 
 static EMPTY_LID_OPENERS: OnceLock<HashMap<(i32, i32, i32), i32>> = OnceLock::new();
 
@@ -142,7 +142,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_mob_world_base<'s>(
         &'s self,
         others: &'s [Seen],
-        side: &'s dyn sunrise_client::motion::SideLevel,
+        side: &'s dyn sunrise_sim::motion::SideLevel,
     ) -> MobWorld<'s> {
         let at = self
             .player

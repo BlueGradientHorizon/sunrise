@@ -14,9 +14,9 @@ use super::{
 };
 use mod_api::CreativeGiveError;
 use std::{collections::HashMap, sync::Arc};
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     crafting::{Ingredient, qualified},
-    items::ItemStack,
     recipe_book::{Category, Display},
     stations::Smithing,
 };
@@ -40,7 +40,7 @@ struct IncomingRecipes {
 type RecipeUpdate = Result<(Vec<(String, serde_json::Value)>, Vec<String>), String>;
 impl IncomingRecipes {
     /// Take one part; the finished update on the last.
-    fn push(&mut self, part: sunrise_client::lan::recipes::ContentPart) -> Option<RecipeUpdate> {
+    fn push(&mut self, part: sunrise_sim::lan::recipes::ContentPart) -> Option<RecipeUpdate> {
         if self.refused.is_none() {
             self.refused = part.refused;
         }
@@ -68,29 +68,26 @@ impl IncomingRecipes {
 pub(in crate::game) struct RecipeTables {
     tables: Option<Arc<Recipes>>,
     pub(in crate::game) books: Option<
-        Result<
-            sunrise_client::recipe_book::ModBookIndex,
-            sunrise_client::recipe_book::DisplayLoadError,
-        >,
+        Result<sunrise_sim::recipe_book::ModBookIndex, sunrise_sim::recipe_book::DisplayLoadError>,
     >,
     known: (Option<u64>, Arc<[i32]>),
     /// The server's recipes of the types its native mods sent (`sunrise:
     /// recipe_content`) over the window's own: what `Game::recipes` reads on
     /// a client once they came.
-    pub(in crate::game) synced: Option<sunrise_client::crafting::Recipes>,
+    pub(in crate::game) synced: Option<sunrise_sim::crafting::Recipes>,
     /// The display numbers of those recipes: the server numbers its book's
     /// displays over its own recipe set, a world's data pack recipes
     /// included, so the book numbers them the same (`Game::display_index`).
-    pub(in crate::game) synced_index: Option<sunrise_client::recipe_book::RecipeIndex>,
+    pub(in crate::game) synced_index: Option<sunrise_sim::recipe_book::RecipeIndex>,
     /// The recipe content's parts so far, until its last.
     incoming: IncomingRecipes,
     /// The types that came before the player did: the mods hear of them
     /// once the helpers can answer (`recipes_received_now`).
     received: Option<Vec<String>>,
     /// The last authoritative property-set and stonecutter generation sent by a server.
-    pub(in crate::game) server_properties: crate::recipe_book::ServerRecipeProperties,
+    pub(in crate::game) server_properties: sunrise_sim::recipe_book::ServerRecipeProperties,
     /// The station recipes of a client connected to a server (stonecutter order from server).
-    pub(in crate::game) server_stations: Option<sunrise_client::stations::StationRecipes>,
+    pub(in crate::game) server_stations: Option<sunrise_sim::stations::StationRecipes>,
 }
 
 impl RecipeTables {
@@ -112,7 +109,7 @@ impl RecipeTables {
 impl RecipeTables {
     pub(in crate::game) fn install_test_recipes(
         &mut self,
-        recipes: sunrise_client::crafting::Recipes,
+        recipes: sunrise_sim::crafting::Recipes,
     ) {
         self.synced = Some(recipes);
     }
@@ -143,7 +140,7 @@ impl Index {
 /// them (`[minecraft:potion_contents={potion:"minecraft:swiftness"}]`), or "".
 pub(in crate::game::client_side) fn components(s: &ItemStack) -> String {
     use sunrise_core::nbt::Tag;
-    let Some(Tag::Compound(entries)) = sunrise_client::item_data::component_snapshot(s) else {
+    let Some(Tag::Compound(entries)) = sunrise_items::item_data::component_snapshot(s) else {
         return String::new();
     };
     let parts: Vec<String> = entries
@@ -152,7 +149,7 @@ pub(in crate::game::client_side) fn components(s: &ItemStack) -> String {
             format!(
                 "{}={}",
                 k.to_string_lossy(),
-                sunrise_client::snbt::to_snbt(v)
+                sunrise_client_core::snbt::to_snbt(v)
             )
         })
         .collect();
@@ -415,7 +412,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             out.push(r);
         }
         for b in &stations.brewing.recipes {
-            let potion = |p: &sunrise_client::brewing::PotionIngredient| -> Vec<RecipeStack> {
+            let potion = |p: &sunrise_level::brewing::PotionIngredient| -> Vec<RecipeStack> {
                 let mut item_ids: Vec<&String> = p.items.iter().collect();
                 item_ids.sort();
                 let mut potions: Vec<&String> = p.potions.iter().flatten().collect();
@@ -475,7 +472,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// last, the window's tables take the server's recipes of those types in
     /// place of its own, and the mods hear of it (`RecipesReceivedEvent`).
     pub(in crate::game::client_side) fn remote_recipe_content(&mut self, data: &[u8]) {
-        let part = match sunrise_client::lan::recipes::ContentPart::decode(data) {
+        let part = match sunrise_sim::lan::recipes::ContentPart::decode(data) {
             Ok(part) => part,
             Err(e) => {
                 log::warn!("Sunrise: bad recipe content from the server: {e}");
@@ -528,7 +525,7 @@ mod tests {
     /// when the update completes, and the next update is taken whole.
     #[test]
     fn a_bad_part_refuses_the_whole_update_at_its_last_part() {
-        use sunrise_client::lan::recipes::ContentPart;
+        use sunrise_sim::lan::recipes::ContentPart;
         let part = |text: &str| ContentPart::decode(text.as_bytes()).unwrap();
         let mut incoming = super::IncomingRecipes::default();
         assert!(
@@ -593,7 +590,7 @@ mod tests {
             let mut files =
                 sunrise_items::recipe_sources::sources(&game.options.resources, &overlay).unwrap();
             files.push(("zzz:sticks_from_logs".to_owned(), pack));
-            let server = sunrise_client::crafting::Recipes::from_sources(
+            let server = sunrise_sim::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
                 &overlay,
@@ -602,7 +599,7 @@ mod tests {
             )
             .unwrap();
             let sources = server.recipe_content(&types);
-            for part in sunrise_client::lan::recipes::encode_content(&types, &sources, false) {
+            for part in sunrise_sim::lan::recipes::encode_content(&types, &sources, false) {
                 game.remote_recipe_content(&part);
             }
             assert!(game.synced_recipes().is_some());
@@ -647,7 +644,7 @@ mod tests {
             std::fs::write(path, text).unwrap();
         }
         let package = sunrise_mod_package::Package::read(&dir).unwrap();
-        let tagger = sunrise_client::mod_content::ContentMod {
+        let tagger = sunrise_sim::mod_content::ContentMod {
             id: package.manifest.id.clone(),
             content: sunrise_mod_package::content::Content::read(&dir, &package.manifest).unwrap(),
             jars: Vec::new(),
@@ -657,9 +654,9 @@ mod tests {
             "tagger".to_owned(),
             mod_api::Side::Both,
         )]);
-        sunrise_client::mod_content::build(&base, Path::new(""), &[tagger], &root, &inventory)
+        sunrise_sim::mod_content::build(&base, Path::new(""), &[tagger], &root, &inventory)
             .unwrap();
-        assert_eq!(sunrise_client::mod_content::namespaces(&root), ["tagger"]);
+        assert_eq!(sunrise_sim::mod_content::namespaces(&root), ["tagger"]);
         with_game_role_client(
             root,
             crate::game::execution_role::ExecutionRole::Client,
@@ -678,7 +675,7 @@ mod tests {
                 assert_eq!(ids.map(|id| book_ids(game, id)), server);
                 let types = ["minecraft:crafting", "minecraft:smelting"].map(str::to_owned);
                 let sources = game.recipes().recipe_content(&types);
-                for part in sunrise_client::lan::recipes::encode_content(&types, &sources, false) {
+                for part in sunrise_sim::lan::recipes::encode_content(&types, &sources, false) {
                     game.remote_recipe_content(&part);
                 }
                 assert!(game.synced_recipes().is_some());

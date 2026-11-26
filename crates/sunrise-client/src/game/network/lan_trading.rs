@@ -6,12 +6,12 @@ use super::{
     Game, lan_actions::guest_within_entity_range, stacked_on_other::Pickup,
     stations::Kind as StationKind, trading::MerchantState,
 };
-use sunrise_client::{
-    items::ItemStack,
+use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::{
     menu::{Env, Input, Kind, Menu, QuickCraftDrag},
     merchant::{self, TradeFeedback},
 };
-use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A guest's open trading screen.
 #[derive(Clone)]
@@ -44,12 +44,11 @@ fn uuid_words(uuid: u128) -> [i32; 4] {
 /// A villager whose profession the world's table cannot resolve (its mod is
 /// gone): its trades skip the result processing and its screen closes.
 pub(in crate::game) fn opaque_villager(
-    professions: &sunrise_client::mobs::villager::ResolvedProfessions,
-    species: sunrise_client::mobs::Species,
-    profession: &sunrise_client::mobs::villager::ProfessionState,
+    professions: &sunrise_sim::mobs::villager::ResolvedProfessions,
+    species: sunrise_sim::mobs::Species,
+    profession: &sunrise_sim::mobs::villager::ProfessionState,
 ) -> bool {
-    species == sunrise_client::mobs::Species::Villager
-        && professions.state_index(profession).is_none()
+    species == sunrise_sim::mobs::Species::Villager && professions.state_index(profession).is_none()
 }
 
 /// How a merchant menu op runs: ordinary, a read-only probe on a copy, or a pickup with a
@@ -57,7 +56,7 @@ pub(in crate::game) fn opaque_villager(
 pub(in crate::game) enum MerchantRun<'a> {
     Plain,
     Probe,
-    Decided(Option<&'a sunrise_client::menu::StackedOutcome>),
+    Decided(Option<&'a sunrise_sim::menu::StackedOutcome>),
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -168,7 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )
         };
         let name = match &state.name {
-            Some(n) => sunrise_client::scoreboard::json_to_tag(&n.component()),
+            Some(n) => sunrise_client_core::scoreboard::json_to_tag(&n.component()),
             None => Tag::compound([("translate", Tag::String(key.as_str().into()))]),
         };
         let uuid = state.mob.map_or([0; 4], |id| self.mob_uuid(id));
@@ -215,7 +214,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.sendMerchantOffers`: send the live offers, and keep the
     /// packet's snapshot for clicks on this particular window.
     fn send_merchant_offers(
-        hub: &mut sunrise_client::lan::hub::Hub,
+        hub: &mut sunrise_sim::lan::hub::Hub,
         conn: u32,
         gm: &mut GuestMerchant,
     ) {
@@ -224,7 +223,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .offers
             .iter()
             .filter_map(|o| {
-                let cost = |st: &ItemStack, hub: &mut sunrise_client::lan::hub::Hub| {
+                let cost = |st: &ItemStack, hub: &mut sunrise_sim::lan::hub::Hub| {
                     hub.stack(&Some(st.clone())).map(play::NetCost::from)
                 };
                 Some(play::NetOffer {
@@ -698,7 +697,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the entity interaction range plus 4 of its box.
     pub(in crate::game::server_side) fn lan_merchant_valid(
         &self,
-        g: &sunrise_client::lan::guest::Guest,
+        g: &sunrise_sim::lan::guest::Guest,
         id: u32,
     ) -> bool {
         self.mobs.iter().find(|m| m.id == id).is_some_and(|m| {
@@ -788,10 +787,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(host) = &self.lan else { return false };
         let Some(guest) = host
             .hub
-            .holder_guest(
-                sunrise_client::lan::playerdata::ints_uuid(uuid),
-                self.dim.id(),
-            )
+            .holder_guest(sunrise_sim::lan::playerdata::ints_uuid(uuid), self.dim.id())
             .filter(|guest| host.hub.here(guest))
         else {
             return false;
@@ -1027,11 +1023,11 @@ mod tests {
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
-    use sunrise_client::{
+    use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::{
         lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
         merchant::{MerchantOffer, Trader},
     };
-    use sunrise_protocol::packets::configuration::ClientInformation;
 
     /// A hub with one guest (conn 12) trading with a farmer villager (mob 40)
     /// at `level`; the guest's channel comes back with the villager.
@@ -1040,7 +1036,7 @@ mod tests {
         level: i32,
     ) -> (
         mod_api::MerchantRef,
-        std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+        std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
         MerchantOffer,
     ) {
         let settings = LanSettings {
@@ -1093,8 +1089,7 @@ mod tests {
         game.lan.as_mut().unwrap().hub.guests.push(guest);
 
         let villager = spawn(game, 40, "minecraft:villager");
-        game.mobs[0].extra.profession =
-            sunrise_client::mobs::villager::ProfessionState::from_index(5);
+        game.mobs[0].extra.profession = sunrise_sim::mobs::villager::ProfessionState::from_index(5);
         let profession = "minecraft:farmer".to_owned();
         let first = offer("minecraft:wheat", "minecraft:emerald");
         game.mobs[0].extra.trade = Some(Box::new(Trader {
@@ -1217,14 +1212,14 @@ mod tests {
             assert_eq!(game.mobs[0].extra.villager_level, 4);
             assert_eq!(game.mobs[0].extra.trade.as_ref().unwrap().xp, 17);
             assert!(rx.try_iter().any(|out| match out {
-                sunrise_client::lan::Out::Packet(body) => matches!(
+                sunrise_sim::lan::Out::Packet(body) => matches!(
                     play::Clientbound::decode(body[0] as i32, &body[1..]),
                     Ok(play::Clientbound::ContainerClose(_))
                 ),
                 _ => false,
             }));
             assert_eq!(game.side.missing_professions.len(), 1);
-            let tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
                 None,
@@ -1236,7 +1231,7 @@ mod tests {
                 .unwrap();
             assert_eq!(game.side.missing_professions.len(), 1);
             let second = spawn(game, 41, "minecraft:villager");
-            let mut tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let mut tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[1],
                 [0; 4],
                 None,
@@ -1323,14 +1318,14 @@ mod tests {
                 ),
                 (
                     "Offers",
-                    sunrise_client::entity_nbt::offers_to_nbt(
+                    sunrise_sim::entity_nbt::offers_to_nbt(
                         std::slice::from_ref(&replacement),
                         &Default::default(),
                     ),
                 ),
                 ("Xp", Tag::Int(9)),
             ]);
-            game.apply_entity_nbt(target, sunrise_client::data_cmd::merged(&old, &patch))
+            game.apply_entity_nbt(target, sunrise_sim::data_cmd::merged(&old, &patch))
                 .unwrap();
             let trade = game.mobs[0].extra.trade.as_ref().unwrap();
             assert_eq!(trade.offers, vec![replacement]);
@@ -1357,8 +1352,8 @@ mod tests {
                 let mut n = 0;
                 while let Ok(out) = rx.try_recv() {
                     let bodies = match out {
-                        sunrise_client::lan::Out::Packet(body) => vec![body],
-                        sunrise_client::lan::Out::Packets(bodies) => bodies,
+                        sunrise_sim::lan::Out::Packet(body) => vec![body],
+                        sunrise_sim::lan::Out::Packets(bodies) => bodies,
                         _ => Vec::new(),
                     };
                     n += bodies.iter().filter(|b| b.first() == Some(&53)).count();
@@ -1505,7 +1500,7 @@ mod tests {
 
     #[test]
     fn a_registered_profession_trades_normally_and_an_unregistered_one_stays_opaque() {
-        use sunrise_client::mobs::{
+        use sunrise_sim::mobs::{
             Species,
             villager::{ProfessionState, ResolvedProfessions},
         };

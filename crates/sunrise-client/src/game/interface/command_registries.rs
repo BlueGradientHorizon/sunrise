@@ -43,7 +43,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let tags = |ids: &std::collections::HashMap<String, std::collections::HashSet<String>>| {
             let mut out: Vec<String> = ids
                 .keys()
-                .map(|k| sunrise_client::command::args::normalize(k))
+                .map(|k| sunrise_command::args::normalize(k))
                 .collect();
             out.sort();
             out

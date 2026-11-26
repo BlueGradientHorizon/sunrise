@@ -1,7 +1,7 @@
 //! Server-side mod entity-selector filtering (`@allies`, NeoForge's `EntitySelectorManager`).
 use super::Game;
 use super::commands::Target;
-use sunrise_client::command::args::Selector;
+use sunrise_command::args::Selector;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `select_in_level`, then, for a mod's token, only the candidates its type keeps.
@@ -87,7 +87,7 @@ mod tests {
                 game.as_guest(12, |game| {
                     let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     for (id, x) in [(111, 1.0), (112, 2.0), (113, 1.5), (114, 0.5), (115, 3.0)] {
-                        game.mobs.push(sunrise_client::mobs::Mob::new(
+                        game.mobs.push(sunrise_sim::mobs::Mob::new(
                             id,
                             kind.clone(),
                             Vec3::new(x, 0.0, 0.0),
@@ -99,7 +99,7 @@ mod tests {
                         include_entities: true,
                         token: Some("allies".into()),
                         limit: 1,
-                        sort: sunrise_client::command::args::Sort::Nearest,
+                        sort: sunrise_command::args::Sort::Nearest,
                         pos: [Some(0.0); 3],
                         ..Default::default()
                     };

@@ -4,15 +4,13 @@
 //! breaking, and drawing the rope (`LeashFeatureRenderer`) and the knot.
 use super::{Game, commands_common::Target};
 use mod_api::LootDrops;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::leash::{self, Holder},
-};
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::leash_knot::{
     Knot, held_by_acting_player, resolve_pending_leash, write_mob_leash_tag,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::leash::{self, Holder};
 
 /// The item context of a leash success (`InteractionResult.Success`): tying
 /// held mobs to this one and the holder's detach are `withoutItem`, so item
@@ -148,7 +146,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The authoritative fence of an active natural knot, until a last-holder
     /// notification or the tracking cleanup retires its physical owner.
     pub(in crate::game) fn natural_knot(&self, id: u32) -> Option<[i32; 3]> {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
+        use sunrise_sim::join_seq::residency::table::EntityLookup;
         let EntityLookup::Found {
             location,
             value: Target::Knot(_),
@@ -294,7 +292,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 || self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS));
+                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS));
         self.break_leash(id, drop, sound);
     }
     /// `Entity.dropAllLeashConnections`: every mob and boat leashed to the
@@ -419,7 +417,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let killer = self.side.lead_killers.remove(&id).map(|(killer, _)| killer);
         let Some((at, kind, holder)) = self.mobs.iter_mut().find(|m| m.id == id).and_then(|m| {
             let holder = m.extra.leash;
-            sunrise_client::mobs::leash::remove(m)?;
+            sunrise_sim::mobs::leash::remove(m)?;
             Some((
                 [m.position.x, m.position.y, m.position.z],
                 super::native_hooks::mob_kind(m),
@@ -514,7 +512,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let drop = self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS);
+                .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS);
             for fence in fences {
                 let live_id = self.side.knot_ids.get(&fence).copied();
                 let mobs: Vec<u32> = self
@@ -554,7 +552,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .as_ref()
             .map(|s| s.owner)
             .or_else(|| self.lan.as_ref().and_then(|h| h.hub.singleplayer_owner))
-            .map(sunrise_client::lan::playerdata::uuid_ints);
+            .map(sunrise_sim::lan::playerdata::uuid_ints);
         for i in 0..self.mobs.len() {
             let Some(pending) = self.mobs[i].extra.leash_pending else {
                 continue;
@@ -568,7 +566,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         h.hub
                             .guests
                             .iter()
-                            .any(|g| sunrise_client::lan::playerdata::uuid_ints(g.uuid) == u)
+                            .any(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid) == u)
                     })
                 },
                 |u| self.mob_by_uuid(u),
@@ -834,9 +832,9 @@ pub(in crate::game) mod rope_hold_tests {
         Holder, Tag, held_by_acting_player, leash, resolve_pending_leash, rope_hold_angles,
         write_mob_leash_tag,
     };
-    use sunrise_client::lan::playerdata::uuid_ints;
-    use sunrise_client::mobs::leash::Pending;
     use sunrise_protocol::crypto::offline_uuid;
+    use sunrise_sim::lan::playerdata::uuid_ints;
+    use sunrise_sim::mobs::leash::Pending;
 
     #[test]
     fn rope_hold_angles_lerp_by_half_the_partial_tick() {
@@ -1035,14 +1033,13 @@ pub(in crate::game) mod attach_tests {
                 .unwrap();
         game.creative = false;
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5))
-                .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
         );
         game
     }
 
     /// The centre of a mob's box: `Leashable.leashDistanceTo`'s own end.
-    fn centre(m: &sunrise_client::mobs::Mob) -> glam::DVec3 {
+    fn centre(m: &sunrise_sim::mobs::Mob) -> glam::DVec3 {
         let b = m.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());
         glam::DVec3::new(
@@ -1057,7 +1054,7 @@ pub(in crate::game) mod attach_tests {
     #[test]
     #[ignore = "daily"]
     fn a_lead_attaches_within_the_species_own_snap_distance() {
-        use sunrise_client::mobs::{Mob, Species};
+        use sunrise_sim::mobs::{Mob, Species};
 
         let mut resources = None;
         let mut game = game(&mut resources);
@@ -1099,7 +1096,7 @@ pub(in crate::game) mod attach_tests {
     #[test]
     #[ignore = "daily"]
     fn a_player_lead_replaces_a_saved_holder_that_never_loaded() {
-        use sunrise_client::mobs::{
+        use sunrise_sim::mobs::{
             Mob,
             leash::{Holder, Pending},
         };

@@ -3,14 +3,14 @@
 //! keys players insert (`VaultBlock.useItemOn`) and the display item spinning
 //! inside (`VaultRenderer`).
 use super::Game;
-use sunrise_client::{
-    Result,
+use sunrise_client_core::Result;
+use sunrise_core::random::{LegacyRandom, LevelRandom};
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     block_entities::BlockEntityLease,
     containers::BlockEntity,
-    items::ItemStack,
     vault::{Vault, VaultEvent, VaultLevel, VaultPlayer, VaultState},
 };
-use sunrise_core::random::{LegacyRandom, LevelRandom};
 
 pub(in crate::game) type Pos = (i32, i32, i32);
 
@@ -67,7 +67,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn take_vault(&mut self, key: Pos) -> Option<TakenVault> {
         let state = self.world.block(key.0, key.1, key.2);
         let block = self.pack.assets.registry.state(state)?;
-        if sunrise_client::block_entity_types::factory_block(&block.name) != "minecraft:vault" {
+        if sunrise_client_core::block_entity_types::factory_block(&block.name) != "minecraft:vault"
+        {
             return None;
         }
         let current = block
@@ -98,7 +99,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &mut LegacyRandom,
             VaultState,
             bool,
-            &mut sunrise_client::vault::Roll<LegacyRandom>,
+            &mut sunrise_level::vault::Roll<LegacyRandom>,
             &mut Vec<VaultEvent>,
         ) -> T,
     ) -> Option<Result<T>> {
@@ -148,7 +149,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .unwrap_or_default();
                 drops
                     .iter()
-                    .map(sunrise_client::structure_blocks::loot_item_with_components)
+                    .map(sunrise_sim::structure_blocks::loot_item_with_components)
                     .collect()
             };
             f(

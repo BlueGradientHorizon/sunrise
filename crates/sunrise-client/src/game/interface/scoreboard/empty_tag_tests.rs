@@ -5,7 +5,7 @@ use sunrise_core::geometry::Vec3;
 #[ignore = "daily"]
 fn empty_tag_selectors_follow_actual_tag_edits() {
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -56,8 +56,8 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
     assert_ne!(a, b);
     let select = |g: &mut crate::game::ServerGame<'_>, tag: &str| {
         let text = format!("@e[type=minecraft:pig,tag={tag}]");
-        let selector = sunrise_client::command::selector::parse(
-            &mut sunrise_client::command::Reader::new(&text),
+        let selector = sunrise_command::selector::parse(
+            &mut sunrise_command::Reader::new(&text),
             &g.ui.registries,
             true,
         )

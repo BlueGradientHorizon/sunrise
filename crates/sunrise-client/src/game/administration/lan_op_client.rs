@@ -1,6 +1,6 @@
 use super::Game;
 use super::owner_link::{ControlRequest, OwnerRequest};
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `sunrise-ctl lan op NAME LEVEL`; `None` for any other command.

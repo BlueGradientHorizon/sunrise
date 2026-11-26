@@ -3,9 +3,9 @@ use crate::game::native_entity_refs::tests::with_client_game;
 use crate::game::remote::movement_input_tests::local_rotation_tests::sent_moves;
 use crate::game::remote::movement_input_tests::local_rotation_tests::sent_packets;
 use mod_api::LocalRotationError;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::connection::Connection;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]

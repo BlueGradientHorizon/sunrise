@@ -11,7 +11,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         block_entity: Option<BlockEntityRef>,
         explosion: &ExplosionStart<'_>,
     ) {
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             self.native_on_block_exploded(pos, state, block_entity, explosion);
         }) {
             eprintln!("on_block_exploded callback failed: {error}");

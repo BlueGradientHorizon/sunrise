@@ -11,7 +11,7 @@ use mod_api::{
     DisplaySlot, NumberFormat, ObjectiveError, ObjectiveRef, ObjectiveRenderType, ScoreEntry,
     ScoreHolder, TextFormError,
 };
-use sunrise_client::{
+use sunrise_client_core::{
     scoreboard::{self as sb, Comp, comp_text, literal},
     text::Text as EngineText,
 };
@@ -37,7 +37,7 @@ pub(in crate::game) fn api_text(text: &EngineText) -> Result<mod_api::Text, Text
 }
 
 fn engine_text(text: &mod_api::Text) -> Result<EngineText, TextFormError> {
-    sunrise_client_lib::api_text::to_serialized_engine(text)
+    sunrise_sim::api_text::to_serialized_engine(text)
 }
 
 fn engine_comp(text: &mod_api::Text) -> Result<Comp, TextFormError> {
@@ -508,8 +508,8 @@ pub(in crate::game) mod tests {
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     /// The API's slot and color names are the board's, in the board's order.
     #[test]
@@ -731,12 +731,12 @@ pub(in crate::game) mod tests {
             );
             assert_eq!(kills.slots(game), Some(vec![DisplaySlot::Sidebar]));
             game.lan_sync_scoreboard();
-            let view = sunrise_client::lan::scoreboard::View::of(&game.score.board);
+            let view = sunrise_sim::lan::scoreboard::View::of(&game.score.board);
             assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].scoreboard, view);
 
             // Saved, the file holds the objective, its score and its slot, as a command's would.
             game.save_scoreboard();
-            let saved = sunrise_client::save::read_dat(&saved_board).unwrap();
+            let saved = sunrise_sim::save::read_dat(&saved_board).unwrap();
             let loaded = sb::Scoreboard::unpack(saved.get("data").unwrap());
             assert_eq!(loaded.score("guest1", "kills").unwrap().value, 5);
             assert_eq!(

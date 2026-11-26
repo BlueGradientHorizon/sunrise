@@ -9,7 +9,7 @@ mod tests {
         BlockEntityTicksEvent, BlocksEvent, Hooks, Host, ModEntry, Registrar, RegistrationContext,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{
+    use sunrise_level::{
         chunk::Chunk,
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
     };

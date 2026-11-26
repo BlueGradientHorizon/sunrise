@@ -12,8 +12,8 @@
 use super::Game;
 use mod_api::{ItemCooldown, PlayerRef};
 use std::sync::Arc;
-use sunrise_client::cooldowns::Cooldowns;
-use sunrise_client::items::ItemStack;
+use sunrise_items::cooldowns::Cooldowns;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The cooldowns of `player`, where they are kept now: a guest's own
@@ -159,7 +159,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             .items()
             .get(&stack.item)
             .and_then(|info| info.use_cooldown.as_ref());
-        sunrise_client::cooldowns::group(stack, default).to_string()
+        sunrise_items::cooldowns::group(stack, default).to_string()
     }
 }
 
@@ -169,8 +169,8 @@ static EMPTY: std::sync::LazyLock<Cooldowns> = std::sync::LazyLock::new(Cooldown
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_warden_warning_cooldown_is_its_trackers_owners() {
-        use sunrise_client::sculk::WardenSpawnTracker;
+        use sunrise_level::sculk::WardenSpawnTracker;
         let tracker = |warning_level: i32| {
             Some(Tag::compound([(
                 "warden_spawn_tracker",

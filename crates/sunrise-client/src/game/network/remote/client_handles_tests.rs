@@ -28,7 +28,7 @@ fn client_handles_reach_a_custom_level() {
             "minecraft:dimension_type".into(),
             vec![(
                 "test:type".into(),
-                Some(sunrise_client::scoreboard::json_to_tag(&json)),
+                Some(sunrise_client_core::scoreboard::json_to_tag(&json)),
             )],
         );
         game.set_registries(Arc::new(registries));
@@ -88,7 +88,7 @@ fn client_handles_reach_a_custom_level() {
                 "minecraft:dimension_type".into(),
                 vec![(
                     "minecraft:the_nether".into(),
-                    Some(sunrise_client::scoreboard::json_to_tag(&invalid)),
+                    Some(sunrise_client_core::scoreboard::json_to_tag(&invalid)),
                 )],
             );
             game.set_registries(Arc::new(registries));
@@ -116,7 +116,7 @@ fn client_handles_reach_a_custom_level() {
                 "minecraft:dimension_type".into(),
                 vec![(
                     "minecraft:the_nether".into(),
-                    Some(sunrise_client::scoreboard::json_to_tag(&boundary)),
+                    Some(sunrise_client_core::scoreboard::json_to_tag(&boundary)),
                 )],
             );
             game.set_registries(Arc::new(registries));
@@ -139,7 +139,7 @@ fn client_handles_reach_a_custom_level() {
                 "minecraft:dimension_type".into(),
                 vec![(
                     "test:type".into(),
-                    Some(sunrise_client::scoreboard::json_to_tag(&legal)),
+                    Some(sunrise_client_core::scoreboard::json_to_tag(&legal)),
                 )],
             );
             game.set_registries(Arc::new(registries));
@@ -184,8 +184,8 @@ fn client_handle_reads_answer_from_the_clients_copy() {
         packets::play::{self, Clientbound as C, SpawnInfo},
     };
     use {
-        sunrise_client::chunk::Chunk, sunrise_client::level_loading::Reason,
-        sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand,
+        sunrise_client::level_loading::Reason, sunrise_level::chunk::Chunk,
+        sunrise_sim::first_person_sim::Hand, sunrise_sim::motion::PlayerMotion,
     };
 
     let mut untracked_out = None;

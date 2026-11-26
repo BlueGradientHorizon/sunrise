@@ -31,7 +31,7 @@ fn a_phantom_bite_level_event_plays_the_bite_at_0_3_volume() {
         assert_eq!(bite.pitch, pitch);
         assert_eq!(bite.position, [0.5, 64.5, 0.5]);
         assert_eq!(
-            sunrise_client::settings::SOUND_SOURCES[bite.source],
+            sunrise_level::sim_settings::SOUND_SOURCES[bite.source],
             "hostile"
         );
     });

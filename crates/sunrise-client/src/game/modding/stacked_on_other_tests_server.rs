@@ -7,19 +7,19 @@ use crate::game::stacked_on_other_tests::count;
 use crate::game::stacked_on_other_tests::dispatches;
 use crate::game::stacked_on_other_tests::script;
 use crate::game::stacked_on_other_tests::with_mod;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[test]
 #[ignore = "daily"]
 fn a_lan_hub_click_is_decided_the_same_way() {
-    use sunrise_client::lan::menu::Slots;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+    use sunrise_sim::lan::menu::Slots;
     with_mod(|| {
         with_guests(|game| {
             let pos = (1, 64, 1);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let stone = game
                 .pack
@@ -32,7 +32,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             let open = |game: &mut crate::game::ServerGame<'_>| {
                 game.world.block_entities.insert(
                     pos,
-                    sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+                    sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
                 );
                 let host = game.lan.as_mut().unwrap();
                 host.hub.open_container(

@@ -13,11 +13,11 @@ use super::{
     move_gate::MoveWho,
 };
 use crate::game::collision_source::Mover;
-use sunrise_client::collisions::{EntityCollisions, SceneCollisions, no_collision_empty};
-use sunrise_client::join_seq::JoinSeq;
-use sunrise_client::mobs::Species;
 use sunrise_core::geometry::{Aabb, Direction, Vec3, border::BorderGeometry};
 use sunrise_core::position::BlockPos;
+use sunrise_level::collisions::{EntityCollisions, SceneCollisions, no_collision_empty};
+use sunrise_sim::join_seq::JoinSeq;
+use sunrise_sim::mobs::Species;
 use sunrise_world::{
     block_collision_scan::BlockCollisionWorld, collision_context::CollisionContext,
     entity_move::MoverType, level::data::PushReaction, level::pistons::MovingPiston,
@@ -64,8 +64,8 @@ impl Lid {
 /// and in `World::moving_pistons`, taken before a tick's pushes.
 #[derive(Default)]
 pub(in crate::game) struct PistonIndex {
-    pub(in crate::game) ticked: sunrise_client::fast_hash::FxHashMap<BlockPos, usize>,
-    pub(in crate::game) drawn: sunrise_client::fast_hash::FxHashMap<[i32; 3], usize>,
+    pub(in crate::game) ticked: sunrise_level::fast_hash::FxHashMap<BlockPos, usize>,
+    pub(in crate::game) drawn: sunrise_level::fast_hash::FxHashMap<[i32; 3], usize>,
 }
 
 /// `Entity.getStepHeight` of each body, read before the push.
@@ -101,7 +101,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         mover: MoverType,
         movement: Vec3,
         auto_jump: bool,
-    ) -> sunrise_client::Result<Option<Vec3>> {
+    ) -> sunrise_client_core::Result<Option<Vec3>> {
         self.side_move_local_player(mover, movement, auto_jump)
     }
 
@@ -203,7 +203,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         target: MoveWho,
     ) -> Option<(
         CollisionContext<'_>,
-        sunrise_client::collisions::PowderSnowSubject<'_>,
+        sunrise_level::collisions::PowderSnowSubject<'_>,
     )> {
         match target {
             MoveWho::Entity(EntityHandle::Mob(i)) => {
@@ -314,7 +314,7 @@ pub(in crate::game) fn pushed_movement<W>(
     on_ground: bool,
     context: Option<CollisionContext<'_>>,
     entities: &[Aabb],
-) -> sunrise_client::Result<Vec3>
+) -> sunrise_client_core::Result<Vec3>
 where
     W: BlockCollisionWorld<Error = std::io::Error> + EntityMovementWorld<Error = std::io::Error>,
 {
@@ -322,7 +322,7 @@ where
     let context = context.unwrap_or_else(|| CollisionContext::position(before.min_position().y));
     let mut collisions = EntityCollisions::with_border(blocks, border, at);
     collisions.entities = entities;
-    sunrise_client::move_gate::entities_resolve_with_context(
+    sunrise_sim::move_gate::entities_resolve_with_context(
         gate,
         &mut collisions,
         before,
@@ -336,7 +336,7 @@ where
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::collisions::EmptyCollisions;
+    use sunrise_level::collisions::EmptyCollisions;
 
     /// A border 10 wide around the origin: its wall's inner face is at x = 5.
     fn border() -> BorderGeometry {

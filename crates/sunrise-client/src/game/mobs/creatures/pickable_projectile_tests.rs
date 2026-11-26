@@ -1,7 +1,7 @@
 use super::{pickable_projectile_hit, pickable_projectile_hitboxes};
-use sunrise_client::mobs::Who;
-use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld};
 
 /// Open air with nothing in it but `.0`.
 struct Open(Vec<(Who, Aabb)>);

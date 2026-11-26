@@ -6,14 +6,9 @@ use crate::game::client_side::remote_client::RemoteUseWorld;
 use crate::game::remote::Remote;
 use std::sync::Arc;
 #[allow(unused_imports)]
-use sunrise_client::{
-    items::ItemStack,
-    motion::{MotionWorld, PlayerMotion},
-    save::SaveDir,
-    sprint::Keys,
-};
-#[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
+#[allow(unused_imports)]
+use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
 use sunrise_protocol::packets::{
     Empty,
@@ -21,6 +16,12 @@ use sunrise_protocol::packets::{
 };
 #[allow(unused_imports)]
 use sunrise_sim::first_person_sim::Hand;
+#[allow(unused_imports)]
+use sunrise_sim::{
+    motion::{MotionWorld, PlayerMotion},
+    save::SaveDir,
+    sprint::Keys,
+};
 
 #[path = "general_server.rs"]
 pub(in crate::game) mod general;
@@ -52,7 +53,7 @@ pub(in crate::game) mod riptide_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     pub(in crate::game::server_side) use crate::game::remote::tests::connect_menu_test;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     pub(in crate::game) mod click_ending_tests {
         include!("click_ending_tests_server.rs");

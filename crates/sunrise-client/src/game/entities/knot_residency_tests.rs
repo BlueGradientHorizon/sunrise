@@ -1,7 +1,7 @@
 //! Natural knots use the same numbered owner journal as other entities.
 #![cfg(test)]
 use super::{Dim, commands::Target, native_entity_refs::tests::with_game};
-use sunrise_client::{join_seq::residency::table::EntityLookup, mobs::leash::Holder};
+use sunrise_sim::{join_seq::residency::table::EntityLookup, mobs::leash::Holder};
 
 fn tie_player_mob(game: &mut crate::game::ServerGame<'_>, fence: [i32; 3]) -> (u32, u32) {
     game.summon_with_nbt("minecraft:pig", fence.map(f64::from), "{}")

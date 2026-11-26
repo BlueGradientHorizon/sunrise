@@ -2,12 +2,7 @@
 //! `ClientboundLevelParticlesPacket` (`ServerLevel.sendParticles`, which
 //! `/particle` uses) and `ClientboundExplodePacket` (`ServerLevel.explode`).
 use super::{Game, explosion_settings::BlastEffects, lan::LanHost, level_sounds::LevelSound};
-use crate::lan::server_effects::{
-    ServerExplosion, ServerExplosionParticle, ServerParticle, ServerParticleData,
-    ServerQueuedParticle,
-};
 use mod_api::{SoundSource, client::particles::PositionSource};
-use sunrise_client::lan::{Body, containers::within_range, hub::Hub};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -19,6 +14,11 @@ use sunrise_protocol::{
     entity_data::{Particle, ParticleData, PositionSource as NetworkPositionSource},
     packets::play::{self, Clientbound as C},
 };
+use sunrise_sim::lan::server_effects::{
+    ServerExplosion, ServerExplosionParticle, ServerParticle, ServerParticleData,
+    ServerQueuedParticle,
+};
+use sunrise_sim::lan::{Body, containers::within_range, hub::Hub};
 use sunrise_world::registry::BlockStateId;
 
 /// Convert engine `ParticleOptions` (from `/particle` or native mod APIs) into a portable
@@ -774,16 +774,16 @@ pub(in crate::game::server_side) fn explosion_packet(
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::lan::{
+    use sunrise_core::random::LegacyRandom;
+    use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+    use sunrise_protocol::packets::play;
+    use sunrise_sim::lan::{
         Joined, Lan, NetConfig, Out, PlayerSender,
         chunks::ChunkEncoder,
         data,
         guest::Guest,
         hub::{Hub, HubConfig},
     };
-    use sunrise_core::random::LegacyRandom;
-    use sunrise_level::particle_options::{ParticleOptions, ParticleType};
-    use sunrise_protocol::packets::play;
 
     /// `PowderSnowBlock.entityInside`: vertical-only movement skips the roll;
     /// horizontal movement uses nextBoolean, then X and Z floats in order.
@@ -1043,7 +1043,7 @@ pub(in crate::game) mod tests {
         assert!(decode_mod_particle(name, &[1, 1, 0, 0, 0]).is_none());
         let decoded = decode_mod_particle(name, bytes).unwrap();
         assert_eq!(decoded.typed_particle, options.typed_particle);
-        let world = sunrise_client::world::World::new(BlockStateId(0), 1);
+        let world = sunrise_level::world::World::new(BlockStateId(0), 1);
         let mut engine = sunrise_client::particles::ParticleEngine::new(
             &Default::default(),
             &Default::default(),

@@ -3,8 +3,9 @@
 //! the first time the item is read (`RandomizableContainer.unpackLootTable`),
 //! and `DecoratedPotBlock.useItemOn` / `useWithoutItem`.
 use super::{Game, spill};
-use sunrise_client::{random_sequences::RandomSequences, save};
 use sunrise_core::random::LegacyRandom;
+use sunrise_items::random_sequences::RandomSequences;
+use sunrise_sim::save;
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::loot::{ContainerLootContext, LootData},
@@ -26,7 +27,7 @@ pub(in crate::game) fn unpack_loot(
     random: &mut LegacyRandom,
     sequences: &mut RandomSequences,
     world_seed: i64,
-    items: &crate::items::Items,
+    items: &sunrise_items::items::Items,
     context: ContainerLootContext<'_>,
 ) {
     let Tag::Compound(map) = tag else {
@@ -53,15 +54,15 @@ pub(in crate::game) fn unpack_loot(
         loot.fill_in(&table, random, 1, context)
     };
     if let Some(stack) = slots.into_iter().next().flatten() {
-        let item = sunrise_client::structure_blocks::loot_item_with_components(&stack);
+        let item = sunrise_sim::structure_blocks::loot_item_with_components(&stack);
         map.insert("item".into(), save::item_to_nbt(&item, items));
     }
 }
 
 /// [`Game::pot_data`] over the world and the block facts.
 pub(in crate::game) fn pot_data_in(
-    world: &sunrise_client::world::World,
-    facts: &sunrise_client::blocks::BlockFacts,
+    world: &sunrise_level::world::World,
+    facts: &sunrise_items::blocks::BlockFacts,
     pos: [i32; 3],
 ) -> Option<Tag> {
     let state = world.block(pos[0], pos[1], pos[2]);
@@ -76,7 +77,7 @@ pub(in crate::game) fn pot_data_in(
             ("z", Tag::Int(pos[2])),
         ])
     });
-    tag = sunrise_client::block_entity_nbt::canonical(&tag)?;
+    tag = sunrise_client_core::block_entity_nbt::canonical(&tag)?;
     if let Tag::Compound(map) = &mut tag {
         map.remove(&"keepPacked".into());
     }

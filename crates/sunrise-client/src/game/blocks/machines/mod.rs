@@ -23,16 +23,17 @@ use mod_api::{
     self, BlockSide, Capability, ENTITY_AUTOMATION, EntityRef, ItemResource, ResourceHandler,
 };
 use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
-use sunrise_client::{
-    Result,
-    containers::{BlockEntity, HOPPER_SLOTS, ModContainer},
+use sunrise_client_core::Result;
+use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
+use sunrise_items::{
     item_data::cooking_fuel,
     items::{ItemStack, Items},
-    mobs::Mob,
-    save,
+};
+use sunrise_level::{
+    containers::{BlockEntity, HOPPER_SLOTS, ModContainer},
     world::World,
 };
-use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
+use sunrise_sim::{mobs::Mob, save};
 use sunrise_world::{
     level::{Behaviours, LevelAccess},
     registry::BlockStateId,
@@ -62,7 +63,7 @@ pub(in crate::game) enum ContainerTarget<'a> {
 
 /// Wakes the sleeping hoppers whose suck area (`Hopper.SUCK_AABB`) `b` reaches.
 pub(in crate::game::server_side) fn wake_hoppers_reaching(
-    entities: &mut sunrise_client::block_entities::BlockEntities,
+    entities: &mut sunrise_level::block_entities::BlockEntities,
     b: sunrise_core::geometry::Aabb,
 ) {
     let (lo, hi) = (b.min_position(), b.max_position());
@@ -216,7 +217,7 @@ pub(in crate::game) struct Containers<'a> {
     pub(in crate::game) items: &'a Items,
     pub(in crate::game) registry: &'static sunrise_world::registry::BlockRegistry,
     /// Brewing recipes, for what a brewing stand accepts (not needed for signals).
-    pub(in crate::game) brewing: Option<&'a sunrise_client::brewing::Brewing>,
+    pub(in crate::game) brewing: Option<&'a sunrise_level::brewing::Brewing>,
     /// The level's mobs, for the cat half of `ChestBlock.isChestBlockedAt`.
     pub(in crate::game) mobs: &'a [Mob],
 }
@@ -235,7 +236,7 @@ pub(in crate::game) enum PlacementQuery<'a> {
 
 pub(in crate::game) struct PlacementEntity {
     pub(in crate::game) pos: Pos,
-    pub(in crate::game) revision: sunrise_client::chunk::block_entity::ModRevision,
+    pub(in crate::game) revision: sunrise_level::chunk::block_entity::ModRevision,
     pub(in crate::game) snapshot: PlacementSnapshot,
 }
 
@@ -268,7 +269,7 @@ impl PlacementAttempt {
         &mut self,
         world: &World,
         pos: Pos,
-        entity: &sunrise_client::containers::ModBlockEntity,
+        entity: &sunrise_level::containers::ModBlockEntity,
         slot: usize,
         stack: &ItemStack,
     ) -> Option<bool> {
@@ -439,7 +440,7 @@ impl Containers<'_> {
             (_, n) if is_shulker_box(n) => Kind::Shulker,
             _ => Kind::Generic,
         };
-        if sunrise_client::containers::is_chest_block(name) {
+        if sunrise_level::containers::is_chest_block(name) {
             let is_blocked = |p: Pos| {
                 let above = self.world.block(p.0, p.1 + 1, p.2);
                 self.behaviours.facts(above).flags
@@ -451,7 +452,7 @@ impl Containers<'_> {
                 return None;
             }
             let half = |s: BlockStateId| {
-                Some(sunrise_client::containers::ChestHalf {
+                Some(sunrise_level::containers::ChestHalf {
                     block: self.name(s),
                     kind: self.prop(s, "type")?,
                     facing: self.prop(s, "facing")?,
@@ -589,7 +590,7 @@ impl Containers<'_> {
                 .is_some_and(|m| m.contains(&*stack.item)),
             // BrewingStandBlockEntity.canPlaceItem
             Kind::Brewing => match slot {
-                4 => sunrise_client::brewing::brewing_fuel(self.items, stack).is_some(),
+                4 => sunrise_level::brewing::brewing_fuel(self.items, stack).is_some(),
                 3 => self.brewing.is_some_and(|b| b.is_reagent(stack)),
                 _ => {
                     self.brewing.is_some_and(|b| b.is_bottle(stack))
@@ -644,7 +645,7 @@ impl Containers<'_> {
                 .then_some(true),
             };
             return answer.unwrap_or_else(|| {
-                sunrise_client::containers::mod_container_insert_allowed(
+                sunrise_level::containers::mod_container_insert_allowed(
                     container
                         .insert_rules
                         .get(slot)
@@ -1117,7 +1118,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && let Some((pos, 0)) = view.locate(slot)
             && let Some(BlockEntity::Furnace(furnace)) = self.world.block_entities.get_mut(&pos)
         {
-            use sunrise_client::furnace::FurnaceCooking;
+            use sunrise_sim::furnace::FurnaceCooking;
             let input = furnace.items[0].take();
             furnace.set_input(&self.loop_context, recipes, input);
         }
@@ -1230,7 +1231,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.mark_block_entity_updated(pos);
     }
     pub(in crate::game::server_side) fn set_pot_slot(
-        items: &sunrise_client::items::Items,
+        items: &sunrise_items::items::Items,
         tag: &mut Tag,
         item: Option<ItemStack>,
     ) {
@@ -1279,7 +1280,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         state.cooldown = 0;
         // Most ticks only advance the cooldown: the block is checked when the
         // hopper is about to move, not on every tick it waits.
-        let hopper = sunrise_client::block_entity_types::factory_block(
+        let hopper = sunrise_client_core::block_entity_types::factory_block(
             &self
                 .res
                 .facts()
@@ -1469,7 +1470,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
                     for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
                         let state = self.world.block(x, y, z);
-                        if sunrise_client::block_entity_types::factory_block(
+                        if sunrise_client_core::block_entity_types::factory_block(
                             &self.res.facts().get(state).name,
                         ) != "minecraft:hopper"
                         {
@@ -2409,7 +2410,7 @@ pub(in crate::game) mod brewing_fuel_transfer_tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::HostTransaction;
-    use sunrise_client::brewing::BrewingStand;
+    use sunrise_level::brewing::BrewingStand;
 
     struct PrepareProbe {
         calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -2459,7 +2460,7 @@ pub(in crate::game) mod brewing_fuel_transfer_tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let pos = (8, 64, 8);
                 let state = game
@@ -2519,7 +2520,7 @@ pub(in crate::game) mod brewing_fuel_transfer_tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let hopper_pos = (8, 64, 8);
             let stand_pos = (9, 64, 8);
@@ -2594,8 +2595,8 @@ pub(in crate::game) mod brewing_fuel_transfer_tests {
 pub(in crate::game) mod furnace_fuel_transfer_tests {
     use super::*;
     use crate::game::{game_tests::tests::server_game, native_entity_refs::tests::run_fresh_cases};
-    use sunrise_client::containers::{Furnace, FurnaceKind};
-    use sunrise_client::item_data::parse_stack;
+    use sunrise_items::item_data::parse_stack;
+    use sunrise_level::containers::{Furnace, FurnaceKind};
 
     #[test]
     #[ignore = "daily"]
@@ -2705,8 +2706,9 @@ pub(in crate::game) mod furnace_fuel_transfer_tests {
 #[cfg(test)]
 pub(in crate::game) mod item_column_tests {
     use super::ItemColumns;
-    use sunrise_client::{entities::ItemEntity, items::ItemStack};
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::entities::ItemEntity;
 
     fn item(id: u32, x: f64, y: f64, z: f64) -> ItemEntity {
         let at = Vec3::new(x, y, z);
@@ -2760,7 +2762,7 @@ pub(in crate::game) mod item_column_tests {
     /// length and last id; the stamped columns still see where it went.
     #[test]
     fn a_moved_item_is_seen_where_it_went() {
-        let mut items = sunrise_client::join_seq::JoinList::<_, true>::from_iter([
+        let mut items = sunrise_sim::join_seq::JoinList::<_, true>::from_iter([
             item(1, 0.5, 64.0, 0.5),
             item(2, 40.5, 64.0, 40.5),
         ]);
@@ -2873,8 +2875,8 @@ pub(in crate::game) mod item_column_tests {
 pub(in crate::game) mod mod_container_tests {
     use super::{Kind, ModContainer, View, room};
     use std::sync::Arc;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::geometry::Direction;
+    use sunrise_items::items::ItemStack;
 
     /// A mod's container reaches the slots its block names for each face;
     /// without a face, every slot.
@@ -2951,7 +2953,8 @@ pub(in crate::game) mod mod_container_tests {
 pub(in crate::game) mod capacity_tests {
     use super::{Containers, Kind, View};
     use std::collections::HashSet;
-    use sunrise_client::{brewing::Brewing, containers::BlockEntity, items::ItemStack};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::{brewing::Brewing, containers::BlockEntity};
 
     /// A one-item slot answers its capacity as if empty (NeoForge's `getCapacityAsLong`), so a
     /// write may swap what it holds, while it takes nothing more now: a jukebox's disc, a
@@ -2964,13 +2967,13 @@ pub(in crate::game) mod capacity_tests {
         if !root.join("block-behaviours.json").exists() {
             return;
         }
-        let assets = sunrise_client::assets::Assets::load(&root).unwrap();
+        let assets = sunrise_level::assets::Assets::load(&root).unwrap();
         let registry = assets.registry;
-        let facts = sunrise_client::blocks::BlockFacts::load(&root, registry).unwrap();
+        let facts = sunrise_items::blocks::BlockFacts::load(&root, registry).unwrap();
         let overlay = &sunrise_world::loot::PackOverlay::NONE;
         let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-        let items = sunrise_client::items::Items::load(&root, registry, &facts, overlay, &defaults)
-            .unwrap();
+        let items =
+            sunrise_items::items::Items::load(&root, registry, &facts, overlay, &defaults).unwrap();
         let behaviours = sunrise_world::level::Behaviours::load(registry, &root).unwrap();
         let brewing = Brewing {
             recipes: Vec::new(),
@@ -2978,7 +2981,7 @@ pub(in crate::game) mod capacity_tests {
             inputs: HashSet::from(["minecraft:potion".to_owned()]),
         };
         let air = registry.default_state("minecraft:air").unwrap();
-        let mut world = sunrise_client::world::World::new(air, 0);
+        let mut world = sunrise_level::world::World::new(air, 0);
         let cases = [
             (
                 "minecraft:jukebox",
@@ -3038,10 +3041,10 @@ pub(in crate::game) mod part_front_tests {
     use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
     use mod_api::BlockUpdateFlags;
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::containers::BlockEntity;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::position::BlockPos;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_level::containers::BlockEntity;
 
     fn stack(item: &str, count: u32) -> ItemStack {
         ItemStack {
@@ -3289,15 +3292,16 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
         native_entity_refs::tests::with_game,
     };
 
-    use sunrise_client::{containers::BlockEntity, items::ItemStack};
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::BlockEntity;
 
     #[test]
     #[ignore = "daily"]
     fn chest_boat_automation_does_not_award_player_loot() {
         use std::sync::Arc;
-        use sunrise_client::advancements::Tree;
+        use sunrise_sim::advancements::Tree;
         use sunrise_world::loot::PackOverlay;
 
         crate::game::native_guest_turn_tests::with_guests(|game| {
@@ -3443,7 +3447,7 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.side.streaming.forced.insert((0, 0));
             let rail = game
@@ -3508,8 +3512,8 @@ pub(in crate::game) mod hopper_cart_transfer_tests {
 pub(in crate::game) mod pot_hopper_insertion_tests {
     use super::*;
     use crate::game::{game_tests::tests::server_game, spill};
-    use sunrise_client::save;
     use sunrise_core::nbt::Tag;
+    use sunrise_sim::save;
 
     fn count(game: &crate::game::ServerGame<'_>, pos: Pos, slot: usize) -> u32 {
         let Some(BlockEntity::Chest(slots)) = game.world.block_entities.get(&pos) else {
@@ -3747,7 +3751,7 @@ pub(in crate::game) mod tests {
                 let mut game = server_game(&mut resources);
                 game.build_registries();
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::new(8.5, 65.0, 8.5),
                     )
@@ -3827,7 +3831,7 @@ pub(in crate::game) mod machines_chest_cat_tests;
 pub(in crate::game) mod can_take_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
-    use sunrise_client::containers::ChiseledBookshelf;
+    use sunrise_level::containers::ChiseledBookshelf;
 
     /// `ChiseledBookShelfBlockEntity.canTakeItem`: a hopper takes a book only
     /// when it has a free slot or a matching stack with room.

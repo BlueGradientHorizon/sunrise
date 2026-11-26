@@ -4,19 +4,19 @@
 use super::Game;
 use super::entity::{Blast, Entity as _, for_each_entity_mut};
 use std::collections::BTreeSet;
-use sunrise_client::advancements::EntityView;
-use sunrise_client::chunk::LevelShape;
-use sunrise_client::join_seq::Joined as _;
-use sunrise_client::{
-    Result,
-    items::ItemStack,
-    mobs::{Damage, DamageKind, Species, Who},
-    projectiles::{Hit, Projectile, ProjectileKind},
-};
+use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
+};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::LevelShape;
+use sunrise_sim::advancements::EntityView;
+use sunrise_sim::join_seq::Joined as _;
+use sunrise_sim::{
+    mobs::{Damage, DamageKind, Species, Who},
+    projectiles::{Hit, Projectile, ProjectileKind},
 };
 use sunrise_world::level::{PlayerContext, classes::Class};
 
@@ -178,7 +178,7 @@ pub(in crate::game::server_side) fn push_waits_for_tick<T: PartialOrd>(
 pub(in crate::game::server_side) fn reverse(p: &mut Projectile) {
     let owner = (p.owner, p.owner_uuid, p.guest);
     p.deflect(
-        sunrise_client::projectiles::Turn::Reverse,
+        sunrise_sim::projectiles::Turn::Reverse,
         [1.0; 3],
         owner,
         false,
@@ -397,7 +397,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         1.0,
                         owner,
                         p.guest,
-                        sunrise_client::mobs::DamageKind::WindCharge,
+                        sunrise_sim::mobs::DamageKind::WindCharge,
                         Some("minecraft:wind_charge"),
                         Some(super::dragon::DirectHit::from_projectile(p)),
                     );
@@ -429,7 +429,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Breeze.isInvulnerableTo: its own kind's charges. A refused hit does
                 // not get kill credit, but `wind_charge_hit` still makes the burst.
                 if (owner_breeze && m.species() == Species::Breeze)
-                    || sunrise_client::mobs::wither::armor_refuses(m, &p.kind)
+                    || sunrise_sim::mobs::wither::armor_refuses(m, &p.kind)
                 {
                     return;
                 }
@@ -549,7 +549,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING);
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
         let diameter = f64::from(radius * 2.0);
         let distance = |p: [f64; 3]| {
             ((p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2))
@@ -600,7 +600,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && !self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: !blocklike,
             spared: None,
         };
@@ -784,7 +784,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         // ServerExplosion.explode: the blast is heard first.
-        let ctx = sunrise_client::sculk::Context::default();
+        let ctx = sunrise_level::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
         let mut targets = self.wind_positions(center, radius);
         let pushed = self.wind_knockback(center, radius, multiplier, src, &targets);
@@ -795,7 +795,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
         {
             // Util.shuffle(list, level.random)
             for i in (2..=targets.len()).rev() {
@@ -850,7 +850,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
         {
             return Ok(());
         }
@@ -1006,8 +1006,9 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_wind_push_waits_for_fresh_tnt_even_after_a_later_orb_ticked() {
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, join_seq::JoinSeq};
         use sunrise_core::position::ChunkPos;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::join_seq::JoinSeq;
 
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();

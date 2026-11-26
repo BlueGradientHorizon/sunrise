@@ -15,14 +15,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
-use sunrise_client::{
+use sunrise_client::streaming::ViewedMeshing;
+use sunrise_level::chunk_streamer::take_resent_column;
+use sunrise_level::{
     chunk::known_block_state,
     chunk_map::ChunkMap,
     fast_hash::{FxHashMap, FxHashSet},
-    streaming::ViewedMeshing,
     world::World,
 };
-use sunrise_level::chunk_streamer::take_resent_column;
 use sunrise_protocol::{
     chunk::BlockEntityInfo,
     connection_groups::Section,
@@ -135,7 +135,7 @@ impl ViewedWorld {
             C::LightUpdate(p) => {
                 let layers = self.format.light(&p.light);
                 if let Some(chunk) = self.world.chunks.get_mut(&(p.x, p.z)) {
-                    sunrise_client::light::update_light_layers(
+                    sunrise_level::light::update_light_layers(
                         Arc::make_mut(chunk),
                         &layers,
                         self.format.has_skylight,
@@ -428,7 +428,7 @@ impl ViewedWorlds {
 fn free(mut world: ViewedWorld) {
     let chunks = detach_columns_for_free(&mut world);
     let count = chunks.len();
-    sunrise_client::chunk::free_columns(chunks, count);
+    sunrise_level::chunk::free_columns(chunks, count);
 }
 
 fn detach_columns_for_free(world: &mut ViewedWorld) -> ChunkMap {
@@ -478,7 +478,7 @@ mod tests {
 
     #[test]
     fn detaching_a_large_viewed_level_refunds_group_credit_before_its_columns_drop() {
-        use sunrise_client::{chunk::Chunk, chunk_map::ConnectionGroupCount};
+        use sunrise_level::{chunk::Chunk, chunk_map::ConnectionGroupCount};
 
         const LIMIT: usize = 1;
         let format = Arc::new(ChunkFormat::new(

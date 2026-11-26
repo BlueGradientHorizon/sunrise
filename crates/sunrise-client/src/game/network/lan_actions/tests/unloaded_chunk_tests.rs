@@ -1,5 +1,5 @@
 use super::touching_unloaded_chunk;
-use sunrise_client::pose::Dimensions;
+use sunrise_sim::pose::Dimensions;
 
 /// `Entity.touchingUnloadedChunk` (#11312): the box inflated by one block
 /// is checked chunk by chunk; a player in the middle of a loaded chunk

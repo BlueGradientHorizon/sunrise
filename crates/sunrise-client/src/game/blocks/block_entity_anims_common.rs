@@ -1,8 +1,9 @@
 //! Role-neutral block-entity animation events, ownership tracking, and state reads.
 use super::Game;
-use sunrise_client::{block_entities::Pos, containers::BlockEntity, save::number};
 use sunrise_core::nbt::Tag;
 use sunrise_level::block_entity_ticks::EndGateway;
+use sunrise_level::{block_entities::Pos, containers::BlockEntity};
+use sunrise_sim::save::number;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// End gateway at `pos`: live `Age`, saved update tag, or a fresh gateway.

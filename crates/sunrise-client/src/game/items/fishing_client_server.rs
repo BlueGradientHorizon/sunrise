@@ -11,9 +11,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         speed: f64,
         count: u32,
     ) {
-        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+        self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
-            particle: crate::lan::server_effects::ServerParticle::simple(kind),
+            particle: sunrise_sim::lan::server_effects::ServerParticle::simple(kind),
             at,
             spread,
             speed: [speed; 3],

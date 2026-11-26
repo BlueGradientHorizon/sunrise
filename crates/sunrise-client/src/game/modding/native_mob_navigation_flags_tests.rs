@@ -1,7 +1,7 @@
 use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 use mod_api::{EntityRef, MobRef, WorldEpoch};
-use sunrise_client::mobs::{Mob, nav::NavKind};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{Mob, nav::NavKind};
 
 fn zombie(game: &mut crate::game::ServerGame<'_>) -> MobRef {
     let kind = game
@@ -27,7 +27,7 @@ fn refused(game: &mut crate::game::ServerGame<'_>, mob: MobRef) {
 fn navigation_flags_literal_values_and_current_path_unchanged() {
     with_game(|game| {
         let mob = zombie(game);
-        use sunrise_client::mobs::path::{Path, PathNode, PathType};
+        use sunrise_sim::mobs::path::{Path, PathNode, PathType};
         let path = Path {
             nodes: vec![
                 PathNode {
@@ -81,7 +81,7 @@ fn navigation_flags_refuse_held_out_of_level() {
         let held = game.mobs.lift();
         refused(game, mob);
         game.mobs
-            .restore(held, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(held, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     });
 }
 #[test]
@@ -123,7 +123,7 @@ fn path_to_exact_goal(game: &mut crate::game::ServerGame<'_>, id: u32) -> bool {
         mobs[index].nav_move_to_path(&world, path, 1.0)
     };
     game.mobs
-        .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+        .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     started
 }
 
@@ -133,11 +133,9 @@ fn navigation_flags_closed_door_path_reaches_goal_only_when_passable() {
     for passable in [true, false] {
         with_game(|game| {
             use std::sync::Arc;
-            use sunrise_client::{
-                chunk::Chunk,
-                mobs::{doors::BreakDoor, goals::GoalSelector},
-            };
             use sunrise_core::position::ChunkPos;
+            use sunrise_level::chunk::Chunk;
+            use sunrise_sim::mobs::{doors::BreakDoor, goals::GoalSelector};
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

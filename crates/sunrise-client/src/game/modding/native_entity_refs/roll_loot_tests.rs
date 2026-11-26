@@ -5,13 +5,14 @@
 use crate::game::{Options, Progress, Settings, execution_role, functions, load_resources};
 use mod_api::{Authority, LevelRef};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::{
     geometry::Vec3,
     position::ChunkPos,
     random::{LegacyRandom, RandomSource as _},
 };
 use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 /// A weighted pool rolled 1 to 3 times (flint 6, iron nuggets 3 with a binomial
 /// count that may be 0, a gold nugget 1); a pool behind a 30% chance whose
@@ -163,7 +164,7 @@ fn command_roll(game: &mut crate::game::ServerGame<'_>, table: &str, tool: &str)
         .take()
         .unwrap_or_default()
         .iter()
-        .map(sunrise_client::text::Text::plain)
+        .map(sunrise_client_core::text::Text::plain)
         .collect();
     assert!(ok, "{said:?}");
     lines(game.inventory.iter().take(36).flatten())

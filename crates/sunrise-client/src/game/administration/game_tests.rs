@@ -21,15 +21,15 @@ use super::{
     test_instances::TestDef,
 };
 use std::time::Instant;
-use sunrise_client::{
-    containers::BlockEntity,
-    lan::data::component_nbt,
-    test_block::TestBlockMode,
-    test_instance_block::{ErrorMarker, Status, TestInstanceBlock},
-    text::{self, Text},
-};
+use sunrise_client_core::text::{self, Text};
 use sunrise_core::bounding_box::BoundingBox;
 pub(in crate::game) use sunrise_gameplay::game_tests::{Retry, TestError, number};
+use sunrise_level::{
+    containers::BlockEntity,
+    test_block::TestBlockMode,
+    test_instance_block::{ErrorMarker, Status, TestInstanceBlock},
+};
+use sunrise_sim::lan::data::component_nbt;
 use sunrise_world::{
     level::flags,
     worldgen::structure::{Mirror, Rotation, StructureTemplate},
@@ -431,7 +431,7 @@ fn summary_line(context: Option<SummarySource>, text: Text, broadcast: bool) -> 
 /// `ComponentUtils.wrapInSquareBrackets` for the summary's coordinate links.
 /// The locate/pos link helpers have their own existing representation.
 fn summary_coordinates(key: &str, at: [i32; 3], dim: Dim, rotation: [i32; 2], color: u32) -> Text {
-    use sunrise_client::text::{ClickEvent, Style};
+    use sunrise_client_core::text::{ClickEvent, Style};
     let mut args: Vec<_> = at.into_iter().map(number).collect();
     args.push(Text::literal(dim.id().split_once(':').unwrap().1));
     Text::translate("chat.square_brackets", &[Text::translate(key, &args)]).with_style(&Style {
@@ -1687,7 +1687,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) struct Published(Option<Vec<String>>);
     impl Drop for Published {
         fn drop(&mut self) {
-            sunrise_client::save::level_mods::set_block_namespaces(self.0.take());
+            sunrise_sim::save::level_mods::set_block_namespaces(self.0.take());
         }
     }
 
@@ -1698,7 +1698,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn isolated_server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> (Published, crate::game::ServerGame<'a>) {
-        let published = Published(sunrise_client::save::level_mods::block_namespaces());
+        let published = Published(sunrise_sim::save::level_mods::block_namespaces());
         (published, build_server_game(resources, true))
     }
 
@@ -1757,7 +1757,7 @@ pub(in crate::game) mod tests {
         // resident column without starting terrain generation.
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         game
     }
@@ -1878,8 +1878,9 @@ pub(in crate::game) mod tests {
 mod completed_test_coordinate_feedback_tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]
@@ -2060,7 +2061,7 @@ mod registered_game_test_tests {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let stone = game
                 .pack
                 .assets

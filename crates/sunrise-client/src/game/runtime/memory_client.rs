@@ -3,7 +3,7 @@ use super::owner_link::{ControlRequest, OwnerRequest};
 use crate::game::memory_common::*;
 use serde_json::Value;
 use std::sync::atomic::Ordering;
-use sunrise_client::server_perf::MemoryCost;
+use sunrise_sim::server_perf::MemoryCost;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_memory_inputs(&self) -> MemoryInputs {

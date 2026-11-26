@@ -3,8 +3,8 @@
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{AccountProfileProperty, Hooks, ModEntry, PlayerLoginProfileEvent, ServerHost};
 use std::sync::mpsc::sync_channel;
-use sunrise_client::lan::login_profile::LoginProfileRequest;
 use sunrise_core::profile::AccountProperty;
+use sunrise_sim::lan::login_profile::LoginProfileRequest;
 
 /// Replaces the textures with its own, and adds one property per name it is given.
 struct Skin(usize);

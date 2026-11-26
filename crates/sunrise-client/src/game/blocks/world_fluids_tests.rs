@@ -4,7 +4,7 @@
 use crate::game::{dispense_fixture, native_entity_refs::tests::with_game};
 use mod_api::{FluidStack, HostTransaction, LevelRef, ServerHost, TransactionError};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, containers::BlockEntity};
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 use sunrise_world::registry::BlockStateId;
 
 const AT: [i32; 3] = [2, 65, 2];
@@ -221,8 +221,8 @@ impl mod_api::Hooks for SeenBlocks {
 #[test]
 #[ignore = "daily"]
 fn a_drop_listener_sees_the_old_block_and_an_abort_undoes_the_loot_it_unpacked() {
-    use sunrise_client::chunk::PendingContainerLoot;
     use sunrise_core::nbt::Tag;
+    use sunrise_level::chunk::PendingContainerLoot;
     let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "seen_blocks",
@@ -246,7 +246,7 @@ fn a_drop_listener_sees_the_old_block_and_an_abort_undoes_the_loot_it_unpacked()
             };
             game.world.set_block_entity_extras(
                 pos,
-                sunrise_client::world::BlockEntityExtras {
+                sunrise_level::world::BlockEntityExtras {
                     source: None,
                     pending_loot: Some(loot),
                 },
@@ -421,7 +421,7 @@ fn journalled_removal_keeps_fluid_and_restores_a_block_entity_on_abort() {
         let water = state(game, "minecraft:water");
         let [x, y, z] = AT;
         let pos = (x, y, z);
-        let stack = sunrise_client::items::ItemStack::new("minecraft:diamond", 3);
+        let stack = sunrise_items::items::ItemStack::new("minecraft:diamond", 3);
         let mut slots = vec![None; 27];
         slots[0] = Some(stack.clone());
         game.world.set(x, y, z, chest).unwrap();
@@ -520,7 +520,7 @@ fn journal_level_host_retains_neighbour_updates_from_earlier_writes() {
 fn staged_copper_chest_weathering_keeps_its_inventory() {
     use crate::game::journal_level_write::JournalLevelWrite;
     use mod_api::{LevelHost, LevelWriteHost};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
     with_level(|game, level| {
         let copper = state(game, "minecraft:copper_chest");
         let exposed = state(game, "minecraft:exposed_copper_chest");
@@ -643,8 +643,7 @@ fn liquid_part_accepts_nonwater_from_bucket_and_predicts_the_same_target() {
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_world::{fluid::FluidKind, level::BucketContent};
     with_liquid_part(|game, _, calls| {
-        let mut player =
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+        let mut player = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
         player.entity_id = 77;
         game.player = Some(player);
         let hit = Hit {
@@ -678,7 +677,7 @@ fn liquid_part_accepts_nonwater_from_bucket_and_predicts_the_same_target() {
 fn dispenser_uses_the_liquid_part_with_no_user() {
     use sunrise_core::geometry::Direction;
     with_liquid_part(|game, _, calls| {
-        let stack = sunrise_client::items::ItemStack::new("minecraft:lava_bucket", 1);
+        let stack = sunrise_items::items::ItemStack::new("minecraft:lava_bucket", 1);
         let (remainder, _) = game
             .dispense_filled_bucket((2, 65, 1), Direction::South, stack)
             .unwrap();
@@ -809,8 +808,10 @@ fn declining_liquid_part_writes_never_reach_the_next_part_or_commit() {
 #[test]
 #[ignore = "daily"]
 fn liquid_hosts_read_the_same_comparator_signal_without_unpacking_loot() {
-    use sunrise_client::{items::ItemStack, save::PendingContainerLoot, world::BlockEntityExtras};
     use sunrise_core::{geometry::Direction, nbt::Tag};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::world::BlockEntityExtras;
+    use sunrise_sim::save::PendingContainerLoot;
     with_liquid_part(|game, level, calls| {
         *calls.signals.lock().unwrap() = Some(Vec::new());
         let chest = state(game, "minecraft:chest");

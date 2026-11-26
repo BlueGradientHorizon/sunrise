@@ -26,7 +26,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let unloading: Vec<([i32; 3], BlockEntityRef, ModBlockEntity)> = block_entities
             .mods_in(chunk)
             .filter_map(|&(x, y, z)| {
-                let sunrise_client::containers::BlockEntity::Mod(entity) =
+                let sunrise_level::containers::BlockEntity::Mod(entity) =
                     block_entities.get(&(x, y, z))?
                 else {
                     return None;

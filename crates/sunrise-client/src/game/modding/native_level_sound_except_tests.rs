@@ -4,8 +4,8 @@
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, SoundSource};
 use std::sync::{Arc, mpsc};
-use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+use sunrise_sim::lan::{Out, PlayerSender};
 
 pub(in crate::game) fn decode_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
     rx.try_iter()
@@ -235,7 +235,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
     in_isolated_process(
         "entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactions",
         || {
-            use sunrise_client::gamerules::Value;
+            use sunrise_client_core::gamerules::Value;
             use sunrise_core::random::{LegacyRandom, RandomSource};
             use {
                 sunrise_level::particle_options::ParticleOptions,
@@ -260,7 +260,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 let at = [3.0, 64.0, 5.0];
                 let pos = [3, 64, 5];
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
                     )
@@ -634,8 +634,8 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
         || {
             use mod_api::{EquipmentSlot, Flow, HostSide, HostTransaction, LivingRef};
             use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-            use sunrise_client::gamerules::Value;
-            use sunrise_client::items::ItemStack;
+            use sunrise_client_core::gamerules::Value;
+            use sunrise_items::items::ItemStack;
             use {
                 sunrise_level::particle_options::ParticleOptions,
                 sunrise_level::particle_options::ParticleType,
@@ -1512,7 +1512,7 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
             use super::api_values::TryIntoApi;
             use mod_api::{BlockUpdateFlags, Flow, HostSide};
             use std::sync::atomic::{AtomicUsize, Ordering};
-            use sunrise_client::chunk::Chunk;
+            use sunrise_level::chunk::Chunk;
 
             struct NetherBlockHook {
                 pos: [i32; 3],
@@ -1788,7 +1788,7 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                         g.world.set(pos[0], pos[1], pos[2], netherrack).unwrap();
                     })
                     .unwrap();
-                    let stack = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+                    let stack = sunrise_items::items::ItemStack::new("minecraft:stone", 1);
                     game.spawn_item(stack, at, [0.0; 3], 10);
                     let entity = game.entity(game.dropped.last().unwrap().id).unwrap();
                     let item = game.item_entity(entity).unwrap();
@@ -2287,8 +2287,8 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
             use mod_api::{Flow, HostSide, ItemPlace, ItemResource, LivingRef, ServerHost};
             use std::sync::Mutex;
             use std::sync::atomic::{AtomicUsize, Ordering};
-            use sunrise_client::items::ItemStack;
             use sunrise_core::nbt::{Compound, Tag};
+            use sunrise_items::items::ItemStack;
             use sunrise_mod_runtime::attachments::{
                 AttachmentCodec, AttachmentError, AttachmentType, Holder,
             };

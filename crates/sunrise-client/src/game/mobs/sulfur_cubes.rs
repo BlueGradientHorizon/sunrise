@@ -3,13 +3,13 @@
 //! out, lighting an explosive one, swallowing blocks from the ground and
 //! splitting into two babies.
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
+use sunrise_client_core::text::Text;
+use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     mobs::{Species, Who, sulfur_cube},
     projectiles::Projectile,
-    text::Text,
 };
-use sunrise_core::position::BlockPos;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Spit the swallowed block out on top (`EntityAttachment.PASSENGER`).
@@ -38,13 +38,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if m.is_baby() {
             // Slime balls grow a baby up by a tenth (`canAgeUp`: not while an
             // age lock holds it).
-            if !m.kind.food.iter().any(|f| f == item) || !sunrise_client::mobs::ai::can_age_up(m) {
+            if !m.kind.food.iter().any(|f| f == item) || !sunrise_sim::mobs::ai::can_age_up(m) {
                 return false;
             }
             let m = &mut self.mobs[index];
             let secs = (-m.extra.age / 20) as f32 * 0.1;
             // AgeableMob.ageUp: a grown cube is size 2 (SulfurCube.ageBoundaryReached).
-            sunrise_client::mobs::ai::age_up(m, secs as i32, false);
+            sunrise_sim::mobs::ai::age_up(m, secs as i32, false);
             self.consume_held();
             self.sulfur_sound(index, "entity.small_sulfur_cube.eat");
             return true;
@@ -57,7 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
             {
                 let message = Text::translate("block.minecraft.tnt.disabled", &[]);
                 self.server_send_overlay_message(message);
@@ -128,7 +128,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.server_play_sound("minecraft:item.bucket.fill_sulfur_cube", at, 1.0, 1.0);
         // getBucketItemStack, then saveToBucketTag.
         let mut filled = ItemStack::new("minecraft:sulfur_cube_bucket", 1);
-        filled.extra = Some(Box::new(sunrise_client::entity_nbt::bucket_components(
+        filled.extra = Some(Box::new(sunrise_sim::entity_nbt::bucket_components(
             &self.mobs[index],
         )));
         self.trigger_item("minecraft:filled_bucket", &filled);
@@ -170,7 +170,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
         {
             return;
         }
@@ -210,7 +210,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
         {
             return;
         }
@@ -227,7 +227,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
             if m.species() != Species::SulfurCube || !self.creatures.ticked.contains(&m.id) {
@@ -312,7 +312,7 @@ pub(in crate::game) mod off_level_tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let power = game
                 .pack
@@ -328,7 +328,7 @@ pub(in crate::game) mod off_level_tests {
                 .clone();
             for (id, x, mount) in [(73, 1, Some(72)), (74, 4, None)] {
                 game.world.set(x, 79, 1, power).unwrap();
-                let mut m = sunrise_client::mobs::Mob::new(
+                let mut m = sunrise_sim::mobs::Mob::new(
                     id,
                     kind.clone(),
                     Vec3::new(f64::from(x), 80.0, 1.0),
@@ -340,7 +340,7 @@ pub(in crate::game) mod off_level_tests {
                 m.extra.mount = mount;
                 game.mobs.push(m);
             }
-            let ghost = sunrise_client::mobs::Mob::new(72, kind, Vec3::ZERO, 0.0);
+            let ghost = sunrise_sim::mobs::Mob::new(72, kind, Vec3::ZERO, 0.0);
             game.persist
                 .off_level
                 .insert(72, crate::game::persist::OffLevel::Mob(ghost));

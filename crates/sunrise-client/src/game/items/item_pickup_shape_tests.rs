@@ -3,12 +3,12 @@ use super::*;
 use mod_api::{Flow, Hooks, ItemPickedUpEvent, ModEntry, ServerHost};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
-use sunrise_client::join_seq::{
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::join_seq::{
     Joined as _,
     residency::{Journal, Kind, Owner, table::EntityTable},
 };
-use sunrise_client::motion::PlayerMotion;
-use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 
 /// What `item_picked_up_post` heard: the original count and what remained.
 type Posts = Arc<Mutex<Vec<(u32, Option<u32>)>>>;
@@ -93,7 +93,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                     .fill(Some(ItemStack::new("minecraft:stone", 64)));
                 game.offhand = Some(ItemStack::new("minecraft:stone", 64));
                 game.inventory[0] = Some(ItemStack::new("minecraft:apple", 62));
-                let uuid = sunrise_client::lan::playerdata::uuid_ints(7);
+                let uuid = sunrise_sim::lan::playerdata::uuid_ints(7);
                 game.level.player_uuid = Some(uuid);
                 game.side.lan_acting_uuid = Some(7);
                 game.side.lan_acting_name = Some("pickup_test".into());
@@ -101,9 +101,8 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                 let data = scratch.join("data/pickup_test/advancement");
                 std::fs::create_dir_all(&data).unwrap();
                 std::fs::write(data.join("pickup.json"), br#"{"criteria":{"take":{"trigger":"minecraft:thrown_item_picked_up_by_player"}}}"#).unwrap();
-                game.adv.tree = Arc::new(sunrise_client::advancements::Tree::load(
-                    &scratch.join("data"),
-                ));
+                game.adv.tree =
+                    Arc::new(sunrise_sim::advancements::Tree::load(&scratch.join("data")));
                 game.adv.loaded = true;
                 let level = game.level(game.dim.id()).unwrap();
                 let mut ids = Vec::new();
@@ -200,7 +199,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                     .end_tick()
                     .expect("actual pickup pass closes its original binding");
                 for &id in &ids {
-                    use sunrise_client::join_seq::residency::table::{EntityLookup, SourceEntity};
+                    use sunrise_sim::join_seq::residency::table::{EntityLookup, SourceEntity};
                     let result = table.entity_lookup(&game.dim.key(), id, |location| {
                         let index = game.dropped.locate(location.join)?;
                         Some(SourceEntity {
@@ -256,7 +255,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                             .unwrap();
                     }
                     if mode == 2 {
-                        game.mode = sunrise_client::command::args::GameMode::Spectator;
+                        game.mode = sunrise_command::args::GameMode::Spectator;
                     }
                     let before: Vec<_> = game
                         .dropped
@@ -273,7 +272,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                         before
                     );
                     table.end_tick().expect("early return closes pass");
-                    game.mode = sunrise_client::command::args::GameMode::Survival;
+                    game.mode = sunrise_command::args::GameMode::Survival;
                 }
             });
             let _ = std::fs::remove_dir_all(scratch);

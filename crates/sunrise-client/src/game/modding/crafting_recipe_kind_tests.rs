@@ -103,7 +103,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
     super::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
-            let recipes = sunrise_client::crafting::Recipes::from_sources(
+            let recipes = sunrise_sim::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
                 &sunrise_world::loot::PackOverlay::NONE,

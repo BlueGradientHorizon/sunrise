@@ -1,8 +1,6 @@
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    motion::{MotionWorld, WATER},
-};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::{MotionWorld, WATER};
 
 /// Sample the player's fluid state as a tick would, without advancing their fire timer.
 pub(in crate::game) fn sample_eye_in_water(game: &mut crate::game::ClientGame<'_>) -> bool {

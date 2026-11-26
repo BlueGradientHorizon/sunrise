@@ -1,14 +1,14 @@
 //! What a flying projectile asks of the world (`ProjectileWorld` for `ProjWorld`): block
 //! contacts, collisions, fluids and the world border.
-use sunrise_client::{
-    collisions::SceneCollisions,
-    mobs::MobWorld,
-    projectiles::{ProjectileWorld, clip_including_border},
-};
 use sunrise_client_core::who::Who;
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,
+};
+use sunrise_level::collisions::SceneCollisions;
+use sunrise_sim::{
+    mobs::MobWorld,
+    projectiles::{ProjectileWorld, clip_including_border},
 };
 
 pub struct ProjWorld<'a, 'w> {
@@ -88,7 +88,7 @@ impl ProjectileWorld for ProjWorld<'_, '_> {
     }
     #[inline]
     fn lava_height(&self, p: BlockPos) -> Option<f64> {
-        sunrise_client::entities::fluid_height(
+        sunrise_sim::entities::fluid_height(
             self.w.world,
             self.w.fluid_tables,
             p,
@@ -102,13 +102,13 @@ impl ProjectileWorld for ProjWorld<'_, '_> {
     /// `WebBlock.entityInside` and `PowderSnowBlock.entityInside`.
     #[inline]
     fn stuck_speed(&self, p: [i32; 3]) -> Option<Vec3> {
-        sunrise_client::projectiles::stuck_speed_of(
+        sunrise_sim::projectiles::stuck_speed_of(
             &self.w.facts.get(self.w.world.block(p[0], p[1], p[2])).name,
         )
     }
     #[inline]
     fn bubble_column(&self, p: [i32; 3]) -> Option<(bool, bool)> {
-        sunrise_client::motion::bubble_column_at(
+        sunrise_sim::motion::bubble_column_at(
             self.w.world,
             self.w.registry,
             self.w.facts,
@@ -119,7 +119,7 @@ impl ProjectileWorld for ProjWorld<'_, '_> {
     }
     #[inline]
     fn can_stand_on(&self, p: [i32; 3], entity_y: f64) -> bool {
-        sunrise_client::collisions::projectile_can_stand_on(
+        sunrise_level::collisions::projectile_can_stand_on(
             self.w.world,
             self.w.collision,
             BlockPos::new(p[0], p[1], p[2]),

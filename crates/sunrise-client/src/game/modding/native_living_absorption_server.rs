@@ -38,7 +38,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
-                let max = sunrise_client::mobs::armor::max_absorption(m);
+                let max = sunrise_sim::mobs::armor::max_absorption(m);
                 m.absorption = if amount < 0.0 {
                     0.0
                 } else {
@@ -56,9 +56,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::super::native_entity_refs::tests::{bind_local_player, with_game};
     use std::sync::Arc;
-    use sunrise_client::mobs::Mob;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
+    use sunrise_sim::motion::PlayerMotion;
 
     /// A zombie whose `minecraft:max_absorption` is 4.
     fn absorbing_zombie(game: &crate::game::ServerGame<'_>) -> Mob {
@@ -145,7 +145,7 @@ mod tests {
             game.mobs.push(zombie);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             assert!(living.set_absorption(game, 3.0));
-            let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            let saved = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [1, 0, 0, 1],
                 None,
@@ -154,7 +154,7 @@ mod tests {
                 &Default::default(),
             );
             let loaded =
-                sunrise_client::entity_nbt::mob_from_nbt(&saved, game.res.mob_types(), 13, None)
+                sunrise_sim::entity_nbt::mob_from_nbt(&saved, game.res.mob_types(), 13, None)
                     .unwrap();
             assert_eq!(loaded.absorption, 3.0);
         });

@@ -11,8 +11,8 @@ use mod_api::{
     EntityRef, EntityServerAccess, EntityServerScope, EntitySubjectView, ResidentGeneralEntity,
     ServerHost,
 };
-use sunrise_client::lan::playerdata::ints_uuid;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::lan::playerdata::ints_uuid;
 
 impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
     fn with_view(&mut self, call: &mut dyn FnMut(EntitySubjectView<'_>)) {

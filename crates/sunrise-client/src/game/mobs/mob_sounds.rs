@@ -4,11 +4,9 @@
 //! sound engine ticks them with what `start_mob_sounds` and
 //! `start_riding_sound` read off the mobs.
 use super::Game;
-use sunrise_client::{
-    mobs::{Species, bee, guardian, sniffer},
-    random_source,
-    sound_engine::{MobSound, RiddenSound, SoundInstance, Sounds},
-};
+use sunrise_client::sound_engine::{MobSound, RiddenSound, SoundInstance, Sounds};
+use sunrise_level::random_source;
+use sunrise_sim::mobs::{Species, bee, guardian, sniffer};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.startRiding` on a happy ghast or an `AbstractNautilus`:

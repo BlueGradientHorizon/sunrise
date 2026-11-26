@@ -3,7 +3,7 @@ use crate::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
 use crate::game::remote::tests::client_explosion_tests::registry_id;
 use crate::game::remote::tests::client_explosion_tests::roundtrip;
 use crate::game::remote::tests::client_explosion_tests::with_isolated_client;
-use sunrise_client::particles::ParticleType;
+use sunrise_level::particle_options::ParticleType;
 
 #[test]
 #[ignore = "daily"]
@@ -14,7 +14,7 @@ fn explosion_validates_impulse_and_result_without_suppressing_effects() {
             let _reader = logged_in(game);
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             game.side.particles.0.particle_level = 0;
             game.side.particles.0.seed_randoms(719, 11, 12);
             game.side.particles.0.seed_particle_randoms(719);

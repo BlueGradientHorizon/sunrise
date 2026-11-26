@@ -1,16 +1,14 @@
 //! Server-side command-block execution, ticks, chaining, and edit packet handling.
 use super::command_blocks_common::Pos;
 use super::{Game, commands::execute::Source};
-use sunrise_client::{
-    command_block::{self, CommandBlock, Mode},
-    items::ItemStack,
-    text::Text,
-};
+use sunrise_client_core::text::Text;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay::command_blocks::{
     CommandBlockEdit, CommandBlockTransition, command_block_mut, conditional, facing_step,
     facing_yaw, mark_condition_met, offset, set_powered,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::command_block::{self, CommandBlock, Mode};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use {
     sunrise_core::nbt::Tag,
@@ -74,13 +72,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let defaults = !stack.is_some_and(|stack| {
             stack.carries_component(
                 self.items().get(&stack.item),
-                sunrise_client::block_entity_item::BLOCK_ENTITY_DATA,
+                sunrise_sim::block_entity_item::BLOCK_ENTITY_DATA,
             )
         });
         let feedback = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+            .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         let Some(name) = self.block_state_at(pos).map(|s| s.name.as_str()) else {
             return;
         };
@@ -162,7 +160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH);
+            .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH);
         let mut remaining = limit;
         let mut pos = start;
         while remaining > 0 {
@@ -218,7 +216,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCKS_WORK)
+            .bool_at(sunrise_client_core::gamerules::vanilla::COMMAND_BLOCKS_WORK)
             && !command.is_empty()
         {
             if let Some(c) = command_block_mut(&mut self.world, pos) {
@@ -279,7 +277,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
             self.command_block_output(pos, |timestamp| timestamp.append(message));
         }
@@ -344,8 +342,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         host.hub.send_to(
             conn,
             &C::CustomPayload(sunrise_protocol::packets::configuration::CustomPayload {
-                channel: sunrise_client::lan::data::OPEN_COMMAND_BLOCK_CHANNEL.into(),
-                data: sunrise_client::lan::data::encode_open_command_block([pos.0, pos.1, pos.2]),
+                channel: sunrise_sim::lan::data::OPEN_COMMAND_BLOCK_CHANNEL.into(),
+                data: sunrise_sim::lan::data::encode_open_command_block([pos.0, pos.1, pos.2]),
             }),
         );
     }
@@ -415,7 +413,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let key = if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCKS_WORK)
+                .bool_at(sunrise_client_core::gamerules::vanilla::COMMAND_BLOCKS_WORK)
             {
                 "advMode.setCommand.success"
             } else {

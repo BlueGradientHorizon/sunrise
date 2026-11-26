@@ -3,11 +3,11 @@ use super::{
     Game,
     block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action},
 };
-use sunrise_client::{
+use sunrise_client::ui::EditBox;
+use sunrise_client_core::text::Text;
+use sunrise_level::{
     containers::BlockEntity,
     test_block::{TestBlock, TestBlockMode},
-    text::Text,
-    ui::EditBox,
 };
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 

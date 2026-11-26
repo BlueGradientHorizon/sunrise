@@ -7,8 +7,10 @@ use crate::game::{decorated_pot::DECORATED_POT, transactions::After};
 use mod_api::{
     BlockCapabilitySite, BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext,
 };
-use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
 use sunrise_core::geometry::Direction;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::save;
 use sunrise_world::registry::BlockStateId;
 
 impl View {
@@ -31,7 +33,7 @@ enum ItemTarget {
 }
 
 /// `Level.isInValidBounds` and the resident-only `getChunkNow` / `getChunk(..., false)` query.
-fn valid_resident_position(world: &sunrise_client::world::World, [x, y, z]: [i32; 3]) -> bool {
+fn valid_resident_position(world: &sunrise_level::world::World, [x, y, z]: [i32; 3]) -> bool {
     sunrise_level::chunk_streamer::chunk_pos_is_valid((x >> 4, z >> 4))
         && world.is_loaded_at(x, y, z)
 }
@@ -141,7 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Vanilla containers and `WorldlyContainerHolder`s keep their direct automation path.
     /// This owner check borrows storage; it never builds a container view on the tick path.
     pub(in crate::game::server_side) fn vanilla_automation_container(&self, pos: Pos) -> bool {
-        use sunrise_client::containers::BlockEntity;
+        use sunrise_level::containers::BlockEntity;
         match self.world.block_entities.get(&pos) {
             Some(
                 BlockEntity::Mod(_)
@@ -620,8 +622,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::containers::ModContainer;
     use sunrise_core::geometry::Direction;
+    use sunrise_level::containers::ModContainer;
 
     fn view(kind: Kind, slots: usize) -> View {
         View {

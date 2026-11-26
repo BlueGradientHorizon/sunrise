@@ -3,8 +3,9 @@
 //! standing in lava with its eye above the surface and one in water both take
 //! the rider.
 use super::tests::server_game;
-use sunrise_client::{items::ItemStack, mobs::Mob};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Mob;
 
 /// Runs the fluid scan `Entity.updateFluidInteraction` would do on the mob's
 /// next tick, over the game's current world.

@@ -4,8 +4,10 @@
 //! `PaintingRenderer` quads.
 use super::{Game, Hit};
 use std::sync::Arc;
-use sunrise_client::{entities::Painting, items::ItemStack, random_source};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_level::random_source;
+use sunrise_sim::entities::Painting;
 
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::painting_variants::{
@@ -88,13 +90,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `updateCustomEntityTag`: the item's `custom_data` and its `entity_data`
         // merged over the painting, so a `variant` there replaces the pick (and
         // has to survive, else the use is CONSUME).
-        let own = sunrise_client::entity_nbt::painting_to_nbt(&candidate, [0; 4], None);
-        let mut raw = sunrise_client::block_entity_item::stack_configured_entity(
+        let own = sunrise_sim::entity_nbt::painting_to_nbt(&candidate, [0; 4], None);
+        let mut raw = sunrise_sim::block_entity_item::stack_configured_entity(
             stack,
             "minecraft:painting",
             &own,
         );
-        if let Some((_, _, Some(variant))) = sunrise_client::entity_nbt::painting_from_nbt(&raw)
+        if let Some((_, _, Some(variant))) = sunrise_sim::entity_nbt::painting_from_nbt(&raw)
             && *candidate.variant != *variant
             && let Some(v) = self
                 .painting_variants
@@ -187,7 +189,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
         {
             return;
         }
@@ -261,7 +263,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::entities::ItemFrame;
+    use sunrise_sim::entities::ItemFrame;
 
     #[test]
     fn hanging_entities_block_overlapping_other_types() {
@@ -293,7 +295,7 @@ pub(in crate::game) mod tests {
             check_interval: 0,
             ticks: 0,
             custom_name: None,
-            random: sunrise_client::random_source::entity(),
+            random: sunrise_level::random_source::entity(),
         };
         for glow in [false, true] {
             f.glow = glow;

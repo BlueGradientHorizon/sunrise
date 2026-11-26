@@ -83,7 +83,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// group correction retain vanilla's acknowledgement behaviour.
     pub(in crate::game::client_side) fn supersede_group_predictions(
         &mut self,
-        chunk: &sunrise_client::chunk::Chunk,
+        chunk: &sunrise_level::chunk::Chunk,
     ) {
         let Some(r) = self.remote.as_mut() else {
             return;
@@ -199,7 +199,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         // An unknown state (a server with mods we lack) reads as air, as in its chunks.
         let state = state.max(0) as u32;
-        let state = BlockStateId(if sunrise_client::chunk::known_block_state(state) {
+        let state = BlockStateId(if sunrise_level::chunk::known_block_state(state) {
             state
         } else {
             0

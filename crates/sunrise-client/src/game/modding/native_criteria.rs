@@ -9,7 +9,7 @@ use mod_api::{
 };
 use serde_json::Value;
 use std::{cell::Cell, sync::Arc};
-use sunrise_client::advancements::{self as adv, EntityView};
+use sunrise_sim::advancements::{self as adv, EntityView};
 
 /// One open criterion of a mod's trigger, as the mod's test sees it.
 struct NativeCriterion<'a> {
@@ -98,7 +98,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         player: PlayerRef,
         pos: [i32; 3],
-        original: &sunrise_client::items::ItemStack,
+        original: &sunrise_items::items::ItemStack,
     ) -> Result<(), TriggerCriterionError> {
         self.with_block_use_player(player, pos, |g| {
             g.trigger_block("minecraft:item_used_on_block", pos, original);
@@ -109,7 +109,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn player_trigger_consume_item(
         &mut self,
         player: PlayerRef,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
     ) -> Result<(), TriggerCriterionError> {
         if !self.is_logical_server() {
             return Err(TriggerCriterionError::NotServer);

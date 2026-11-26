@@ -4,25 +4,25 @@ pub use sunrise_client_gameplay::closest_space::closest_space_nudge;
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]
     fn a_player_nudges_out_of_a_rotated_collider_as_from_stone() {
         use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
-        use sunrise_client_render::moving_colliders::{Placed, Prepared, in_level};
         use sunrise_core::geometry::{
             Aabb,
             oriented::{ColliderBoxes, Frame, OrientedCollider},
         };
+        use sunrise_world::moving_colliders::{Placed, Prepared, in_level};
 
         in_own_process(
             "game::closest_space::tests::a_player_nudges_out_of_a_rotated_collider_as_from_stone",
             || {
                 with_client_game(|game| {
                     const PLAYER: u32 = 42;
-                    let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+                    let chunk = sunrise_level::chunk::Chunk::empty(0, 0);
                     game.world.chunks.insert((0, 0), Arc::new(chunk));
                     let stone = game
                         .pack
@@ -91,7 +91,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_player_is_pushed_out_of_ice_and_a_closed_shulker_box_but_not_glass() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             chunk.lit = true;
             game.world.chunks.insert((0, 0), Arc::new(chunk));
             let registry = game.pack.assets.registry;

@@ -3,8 +3,9 @@ use super::*;
 use crate::game::minecarts::{CartKind, Minecart};
 use mod_api::LevelRandomHost as _;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{items::ItemStack, save::PendingContainerLoot};
 use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::save::PendingContainerLoot;
 use sunrise_world::loot::{LootData, PackOverlay};
 
 const POS: (i32, i32, i32) = (8, 64, 8);
@@ -153,7 +154,7 @@ fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         game.set_allow_commands(true);
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let table = |item: &str, count: i32, bonus: i32| serde_json::json!({"pools":[{"rolls":1,"bonus_rolls":bonus,"entries":[{"type":"minecraft:item","name":item,"modifier":{"type":"minecraft:set_count","count":count}}]}]});
         let files = [
             ("loot_table/test:sequence_position".into(), vec![serde_json::to_vec(&serde_json::json!({"random_sequence":"test:seq","pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}]}]})).unwrap()]),
@@ -720,7 +721,7 @@ fn structure_capture_disk_round_trip_keeps_pending_loot() {
         assert_eq!(entry.tag, captured.tag);
         g.world
             .chunks
-            .insert((1, 0), Arc::new(sunrise_client::chunk::Chunk::empty(1, 0)));
+            .insert((1, 0), Arc::new(sunrise_level::chunk::Chunk::empty(1, 0)));
         assert!(g.place_template_entry(
             &entry,
             BlockPos::new(20, 64, 8),
@@ -788,7 +789,7 @@ fn clone_selection_modes_match_pending_payloads() {
 #[test]
 #[ignore = "daily"]
 fn random_selection_streams() {
-    use sunrise_client::random_sequences::RandomSequences;
+    use sunrise_items::random_sequences::RandomSequences;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let table = serde_json::json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}]}]});
     let mut sequence_table = table.clone();
@@ -881,10 +882,9 @@ fn random_selection_streams() {
 fn explicit_seed_is_position_independent() {
     with_game(|g| {
         let other = (100, 70, -5);
-        g.world.chunks.insert(
-            (6, -1),
-            Arc::new(sunrise_client::chunk::Chunk::empty(6, -1)),
-        );
+        g.world
+            .chunks
+            .insert((6, -1), Arc::new(sunrise_level::chunk::Chunk::empty(6, -1)));
         let snapshot =
             |g: &crate::game::ServerGame<'_>, pos| g.world.block_entities[&pos].slots().to_vec();
         let mut level_results = Vec::new();

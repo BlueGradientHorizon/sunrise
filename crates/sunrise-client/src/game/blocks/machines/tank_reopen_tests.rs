@@ -49,10 +49,10 @@ impl Hooks for Tanks {
 /// The world in folder `world`: created flat (quick to generate) when `create`, else opened as
 /// saved.
 fn request(world: &Path, create: bool) -> WorldRequest {
-    let rules = std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
+    let rules = std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
     let options = sunrise_sim::world_options::WorldOptions {
-        world_type: sunrise_client::save::WorldPreset::Flat,
-        rules: sunrise_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
+        world_type: sunrise_sim::save::WorldPreset::Flat,
+        rules: sunrise_client_core::gamerules::GameRules::with_registry(rules.clone(), &[]),
         ..Default::default()
     };
     let mut request = WorldRequest::new(

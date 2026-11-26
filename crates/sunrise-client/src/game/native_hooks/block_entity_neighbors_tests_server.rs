@@ -5,8 +5,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::BlockPos;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]
@@ -23,9 +23,9 @@ fn installed_block_entity_neighbor_parts_dispatch_through_game() {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         with_game(|game| {
             let directory = tempfile::tempdir().unwrap();
-            game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
                 directory.path().to_path_buf(),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.options.dedicated = Some(Vec::new());

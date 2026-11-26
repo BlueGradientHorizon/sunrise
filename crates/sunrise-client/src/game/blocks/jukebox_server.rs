@@ -5,9 +5,9 @@ use crate::game::jukebox_common::{jukebox_playable, jukebox_signals, song_of_rec
 use sunrise_core::{position::BlockPos, random::RandomSource};
 use sunrise_world::level::flags as level_flags;
 use {
-    sunrise_client::block_entity_item, sunrise_client::containers::BlockEntity,
-    sunrise_client::containers::Jukebox, sunrise_client::items::ItemStack,
-    sunrise_client::mobs::Who, sunrise_level::particle_options::ParticleType,
+    sunrise_items::items::ItemStack, sunrise_level::containers::BlockEntity,
+    sunrise_level::containers::Jukebox, sunrise_level::particle_options::ParticleType,
+    sunrise_sim::block_entity_item, sunrise_sim::mobs::Who,
 };
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -320,7 +320,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 f64::from(pos[2]) + 0.5,
             ];
             self.server_particle_at(
-                crate::lan::server_effects::ServerParticle::simple(ParticleType::Note),
+                sunrise_sim::lan::server_effects::ServerParticle::simple(ParticleType::Note),
                 at,
                 [color, 0.0, 0.0],
             );
@@ -365,7 +365,7 @@ pub(in crate::game) mod jukebox_play_tests {
         .unwrap();
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let jukebox = game
             .pack
@@ -447,7 +447,7 @@ pub(in crate::game) mod saved_song_clock_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.build_registries();
             game.set_allow_commands(true);
@@ -635,7 +635,7 @@ pub(in crate::game) mod block_change_tests {
 
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     #[test]
     #[ignore = "daily"]

@@ -1,7 +1,7 @@
 // Included as fishing's child so fixtures can construct its private hook state.
 use super::*;
 use std::sync::Arc;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 
 struct Catch(u8);
 #[mod_api::__subscriptions]
@@ -61,9 +61,9 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
             game.side.world_root = scratch.path().into();
-            game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+            game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
                 scratch.path().join("save"),
-                sunrise_client::save::LevelShape::OVERWORLD,
+                sunrise_sim::save::LevelShape::OVERWORLD,
                 Some(Default::default()),
             ));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
@@ -78,7 +78,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
                 r#"{"criteria":{"catch":{"trigger":"minecraft:fishing_rod_hooked"}}}"#,
             )
             .unwrap();
-            game.adv.tree = Arc::new(sunrise_client::advancements::Tree::load(scratch.path()));
+            game.adv.tree = Arc::new(sunrise_sim::advancements::Tree::load(scratch.path()));
             game.adv.loaded = true;
             let loot = sunrise_world::loot::LootData::load(
                 &game.options.resources,
@@ -90,9 +90,9 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
             let mut hook = Hook {
                 uuid: [0; 4],
                 attachment_lifetime: Default::default(),
-                join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+                join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
                 caster: None,
-                caster_generation: sunrise_client::join_seq::JoinSeq::UNJOINED,
+                caster_generation: sunrise_sim::join_seq::JoinSeq::UNJOINED,
                 id: 999,
                 position: Vec3::new(2.0, 64.0, 2.0),
                 previous: Vec3::ZERO,

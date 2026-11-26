@@ -3019,9 +3019,9 @@ use server_side::loading_server::start_dedicated_game;
 #[allow(unused_imports)]
 use server_state::ServerState;
 #[allow(unused_imports)]
-use sunrise_client::random_source;
-#[allow(unused_imports)]
 use sunrise_client_render::block_entity_reach::Reach;
+#[allow(unused_imports)]
+use sunrise_level::random_source;
 // `Action` here is the title screen's buttons (`title::Action`).
 #[allow(unused_imports)]
 use self::api_values::TryIntoApi;
@@ -3052,8 +3052,6 @@ use sunrise_client::actions::Action as Mapping;
 #[allow(unused_imports)]
 use sunrise_client::held::Source;
 #[allow(unused_imports)]
-use sunrise_client::spans::{startup, time as span};
-#[allow(unused_imports)]
 use sunrise_core::{
     biome::{BiomeZoom, obfuscate_seed},
     geometry::{Aabb, Direction},
@@ -3061,6 +3059,8 @@ use sunrise_core::{
 };
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+#[allow(unused_imports)]
+use sunrise_level::spans::{startup, time as span};
 use sunrise_level::testgen::TestTerrain;
 #[allow(unused_imports)]
 use sunrise_mod_package::selection::{Argument, LaunchArguments};
@@ -3076,35 +3076,34 @@ use winit::{
 };
 #[allow(unused_imports)]
 use {
-    sunrise_client::Result, sunrise_client::assets::Assets, sunrise_client::assets::RenderAssets,
-    sunrise_client::audio::Audio, sunrise_client::biome::Biomes,
+    sunrise_client::assets::RenderAssets, sunrise_client::audio::Audio,
     sunrise_client::block_entity_render, sunrise_client::block_entity_render::BlockEntityRenderer,
     sunrise_client::block_entity_render::CacheOptions,
     sunrise_client::block_entity_render::Scene as BlockEntityScene,
     sunrise_client::block_entity_render::StaticCacheFrameStats,
-    sunrise_client::block_entity_render::StaticSectionSnapshot, sunrise_client::blocks::BlockFacts,
-    sunrise_client::blocks::Fluid, sunrise_client::clock::FixedStep, sunrise_client::collisions,
-    sunrise_client::containers::BlockEntity, sunrise_client::containers::Providers,
-    sunrise_client::crafting::Recipes, sunrise_client::creative::Creative,
-    sunrise_client::entities::Experience, sunrise_client::entities::ExperienceOrb,
-    sunrise_client::entities::ItemEntity, sunrise_client::environment::Environment,
-    sunrise_client::furnace::FurnaceCooking, sunrise_client::gfx::Frame,
-    sunrise_client::gfx::Renderer, sunrise_client::graphics::EntityCullingMode,
-    sunrise_client::hud::HudAtlas, sunrise_client::hud::HudBatch, sunrise_client::hud::rgba,
-    sunrise_client::hud_layout, sunrise_client::hud_overlays, sunrise_client::items::ItemStack,
-    sunrise_client::items::Items, sunrise_client::keymapping::KeyAction,
+    sunrise_client::block_entity_render::StaticSectionSnapshot, sunrise_client::creative::Creative,
+    sunrise_client::gfx::Frame, sunrise_client::gfx::Renderer,
+    sunrise_client::graphics::EntityCullingMode, sunrise_client::hud::HudAtlas,
+    sunrise_client::hud::HudBatch, sunrise_client::hud::rgba, sunrise_client::hud_layout,
+    sunrise_client::hud_overlays, sunrise_client::keymapping::KeyAction,
     sunrise_client::keymapping::SNEAK, sunrise_client::keymapping::SPRINT,
-    sunrise_client::light::LightTables, sunrise_client::mesher::MeshTables,
-    sunrise_client::mesher::Vertex, sunrise_client::mobs::Mob, sunrise_client::mobs::MobType,
-    sunrise_client::mobs::MobTypes, sunrise_client::models,
-    sunrise_client::motion::MotionResources, sunrise_client::motion::PlayerMotion,
+    sunrise_client::mesher::MeshTables, sunrise_client::mesher::Vertex, sunrise_client::models,
     sunrise_client::mouse::LookOptions, sunrise_client::mouse::MouseLook,
-    sunrise_client::particles::Particle, sunrise_client::save::Level,
-    sunrise_client::save::Persistent, sunrise_client::save::SaveDir,
-    sunrise_client::settings::Settings, sunrise_client::spans, sunrise_client::sprint::Keys,
-    sunrise_client::title::Action, sunrise_client::title::Title,
-    sunrise_client::vanillagen::VanillaTerrain, sunrise_client::world::World,
+    sunrise_client::particles::Particle, sunrise_client::settings::Settings,
+    sunrise_client::title::Action, sunrise_client::title::Title, sunrise_client_core::Result,
+    sunrise_items::blocks::BlockFacts, sunrise_items::blocks::Fluid,
+    sunrise_items::items::ItemStack, sunrise_items::items::Items, sunrise_level::assets::Assets,
+    sunrise_level::biome::Biomes, sunrise_level::collisions,
+    sunrise_level::containers::BlockEntity, sunrise_level::containers::Providers,
+    sunrise_level::environment::Environment, sunrise_level::light::LightTables,
+    sunrise_level::spans, sunrise_level::world::World, sunrise_sim::clock::FixedStep,
+    sunrise_sim::crafting::Recipes, sunrise_sim::entities::Experience,
+    sunrise_sim::entities::ExperienceOrb, sunrise_sim::entities::ItemEntity,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
+    sunrise_sim::furnace::FurnaceCooking, sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobType,
+    sunrise_sim::mobs::MobTypes, sunrise_sim::motion::MotionResources,
+    sunrise_sim::motion::PlayerMotion, sunrise_sim::save::Level, sunrise_sim::save::Persistent,
+    sunrise_sim::save::SaveDir, sunrise_sim::sprint::Keys, sunrise_sim::vanillagen::VanillaTerrain,
 };
 #[allow(unused_imports)]
 use {
@@ -3333,9 +3332,9 @@ pub(in crate::game) struct GameLevel<'w> {
     /// Minecart boxes (detector rails).
     cart_boxes: Vec<([f64; 3], [f64; 3])>,
     /// The item frames a comparator reads through a conductor.
-    item_frames: &'w [sunrise_client::entities::ItemFrame],
+    item_frames: &'w [sunrise_sim::entities::ItemFrame],
     /// The minecarts, in `cart_boxes` order, for a detector rail's comparator.
-    carts: &'w mut sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
+    carts: &'w mut sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
     /// Arrow and thrown trident boxes (wooden buttons).
     arrow_boxes: Vec<([f64; 3], [f64; 3])>,
     /// Every entity on the walk; see `entity::for_each_entity`.
@@ -3357,12 +3356,12 @@ pub(in crate::game) struct GameLevel<'w> {
     behaviours: &'w Behaviours,
     items: &'w Items,
     /// Cooking recipes' experience, which a removed furnace pays out.
-    recipes: &'w sunrise_client::crafting::Recipes,
+    recipes: &'w sunrise_sim::crafting::Recipes,
     /// Container loot tables (`unpackLootTable`).
     loot: Option<std::sync::Arc<sunrise_world::loot::LootData>>,
     loot_storage: std::sync::Arc<sunrise_world::loot::copy::StorageData>,
     registry: &'static sunrise_world::registry::BlockRegistry,
-    block_registries: &'w sunrise_client::command::args::Registries,
+    block_registries: &'w sunrise_command::args::Registries,
     rules: sunrise_world::level::GameRules,
     /// `Difficulty.getId()` (peaceful 0 .. hard 3).
     difficulty: i32,
@@ -3370,12 +3369,12 @@ pub(in crate::game) struct GameLevel<'w> {
     /// player and the LAN guests in this level, spectators aside.
     fire_players: Vec<[f64; 3]>,
     /// Block loot random sequences (`ServerLevel.getRandomSequence`).
-    rand_sequences: &'w mut sunrise_client::random_sequences::RandomSequences,
+    rand_sequences: &'w mut sunrise_items::random_sequences::RandomSequences,
     pending: &'w mut spill::Pending,
     spill: &'w mut spill::Spill,
     /// Where the chunk tickets let blocks tick.
-    tickets: sunrise_client::ticket_levels::Levels,
-    random_tick_sections: &'w mut sunrise_client::random_tick_sections::RandomTickSections,
+    tickets: sunrise_sim::ticket_levels::Levels,
+    random_tick_sections: &'w mut sunrise_sim::random_tick_sections::RandomTickSections,
     /// Players with each chest open (a trapped chest's signal), also what a
     /// recount of the openers replaces (`ContainerOpenersCounter.recheckOpeners`).
     lid_openers: &'w mut HashMap<(i32, i32, i32), i32>,
@@ -3400,8 +3399,8 @@ pub(in crate::game) struct GameLevel<'w> {
     debug: bool,
     native_sounds: &'w mut Vec<creatures::NativeSound>,
     loop_context: &'w sunrise_world::native_load_context::LoopContext,
-    native_particles: &'w mut Vec<crate::lan::server_effects::ServerQueuedParticle>,
-    sound_seeds: Option<&'w sunrise_client::lan::hub::Hub>,
+    native_particles: &'w mut Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
+    sound_seeds: Option<&'w sunrise_sim::lan::hub::Hub>,
     drop_entity: Option<mod_api::EntityRef>,
     /// `LootContextParams.INTERACTING_ENTITY` of a block-interaction drop: the
     /// player whose click `use_without_item` runs for.
@@ -3561,7 +3560,7 @@ struct FallingBlock {
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(super) join: sunrise_client::join_seq::JoinSeq,
+    pub(super) join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on a client.
     id: u32,
     state: BlockStateId,
@@ -3578,7 +3577,7 @@ struct FallingBlock {
     /// `Entity.isNoGravity`.
     no_gravity: bool,
     /// `FallingBlockEntity.tick` handles portals after moving, before landing.
-    portal: sunrise_client::nether_portal::PortalState,
+    portal: sunrise_sim::nether_portal::PortalState,
     /// `FallingBlockEntity.dropItem`.
     drop_item: bool,
     /// `Entity.fallDistance` (powder snow holds a block that fell far at 0.9).
@@ -3593,12 +3592,12 @@ struct FallingBlock {
     sync_velocity: bool,
     /// `Entity.stuckSpeedMultiplier`: a cobweb it is in scales its next move.
     stuck: Vec3,
-    damage: sunrise_client::falling_block::Damage,
+    damage: sunrise_sim::falling_block::Damage,
     /// The UUID and compound it was loaded with, kept while it moves.
     saved: Option<Box<([i32; 4], sunrise_core::nbt::Tag)>>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(super) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 sunrise_mod_runtime::impl_attachment_lifetime!(FallingBlock);
 
@@ -3607,8 +3606,8 @@ impl FallingBlock {
     const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.833_000_06];
     /// Its box (`falling_block::bounds`), or its `entity_size` answer's.
     fn bounds(&self) -> sunrise_core::geometry::Aabb {
-        let vanilla = sunrise_client::falling_block::bounds(self.position);
-        sunrise_client::pose::SizeAnswer::sized_box(
+        let vanilla = sunrise_sim::falling_block::bounds(self.position);
+        sunrise_sim::pose::SizeAnswer::sized_box(
             self.size_answer,
             Self::DIMENSIONS,
             self.position,
@@ -3663,7 +3662,7 @@ struct WorldCore {
     collision: Arc<BlockCollisionRegistry<'static>>,
     motion: MotionResources,
     suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
-    spawn_registries: sunrise_client::mobs::finalize::SpawnRegistries,
+    spawn_registries: sunrise_sim::mobs::finalize::SpawnRegistries,
     threads: usize,
 }
 
@@ -3676,19 +3675,19 @@ pub(in crate::game) struct ClientMobTables {
 struct WorldRest {
     items: Arc<Items>,
     recipes: Recipes,
-    transformers: sunrise_client::block_transform::Transformers,
+    transformers: sunrise_sim::block_transform::Transformers,
     mob_types: HashMap<String, Arc<MobType>>,
     /// The registry keys of the player, the armor stand and the dragon, resolved with these
     /// resources as each mob type's own key is ([`MobType::type_key`]).
-    living_type_keys: sunrise_client::health::LivingTypeKeys,
-    mob_data: sunrise_client::mobs::MobData,
+    living_type_keys: sunrise_sim::health::LivingTypeKeys,
+    mob_data: sunrise_sim::mobs::MobData,
     /// Complete pre-creation facts for the registered entity types.
-    spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
+    spawner_types: HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
     providers: Providers,
     nether_environment: Environment,
     end_environment: Environment,
     behaviours: Arc<Behaviours>,
-    stations: sunrise_client::stations::StationData,
+    stations: sunrise_sim::stations::StationData,
 }
 
 #[cfg(feature = "client")]
@@ -3721,13 +3720,13 @@ pub(in crate::game) struct WorldTables {
     priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
     pub(in crate::game) items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
-    packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
+    packed_registries: Arc<sunrise_sim::lan::data::PackRegistryDefinitions>,
     pub(in crate::game) providers: Providers,
     loot: Arc<sunrise_world::loot::LootData>,
     loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     pub(in crate::game) recipes: Recipes,
-    pub(in crate::game) stations: sunrise_client::stations::StationData,
-    reload_sources: Option<Arc<sunrise_client::crafting::ResolvedSources>>,
+    pub(in crate::game) stations: sunrise_sim::stations::StationData,
+    reload_sources: Option<Arc<sunrise_sim::crafting::ResolvedSources>>,
     /// The values of the data map types native mods registered (`native_data_map_types`).
     data_maps: native_data_maps::DataMaps,
     /// Pack tags used by advancement predicates and built-in data maps
@@ -3789,10 +3788,10 @@ pub struct PackResources {
     pub(in crate::game) source: sunrise_assets::resource_source::ResourceSource,
     pub(in crate::game) data_source: sunrise_assets::resource_source::ResourceSource,
     pub(in crate::game) data_changes: sunrise_assets::resource_source::ResourceSource,
-    pub(in crate::game) additional_data: Arc<[Arc<sunrise_client::datapack::DataPack>]>,
+    pub(in crate::game) additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
     pub(in crate::game) mod_layers: Arc<[sunrise_assets::resource_source::ResourceSource]>,
     pub(in crate::game) assets: Arc<Assets>,
-    pub(in crate::game) block_registries: Arc<sunrise_client::command::args::Registries>,
+    pub(in crate::game) block_registries: Arc<sunrise_command::args::Registries>,
     pub(in crate::game) names: Arc<Names>,
     pub(in crate::game) chunk_context: Arc<sunrise_level::chunk_streamer::ChunkWorkerContext>,
     pub(in crate::game) item_models: Arc<sunrise_assets::item_model::ItemModels>,
@@ -3853,9 +3852,9 @@ fn ticking_chunk(world: &World, x: i32, z: i32) -> bool {
 /// holder's: the area it waits for is the one its own streaming loads.
 fn portal_ticket_can_expire(
     world: &World,
-    ticket: &sunrise_client::ticket_levels::PortalTicket,
+    ticket: &sunrise_sim::ticket_levels::PortalTicket,
 ) -> bool {
-    use sunrise_client::ticket_levels::{BLOCK_TICKING, ENTITY_TICKING};
+    use sunrise_sim::ticket_levels::{BLOCK_TICKING, ENTITY_TICKING};
     let r = match ticket.level {
         l if l <= i32::from(ENTITY_TICKING) => 2,
         l if l == i32::from(BLOCK_TICKING) => 1,
@@ -4021,7 +4020,7 @@ pub(in crate::game) trait Side:
     fn levels(&self) -> Option<&levels::Levels> {
         None
     }
-    fn others(&self) -> Option<&sunrise_client::join_seq::ResidentList<commands::OtherEntity>> {
+    fn others(&self) -> Option<&sunrise_sim::join_seq::ResidentList<commands::OtherEntity>> {
         None
     }
     fn held_out(&self) -> &[u32] {
@@ -4045,7 +4044,7 @@ pub(in crate::game) trait Side:
     fn lan_guest_swaps(&self) -> &[u32] {
         &[]
     }
-    fn acting_abilities(&self) -> Option<sunrise_client::lan::abilities::PlayerAbilities> {
+    fn acting_abilities(&self) -> Option<sunrise_sim::lan::abilities::PlayerAbilities> {
         None
     }
     fn native_command_filter(&self) -> bool {
@@ -4065,8 +4064,8 @@ pub(in crate::game) trait Side:
     }
     fn locate_resident_owner<'a>(
         _game: &Game<'a, Self>,
-        _at: sunrise_client::join_seq::residency::table::Location,
-    ) -> Option<sunrise_client::join_seq::residency::table::SourceEntity<(commands::Target, bool)>>
+        _at: sunrise_sim::join_seq::residency::table::Location,
+    ) -> Option<sunrise_sim::join_seq::residency::table::SourceEntity<(commands::Target, bool)>>
     {
         None
     }
@@ -4081,7 +4080,7 @@ struct Game<'a, S> {
     collision: &'a BlockCollisionRegistry<'a>,
     motion: &'a MotionResources,
     /// This world's frozen damage definitions and reloadable tag snapshot.
-    pub(super) health_resources: sunrise_client::health::HealthResources,
+    pub(super) health_resources: sunrise_sim::health::HealthResources,
     damage_tag_generation: u64,
     pack: PackResources,
     world: World,
@@ -4114,7 +4113,7 @@ struct Game<'a, S> {
     use_delay: u32,
     creative: bool,
     /// The game mode; `creative` mirrors `mode == Creative`.
-    mode: sunrise_client::command::args::GameMode,
+    mode: sunrise_command::args::GameMode,
     /// Minecraft.pause: a single-player screen that pauses the game is open.
     pause: bool,
     previous: Instant,
@@ -4127,12 +4126,12 @@ struct Game<'a, S> {
     loop_context: Arc<sunrise_world::native_load_context::LoopContext>,
     /// This thread's authority over the game's tick-owned state (`parallel::TickThread`): a
     /// `Game` never leaves the thread that built it.
-    tick: sunrise_client::parallel::TickThread,
+    tick: sunrise_sim::parallel::TickThread,
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
-    damage_hooks: sunrise_client::health::DamageHooks,
-    dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
-    mobs: sunrise_client::join_seq::JoinList<Mob>,
+    damage_hooks: sunrise_sim::health::DamageHooks,
+    dropped: sunrise_sim::join_seq::JoinList<ItemEntity>,
+    mobs: sunrise_sim::join_seq::JoinList<Mob>,
     /// `mobs` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
     mob_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
@@ -4158,11 +4157,11 @@ struct Game<'a, S> {
     /// `Player.getCooldowns()`: the `use_cooldown` component's entries, what
     /// `itemDecorations` shades a slot by. A server's players have their own
     /// (`GuestPlay::cooldowns`), swapped in for their turn.
-    cooldowns: sunrise_client::cooldowns::Cooldowns,
+    cooldowns: sunrise_items::cooldowns::Cooldowns,
     /// This game's world is autosaving this tick (`MinecraftServer.isSaving`).
     autosaving: bool,
     experience: Experience,
-    orbs: sunrise_client::join_seq::JoinList<ExperienceOrb>,
+    orbs: sunrise_sim::join_seq::JoinList<ExperienceOrb>,
     /// The arm swing (`LivingEntity.SwingState`) and how many swings started.
     swing: sunrise_sim::first_person_sim::SwingState,
     swings_started: u32,
@@ -4182,20 +4181,20 @@ struct Game<'a, S> {
     end: end::EndState,
     block_ticks: Ticks,
     level_events: Vec<LevelEvent>,
-    falling: sunrise_client::join_seq::JoinList<FallingBlock, false>,
-    paintings: sunrise_client::join_seq::JoinList<sunrise_client::entities::Painting>,
+    falling: sunrise_sim::join_seq::JoinList<FallingBlock, false>,
+    paintings: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Painting>,
     painting_variants: paintings::PaintingVariants,
-    item_frames: sunrise_client::join_seq::JoinList<sunrise_client::entities::ItemFrame>,
-    armor_stands: sunrise_client::join_seq::JoinList<sunrise_client::entities::ArmorStand>,
+    item_frames: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ItemFrame>,
+    armor_stands: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ArmorStand>,
     /// `Cushion` decoration entities (game/entities/cushions.rs).
-    cushions: sunrise_client::join_seq::JoinList<sunrise_client::entities::Cushion>,
-    boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
-    carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
-    bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
+    cushions: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Cushion>,
+    boats: sunrise_sim::join_seq::JoinList<boats::Boat, false>,
+    carts: sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
+    bolts: sunrise_sim::join_seq::ResidentList<lightning::Bolt>,
     maps: maps::Maps,
     dragon: native_entity_refs::dragon_parts_table::DragonSlot,
-    crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
-    breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
+    crystals: sunrise_sim::join_seq::JoinList<dragon::Crystal>,
+    breath_clouds: sunrise_sim::join_seq::ResidentList<dragon::Breath>,
     /// The boat the player rides.
     riding: Option<u32>,
     /// The mount the last `position_rider` put the player on, to tell the tick
@@ -4205,25 +4204,24 @@ struct Game<'a, S> {
     /// Block entity data of broken blocks waiting for their dropped item.
     pending: spill::Pending,
     /// The player's fishing hook.
-    hook: sunrise_client::join_seq::ResidentSlot<fishing::Hook>,
-    tridents: sunrise_client::join_seq::JoinList<trident::ThrownTrident>,
-    rockets: sunrise_client::join_seq::JoinList<fireworks::Rocket>,
+    hook: sunrise_sim::join_seq::ResidentSlot<fishing::Hook>,
+    tridents: sunrise_sim::join_seq::JoinList<trident::ThrownTrident>,
+    rockets: sunrise_sim::join_seq::JoinList<fireworks::Rocket>,
     /// Ominous trial spawners' item spawners.
-    ominous_spawners:
-        sunrise_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    tnts: sunrise_client::join_seq::JoinList<tnt::PrimedTnt>,
+    ominous_spawners: sunrise_sim::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
+    tnts: sunrise_sim::join_seq::JoinList<tnt::PrimedTnt>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
     /// Block-entity positions retained between ticks for client effects.
-    spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
-    trial_spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
+    spawner_tick_positions: Vec<sunrise_level::block_entities::Pos>,
+    trial_spawner_tick_positions: Vec<sunrise_level::block_entities::Pos>,
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
     item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     creative_contents: native_hooks::CreativeCache,
     entity_initialization: entity_initialization::EntityInitialization,
     kinetic_feedback: HashMap<i32, i64>,
-    control: Option<sunrise_client::control::Server>,
+    control: Option<sunrise_sim::control::Server>,
     /// Sunrise mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
@@ -4267,7 +4265,7 @@ struct Game<'a, S> {
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
-    previous_mode: Option<sunrise_client::command::args::GameMode>,
+    previous_mode: Option<sunrise_command::args::GameMode>,
     /// `Player.entityInteractionRange` and `blockInteractionRange`, refreshed
     /// each tick from the attribute (a server's reach modifier, creative's
     /// +2): the pick helpers' `&self` reach.
@@ -4279,7 +4277,7 @@ struct Game<'a, S> {
     mount: mounts::MountState,
     stats: stats::Stats,
     score: scoreboard::ScoreState,
-    border: sunrise_client::worldborder::WorldBorder,
+    border: sunrise_level::worldborder::WorldBorder,
     adv: advancements::AdvState,
     fangs: fangs::FangState,
     pub(in crate::game) side: S,
@@ -4390,8 +4388,8 @@ impl Dim {
         }
     }
     /// The level's shape in a world of vanilla's dimension types.
-    fn shape(self) -> sunrise_client::save::LevelShape {
-        use sunrise_client::save::LevelShape;
+    fn shape(self) -> sunrise_sim::save::LevelShape {
+        use sunrise_sim::save::LevelShape;
         match self {
             Self::Overworld => LevelShape::OVERWORLD,
             Self::Nether => LevelShape::NETHER,
@@ -4413,7 +4411,7 @@ fn inventory_add(
     max: u32,
     stack: &mut ItemStack,
 ) -> bool {
-    use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
+    use sunrise_sim::menu::{OFFHAND, free_slot, slot_with_remaining_space};
     loop {
         // `Inventory.add`: an empty stack adds nothing (`isEmpty`).
         if stack.count == 0 {
@@ -4958,11 +4956,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The item entities `tick_dropped_items` took out, back in the level,
     /// before those its hooks spawned meanwhile (`addFreshEntity` appends).
     /// They keep their join numbers; the spawned ones got theirs on joining.
-    fn put_back_dropped(&mut self, items: sunrise_client::join_seq::JoinList<ItemEntity>) {
-        self.dropped.restore(
-            items,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+    fn put_back_dropped(&mut self, items: sunrise_sim::join_seq::JoinList<ItemEntity>) {
+        self.dropped
+            .restore(items, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
     /// Run vanilla block behaviour against the world through `LevelAccess`.
     fn with_level<R>(
@@ -5067,7 +5063,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// so it stays linear in the pistons moving: a clock of a thousand pistons
     /// ends two thousand moves at once.
     fn sync_moving_pistons(&mut self) {
-        use sunrise_client::fast_hash::{FxHashMap, FxHashSet};
+        use sunrise_level::fast_hash::{FxHashMap, FxHashSet};
         let previous = std::mem::take(&mut self.world.moving_pistons);
         let current: Vec<_> = self
             .block_ticks
@@ -5159,7 +5155,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         let (entity, kind) = (
             mob.id as i32,
-            sunrise_client::command::args::normalize(&mob.kind.id),
+            sunrise_command::args::normalize(&mob.kind.id),
         );
         let Some(stack) = self.held().filter(|stack| stack.count > 0).cloned() else {
             return false;
@@ -5216,9 +5212,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     fn landing_block_updates(
         &mut self,
         player: Option<u128>,
-        event: &sunrise_client::landing::FallEvent,
+        event: &sunrise_sim::landing::FallEvent,
     ) -> Option<LandingVibration> {
-        use sunrise_client::landing::FallEvent;
+        use sunrise_sim::landing::FallEvent;
         use sunrise_world::block_landing::LandingEvent;
         let mut vibration = None;
         // The block the landing changed, what it replaced, and what it became.
@@ -5304,7 +5300,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         ];
         let who = vibration
             .from_entity
-            .then_some(sunrise_client::mobs::Who::Player);
+            .then_some(sunrise_sim::mobs::Who::Player);
         self.side_post_block_game_event(vibration.event, at, who, Some(vibration.state));
     }
     /// `Blocks.AIR.defaultBlockState`: what a landing's destroy leaves.
@@ -5405,7 +5401,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     && f.fluid_level == 8
                     && !f.fluid_falling
                     && !f.waterlogged
-                    && f.render_shape != sunrise_client::blocks::RenderShape::Model
+                    && f.render_shape != sunrise_items::blocks::RenderShape::Model
                 {
                     if !first {
                         return Some(Hit {
@@ -5496,7 +5492,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         hit: &Hit,
         context: TransformContext<'_>,
     ) -> Option<(BlockStateId, String, Option<String>, u32, String, String)> {
-        use sunrise_client::block_transform::Around;
+        use sunrise_sim::block_transform::Around;
         let TransformContext {
             world,
             player,
@@ -5553,7 +5549,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .transformers()
             .apply(self.items(), registry, &id, face_name, &around)
             .and_then(|(_, t, state)| Some((registry.resolve(&state).ok()?, t)));
-        let result = |new, t: &sunrise_client::block_transform::Transform| {
+        let result = |new, t: &sunrise_sim::block_transform::Transform| {
             (
                 new,
                 t.sound.clone(),
@@ -5658,7 +5654,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .state(state)
             .and_then(|s| s.properties.get("facing"))
             .map(String::as_str);
-        sunrise_client::mobs::villager::bed_facing_code(facing)
+        sunrise_sim::mobs::villager::bed_facing_code(facing)
     }
 
     /// Clear all entity collections shared by server and client games.
@@ -5843,9 +5839,9 @@ struct ClientConstructPrep {
 }
 
 struct ServerConstructEffects {
-    structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
+    structure_spawns: sunrise_sim::mobs::spawn_selection::StructureSpawns,
     clock: FixedStep,
-    tick: sunrise_client::parallel::TickThread,
+    tick: sunrise_sim::parallel::TickThread,
     profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
     profile: profile_capture_server::ServerProfile,
     ui: chat_common::WorldCommandState,
@@ -5854,7 +5850,7 @@ struct ServerConstructEffects {
 #[cfg(feature = "client")]
 struct ClientConstructEffectsBundle {
     clock: FixedStep,
-    tick: sunrise_client::parallel::TickThread,
+    tick: sunrise_sim::parallel::TickThread,
     skin_downloads: RefCell<sunrise_client::skins::Downloader>,
     profile: profile_capture::Profile,
     registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
@@ -5885,7 +5881,7 @@ pub(in crate::game) struct WrappedClientInit {
     pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
     pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
     server_packs: client_side::ClientOnly<server_packs::ServerPackState>,
-    client_reports: client_side::ClientOnly<Arc<sunrise_client::chunk_io::Reports>>,
+    client_reports: client_side::ClientOnly<Arc<sunrise_sim::chunk_io::Reports>>,
     command_prompt: client_side::ClientOnly<Option<remote_chat::CommandPrompt>>,
     dialogs: client_side::ClientOnly<dialogs::DialogState>,
     pending_initial_models:
@@ -5942,16 +5938,16 @@ pub(in crate::game) struct WrappedClientInit {
 }
 
 pub(in crate::game) struct WrappedServerInit {
-    player_autosaves: server_side::ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
-    session_lock: server_side::ServerShared<Option<sunrise_client::save::SessionLock>>,
-    paused_mob_hurt: server_side::ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
+    player_autosaves: server_side::ServerOnly<sunrise_sim::lan::playerdata::Autosaves>,
+    session_lock: server_side::ServerShared<Option<sunrise_sim::save::SessionLock>>,
+    paused_mob_hurt: server_side::ServerOnly<Option<Box<sunrise_sim::mobs::PausedMobHurt>>>,
     raiding: server_side::ServerOnly<raids::Raiding>,
     world_tables: server_side::ServerShared<Option<WorldTables>>,
-    server_loot: server_side::ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
+    server_loot: server_side::ServerOnly<sunrise_sim::structure_blocks::LootSnapshot>,
     levels: server_side::ServerOnly<levels::Levels>,
-    tickets: server_side::ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
+    tickets: server_side::ServerShared<sunrise_sim::ticket_levels::ChunkTickets>,
     random_tick_sections:
-        server_side::ServerOnly<sunrise_client::random_tick_sections::RandomTickSections>,
+        server_side::ServerOnly<sunrise_sim::random_tick_sections::RandomTickSections>,
     spill: server_side::ServerOnly<spill::Spill>,
     lent_mobs: server_side::ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
     test_defs: server_side::ServerOnly<
@@ -5986,7 +5982,7 @@ struct WrappedPrepInit {
     pack: PackResources,
     options: Options,
     clock: FixedStep,
-    tick: sunrise_client::parallel::TickThread,
+    tick: sunrise_sim::parallel::TickThread,
     ui: chat_common::WorldCommandState,
 }
 
@@ -6240,9 +6236,9 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             use_delay: 0,
             creative,
             mode: if creative {
-                sunrise_client::command::args::GameMode::Creative
+                sunrise_command::args::GameMode::Creative
             } else {
-                sunrise_client::command::args::GameMode::Survival
+                sunrise_command::args::GameMode::Survival
             },
             pause: false,
             previous: wp.now,
@@ -6385,7 +6381,7 @@ impl<'a> ServerGame<'a> {
             std::env::current_dir()?
                 .join("saves")
                 .join(".sunrise-title"),
-            sunrise_client::save::LevelShape::OVERWORLD,
+            sunrise_sim::save::LevelShape::OVERWORLD,
             None,
         ));
         let prepared = prepared.map(Ok).unwrap_or_else(|| {
@@ -6431,11 +6427,11 @@ impl<'a> ServerGame<'a> {
     fn prepare_effects(prep: &ServerConstructPrep) -> Box<ServerConstructEffects> {
         #[cfg(not(test))]
         let structure_spawns =
-            sunrise_client::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
+            sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
         #[cfg(test)]
         let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
         let clock = FixedStep::default();
-        let tick = sunrise_client::parallel::TickThread::mint();
+        let tick = sunrise_sim::parallel::TickThread::mint();
         let profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver> =
             Box::new(sunrise_server_profiles_http::CachedProfileResolver::new());
         let profile = profile_capture_server::ServerProfile::default();
@@ -6670,7 +6666,7 @@ impl<'a> ClientGame<'a> {
         let clock = FixedStep::default();
         let vanilla_mappings = sunrise_client::keymapping::VanillaMappings::default();
         let health_hud = hud_layout::HealthHud::default();
-        let tick = sunrise_client::parallel::TickThread::mint();
+        let tick = sunrise_sim::parallel::TickThread::mint();
         let music = {
             // The manager starts with the saved option (MusicManager's constructor).
             let mut music = sunrise_client::music::MusicManager::default();
@@ -6821,10 +6817,10 @@ pub(crate) fn run_with(
     // A player who allows performance statistics also says what their slow frames spent their
     // time in: this thread, which draws the frames, times its steps (wall time only).
     if options.execution_role.is_client()
-        && sunrise_telemetry::Consent::load(&sunrise_client::logging::game_home())
+        && sunrise_telemetry::Consent::load(&sunrise_level::logging::game_home())
             .allows(sunrise_telemetry::Kind::Perf)
     {
-        sunrise_client::spans::record_here(true);
+        sunrise_level::spans::record_here(true);
     }
     let vanilla_root = options.resources.clone();
     // Saves from before 1.13 upgrade with vanilla's tables, prepared from the player's jar.
@@ -6864,7 +6860,7 @@ pub(crate) fn run_with(
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     mods::validate_startup_packages(&options.mods)?;
-    let jar_store = sunrise_client::logging::game_home().join("jars");
+    let jar_store = sunrise_level::logging::game_home().join("jars");
     let admission = options.mods.admit_startup_packages(&jar_store)?;
     api_values::install_packages(admission.native_packages(), admission.content_packages())?;
     mods::install_registration_data(
@@ -6911,7 +6907,7 @@ pub(crate) fn run_with(
         native_chunk_generator::install();
         native_biome_source::install();
         mods::register_components(&vanilla_root)?;
-        sunrise_client::item_sync::install_consume_effect_codecs()?;
+        sunrise_sim::item_sync::install_consume_effect_codecs()?;
         mods::register_standalone_models(options.execution_role);
         mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
         mods::register_debug_entries(options.execution_role);
@@ -6952,7 +6948,7 @@ pub(crate) fn run_with(
     // sunrise-ctl drives: those start in a source checkout and wrote the list there.
     if !options.offscreen && !synchronous_startup(&options) {
         let version = sunrise_client::telemetry::version();
-        let game_dir = sunrise_client::logging::player_dir();
+        let game_dir = sunrise_level::logging::player_dir();
         sunrise_hooks::engine::started(&sunrise_hooks::Started::new(&version, &game_dir));
     }
     // A game window's hooks (Discord's presence): never for a server.
@@ -7204,7 +7200,7 @@ mod test_neighbourhood {
                     }
                     self.world.chunks.insert(
                         (x, z),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
+                        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(x, z)),
                     );
                     // A chunk that is already registered keeps its ticks.
                     let _ = self
@@ -7220,7 +7216,7 @@ fn write_level_for_role(
     level: &mut Level,
     dir: &std::path::Path,
     role: execution_role::ExecutionRole,
-    items: &crate::items::Items,
+    items: &sunrise_items::items::Items,
     keep_owner_file: bool,
 ) -> Result<()> {
     match (role.writes_singleplayer_player(), keep_owner_file) {

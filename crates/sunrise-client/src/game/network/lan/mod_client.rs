@@ -1,10 +1,7 @@
 use super::Game;
 use crate::game::server_side::lan::LanSettings;
-use sunrise_client::{
-    Result,
-    lan::{self},
-    text::Text,
-};
+use sunrise_client_core::{Result, text::Text};
+use sunrise_sim::lan::{self};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_lan_open(&mut self, settings: LanSettings) -> Result<()> {

@@ -4,8 +4,8 @@
 use crate::game::commands::Target;
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -56,7 +56,7 @@ fn a_summoned_mobs_name_shows_the_entity_on_hover() {
     let mut game = game(&mut resources);
     assert!(game.run_command("summon minecraft:pig 4.5 64 4.5 {NoAI:1b}"));
     let id = game.mobs.last().unwrap().id;
-    let uuid = sunrise_client::save::uuid_text(game.persist.uuid_of(id).expect("a UUID"));
+    let uuid = sunrise_sim::save::uuid_text(game.persist.uuid_of(id).expect("a UUID"));
     let name = game.target_name(Target::Mob(id)).component();
     assert_eq!(name["translate"], "entity.minecraft.pig");
     assert_eq!(name["insertion"], uuid.as_str());

@@ -19,13 +19,11 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
         native_guest_turn_tests::register_test_menu,
         native_item_places::tests::{guest, open_to_lan},
     };
-    use sunrise_client::{
-        containers::{ModBlockEntity, ModBlockEntityFields},
-        lan::{Out, PlayerSender},
-    };
+    use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
     use sunrise_protocol::{
         buf::Reader, connection::Pipe, menu_extra, packets::play::Clientbound as C,
     };
+    use sunrise_sim::lan::{Out, PlayerSender};
     const MENU: &str = "hopper_fixture:menu";
     if crate::game::native_entity_refs::tests::run_fresh_cases(
         "game::client_side::native_hooks_client::screen_position_tests::a_hopper_layout_mod_menu_opens_its_screen_from_block_packets",
@@ -53,7 +51,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
         let pos = (1, 64, 1);
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MENU.into(),
                 "hopper_fixture".into(),
@@ -83,7 +81,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         rx.try_iter().for_each(drop);
                         game.world
                             .chunks
-                            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                         let state = game
                             .pack
                             .assets
@@ -146,7 +144,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                             menu_extra::LIVE_DATA_REVISION;
                         game.world
                             .chunks
-                            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                         assert_eq!(packets.len(), 2);
                         for packet in packets {
@@ -197,7 +195,7 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 CRATE_MENU.into(),
                 "test".into(),
@@ -217,17 +215,16 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                     |game| {
                         seed_native_menu(game, 1, CRATE_MENU);
                         game.player = Some(
-                            sunrise_client::motion::PlayerMotion::new(
+                            sunrise_sim::motion::PlayerMotion::new(
                                 game.motion,
                                 sunrise_core::geometry::Vec3::new(17.5, 64.0, -8.5),
                             )
                             .unwrap(),
                         );
                         let pos = (17, 63, -9);
-                        game.world.chunks.insert(
-                            (1, -1),
-                            Arc::new(sunrise_client::chunk::Chunk::empty(1, -1)),
-                        );
+                        game.world
+                            .chunks
+                            .insert((1, -1), Arc::new(sunrise_level::chunk::Chunk::empty(1, -1)));
                         let state = game
                             .pack
                             .assets
@@ -311,7 +308,7 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
 #[test]
 #[ignore = "daily"]
 fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [(
             PACK.into(),
             "test".into(),
@@ -400,7 +397,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [
                 (
                     "alpha:hopper".into(),
@@ -437,7 +434,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             crate::game::remote::tests::connect_menu_test(game);
                         game.world
                             .chunks
-                            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                         for (x, block, menu_name, hidden, screen_owner) in [
                             (1, "alpha:machine", "alpha:hopper", 4, "beta"),
                             (2, "beta:machine", "beta:hopper", 0, "alpha"),
@@ -484,7 +481,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             game.native_screen_tooltip_lines(&batch, None, &mut lines);
                             assert_eq!(
                                 lines,
-                                [(sunrise_client::text::Text::literal(screen_owner), 0)]
+                                [(sunrise_client_core::text::Text::literal(screen_owner), 0)]
                             );
                             let hooks = ["create", "draw", "click", "tooltip"];
                             let only_owner: Vec<_> =
@@ -549,7 +546,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
             play::{Clientbound as C, ContainerClose, OpenScreen},
         },
     };
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [(
             PACK.into(),
             "test".into(),
@@ -680,16 +677,8 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
     ) {
         return;
     }
-    use sunrise_client::{
+    use sunrise_level::{
         containers::{ModBlockEntity, ModBlockEntityFields},
-        lan::{
-            Joined, Lan, NetConfig, Out, PlayerSender,
-            chunks::ChunkEncoder,
-            data::SyncData,
-            guest::Guest,
-            hub::{Hub, HubConfig},
-            menu::{Menu, Slots},
-        },
         world::World,
     };
     use sunrise_protocol::{
@@ -698,6 +687,14 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
             configuration::ClientInformation,
             play::{Clientbound as C, ContainerSetData},
         },
+    };
+    use sunrise_sim::lan::{
+        Joined, Lan, NetConfig, Out, PlayerSender,
+        chunks::ChunkEncoder,
+        data::SyncData,
+        guest::Guest,
+        hub::{Hub, HubConfig},
+        menu::{Menu, Slots},
     };
 
     let seen = Seen::default();
@@ -718,10 +715,9 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                 const MENU: &str = "minecraft:generic_9x3";
                 let generation = seed_native_menu(game, 1, MENU);
                 let pos = (17, 63, -9);
-                game.world.chunks.insert(
-                    (1, -1),
-                    Arc::new(sunrise_client::chunk::Chunk::empty(1, -1)),
-                );
+                game.world
+                    .chunks
+                    .insert((1, -1), Arc::new(sunrise_level::chunk::Chunk::empty(1, -1)));
                 let state = game
                     .pack
                     .assets

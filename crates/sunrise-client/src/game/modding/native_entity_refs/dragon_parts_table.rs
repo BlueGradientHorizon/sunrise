@@ -186,12 +186,12 @@ mod tests {
 /// The table travels with the dimension-owned singleton, including actor loans.
 #[derive(Default)]
 pub(in crate::game) struct DragonSlot {
-    slot: sunrise_client::join_seq::ResidentSlot<crate::game::dragon::Dragon>,
+    slot: sunrise_sim::join_seq::ResidentSlot<crate::game::dragon::Dragon>,
     table: std::cell::RefCell<DragonPartsTable>,
     registered: std::cell::Cell<u32>,
 }
 impl std::ops::Deref for DragonSlot {
-    type Target = sunrise_client::join_seq::ResidentSlot<crate::game::dragon::Dragon>;
+    type Target = sunrise_sim::join_seq::ResidentSlot<crate::game::dragon::Dragon>;
     fn deref(&self) -> &Self::Target {
         &self.slot
     }
@@ -255,7 +255,7 @@ impl DragonSlot {
     pub(in crate::game::server_side) fn retire_extracted(
         &self,
         id: u32,
-        join: sunrise_client::join_seq::JoinSeq,
+        join: sunrise_sim::join_seq::JoinSeq,
     ) {
         if self.registered.get() == id {
             self.register(0);

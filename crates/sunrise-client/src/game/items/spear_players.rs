@@ -9,7 +9,8 @@
 use super::{Game, lan_pvp::Victim};
 use sunrise_core::geometry::{Aabb, Vec3};
 use {
-    sunrise_client::health::HurtSource, sunrise_client::text::Text, sunrise_sim::spear_sim::Kinetic,
+    sunrise_client_core::text::Text, sunrise_sim::health::HurtSource,
+    sunrise_sim::spear_sim::Kinetic,
 };
 
 /// Another player a spear can reach in the acting player's turn, taken from
@@ -278,7 +279,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && g.riding.is_some()
                     && !g.items().entity_type_tags.has_flag(
                         "minecraft:player",
-                        sunrise_client::items::EntityTypeTags::CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE,
+                        sunrise_items::items::EntityTypeTags::CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE,
                     );
                 if dismounted {
                     g.stop_riding();

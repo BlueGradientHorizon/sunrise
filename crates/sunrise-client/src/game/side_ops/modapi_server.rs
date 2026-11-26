@@ -14,7 +14,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game) fn server_entity_residence(&self, holder: mod_api::EntityRef) -> Residence {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
+        use sunrise_sim::join_seq::residency::table::EntityLookup;
         match self.server_resident_entity(holder.id()) {
             EntityLookup::Taken => Residence::Taken,
             EntityLookup::Found { .. } => Residence::Found,

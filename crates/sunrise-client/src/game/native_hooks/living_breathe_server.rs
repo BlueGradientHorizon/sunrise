@@ -10,9 +10,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn ask_breath(
         &mut self,
         living: mod_api::LivingRef,
-        vanilla: sunrise_client::breathing::Breath,
+        vanilla: sunrise_sim::breathing::Breath,
         unchanged: impl FnOnce(&Self) -> bool,
-    ) -> Option<sunrise_client::breathing::Breath> {
+    ) -> Option<sunrise_sim::breathing::Breath> {
         let mut breath = vanilla;
         let failures = mod_api::runtime::isolated_failures();
         let answered: Result<(), ()> = self.storage_transaction(|game, _| {
@@ -33,8 +33,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// A paused mob's breathing, as `ask_player_breath` does for a player.
     pub(in crate::game::server_side) fn ask_mob_breath(
         &mut self,
-        pause: &sunrise_client::mobs::ai::AirPause,
-    ) -> Option<sunrise_client::breathing::Breath> {
+        pause: &sunrise_sim::mobs::ai::AirPause,
+    ) -> Option<sunrise_sim::breathing::Breath> {
         let living = self
             .entity(pause.mob)
             .and_then(|entity| self.living(entity))?;
@@ -46,8 +46,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `step` decided on, or `None` when the player is gone or their air changed.
     pub(in crate::game) fn ask_player_breath(
         &mut self,
-        step: sunrise_client::breathing::AirStep,
-    ) -> Option<sunrise_client::breathing::Breath> {
+        step: sunrise_sim::breathing::AirStep,
+    ) -> Option<sunrise_sim::breathing::Breath> {
         let id = self.native_acting_entity();
         let living = self.entity(id).and_then(|entity| self.living(entity))?;
         self.ask_breath(living, step.vanilla, move |game| {
@@ -60,8 +60,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn ask_stand_breath(
         &mut self,
         id: u32,
-        step: sunrise_client::breathing::AirStep,
-    ) -> Option<sunrise_client::breathing::Breath> {
+        step: sunrise_sim::breathing::AirStep,
+    ) -> Option<sunrise_sim::breathing::Breath> {
         let living = self.entity(id).and_then(|entity| self.living(entity))?;
         self.ask_breath(living, step.vanilla, move |game| {
             game.armor_stands

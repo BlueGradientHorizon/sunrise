@@ -15,7 +15,7 @@ impl KeptItemEntity {
         self.velocity = self.velocity.or(child.velocity);
     }
 
-    pub(in crate::game) fn restore(self, item: &mut sunrise_client::entities::ItemEntity) {
+    pub(in crate::game) fn restore(self, item: &mut sunrise_sim::entities::ItemEntity) {
         if let Some(stack) = self.stack {
             item.stack = stack;
         }

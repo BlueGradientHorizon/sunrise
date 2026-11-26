@@ -2,7 +2,8 @@
 //! cannot build, spectators fly through blocks and only watch.
 #[allow(unused_imports)]
 use super::{Game, Screen};
-use sunrise_client::{collisions::SceneCollisions, command::args::GameMode};
+use sunrise_command::args::GameMode;
+use sunrise_level::collisions::SceneCollisions;
 use sunrise_world::world_movement::in_range_of_ground;
 
 #[allow(unused_imports)]

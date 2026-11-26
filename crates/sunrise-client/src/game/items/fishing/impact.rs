@@ -1,6 +1,6 @@
 //! The flying bobber's cancellable impact, before vanilla's deflection decision.
 use super::*;
-use sunrise_client::{mobs::Who, projectiles::Hit};
+use sunrise_sim::{mobs::Who, projectiles::Hit};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Expose the actual cast hook to the listener, then resume only that same

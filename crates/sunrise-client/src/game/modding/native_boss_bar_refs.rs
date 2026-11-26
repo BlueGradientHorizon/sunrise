@@ -2,13 +2,9 @@
 use super::Game;
 use mod_api::__private::game::*;
 use mod_api::{BossBarColor, BossBarOverlay, BossBarRef, PlayerRef};
-use sunrise_client::{
-    bossbar::BossBar,
-    lan::playerdata::{ints_uuid, uuid_ints},
-    scoreboard::comp_text,
-    text::Text,
-};
+use sunrise_client_core::{bossbar::BossBar, scoreboard::comp_text, text::Text};
 use sunrise_core::identifier::Identifier;
+use sunrise_sim::lan::playerdata::{ints_uuid, uuid_ints};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     fn boss_bar_state(&self, bar: BossBarRef) -> Option<&BossBar> {
@@ -283,8 +279,8 @@ mod tests {
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     fn guest(uuid: u128, conn: u32) -> Guest {
         let (tx, _) = std::sync::mpsc::channel();
@@ -471,8 +467,8 @@ mod tests {
             let dir = std::env::temp_dir().join(format!("boss-save-{}", std::process::id()));
             game.side.world_root = dir.clone();
             game.save_bossbars();
-            let root = sunrise_client::save::read_dat(&game.bossbar_path()).unwrap();
-            let loaded = sunrise_client::bossbar::BossBars::unpack(root.get("data").unwrap());
+            let root = sunrise_sim::save::read_dat(&game.bossbar_path()).unwrap();
+            let loaded = sunrise_client_core::bossbar::BossBars::unpack(root.get("data").unwrap());
             let kept = loaded.get("mod:bar").unwrap();
             assert_eq!((kept.value, kept.max, kept.color.as_str()), (9, 100, "red"));
             assert_eq!(kept.players, vec![uuid_ints(123)]);

@@ -4,7 +4,8 @@ use super::Dim;
 use super::native_entity_refs::tests::run_fresh_cases;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, ItemPlace, ServerHost};
-use sunrise_client::{items::ItemStack, lan::playerdata};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::playerdata;
 
 pub(in crate::game) const NETHER: &str = "minecraft:the_nether";
 
@@ -363,7 +364,7 @@ fn a_throw_or_break_for_a_player_in_another_level_changes_nothing() {
             game.enter_level(dim).unwrap();
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.world.set(pos[0], pos[1], pos[2], state).unwrap();
         }
@@ -420,7 +421,7 @@ fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() 
         return;
     }
     const ID: &str = "snapshot:diamonds";
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     with_guests(|game| {
         let world = tempfile::tempdir().unwrap();
         let data = world.path().join("datapacks/rewards/data/snapshot");

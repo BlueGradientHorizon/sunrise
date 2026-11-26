@@ -1,7 +1,8 @@
 //! Server-side stack giving for native mods (`player_give_stack`).
 use super::Game;
 use mod_api::{PlayerDataRefusal, PlayerRef};
-use sunrise_client::{items::ItemStack, lan::playerdata};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::playerdata;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `GiveCommand.giveItem` for one stack: `Inventory.add`, the rest thrown for the player

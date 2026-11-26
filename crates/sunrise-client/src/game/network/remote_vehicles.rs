@@ -15,10 +15,11 @@
 //! moves on the server with the rider's input, and the rider sits in it.
 use super::{Game, Keys, remote::Remote};
 use std::collections::HashMap;
-use sunrise_client::mobs::{Mob, equine, happy_ghast};
-use sunrise_client::{keybinds, text::Text};
+use sunrise_client::keybinds;
+use sunrise_client_core::text::Text;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
+use sunrise_sim::mobs::{Mob, equine, happy_ghast};
 use sunrise_world::stepped_interpolation::PosRot;
 
 /// One edge of the riding graph sent by `SetPassengers`.
@@ -116,11 +117,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Some(row.position);
         }
         if let Some(&block) = self.side.remote_knots.get(&id) {
-            let p = sunrise_client::mobs::leash::knot_state(block).position;
+            let p = sunrise_sim::mobs::leash::knot_state(block).position;
             return Some([p.x, p.y, p.z]);
         }
         if let Some(k) = self.resident_entities.knots.iter().find(|k| k.id == id) {
-            let p = sunrise_client::mobs::leash::knot_state(k.fence).position;
+            let p = sunrise_sim::mobs::leash::knot_state(k.fence).position;
             return Some([p.x, p.y, p.z]);
         }
         if let Some(crystal) = self.crystals.iter().find(|c| c.id == id) {
@@ -377,7 +378,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // STAYS_STILL confirms it), and the rider lands on top of the ghast
             // (`place_ghast_under`).
             if let Some(m) = self.mobs.iter_mut().find(|m| {
-                m.id == vehicle_id && m.species() == sunrise_client::mobs::Species::HappyGhast
+                m.id == vehicle_id && m.species() == sunrise_sim::mobs::Species::HappyGhast
             }) {
                 m.extra.counter = 10;
                 if let Some(r) = self.remote.as_mut() {
@@ -414,7 +415,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if let Some(m) = self.mob_index.get_ref(&self.mobs, subject.entity_id) {
             sunrise_gameplay::minecart_seat::cart_seat_offset(
                 m.species(),
-                sunrise_client::mobs::riders::vehicle_attachment(m, 0.98),
+                sunrise_sim::mobs::riders::vehicle_attachment(m, 0.98),
             )
         } else {
             sunrise_gameplay::minecart_seat::PASSENGER_Y
@@ -471,7 +472,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     });
                 if let Some(p) = self.player.as_mut() {
                     let scale = p.dimensions.width
-                        / sunrise_client::pose::Pose::Standing.dimensions(1.0).width;
+                        / sunrise_sim::pose::Pose::Standing.dimensions(1.0).width;
                     let (seat, previous) = generic_player_seat(at, before.unwrap_or(at), scale);
                     let previous = if before.is_some() {
                         previous
@@ -514,7 +515,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // positionRider turns and clamps the rider's yaw without changing yRotO.
             self.yaw += b.delta_rotation;
-            self.yaw = sunrise_client::camera::clamp_boat_rotation(self.yaw, b.yaw).0;
+            self.yaw = sunrise_level::camera_math::clamp_boat_rotation(self.yaw, b.yaw).0;
             self.store_boat_back(i, b);
             // In front of a mob that shares the boat.
             Some(self.player_boat_seat(i))
@@ -541,7 +542,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.passenger_riding_position(id, None, None, &std::collections::HashMap::new())
         {
             let scale = self.player.as_ref().map_or(1.0, |p| {
-                p.dimensions.width / sunrise_client::pose::Pose::Standing.dimensions(1.0).width
+                p.dimensions.width / sunrise_sim::pose::Pose::Standing.dimensions(1.0).width
             });
             Some(Vec3::new(at.x, at.y - f64::from(0.6_f32 * scale), at.z))
         } else {
@@ -824,7 +825,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         keys: Keys,
         window: i32,
-    ) -> crate::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let mount = self.mobs.iter().position(|m| self.drives(m));
         let can_sprint = mount.is_some_and(|i| equine::can_sprint(self.mobs[i].species()));
         self.player_sprint_tick(keys, window, Some((can_sprint, mount.is_some())))
@@ -864,7 +865,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         let mut mob = self.mobs.remove(i);
         mob.extra.client_side = true;
-        let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
+        let mut lent = sunrise_sim::health::LentLevel::take(&mut self.world);
         let mut events = Vec::new();
         let hooks = self.damage_hooks.client_side();
         {
@@ -925,10 +926,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// and the tags its server sent, so its tag view answers the server's membership.
     pub(in crate::game::client_side) fn predicting_damage_level<'a>(
         &'a self,
-        lent: &'a mut sunrise_client::health::LentLevel,
-        hooks: &'a sunrise_client::health::DamageHooks,
-    ) -> sunrise_client::health::DamageLevel<'a> {
-        sunrise_client::health::DamageLevel::lent(
+        lent: &'a mut sunrise_sim::health::LentLevel,
+        hooks: &'a sunrise_sim::health::DamageHooks,
+    ) -> sunrise_sim::health::DamageLevel<'a> {
+        sunrise_sim::health::DamageLevel::lent(
             &self.world,
             self.pack.assets.registry,
             lent,
@@ -954,10 +955,10 @@ fn client_moves(m: &Mob, first_passenger: bool, steer: bool) -> bool {
     if equine::moved_by_rider(m.species()) && m.extra.saddled() {
         return !matches!(
             m.species(),
-            sunrise_client::mobs::Species::Pig | sunrise_client::mobs::Species::Strider
+            sunrise_sim::mobs::Species::Pig | sunrise_sim::mobs::Species::Strider
         ) || steer;
     }
-    m.species() == sunrise_client::mobs::Species::HappyGhast
+    m.species() == sunrise_sim::mobs::Species::HappyGhast
         && happy_ghast::harnessed_adult(m)
         && !happy_ghast::on_still_timeout(m)
 }
@@ -1021,7 +1022,7 @@ pub(in crate::game) mod tests {
     }
 
     use super::*;
-    use sunrise_client::mobs::MobTypes;
+    use sunrise_sim::mobs::MobTypes;
 
     /// handleTeleportEntity and handleMoveVehicle for the vehicle this client moves (a saddled pig steered with a
     /// carrot on a stick): a relative teleport counts from where the pig is on this client and eases it there,
@@ -1031,8 +1032,9 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn the_driven_vehicle_takes_the_servers_teleports_and_moves() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            use sunrise_client::{items::ItemStack, motion::PlayerMotion};
+            use sunrise_items::items::ItemStack;
             use sunrise_protocol::packets::play::Clientbound as C;
+            use sunrise_sim::motion::PlayerMotion;
             let root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
             let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
@@ -1096,8 +1098,9 @@ pub(in crate::game) mod tests {
         use super::super::{
             Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
         };
-        use sunrise_client::{items::ItemStack, motion::PlayerMotion};
+        use sunrise_items::items::ItemStack;
         use sunrise_protocol::connection::Pipe;
+        use sunrise_sim::motion::PlayerMotion;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let reference = std::env::var_os("SUNRISE_MOUNT_CONTROL_REFERENCE").unwrap();
         let rows: Vec<serde_json::Value> =
@@ -1263,7 +1266,7 @@ pub(in crate::game) mod tests {
             if controlled {
                 let mut server_mount = server.mobs[0].clone();
                 let before = server_mount.position;
-                let mut test_level = sunrise_client::health::TestLevel::new(0);
+                let mut test_level = sunrise_sim::health::TestLevel::new(0);
                 *test_level.random() = (*server.world.random).clone();
                 let mut events = Vec::new();
                 server_mount.tick(
@@ -1299,7 +1302,7 @@ pub(in crate::game) mod tests {
                 return;
             };
             assert!(!client_moves(&m, true, false), "{kind} without a saddle");
-            m.set_saddle(Some(sunrise_client::items::ItemStack::new(
+            m.set_saddle(Some(sunrise_items::items::ItemStack::new(
                 "minecraft:saddle",
                 1,
             )));
@@ -1339,8 +1342,9 @@ pub(in crate::game) mod tests {
         use super::super::{
             Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
         };
-        use sunrise_client::{items::ItemStack, motion::PlayerMotion};
+        use sunrise_items::items::ItemStack;
         use sunrise_protocol::connection::Pipe;
+        use sunrise_sim::motion::PlayerMotion;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1408,7 +1412,8 @@ pub(in crate::game) mod tests {
         crate::game::in_own_process(
             "game::client_side::remote_vehicles::tests::a_sprinting_rider_boards_a_camel_at_sprint_speed",
             || {
-                use sunrise_client::{items::ItemStack, mobs::camel, motion::PlayerMotion};
+                use sunrise_items::items::ItemStack;
+                use sunrise_sim::{mobs::camel, motion::PlayerMotion};
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(client, "CamelRider").unwrap();
@@ -1476,8 +1481,9 @@ mod plugin_seat_tests {
     #[test]
     #[ignore = "daily"]
     fn controlling_client_copies_sneak_press_and_release_into_rider() {
-        use sunrise_client::{items::ItemStack, mobs::Mob, sprint::Keys};
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::{mobs::Mob, sprint::Keys};
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
             let mut horse_mob = Mob::new(7, kind, Vec3::new(8.5, 100.0, 8.5), 0.0);
@@ -1509,8 +1515,8 @@ mod plugin_seat_tests {
     #[ignore = "daily"]
     fn local_rider_uses_attachments_and_follows_a_moving_seat_chain() {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
-        use sunrise_client::{mobs::Mob, motion::PlayerMotion, sprint::Keys};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::{mobs::Mob, motion::PlayerMotion, sprint::Keys};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1544,8 +1550,7 @@ mod plugin_seat_tests {
         )
         .unwrap();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-        let mut stand =
-            sunrise_client::entities::ArmorStand::new(42, Vec3::new(2.0, 64.0, 3.0), 0.0);
+        let mut stand = sunrise_sim::entities::ArmorStand::new(42, Vec3::new(2.0, 64.0, 3.0), 0.0);
         stand.marker = true;
         game.armor_stands.push(stand);
         game.riding = Some(42);

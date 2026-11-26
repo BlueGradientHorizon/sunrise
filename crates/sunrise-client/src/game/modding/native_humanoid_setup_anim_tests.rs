@@ -2,7 +2,8 @@
 use super::native_entity_refs::tests::with_client_game;
 use mod_api::{Hooks, HumanoidPart, HumanoidSetupAnimEvent};
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::{Mob, render, skin};
+use sunrise_client::mobs::{render, skin};
+use sunrise_sim::mobs::Mob;
 
 struct PoseMod(Arc<Mutex<Vec<(u32, String)>>>);
 #[mod_api::__subscriptions]

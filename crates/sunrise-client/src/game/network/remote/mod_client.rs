@@ -73,30 +73,26 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sunrise_client::first_person::{Hand, SwingAnimation};
 #[allow(unused_imports)]
 use sunrise_client::{
-    Result,
-    blocks::Fluid,
-    chunk::Chunk,
-    containers::{BlockEntity, Furnace, FurnaceKind},
-    entities::{Experience, ExperienceOrb, ItemEntity},
     hud::HudBatch,
-    items::ItemStack,
-    join_seq::JoinSeq,
-    lan::data::{BIOME_REGISTRY, client_biomes},
-    menu::Input,
-    mobs::Mob,
-    motion::{MotionWorld, PlayerMotion},
     net::{Event, Session},
     particles::TrackingTarget,
-    random_source, screen_effects,
-    sprint::Keys,
+    screen_effects,
     streaming::MeshStreamer,
-    tab_list::SPECTATOR,
-    text::Text,
 };
+#[allow(unused_imports)]
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSource};
+#[allow(unused_imports)]
+use sunrise_items::{blocks::Fluid, items::ItemStack};
+#[allow(unused_imports)]
+use sunrise_level::{
+    chunk::Chunk,
+    containers::{BlockEntity, Furnace, FurnaceKind},
+    profile_lookup::SPECTATOR,
+    random_source,
+};
 use sunrise_protocol::{
     entity_data::{ITEM_ENTITY_ITEM, Value},
     item::{Hashed, Stack},
@@ -109,6 +105,17 @@ use sunrise_protocol::{
     text::plain,
 };
 use sunrise_server_files::profiles::ServicesKeySet;
+use sunrise_sim::first_person_sim::{Hand, SwingAnimation};
+#[allow(unused_imports)]
+use sunrise_sim::{
+    entities::{Experience, ExperienceOrb, ItemEntity},
+    join_seq::JoinSeq,
+    lan::data::{BIOME_REGISTRY, client_biomes},
+    menu::Input,
+    mobs::Mob,
+    motion::{MotionWorld, PlayerMotion},
+    sprint::Keys,
+};
 use {
     sunrise_core::nbt::Tag,
     sunrise_mod_runtime::attachments::Holder,
@@ -360,11 +367,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.receive_cauldron_use(&p.data)?;
             }
             // The server's next generation of mod registries: all of it or the connection.
-            C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
-                sunrise_client::datapack_net::accept_chunk(&p.data)?;
+            C::CustomPayload(p) if p.channel == sunrise_sim::datapack_net::CHANNEL => {
+                sunrise_sim::datapack_net::accept_chunk(&p.data)?;
             }
             C::CustomPayload(p)
-                if p.channel == sunrise_client::lan::commands::selector_sync::CHANNEL =>
+                if p.channel == sunrise_sim::lan::commands::selector_sync::CHANNEL =>
             {
                 self.receive_selector_tokens(&p.data)?;
             }
@@ -374,7 +381,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             // Private custom recipe-book settings and placement protocol.
             C::CustomPayload(p)
-                if p.channel == sunrise_client::recipe_book::settings_sync::CHANNEL =>
+                if p.channel == sunrise_sim::recipe_book::settings_sync::CHANNEL =>
             {
                 self.remote_book_settings(&p.data);
             }
@@ -406,7 +413,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::CHANNEL => {
                 self.receive_menu_extra(&p.data)?;
             }
-            C::CustomPayload(p) if sunrise_client::lan::recipes::viewer_channel(&p.channel) => {
+            C::CustomPayload(p) if sunrise_sim::lan::recipes::viewer_channel(&p.channel) => {
                 self.remote_recipe_viewer(&p.channel, &p.data);
             }
             // An anvil cost the data-slot short cannot hold, after that short.
@@ -414,12 +421,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.remote_anvil_wide_cost(&p.data);
             }
             C::CustomPayload(p)
-                if p.channel == sunrise_client::lan::data::OPEN_COMMAND_BLOCK_CHANNEL =>
+                if p.channel == sunrise_sim::lan::data::OPEN_COMMAND_BLOCK_CHANNEL =>
             {
                 self.remote_open_command_block(&p.data);
             }
             // The server's recipes its native mods asked to send.
-            C::CustomPayload(p) if p.channel == sunrise_client::lan::recipes::CONTENT_CHANNEL => {
+            C::CustomPayload(p) if p.channel == sunrise_sim::lan::recipes::CONTENT_CHANNEL => {
                 self.remote_recipe_content(&p.data);
             }
             // The passages of the chunks the server shows the window.
@@ -568,9 +575,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             C::CustomChatCompletions(p) => {
                 // ClientPacketListener.handleCustomChatCompletions.
                 if let Some(r) = self.remote.as_mut() {
-                    sunrise_client::command::modify_custom_completions(
+                    sunrise_command::modify_custom_completions(
                         &mut r.custom_completions,
-                        sunrise_client::command::CustomCompletionAction::from_id(p.action),
+                        sunrise_command::CustomCompletionAction::from_id(p.action),
                         &p.entries,
                     );
                     self.ui.registries.custom_completions = r.custom_completions.clone();
@@ -680,7 +687,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             log::warn!("Dropping a stack with unnegotiated custom components");
             return None;
         }
-        Some(sunrise_client::item_sync::from_network(
+        Some(sunrise_sim::item_sync::from_network(
             stack,
             &r.builtin,
             &r.registries,
@@ -696,11 +703,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
-        let title = sunrise_client::text::Text::translate("connect.reconfiguring", &[]);
+        let title = sunrise_client_core::text::Text::translate("connect.reconfiguring", &[]);
         let ((tx, ty), (bx, by)) = self.reconfigure_layout((w, h));
         batch.text_styled(atlas, &title, tx, ty, u32::MAX, true);
         // CommonComponents.GUI_DISCONNECT
-        let label = sunrise_client::text::Text::translate("menu.disconnect", &[]);
+        let label = sunrise_client_core::text::Text::translate("menu.disconnect", &[]);
         let active = self.ticks.saturating_sub(since) >= 600;
         let hover = sunrise_client::ui::hovered(self.side.cursor, bx, by, 150.0, 20.0);
         sunrise_client::ui::button(batch, atlas, bx, by, 150.0, 20.0, &label, active, hover);
@@ -778,7 +785,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// button lets go or the server stops it, as the client's
     /// `LivingEntity.updateUsingItem` never completes one.
     pub(in crate::game::client_side) fn patched_held_use(&self, stack: &ItemStack) -> bool {
-        let (ticks, blocks) = sunrise_client::item_sync::patched_use(stack);
+        let (ticks, blocks) = sunrise_sim::item_sync::patched_use(stack);
         ticks.map_or(blocks, |ticks| ticks > 0)
             && self
                 .items()
@@ -882,7 +889,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         (w, h): (f32, f32),
     ) -> ((f32, f32), (f32, f32)) {
-        let title = sunrise_client::text::Text::translate("connect.reconfiguring", &[]);
+        let title = sunrise_client_core::text::Text::translate("connect.reconfiguring", &[]);
         let title_w = self.side.gui.atlas.font.width_text(&title).ceil() as i32;
         let width = (title_w + 20).max(170);
         let left = ((w as i32 - width) as f32 * 0.5) as i32;
@@ -896,7 +903,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Live client `Abilities` (`LocalPlayer.abilities`) when connected to a server.
     pub(in crate::game) fn remote_abilities(
         &self,
-    ) -> Option<&sunrise_client::lan::abilities::PlayerAbilities> {
+    ) -> Option<&sunrise_sim::lan::abilities::PlayerAbilities> {
         self.remote.as_ref().map(|r| &r.abilities)
     }
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
@@ -958,7 +965,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // server's stack agrees, so no creative slot edit follows at the end of the tick.
         let before = self.creative_stacks();
         let dropped =
-            sunrise_client::items::take_held_drop(&mut self.inventory[self.selected], all, false);
+            sunrise_items::items::take_held_drop(&mut self.inventory[self.selected], all, false);
         self.remote_synced_since(&before);
         self.send_action(if all { 4 } else { 5 });
         if dropped.is_some() {
@@ -972,7 +979,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_hurt_sound(&self, source_type: i32) -> &'static str {
         match self.remote.as_ref() {
             Some(r) => hurt_sound_for(&r.registries, &self.health_resources.damage, source_type),
-            None => sunrise_client::health::hurt_sound("hurt"),
+            None => sunrise_sim::health::hurt_sound("hurt"),
         }
     }
     // remote_tab_players: remote/sync.rs
@@ -1004,7 +1011,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         let at = Vec3::new(x, y, z);
         // ItemEntity's constructor draws bobOffs from the item's own random.
-        let mut random = sunrise_client::mobs::entity_random(id as u32, at);
+        let mut random = sunrise_sim::mobs::entity_random(id as u32, at);
         let bob = super::item_entities::bob_offset(at, random.next_float(), self.clock.still());
         // Metadata can arrive after newer entities (including other items). Insert at the
         // reserved ClientLevel.addEntity slot, not the tail at metadata time.
@@ -1476,17 +1483,17 @@ pub(in crate::game) mod tests {
     fn declared_gate_uses_its_class_for_blasts_and_predicted_use() {
         use crate::game::native_guest_turn_tests::with_guests_at;
         use std::sync::Arc;
-        use sunrise_client::{
-            chunk::Chunk,
-            lan::{Out, PlayerSender},
-            mod_content::{ContentMod, resource_root},
-        };
         use sunrise_core::position::BlockPos;
+        use sunrise_level::chunk::Chunk;
         use sunrise_mod_package::{
             content::{Block, Content, GateSound},
             enabled::EnabledMods,
         };
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+        use sunrise_sim::{
+            lan::{Out, PlayerSender},
+            mod_content::{ContentMod, resource_root},
+        };
 
         let base = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),

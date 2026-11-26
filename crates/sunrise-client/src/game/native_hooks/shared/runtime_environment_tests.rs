@@ -84,7 +84,7 @@ fn block_containers_cannot_bind_an_owned_menu_type() {
             limits,
         )
     };
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [
             menu("test:block", None),
             menu("test:transient", Some(vec![1])),

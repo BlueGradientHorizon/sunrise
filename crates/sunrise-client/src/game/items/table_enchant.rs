@@ -31,7 +31,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         cost: i32,
         input: &ItemStack,
     ) -> Option<ItemStack> {
-        use sunrise_client::stations;
+        use sunrise_sim::stations;
         let enchantments = &self.stations().enchantments;
         if !mod_api::__private::item_listens(mod_api::HookId::ApplyEnchantments, &input.item) {
             return stations::apply_enchantment(enchantments, self.items(), seed, row, cost, input);

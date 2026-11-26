@@ -3,9 +3,9 @@
 //! so an adventure player's `can_place_on` block places against the sign.
 use sunrise_core::nbt::Tag;
 use {
-    sunrise_client::command::args::GameMode, sunrise_client::containers::BlockEntity,
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Who,
-    sunrise_level::signs_data::SignData,
+    sunrise_command::args::GameMode, sunrise_items::items::ItemStack,
+    sunrise_level::containers::BlockEntity, sunrise_level::signs_data::SignData,
+    sunrise_sim::mobs::Who,
 };
 
 type Posted = (&'static str, [f64; 3], Option<Who>);

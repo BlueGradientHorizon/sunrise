@@ -407,7 +407,7 @@ pub(in crate::game) mod tests {
     fn frozen_steps_are_observed_without_consuming_them() {
         let mut lifecycle = opening();
         lifecycle.world_open_ready();
-        let mut clock = sunrise_client::clock::FixedStep::default();
+        let mut clock = sunrise_sim::clock::FixedStep::default();
         clock.set_frozen(true);
         clock.set_frozen_ticks_to_run(4);
         let mut observed = 0;
@@ -793,7 +793,7 @@ pub(in crate::game) mod tests {
             content::crash::current_native_mod,
         };
         use std::{cell::RefCell, rc::Rc};
-        use sunrise_client::{join_seq::residency::table::EntityLookup, mobs::Mob};
+        use sunrise_sim::{join_seq::residency::table::EntityLookup, mobs::Mob};
 
         if run_fresh_cases(
             "game::server_side::native_lifecycle::tests::panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close",
@@ -803,8 +803,8 @@ pub(in crate::game) mod tests {
             return;
         }
         let home = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap());
-        sunrise_client::logging::init(&home, "Server thread");
-        sunrise_client::crash::install(home, "server", || None);
+        sunrise_level::logging::init(&home, "Server thread");
+        sunrise_level::crash::install(home, "server", || None);
 
         const CANCELLED: &str = "cancelled_task_owner";
         const CLOSED: &str = "closed_task_owner";
@@ -869,7 +869,7 @@ pub(in crate::game) mod tests {
                         hook: "schedule_task_drop",
                     }),
                 );
-                let logs = sunrise_client::logging::recent_lines();
+                let logs = sunrise_level::logging::recent_lines();
                 for (owner, message) in [
                     (CANCELLED, "cancelled capture panicked"),
                     (CLOSED, "closing capture panicked"),

@@ -35,7 +35,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         let mut drops = None;
         let pos = BlockPos::new(pos[0], pos[1], pos[2]);
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             self.with_level(|_, level, _| {
                 level.native_can_drop_from_explosion(pos, state, explosion, &mut drops);
             });

@@ -159,8 +159,8 @@ mod tests {
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, ExplosionDetonateEvent, Hooks, ServerHost};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::mobs::Mob;
     use sunrise_core::{geometry::Vec3, random::RandomSource};
+    use sunrise_sim::mobs::Mob;
 
     struct Noop;
     #[mod_api::__subscriptions]
@@ -377,7 +377,7 @@ mod tests {
                 zombie(game, 900, 2.0);
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let stone = game
                     .pack
                     .assets
@@ -480,7 +480,7 @@ mod tests {
                     )
                     .with_chest();
                     boat.items[0] =
-                        Some(sunrise_client::items::ItemStack::new("minecraft:stick", 3));
+                        Some(sunrise_items::items::ItemStack::new("minecraft:stick", 3));
                     game.boats.push(boat);
                     game.world.random.set_seed(7);
                     explode(game);
@@ -624,8 +624,8 @@ mod tests {
     }
 
     fn specials(game: &mut crate::game::ServerGame<'_>) {
-        use sunrise_client::entities::{ArmorStand, Cushion, ItemFrame, Painting};
         use sunrise_core::random::LegacyRandom;
+        use sunrise_sim::entities::{ArmorStand, Cushion, ItemFrame, Painting};
         game.armor_stands
             .push(ArmorStand::new(950, Vec3::new(2.0, 1.0, 0.0), 0.0));
         game.item_frames.push(ItemFrame {

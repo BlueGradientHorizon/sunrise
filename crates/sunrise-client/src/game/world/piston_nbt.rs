@@ -4,7 +4,7 @@ use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn state_to_nbt(&self, state: BlockStateId) -> Tag {
-        sunrise_client::entity_nbt::state_to_nbt(self.pack.assets.registry, state)
+        sunrise_sim::entity_nbt::state_to_nbt(self.pack.assets.registry, state)
     }
 
     /// `PistonMovingBlockEntity.saveAdditional`, then components and full metadata.

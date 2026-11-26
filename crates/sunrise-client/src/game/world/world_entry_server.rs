@@ -56,7 +56,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for world in self.side.levels.0.parked_worlds() {
             world.pois.clear();
         }
-        sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
+        sunrise_sim::datapack_net::serve(self.mods.datapack_registries.clone());
         self.send_datapack_snapshots();
         self.refresh_recipe_property_context();
         self.side.structure_spawns = structure_spawns;
@@ -167,7 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.install_profession_save_snapshots();
         self.share_mob_maps();
         self.share_biome_keys();
-        sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
+        sunrise_sim::datapack_net::serve(self.mods.datapack_registries.clone());
         Ok(())
     }
     /// Reload the content tables with the world's packs, as
@@ -188,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .as_ref()
             .map_or_else(|| self.res.shared_items(), |tables| tables.items.clone());
         let parts = self.prepare_parts(&items)?;
-        let wire_tags = sunrise_client::lan::data::WorldTags::new(items.clone(), &health.damage);
+        let wire_tags = sunrise_sim::lan::data::WorldTags::new(items.clone(), &health.damage);
         let overlay = pack_files(&tables);
         let kept = self
             .lan
@@ -230,7 +230,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         overlay.conditions.check_errors()?;
         Ok(PreparedWorldReload {
             advancements,
-            structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(root),
+            structure_spawns: sunrise_sim::mobs::spawn_selection::StructureSpawns::load(root),
             tables,
             health,
             parts,
@@ -254,7 +254,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game) fn server_resolve_block_paths(&self) {
         use mod_api::{HookId, PathComputationType};
-        use sunrise_client::mobs::data::PartAnswers;
+        use sunrise_sim::mobs::data::PartAnswers;
         let data = self.res.mob_data();
         let pathfindable =
             Self::resolve_per_state(HookId::IsPathfindable, data.states.len(), |state| {
@@ -331,9 +331,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &overlay,
             self.res.item_defaults(),
             if reload {
-                sunrise_client::items::LoadEntityTags::Reload(&self.items().entity_type_tags)
+                sunrise_items::items::LoadEntityTags::Reload(&self.items().entity_type_tags)
             } else {
-                sunrise_client::items::LoadEntityTags::Frozen(
+                sunrise_items::items::LoadEntityTags::Frozen(
                     self.res.items().entity_type_tags.ids(),
                 )
             },
@@ -363,7 +363,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 // Admit the frozen pack definitions with this candidate's bound
                 // tags, even if no peer joins and triggers the full wire load.
-                sunrise_client::lan::data::SyncData::stage_registry_definitions(
+                sunrise_sim::lan::data::SyncData::stage_registry_definitions(
                     root,
                     self.res.item_defaults(),
                     &overlay,
@@ -391,7 +391,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &health.damage,
             &items.ordered_tags(),
         );
-        let advancements = Arc::new(sunrise_client::advancements::Tree::load_with(
+        let advancements = Arc::new(sunrise_sim::advancements::Tree::load_with(
             &root.join("data"),
             &overlay,
         ));
@@ -410,7 +410,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
-        let _recipe_files = sunrise_client::json_folder::read(&root.join("data/minecraft/recipe"));
+        let _recipe_files = sunrise_world::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = if reload {
             lan::sync::prepare_server_sources(root, &self.res.core.item_data, &items, &overlay)
         } else {
@@ -448,7 +448,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let sources = sources?;
         let mut loot = loot?;
         let recipes = Recipes::from_resolved(root, &items, &overlay, &sources)?;
-        let mut stations = sunrise_client::stations::StationData::from_sources(
+        let mut stations = sunrise_sim::stations::StationData::from_sources(
             root,
             &items,
             &overlay,
@@ -465,7 +465,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let datapack_registries =
             datapack_candidate.map(mod_api::DatapackRegistrySet::from_candidate);
-        let received = sunrise_client::datapack_net::received();
+        let received = sunrise_sim::datapack_net::received();
         let datapack_set = if self.is_logical_server() {
             datapack_registries.as_ref()
         } else {
@@ -489,7 +489,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .flatten()
             .cloned()
             .collect();
-        let suffocation = sunrise_client::mobs::suffocation::bind(
+        let suffocation = sunrise_sim::mobs::suffocation::bind(
             self.res.core.collision.clone(),
             &causes_suffocation,
         )?;
@@ -497,12 +497,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // (`in_tag` falls back to them), rather than matching no tag at all.
         let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
             .into_iter()
-            .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
+            .chain(sunrise_sim::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
             .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .filter_map(|registry| {
-                match sunrise_client::items::load_tags(root, registry, &tag_files) {
+                match sunrise_items::items::load_tags(root, registry, &tag_files) {
                     Ok(tags) => Some((registry, tags)),
                     Err(e) => {
                         log::warn!("Sunrise: the world's {registry} tags are not applied: {e}");
@@ -627,7 +627,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .chain(stack.enabled_packs())
             .collect();
         let files: Vec<_> =
-            sunrise_client::datapack::registry_files(&packs, &keys, |path, bytes| {
+            sunrise_level::datapack::registry_files(&packs, &keys, |path, bytes| {
                 // Malformed JSON is kept for the registry's own decode diagnostic.
                 serde_json::from_slice::<serde_json::Value>(bytes)
                     .map_or(true, |json| conditions.allows_file(&json, path))
@@ -663,7 +663,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .iter()
             .filter(|g| g.placed && g.participates_online() && g.brand == "sunrise")
         {
-            sunrise_client::datapack_net::reload_connection(&guest.sender);
+            sunrise_sim::datapack_net::reload_connection(&guest.sender);
         }
     }
 

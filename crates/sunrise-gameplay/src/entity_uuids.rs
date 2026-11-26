@@ -1,7 +1,7 @@
 //! Saved UUIDs by runtime ID. The level publishes changes to the residency index.
 use mod_api::DimensionKey;
 use std::{collections::HashMap, ops::Deref};
-use sunrise_client::join_seq::residency::Journal;
+use sunrise_sim::join_seq::residency::Journal;
 
 #[derive(Default)]
 pub struct EntityUuids {

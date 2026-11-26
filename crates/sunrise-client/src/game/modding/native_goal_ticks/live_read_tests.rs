@@ -53,7 +53,7 @@ pub(in crate::game::server_side) fn read_borrowed_target(
         })
         .unwrap();
     game.mobs
-        .restore(loan, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+        .restore(loan, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     result
 }
 
@@ -103,8 +103,8 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
-    use sunrise_client::lan::{Joined, PlayerSender, guest::Guest};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
     with_game(|game| {
         crate::game::native_item_places::tests::open_to_lan(game);
@@ -280,7 +280,8 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
 #[ignore = "daily"]
 fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
     use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases};
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::motion::PlayerMotion;
 
     // Loading resources replaces process-wide tables: the case runs in its own process.
     if run_fresh_cases(
@@ -326,7 +327,7 @@ fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
             })
             .unwrap();
         game.mobs
-            .restore(loan, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(loan, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         assert_eq!(reads, (None, Some((zombie, 39))));
     });
 }

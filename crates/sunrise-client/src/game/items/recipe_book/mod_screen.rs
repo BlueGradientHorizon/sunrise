@@ -1,6 +1,6 @@
 //! A mod menu's book uses the shared painter, but never vanilla storage ordinals.
 use super::*;
-use sunrise_client::recipe_book::mod_presentation::ModPresentation;
+use sunrise_sim::recipe_book::mod_presentation::ModPresentation;
 #[path = "mod_screen/ghost.rs"]
 mod ghost;
 #[path = "mod_screen/layout.rs"]
@@ -21,7 +21,7 @@ pub(in crate::game) struct ModRecipeUi {
     presented_page: usize,
     tab_page: usize,
     presentation: Option<ModPresentation>,
-    prepared: Option<sunrise_client::recipe_book::mod_presentation::PreparedBook>,
+    prepared: Option<sunrise_sim::recipe_book::mod_presentation::PreparedBook>,
     overlay: Option<placement::PlacementOverlay>,
     stocks: Vec<ItemStack>,
     inventory_len: usize,
@@ -145,7 +145,7 @@ fn registered_book_tab_bounds(calls: &[Drawn], first_category_arrow: usize) -> O
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
-    fn mod_book_panel(&self) -> Option<sunrise_client::recipe_book::ModBookPanel<'_>> {
+    fn mod_book_panel(&self) -> Option<sunrise_sim::recipe_book::ModBookPanel<'_>> {
         let key = self.native_screen_book()?;
         let menu = self.native_screen_menu()?;
         if mod_api::RecipeBookLayout::declaring_mod(menu).is_some() {
@@ -263,7 +263,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let ui = &self.side.recipe_ui.0.custom;
         let mut stacked = Stacked::default();
         for (index, stack) in stocks.iter().enumerate() {
-            let max = sunrise_client::menu::item_max_stack(self.items(), stack);
+            let max = sunrise_sim::menu::item_max_stack(self.items(), stack);
             if index < inventory_len {
                 stacked.account_simple(stack, max);
             } else {
@@ -613,7 +613,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
-    use sunrise_client::recipe_book::mod_presentation::PresentedRecipe;
+    use sunrise_sim::recipe_book::mod_presentation::PresentedRecipe;
 
     #[test]
     fn overflow_tabs_are_reachable_without_moving_search_offscreen() {

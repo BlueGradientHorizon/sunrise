@@ -9,8 +9,9 @@
 #[ignore = "daily"]
 fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    use sunrise_client::{chunk::Chunk, music::Music};
+    use sunrise_client::music::Music;
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
     );

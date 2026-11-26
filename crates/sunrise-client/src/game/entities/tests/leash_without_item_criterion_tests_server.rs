@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]
@@ -61,7 +61,7 @@ fn actual_holder_detach_does_not_reaward_the_held_lead_criterion() {
     assert!(game.interact_mob(target()).unwrap());
     assert_eq!(
         game.mobs[index].extra.leash,
-        Some(sunrise_client::mobs::leash::Holder::Player)
+        Some(sunrise_sim::mobs::leash::Holder::Player)
     );
     assert_eq!(game.mobs[index].extra.leash_player, Some([413, 0, 0, 1]));
     assert_eq!(game.held().unwrap().count, 3);

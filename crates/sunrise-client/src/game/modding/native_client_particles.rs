@@ -3,7 +3,8 @@ use super::Game;
 use mod_api::{
     Direction, FireworksRequest, LevelRef, LevelWriteError, client::particles::PositionSource,
 };
-use sunrise_client::particles::{Particle, ParticleOptions};
+use sunrise_client::particles::Particle;
+use sunrise_level::particle_options::ParticleOptions;
 use sunrise_world::registry::BlockStateId;
 
 /// The most explosions one `create_fireworks` request draws (a crafted rocket holds at
@@ -150,7 +151,8 @@ pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particl
 mod tests {
     use super::*;
     use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
-    use sunrise_client::particles::{ParticleLevel, ParticleType};
+    use sunrise_client::particles::ParticleLevel;
+    use sunrise_level::particle_options::ParticleType;
 
     #[test]
     fn nonfinite_nested_particle_parameters_are_rejected() {
@@ -187,8 +189,7 @@ mod tests {
         use crate::game::native_entity_refs::tests::with_client_game;
         with_client_game(|game| {
             let eye = sunrise_core::geometry::Vec3::new(0.5, 200.0, 0.5);
-            game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, eye).unwrap());
+            game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, eye).unwrap());
             let at = [6.5, 201.5, 10.5];
             let request = |audible| FireworksRequest {
                 at,

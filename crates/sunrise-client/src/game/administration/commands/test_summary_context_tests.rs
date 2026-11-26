@@ -1,20 +1,20 @@
 //! Added after the original old-fail module: context boundaries, not new runtime breadth.
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_core::geometry::Vec3;
-use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
-fn chats(receiver: &mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<sunrise_core::nbt::Tag> {
+fn chats(receiver: &mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<sunrise_core::nbt::Tag> {
     let mut result = Vec::new();
     for sent in receiver.try_iter() {
         let bodies = match sent {
-            sunrise_client::lan::Out::Packet(p) => vec![p],
-            sunrise_client::lan::Out::Packets(p) => p,
-            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+            sunrise_sim::lan::Out::Packet(p) => vec![p],
+            sunrise_sim::lan::Out::Packets(p) => p,
+            sunrise_sim::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
         };
         for body in bodies {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);

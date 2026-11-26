@@ -39,24 +39,29 @@ use super::api_values::TryIntoApi;
 use super::{Dim, Game, InteractTarget, native_projectiles::Impact, view_vector};
 use std::sync::Arc;
 #[allow(unused_imports)]
-use sunrise_client::{
-    Result,
-    arrows::EntityHit,
+use sunrise_client::mesher::Vertex;
+#[allow(unused_imports)]
+use sunrise_client_core::Result;
+use sunrise_core::{
+    geometry::{Aabb, Vec3},
+    position::BlockPos,
+    random::RandomSource,
+};
+#[allow(unused_imports)]
+use sunrise_items::{
     blocks::Fluid,
+    items::{ItemStack, Items},
+};
+#[allow(unused_imports)]
+use sunrise_sim::{
+    arrows::EntityHit,
     crafting::Recipes,
     health::{Attack, HurtSource, Hurting, Knock},
-    items::{ItemStack, Items},
-    mesher::Vertex,
     mobs::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
         spawning::{self, BiomeFacts},
     },
     projectiles::{Hit, Projectile, ProjectileKind},
-};
-use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-    random::RandomSource,
 };
 
 /// `AbstractArrow.onHitEntity` when `hurtOrSimulate` returned false.
@@ -72,8 +77,8 @@ pub(in crate::game) fn arrow_miss(dodged: bool) -> EntityHit {
     }
 }
 
-pub(in crate::game) fn arrow_sound_name(sound: sunrise_client::arrows::ArrowSound) -> &'static str {
-    use sunrise_client::arrows::ArrowSound;
+pub(in crate::game) fn arrow_sound_name(sound: sunrise_sim::arrows::ArrowSound) -> &'static str {
+    use sunrise_sim::arrows::ArrowSound;
     match sound {
         ArrowSound::Splash => "minecraft:entity.generic.splash",
         ArrowSound::HitGround => "minecraft:entity.arrow.hit",
@@ -83,7 +88,7 @@ pub(in crate::game) fn arrow_sound_name(sound: sunrise_client::arrows::ArrowSoun
         ArrowSound::TridentHit => "minecraft:item.trident.hit",
     }
 }
-pub(in crate::game) type SpawnReason = sunrise_client::mobs::spawn_rules::Reason;
+pub(in crate::game) type SpawnReason = sunrise_sim::mobs::spawn_rules::Reason;
 
 /// Whether vanilla calls `finalizeSpawn` for a mob a spawn site makes, and with
 /// which reason. The reason is vanilla's `EntitySpawnReason` at that site.
@@ -181,7 +186,7 @@ pub(in crate::game) struct MobOutputBatch {
 #[derive(Default)]
 pub(in crate::game) struct PendingMobBatch {
     pub(in crate::game) batches: std::collections::VecDeque<MobOutputBatch>,
-    pub(in crate::game) pushes: sunrise_client::mobs::PendingPushes,
+    pub(in crate::game) pushes: sunrise_sim::mobs::PendingPushes,
 }
 
 /// Remove the current action before dispatch; retain only the unentered tail on unwind.
@@ -213,7 +218,7 @@ impl<T> Drop for RemainingActions<'_, T> {
 /// Mob-system state owned by the game.
 #[derive(Default)]
 pub(in crate::game) struct Creatures {
-    pub projectiles: sunrise_client::join_seq::JoinList<Projectile, false>,
+    pub projectiles: sunrise_sim::join_seq::JoinList<Projectile, false>,
     /// The entities a family tells the mods ticked, kept between ticks
     /// (game/modding/native_ticks.rs).
     pub tick_buffer: Vec<(u32, super::native_ticks::TickKind)>,
@@ -228,7 +233,7 @@ pub(in crate::game) struct Creatures {
     /// The wind charge whose burst is being handled, by entity id: which
     /// entities have already ticked in vanilla's spawn-ordered tick list
     /// (game/interface/wind.rs).
-    pub wind_source: Option<sunrise_client::join_seq::JoinSeq>,
+    pub wind_source: Option<sunrise_sim::join_seq::JoinSeq>,
     /// Wind pushes held until the entity's own tick has run, by entity id
     /// (game/interface/wind.rs `apply_late_wind_pushes`).
     pub late_wind_pushes: Vec<(u32, crate::game::Vec3)>,
@@ -247,9 +252,8 @@ pub(in crate::game) struct Creatures {
     pub(in crate::game) seen_buf: Vec<Seen>,
     /// Per-tick scratch retained between creature ticks.
     pub(in crate::game) event_buf: Vec<MobEvent>,
-    pub(in crate::game) pickable_projectile_targets:
-        Vec<sunrise_client::projectiles::TargetCandidate>,
-    pub(in crate::game) arrow_hit_scratch: sunrise_client::arrows::ArrowHitScratch,
+    pub(in crate::game) pickable_projectile_targets: Vec<sunrise_sim::projectiles::TargetCandidate>,
+    pub(in crate::game) arrow_hit_scratch: sunrise_sim::arrows::ArrowHitScratch,
     /// For each arrow an entity hit in this projectile tick, the projectiles
     /// that ticked after it and stayed, in order: a bounced one goes back
     /// before the first still listed (`finish_arrow_hit`).
@@ -259,12 +263,12 @@ pub(in crate::game) struct Creatures {
     /// `ServerLevel.tick` ticks only the entities in entity-ticking range, so
     /// what the passes after the loop do for a mob's `aiStep`, goals or brain
     /// (pickups, item searches) is for these alone.
-    pub ticked: sunrise_client::fast_hash::FxHashSet<u32>,
+    pub ticked: sunrise_level::fast_hash::FxHashSet<u32>,
     pub deferred_hits: bool,
     /// The game time of the spear rows below, and for each attacker the latest contact
     /// whose `setLastHurtMob` was applied then. A player's row is delivered after the
     /// attacker's other rows, so an earlier contact never overwrites a later one.
-    pub(in crate::game) stab_memory: (i64, sunrise_client::fast_hash::FxHashMap<u32, usize>),
+    pub(in crate::game) stab_memory: (i64, sunrise_level::fast_hash::FxHashMap<u32, usize>),
     /// The wandering trader spawner's clock.
     pub trader: super::wandering_trader::Spawner,
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
@@ -317,7 +321,7 @@ pub(in crate::game) fn pickable_projectile_hitboxes_into(
 pub(in crate::game) struct ProjectileHandBack {
     pub(in crate::game) slots: Vec<u32>,
     pub(in crate::game) rows: Vec<u32>,
-    pub(in crate::game) places: Option<sunrise_client::fast_hash::FxHashMap<u32, usize>>,
+    pub(in crate::game) places: Option<sunrise_level::fast_hash::FxHashMap<u32, usize>>,
     pub(in crate::game) told: Option<(u32, &'static str)>,
 }
 
@@ -351,7 +355,7 @@ impl ProjectileHandBack {
         for impact in impacts {
             impact.index = places.get(&impact.before.id).copied();
         }
-        let kept: sunrise_client::fast_hash::FxHashMap<u32, bool> = self
+        let kept: sunrise_level::fast_hash::FxHashMap<u32, bool> = self
             .rows
             .iter()
             .copied()
@@ -509,7 +513,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// modifiers. A map already there (commands, armor) is kept.
     pub(in crate::game) fn init_sulfur_attribute_maps(&mut self) {
         for m in &mut self.mobs {
-            if m.species() == sunrise_client::mobs::Species::SulfurCube
+            if m.species() == sunrise_sim::mobs::Species::SulfurCube
                 && m.extra.armor_attributes.is_none()
             {
                 m.extra.armor_attributes = self.motion.attributes.create(&m.kind.id).map(Box::new);
@@ -561,9 +565,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     "rider": m.extra.rider,
                     // A player's input this tick, and whether it steers.
                     "ridden": m.rider.map(|r| r.steer),
-                    "controlled": sunrise_client::mobs::equine::controlled(m),
+                    "controlled": sunrise_sim::mobs::equine::controlled(m),
                     "saddled": m.extra.saddled(),
-                    "enchants": sunrise_client::mobs::gear::gear(m).map(|g| g.slots.iter().map(|s| s.iter().map(|(e, l)| format!("{e}:{l}")).collect::<Vec<_>>()).collect::<Vec<_>>()),
+                    "enchants": sunrise_sim::mobs::gear::gear(m).map(|g| g.slots.iter().map(|s| s.iter().map(|(e, l)| format!("{e}:{l}")).collect::<Vec<_>>()).collect::<Vec<_>>()),
                     "ints": m.extra.ints,
                     "pois": [m.extra.home, m.extra.bed, m.extra.meeting],
                     "profession": m.extra.profession.index(),
@@ -580,8 +584,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     // TamableAnimal.isInSittingPose, what this side draws: a server's client
                     // has only that bit of DATA_FLAGS_ID, never the saved order to sit.
                     "sitting": m.extra.sitting_pose,
-                    "temper": if sunrise_client::mobs::equine::is_equine(m.species()) {
-                        sunrise_client::mobs::equine::temper(m)
+                    "temper": if sunrise_sim::mobs::equine::is_equine(m.species()) {
+                        sunrise_sim::mobs::equine::temper(m)
                     } else { i32::from(m.extra.variant3) },
                     "chested": m.extra.chested,
                 });
@@ -589,15 +593,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 // limit, and sunrise-client can't raise it (#8169).
                 state["head"] = m.extra.head_id().into();
                 state["body"] = m.extra.body_id().into();
-                state["warden"] = serde_json::json!(sunrise_client::mobs::warden::describe(m));
-                state["villager"] = serde_json::json!(sunrise_client::mobs::villager::ext(m).map(|e| serde_json::json!({
+                state["warden"] = serde_json::json!(sunrise_sim::mobs::warden::describe(m));
+                state["villager"] = serde_json::json!(sunrise_sim::mobs::villager::ext(m).map(|e| serde_json::json!({
                     "food_level": e.food_level,
                     "inventory": e.inventory.iter().map(|s| format!("{}x{}", s.count, s.item)).collect::<Vec<_>>(),
                     "gossips": e.gossips.len(),
                     "last_slept": e.last_slept,
                     "raid": e.raid,
                 })));
-                state["raider"] = serde_json::json!(sunrise_client::mobs::raider::state(m).map(|s| serde_json::json!({
+                state["raider"] = serde_json::json!(sunrise_sim::mobs::raider::state(m).map(|s| serde_json::json!({
                     "raid": s.raid_id,
                     "wave": s.wave,
                     "leader": s.patrol_leader,
@@ -607,7 +611,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 })));
                 // Drawn seated (Entity.isPassenger).
                 state["passenger"] = m.extra.passenger.into();
-                state["guardian_beam"] = serde_json::json!(sunrise_client::mobs::guardian::beam(m, 0.0));
+                state["guardian_beam"] = serde_json::json!(sunrise_sim::mobs::guardian::beam(m, 0.0));
                 state
             })
             .collect();
@@ -620,7 +624,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// [`Self::motion_top`] in the loaded level `world` of `dim`.
     pub(in crate::game) fn motion_top_in(
         &self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         dim: Dim,
         x: i32,
         z: i32,
@@ -709,13 +713,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// before them.
     pub(in crate::game) fn projectiles_told(
         &mut self,
-        projectiles: sunrise_client::join_seq::JoinList<Projectile, false>,
+        projectiles: sunrise_sim::join_seq::JoinList<Projectile, false>,
         tell: impl FnOnce(&mut Self),
-    ) -> (sunrise_client::join_seq::JoinList<Projectile, false>, bool) {
+    ) -> (sunrise_sim::join_seq::JoinList<Projectile, false>, bool) {
         let no_spawns = self.creatures.projectiles.is_empty();
         self.creatures.projectiles.restore(
             projectiles,
-            sunrise_client::join_seq::RestoreOrder::SpawnsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SpawnsFirst,
         );
         let restored = self.creatures.projectiles.stamp();
         tell(self);
@@ -731,10 +735,10 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn arrow_scene_with<'s>(
         &'s self,
         rain: &'s dyn Fn(BlockPos) -> bool,
-        mob_hooks: Option<&'s dyn sunrise_client::mobs::MobHooks>,
-        owners: &'s dyn sunrise_client::arrows::OwnerLookup,
-    ) -> sunrise_client::arrows::ArrowScene<'s, 's> {
-        sunrise_client::arrows::ArrowScene {
+        mob_hooks: Option<&'s dyn sunrise_sim::mobs::MobHooks>,
+        owners: &'s dyn sunrise_sim::arrows::OwnerLookup,
+    ) -> sunrise_sim::arrows::ArrowScene<'s, 's> {
+        sunrise_sim::arrows::ArrowScene {
             world: &self.world,
             registry: self.pack.assets.registry,
             facts: self.res.facts(),
@@ -745,11 +749,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             mob_griefing: self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
             tnt_explodes: self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES),
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES),
             mob_hooks,
             owners,
         }
@@ -797,20 +801,20 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let species = m.species();
         let baby = if species == Species::Tadpole {
             true
-        } else if sunrise_client::mobs::finalize::ageable(species) {
+        } else if sunrise_sim::mobs::finalize::ageable(species) {
             m.is_baby()
                 && !(species == Species::Panda
-                    && (sunrise_client::mobs::panda::scared(m)
-                        || sunrise_client::mobs::panda::is_on_back(m)))
-                && !(species == Species::Armadillo && sunrise_client::mobs::armadillo::scared(m))
+                    && (sunrise_sim::mobs::panda::scared(m)
+                        || sunrise_sim::mobs::panda::is_on_back(m)))
+                && !(species == Species::Armadillo && sunrise_sim::mobs::armadillo::scared(m))
         } else {
             false
         };
         let cannot = self.items().entity_type_tags.has_bit(
             m.kind.flags.entity_tag_slot,
-            sunrise_client::items::EntityTypeTags::CANNOT_BE_AGE_LOCKED,
+            sunrise_items::items::EntityTypeTags::CANNOT_BE_AGE_LOCKED,
         );
-        sunrise_client::mobs::ai::can_use_golden_dandelion(
+        sunrise_sim::mobs::ai::can_use_golden_dandelion(
             item,
             baby,
             m.extra.age_lock_particle_timer,
@@ -927,11 +931,11 @@ pub(in crate::game) fn bucketable(species: Species) -> Option<(&'static str, &'s
     })
 }
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_client::health::{damage_type, melee, source_damage_type};
+pub(in crate::game) use sunrise_sim::health::{damage_type, melee, source_damage_type};
 /// A live item as a loot stack: ordinary enchantments and the complete saved
 /// component patch, including removals. The TOOL getter resolves its prototype.
 pub(in crate::game) fn to_loot(stack: &ItemStack) -> sunrise_world::loot::LootStack {
-    let components = match sunrise_client::item_data::component_snapshot(stack) {
+    let components = match sunrise_items::item_data::component_snapshot(stack) {
         Some(sunrise_core::nbt::Tag::Compound(patch)) => patch
             .into_iter()
             .map(|(id, value)| {
@@ -998,12 +1002,12 @@ pub(in crate::game) fn mob_effect_instance(
     amplifier: i32,
     ambient: bool,
     immune: bool,
-) -> Option<sunrise_client::effects::EffectInstance> {
+) -> Option<sunrise_level::effects::EffectInstance> {
     if immune && !ambient {
         return None;
     }
     let id = effect.strip_prefix("minecraft:").unwrap_or(effect);
-    let mut instance = sunrise_client::effects::EffectInstance::new(id, ticks, amplifier);
+    let mut instance = sunrise_level::effects::EffectInstance::new(id, ticks, amplifier);
     instance.ambient = ambient;
     Some(instance)
 }
@@ -1161,7 +1165,7 @@ pub(in crate::game) mod h169_glide_travel_tests;
 /// `ServerLevel.getCurrentDifficultyAt` in `world`: the difficulty, the level's clock, and
 /// the inhabited time and moon of the chunk at `at` (both 0 when it isn't loaded).
 pub(in crate::game) fn local_difficulty_in(
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     at: [f64; 3],
 ) -> spawning::LocalDifficulty {
     use sunrise_world::food::Difficulty;

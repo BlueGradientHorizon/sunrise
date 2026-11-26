@@ -2,8 +2,9 @@
 //! and the lockstep station open/clear helpers on `ClientGame`.
 use super::Game;
 use crate::game::stations_common::{NAME_CHARS, Station};
-use sunrise_client::{items::ItemStack, random_source};
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_level::random_source;
 
 /// `AnvilScreen.init`: the unbordered box of 50 at the menu's name position,
 /// focused; `slotChanged` makes it editable once the input slot has an item.

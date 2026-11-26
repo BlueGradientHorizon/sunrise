@@ -5,7 +5,7 @@ use super::item_use::interact_vibration_tests::with_game;
 fn spectator_stops_use_at_player_feet() {
     let lines = with_game("minecraft:golden_apple", |game| {
         assert!(game.start_using_item());
-        game.set_mode(sunrise_client::command::args::GameMode::Spectator);
+        game.set_mode(sunrise_command::args::GameMode::Spectator);
         assert!(game.using.is_none());
     })
     .expect("prepared resources");
@@ -32,7 +32,7 @@ fn stopping_spear_use_is_silent() {
 
 fn guest_action(item: &str, action: u8) -> Vec<String> {
     use super::native_item_places::tests::{guest, open_to_lan};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::packets::play::{self, Serverbound};
     with_game(item, |game| {
         game.reset_entity_residency();
@@ -148,8 +148,8 @@ fn guest_death_clear_posts_no_finish() {
 #[test]
 #[ignore = "daily"]
 fn axe_disabled_shield_posts_finish() {
-    use sunrise_client::health::HurtSource;
-    use sunrise_client::health::{BlockOutcome, NO_ATTACK};
+    use sunrise_sim::health::HurtSource;
+    use sunrise_sim::health::{BlockOutcome, NO_ATTACK};
     let lines = with_game("minecraft:shield", |game| {
         assert!(game.start_using_item());
         game.side.combat.0.player_attacker = Some(([11.5, 64.0, -3.25], 5.0));
@@ -201,7 +201,7 @@ fn same_dimension_tp_keeps_use() {
 #[ignore = "daily"]
 fn swap_with_emptied_used_slot_clears_silently() {
     use super::native_item_places::tests::{guest, open_to_lan};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::packets::play::{PlayerAction, Serverbound};
     let lines = with_game("minecraft:golden_apple", |game| {
         open_to_lan(game);
@@ -235,8 +235,9 @@ fn swap_with_emptied_used_slot_clears_silently() {
 fn nether_portal_stops_use_in_target_level() {
     use super::native_item_places::tests::{guest, open_to_lan};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
     struct Heard(Arc<Mutex<Vec<(String, [f64; 3])>>>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Heard {

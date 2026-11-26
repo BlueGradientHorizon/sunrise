@@ -1,11 +1,9 @@
 //! Painting variants and the hanging-entity placement rules.
 use std::sync::Arc;
-use sunrise_client::{
-    entities::{ItemFrame, Painting},
-    items::ItemStack,
-};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::{ItemFrame, Painting};
 
-pub use sunrise_client::entities::PaintingVariant as Variant;
+pub use sunrise_sim::entities::PaintingVariant as Variant;
 /// Variants by id plus the `#minecraft:placeable` list.
 #[derive(Clone, Default)]
 pub struct PaintingVariants {
@@ -45,7 +43,7 @@ impl PaintingVariants {
     }
     /// The variant a stack's `painting/variant` component names.
     pub fn of_stack(&self, stack: &ItemStack) -> Option<&Variant> {
-        let id = sunrise_client::save::text(stack.data()?.other("minecraft:painting/variant"))?;
+        let id = sunrise_sim::save::text(stack.data()?.other("minecraft:painting/variant"))?;
         self.get(&sunrise_world::datafix::dynamic::namespaced(&id))
     }
     /// `VariantUtils.readVariant` then `Painting.defineSynchedData`'s

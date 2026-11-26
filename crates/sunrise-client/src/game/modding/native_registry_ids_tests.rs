@@ -3,13 +3,13 @@
 //! order a server synced it.
 use super::lan::LanSettings;
 use super::native_entity_refs::tests::{declared_part_root, with_client_game, with_game_at};
-use sunrise_client::lan::{NetConfig, hub::HubConfig};
 use sunrise_core::identifier::Identifier;
 use sunrise_protocol::{
     connection::Pipe,
     packets::configuration::{RegistryData, RegistryEntry},
     registry::Dynamic,
 };
+use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 
 fn id(text: &str) -> Identifier {
     Identifier::parse_namespaced(text).unwrap()

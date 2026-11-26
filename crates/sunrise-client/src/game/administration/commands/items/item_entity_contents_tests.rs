@@ -1,5 +1,5 @@
 //! `execute if items entity <dropped item> contents ...`: `ItemEntity.getSlot`.
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// `ItemEntity.getSlot(0)` returns its stack (`SlotAccess.of(this::getItem,
 /// this::setItem)`), and `SlotRanges` maps `contents`, `container.0` and

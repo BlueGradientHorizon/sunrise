@@ -2,9 +2,9 @@
 //! transactional writes.
 use super::Game;
 use mod_api::{BundleConfig, BundleMetrics, BundleReadError};
-use sunrise_client::items::ItemStack;
-use sunrise_client::menu::container_items::{can_be_in_bundle, fits_inside_container_items};
 use sunrise_items::bundle::{BundleSpec, CustomBundleContents, CustomBundleError};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::container_items::{can_be_in_bundle, fits_inside_container_items};
 
 fn bundle_spec(config: &BundleConfig) -> BundleSpec<'_> {
     BundleSpec::custom(&config.component, config.capacity_multiplier)

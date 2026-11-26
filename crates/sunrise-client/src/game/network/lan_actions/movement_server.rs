@@ -91,7 +91,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let side = f64::from(body.width * 0.8_f32);
                 let eye = [at[0], at[1] + f64::from(body.eye_height), at[2]];
                 let eyes = || {
-                    sunrise_client_render::moving_colliders::overlaps(
+                    sunrise_world::moving_colliders::overlaps(
                         sunrise_world::entity_obstruction::EntityIdentity(g.entity_id as u64),
                         sunrise_core::geometry::Aabb::new(
                             sunrise_core::geometry::Vec3::new(
@@ -154,7 +154,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let m = &mut self.mobs[index];
-        let camel = crate::mobs::camel::is_camel(m.species()).then_some(m.id);
+        let camel = sunrise_sim::mobs::camel::is_camel(m.species()).then_some(m.id);
         let Some((sound, volume)) = crate::game::mounts::start_riding_jump(m, data) else {
             return;
         };
@@ -167,10 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None,
         );
         if let Some(id) = camel {
-            self.post_entity_event(
-                "minecraft:entity_action",
-                sunrise_client::mobs::Who::Mob(id),
-            );
+            self.post_entity_event("minecraft:entity_action", sunrise_sim::mobs::Who::Mob(id));
         }
     }
 }

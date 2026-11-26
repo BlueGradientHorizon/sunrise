@@ -5,14 +5,12 @@
 //! near it and one in `#minecraft:extinguishes_entities` puts out burning
 //! entities. Only plain water is in those tags in vanilla.
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{Damage, Species, Who},
-};
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Damage, Species, Who};
 use sunrise_world::{chunk::BlockState, registry::BlockStateId};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -225,7 +223,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && z - half < hi[2]
                     && z + half > lo[2]
                 {
-                    m.air = (m.air + 1800).min(sunrise_client::mobs::axolotl::MAX_AIR);
+                    m.air = (m.air + 1800).min(sunrise_sim::mobs::axolotl::MAX_AIR);
                 }
             }
         }

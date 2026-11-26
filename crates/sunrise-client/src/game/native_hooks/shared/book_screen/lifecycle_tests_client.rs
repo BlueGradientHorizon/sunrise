@@ -11,7 +11,7 @@ use super::lifecycle_tests_shared::geometry;
 use super::lifecycle_tests_shared::receive;
 use super::lifecycle_tests_shared::with_bound_menu_type;
 use super::*;
-use sunrise_client::recipe_book::{BookFlags, settings_sync::Message};
+use sunrise_sim::recipe_book::{BookFlags, settings_sync::Message};
 
 /// Slot moves and hides keep the catalogue and nonce. An in-place open of
 /// the same numeric window discards both, as well as the old layout.
@@ -19,8 +19,8 @@ use sunrise_client::recipe_book::{BookFlags, settings_sync::Message};
 #[ignore = "daily"]
 fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
     use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
-    use sunrise_client::recipe_book::placement_sync::CatalogIdentity;
     use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
+    use sunrise_sim::recipe_book::placement_sync::CatalogIdentity;
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "bound",
         Box::new(BoundBookMod::default()),
@@ -55,7 +55,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     game.native_net
                         .placement
                         .client
-                        .ready(6, sunrise_client::recipe_book::placement_sync::schema())
+                        .ready(6, sunrise_sim::recipe_book::placement_sync::schema())
                 );
                 open(game);
                 let first = game.remote.as_ref().unwrap().menu.generation;
@@ -569,7 +569,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 REOPENED_MENU.into(),
                 "reopened".into(),
@@ -640,7 +640,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
                     game.native_screen_tooltip_lines(&batch, None, &mut lines);
                     assert_eq!(
                         lines,
-                        [(sunrise_client::text::Text::literal("742"), u32::MAX)]
+                        [(sunrise_client_core::text::Text::literal("742"), u32::MAX)]
                     );
 
                     game.handle_packet(C::ContainerClose(ContainerClose { container: 23 }))
@@ -734,7 +734,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
             });
             // A snapshot may precede the first draw. The build itself must
             // collect declarations, not wait for the render refresh path.
-            let recipes = sunrise_client::crafting::Recipes::from_sources(
+            let recipes = sunrise_sim::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
                 &sunrise_world::loot::PackOverlay::NONE,
@@ -907,7 +907,7 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
 
                 // Negotiation completed before the user opened the machine. As in
                 // remote_open_screen, the layout exists before Inventory is shown.
-                use sunrise_client::recipe_book::placement_sync;
+                use sunrise_sim::recipe_book::placement_sync;
                 game.native_net.placement.client.hello(6);
                 assert!(
                     game.native_net

@@ -3,9 +3,9 @@ use super::{Game, Screen};
 use sunrise_client::{
     hud::{HudAtlas, HudBatch},
     keybinds::{KeyBinds, display_name},
-    text::Text,
     ui, widgets,
 };
+use sunrise_client_core::text::Text;
 
 const MOVEMENT: [&str; 4] = ["key.forward", "key.left", "key.back", "key.right"];
 const BUY_MINECRAFT_JAVA: &str = "https://aka.ms/BuyMinecraftJava";

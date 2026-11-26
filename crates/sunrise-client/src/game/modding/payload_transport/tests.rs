@@ -80,7 +80,7 @@ struct TimingReport {
     server: Arc<AtomicUsize>,
     client: Arc<AtomicUsize>,
     wire: Arc<AtomicUsize>,
-    probe: sunrise_client::raw_payloads::staging_probe::Watch,
+    probe: sunrise_sim::raw_payloads::staging_probe::Watch,
     printed: std::sync::atomic::AtomicBool,
 }
 impl TimingReport {
@@ -379,7 +379,7 @@ fn integrated_memory_delivers_registered_raw_payload_and_reply() {
         server: server.clone(),
         client: client.clone(),
         wire: wire_hits.clone(),
-        probe: sunrise_client::raw_payloads::staging_probe::Watch::begin(CHANNEL),
+        probe: sunrise_sim::raw_payloads::staging_probe::Watch::begin(CHANNEL),
         printed: std::sync::atomic::AtomicBool::new(false),
     });
     let sampler = Sampler::new(Arc::downgrade(&_report));
@@ -399,7 +399,7 @@ fn integrated_memory_delivers_registered_raw_payload_and_reply() {
             game.side.settings.render_distance = 2;
             game.side.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
-                world_type: sunrise_client::save::WorldPreset::Flat,
+                world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
             };
             timeline.mark(0);

@@ -20,8 +20,8 @@ pub(in crate::game) fn navigation_look_accepts(at: [f64; 3]) -> bool {
     at.iter().all(|v| v.is_finite())
 }
 
-fn navigation_flags_supported(mob: &sunrise_client::mobs::Mob) -> bool {
-    use sunrise_client::mobs::nav::NavKind;
+fn navigation_flags_supported(mob: &sunrise_sim::mobs::Mob) -> bool {
+    use sunrise_sim::mobs::nav::NavKind;
     matches!(
         mob.ai.nav.kind,
         NavKind::Ground | NavKind::WallClimber | NavKind::Flying
@@ -77,7 +77,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         super::entity::taken_pass_tests::after_take(self);
         let moved = mobs[index].nav_move_to(&self.mob_world_base(&[]), at, speed);
         self.mobs
-            .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         moved
     }
 
@@ -115,7 +115,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         super::entity::taken_pass_tests::after_take(self);
         let followed = mobs[index].nav_move_to_supplied(&self.mob_world_base(&[]), &nodes, speed);
         self.mobs
-            .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         supplied_path_refusal(followed)
     }
 
@@ -294,8 +294,9 @@ mod tests {
     use super::supplied_path_accepts;
     use mod_api::{EntityRef, MobRef, MoveToPathError, PathNode, WorldEpoch};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, mobs::Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::mobs::Mob;
 
     /// `moveTo(Path, speed)`'s boundary never gets stricter than vanilla's:
     /// finite coordinates and speed pass, a node count far above any vanilla
@@ -391,11 +392,11 @@ mod tests {
             compare_extreme(game, 2_000_000_000.0, top);
             compare_extreme(game, -2_000_000_000.0, bottom);
             game.world.shape =
-                sunrise_client::chunk::LevelShape::new(0, 128, 128, true, false).unwrap();
+                sunrise_level::chunk::LevelShape::new(0, 128, 128, true, false).unwrap();
             assert_eq!(game.world.shape.max_y(), 128);
             compare_extreme(game, 2_000_000_000.0, 127.0);
             compare_extreme(game, -2_000_000_000.0, 0.0);
-            game.world.shape = sunrise_client::chunk::LevelShape::OVERWORLD;
+            game.world.shape = sunrise_level::chunk::LevelShape::OVERWORLD;
             let stale = MobRef::new(EntityRef::new(
                 WorldEpoch::new(entity.epoch().get() + 1),
                 99,
@@ -406,16 +407,10 @@ mod tests {
             let taken = game.mobs.lift();
             assert_eq!(mob.is_done(game), None);
             assert!(!mob.stop(game));
-            game.mobs.restore(
-                taken,
-                sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-            );
+            game.mobs
+                .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
             game.armor_stands
-                .push(sunrise_client::entities::ArmorStand::new(
-                    102,
-                    Vec3::ZERO,
-                    0.0,
-                ));
+                .push(sunrise_sim::entities::ArmorStand::new(102, Vec3::ZERO, 0.0));
             let wrong = MobRef::new(game.entity(102).unwrap());
             assert!(!wrong.move_to(game, [5.0, 65.0, 3.0], 1.0));
             assert!(!wrong.stop(game));

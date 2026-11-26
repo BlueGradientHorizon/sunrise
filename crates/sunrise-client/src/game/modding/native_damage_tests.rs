@@ -9,11 +9,11 @@ use mod_api::{
     LivingIncomingDamageEvent, LivingShieldBlockEvent, Reduction,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::command::args::GameMode;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Damage, DamageKind, Mob};
-use sunrise_client::motion::PlayerMotion;
+use sunrise_command::args::GameMode;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Damage, DamageKind, Mob};
+use sunrise_sim::motion::PlayerMotion;
 
 const SLEEPING_BED: [i32; 3] = [4, 100, 4];
 
@@ -46,8 +46,8 @@ impl Hooks for ObserveBedDuringDamage {
 #[ignore = "daily"]
 fn brainless_villager_wakes_before_damage_listeners() {
     use super::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, run_fresh_cases};
-    use sunrise_client::mobs::{villager, villager_brain};
     use sunrise_core::{nbt::Tag, position::ChunkPos};
+    use sunrise_sim::mobs::{villager, villager_brain};
 
     if run_fresh_cases(
         "game::server_side::native_damage_tests::brainless_villager_wakes_before_damage_listeners",
@@ -267,7 +267,7 @@ fn the_original_damage_is_the_hit_before_the_incoming_hook() {
     let heard = heard(|game| {
         let mut pig = mob(game, 225001, "minecraft:pig");
         assert!(pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             10.0,
             Damage::of(DamageKind::Generic)
         ));
@@ -283,14 +283,14 @@ fn pre_sets_health_lost_but_cooldown_compares_the_outer_hit() {
     let heard = heard(|game| {
         let mut pig = mob(game, 225003, "minecraft:pig");
         assert!(pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             10.0,
             Damage::of(DamageKind::Generic)
         ));
         assert_eq!(pig.health, 8.0);
         assert_eq!(pig.last_hurt, 10.0);
         assert!(!pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             5.0,
             Damage::of(DamageKind::Generic)
         ));
@@ -308,7 +308,7 @@ fn pre_fires_for_a_hit_its_reductions_took_to_zero() {
         // Witch.getDamageAfterMagicAbsorb: none from its own doing.
         let own = Damage::mob(225008, [2.0, 0.0, 2.0]);
         assert!(witch.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             6.0,
             own
         ));
@@ -325,7 +325,7 @@ fn pre_draws_from_the_level_random_of_the_hit() {
         expected.next_int();
         let mut pig = mob(game, 225010, "minecraft:pig");
         assert!(pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             1.0,
             Damage::of(DamageKind::Generic)
         ));
@@ -354,17 +354,17 @@ fn mob_and_dragon_post_records_fresh_hit_decision() {
         let mut pig = mob(game, 225014, "minecraft:pig");
         let source = Damage::of(DamageKind::Generic);
         assert!(pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             2.0,
             source
         ));
         assert!(pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             4.0,
             source
         ));
         assert!(!pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             3.0,
             source
         ));
@@ -441,13 +441,13 @@ fn a_hit_inside_the_cooldown_no_stronger_than_the_last_fires_no_post() {
         let mut pig = mob(game, 225003, "minecraft:pig");
         let source = Damage::of(DamageKind::Generic);
         assert!(pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             4.0,
             source
         ));
         // Inside the cooldown and no stronger than the last hit: refused, no Post.
         assert!(!pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             2.0,
             source
         ));
@@ -469,7 +469,7 @@ fn post_fires_once_for_a_killing_blow_on_a_mob() {
             game.build_registries();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let pig = mob(game, 225016, "minecraft:pig");
             game.mobs.push(pig);
             let victim = game.entity(225016).unwrap();
@@ -593,7 +593,7 @@ fn killing_blow(cancel: bool) -> (Vec<(&'static str, i64)>, f32) {
             game.build_registries();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let pig = mob(game, 225017, "minecraft:pig");
             game.mobs.push(pig);
             let victim = game.entity(225017).unwrap();
@@ -723,7 +723,7 @@ fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
             game.build_registries();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player.entity_id = 7;
             game.player = Some(player);
@@ -759,7 +759,7 @@ fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
 #[ignore = "daily"]
 fn projectile_killing_hit_posts_before_its_follow_up() {
     use super::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_client::{
+    use sunrise_sim::{
         mobs::Who,
         projectiles::{Hit, Projectile, ProjectileKind},
     };
@@ -782,7 +782,7 @@ fn projectile_killing_hit_posts_before_its_follow_up() {
             game.build_registries();
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let center = Vec3::new(4.5, 80.0, 4.5);
             let (direct, blast) = (225034, 225035);
             let mut target = mob(game, direct, "minecraft:pig");
@@ -907,7 +907,7 @@ fn splash_water_finishes_a_lethal_hit_before_the_next_target() {
             game.build_registries();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let mut first = mob(game, 225041, "minecraft:blaze");
             first.health = 0.5;
             let second = mob(game, 225042, "minecraft:blaze");
@@ -946,7 +946,7 @@ fn squid_finishes_the_lethal_hit_its_subclass_reports_false() {
             game.build_registries();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let mut squid = mob(game, 225045, "minecraft:squid");
             squid.health = 0.5;
             game.mobs.push(squid);
@@ -1008,7 +1008,7 @@ fn a_death_listener_without_post_runs_before_the_next_hurt() {
             game.build_registries();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let mut squid = mob(game, 225046, "minecraft:squid");
             squid.health = 0.5;
             let pig = mob(game, 225047, "minecraft:pig");
@@ -1045,7 +1045,7 @@ fn a_falling_block_finishes_each_hit_before_the_next_victim() {
             game.build_registries();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let at = Vec3::new(0.5, 64.0, 0.5);
             let mut first = mob(game, 225048, "minecraft:pig");
             first.health = 0.5;
@@ -1080,7 +1080,7 @@ fn a_falling_block_finishes_each_hit_before_the_next_victim() {
                 fire_ticks: 0,
                 sync_velocity: false,
                 stuck: Vec3::ZERO,
-                damage: sunrise_client::falling_block::Damage::anvil(),
+                damage: sunrise_sim::falling_block::Damage::anvil(),
                 saved: None,
             };
             game.falling_block_impact(&mut anvil);
@@ -1230,7 +1230,7 @@ fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
             game.build_registries();
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             // Same chunk/section, in the order the contact query visits them.
             let mut puffer = mob(game, fish, "minecraft:pufferfish");
             puffer.position = Vec3::new(1.5, 80.0, 1.5);
@@ -1361,7 +1361,7 @@ impl Hooks for BeeAiProbe {
 #[ignore = "daily"]
 fn borrowed_bee_posts_at_both_server_ai_hurts() {
     use super::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_client::mobs::{Who, bee};
+    use sunrise_sim::mobs::{Who, bee};
 
     const CASE: &str = "SUNRISE_BORROWED_BEE_DAMAGE_CHILD";
     if run_fresh_cases(
@@ -1389,7 +1389,7 @@ fn borrowed_bee_posts_at_both_server_ai_hurts() {
             game.build_registries();
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let water = game
                 .pack
                 .assets
@@ -1470,7 +1470,7 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
                 game.build_registries();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 if hazard == "contact" {
                     let cactus = game
                         .pack
@@ -1574,11 +1574,11 @@ fn borrowed_mod_effect_posts_before_the_next_action() {
         game.build_registries();
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let mut pig = mob(game, 225046, "minecraft:pig");
         pig.position = Vec3::new(1.0, 80.0, 1.0);
         pig.health = 0.5;
-        let effect = sunrise_client::brewing::effect("test:effect").unwrap().id;
+        let effect = sunrise_level::brewing::effect("test:effect").unwrap().id;
         pig.add_effect(effect, 10, 4);
         game.mobs.push(pig);
 
@@ -1661,7 +1661,7 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
             add_guest(game);
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let at = Vec3::new(1.0, game.world.below_world_y() - 1.0, 1.0);
             let mut body = PlayerMotion::new(game.motion, at).unwrap();
             body.fire_ticks = 20;
@@ -1824,7 +1824,7 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
             game.build_registries();
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let registry = game.pack.assets.registry;
             let block = registry
                 .default_state(if farmland {
@@ -1884,7 +1884,7 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
 #[ignore = "daily"]
 fn a_dolphin_goal_move_posts_before_the_next_goal() {
     use super::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_client::mobs::{
+    use sunrise_sim::mobs::{
         dolphin::FollowPlayerRidden,
         goals::{BreathAir, Cx, Goal},
         living::TravelPause,
@@ -1995,7 +1995,7 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
             game.build_registries();
             game.side
                 .streaming
-                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let stone = game
                 .pack
                 .assets
@@ -2150,10 +2150,8 @@ impl Hooks for GuestLandingProbe {
 #[ignore = "daily"]
 fn guest_landing_posts_before_its_ground_hit() {
     use crate::game::native_player_death::tests::add_guest;
-    use sunrise_client::{
-        chunk::Chunk,
-        lan::{guest::GuestMove, hub::CommittedMove},
-    };
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::lan::{guest::GuestMove, hub::CommittedMove};
 
     let trace = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![mod_api::ModEntry::new(
@@ -2241,7 +2239,7 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
     use super::{
         native_entity_refs::tests::run_fresh_cases, native_player_death::tests::add_guest,
     };
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
     use sunrise_world::entity_move::MoverType;
 
     if run_fresh_cases(
@@ -2330,7 +2328,7 @@ fn the_container_names_what_armor_took() {
         // A mob's attack: armor takes its share, where a generic hit bypasses it.
         let attack = Damage::mob(225012, [2.0, 0.0, 2.0]);
         assert!(zombie.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             10.0,
             attack
         ));
@@ -2397,11 +2395,11 @@ fn player_melee_hit_preserves_the_attackers_position_and_direct_entity() {
 #[test]
 #[ignore = "daily"]
 fn arrow_hits_name_the_projectile_on_players_mobs_and_the_dragon() {
-    use sunrise_client::command::args::GameMode;
-    use sunrise_client::health::NO_ATTACK;
-    use sunrise_client::mobs::Who;
-    use sunrise_client::motion::PlayerMotion;
-    use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
+    use sunrise_command::args::GameMode;
+    use sunrise_sim::health::NO_ATTACK;
+    use sunrise_sim::mobs::Who;
+    use sunrise_sim::motion::PlayerMotion;
+    use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
 
     for (target, owner, gone, entity, causing) in [
         (Who::Player, Some(Who::Mob(42)), false, 7, 42),
@@ -2511,8 +2509,8 @@ fn arrow_hits_name_the_projectile_on_players_mobs_and_the_dragon() {
 #[test]
 #[ignore = "daily"]
 fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
-    use sunrise_client::mobs::Who;
-    use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
+    use sunrise_sim::mobs::Who;
+    use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
 
     for gone in [false, true] {
         let log = Arc::new(Mutex::new(Heard::default()));
@@ -2599,8 +2597,8 @@ fn snapshot_crosses_the_real_damage_hook_with_reductions() {
         let mut container = sunrise_world::living_damage::DamageContainer::new(10.0);
         container.record_reduction(sunrise_world::living_damage::Reduction::Armor, 3.5);
         container.record_new_damage(6.5);
-        damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None).damage_pre(
-            sunrise_client::health::Hurting::Player(
+        damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None).damage_pre(
+            sunrise_sim::health::Hurting::Player(
                 225003,
                 HurtSource {
                     damage_type: "minecraft:generic",

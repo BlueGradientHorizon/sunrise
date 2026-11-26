@@ -1,5 +1,6 @@
 use super::Game;
-use sunrise_client::{hud::HudBatch, mobs::Species};
+use sunrise_client::hud::HudBatch;
+use sunrise_sim::mobs::Species;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The jump bar when it is the contextual bar.
@@ -13,7 +14,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let cooldown = i32::from(
             self.mount.jump_ticks < 0
                 && (matches!(m.species(), Species::Camel | Species::CamelHusk)
-                    || sunrise_client::mobs::nautilus::is_nautilus(m.species())),
+                    || sunrise_sim::mobs::nautilus::is_nautilus(m.species())),
         );
         let draws = sunrise_client::hud_overlays::jump_bar(w, h, cooldown, self.mount.jump_scale);
         sunrise_client::hud_layout::paint(batch, &self.side.gui.atlas, &draws);

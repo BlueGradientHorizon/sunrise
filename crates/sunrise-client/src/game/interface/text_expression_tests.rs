@@ -63,7 +63,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
     let (loading, fullbright) = (case == "loading", case == "fullbright");
     with_client_game(|game| {
         game.side.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
-        let frame_context = sunrise_client::environment::Frame::default();
+        let frame_context = sunrise_level::environment::Frame::default();
         let text = &game.side.gui.atlas.text_shaders;
         for (expressions, value) in [
             (&text.expressions.gui, 0.2),

@@ -30,7 +30,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 {
                     self.tick_script_step(event_loop);
                 }
-                sunrise_client::spans::time("tick", || self.tick())?;
+                sunrise_level::spans::time("tick", || self.tick())?;
                 self.tick_friends();
                 if self.remote.is_some() {
                     // Cave mood (a shader pack's playerMood) samples on a random

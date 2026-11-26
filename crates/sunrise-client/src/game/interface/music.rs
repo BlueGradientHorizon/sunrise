@@ -2,12 +2,12 @@
 //! the local player's ambient sound handlers and the sound engine tick.
 use super::Game;
 use sunrise_client::{
-    blocks::Fluid,
     music::{BackgroundMusic, Music, MusicFrequency, Situation},
     options_ui::MusicGroup,
-    random_source,
     sound_engine::{SoundInstance, Sounds, TickContext},
 };
+use sunrise_items::blocks::Fluid;
+use sunrise_level::random_source;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Minecraft.tick` -> `MusicManager.tick`, once per client tick.
@@ -103,7 +103,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `NowPlayingToast.getNowPlayingString` of the song the music manager
     /// plays: its file's short language key, slashes as dots.
-    fn now_playing_song(&self) -> Option<sunrise_client::text::Text> {
+    fn now_playing_song(&self) -> Option<sunrise_client_core::text::Text> {
         let id = self.side.music.current_instance()?;
         let location = self
             .side
@@ -123,8 +123,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             format!("{namespace}.{path}")
         }
         .replace('/', ".");
-        Some(sunrise_client::text::Text::literal(
-            sunrise_client::lang::get_or(&key, &key),
+        Some(sunrise_client_core::text::Text::literal(
+            sunrise_client_core::lang::get_or(&key, &key),
         ))
     }
     /// `ToastManager.update` (it plays no toast sound for this toast) and

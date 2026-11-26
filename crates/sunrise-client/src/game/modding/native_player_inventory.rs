@@ -7,8 +7,8 @@ use super::{
     native_server::PlayerRead,
 };
 use mod_api::{InventoryView, PlayerDataRefusal, PlayerRef};
-use sunrise_client::items::ItemStack;
 use sunrise_items::equipment::{BODY, SADDLE};
+use sunrise_items::items::ItemStack;
 
 /// `Inventory`'s slot numbers past the 36 main slots (`EQUIPMENT_SLOT_MAPPING`).
 const SLOTS: u32 = 43;

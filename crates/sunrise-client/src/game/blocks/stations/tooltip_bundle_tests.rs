@@ -70,7 +70,7 @@ fn draw(game: &mut crate::game::ClientGame<'_>, stack: &ItemStack) -> HudBatch {
         false,
         10.0,
         20.0,
-        vec![(sunrise_client::text::Text::literal("Rest"), u32::MAX)],
+        vec![(sunrise_client_core::text::Text::literal("Rest"), u32::MAX)],
     );
     batch
 }
@@ -111,8 +111,8 @@ fn bundle_no_listener_order_and_draw_position() {
     run(None, |game| {
         let stack = bundle();
         let lines = vec![
-            (sunrise_client::text::Text::literal("Name"), u32::MAX),
-            (sunrise_client::text::Text::literal("Rest"), u32::MAX),
+            (sunrise_client_core::text::Text::literal("Name"), u32::MAX),
+            (sunrise_client_core::text::Text::literal("Rest"), u32::MAX),
         ];
         let elements = game
             .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
@@ -149,8 +149,8 @@ fn bundle_gather_keeps_vanillas_selected_slot() {
     }
     run(Some(true), |game| {
         let mut stack = bundle();
-        stack.data_mut().bundle_selected = sunrise_client::item_data::BundleSelected(0);
-        let lines = vec![(sunrise_client::text::Text::literal("Name"), u32::MAX)];
+        stack.data_mut().bundle_selected = sunrise_items::item_data::BundleSelected(0);
+        let lines = vec![(sunrise_client_core::text::Text::literal("Name"), u32::MAX)];
         let elements = game
             .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
             .unwrap_ready();
@@ -218,7 +218,7 @@ fn bundle_empty_contents_keeps_image() {
     }
     run(None, |game| {
         let stack = ItemStack::new("minecraft:bundle", 1);
-        let lines = vec![(sunrise_client::text::Text::literal("Name"), u32::MAX)];
+        let lines = vec![(sunrise_client_core::text::Text::literal("Name"), u32::MAX)];
         let elements = game
             .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
             .unwrap_ready();

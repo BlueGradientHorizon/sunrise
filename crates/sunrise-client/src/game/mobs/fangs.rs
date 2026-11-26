@@ -1,15 +1,15 @@
 //! Evoker fangs (`EvokerFangs`): rising out of the floor after a delay,
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
 use super::Game;
-use sunrise_client::mobs::Species;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_sim::mobs::Species;
 
 #[derive(Clone, Debug)]
 pub(in crate::game) struct Fangs {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     pub id: u32,
     pub pos: [f64; 3],
     /// `getDeltaMovement`: nothing moves the fangs by it, but a fluid's
@@ -30,7 +30,7 @@ pub(in crate::game) struct Fangs {
     pub(in crate::game) random: LegacyRandom,
 }
 
-sunrise_client::impl_joined!(Fangs);
+sunrise_sim::impl_joined!(Fangs);
 sunrise_mod_runtime::impl_attachment_lifetime!(Fangs);
 
 /// `EvokerFangs.handleEntityEvent`: `nextFloat() * 0.2 + 0.85`.
@@ -54,7 +54,7 @@ pub(in crate::game) fn fang_crit(
 }
 #[derive(Default)]
 pub(in crate::game) struct FangState {
-    pub list: sunrise_client::join_seq::ResidentList<Fangs>,
+    pub list: sunrise_sim::join_seq::ResidentList<Fangs>,
 }
 impl FangState {
     pub(in crate::game) fn perf_count(&self) -> usize {
@@ -72,7 +72,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         f: &Fangs,
         uuid: [i32; 4],
     ) -> sunrise_core::nbt::Tag {
-        sunrise_client::entity_nbt::evoker_fangs_to_nbt(
+        sunrise_sim::entity_nbt::evoker_fangs_to_nbt(
             Vec3::new(f.pos[0], f.pos[1], f.pos[2]),
             f.motion,
             f.fire_ticks,
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         self.fangs
             .list
-            .restore(list, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(list, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
     /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5F x 0.8F): the
     /// currents of the water and lava the box touches add to the motion.
@@ -143,7 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         // EntityDimensions.scalable: the eye at 0.85 of the height.
         let eye = at.y + f64::from(0.8_f32 * 0.85);
-        sunrise_client::entities::update_entity_fluids(
+        sunrise_sim::entities::update_entity_fluids(
             bounds,
             at,
             eye,
@@ -194,7 +194,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .collect();
         // A missing owner hurts everyone (`currentOwner == null`).
         let owner_known = illagers.contains(&f.owner);
-        let team_of = |id: u32| teams.of(sunrise_client::mobs::Who::Mob(id));
+        let team_of = |id: u32| teams.of(sunrise_sim::mobs::Who::Mob(id));
         let allies: Vec<u32> = if owner_known {
             self.mobs
                 .iter()
@@ -226,7 +226,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             Vec::new()
         };
-        let attacker = owner.map(sunrise_client::mobs::Who::Mob);
+        let attacker = owner.map(sunrise_sim::mobs::Who::Mob);
         // A hurt can run server hooks that change the mob list. Keep the selected
         // victims by identity, as `EvokerFangs.tick` does before `dealDamageTo`.
         let victims: Vec<_> = self
@@ -254,11 +254,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let hurt = victim.damage(
                 crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
                 6.0,
-                sunrise_client::mobs::Damage {
+                sunrise_sim::mobs::Damage {
                     kind: if owner.is_some() {
-                        sunrise_client::mobs::DamageKind::IndirectMagic
+                        sunrise_sim::mobs::DamageKind::IndirectMagic
                     } else {
-                        sunrise_client::mobs::DamageKind::Magic
+                        sunrise_sim::mobs::DamageKind::Magic
                     },
                     attacker,
                     from: Some(f.pos),
@@ -292,12 +292,12 @@ pub(in crate::game::server_side) fn is_illager(s: Species) -> bool {
 #[derive(Clone, Copy)]
 pub(in crate::game) struct Party<'a> {
     pub(in crate::game) illager: bool,
-    pub(in crate::game) team: Option<&'a sunrise_client::scoreboard::Team>,
+    pub(in crate::game) team: Option<&'a sunrise_client_core::scoreboard::Team>,
 }
 /// `AbstractIllager.considersEntityAsAlly(other)`: the base rule (the teams
 /// are allied), or an illager friend while both have no team.
 pub(in crate::game::server_side) fn illager_considers(me: Party, other: Party) -> bool {
-    sunrise_client::scoreboard::teams_allied(me.team, other.team)
+    sunrise_client_core::scoreboard::teams_allied(me.team, other.team)
         || other.illager && me.team.is_none() && other.team.is_none()
 }
 /// `owner.isAlliedTo(other)` for an evoker owner: `Evoker.considersEntityAsAlly`
@@ -311,7 +311,7 @@ pub(in crate::game::server_side) fn fangs_allied(
 ) -> bool {
     illager_considers(owner, other)
         || other.illager && illager_considers(other, owner)
-        || !other.illager && sunrise_client::scoreboard::teams_allied(other.team, owner.team)
+        || !other.illager && sunrise_client_core::scoreboard::teams_allied(other.team, owner.team)
         || vex_root.is_some_and(|(is_owner, root)| is_owner || illager_considers(owner, root))
 }
 #[cfg(test)]
@@ -386,13 +386,13 @@ pub(in crate::game) mod tests {
         }
     }
 
-    fn party(illager: bool, team: Option<&sunrise_client::scoreboard::Team>) -> Party<'_> {
+    fn party(illager: bool, team: Option<&sunrise_client_core::scoreboard::Team>) -> Party<'_> {
         Party { illager, team }
     }
 
     #[test]
     fn fangs_allies_follow_teams_and_the_illager_tag() {
-        let mut board = sunrise_client::scoreboard::Scoreboard::default();
+        let mut board = sunrise_client_core::scoreboard::Scoreboard::default();
         board.add_team("red");
         board.add_team("blue");
         let red = board.team("red").unwrap();

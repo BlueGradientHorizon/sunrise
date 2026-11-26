@@ -5,7 +5,8 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use sunrise_client::{command::Registries, gamerules::GameRules};
+use sunrise_client_core::gamerules::GameRules;
+use sunrise_command::Registries;
 use sunrise_gameplay::world_clock::WorldClock;
 use sunrise_world::{
     heightmap::{HeightmapState, HeightmapType},
@@ -22,13 +23,14 @@ pub(in crate::game) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
 pub use sunrise_gameplay::world_clock::TimeMarker;
 
 /// An owned command tree, initialized even before a world is opened.
-pub struct SessionDispatcher(pub Arc<sunrise_client::command::Dispatcher>);
+pub struct SessionDispatcher(pub Arc<sunrise_command::Dispatcher>);
 impl Default for SessionDispatcher {
     fn default() -> Self {
-        let registry = sunrise_client::gamerules::RuleRegistry::vanilla();
-        Self(Arc::new(
-            sunrise_client::command::vanilla::session_dispatcher(&registry, &[]),
-        ))
+        let registry = sunrise_client_core::gamerules::RuleRegistry::vanilla();
+        Self(Arc::new(sunrise_command::vanilla::session_dispatcher(
+            &registry,
+            &[],
+        )))
     }
 }
 
@@ -310,7 +312,7 @@ pub(in crate::game) fn summonable_entities(
     } else {
         let mut list: Vec<String> = mob_types
             .into_iter()
-            .map(|k| sunrise_client::command::args::normalize(k.as_ref()))
+            .map(|k| sunrise_command::args::normalize(k.as_ref()))
             .filter(|id| !matches!(id.as_str(), "minecraft:player" | "minecraft:fishing_bobber"))
             .collect();
         list.extend(
@@ -333,7 +335,7 @@ pub(in crate::game) fn summonable_entities(
         list
     };
     // content mods' thrown types.
-    let thrown = sunrise_client::projectiles::thrown_types().iter();
+    let thrown = sunrise_sim::projectiles::thrown_types().iter();
     summonable.extend(thrown.map(|t| t.id.to_owned()));
     summonable.sort();
     summonable.dedup();
@@ -368,7 +370,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         // ResourceOrIdArgument decodes an inline feature with the world's live feature codec.
         self.ui.registries.inline_feature = self.res.behaviours().live_features().map(|features| {
             sunrise_client_core::registries::InlineFeatureCheck::new(move |tag| {
-                let json = sunrise_client::scoreboard::tag_to_json(tag).to_string();
+                let json = sunrise_client_core::scoreboard::tag_to_json(tag).to_string();
                 features
                     .decode_inline(&json)
                     .map(drop)
@@ -430,7 +432,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .items()
             .item_tags
             .keys()
-            .map(|k| sunrise_client::command::args::normalize(k))
+            .map(|k| sunrise_command::args::normalize(k))
             .collect();
         reg.item_tags.sort();
         reg.block_tags = self
@@ -438,15 +440,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .items()
             .block_tags
             .keys()
-            .map(|k| sunrise_client::command::args::normalize(k))
+            .map(|k| sunrise_command::args::normalize(k))
             .collect();
         reg.block_tags.sort();
         reg.blocks = BlockProperties::clone(&block_properties(self.pack.assets.registry));
         reg.summonable = summonable_entities(&ids.entity_types, self.res.mob_types().keys());
         reg.entity_types.clone_from(&ids.entity_types);
         // The mob effect registry for `/effect` and `mob_effect` resource arguments.
-        reg.effects = sunrise_client::brewing::all_effects()
-            .map(|e| sunrise_client::brewing::namespaced(e.id).to_owned())
+        reg.effects = sunrise_level::brewing::all_effects()
+            .map(|e| sunrise_level::brewing::namespaced(e.id).to_owned())
             .collect();
         reg.effects.sort();
         reg.enchantments = ids.enchantments.clone();
@@ -556,19 +558,19 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let r = &self.ui.rules;
         sunrise_world::level::GameRules {
             water_source_conversion: r
-                .bool_at(sunrise_client::gamerules::vanilla::WATER_SOURCE_CONVERSION),
+                .bool_at(sunrise_client_core::gamerules::vanilla::WATER_SOURCE_CONVERSION),
             lava_source_conversion: r
-                .bool_at(sunrise_client::gamerules::vanilla::LAVA_SOURCE_CONVERSION),
-            random_tick_speed: r.int_at(sunrise_client::gamerules::vanilla::RANDOM_TICK_SPEED),
-            block_drops: r.bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS),
-            mob_griefing: r.bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+                .bool_at(sunrise_client_core::gamerules::vanilla::LAVA_SOURCE_CONVERSION),
+            random_tick_speed: r.int_at(sunrise_client_core::gamerules::vanilla::RANDOM_TICK_SPEED),
+            block_drops: r.bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS),
+            mob_griefing: r.bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
             max_snow_accumulation_height: r
-                .int_at(sunrise_client::gamerules::vanilla::MAX_SNOW_ACCUMULATION_HEIGHT),
-            spawn_mobs: r.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS),
-            spawn_monsters: r.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS),
+                .int_at(sunrise_client_core::gamerules::vanilla::MAX_SNOW_ACCUMULATION_HEIGHT),
+            spawn_mobs: r.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS),
+            spawn_monsters: r.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS),
             fire_spread_radius_around_player: r
-                .int_at(sunrise_client::gamerules::vanilla::FIRE_SPREAD_RADIUS_AROUND_PLAYER),
-            spread_vines: r.bool_at(sunrise_client::gamerules::vanilla::SPREAD_VINES),
+                .int_at(sunrise_client_core::gamerules::vanilla::FIRE_SPREAD_RADIUS_AROUND_PLAYER),
+            spread_vines: r.bool_at(sunrise_client_core::gamerules::vanilla::SPREAD_VINES),
         }
     }
 
@@ -577,28 +579,28 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.world.health_rules.natural_regeneration = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::NATURAL_HEALTH_REGENERATION);
+            .bool_at(sunrise_client_core::gamerules::vanilla::NATURAL_HEALTH_REGENERATION);
         // Player.isInvulnerableTo: the damage-type rules.
         self.world.health_rules.drowning_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::DROWNING_DAMAGE);
+            .bool_at(sunrise_client_core::gamerules::vanilla::DROWNING_DAMAGE);
         self.world.health_rules.fall_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::FALL_DAMAGE);
+            .bool_at(sunrise_client_core::gamerules::vanilla::FALL_DAMAGE);
         self.world.health_rules.fire_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::FIRE_DAMAGE);
+            .bool_at(sunrise_client_core::gamerules::vanilla::FIRE_DAMAGE);
         self.world.health_rules.freeze_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::FREEZE_DAMAGE);
-        sunrise_client::mobs::sulfur_cube::set_tnt_explodes(
+            .bool_at(sunrise_client_core::gamerules::vanilla::FREEZE_DAMAGE);
+        sunrise_sim::mobs::sulfur_cube::set_tnt_explodes(
             self.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES),
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES),
         );
         use sunrise_world::food::Difficulty;
         self.world.health_rules.difficulty = match self.ui.difficulty {

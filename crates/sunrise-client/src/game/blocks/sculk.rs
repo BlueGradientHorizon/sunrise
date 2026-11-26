@@ -1,12 +1,12 @@
 //! Client-side sculk visuals and darkness effect fade blending.
 use super::Game;
-use sunrise_client::{
+use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_level::{
     effects::{EffectInstance, PlayerEffects},
-    mobs::Who,
-    particles::{ParticleOptions, ParticleType},
     sculk::Context,
 };
-use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
+use sunrise_sim::mobs::Who;
 use sunrise_world::registry::BlockStateId;
 
 #[cfg(test)]
@@ -321,7 +321,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
             }
             self.side.particles.0.add(
-                &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
+                &sunrise_level::particle_options::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
                 [
                     f64::from(pos[0]) + at[0],
                     f64::from(pos[1]) + at[1],
@@ -397,8 +397,8 @@ pub(in crate::game) mod shriek_capture_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::{position::ChunkPos, random::LegacyRandom};
+    use sunrise_level::chunk::Chunk;
     use sunrise_world::level::LevelEvent;
 
     #[test]

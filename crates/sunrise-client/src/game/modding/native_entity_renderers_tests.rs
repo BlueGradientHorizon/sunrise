@@ -11,7 +11,8 @@ use std::{
         atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
-use sunrise_client::{mesher::Vertex, projectiles::ThrownType};
+use sunrise_client::mesher::Vertex;
+use sunrise_sim::projectiles::ThrownType;
 
 /// Draws one stone quad a block wide, `height` blocks above the entity; `drew` says whether it was
 /// asked and the sprite was there.
@@ -165,7 +166,7 @@ fn feet() -> sunrise_core::geometry::Vec3 {
 
 /// The vertices one frame of mobs and projectiles draws with these thrown types in flight.
 fn thrown_frame(game: &mut crate::game::ClientGame<'_>, kinds: &[&str]) -> Vec<Vertex> {
-    use sunrise_client::projectiles::{Projectile, ProjectileKind, thrown_type};
+    use sunrise_sim::projectiles::{Projectile, ProjectileKind, thrown_type};
     game.creatures.projectiles.clear();
     for (i, kind) in kinds.iter().enumerate() {
         let t = thrown_type(kind).unwrap();
@@ -197,7 +198,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut crate::game::ClientGame<'_>, &Sc
         return;
     }
     use mod_api::{Hooks, RegisterEntityRenderersEvent, RegistrationContext};
-    assert!(sunrise_client::projectiles::register_thrown_types([
+    assert!(sunrise_sim::projectiles::register_thrown_types([
         ("ruby:bolt".into(), "minecraft:snowball".into(), 0.0),
         ("ruby:dart".into(), "minecraft:snowball".into(), 0.0),
         ("ruby:spike".into(), "minecraft:snowball".into(), 0.0),

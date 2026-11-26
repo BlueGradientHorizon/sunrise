@@ -2,8 +2,10 @@
 //! break are heard once with the removed state; a break `break_block` cancels and a piston's
 //! are not heard.
 use super::native_entity_refs::tests::{collect_all_entities, with_game};
-use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+use sunrise_command::args::GameMode;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 
 use mod_api::{BreakBlockEvent, Flow, Hooks, PlayerDestroyedBlockEvent, ServerHost};
 use std::sync::{
@@ -93,7 +95,7 @@ fn with_player(
         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0));
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
     game.side.lan_acting_uuid = Some(123);
     game.side.lan_acting_entity = Some(20);
@@ -151,7 +153,7 @@ fn a_players_completed_break_is_heard_once_with_the_removed_state() {
             contents[0] = Some(ItemStack::new("minecraft:diamond", 3));
             game.world.block_entities.insert(
                 (chest[0], chest[1], chest[2]),
-                sunrise_client::containers::BlockEntity::Chest(contents),
+                sunrise_level::containers::BlockEntity::Chest(contents),
             );
             assert!(game.player_destroy_block(player, chest, false));
             assert_eq!(block(game, chest), "minecraft:air");
@@ -538,7 +540,7 @@ fn put_chest(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3]) {
     contents[0] = Some(ItemStack::new("minecraft:diamond", 3));
     game.world.block_entities.insert(
         (pos[0], pos[1], pos[2]),
-        sunrise_client::containers::BlockEntity::Chest(contents),
+        sunrise_level::containers::BlockEntity::Chest(contents),
     );
 }
 
@@ -547,7 +549,7 @@ fn put_chest(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3]) {
 fn block_drops_lends_the_saved_only_pot_payload() {
     use super::spill;
     use mod_api::{Compound, Tag};
-    use sunrise_client::mobs::MobEvent;
+    use sunrise_sim::mobs::MobEvent;
 
     enum BreakSite {
         Player,
@@ -639,7 +641,7 @@ fn block_drops_lends_the_saved_only_pot_payload() {
 #[test]
 #[ignore = "daily"]
 fn mob_block_drops_lend_the_original_entity_after_a_loot_listener_replaces_it() {
-    use sunrise_client::mobs::MobEvent;
+    use sunrise_sim::mobs::MobEvent;
 
     struct Replace(Arc<Mutex<Option<mod_api::BlockEntityRef>>>);
     #[mod_api::__subscriptions]
@@ -843,7 +845,7 @@ fn block_drops_lends_the_removed_chests_data_without_a_temporary_handle() {
 #[test]
 #[ignore = "daily"]
 fn block_drops_names_the_mob_that_broke_the_block() {
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "drops-probe",

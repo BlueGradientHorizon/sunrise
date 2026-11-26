@@ -8,10 +8,10 @@ use std::{
 
 use mod_api::Side;
 use mod_api::{__private::game::RegistrationContextNew, BlocksEvent, Hooks, Registrar};
-use sunrise_client::mod_content::{
+use sunrise_mod_package::enabled::EnabledMods;
+use sunrise_sim::mod_content::{
     BLOCK_ENTITY_TYPES, DeclaredContent, accept_declared, resource_root,
 };
-use sunrise_mod_package::enabled::EnabledMods;
 
 use crate::game::api_values::TryIntoEngine;
 

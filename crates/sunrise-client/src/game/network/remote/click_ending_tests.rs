@@ -11,9 +11,9 @@ fn a_rocket_used_while_gliding_ends_the_click() {
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
     );
     let registry = sunrise_world::level::data::load_registry(&root).unwrap();
-    let facts = sunrise_client::blocks::BlockFacts::load(&root, &registry).unwrap();
+    let facts = sunrise_items::blocks::BlockFacts::load(&root, &registry).unwrap();
     let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-    let items = sunrise_client::items::Items::load(
+    let items = sunrise_items::items::Items::load(
         &root,
         &registry,
         &facts,

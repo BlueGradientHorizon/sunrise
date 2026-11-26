@@ -6,8 +6,8 @@ use mod_api::{
     BlockEntityClientAccess, BlockEntityClientScope, BlockEntityReadView, BlockEntityRef,
     ClientHost, ResidentBlockEntityReadOnly,
 };
-use sunrise_client::{block_entities::Ticking, containers::BlockEntity};
 use sunrise_core::nbt::Compound;
+use sunrise_level::{block_entities::Ticking, containers::BlockEntity};
 
 /// Shared read-only resident view backing for client and level-load block-entity scopes.
 pub(in crate::game) struct ResidentReadBlockEntity<'a> {

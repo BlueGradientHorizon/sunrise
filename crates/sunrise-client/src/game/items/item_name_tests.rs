@@ -1,8 +1,8 @@
 //! `ItemPart::item_name` (`Item.getName(ItemStack)`) behind every place the game names a stack.
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
 use mod_api::{Hooks, ItemNameEvent, ItemPart, LoopContext, Registrar, RegistrationContext};
-use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
 
 const NAME: &str = "game::item_name_tests::a_part_names_its_stacks_everywhere_the_game_names_them";
 const RENAME_BOX: &str =
@@ -46,7 +46,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
         crate::entry::install_client_hooks();
         with_game(|game| {
             game.resolve_parts().unwrap();
-            let plain = |t: sunrise_client::text::Text| t.plain();
+            let plain = |t: sunrise_client_core::text::Text| t.plain();
             // An untranslated key reads as itself: the Part's name, independent of the code.
             let named = ItemStack::new("minecraft:paper", 2);
             assert_eq!(plain(game.stack_hover_name_text(&named)), KEY);
@@ -66,7 +66,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             let sheet = ItemStack::new("minecraft:paper", 1);
             assert_eq!(
                 game.stack_hover_name_text(&sheet).component(),
-                sunrise_client::stations::hover_name_text(&game.pack.names, &sheet).component()
+                sunrise_sim::stations::hover_name_text(&game.pack.names, &sheet).component()
             );
             assert_eq!(
                 game.mod_item_name(&ItemStack::new("minecraft:stone", 2)),
@@ -88,7 +88,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             // edit, renames it; a third name renames it too.
             let env = game.menu_env();
             let anvil = |name: &str| {
-                let mut menu = sunrise_client::menu::Menu::new(sunrise_client::menu::Kind::Anvil);
+                let mut menu = sunrise_sim::menu::Menu::new(sunrise_sim::menu::Kind::Anvil);
                 menu.set_slot(&env, 0, Some(named.clone()));
                 menu.anvil_created();
                 menu.rename(&env, name);
@@ -102,7 +102,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
 
             // GiveCommand's refused count still links the one-item prototype, with its patch.
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )
@@ -120,7 +120,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert_eq!(message["translate"], "commands.give.failed.toomanyitems");
             let hover = &message["with"][1]["hover_event"];
             assert_eq!(hover["action"], "show_item");
-            let shown = sunrise_client::item_data::stack_from_hover(hover).unwrap();
+            let shown = sunrise_items::item_data::stack_from_hover(hover).unwrap();
             assert_eq!(&*shown.item, "minecraft:paper");
             assert_eq!(shown.count, 1);
             assert_eq!(shown.custom_name().as_deref(), Some("Diary"));
@@ -139,7 +139,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             // stack's custom hover name. Command feedback and `name=` selectors agree.
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
                 let prev = game.side.chat_capture.replace(Vec::new());
@@ -211,7 +211,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
         });
         with_client_game(|game| {
             game.resolve_parts().unwrap();
-            let plain = |t: sunrise_client::text::Text| t.plain();
+            let plain = |t: sunrise_client_core::text::Text| t.plain();
             let named = ItemStack::new("minecraft:paper", 2);
             assert_eq!(plain(game.styled_stack_name(&named)), KEY);
             let mut labelled = named.clone();
@@ -254,7 +254,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
 #[ignore = "daily"]
 fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
     use super::stations::{INPUT, Kind, Station};
-    use sunrise_client::menu::Input;
+    use sunrise_sim::menu::Input;
     if run_fresh_cases(RENAME_BOX, "SUNRISE_ITEM_NAME_RENAME_BOX_CHILD", &["names"]) {
         return;
     }
@@ -302,8 +302,8 @@ fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
 
             // One sheet, which the Part leaves: vanilla's name, as a vanilla client sends it.
             let sheet = ItemStack::new("minecraft:paper", 1);
-            let vanilla = sunrise_client::lang::returned_to_server(|| {
-                sunrise_client::stations::hover_name_text(&game.pack.names, &sheet).plain()
+            let vanilla = sunrise_client_core::lang::returned_to_server(|| {
+                sunrise_sim::stations::hover_name_text(&game.pack.names, &sheet).plain()
             });
             assert_eq!(vanilla, "Paper");
             game.carried = Some(sheet);

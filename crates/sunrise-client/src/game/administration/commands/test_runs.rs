@@ -6,7 +6,7 @@
 //! Retries are `RetryOptions(numberOfTimes, untilFailed)`.
 use super::{Arg, Context, Game, R, err};
 use crate::game::game_tests::Retry;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_core::bounding_box::BoundingBox;
 use sunrise_world::worldgen::structure::Rotation;
 
@@ -51,7 +51,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|(_, e)| {
                 matches!(
                     e,
-                    sunrise_client::containers::BlockEntity::TestInstanceBlock(_)
+                    sunrise_level::containers::BlockEntity::TestInstanceBlock(_)
                 )
             })
             .map(|(p, _)| *p)
@@ -232,7 +232,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "test.run" => {
                 let tests = match ctx.get("tests") {
-                    Some(Arg::Str(pattern)) => sunrise_client::command::args::select_resources(
+                    Some(Arg::Str(pattern)) => sunrise_command::args::select_resources(
                         self.ui.registries.ids("minecraft:test_instance"),
                         pattern,
                     )

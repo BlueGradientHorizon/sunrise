@@ -8,9 +8,9 @@ use crate::game::lan_actions::pickups::pickup_post_tests::host_case;
 use crate::game::lan_actions::pickups::pickup_post_tests::host_stat;
 use crate::game::lan_actions::pickups::pickup_post_tests::with_probe;
 use mod_api::TriState;
-use sunrise_client::items::ItemStack;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 
 /// Both pickup hooks name the ground item entity, and `item_picked_up`
 /// reads its whole stack through the handle, components included.
@@ -59,7 +59,7 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
             game.side.world_root = scratch.clone();
             game.enter_level(crate::game::Dim::Overworld).unwrap();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap());
-            game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(7));
+            game.level.player_uuid = Some(sunrise_sim::lan::playerdata::uuid_ints(7));
             game.side.lan_acting_uuid = Some(7);
             game.side.lan_acting_name = Some("pickup_post".into());
 

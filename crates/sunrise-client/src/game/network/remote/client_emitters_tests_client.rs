@@ -1,6 +1,6 @@
 use super::super::Game;
-use sunrise_client::particles::ParticleType::{self};
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_level::particle_options::ParticleType::{self};
 
 // Capture the level requests, before the limiter or providers consume random
 // draws. The expected sequence uses the 26.3 TrackingEmitter sampling contract

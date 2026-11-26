@@ -1,6 +1,6 @@
 //! Common `OminousItemSpawner` insertion shared by client packets and server tests.
 use super::{Game, ominous_item_spawner::OminousItemSpawner};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `handleAddEntity` for a spawner a server sent: its item comes with the

@@ -4,7 +4,7 @@
 //! order only inserts the result (`ClientPacketListener.handleLevelChunkWithLight`).
 use super::Game;
 use std::{collections::VecDeque, sync::Arc};
-use sunrise_client::{
+use sunrise_level::{
     chunk::Chunk,
     fast_hash::{FxHashMap, FxHashSet},
 };
@@ -157,7 +157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 r.chunk_light.columns.entry(key).or_default().take()
             }
         });
-        sunrise_client::light::inherit_packet_light(
+        sunrise_level::light::inherit_packet_light(
             &mut chunk,
             previous.map(Arc::as_ref),
             pending,
@@ -190,7 +190,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .be_anims
                 .pots
                 .retain(|[bx, _, bz], _| (*bx >> 4, *bz >> 4) != (x, z));
-            sunrise_client::spans::time("replace_remote", || {
+            sunrise_level::spans::time("replace_remote", || {
                 self.side.streaming.replace_remote(&mut self.world, chunk)
             });
         } else {
@@ -199,7 +199,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Before any block entity joins: a state change before the first ticker pass (a campfire
         // lit) must find which states tick, to join the list at that moment, not at its place.
         self.ensure_client_ticking_states();
-        sunrise_client::spans::time("unload_block_entities", || {
+        sunrise_level::spans::time("unload_block_entities", || {
             self.world.block_entities.unload_column((x, z));
         });
         self.load_block_entities((x, z), &p.chunk.block_entities);
@@ -232,7 +232,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let _load = if infos.is_empty() {
             None
         } else {
-            sunrise_client::spans::raw_flight_guard("load_block_entities")
+            sunrise_level::spans::raw_flight_guard("load_block_entities")
         };
         for info in infos {
             let pos = (
@@ -275,7 +275,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 log::warn!("Sunrise: biomes of chunk {x} {z}: {e}");
             }
         }
-        let mask = sunrise_client::section_mask::SectionMask::below(self.world.layout().sections());
+        let mask = sunrise_level::section_mask::SectionMask::below(self.world.layout().sections());
         for data in &p.chunks {
             let [x, z] = data.pos;
             for dz in -1..=1 {
@@ -362,7 +362,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             }
             if let Some(chunk) = self.world.chunks.resident_get_mut(&key) {
-                let changed = sunrise_client::light::update_light_layers(
+                let changed = sunrise_level::light::update_light_layers(
                     Arc::make_mut(chunk),
                     &layers,
                     r.chunk_format.has_skylight,

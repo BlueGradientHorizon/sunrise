@@ -1,6 +1,6 @@
 use super::*;
 use mod_api::SwimmingCheck;
-use sunrise_client::{motion::SwimEntry, sprint};
+use sunrise_sim::{motion::SwimEntry, sprint};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The first answer replaces the shared player swim predicate at this call site.
@@ -34,7 +34,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         keys: sprint::Keys,
         window: i32,
         vehicle_sprint: Option<(bool, bool)>,
-    ) -> sunrise_client::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let Some(player) = self.player.as_mut() else {
             return Ok(());
         };
@@ -64,7 +64,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                     || (game
                         .player
                         .as_ref()
-                        .is_some_and(|p| p.fluid_height(sunrise_client::motion::WATER) > 0.0)
+                        .is_some_and(|p| p.fluid_height(sunrise_sim::motion::WATER) > 0.0)
                         && game.side_ask_swim_eligibility(SwimmingCheck::ShallowWater)
                             == Some(false))
             },

@@ -10,16 +10,16 @@ use crate::game::commands::target_entity_mut;
 use crate::game::commands::texts;
 use crate::game::commands::without_knots;
 use crate::game::commands::wrap_degrees;
-use sunrise_client::{
-    command::{
-        Arg, CommandError, Context,
-        args::{Coordinates, GameMode, ItemInput, Selector},
-    },
+use sunrise_client_core::{
     gamerules::Value,
-    items::ItemStack,
     text::{self, Text},
 };
+use sunrise_command::{
+    Arg, CommandError, Context,
+    args::{Coordinates, GameMode, ItemInput, Selector},
+};
 use sunrise_core::{geometry::Vec3, java_number::float_to_string};
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
 
@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
     }
     /// `CommandSourceStack.getDisplayName` for the admin line: the executing
     /// entity's name, read where `execute in` put the command (`source.dimension`,
@@ -121,11 +121,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         let rules = &self.ui.rules;
-        let ops = rules.bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+        let ops = rules.bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         // `source != server`: RCON is a source of its own and is logged.
         let console_source = self.side.console_broadcast.is_some() && !self.side.rcon_source;
         let log = !console_source
-            && rules.bool_at(sunrise_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
+            && rules.bool_at(sunrise_client_core::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if !ops && !log {
             return;
         }
@@ -172,7 +172,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
+            .int_at(sunrise_client_core::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
             return Err(err("commands.clone.toobig", &[&limit, &area]));
         }
@@ -299,7 +299,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
+            .int_at(sunrise_client_core::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
             return Err(err("commands.fill.toobig", &[&limit, &area]));
         }
@@ -473,9 +473,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let (damage, extra) = match components
             .as_deref()
-            .map(sunrise_client::item_data::command_components)
+            .map(sunrise_items::item_data::command_components)
         {
-            Some(Ok(tag)) => sunrise_client::item_data::decode_components(Some(&tag)),
+            Some(Ok(tag)) => sunrise_items::item_data::decode_components(Some(&tag)),
             Some(Err(e)) => return Err(CommandError::new(Text::literal(e))),
             None => (0, None),
         };
@@ -511,7 +511,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let uuid = match conn {
                 Some(conn) => self
                     .command_guest(conn)
-                    .map(|g| sunrise_client::lan::playerdata::uuid_ints(g.uuid)),
+                    .map(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid)),
                 None => Some(self.level.ensure_player_uuid()),
             };
             self.for_player(t, |g| {
@@ -584,7 +584,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .ok_or_else(|| err("command.failed", &[]))?;
                 let line = Text::translate("chat.type.announcement", &[name, message]);
                 if self.lan.is_some() && self.is_dedicated_server() {
-                    self.lan_log_event(sunrise_client::lan::hub::HostEvent::Chat {
+                    self.lan_log_event(sunrise_sim::lan::hub::HostEvent::Chat {
                         line: line.plain(),
                         secure: false,
                     });
@@ -606,7 +606,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .ok_or_else(|| err("command.failed", &[]))?;
                     let line = Text::translate("chat.type.emote", &[name, message]);
                     if self.is_dedicated_server() {
-                        self.lan_log_event(sunrise_client::lan::hub::HostEvent::Chat {
+                        self.lan_log_event(sunrise_sim::lan::hub::HostEvent::Chat {
                             line: line.plain(),
                             secure: false,
                         });
@@ -641,7 +641,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 host.hub.send_to(
                                     conn,
                                     &C::SystemChat(play::SystemChat {
-                                        content: sunrise_client::lan::data::component_nbt(
+                                        content: sunrise_sim::lan::data::component_nbt(
                                             &incoming.component(),
                                         ),
                                         overlay: false,
@@ -792,7 +792,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     &short,
                     pos,
                     super::creatures::SpawnSite::Finalizing(
-                        sunrise_client::mobs::spawn_rules::Reason::Command,
+                        sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 )
                 .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?;
@@ -804,12 +804,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // which only `snapTo`s: the position is kept, even in a block.
                     self.side.next_entity += 1;
                     let id = self.side.next_entity;
-                    let uuid = sunrise_client::save::insecure_uuid(
-                        &mut sunrise_client::random_source::entity(),
+                    let uuid = sunrise_sim::save::insecure_uuid(
+                        &mut sunrise_level::random_source::entity(),
                     );
                     self.persist.uuids.insert(id, uuid);
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
-                    let orb = sunrise_client::entities::ExperienceOrb::new(id, at, Vec3::ZERO, 0);
+                    let orb = sunrise_sim::entities::ExperienceOrb::new(id, at, Vec3::ZERO, 0);
                     self.orbs.push(orb);
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
                     if !self.native_joins_flush(false, id) {
@@ -853,13 +853,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // spawner minecart's BaseSpawner.load runs: SpawnPotentials becomes
                     // WeightedList.of(new SpawnData()).
                     if cart.spawner.is_some() {
-                        use sunrise_client::mobs::spawner::{Spawner, SpawnerExt};
+                        use sunrise_sim::mobs::spawner::{Spawner, SpawnerExt};
                         let empty = sunrise_core::nbt::Tag::Compound(Default::default());
                         cart.spawner = Some(Box::new(Spawner::load(&empty)));
                     }
                     let id = cart.id;
-                    let uuid = sunrise_client::save::insecure_uuid(
-                        &mut sunrise_client::random_source::entity(),
+                    let uuid = sunrise_sim::save::insecure_uuid(
+                        &mut sunrise_level::random_source::entity(),
                     );
                     self.persist.uuids.insert(id, uuid);
                     self.carts.push(cart);
@@ -1090,10 +1090,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Ok(0);
                 };
                 self.set_default_game_mode(match m {
-                    sunrise_client::command::args::GameMode::Survival => 0,
-                    sunrise_client::command::args::GameMode::Creative => 1,
-                    sunrise_client::command::args::GameMode::Adventure => 2,
-                    sunrise_client::command::args::GameMode::Spectator => 3,
+                    sunrise_command::args::GameMode::Survival => 0,
+                    sunrise_command::args::GameMode::Creative => 1,
+                    sunrise_command::args::GameMode::Adventure => 2,
+                    sunrise_command::args::GameMode::Spectator => 3,
                 });
                 self.feedback(Text::translate(
                     "commands.defaultgamemode.success",
@@ -1306,8 +1306,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // which its death message tells.
                     let alive = m.alive();
                     if alive {
-                        let source = sunrise_client::mobs::Damage::of(
-                            sunrise_client::mobs::DamageKind::GenericKill,
+                        let source = sunrise_sim::mobs::Damage::of(
+                            sunrise_sim::mobs::DamageKind::GenericKill,
                         );
                         m.record_damage(source, f32::MAX);
                         m.last_damage = Some((source, i64::from(m.age)));
@@ -1449,7 +1449,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         match self.server_resident_entity(id) {
-            sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value }
+            sunrise_sim::join_seq::residency::table::EntityLookup::Found { location, value }
                 if location.owner.dimension == self.dim.key() =>
             {
                 value == t
@@ -1519,7 +1519,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return self.player_text(name, uuid);
         }
         let mut displayname = self.target_name(Target::Player);
-        sunrise_client::lan::hub::native_player_name_format(
+        sunrise_sim::lan::hub::native_player_name_format(
             &self.loop_context,
             &Text::literal(name),
             &mut displayname,
@@ -1694,7 +1694,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
+                .bool_at(sunrise_client_core::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
     }
     pub(in crate::game) fn source_position(&self) -> [f64; 3] {
         if let Some(s) = &self.side.command_source {
@@ -1984,7 +1984,7 @@ pub(in crate::game) mod peaceful_tests {
             game.side
                 .tickets
                 .0
-                .update(Some(sunrise_client::ticket_levels::Sources {
+                .update(Some(sunrise_sim::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()
                 }));
@@ -2080,10 +2080,8 @@ pub(in crate::game) mod query_feedback_tests {
         use super::{Arg, Context};
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
-        use sunrise_client::{
-            command::ParsedArg,
-            gamerules::{GameRules, Rule, RuleRegistry, Value},
-        };
+        use sunrise_client_core::gamerules::{GameRules, Rule, RuleRegistry, Value};
+        use sunrise_command::ParsedArg;
         with_game(|game| {
             let registry = RuleRegistry::with_mod_rules(
                 &["test:feedback".into()],
@@ -2162,8 +2160,10 @@ pub(in crate::game) mod forced_respawn_tests {
     fn setworldspawn_reports_normalized_rotation() {
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, motion::PlayerMotion, text::Text};
+        use sunrise_client_core::text::Text;
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::motion::PlayerMotion;
 
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5)).unwrap());

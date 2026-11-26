@@ -1,7 +1,7 @@
 //! One storage-family dispatch for the server's residency journal.
 use super::{Game, commands::Target};
 use mod_api::DimensionKey;
-use sunrise_client::join_seq::{
+use sunrise_sim::join_seq::{
     Joined,
     residency::{
         Journal, Kind, Owner,
@@ -88,12 +88,12 @@ macro_rules! bind_resident_list {
             |entity| {
                 if matches!(
                     entity.species(),
-                    sunrise_client::mobs::Species::Villager
-                        | sunrise_client::mobs::Species::WanderingTrader
+                    sunrise_sim::mobs::Species::Villager
+                        | sunrise_sim::mobs::Species::WanderingTrader
                 ) {
-                    sunrise_client::join_seq::residency::EntitySubtype::Merchant
+                    sunrise_sim::join_seq::residency::EntitySubtype::Merchant
                 } else {
-                    sunrise_client::join_seq::residency::EntitySubtype::Ordinary
+                    sunrise_sim::join_seq::residency::EntitySubtype::Ordinary
                 }
             },
         )
@@ -104,7 +104,7 @@ macro_rules! bind_resident_list {
             $owner,
             |entity| (entity.id, entity.join_seq()),
             |entity| {
-                use sunrise_client::join_seq::residency::EntitySubtype;
+                use sunrise_sim::join_seq::residency::EntitySubtype;
                 match entity.kind.as_str() {
                     "minecraft:block_display" => EntitySubtype::BlockDisplay,
                     "minecraft:item_display" => EntitySubtype::ItemDisplay,
@@ -120,7 +120,7 @@ macro_rules! bind_resident_list {
             $owner,
             |entity| (entity.id, entity.join_seq()),
             |entity| {
-                use sunrise_client::join_seq::residency::EntitySubtype;
+                use sunrise_sim::join_seq::residency::EntitySubtype;
                 use $crate::game::minecarts::CartKind;
                 match entity.kind {
                     CartKind::Chest => EntitySubtype::ChestCart,
@@ -172,7 +172,7 @@ macro_rules! define_resident_access {
             }
             $($crate::game::entity_residency::bind_resident_list!($kind, $this$(.$field)+, journal, Owner { dimension, kind: Kind::$kind });)*
             $this$(.$projectiles)+.bind_residency(journal, Owner { dimension, kind: Kind::Projectile }, |entity| (entity.id, entity.join_seq()));
-            $this.dragon.bind_residency_specialized(journal, Owner { dimension, kind: Kind::Dragon }, |entity| (entity.id, entity.join_seq()), sunrise_client::join_seq::residency::Source::Ordinary, Some((Kind::DragonPart, 8, |dragon, offset| dragon.parts.get(usize::from(offset)).map(|part| part.3))), None);
+            $this.dragon.bind_residency_specialized(journal, Owner { dimension, kind: Kind::Dragon }, |entity| (entity.id, entity.join_seq()), sunrise_sim::join_seq::residency::Source::Ordinary, Some((Kind::DragonPart, 8, |dragon, offset| dragon.parts.get(usize::from(offset)).map(|part| part.3))), None);
         }
         pub(in crate::game::server_side) fn with_resident_owner_slot<R>(
             &mut $this,
@@ -190,7 +190,7 @@ macro_rules! define_resident_access {
                     })
                 },
                 Kind::DragonPart => {
-                    use sunrise_client::join_seq::residency::Source;
+                    use sunrise_sim::join_seq::residency::Source;
                     use sunrise_mod_runtime::attachments::HasAttachmentLifetime;
                     let Source::DragonPart(offset) = at.source else { return SlotAccess::Missing; };
                     if $this.dragon.locate(at.join).is_none() { return SlotAccess::Missing; }
@@ -220,7 +220,7 @@ macro_rules! define_resident_access {
                     Some(SourceEntity { id, value: (Target::Dragon(id), true) })
                 }
                 Kind::DragonPart => {
-                    let sunrise_client::join_seq::residency::Source::DragonPart(offset) = at.source else { return None; };
+                    let sunrise_sim::join_seq::residency::Source::DragonPart(offset) = at.source else { return None; };
                     $this.dragon.locate(at.join)?;
                     let dragon = $this.dragon.as_ref()?;
                     if dragon.id == 0 { return None; }
@@ -274,11 +274,11 @@ mod lifetime_tests;
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::{
+    use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_sim::{
         join_seq::{RestoreOrder, residency::table::EntityLookup},
         mobs::Mob,
     };
-    use sunrise_core::{geometry::Vec3, position::BlockPos};
 
     #[test]
     #[ignore = "daily"]

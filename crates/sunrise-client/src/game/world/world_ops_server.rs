@@ -155,12 +155,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.experience.add_points(points);
         while self.experience.progress < 0.0 {
             let xp = &self.experience;
-            let lost = xp.progress * sunrise_client::entities::Experience::needed(xp.level) as f32;
+            let lost = xp.progress * sunrise_sim::entities::Experience::needed(xp.level) as f32;
             let had_level = xp.level > 0;
             self.add_experience_levels(-1);
             let xp = &mut self.experience;
             xp.progress = if had_level {
-                1.0 + lost / sunrise_client::entities::Experience::needed(xp.level) as f32
+                1.0 + lost / sunrise_sim::entities::Experience::needed(xp.level) as f32
             } else {
                 0.0
             };
@@ -168,10 +168,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         while self.experience.progress >= 1.0 {
             let xp = &mut self.experience;
             xp.progress =
-                (xp.progress - 1.0) * sunrise_client::entities::Experience::needed(xp.level) as f32;
+                (xp.progress - 1.0) * sunrise_sim::entities::Experience::needed(xp.level) as f32;
             self.add_experience_levels(1);
             let xp = &mut self.experience;
-            xp.progress /= sunrise_client::entities::Experience::needed(xp.level) as f32;
+            xp.progress /= sunrise_sim::entities::Experience::needed(xp.level) as f32;
         }
         self.native_player_level_changed(old_level);
     }
@@ -241,7 +241,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let place = self.loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
         let (_, entity) = self.native_clicker();
         let mut drops = sunrise_world::loot::with_native_loot_place(place, || {
-            let roll = sunrise_client::items::BlockLootRoll {
+            let roll = sunrise_items::items::BlockLootRoll {
                 held,
                 dynamic: &dynamic,
                 breaker: true,
@@ -308,7 +308,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let interaction = if !self.can_entity_grief(source) {
             explosion::BlockInteraction::Keep
         } else {
-            self.destroy_type(sunrise_client::gamerules::vanilla::MOB_EXPLOSION_DROP_DECAY)
+            self.destroy_type(sunrise_client_core::gamerules::vanilla::MOB_EXPLOSION_DROP_DECAY)
         };
         self.server_explode_from(center, radius, interaction, fire, blast)
     }
@@ -316,9 +316,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Copies of a save batch carrying its live block entities and save data.
     pub(in crate::game) fn with_entities<'a>(
         &self,
-        chunks: impl IntoIterator<Item = &'a Arc<sunrise_client::chunk::Chunk>>,
-    ) -> Vec<Arc<sunrise_client::chunk::Chunk>> {
-        sunrise_client::save::chunks_with_block_entities(
+        chunks: impl IntoIterator<Item = &'a Arc<sunrise_level::chunk::Chunk>>,
+    ) -> Vec<Arc<sunrise_level::chunk::Chunk>> {
+        sunrise_sim::save::chunks_with_block_entities(
             chunks,
             &self.world.block_entities,
             &self.world.block_names,
@@ -512,8 +512,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn control_hurt_log(&mut self) -> Value {
         fn drain(
             name: &str,
-            hurt_log: &mut Vec<sunrise_client::health::HurtRecord>,
-            attack_log: &mut Vec<sunrise_client::health::AttackRecord>,
+            hurt_log: &mut Vec<sunrise_sim::health::HurtRecord>,
+            attack_log: &mut Vec<sunrise_sim::health::AttackRecord>,
         ) -> Value {
             let hurts: Vec<Value> = hurt_log
                 .drain(..)

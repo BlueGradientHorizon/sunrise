@@ -151,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn server_particle_at(
         &mut self,
-        particle: crate::lan::server_effects::ServerParticle,
+        particle: sunrise_sim::lan::server_effects::ServerParticle,
         at: [f64; 3],
         velocity: [f64; 3],
     ) {
@@ -164,7 +164,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             [1.0; 3]
         };
-        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+        self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
             dimension: self.dim.id(),
             particle,
             at,

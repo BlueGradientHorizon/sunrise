@@ -7,16 +7,19 @@ use super::{Game, InteractTarget};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_assets::resource_source::ResourceSource;
 use sunrise_client::{
-    Result,
-    entities::ArmorStand,
-    items::ItemStack,
-    join_seq::JoinSeq,
-    mobs::{Part, Species, Who, anim::Poses},
+    mobs::Part,
     trims::{TrimOverride, TrimRegistry},
 };
+use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
+};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
+    entities::ArmorStand,
+    join_seq::JoinSeq,
+    mobs::{Species, Who, anim::Poses},
 };
 pub(in crate::game) const TYPE_ID: &str = "minecraft:armor_stand";
 /// Build the living-drops input at the loot-source boundary, before equipment pops.
@@ -315,13 +318,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `entity_data` merged over the stand; `ArmorStandItem.useOn` then snaps it
         // to the placement yaw with pitch 0.
         let own =
-            sunrise_client::entity_nbt::armor_stand_to_nbt(&stand, [0; 4], None, self.res.items());
-        let mut raw = sunrise_client::block_entity_item::stack_configured_entity(
+            sunrise_sim::entity_nbt::armor_stand_to_nbt(&stand, [0; 4], None, self.res.items());
+        let mut raw = sunrise_sim::block_entity_item::stack_configured_entity(
             stack,
             "minecraft:armor_stand",
             &own,
         );
-        if let Some(mut loaded) = sunrise_client::entity_nbt::armor_stand_from_nbt(&raw, stand.id) {
+        if let Some(mut loaded) = sunrise_sim::entity_nbt::armor_stand_from_nbt(&raw, stand.id) {
             loaded.first_tick = stand.first_tick;
             loaded.yaw = stand.yaw;
             loaded.previous_yaw = stand.previous_yaw;
@@ -338,7 +341,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // ArmorStandItem.useOn turns the stand to face the player.
         self.world.random.next_float();
         self.side.next_entity += 1;
-        let (_, uuid) = sunrise_client::mobs::living_random();
+        let (_, uuid) = sunrise_sim::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
         self.server_play_sound(
             "minecraft:entity.armor_stand.place",
@@ -621,7 +624,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let id = self.armor_stands[i].id;
         let attacker = self.own_entity_id();
         let vanilla = self.saved_refuses_damage(id, "minecraft:player_attack", self.creative);
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
             direct: attacker,
@@ -629,7 +632,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
-                sunrise_client::health::Hurting::ArmorStand(id as i32, source),
+                sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                 vanilla,
             )
         {
@@ -721,14 +724,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let server = self.remote.is_none();
         let stand_breathes_under_water = self.items().entity_type_tags.has_flag(
             TYPE_ID,
-            sunrise_client::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,
+            sunrise_items::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,
         );
         // EntityGetter.getEntityCollisions: the boxes that stop a stand's move
         // (a living shulker, a boat, a happy ghast held still), gathered when
         // the first stand travels. A server's stand rides nothing (`vehicle`
         // is set on a server's client only), but mobs can ride it (`/ride`):
         // `isPassengerOfSameVehicle` leaves those riders out.
-        let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
+        let mut obstacles: Option<sunrise_sim::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
         for join in joins {
             let Some(i) = self.armor_stands.locate(join) else {
@@ -787,7 +790,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 (0.0, 0.0, false)
             } else {
                 let (bounds, at, eye) = (a.bounds(), a.position, a.fluid_eye_y());
-                sunrise_client::entities::update_entity_fluids(
+                sunrise_sim::entities::update_entity_fluids(
                     bounds,
                     at,
                     eye,
@@ -815,20 +818,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         == "minecraft:bubble_column"
                 };
                 let drowns = eye_in_water && !in_bubble_column && !stand_breathes_under_water;
-                let vanilla = sunrise_client::breathing::Breath {
+                let vanilla = sunrise_sim::breathing::Breath {
                     can_breathe: !drowns,
                     consume: 1,
                     refill: if drowns { 0 } else { 4 },
                 };
                 Some((
                     a.id,
-                    sunrise_client::breathing::AirStep::generic(a.air, 300, vanilla),
+                    sunrise_sim::breathing::AirStep::generic(a.air, 300, vanilla),
                 ))
             } else {
                 None
             };
             let i = if let Some((stand_id, step)) = stand_air {
-                let answer = if sunrise_client::breathing::heard() {
+                let answer = if sunrise_sim::breathing::heard() {
                     self.ask_stand_breath(stand_id, step)
                 } else {
                     Some(step.vanilla)
@@ -855,7 +858,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             a.fall_flying = false;
             let medium =
-                sunrise_client::entities::StandMedium::from_heights(water_height, lava_height);
+                sunrise_sim::entities::StandMedium::from_heights(water_height, lava_height);
             // Entity.collide asks for the entities meeting the box stretched
             // by this tick's movement (the fluid push is already in it).
             nearby.clear();
@@ -870,7 +873,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.res.facts(),
                 self.collision,
             );
-            let scene = sunrise_client::collisions::SceneCollisions {
+            let scene = sunrise_level::collisions::SceneCollisions {
                 world,
                 binding: collision,
                 subject: None,
@@ -981,13 +984,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     } else {
                         saved[1]
                     };
-                    let source = sunrise_client::health::HurtSource {
+                    let source = sunrise_sim::health::HurtSource {
                         damage_type: damage,
                         causing: 0,
                         direct: 0,
                         position: None,
                     };
-                    sunrise_client::health::DamageLevel::of(
+                    sunrise_sim::health::DamageLevel::of(
                         world,
                         registry,
                         Some(tags),
@@ -996,7 +999,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     )
                     .no_push()
                     .invulnerability_check(
-                        sunrise_client::health::Hurting::ArmorStand(id as i32, source),
+                        sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                         vanilla,
                     )
                 },
@@ -1062,7 +1065,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         i: usize,
         mover: sunrise_world::entity_move::MoverType,
         delta: Vec3,
-        grid: &mut Option<sunrise_client::entities::ObstacleGrid>,
+        grid: &mut Option<sunrise_sim::entities::ObstacleGrid>,
     ) {
         let grid = grid.get_or_insert_with(|| self.stand_entity_collisions());
         let mut nearby = Vec::new();
@@ -1071,7 +1074,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let reach = a.bounds().expand_towards(delta);
         let reach = reach.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
         grid.near_except(reach, Some(a.id), &mut nearby);
-        let scene = sunrise_client::collisions::SceneCollisions {
+        let scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -1199,7 +1202,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
                 && self.world.random.next_int_bound(chance).unwrap_or(1) == 0
             {
                 self.crack_turtle_egg([p.x, p.y, p.z])?;
@@ -1229,7 +1232,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             stand,
             self.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS),
             dying,
             |table| {
                 let Some(loot) = self.side.server_loot.0.get() else {
@@ -1318,7 +1321,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing, Some(Target::Mob(_)))
         {
             return false;
@@ -1337,7 +1340,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .and_then(|target| self.network_entity_id(target))
             .unwrap_or(0) as u32;
         let invulnerable = self.saved_refuses_damage(id, damage_type, creative);
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type,
             causing: causing_id as i32,
             direct: direct as i32,
@@ -1345,7 +1348,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
-                sunrise_client::health::Hurting::ArmorStand(id as i32, source),
+                sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                 invulnerable,
             )
         {
@@ -1466,7 +1469,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             format!("minecraft:{damage_type}")
         };
-        let ctx = sunrise_client::enchant::EffectContext {
+        let ctx = sunrise_items::enchant::EffectContext {
             items: Some(self.res.items()),
             damage_type: Some(&canonical),
             is_direct: attacker.is_some(),
@@ -1611,7 +1614,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let centre = [at[0], at[1] + height * (2.0 / 3.0), at[2]];
         let spread = [width / 4.0, height / 4.0, width / 4.0];
         self.server_level_particles(
-            &crate::lan::server_effects::ServerParticle::block(
+            &sunrise_sim::lan::server_effects::ServerParticle::block(
                 sunrise_level::particle_options::ParticleType::Block,
                 state,
             ),
@@ -1742,7 +1745,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if map.keys().all(|key| matches!(key.to_string_lossy().as_str(), "slot" | "swappable")))
                 && matches!(tag.get("slot"), Some(sunrise_core::nbt::Tag::String(_)))
                 && tag.get("swappable").is_none_or(|flag| {
-                    sunrise_client::item_data::component_bool(flag).is_some()
+                    sunrise_items::item_data::component_bool(flag).is_some()
                 })
         });
         let slot = if supported {
@@ -1764,7 +1767,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if let Some(actual) = actual {
             actual
                 .get("swappable")
-                .and_then(sunrise_client::item_data::component_bool)
+                .and_then(sunrise_items::item_data::component_bool)
                 .unwrap_or(true)
         } else {
             equippable
@@ -2087,12 +2090,12 @@ pub(in crate::game) mod layer_color_tests {
 pub(in crate::game) mod pumpkin_equippable_use_tests {
     use super::*;
     use std::sync::{atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_core::position::ChunkPos;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
         play::{Serverbound, UseItem},
     };
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[test]
     #[ignore = "daily"]
@@ -2102,7 +2105,7 @@ pub(in crate::game) mod pumpkin_equippable_use_tests {
             game.set_allow_commands(true);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
@@ -2191,7 +2194,7 @@ pub(in crate::game) mod pumpkin_equippable_use_tests {
                 assert_eq!(actual.is_some(), component.is_some());
                 if let Some(actual) = actual {
                     assert_eq!(actual.get("slot"), Some(&sunrise_core::nbt::Tag::String("head".into())));
-                    assert_eq!(actual.get("swappable").and_then(sunrise_client::item_data::component_bool), if label == "false" { Some(false) } else { None });
+                    assert_eq!(actual.get("swappable").and_then(sunrise_items::item_data::component_bool), if label == "false" { Some(false) } else { None });
                 }
                 if label == "binding" { assert_eq!(g.armor[0].as_ref().unwrap().enchantment_level("minecraft:binding_curse"), 1); }
                 if label == "same" { assert!(g.armor[0].as_ref().unwrap().same_item_same_components(&hand)); }
@@ -2226,8 +2229,8 @@ pub(in crate::game) mod pumpkin_equippable_use_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod stand_lodestone_inventory_tick_tests {
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]
@@ -2345,7 +2348,7 @@ pub(in crate::game) mod stand_lodestone_inventory_tick_tests {
                     mismatches.push((n, slot, present));
                 }
             }
-            let saved = sunrise_client::entity_nbt::armor_stand_to_nbt(
+            let saved = sunrise_sim::entity_nbt::armor_stand_to_nbt(
                 a,
                 [42321, 0, 0, n],
                 None,
@@ -2356,7 +2359,7 @@ pub(in crate::game) mod stand_lodestone_inventory_tick_tests {
                 "actual no-raw model writer"
             );
             for slot in 0..2 {
-                let key = sunrise_client::entities::ArmorStand::SLOTS[slot];
+                let key = sunrise_sim::entities::ArmorStand::SLOTS[slot];
                 let saved_target = saved
                     .get("equipment")
                     .unwrap()
@@ -2395,8 +2398,10 @@ pub(in crate::game) mod postbaseline_lodestone_controls {
     //! Added after baseline: source-backed slots and preservation, not new runtime breadth.
 
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, entities::ArmorStand, items::ItemStack};
     use sunrise_core::position::BlockPos;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::entities::ArmorStand;
 
     fn stack<'g>(game: &'g crate::game::ServerGame<'_>, id: u32, slot: usize) -> &'g ItemStack {
         game.armor_stands
@@ -2483,7 +2488,7 @@ pub(in crate::game) mod postbaseline_lodestone_controls {
         game.side
             .tickets
             .0
-            .update(Some(crate::ticket_levels::Sources {
+            .update(Some(sunrise_sim::ticket_levels::Sources {
                 forced: vec![(0, 0)],
                 ..Default::default()
             }));

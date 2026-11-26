@@ -21,21 +21,19 @@ use crate::game::minecarts::takes_push_from_cart;
 use crate::game::minecarts::tnt_ignites_by_collision;
 #[allow(unused_imports)]
 use std::sync::Arc;
-use sunrise_client::entity_rules::EntityRules;
-use sunrise_client::join_seq::JoinList;
-use sunrise_client::mobs::{Mob, seen_grid::SeenGrid};
-use sunrise_client::{
-    containers::BlockEntity,
-    items::{ItemStack, Items},
-    mobs::{Species, Who},
-    scoreboard::pushable_by,
-};
+use sunrise_client_core::scoreboard::pushable_by;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     position::BlockPos,
     random::RandomSource,
 };
 use sunrise_gameplay::minecart_cells::CartCells;
+use sunrise_items::items::{ItemStack, Items};
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::entity_rules::EntityRules;
+use sunrise_sim::join_seq::JoinList;
+use sunrise_sim::mobs::{Mob, seen_grid::SeenGrid};
+use sunrise_sim::mobs::{Species, Who};
 
 #[path = "minecarts/save_lending_server.rs"]
 pub(in crate::game) mod save_lending;
@@ -282,7 +280,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if froze {
             // InsideBlockEffectType.FREEZE: once per applyEffectsFromBlocks.
             c.ticks_frozen = (c.ticks_frozen + 1)
-                .min(sunrise_client::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+                .min(sunrise_sim::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
         }
     }
     /// `Entity.checkInsideBlocks` for a recorded move of the cart from `from`
@@ -510,7 +508,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         f64::from(
             self.ui
                 .rules
-                .int_at(sunrise_client::gamerules::vanilla::MAX_MINECART_SPEED),
+                .int_at(sunrise_client_core::gamerules::vanilla::MAX_MINECART_SPEED),
         ) * if c.in_water { 0.5 } else { 1.0 }
             / 20.0
     }
@@ -925,7 +923,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The cart passes over the rail at `pos`: `minecart_pass`, delivered after its batch.
     pub(in crate::game::server_side) fn note_cart_pass(&self, c: &Minecart, pos: [i32; 3]) {
-        sunrise_client::block_contact::minecart_pass(
+        sunrise_sim::block_contact::minecart_pass(
             c.id as i32,
             self.world.block(pos[0], pos[1], pos[2]),
             BlockPos::new(pos[0], pos[1], pos[2]),
@@ -1012,7 +1010,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self.native_mob_may_ride(mob, id, true)
                     && let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob)
                 {
-                    sunrise_client::mobs::shulker::on_start_riding(m);
+                    sunrise_sim::mobs::shulker::on_start_riding(m);
                     m.extra.mount = Some(id);
                     m.extra.passenger = true;
                     m.ai.nav.stop();
@@ -1119,7 +1117,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let cells =
-            sunrise_client::mobs::seen_grid::SeenGrid::new(self.carts.iter().map(Minecart::bounds));
+            sunrise_sim::mobs::seen_grid::SeenGrid::new(self.carts.iter().map(Minecart::bounds));
         let mut near = Vec::new();
         for (feet, bb) in pushers {
             if !cells.candidates(bb, &mut near) {

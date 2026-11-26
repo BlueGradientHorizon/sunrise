@@ -68,7 +68,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Result<Option<[f64; 3]>, LevelWriteError> {
         if self.player.is_none()
             || !self.can_move_local_player()
-            || !sunrise_client::move_gate::valid_mod_move_delta(delta)
+            || !sunrise_sim::move_gate::valid_mod_move_delta(delta)
         {
             return Ok(None);
         }
@@ -126,7 +126,7 @@ mod tests {
         remote.profile = 456;
         remote.entity_id = 42;
         remote.loaded_sent = true;
-        let mut player = sunrise_client::motion::PlayerMotion::new(
+        let mut player = sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
         )
@@ -135,7 +135,7 @@ mod tests {
         game.player = Some(player);
         game.side
             .streaming
-            .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
         sunrise_protocol::connection::Connection::local(server)
             .split()
             .0
@@ -226,7 +226,7 @@ mod tests {
     fn resetting_a_local_fall_discards_the_distance_before_landing() {
         use crate::game::native_entity_refs::tests::with_client_game;
         use mod_api::ClientHost;
-        use sunrise_client::{
+        use sunrise_sim::{
             landing::{FallEvent, SceneSound},
             motion::MotionEvent,
         };
@@ -305,11 +305,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_local_displacement_respects_collider_exemptions_when_moving_and_sneaking() {
-        use sunrise_client_render::moving_colliders::{Placed, Prepared, Scope};
         use sunrise_core::geometry::{
             Aabb, Vec3,
             oriented::{ColliderBoxes, Frame, OrientedCollider},
         };
+        use sunrise_world::moving_colliders::{Placed, Prepared, Scope};
 
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             loaded_client(game);
@@ -415,7 +415,7 @@ mod tests {
                 game.player.as_mut().unwrap().position.y = 64.5;
                 game.side
                     .streaming
-                    .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(1, 0));
+                    .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(1, 0));
                 game.tick_remote().unwrap();
                 assert_eq!(
                     *crossings.lock().unwrap(),
@@ -448,7 +448,7 @@ mod tests {
         crate::game::remote::tests::spawn_menu_test(game);
         let remote = game.remote.as_mut().unwrap();
         remote.loaded_sent = true;
-        let mut player = sunrise_client::motion::PlayerMotion::new(
+        let mut player = sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
         )
@@ -457,7 +457,7 @@ mod tests {
         game.player = Some(player);
         game.side
             .streaming
-            .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
         peer
     }
 
@@ -506,8 +506,9 @@ mod tests {
     #[ignore = "daily"]
     fn player_collision_flags_distinguish_a_ceiling_from_the_floor_and_a_wall() {
         use crate::game::native_entity_refs::tests::{bind_local_player, with_client_game};
-        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
+        use sunrise_sim::motion::PlayerMotion;
         use sunrise_world::entity_move::MoverType;
 
         fn check<S: crate::game::Side>(game: &mut crate::game::Game<'_, S>)

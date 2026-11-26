@@ -5,14 +5,15 @@
 //! a server: nothing of them goes over the network.
 use super::Game;
 use mod_api::EntityRef;
-use sunrise_client::blocks::RenderShape;
-use sunrise_client::effects::effect_particle;
-use sunrise_client::mobs::MobEvent;
-use sunrise_client::motion::{LAVA, WATER};
-use sunrise_client::particles::{ParticleEngine, ParticleOptions, ParticleType};
-use sunrise_client::pose::Pose;
+use sunrise_client::particles::ParticleEngine;
 use sunrise_client_gameplay::mob_ambient as ambient;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::blocks::RenderShape;
+use sunrise_level::effects::effect_particle;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::mobs::MobEvent;
+use sunrise_sim::motion::{LAVA, WATER};
+use sunrise_sim::pose::Pose;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_client_ambient(&mut self) {
@@ -29,8 +30,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for m in self.mobs.iter_mut().filter(|m| !m.removed) {
             ambient::client_ai_step(m, &mut events);
             ambient::client_particles(m, random, &mut events);
-            if following && m.species() == sunrise_client::mobs::Species::Wither {
-                sunrise_client::mobs::wither::head_particles(m, random, &mut events);
+            if following && m.species() == sunrise_sim::mobs::Species::Wither {
+                sunrise_sim::mobs::wither::head_particles(m, random, &mut events);
             }
         }
         for event in events {
@@ -341,7 +342,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// effects are ambient) of one of the particles at a random spot of the box.
 fn swirl(
     particles: &mut ParticleEngine,
-    world: &sunrise_client::world::World,
+    world: &sunrise_level::world::World,
     feet: Vec3,
     size: (f64, f64),
     list: &[ParticleOptions],
@@ -368,9 +369,10 @@ fn swirl(
 mod sprint_handle_tests {
     use mod_api::{ClientHost, EntityRef, WorldEpoch};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::connection::Pipe;
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]

@@ -2,8 +2,8 @@ use crate::game::fireworks::events_tests::start_events;
 use crate::game::fireworks::events_tests::stop_events;
 use crate::game::fireworks::events_tests::twinkling;
 use crate::game::fireworks::events_tests::with_game;
-use sunrise_client::items::ItemStack;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
+use sunrise_items::items::ItemStack;
 
 #[test]
 #[ignore = "daily"]

@@ -242,7 +242,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let alive = !p.health.dead_or_dying();
-        let crouching = p.pose == sunrise_client::pose::Pose::Crouching;
+        let crouching = p.pose == sunrise_sim::pose::Pose::Crouching;
         self.award_custom_stat("play_time", 1);
         self.award_custom_stat("total_world_time", 1);
         if alive {
@@ -274,7 +274,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if total <= 0 || total > 1000 {
             return;
         }
-        let crouching = p.pose == sunrise_client::pose::Pose::Crouching;
+        let crouching = p.pose == sunrise_sim::pose::Pose::Crouching;
         let feet = [
             p.position.x.floor() as i32,
             p.position.y.floor() as i32,
@@ -290,12 +290,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .facts()
             .get(self.world.block(feet[0], feet[1], feet[2]))
             .fluid
-            == sunrise_client::blocks::Fluid::Water;
+            == sunrise_items::blocks::Fluid::Water;
         let on_ground = p.ground.on_ground;
         let (sprinting, gliding, swimming) = (
             p.sprinting,
             p.fall_flying,
-            p.pose == sunrise_client::pose::Pose::Swimming,
+            p.pose == sunrise_sim::pose::Pose::Swimming,
         );
         let climbing = p.last_climbable.is_some() && d.y > 0.0;
         let riding = self.riding.map(|id| {
@@ -307,7 +307,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         match riding {
             Some(Ok(sp)) => {
-                use sunrise_client::mobs::Species;
+                use sunrise_sim::mobs::Species;
                 // `checkRidingStatistics`: only these mounts count, the horse
                 // family by the full 3D distance; any other mount nothing.
                 match sp {
@@ -317,7 +317,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     Species::Nautilus | Species::ZombieNautilus => {
                         self.award_custom_stat("nautilus_one_cm", total)
                     }
-                    sp if sunrise_client::mobs::equine::is_equine(sp) => {
+                    sp if sunrise_sim::mobs::equine::is_equine(sp) => {
                         self.award_custom_stat("horse_one_cm", total)
                     }
                     _ => {}
@@ -331,7 +331,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
             }
             None if swimming => self.award_custom_stat("swim_one_cm", total),
-            None if eye_in_water.fluid == sunrise_client::blocks::Fluid::Water => {
+            None if eye_in_water.fluid == sunrise_items::blocks::Fluid::Water => {
                 self.award_custom_stat("walk_under_water_one_cm", total)
             }
             None if in_water => {
@@ -368,9 +368,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// server thread's players are all hosted).
     pub(in crate::game::server_side) fn spawn_phantoms(&mut self) {
         let rules = &self.ui.rules;
-        if !rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
-            || !rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS)
-            || !rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_PHANTOMS)
+        if !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+            || !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
+            || !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_PHANTOMS)
             || self.dim != Dim::Overworld
             || !self.has_custom_spawner(mod_api::SpawnerKind::Phantom)
         {
@@ -403,7 +403,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 g.placed
                     && g.participates_online()
                     && g.dimension == level
-                    && g.game_mode != sunrise_client::lan::guest::SPECTATOR
+                    && g.game_mode != sunrise_sim::lan::guest::SPECTATOR
             }) {
                 let since = host.play.get(&g.conn).map_or(0, |p| rest(&p.stats));
                 players.push(PhantomTarget {
@@ -483,7 +483,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ],
                 false,
                 super::creatures::SpawnSite::Finalizing(
-                    sunrise_client::mobs::spawn_rules::Reason::Natural,
+                    sunrise_sim::mobs::spawn_rules::Reason::Natural,
                 ),
             );
         }
@@ -561,7 +561,7 @@ mod tests {
             game.stats.loaded = true;
             game.adv.loaded = true;
             assert!(!game.advancement_tree().list.is_empty());
-            let guest = sunrise_client::lan::playerdata::uuid_ints(12);
+            let guest = sunrise_sim::lan::playerdata::uuid_ints(12);
             let files = [
                 game.stats_path().unwrap(),
                 player_json(&world, "advancements", [0, 0, 0, 5]),

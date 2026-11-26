@@ -81,18 +81,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut teleported = None;
                 let moved = mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                     let from = m.position;
-                    let moved = sunrise_client::mobs::living::random_teleport(
-                        m,
-                        &w,
-                        at,
-                        avoid,
-                        &mut events,
-                    );
+                    let moved =
+                        sunrise_sim::mobs::living::random_teleport(m, &w, at, avoid, &mut events);
                     teleported = moved.then_some((from, m.position));
                     moved
                 });
                 self.mobs
-                    .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                    .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 let _ = self.handle_mob_events(events);
                 // `teleportTo` is one position update, told at once.
                 if let Some((from, to)) = teleported {
@@ -132,7 +127,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                     "minecraft:scale",
                     sunrise_world::attribute_map::ValueKind::Computed,
                 )? as f32;
-                let d = crate::pose::Dimensions::avatar(pose, scale);
+                let d = sunrise_sim::pose::Dimensions::avatar(pose, scale);
                 Some([
                     f64::from(d.width),
                     f64::from(d.height),
@@ -184,7 +179,7 @@ pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::PathType;
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]
@@ -211,11 +206,7 @@ pub(in crate::game) mod tests {
     fn pose_regression_sleeping_stand() {
         with_game(|game| {
             game.armor_stands
-                .push(sunrise_client::entities::ArmorStand::new(
-                    55,
-                    Vec3::ZERO,
-                    0.0,
-                ));
+                .push(sunrise_sim::entities::ArmorStand::new(55, Vec3::ZERO, 0.0));
             let living = game.living(game.entity(55).unwrap()).unwrap();
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Sleeping),
@@ -262,11 +253,7 @@ pub(in crate::game) mod tests {
     fn pose_regression_scaled_stand() {
         with_game(|game| {
             game.armor_stands
-                .push(sunrise_client::entities::ArmorStand::new(
-                    55,
-                    Vec3::ZERO,
-                    0.0,
-                ));
+                .push(sunrise_sim::entities::ArmorStand::new(55, Vec3::ZERO, 0.0));
             let living = game.living(game.entity(55).unwrap()).unwrap();
             assert!(game.living_set_attribute_base(living, "minecraft:scale", 2.0));
             assert_eq!(
@@ -301,7 +288,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .clone();
             let mut mob = Mob::new(55, ty, Vec3::ZERO, 0.0);
-            sunrise_client::mobs::sync::set_pose(&mut mob, sunrise_client::mobs::sync::DIGGING);
+            sunrise_sim::mobs::sync::set_pose(&mut mob, sunrise_sim::mobs::sync::DIGGING);
             mob.extra.model_scale = 2.0;
             game.mobs.push(mob);
             let living = game.living(game.entity(55).unwrap()).unwrap();
@@ -316,7 +303,7 @@ pub(in crate::game) mod tests {
     /// -8..8, and two zombies standing on it five blocks apart.
     pub(in crate::game) fn floor_and_zombies(game: &mut crate::game::ServerGame<'_>) {
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-            let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
             chunk.lit = true;
             game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
         }
@@ -423,8 +410,8 @@ pub(in crate::game) mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
         with_game(|game| {
             let settings = LanSettings {
@@ -474,7 +461,7 @@ pub(in crate::game) mod tests {
             );
             guest.placed = true;
             let motion =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                     .unwrap();
             guest.motion = Some(Box::new(motion));
             game.lan.as_mut().unwrap().hub.guests.push(guest);
@@ -535,8 +522,8 @@ pub(in crate::game) mod tests {
                 sitting,
                 [
                     f64::from(1.7_f32),
-                    f64::from(sunrise_client::mobs::camel::sitting_dims(false).1),
-                    f64::from(sunrise_client::mobs::camel::sitting_dims(false).2)
+                    f64::from(sunrise_sim::mobs::camel::sitting_dims(false).1),
+                    f64::from(sunrise_sim::mobs::camel::sitting_dims(false).2)
                 ]
             );
             assert!(standing[1] > sitting[1]);
@@ -574,7 +561,7 @@ pub(in crate::game) mod tests {
             // The pose the goat is in (`Entity.setPose` of a long jump) gives
             // the same box through `dims`.
             let mob = game.mobs.iter_mut().find(|m| m.id == 21).unwrap();
-            mob.extra.pose = sunrise_client::mobs::sync::LONG_JUMPING;
+            mob.extra.pose = sunrise_sim::mobs::sync::LONG_JUMPING;
             assert_eq!(mob.dims(), (long_jump[0], long_jump[1], long_jump[2]));
         });
     }
@@ -594,7 +581,7 @@ pub(in crate::game) mod tests {
                 .push(Mob::new(22, ty, Vec3::new(0.5, 64.0, 0.5), 0.0));
             let warden = game.living(game.entity(22).unwrap()).unwrap();
             let mob = game.mobs.iter_mut().find(|m| m.id == 22).unwrap();
-            sunrise_client::mobs::sync::set_pose(mob, sunrise_client::mobs::sync::DIGGING);
+            sunrise_sim::mobs::sync::set_pose(mob, sunrise_sim::mobs::sync::DIGGING);
             // Warden.getDefaultDimensions reads its own state, not the pose
             // asked for: a metre tall, its eyes at 0.85, however asked —
             // except the fixed 0.2 box every pose sleeps in.

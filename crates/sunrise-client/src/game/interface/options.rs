@@ -5,14 +5,12 @@ use super::shader_packs::{TogglePlan, active_pack, dev_pack, plan_shader_toggle}
 use super::{Game, ResizeState, Screen};
 use serde_json::{Value, json};
 use sunrise_client::{
-    Result,
     hdr_calibration::WindowState,
     hud::HudBatch,
-    lang,
     options_ui::{Event, Page},
-    text::Text,
     window::{FrameContext, InactivityFpsLimit, framerate_limit},
 };
+use sunrise_client_core::{Result, lang, text::Text};
 use winit::{event::MouseButton, keyboard::KeyCode, window::Fullscreen};
 
 /// `CommonLinks.ACCESSIBILITY_HELP`, the Accessibility page's footer link.
@@ -560,7 +558,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     super::packs::open_folder(&dir);
                 }
                 Event::OpenModFolder => {
-                    let dir = crate::game::game_dir().join(sunrise_client::mod_list::DIR);
+                    let dir = crate::game::game_dir().join(sunrise_mod_package::mod_list::DIR);
                     let _ = std::fs::create_dir_all(&dir);
                     super::packs::open_folder(&dir);
                 }
@@ -675,7 +673,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Settings that Sunrise applies beyond render distance, volume and GUI scale.
     pub(in crate::game::client_side) fn apply_ui_settings(&mut self) {
-        sunrise_client::parallel::set_setting(self.side.settings.sunrise.parallel_tick);
+        sunrise_sim::parallel::set_setting(self.side.settings.sunrise.parallel_tick);
         if sunrise_client_render::mipmap::set_dither_cutouts(
             self.side.settings.sunrise.dither_cutout_mips,
         ) {
@@ -943,7 +941,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// This player's `options.txt`: in the game folder, or in `--player-dir` when several
 /// players share one (`logging::set_player_dir`).
 pub(in crate::game) fn options_path() -> std::path::PathBuf {
-    sunrise_client::logging::player_dir().join("options.txt")
+    sunrise_level::logging::player_dir().join("options.txt")
 }
 
 /// The game folder (the working directory): what its players share, saves, packs, mods.

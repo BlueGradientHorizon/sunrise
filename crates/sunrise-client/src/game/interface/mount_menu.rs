@@ -8,11 +8,9 @@
 //! and its clicks go out as container clicks; a server's players get theirs
 //! from game/network/lan_mount_menu.rs.
 use super::{Game, Screen};
-use sunrise_client::{
-    hud::{HudBatch, rgba},
-    items::ItemStack,
-    mobs::{Mob, Species, llama, nautilus},
-};
+use sunrise_client::hud::{HudBatch, rgba};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Mob, Species, llama, nautilus};
 
 /// `AbstractChestedHorse.INV_CHEST_COUNT`.
 pub(in crate::game) const CHEST_SIZE: usize = 15;

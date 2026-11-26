@@ -3,10 +3,12 @@
 //! the side the player faces carries click commands, which the click runs instead
 //! (`shouldTryToChainAnotherHangingSign`).
 use crate::game::Hit;
-use sunrise_client::signs::SignData;
-use sunrise_client::{containers::BlockEntity, items::ItemStack, mobs::Who};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::signs_data::SignData;
+use sunrise_sim::mobs::Who;
 
 type Posted = (&'static str, [f64; 3], Option<Who>);
 const FAIL_SOUND: &str = "minecraft:block.hanging_sign.waxed_interact_fail";
@@ -45,9 +47,8 @@ fn click_sign(
     // North of the sign, looking south at its front
     // (`SignBlockEntity.getSlotPlayerIsFacing`): a wall hanging sign facing
     // north and a ceiling one at rotation 8 both show it towards -Z.
-    game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 70.0, -0.5)).ok()?,
-    );
+    game.player =
+        Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 70.0, -0.5)).ok()?);
     game.yaw = 0.0;
     game.pitch = 0.0;
     let registry = &game.pack.assets.registry;

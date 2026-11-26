@@ -123,7 +123,7 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
         registry::Ids,
     };
 
-    sunrise_client::containers::with_mod_menu_types(
+    sunrise_level::containers::with_mod_menu_types(
         [(
             PACK.into(),
             "test".into(),

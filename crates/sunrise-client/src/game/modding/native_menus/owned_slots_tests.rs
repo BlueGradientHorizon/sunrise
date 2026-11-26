@@ -10,10 +10,11 @@ use mod_api::{
     ModEntry, Mods, Registrar, ServerHost,
 };
 use std::sync::mpsc;
-use sunrise_client::{items::ItemStack, lan::Out};
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{
     Clientbound as C, ContainerClick, ContainerClose, Serverbound as S, SetCursorItem,
 };
+use sunrise_sim::lan::Out;
 
 thread_local! {
     static SCRIPTED_CLICK: std::cell::Cell<Option<Flow>> = const { std::cell::Cell::new(None) };
@@ -162,11 +163,11 @@ fn with_owned_layout(
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         api_values::install_parts(&mods).unwrap();
-        let _callbacks = sunrise_client::native_client_hooks::scoped_menu_validity_hooks(
+        let _callbacks = sunrise_sim::native_client_hooks::scoped_menu_validity_hooks(
             api_values::menu_still_valid,
             |menu| mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu),
         );
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "listen".into(),
@@ -287,7 +288,7 @@ fn opening_an_owned_menu_with_crafting_keeps_the_old_window() {
         sent(&rx);
         // Bypass package validation to exercise the binding boundary itself: owned_slots + crafting
         // is still refused, while owned_slots + results opens cleanly.
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "listen".into(),
@@ -295,7 +296,7 @@ fn opening_an_owned_menu_with_crafting_keeps_the_old_window() {
                 0,
                 vec![],
                 vec![],
-                Some(sunrise_client::containers::ModCrafting {
+                Some(sunrise_level::containers::ModCrafting {
                     grid: 0,
                     size: 1,
                     result: 1,
@@ -317,7 +318,7 @@ fn opening_an_owned_menu_with_crafting_keeps_the_old_window() {
                 assert!(sent(&rx).is_empty());
             },
         );
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "listen".into(),
@@ -406,8 +407,8 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
 #[ignore = "daily"]
 fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
     use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
-    use sunrise_client::menu::Input;
     use sunrise_protocol::item::Hashed;
+    use sunrise_sim::menu::Input;
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);
         let opening = sent(&rx);
@@ -464,7 +465,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
                 state,
                 slot: 0,
                 button: 0,
-                input: sunrise_client::lan::menu::input::QUICK_MOVE,
+                input: sunrise_sim::lan::menu::input::QUICK_MOVE,
                 changed: Vec::new(),
                 carried: Some(Hashed::of(six).unwrap()),
             }),
@@ -548,7 +549,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
                 state,
                 slot: 0,
                 button: 0,
-                input: sunrise_client::lan::menu::input::QUICK_MOVE,
+                input: sunrise_sim::lan::menu::input::QUICK_MOVE,
                 changed: vec![(0, named_one_net.as_ref().map(|s| Hashed::of(s).unwrap()))],
                 carried: named_seven_net.as_ref().map(|s| Hashed::of(s).unwrap()),
             }),
@@ -765,7 +766,7 @@ fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
 #[test]
 #[ignore = "daily"]
 fn scoped_owned_clicks_replace_or_continue_each_input_mode() {
-    use sunrise_client::lan::menu::input::*;
+    use sunrise_sim::lan::menu::input::*;
     with_owned_layout(false, true, |game, rx, key| {
         let stone = |count| Some(ItemStack::new("minecraft:stone", count));
         let dirt = Some(ItemStack::new("minecraft:dirt", 1));
@@ -883,7 +884,7 @@ fn scoped_owned_clicks_replace_or_continue_each_input_mode() {
 #[test]
 #[ignore = "daily"]
 fn a_replaced_or_aborted_drag_step_keeps_the_existing_drag() {
-    use sunrise_client::lan::menu::input::QUICK_CRAFT;
+    use sunrise_sim::lan::menu::input::QUICK_CRAFT;
     with_owned_menu(false, |game, rx, key| {
         let stack = |count| Some(ItemStack::new("minecraft:stone", count));
         let (window, _) = open(game, key);
@@ -1202,7 +1203,7 @@ fn with_processing_owned_menu(
     let mods: Mods = vec![ModEntry::new("listen", Box::new(ProcessingMod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         api_values::install_parts(&mods).unwrap();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "listen".into(),
@@ -1689,14 +1690,14 @@ impl Hooks for BlockProcessingMod {
 /// menu open.
 fn with_block_processor(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     use std::sync::Arc;
-    use sunrise_client::{
+    use sunrise_level::{
         chunk::Chunk,
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
     };
     let mods: Mods = vec![ModEntry::new("listen", Box::new(BlockProcessingMod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         api_values::install_parts(&mods).unwrap();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 BLOCK_PROC_MENU.into(),
                 "listen".into(),
@@ -1774,7 +1775,7 @@ fn hopper_above(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32), st
         .unwrap();
     game.world.block_entities.insert(
         hopper_pos,
-        sunrise_client::containers::BlockEntity::Chest(vec![Some(stack), None, None, None, None]),
+        sunrise_level::containers::BlockEntity::Chest(vec![Some(stack), None, None, None, None]),
     );
     // A fresh hopper: no transfer cooldown from an earlier move.
     game.side.hoppers.remove(&hopper_pos);
@@ -1785,7 +1786,7 @@ fn hopper_above(game: &mut crate::game::ServerGame<'_>, pos: (i32, i32, i32), st
 #[ignore = "daily"]
 fn block_menu_slot_changed_costs_one_index_lookup_at_an_unviewed_block() {
     use crate::game::slot_changes::probe;
-    use sunrise_client::lan::menu::Slots;
+    use sunrise_sim::lan::menu::Slots;
     with_block_processor(|game| {
         let level = game.level("minecraft:overworld").unwrap();
         let pos = [BLOCK_PROC_POS.0, BLOCK_PROC_POS.1, BLOCK_PROC_POS.2];
@@ -1836,10 +1837,8 @@ fn block_menu_slot_changed_costs_one_index_lookup_at_an_unviewed_block() {
 #[ignore = "daily"]
 fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_viewers() {
     use std::sync::{Arc, atomic::AtomicUsize};
-    use sunrise_client::{
-        containers::BlockEntity,
-        lan::{PlayerSender, menu::Slots},
-    };
+    use sunrise_level::containers::BlockEntity;
+    use sunrise_sim::lan::{PlayerSender, menu::Slots};
     with_block_processor(|game| {
         // Attach observable packet channels to both LAN guests (12 and 13) and open
         // the block-backed mod menu for both viewers.
@@ -2052,17 +2051,17 @@ impl Hooks for BlockCraftObserverMod {
 #[ignore = "daily"]
 fn block_menu_slot_changed_gives_identical_context_for_click_and_hopper_writes() {
     use std::sync::Arc;
-    use sunrise_client::{
+    use sunrise_level::{
         chunk::Chunk,
         containers::{
             BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModCrafting,
         },
-        lan::menu::Slots,
     };
+    use sunrise_sim::lan::menu::Slots;
     let mods: Mods = vec![ModEntry::new("listen", Box::new(BlockCraftObserverMod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         api_values::install_parts(&mods).unwrap();
-        sunrise_client::containers::with_mod_menu_types(
+        sunrise_level::containers::with_mod_menu_types(
             [(
                 BLOCK_CRAFT_MENU.into(),
                 "listen".into(),
@@ -2216,7 +2215,7 @@ fn processing_owned_menu_returns_inputs_on_close_drops_overflow_and_discards_res
         game.run_native_menu_events();
         assert_eq!(CLOSED_OWNED_LEN.get(), Some(0));
         let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
-        let count_inv = |g: &sunrise_client::lan::guest::Guest, id: &str| -> u32 {
+        let count_inv = |g: &sunrise_sim::lan::guest::Guest, id: &str| -> u32 {
             g.inventory
                 .iter()
                 .flatten()
@@ -2308,7 +2307,7 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
         let stick = |n| Some(ItemStack::new("minecraft:stick", n));
         let dirt = |n| Some(ItemStack::new("minecraft:dirt", n));
         let stone = |n| Some(ItemStack::new("minecraft:stone", n));
-        let count_inv = |g: &sunrise_client::lan::guest::Guest, id: &str| -> u32 {
+        let count_inv = |g: &sunrise_sim::lan::guest::Guest, id: &str| -> u32 {
             g.inventory
                 .iter()
                 .flatten()

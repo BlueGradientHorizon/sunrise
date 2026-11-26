@@ -11,9 +11,9 @@
 use super::Game;
 use super::commands::Target;
 use mod_api::{ActiveEffect, EffectKey, LivingRef};
-use sunrise_client::effects::{EffectInstance, PlayerEffects};
-use sunrise_client::mobs::Mob;
 use sunrise_items::items::ItemStack;
+use sunrise_level::effects::{EffectInstance, PlayerEffects};
+use sunrise_sim::mobs::Mob;
 
 /// A player's effect as the API's load-owned key and instance data.
 pub(in crate::game) fn active_effect(e: &EffectInstance) -> ActiveEffect {
@@ -31,7 +31,7 @@ pub(in crate::game) fn active_effect(e: &EffectInstance) -> ActiveEffect {
 }
 
 /// A mob's stored effect as the API's: ambient and particle flags remain in their own lists.
-pub(in crate::game) fn mob_effect(m: &Mob, e: &sunrise_client::mobs::StoredEffect) -> ActiveEffect {
+pub(in crate::game) fn mob_effect(m: &Mob, e: &sunrise_sim::mobs::StoredEffect) -> ActiveEffect {
     ActiveEffect::from(mod_api::__private::built::ActiveEffect {
         id: mod_api::__private::effect_key_by_index(
             e.registry_index.expect("active effect registry index"),
@@ -301,8 +301,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{ActiveEffect, EntityRef, LivingRef, WorldEpoch};
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     pub(in crate::game::server_side) fn effect(
         id: &'static str,
@@ -355,7 +355,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_effects_icon_flag_is_written_and_read_for_players_and_mobs() {
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.push(Mob::new(23, kind, Vec3::ZERO, 0.0));
@@ -417,8 +417,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn indexed_consumable_effects_apply_to_a_mob() {
-        use sunrise_client::items::ItemStack;
         use sunrise_core::random::RandomSource;
+        use sunrise_items::items::ItemStack;
         with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));

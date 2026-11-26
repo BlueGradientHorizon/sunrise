@@ -8,7 +8,7 @@ use crate::game::server_side::cauldron_interactions::tests::fixture;
 use crate::game::server_side::cauldron_interactions::tests::unchanged;
 use crate::game::server_side::cauldron_interactions::tests::*;
 use std::sync::atomic::Ordering;
-use sunrise_client::cauldron::Outcome;
+use sunrise_sim::cauldron::Outcome;
 
 #[test]
 #[ignore = "daily"]

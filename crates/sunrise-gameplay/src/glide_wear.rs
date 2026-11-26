@@ -1,4 +1,4 @@
-use sunrise_client::items::{ItemStack, Items};
+use sunrise_items::items::{ItemStack, Items};
 
 /// Equipment accepted by `LivingEntity.canGlideUsing`, including both hands.
 /// Armor indices precede main hand (4) and off hand (5).
@@ -17,7 +17,7 @@ pub fn gliding_slots<'a>(
         .enumerate()
         .filter_map(move |(i, (stack, slot))| {
             stack
-                .filter(|s| sunrise_client::item_sync::can_glide_using(s, slot, items))
+                .filter(|s| sunrise_sim::item_sync::can_glide_using(s, slot, items))
                 .map(|_| i)
         })
 }

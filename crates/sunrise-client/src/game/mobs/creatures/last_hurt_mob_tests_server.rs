@@ -11,7 +11,8 @@ use crate::game::creatures::last_hurt_mob_tests::living;
 use crate::game::creatures::last_hurt_mob_tests::shoot;
 use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
 use mod_api::{EntityRef, LivingRef};
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]
@@ -182,7 +183,7 @@ fn last_hurt_mob_follows_the_attacking_entity() {
                 add_mob(game, WOLF, "minecraft:wolf", 1.5);
                 let owner = game.acting_uuid();
                 let wolf = &mut game.mobs[1];
-                sunrise_client::mobs::tame::set_tame(wolf, true);
+                sunrise_sim::mobs::tame::set_tame(wolf, true);
                 wolf.extra.owner = Some(owner);
                 wolf.no_ai = false;
                 game.tick_creature_entities().unwrap();

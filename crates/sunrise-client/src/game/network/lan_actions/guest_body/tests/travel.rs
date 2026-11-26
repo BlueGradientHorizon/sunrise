@@ -5,11 +5,9 @@ use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
 use crate::game::native_item_places::tests::guest as online_guest;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{NetConfig, Out, hub::HubConfig},
-};
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::Serverbound as S;
+use sunrise_sim::lan::{NetConfig, Out, hub::HubConfig};
 
 pub(in crate::game) const START: [f64; 3] = [3.0, 64.0, 5.0];
 pub(in crate::game) const ACCEPTED: [f64; 3] = [3.25, 64.0, 5.0];

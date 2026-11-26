@@ -8,11 +8,11 @@ pub(in crate::game) mod tests {
         VanillaGameEventEvent,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::containers::{
+    use sunrise_core::nbt::Tag;
+    use sunrise_level::containers::{
         BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer,
     };
-    use sunrise_client::lan::menu::Slots;
-    use sunrise_core::nbt::Tag;
+    use sunrise_sim::lan::menu::Slots;
 
     pub(in crate::game) const POS: (i32, i32, i32) = (3, 64, 4);
     pub(in crate::game) const AT: [i32; 3] = [POS.0, POS.1, POS.2];
@@ -25,7 +25,7 @@ pub(in crate::game) mod tests {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let state = game.pack.assets.registry.default_state(block).unwrap();
             let level = game.level("minecraft:overworld").unwrap();
             assert_eq!(
@@ -143,7 +143,7 @@ pub(in crate::game) mod tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let state = game
                     .pack
                     .assets

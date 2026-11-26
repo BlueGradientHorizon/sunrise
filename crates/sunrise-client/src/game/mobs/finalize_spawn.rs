@@ -10,8 +10,8 @@
 //! is that divergence removed.
 
 use super::Game;
-use sunrise_client::mobs::{Mob, Species, finalize, spawn_rules::Reason, spawning};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::mobs::{Mob, Species, finalize, spawn_rules::Reason, spawning};
 use sunrise_world::food::Difficulty;
 
 /// `Game` seen by a finalizeSpawn `Ctx`.
@@ -38,7 +38,7 @@ impl FinalizeGame<'_, '_> {
 }
 
 impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
-    fn mob_maps(&self) -> &sunrise_client::neoforge_mob_maps::NeoForgeMobMaps {
+    fn mob_maps(&self) -> &sunrise_sim::neoforge_mob_maps::NeoForgeMobMaps {
         self.game.mob_maps()
     }
     fn biome(&self, pos: [i32; 3]) -> String {
@@ -189,7 +189,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             jockey_rider: None,
         };
         finalize::finalize(&mut cx, mob, reason, group);
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let created = std::mem::take(&mut cx.created);
         let game = level.game;
         game.world.random = random;
@@ -206,24 +206,20 @@ mod tests {
     use sunrise_core::random::{LegacyRandom, RandomSource};
 
     /// A zombie for the spawn tests, at a spot with room around it.
-    fn zombie(game: &crate::game::ServerGame<'_>) -> sunrise_client::mobs::Mob {
+    fn zombie(game: &crate::game::ServerGame<'_>) -> sunrise_sim::mobs::Mob {
         let kind = game
             .res
             .mob_types()
             .get("minecraft:zombie")
             .unwrap()
             .clone();
-        sunrise_client::mobs::Mob::new(1, kind, Vec3::new(8.0, 65.0, 8.0), 0.0)
+        sunrise_sim::mobs::Mob::new(1, kind, Vec3::new(8.0, 65.0, 8.0), 0.0)
     }
 
     /// Any other mob for the spawn tests, at the same spot.
-    fn mob_of(
-        game: &crate::game::ServerGame<'_>,
-        id: u32,
-        kind: &str,
-    ) -> sunrise_client::mobs::Mob {
+    fn mob_of(game: &crate::game::ServerGame<'_>, id: u32, kind: &str) -> sunrise_sim::mobs::Mob {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
-        sunrise_client::mobs::Mob::new(id, kind, Vec3::new(8.0, 65.0, 8.0), 0.0)
+        sunrise_sim::mobs::Mob::new(id, kind, Vec3::new(8.0, 65.0, 8.0), 0.0)
     }
 
     /// `Mob.finalizeSpawn`'s own two draws (`Mob.java:1078-1085`), then
@@ -248,7 +244,7 @@ mod tests {
     }
 
     /// The follow-range spawn bonus `finalizeSpawn` added, if any.
-    fn random_spawn_bonus(mob: &sunrise_client::mobs::Mob) -> Option<f64> {
+    fn random_spawn_bonus(mob: &sunrise_sim::mobs::Mob) -> Option<f64> {
         mob.extra
             .attributes
             .as_ref()?
@@ -435,7 +431,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_striders_piglin_rider_needs_spawning_monsters() {
-        use sunrise_client::gamerules::Value as RuleValue;
+        use sunrise_client_core::gamerules::Value as RuleValue;
         crate::game::native_guest_turn_tests::with_guests(|game| {
             // The gate reads the difficulty setting (`ui.difficulty`), which a
             // fresh test game leaves peaceful; the rules default on.

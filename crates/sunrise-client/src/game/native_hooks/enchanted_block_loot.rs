@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::items::BlockLootRoll;
+use sunrise_items::items::BlockLootRoll;
 
 impl GameLevel<'_> {
     /// A block's loot table reads an enchantment's level
@@ -61,7 +61,7 @@ impl GameLevel<'_> {
                 let level = &*self;
                 let levels = |enchantment: &str, mut read: u32| {
                     if let Some(enchantment) =
-                        sunrise_client::enchantment_levels::identifier(enchantment)
+                        sunrise_sim::enchantment_levels::identifier(enchantment)
                     {
                         level.native_enchanted_block_loot(super::fire::EnchantedBlockLootCall {
                             dimension: level.dimension,

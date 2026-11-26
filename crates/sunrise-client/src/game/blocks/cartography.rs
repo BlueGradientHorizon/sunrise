@@ -5,7 +5,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
 };
-use sunrise_client::menu::Maps;
+use sunrise_sim::menu::Maps;
 
 /// The level's maps as a menu sees them (`ContainerLevelAccess`): the
 /// states of the maps the click can reach, and the copies it makes.

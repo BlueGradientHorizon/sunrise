@@ -190,7 +190,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         stack: &ItemStack,
         grid: bool,
-    ) -> Vec<(sunrise_client::text::Text, u32)> {
+    ) -> Vec<(sunrise_client_core::text::Text, u32)> {
         let screen = &self.side.creative_screen.0;
         let tab = screen.tab();
         let category = !tab.search && !tab.inventory;
@@ -199,17 +199,17 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let blue = rgba(85, 85, 255, 255);
         let dark_purple = rgba(170, 0, 170, 255);
-        let mut lines: Vec<(sunrise_client::text::Text, u32)> = screen
+        let mut lines: Vec<(sunrise_client_core::text::Text, u32)> = screen
             .tabs_containing(stack)
             .into_iter()
             .map(|i| {
                 let title = self.creative_tab_title(&screen.tabs[i]);
-                (sunrise_client::text::Text::literal(title), blue)
+                (sunrise_client_core::text::Text::literal(title), blue)
             })
             .collect();
         if tab.search && grid {
             for tag in screen.search_tag_lines(stack) {
-                lines.push((sunrise_client::text::Text::literal(tag), dark_purple));
+                lines.push((sunrise_client_core::text::Text::literal(tag), dark_purple));
             }
         }
         lines
@@ -511,7 +511,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn tooltip(&self, batch: &mut HudBatch, text: &str, x: f32, y: f32) {
         self.draw_tooltip_lines(
             batch,
-            &[(sunrise_client::text::Text::literal(text), u32::MAX)],
+            &[(sunrise_client_core::text::Text::literal(text), u32::MAX)],
             x,
             y,
         );

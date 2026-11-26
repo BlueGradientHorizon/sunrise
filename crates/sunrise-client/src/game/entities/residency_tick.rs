@@ -31,8 +31,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 #[cfg(test)]
 mod tests {
     use crate::game::native_entity_refs::tests::with_client_game;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]

@@ -5,20 +5,20 @@ use crate::game::server_side::{
     armor_stands::overlaps as stand_overlaps, cushions::aabb as cushion_aabb,
 };
 use std::sync::Arc;
-use sunrise_client::{
-    collisions::SceneCollisions,
-    cushion::blocks_in,
-    entities::{ArmorStand, ItemEntity, Painting},
-    items::ItemStack,
-};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_gameplay::painting_variants::{painting_coexists, painting_facing};
+use sunrise_items::items::ItemStack;
+use sunrise_level::collisions::SceneCollisions;
+use sunrise_sim::{
+    cushion::blocks_in,
+    entities::{ArmorStand, ItemEntity, Painting},
+};
 
 pub(in crate::game) struct PlacementWorld<'a, 'r, S: crate::game::Side>(
     pub(in crate::game) &'a Game<'r, S>,
 );
 
-impl<S: crate::game::Side> sunrise_client::cushion::World for PlacementWorld<'_, '_, S> {
+impl<S: crate::game::Side> sunrise_sim::cushion::World for PlacementWorld<'_, '_, S> {
     fn outline_bounds(&self, p: [i32; 3]) -> Option<Aabb> {
         let boxes = self.0.outline_boxes(p);
         let mut shape = *boxes.first()?;
@@ -144,7 +144,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             (((self.yaw - 180.0 + 180.0).rem_euclid(360.0) - 180.0 + 22.5) / 45.0).floor() * 45.0;
         let mut stand = ArmorStand::new(0, foot, yaw);
         if let Some(name) = stack.custom_name() {
-            stand.custom_name = Some(sunrise_client::text::Text::literal(name));
+            stand.custom_name = Some(sunrise_client_core::text::Text::literal(name));
         }
         let b = stand.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());
@@ -297,8 +297,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             [position.x - 0.5, position.y, position.z - 0.5],
             [position.x + 0.5, position.y + 0.25, position.z + 0.5],
         ));
-        sunrise_client::cushion::can_place(&PlacementWorld(self), bounds)
-            .then_some((position, bounds))
+        sunrise_sim::cushion::can_place(&PlacementWorld(self), bounds).then_some((position, bounds))
     }
 
     /// `LivingEntity.dismountVehicle` from a removed vehicle whose position was at `vehicle_y`.
@@ -373,9 +372,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     pub(in crate::game) fn body_motion<'a>(
         &'a self,
-        side: &'a dyn sunrise_client::motion::SideLevel,
-    ) -> sunrise_client::motion::BodyMotion<'a> {
-        sunrise_client::motion::BodyMotion {
+        side: &'a dyn sunrise_sim::motion::SideLevel,
+    ) -> sunrise_sim::motion::BodyMotion<'a> {
+        sunrise_sim::motion::BodyMotion {
             world: &self.world,
             collision: self.collision,
             facts: self.res.facts(),
@@ -402,7 +401,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         escape_speed: Option<f32>,
         entity_boxes: &[Aabb],
         client: bool,
-        splash: &mut impl FnMut(sunrise_client::entities::ItemSplash),
+        splash: &mut impl FnMut(sunrise_sim::entities::ItemSplash),
     ) -> (bool, bool) {
         let no_physics = escape_speed.is_some();
         let before = item.velocity;

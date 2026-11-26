@@ -21,7 +21,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game) fn native_book_placement_window_matches(
         &self,
-        window: &sunrise_client::recipe_book::placement_sync::Window,
+        window: &sunrise_sim::recipe_book::placement_sync::Window,
     ) -> bool {
         self.native_book_placement_scope_matches(
             window.window,
@@ -32,7 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game) fn native_book_placement_catalog_matches(
         &self,
-        identity: &sunrise_client::recipe_book::placement_sync::CatalogIdentity,
+        identity: &sunrise_sim::recipe_book::placement_sync::CatalogIdentity,
     ) -> bool {
         self.native_book_placement_scope_matches(
             identity.window,
@@ -43,11 +43,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn native_book_placement_window(
         &self,
-    ) -> Option<sunrise_client::recipe_book::placement_sync::Window> {
+    ) -> Option<sunrise_sim::recipe_book::placement_sync::Window> {
         let screen = self.shown_active_native_screen()?;
         let menu = screen.menu.name.as_str();
         mod_api::RecipeBookLayout::registered(menu)?;
-        Some(sunrise_client::recipe_book::placement_sync::Window {
+        Some(sunrise_sim::recipe_book::placement_sync::Window {
             window: screen.menu.window,
             nonce: screen.layout_revision,
             menu: menu.to_owned().try_into().ok()?,

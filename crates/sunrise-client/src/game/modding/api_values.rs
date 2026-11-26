@@ -5,12 +5,12 @@ pub(in crate::game) mod ingredient_values;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-#[cfg(test)]
-use sunrise_client::parallel::ListenSnapshot;
-use sunrise_client::parallel::TickThread;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_core::random::{LegacyRandom, RandomSource as EngineRandom};
 use sunrise_items::items::{ItemStack as EngineStack, Items};
+#[cfg(test)]
+use sunrise_sim::parallel::ListenSnapshot;
+use sunrise_sim::parallel::TickThread;
 #[path = "api_values/aggregates.rs"]
 pub(in crate::game) mod aggregates;
 #[path = "api_values/block_edit.rs"]
@@ -64,7 +64,7 @@ pub(crate) fn block_jump_factor(
         return;
     };
     mod_api::dispatch_block_jump_factor(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         state,
         factor,
     );
@@ -81,7 +81,7 @@ pub(crate) fn block_speed_factor(
         return;
     };
     mod_api::dispatch_block_speed_factor(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         state,
         factor,
     );
@@ -100,7 +100,7 @@ pub(crate) fn is_ladder(
         return;
     };
     mod_api::dispatch_is_ladder(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         entity,
         pos,
         state,
@@ -162,7 +162,9 @@ pub(in crate::game) mod recipe_inputs;
 /// Publish a loaded item table's registry identities: the item keys in the table's
 /// command-registry order, then the enchantment keys in the loaded registry's order.
 /// Both tables load together, so one call keeps the two orderings from drifting.
-pub(in crate::game) fn resolve_item_registry(items: &crate::items::Items) -> Result<(), String> {
+pub(in crate::game) fn resolve_item_registry(
+    items: &sunrise_items::items::Items,
+) -> Result<(), String> {
     mod_api::__private::resolve_items(items.registry_order.iter().map(|id| &**id)).map_err(
         |errors| {
             errors
@@ -178,7 +180,7 @@ pub(in crate::game) fn resolve_item_registry(items: &crate::items::Items) -> Res
 /// Publish the loaded enchantment registry's keys in `RegistryDataLoader`'s order,
 /// separately for a path that reloads only the data-pack tables.
 pub(in crate::game) fn resolve_enchantment_registry(
-    items: &crate::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Result<(), String> {
     mod_api::__private::resolve_enchantments(items.enchantments.list.iter().map(|entry| &*entry.id))
         .map_err(|errors| errors.join("\n"))
@@ -722,7 +724,7 @@ impl<C: ?Sized, T: TryIntoEngine<C>> TryIntoEngine<C> for [T] {
     }
 }
 impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, u32) {
-    type Engine = (sunrise_client::text::Text, u32);
+    type Engine = (sunrise_client_core::text::Text, u32);
     type Error = mod_api::text::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((self.0.try_into_engine(context)?, self.1))
@@ -737,7 +739,10 @@ impl<A: TryIntoApi, B: TryIntoApi<Error = A::Error>> TryIntoApi for (A, B) {
     }
 }
 impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, mod_api::Text) {
-    type Engine = (sunrise_client::text::Text, sunrise_client::text::Text);
+    type Engine = (
+        sunrise_client_core::text::Text,
+        sunrise_client_core::text::Text,
+    );
     type Error = mod_api::text::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((
@@ -789,7 +794,7 @@ pub(in crate::game) fn engine_display_context(
     })
 }
 
-impl TryIntoApi for sunrise_client::merchant::ItemCost {
+impl TryIntoApi for sunrise_sim::merchant::ItemCost {
     type Api = mod_api::ItemCost;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -797,7 +802,7 @@ impl TryIntoApi for sunrise_client::merchant::ItemCost {
     }
 }
 impl TryIntoEngine for mod_api::ItemCost {
-    type Engine = sunrise_client::merchant::ItemCost;
+    type Engine = sunrise_sim::merchant::ItemCost;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         // ItemCost's codec uses a positive Java int, not the normal stack's count limit.
@@ -812,7 +817,7 @@ impl TryIntoEngine for mod_api::ItemCost {
         Ok(Self::Engine { stack })
     }
 }
-impl TryIntoApi for sunrise_client::merchant::MerchantOffer {
+impl TryIntoApi for sunrise_sim::merchant::MerchantOffer {
     type Api = mod_api::MerchantOffer;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -848,7 +853,7 @@ impl From<StackWriteError> for OfferWriteError {
 pub(in crate::game) fn checked_merchant_offer(
     offer: &mod_api::MerchantOffer,
     items: &Items,
-) -> Result<sunrise_client::merchant::MerchantOffer, OfferWriteError> {
+) -> Result<sunrise_sim::merchant::MerchantOffer, OfferWriteError> {
     if !offer.price_multiplier.is_finite() {
         return Err(OfferWriteError::NonFinitePrice);
     }
@@ -856,7 +861,7 @@ pub(in crate::game) fn checked_merchant_offer(
     if &*result.item == "minecraft:air" {
         return Err(StackWriteError::EmptyEngineStack.into());
     }
-    Ok(sunrise_client::merchant::MerchantOffer {
+    Ok(sunrise_sim::merchant::MerchantOffer {
         base_cost_a: offer.base_cost_a.try_into_engine(items)?,
         cost_b: offer.cost_b.try_into_engine(items)?,
         result,
@@ -871,7 +876,7 @@ pub(in crate::game) fn checked_merchant_offer(
 }
 
 impl TryIntoEngine for mod_api::MerchantOffer {
-    type Engine = sunrise_client::merchant::MerchantOffer;
+    type Engine = sunrise_sim::merchant::MerchantOffer;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         checked_merchant_offer(self, items).map_err(|error| match error {
@@ -1015,7 +1020,7 @@ pub(in crate::game) fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> 
     }
 }
 
-impl TryIntoApi for crate::crafting::RecipeRule {
+impl TryIntoApi for sunrise_sim::crafting::RecipeRule {
     type Api = mod_api::RecipeRule;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1167,7 +1172,7 @@ impl TryIntoApi for crate::crafting::RecipeRule {
     }
 }
 
-impl TryIntoApi for crate::crafting::RecipeTemplate {
+impl TryIntoApi for sunrise_sim::crafting::RecipeTemplate {
     type Api = mod_api::RecipeTemplate;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1178,7 +1183,7 @@ impl TryIntoApi for crate::crafting::RecipeTemplate {
         ))
     }
 }
-impl TryIntoApi for crate::crafting::RecipeTrimPattern {
+impl TryIntoApi for sunrise_sim::crafting::RecipeTrimPattern {
     type Api = mod_api::RecipeTrimPattern;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1196,7 +1201,7 @@ impl TryIntoApi for crate::crafting::RecipeTrimPattern {
         })
     }
 }
-impl TryIntoApi for crate::crafting::FireworkShapeIngredient {
+impl TryIntoApi for sunrise_sim::crafting::FireworkShapeIngredient {
     type Api = mod_api::FireworkShapeIngredient;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1209,7 +1214,9 @@ impl TryIntoApi for crate::crafting::FireworkShapeIngredient {
 /// A recipe listing crosses one entry at a time: one unrepresentable recipe must not
 /// hide the rest of its type. Other collection conversions remain all-or-nothing.
 #[derive(Default)]
-pub(in crate::game) struct RecipeListing(pub std::sync::Arc<[crate::crafting::RecipeSnapshot]>);
+pub(in crate::game) struct RecipeListing(
+    pub std::sync::Arc<[sunrise_sim::crafting::RecipeSnapshot]>,
+);
 impl TryIntoApi for RecipeListing {
     type Api = std::sync::Arc<[mod_api::Recipe]>;
     type Error = std::convert::Infallible;
@@ -1230,7 +1237,7 @@ impl TryIntoApi for RecipeListing {
             .collect())
     }
 }
-impl TryIntoApi for crate::crafting::RecipeSnapshot {
+impl TryIntoApi for sunrise_sim::crafting::RecipeSnapshot {
     type Api = mod_api::Recipe;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1248,7 +1255,7 @@ impl TryIntoApi for crate::crafting::RecipeSnapshot {
 
 /// Install the engine-facing callbacks; snapshots never enter engine storage.
 pub(crate) fn install_stack_hooks() {
-    crate::native_stack_hooks::install(crate::native_stack_hooks::StackHooks {
+    sunrise_sim::native_stack_hooks::install(sunrise_sim::native_stack_hooks::StackHooks {
         enchantments: |stack, target, value| {
             if !mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
                 return;
@@ -1279,12 +1286,12 @@ pub(crate) fn menu_still_valid(
     opening_item: Option<mod_api::MenuOpeningItem>,
     valid: &mut bool,
 ) {
-    let reader = sunrise_client_render::api_context::LoopReader(context);
+    let reader = sunrise_level::api_context::LoopReader(context);
     let context = reader.context();
     mod_api::dispatch_menu_still_valid(&context, player, menu, pos, eye, opening_item, valid);
 }
 
-impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
+impl TryIntoApi for sunrise_sim::menu::AnvilCraftSnapshot {
     type Api = (Option<ApiStack>, Option<ApiStack>, ApiStack);
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1299,7 +1306,6 @@ impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
 #[cfg(test)]
 pub(in crate::game) mod attribute_boundary_tests {
     use super::EngineStack as ItemStack;
-    use crate::item_attributes::attribute_modifiers_or;
     use mod_api::{
         AttributeModifier, AttributeOperation, EquipmentSlotGroup, Hooks, Identifier,
         ItemAttributeModifierEvent, ModEntry,
@@ -1307,6 +1313,7 @@ pub(in crate::game) mod attribute_boundary_tests {
     use mod_platform::testing::with_mods;
     use std::borrow::Cow;
     use sunrise_items::item_data::ModifierRow;
+    use sunrise_sim::item_attributes::attribute_modifiers_or;
     /// Makes a netherite chestplate heavier: +0.4 knockback resistance in
     /// the chest slot, and no armor toughness.
     struct Heavy;
@@ -1398,12 +1405,12 @@ pub(in crate::game) mod attribute_boundary_tests {
     #[test]
     fn a_servers_stack_takes_the_mods_answer_on_first_equip() {
         use std::sync::Arc;
-        use sunrise_client::living_attributes::LivingAttributes;
         use sunrise_core::vanilla_bytes::Writer;
         use sunrise_items::equipment::{CHEST, Equipment};
         use sunrise_protocol::buf::{Codec, Reader};
         use sunrise_protocol::item::{Slot, component};
         use sunrise_protocol::registry::{Builtin, Dynamic, Ids};
+        use sunrise_sim::living_attributes::LivingAttributes;
         use sunrise_world::{attribute_map::ValueKind, attributes::entity::Catalog};
         super::prepare_stack_boundary_tests();
         let attributes = [
@@ -1446,8 +1453,7 @@ pub(in crate::game) mod attribute_boundary_tests {
             }
         }
         let sent = Slot::read(&mut Reader::new(&wire.data)).unwrap().unwrap();
-        let chestplate =
-            sunrise_client::item_sync::from_network(&sent, &builtin, &Dynamic::default());
+        let chestplate = sunrise_sim::item_sync::from_network(&sent, &builtin, &Dynamic::default());
         let bits = |n: f64| format!("{:016x}", n.to_bits());
         let catalog = Arc::new(
             Catalog::from_json(&serde_json::json!({
@@ -1497,11 +1503,11 @@ pub(in crate::game) mod attribute_boundary_tests {
 #[cfg(test)]
 pub(in crate::game) mod enchantment_boundary_tests {
     use super::EngineStack as ItemStack;
-    use crate::enchantment_levels::get_enchantment_level;
     use mod_api::{GetEnchantmentLevelEvent, Hooks, Identifier, ModEntry};
     use mod_platform::testing::with_mods;
     use std::borrow::Cow;
     use std::sync::Arc;
+    use sunrise_sim::enchantment_levels::get_enchantment_level;
     fn id(text: &str) -> Identifier {
         Identifier::parse(text).unwrap()
     }
@@ -1580,13 +1586,13 @@ pub(in crate::game) mod recipe_listing_tests {
         registries
             .resolve_items([mod_api::Identifier::parse("minecraft:stick").unwrap()])
             .unwrap();
-        let mut good = crate::crafting::RecipeSnapshot::new(
+        let mut good = sunrise_sim::crafting::RecipeSnapshot::new(
             "example:good",
             "example:machine",
             serde_json::json!({}).into(),
         );
         good.results = vec![EngineStack::new("minecraft:stick", 1)];
-        let mut bad = crate::crafting::RecipeSnapshot::new(
+        let mut bad = sunrise_sim::crafting::RecipeSnapshot::new(
             "example:bad",
             "example:machine",
             serde_json::json!({}).into(),
@@ -1654,7 +1660,7 @@ pub(in crate::game) mod brewed_boundary_tests {
     }
 }
 
-impl TryIntoApi for crate::containers::ModBlockEntityFields {
+impl TryIntoApi for sunrise_level::containers::ModBlockEntityFields {
     type Api = mod_api::item::containers::ModBlockEntityFields;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1666,17 +1672,17 @@ impl TryIntoApi for crate::containers::ModBlockEntityFields {
     }
 }
 impl TryIntoEngine for mod_api::item::containers::ModBlockEntityFields {
-    type Engine = crate::containers::ModBlockEntityFields;
+    type Engine = sunrise_level::containers::ModBlockEntityFields;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::containers::ModBlockEntityFields {
+        Ok(sunrise_level::containers::ModBlockEntityFields {
             nbt: self.nbt.clone(),
             items: self.items.try_into_engine(items)?,
             data: self.data.clone(),
         })
     }
 }
-impl TryIntoApi for crate::containers::ModBlockEntity {
+impl TryIntoApi for sunrise_level::containers::ModBlockEntity {
     type Api = mod_api::ModBlockEntity;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1696,7 +1702,7 @@ impl super::GameLevel<'_> {
         &mut self,
         pos: sunrise_core::position::BlockPos,
         state: sunrise_world::registry::BlockStateId,
-        entity: &crate::containers::ModBlockEntity,
+        entity: &sunrise_level::containers::ModBlockEntity,
     ) -> super::spill::RemovalOutputs {
         let mut outputs = super::spill::RemovalOutputs::default();
         if !mod_api::__private::has_part_hook(mod_api::HookId::PreRemoveSideEffects) {
@@ -1829,7 +1835,7 @@ pub(in crate::game) mod stack_limit_tests {
         let definition = items.items.get("minecraft:iron_sword");
         let written = over.try_into_engine(&items).unwrap();
         assert_eq!(written.effective_damage(definition), 1000);
-        assert!(sunrise_client::stations::is_damageable(&items, &written));
+        assert!(sunrise_sim::stations::is_damageable(&items, &written));
         let read = stack_value(&over).unwrap();
         assert_eq!(read.effective_damage(definition), 1000);
     }
@@ -1890,7 +1896,8 @@ pub(in crate::game) mod stack_limit_tests {
             .unwrap();
         let engine = short_max.try_into_engine(&items).unwrap();
         assert_eq!(engine.max_damage(Some(definition)), 20);
-        let packet_stack = crate::lan::guest::stack_to_network(|_| 1, |_, _| None, &Some(engine));
+        let packet_stack =
+            sunrise_sim::lan::guest::stack_to_network(|_| 1, |_, _| None, &Some(engine));
         let mut writer = Writer::new();
         Slot::write(&packet_stack, &mut writer);
         let mut reader = Reader::new(&writer.data);
@@ -2420,10 +2427,8 @@ pub(in crate::game) mod text_boundary;
 pub(in crate::game) mod gui_draw_boundary_tests {
     use super::{TryIntoApi, TryIntoEngine};
     use serde_json::json;
-    use sunrise_client::{
-        hud_layout::{Blend, GuiDraw as D, PoseOp},
-        text::Text,
-    };
+    use sunrise_client::hud_layout::{Blend, GuiDraw as D, PoseOp};
+    use sunrise_client_core::text::Text;
 
     #[test]
     fn gui_commands_keep_every_variant_field_order_and_text_source() {
@@ -2515,13 +2520,15 @@ pub(in crate::game) mod gui_draw_boundary_tests {
 
     #[test]
     fn tooltip_pairs_round_trip_without_an_item_registry() {
-        let lines = vec![(sunrise_client::text::Text::literal("tip"), 0xff00ff00)];
+        let lines = vec![(sunrise_client_core::text::Text::literal("tip"), 0xff00ff00)];
         let snapshot: Result<Vec<(mod_api::Text, u32)>, mod_api::text::TextFormError> =
             lines.try_into_api();
         let snapshot = snapshot.unwrap();
         assert_eq!(snapshot[0], (mod_api::Text::literal("tip"), 0xff00ff00));
-        let restored: Result<Vec<(sunrise_client::text::Text, u32)>, mod_api::text::TextFormError> =
-            snapshot.try_into_engine(&());
+        let restored: Result<
+            Vec<(sunrise_client_core::text::Text, u32)>,
+            mod_api::text::TextFormError,
+        > = snapshot.try_into_engine(&());
         let restored = restored.unwrap();
         assert_eq!(restored[0].0.component(), lines[0].0.component());
         assert_eq!(restored[0].0.spans, lines[0].0.spans);

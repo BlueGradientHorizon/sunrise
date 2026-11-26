@@ -5,7 +5,8 @@ use crate::game::remote::raw_ingress::post_effects_parity_tests::overworld_spawn
 use crate::game::remote::raw_ingress::post_effects_parity_tests::post_effects_witness;
 use crate::game::remote::raw_ingress::post_effects_parity_tests::wait_for_pong;
 use std::time::{Duration, Instant};
-use sunrise_client::{camera::CameraType, multiplayer, net::Session, title::Mode};
+use sunrise_client::{multiplayer, net::Session, title::Mode};
+use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::{
     connection::{Connection, Pipe},
     packets::{
@@ -127,7 +128,7 @@ pub(in crate::game) fn post_effects_cleared_on_login_respawn_and_reconfigure_bod
         game.side.title.0 = None;
         if game.player.is_none() {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )

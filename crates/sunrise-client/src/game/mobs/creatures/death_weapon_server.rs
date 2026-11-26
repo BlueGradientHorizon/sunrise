@@ -58,9 +58,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS);
-        let experience =
-            sunrise_client::mobs::drops::experience_reward(m, player_killed, mob_drops);
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS);
+        let experience = sunrise_sim::mobs::drops::experience_reward(m, player_killed, mob_drops);
         let reward = experience.filter(|_| !consumed)?;
         let kind = crate::game::native_hooks::mob_kind(m);
         Some(self.living_experience_drop(m.id, &kind, player_uuid, reward))
@@ -73,7 +72,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         id: u32,
         amount: f32,
         source: Damage,
-        aim: Option<sunrise_client::mobs::Aim>,
+        aim: Option<sunrise_sim::mobs::Aim>,
     ) -> bool {
         if self.side.combat.0.attack().projectile != Some(projectile.id as i32) {
             let attack = self.projectile_attack(projectile);
@@ -130,7 +129,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [f64; 3],
         source: Option<(&'static str, u32)>,
     ) -> Option<i32> {
-        use sunrise_client::mobs::{DamageKind, Who, drops};
+        use sunrise_sim::mobs::{DamageKind, Who, drops};
         use sunrise_world::loot::{LootDamage, LootEntity};
         let accepted = m
             .accepted_hit
@@ -214,13 +213,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             mob_drops: self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS),
             world_seed: self.level.seed,
         };
-        let raider = sunrise_client::mobs::raider::is_raider(m.species());
+        let raider = sunrise_sim::mobs::raider::is_raider(m.species());
         let to_stack = |stack: &sunrise_world::loot::LootStack| {
-            if raider && stack.item == sunrise_client::mobs::raider::BANNER {
-                sunrise_client::mobs::raider::ominous_banner()
+            if raider && stack.item == sunrise_sim::mobs::raider::BANNER {
+                sunrise_sim::mobs::raider::ominous_banner()
             } else {
                 from_loot(stack)
             }
@@ -335,7 +334,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 drops::Drop::CarriedBlock(state) => {
                     // Enderman.dropCustomDeathLoot: spawnAtLocation for each
                     // of the carried block's silk-touch drops.
-                    use sunrise_client::mobs::enderman;
+                    use sunrise_sim::mobs::enderman;
                     let tool = enderman::carried_block_tool();
                     let at = [m.position.x, m.position.y, m.position.z];
                     let drops = self.roll_block_loot(
@@ -419,7 +418,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|m| m.kind.id.clone()),
             None => None,
         };
-        let ctx = sunrise_client::enchant::EffectContext {
+        let ctx = sunrise_items::enchant::EffectContext {
             this: victim,
             attacker: attacker_kind.as_deref(),
             direct_attacker: Some(if trident {

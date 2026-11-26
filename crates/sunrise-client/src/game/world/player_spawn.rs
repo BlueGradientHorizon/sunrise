@@ -39,7 +39,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.level.world_spawn.get_or_insert([x, y, z]);
                 // The "Bonus Chest" create-world option, placed once with the spawn.
                 if !self.side.spawn_hook_cancelled
-                    && sunrise_client::save::WorldGen::read(&self.side.world_root)
+                    && sunrise_sim::save::WorldGen::read(&self.side.world_root)
                         .is_some_and(|g| g.bonus_chest)
                 {
                     self.place_bonus_chest([x, y, z])?;
@@ -81,7 +81,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut player = PlayerMotion::new(self.motion, feet)?;
         player.yaw = self.yaw;
         player.load_saved_state_once(&mut self.side.restore_player_state, &self.level)?;
-        let spectator = self.mode == sunrise_client::command::args::GameMode::Spectator;
+        let spectator = self.mode == sunrise_command::args::GameMode::Spectator;
         player.may_fly = self.creative || spectator;
         player.invulnerable = self.creative || spectator;
         player.spectator = spectator;

@@ -128,7 +128,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
                 new,
                 "sound cancellation does not cancel the use"
             );
-            game.player_menu_sound(sunrise_client::bundle::INSERT_FAIL);
+            game.player_menu_sound(sunrise_items::bundle::INSERT_FAIL);
             let stack = ItemStack {
                 item: "minecraft:apple".into(),
                 count: 1,
@@ -156,7 +156,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
                     position: Some([1.5, 64.5, 1.5]),
                 },
                 Request {
-                    sound: sunrise_client::bundle::INSERT_FAIL.into(),
+                    sound: sunrise_items::bundle::INSERT_FAIL.into(),
                     source: SoundSource::Players,
                     emitter: Some(7),
                     position: None,

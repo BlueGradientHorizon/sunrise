@@ -10,14 +10,14 @@
 //! Sneaking gets out (`Player.rideTick`: `wantsToStopRiding`), and the client
 //! is teleported where the player lands (`ServerPlayer.dismountTo`).
 use super::{Dim, Game, Keys, lan::LanHost, minecarts::SEAT};
-use sunrise_client::collisions::SceneCollisions;
-use sunrise_client::lan::hub::no_blocks_in;
-use sunrise_client::mobs::equine;
 use sunrise_core::geometry::{Aabb, Axis, Vec3};
+use sunrise_level::collisions::SceneCollisions;
 use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
     text::translatable,
 };
+use sunrise_sim::lan::hub::no_blocks_in;
+use sunrise_sim::mobs::equine;
 use sunrise_world::entity_move::MoverType;
 
 /// `PlayerInput` flags, as the server player's client last sent them.
@@ -491,7 +491,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Unreachable: the vehicle was a boat or a mount, or it returned.
             (None, None) => std::borrow::Cow::Borrowed(""),
         };
-        let mut gate = sunrise_client::move_gate::armed_with(
+        let mut gate = sunrise_sim::move_gate::armed_with(
             &self.loop_context,
             id,
             kind,
@@ -503,7 +503,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // the driver is put back whatever the distance - the flag comes from
         // the gate, not from the numbers.
         let overridden = gate.overridden();
-        let resolved = sunrise_client::move_gate::scene_resolve(
+        let resolved = sunrise_sim::move_gate::scene_resolve(
             &mut gate, &mut scene, bounds, wanted, step, on_ground,
         )
         .unwrap_or(wanted);
@@ -567,7 +567,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             g.vehicle_gravity = gravity;
         });
         if let Some(i) = mount {
-            use sunrise_client::mobs::living::MovementAction;
+            use sunrise_sim::mobs::living::MovementAction;
 
             let (id, join) = (self.mobs[i].id, self.mobs[i].join);
             let mut events = Vec::new();
@@ -577,11 +577,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     break;
                 }
                 let mut m = self.mobs[i].clone();
-                let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
+                let mut lent = sunrise_sim::health::LentLevel::take(&mut self.world);
                 let mut paused_hurt = None;
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let w = self.mob_world_base(&[]);
-                    let mut level = sunrise_client::health::DamageLevel::lent(
+                    let mut level = sunrise_sim::health::DamageLevel::lent(
                         &self.world,
                         self.pack.assets.registry,
                         &mut lent,
@@ -610,9 +610,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // LivingEntity.checkFallDamage sends dust before Block.fallOn.
                 // Send it to every nearby player, including the driver.
                 for event in events.extract_if(.., |e| {
-                    matches!(e, sunrise_client::mobs::MobEvent::LandingDust { .. })
+                    matches!(e, sunrise_sim::mobs::MobEvent::LandingDust { .. })
                 }) {
-                    if let sunrise_client::mobs::MobEvent::LandingDust {
+                    if let sunrise_sim::mobs::MobEvent::LandingDust {
                         state,
                         at,
                         count,
@@ -750,20 +750,17 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 pub(in crate::game) mod controller_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{configuration::ClientInformation, play};
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     fn guest(conn: u32, uuid: u128) -> Guest {
         guest_with_packets(conn, uuid).0
     }
 
     /// A guest and what is sent to it.
-    fn guest_with_packets(
-        conn: u32,
-        uuid: u128,
-    ) -> (Guest, mpsc::Receiver<sunrise_client::lan::Out>) {
+    fn guest_with_packets(conn: u32, uuid: u128) -> (Guest, mpsc::Receiver<sunrise_sim::lan::Out>) {
         let (tx, rx) = mpsc::channel();
         let mut g = Guest::new(
             Joined {
@@ -971,7 +968,7 @@ pub(in crate::game) mod controller_tests {
     /// A guest drives a horse with an unobstructed ten-block fall to stone.
     pub(in crate::game::server_side) fn guest_horse_at_start_of_fall(
         game: &mut crate::game::ServerGame<'_>,
-    ) -> (u32, mpsc::Receiver<sunrise_client::lan::Out>) {
+    ) -> (u32, mpsc::Receiver<sunrise_sim::lan::Out>) {
         game.build_registries();
         game.set_allow_commands(true);
         let stone = game
@@ -1008,7 +1005,7 @@ pub(in crate::game) mod controller_tests {
         assert!(game.run_command("summon minecraft:horse 4.5 210 4.5 {NoAI:1b,Tame:1b}"));
         let horse = game.mobs[0].id;
         game.mobs[0].extra.set_saddled(true);
-        game.mobs[0].rider = Some(sunrise_client::mobs::equine::Rider {
+        game.mobs[0].rider = Some(sunrise_sim::mobs::equine::Rider {
             client: true,
             ..Default::default()
         });
@@ -1088,7 +1085,7 @@ pub(in crate::game) mod controller_tests {
         let mut twin = game.mobs[0].clone();
         twin.cause_fall_damage_from(
             &game.loop_context,
-            &mut crate::health::TestLevel::new(0).level(),
+            &mut sunrise_sim::health::TestLevel::new(0).level(),
             10.0,
             1.0,
             &mut Vec::new(),
@@ -1128,7 +1125,7 @@ pub(in crate::game) mod controller_tests {
         // LivingEntity.checkFallDamage sends the landing's block crumbs to every
         // player near, the rider too.
         let dust = packets.try_iter().any(|out| match out {
-            sunrise_client::lan::Out::Packet(body) => {
+            sunrise_sim::lan::Out::Packet(body) => {
                 let mut r = sunrise_protocol::buf::Reader::new(&body);
                 let id = r.varint().unwrap();
                 matches!(

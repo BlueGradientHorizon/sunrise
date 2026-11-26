@@ -9,7 +9,7 @@ use mod_api::{
     HookId,
 };
 use std::{cell::RefCell, collections::BTreeSet, sync::Arc};
-use sunrise_client::cauldron::interactions::Dispatcher;
+use sunrise_sim::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]
 pub(in crate::game) struct Callback {
@@ -286,10 +286,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
         under_water: bool,
         callback: &Callback,
-    ) -> sunrise_client::cauldron::Outcome {
+    ) -> sunrise_sim::cauldron::Outcome {
         use crate::game::api_values::TryIntoApi;
         use mod_api::{CauldronDecision, CauldronUse};
-        use sunrise_client::cauldron::Outcome;
+        use sunrise_sim::cauldron::Outcome;
         let Some(guard) = callback.guard.as_ref() else {
             log::warn!(
                 "cauldron interaction for mod {} has no installed owner",

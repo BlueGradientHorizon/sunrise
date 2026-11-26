@@ -14,10 +14,10 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use {
-    sunrise_client::chunk::Chunk, sunrise_client::items::ItemStack, sunrise_client::lan::Joined,
-    sunrise_client::lan::NetConfig, sunrise_client::lan::PlayerSender,
-    sunrise_client::lan::guest::Guest, sunrise_client::lan::hub::HubConfig,
-    sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_level::chunk::Chunk,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::lan::Joined, sunrise_sim::lan::NetConfig,
+    sunrise_sim::lan::PlayerSender, sunrise_sim::lan::guest::Guest,
+    sunrise_sim::lan::hub::HubConfig, sunrise_sim::motion::PlayerMotion,
 };
 
 #[path = "interaction_matrix_tests_server.rs"]
@@ -52,7 +52,7 @@ pub(in crate::game) mod mapping_press_tests;
 fn a_placed_powder_snow_bucket_leaves_a_bucket_in_hand_on_both_sides() {
     fn run<S: InteractionSide>(game: &mut Game<'_, S>) {
         let client = S::IS_CLIENT;
-        S::set_interaction_mode(game, sunrise_client::command::args::GameMode::Survival);
+        S::set_interaction_mode(game, sunrise_command::args::GameMode::Survival);
         let stone = game
             .pack
             .assets
@@ -91,7 +91,7 @@ fn a_spectator_fires_right_click_block_on_the_client_and_its_cancel_answers() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_client_game(|game| {
-            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
+            game.set_local_mode(sunrise_command::args::GameMode::Spectator);
             assert!(game.spectator());
             let stone = game
                 .pack
@@ -143,7 +143,7 @@ fn a_spectators_passing_block_click_skips_item_use_for_both_hands() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_client_game(|game| {
-            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
+            game.set_local_mode(sunrise_command::args::GameMode::Spectator);
             assert!(game.spectator());
             game.offhand = Some(ItemStack::new("minecraft:shield", 1));
             let stone = game
@@ -270,7 +270,7 @@ fn air_event_skips_the_item_and_consuming_results_end_the_click() {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 42,
                 kind,
                 Vec3::new(0.5, 64.0, 5.5),
@@ -546,7 +546,7 @@ fn canceled_item_results_keep_the_stack_wrappers_side_effects() {
         game: &mut Game<'_, S>,
     ) {
         let client = S::IS_CLIENT;
-        S::set_interaction_mode(game, sunrise_client::command::args::GameMode::Survival);
+        S::set_interaction_mode(game, sunrise_command::args::GameMode::Survival);
         let stone = game
             .pack
             .assets
@@ -970,7 +970,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
         assert!(observer.0.lock().unwrap().steps.is_empty());
 
         // ItemStack.useOn passes before Item.useOn in adventure mode.
-        S::set_interaction_mode(game, sunrise_client::command::args::GameMode::Adventure);
+        S::set_interaction_mode(game, sunrise_command::args::GameMode::Adventure);
         *observer.0.lock().unwrap() = Controls {
             use_block: TriState::False,
             ..Controls::default()
@@ -997,7 +997,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
             observer.0.lock().unwrap().steps,
             [Step::Phase(UsePhase::ItemAfterBlock, side)]
         );
-        S::set_interaction_mode(game, sunrise_client::command::args::GameMode::Creative);
+        S::set_interaction_mode(game, sunrise_command::args::GameMode::Creative);
 
         // In 26.3 dousing is CampfireBlock.useItemOn, not Item.useOn:
         // a canceled BLOCK cannot predict it or reach ITEM_AFTER_BLOCK.
@@ -1223,7 +1223,7 @@ fn right_click_block_forced_item_use_reaches_empty_hand_on_both_sides() {
         );
         // TRUE bypasses the stack/cooldown gate, not adventure's
         // placement predicate (which an empty hand cannot satisfy).
-        S::set_interaction_mode(game, sunrise_client::command::args::GameMode::Adventure);
+        S::set_interaction_mode(game, sunrise_command::args::GameMode::Adventure);
         *observer.0.lock().unwrap() = Controls {
             use_block: TriState::False,
             use_item: TriState::True,
@@ -1249,7 +1249,7 @@ fn right_click_block_forced_item_use_reaches_empty_hand_on_both_sides() {
 
 pub(in crate::game) fn setup_interaction_guest(
     game: &mut crate::game::ServerGame<'_>,
-) -> std::sync::mpsc::Receiver<sunrise_client::lan::Out> {
+) -> std::sync::mpsc::Receiver<sunrise_sim::lan::Out> {
     game.lan_host(
         LanSettings {
             port: 0,
@@ -1306,11 +1306,8 @@ pub(in crate::game) fn setup_interaction_guest(
 impl InteractionSide for crate::game::server_side::ServerState {
     const IS_CLIENT: bool = false;
     const LOGICAL_SIDE: LogicalSide = LogicalSide::Server;
-    fn set_interaction_mode(
-        game: &mut Game<'_, Self>,
-        mode: sunrise_client::command::args::GameMode,
-    ) {
-        use sunrise_client::command::args::GameMode;
+    fn set_interaction_mode(game: &mut Game<'_, Self>, mode: sunrise_command::args::GameMode) {
+        use sunrise_command::args::GameMode;
         let id = match mode {
             GameMode::Survival => 0,
             GameMode::Creative => 1,

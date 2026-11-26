@@ -366,7 +366,7 @@ files!(Game<'_, crate::game::server_side::ServerState>, world_root);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::crash::{ModCall, enter_native_mod};
+    use sunrise_level::crash::{ModCall, enter_native_mod};
 
     struct Root(FileRoot);
     impl Root {
@@ -839,10 +839,11 @@ mod tests {
         let saves = scratch.0.path.join("saves");
         let world = saves.join("Bulk World");
         let request = |create: bool| {
-            let rules = std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
+            let rules =
+                std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
             let options = sunrise_sim::world_options::WorldOptions {
-                world_type: sunrise_client::save::WorldPreset::Flat,
-                rules: sunrise_client::gamerules::GameRules::with_registry(rules.clone(), &[]),
+                world_type: sunrise_sim::save::WorldPreset::Flat,
+                rules: sunrise_client_core::gamerules::GameRules::with_registry(rules.clone(), &[]),
                 ..Default::default()
             };
             let mut request = WorldRequest::new(

@@ -12,7 +12,8 @@ use mod_api::{
     ModEntry, Mods,
 };
 use std::cell::RefCell;
-use sunrise_client::{items::ItemStack, menu::Input};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::Input;
 
 /// What the listener does.
 #[derive(Clone, Default)]
@@ -177,7 +178,7 @@ pub(in crate::game) fn click(game: &mut crate::game::ServerGame<'_>) -> (u32, u3
             state: 0,
             slot: 9,
             button: 0,
-            input: sunrise_client::lan::menu::input::PICKUP,
+            input: sunrise_sim::lan::menu::input::PICKUP,
             changed: Vec::new(),
             carried: None,
         }),
@@ -220,13 +221,13 @@ pub(in crate::game) fn local_menu_ops(
     };
     for &(slot, button, input) in ops {
         let input = match input {
-            Input::Pickup => sunrise_client::lan::menu::input::PICKUP,
-            Input::QuickMove => sunrise_client::lan::menu::input::QUICK_MOVE,
-            Input::Swap => sunrise_client::lan::menu::input::SWAP,
-            Input::Clone => sunrise_client::lan::menu::input::CLONE,
-            Input::Throw => sunrise_client::lan::menu::input::THROW,
-            Input::QuickCraft => sunrise_client::lan::menu::input::QUICK_CRAFT,
-            Input::PickupAll => sunrise_client::lan::menu::input::PICKUP_ALL,
+            Input::Pickup => sunrise_sim::lan::menu::input::PICKUP,
+            Input::QuickMove => sunrise_sim::lan::menu::input::QUICK_MOVE,
+            Input::Swap => sunrise_sim::lan::menu::input::SWAP,
+            Input::Clone => sunrise_sim::lan::menu::input::CLONE,
+            Input::Throw => sunrise_sim::lan::menu::input::THROW,
+            Input::QuickCraft => sunrise_sim::lan::menu::input::QUICK_CRAFT,
+            Input::PickupAll => sunrise_sim::lan::menu::input::PICKUP_ALL,
         };
         let slot = match slot {
             None => -999,
@@ -528,7 +529,7 @@ pub(in crate::game) mod families {
             with_guests(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 PLAYER.set(12);
                 open(game);
@@ -587,7 +588,7 @@ pub(in crate::game) mod families {
             with_guests(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 block(game, "minecraft:crafting_table", (1, 64, 1));
                 game.lan_open_crafting(12, [1, 64, 1]);
@@ -625,7 +626,7 @@ pub(in crate::game) mod families {
     #[test]
     #[ignore = "daily"]
     fn the_furnace_menu_decides_the_pickup() {
-        use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
+        use sunrise_level::containers::{BlockEntity, Furnace, FurnaceKind};
         let window = std::cell::Cell::new(0);
         family(
             |game| {
@@ -654,7 +655,7 @@ pub(in crate::game) mod families {
 
     /// A furnace at (1, 64, 1) holding `items` (input, fuel, output), open as guest 12's menu.
     fn open_furnace(game: &mut crate::game::ServerGame<'_>, items: [Option<ItemStack>; 3]) -> i32 {
-        use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
+        use sunrise_level::containers::{BlockEntity, Furnace, FurnaceKind};
         block(game, "minecraft:furnace", (1, 64, 1));
         game.world.block_entities.insert(
             (1, 64, 1),
@@ -678,7 +679,7 @@ pub(in crate::game) mod families {
     }
 
     fn furnace_items(game: &crate::game::ServerGame<'_>) -> [Option<(String, u32)>; 3] {
-        use sunrise_client::containers::BlockEntity;
+        use sunrise_level::containers::BlockEntity;
         let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&(1, 64, 1)) else {
             panic!("the furnace is gone");
         };
@@ -696,7 +697,7 @@ pub(in crate::game) mod families {
             with_guests(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 PLAYER.set(12);
                 let stone = |count| Some(ItemStack::new("minecraft:stone", count));
@@ -764,8 +765,8 @@ pub(in crate::game) mod families {
     #[test]
     #[ignore = "daily"]
     fn the_mount_menu_decides_the_pickup() {
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
         let window = std::cell::Cell::new(0);
         family(
             |game| {
@@ -788,12 +789,12 @@ pub(in crate::game) mod families {
     fn an_outer_abort_restores_the_mount_and_guest_without_publishing_the_click() {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
         use std::sync::{Arc, mpsc};
-        use sunrise_client::{
+        use sunrise_core::geometry::Vec3;
+        use sunrise_protocol::{buf::Reader, item::Stack, packets::play::Clientbound};
+        use sunrise_sim::{
             lan::{Out, PlayerSender},
             mobs::Mob,
         };
-        use sunrise_core::geometry::Vec3;
-        use sunrise_protocol::{buf::Reader, item::Stack, packets::play::Clientbound};
 
         if run_fresh_cases(
             "game::stacked_on_other_tests::families::an_outer_abort_restores_the_mount_and_guest_without_publishing_the_click",
@@ -933,7 +934,7 @@ pub(in crate::game) mod families {
                             state: 0,
                             slot: -999,
                             button: 0,
-                            input: sunrise_client::lan::menu::input::QUICK_CRAFT,
+                            input: sunrise_sim::lan::menu::input::QUICK_CRAFT,
                             changed: Vec::new(),
                             carried: None,
                         }),
@@ -1072,7 +1073,7 @@ pub(in crate::game) mod families {
     fn the_trading_menu_decides_the_pickup() {
         use crate::game::native_merchant_refs::tests::{offer, spawn};
         use crate::game::trading::MerchantState;
-        use sunrise_client::merchant::{Session, Trader};
+        use sunrise_sim::merchant::{Session, Trader};
         let window = std::cell::Cell::new(0);
         family(
             |game| {
@@ -1117,8 +1118,8 @@ pub(in crate::game) mod families {
 #[test]
 #[ignore = "daily"]
 fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_container() {
-    use sunrise_client::lan::menu::Slots;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+    use sunrise_sim::lan::menu::Slots;
     with_mod(|| {
         with_guests(|game| {
             PLAYER.set(12);
@@ -1126,7 +1127,7 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
             let pos = (1, 64, 1);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let stone = game
                 .pack
@@ -1137,7 +1138,7 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
             game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
             game.world.block_entities.insert(
                 pos,
-                sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+                sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
             );
             let host = game.lan.as_mut().unwrap();
             host.hub.open_container(
@@ -1605,15 +1606,15 @@ pub(in crate::game) mod item_part_tests {
     #[test]
     #[ignore = "daily"]
     fn item_part_stacked_on_other_runs_on_lan_hub_and_inventory_clicks() {
-        use sunrise_client::lan::menu::Slots;
         use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+        use sunrise_sim::lan::menu::Slots;
         with_part_only_mod(|| {
             with_guests(|game| {
                 PLAYER.set(12);
                 let pos = (1, 64, 1);
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let stone = game
                     .pack
@@ -1626,7 +1627,7 @@ pub(in crate::game) mod item_part_tests {
                 chest[0] = Some(ItemStack::new("minecraft:flint", 1));
                 game.world.block_entities.insert(
                     pos,
-                    sunrise_client::containers::BlockEntity::Chest(chest.clone()),
+                    sunrise_level::containers::BlockEntity::Chest(chest.clone()),
                 );
                 let host = game.lan.as_mut().unwrap();
                 host.hub.open_container(
@@ -1726,8 +1727,8 @@ pub(in crate::game) mod item_part_tests {
     #[test]
     #[ignore = "daily"]
     fn item_part_dispatches_on_resolved_pickup_and_ignores_other_drags() {
-        use sunrise_client::lan::menu::Slots;
         use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+        use sunrise_sim::lan::menu::Slots;
         with_part_only_mod(|| {
             // 1. Local menu: 1-slot left and right drags dispatch Parts; multi-slot and
             //    middle-button drags do not.
@@ -1845,7 +1846,7 @@ pub(in crate::game) mod item_part_tests {
                 let pos = (1, 64, 1);
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let stone = game
                     .pack
@@ -1856,7 +1857,7 @@ pub(in crate::game) mod item_part_tests {
                 game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
                 game.world.block_entities.insert(
                     pos,
-                    sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+                    sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
                 );
                 let host = game.lan.as_mut().unwrap();
                 host.hub.open_container(
@@ -2030,7 +2031,7 @@ pub(in crate::game) mod item_part_tests {
                 {
                     use crate::game::native_merchant_refs::tests::{offer, spawn};
                     use crate::game::trading::MerchantState;
-                    use sunrise_client::merchant::{Session, Trader};
+                    use sunrise_sim::merchant::{Session, Trader};
 
                     spawn(game, 61, "minecraft:villager");
                     game.mobs[0].position = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
@@ -2215,8 +2216,8 @@ pub(in crate::game) mod item_part_tests {
 
                 // 4. LAN mount menu (also rebuilt per packet) preserves drag state across packets.
                 {
-                    use sunrise_client::mobs::Mob;
                     use sunrise_core::geometry::Vec3;
+                    use sunrise_sim::mobs::Mob;
 
                     let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
                     let mut horse = Mob::new(62, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
@@ -2287,16 +2288,16 @@ pub(in crate::game) mod item_part_tests {
         crate::game::in_own_process(
             "game::stacked_on_other_tests::item_part_tests::hosted_furnace_counts_transfers_separately_from_smelted_callbacks",
             || {
-                use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
-                use sunrise_client::lan::menu::input;
+                use sunrise_level::containers::{BlockEntity, Furnace, FurnaceKind};
                 use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+                use sunrise_sim::lan::menu::input;
                 with_part_and_furnace_hooks_mod(|| {
                     with_guests(|game| {
                         let pos = (1, 64, 1);
                         let ingot = "minecraft:iron_ingot";
                         game.world.chunks.insert(
                             (0, 0),
-                            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                         );
                         let furnace = game
                             .pack
@@ -2424,7 +2425,7 @@ pub(in crate::game) mod item_part_tests {
     #[test]
     #[ignore = "daily"]
     fn item_part_override_contract_supports_decline_edits_and_output_slots() {
-        use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
+        use sunrise_level::containers::{BlockEntity, Furnace, FurnaceKind};
         with_part_only_mod(|| {
             with_local(|game| {
                 // 1. Declining with edits (`Flow::Continue` + `StackResult::Set`) passes edited
@@ -2493,7 +2494,7 @@ pub(in crate::game) mod item_part_tests {
                 let pos = (1, 64, 1);
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let furnace = Furnace {
                     kind: FurnaceKind::Furnace,
@@ -2726,7 +2727,7 @@ pub(in crate::game) mod item_part_tests {
                 let pos = (1, 64, 1);
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let furnace_state = game
                     .pack
@@ -2974,7 +2975,7 @@ pub(in crate::game) mod item_part_tests {
                 let pos = (2, 64, 2);
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 game.world.block_entities.insert(
                     pos,
@@ -3043,8 +3044,8 @@ pub(in crate::game) mod item_part_tests {
     #[test]
     #[ignore = "daily"]
     fn item_part_uses_real_carried_override_outcome_for_non_bundle_items() {
-        use sunrise_client::lan::menu::Slots;
         use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+        use sunrise_sim::lan::menu::Slots;
         let paper_with_bundle_contents = || {
             let mut paper = ItemStack::new("minecraft:paper", 1);
             paper.data_mut().bundle_contents = vec![ItemStack::new("minecraft:stone", 1)];
@@ -3250,7 +3251,7 @@ pub(in crate::game) mod item_part_tests {
                 let pos = (1, 64, 1);
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let stone = game
                     .pack
@@ -3263,7 +3264,7 @@ pub(in crate::game) mod item_part_tests {
                 chest[0] = Some(ItemStack::new("minecraft:flint", 1));
                 game.world.block_entities.insert(
                     pos,
-                    sunrise_client::containers::BlockEntity::Chest(chest.clone()),
+                    sunrise_level::containers::BlockEntity::Chest(chest.clone()),
                 );
                 let host = game.lan.as_mut().unwrap();
                 host.hub.open_container(

@@ -9,17 +9,17 @@
 use super::Game;
 use super::durability::Wearer;
 use serde_json::Value;
-use sunrise_client::{
-    enchant::{EffectContext, Enchantments, level_value},
-    items::{ItemStack, Items},
-    mobs::{Damage, DamageKind, Who},
-    random_source,
-};
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_items::{
+    enchant::{EffectContext, Enchantments, level_value},
+    items::{ItemStack, Items},
+};
+use sunrise_level::random_source;
+use sunrise_sim::mobs::{Damage, DamageKind, Who};
 use sunrise_world::{fluid::FluidKind, level::LevelAccess, registry::BlockStateId};
 
 /// Shared weapon damage effects; callers choose live RNG for an attack or a snapshot for a read.
@@ -363,7 +363,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             None => base,
         };
-        sunrise_client::attack_strength::extra_knockback(enchanted, scale, sprinting)
+        sunrise_sim::attack_strength::extra_knockback(enchanted, scale, sprinting)
     }
     /// `causeExtraKnockback`'s direction, `(sin yRot, -cos yRot)` from Mth's
     /// sine table: the target flies where the attacker looks, not away from
@@ -444,7 +444,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 } else if kind_of == "minecraft:ignite" {
                     ignite =
-                        ignite.max(sunrise_client::enchant::level_value(&e["duration"], *level));
+                        ignite.max(sunrise_items::enchant::level_value(&e["duration"], *level));
                 } else {
                     mob_effects.push((e.clone(), *level));
                 }
@@ -509,7 +509,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         effect: &serde_json::Value,
         level: u32,
     ) {
-        use sunrise_client::enchant::level_value;
+        use sunrise_items::enchant::level_value;
         let Some(m) = self.mobs.get_mut(mob) else {
             return;
         };
@@ -590,12 +590,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if !ok {
                     continue;
                 }
-                let radius = sunrise_client::enchant::level_value(&e["radius"], *level).max(0.0);
+                let radius = sunrise_items::enchant::level_value(&e["radius"], *level).max(0.0);
                 // ExplosionDamageCalculator.getKnockbackMultiplier: 1 unless given.
                 let knockback = if e["knockback_multiplier"].is_null() {
                     1.0
                 } else {
-                    sunrise_client::enchant::level_value(&e["knockback_multiplier"], *level)
+                    sunrise_items::enchant::level_value(&e["knockback_multiplier"], *level)
                 };
                 // ExplodeEffect.attribute_to_user: the wielder is the source.
                 bursts.push((radius, knockback, e["attribute_to_user"] == true));
@@ -781,7 +781,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let attacker = attacker.filter(|_| attacker_kind.is_some());
         let direct = direct.or(attacker_kind.as_deref());
-        use sunrise_client::mobs::finalize as f;
+        use sunrise_sim::mobs::finalize as f;
         let (id, kind, is_stand) =
             if let Some(m) = self.mobs.iter().find(|m| m.id == target && !m.removed) {
                 (m.id, m.kind.id.clone(), false)
@@ -912,7 +912,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.mob_hits_player_caused(damage, from, kind, Some(wearer));
                     }
                     Who::Mob(id) => {
-                        let source = sunrise_client::mobs::Damage {
+                        let source = sunrise_sim::mobs::Damage {
                             kind: Self::damage_kind(&self.health_resources.damage, kind),
                             attacker: Some(Who::Mob(wearer)),
                             from: Some(from),
@@ -939,11 +939,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         slot: usize,
         amount: u32,
     ) {
-        use sunrise_client::mobs::finalize as f;
+        use sunrise_sim::mobs::finalize as f;
         let (at, stack, is_stand) = if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
             let at = [m.position.x, m.position.y, m.position.z];
             let Some(stack) = f::item_stack(m, slot).filter(|s| {
-                amount > 0 && sunrise_client::stations::is_damageable(world_items!(self), s)
+                amount > 0 && sunrise_sim::stations::is_damageable(world_items!(self), s)
             }) else {
                 return;
             };
@@ -954,7 +954,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .equipment
                 .get(slot)
                 .filter(|s| {
-                    amount > 0 && sunrise_client::stations::is_damageable(world_items!(self), s)
+                    amount > 0 && sunrise_sim::stations::is_damageable(world_items!(self), s)
                 })
                 .cloned()
             else {
@@ -991,7 +991,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 f::set_slot_damage(m, slot, damage);
                 return;
             }
-            sunrise_client::mobs::drops::clear_slot(m, MOB_SLOTS[slot]);
+            sunrise_sim::mobs::drops::clear_slot(m, MOB_SLOTS[slot]);
         }
         // LivingEntity.entityEventForEquipmentBreak
         let event = [47, 48, 52, 51, 50, 49][slot];
@@ -1321,7 +1321,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let equipment = stand
             .equipment
             .iter()
-            .zip(sunrise_client::entities::ArmorStand::SLOTS)
+            .zip(sunrise_sim::entities::ArmorStand::SLOTS)
             .enumerate()
             .filter(|(i, _)| moved || landed || changed[*i])
             .filter(|(_, (stack, _))| {
@@ -1811,8 +1811,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use crate::game::damage_item_tests::{Rule, with_wear_part};
-    use sunrise_client::mobs::{Mob, finalize};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Mob, finalize};
 
     #[test]
     #[ignore = "daily"]
@@ -1860,8 +1860,8 @@ pub(in crate::game) mod tests {
         repaired_and_left, soul_speed_tick,
     };
 
-    use sunrise_client::items::ItemStack;
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_items::items::ItemStack;
     use sunrise_world::loot::PackOverlay;
 
     /// The snapshot reports a newly worn piece once, then settles.
@@ -1884,9 +1884,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn thorns_and_boots_wear_break_the_equipped_piece() {
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let mut chest = ItemStack::new("minecraft:diamond_chestplate", 1);

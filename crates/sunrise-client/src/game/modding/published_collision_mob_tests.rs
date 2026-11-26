@@ -4,9 +4,9 @@
 use super::published_shape_game_tests::{BUS, FULL, HALF, SMALL, place, shapes, with_bus};
 use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::*;
-use sunrise_client::mobs::goals::{Cx, Goal, Panic};
-use sunrise_client::mobs::{Mob, illager, villager};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::goals::{Cx, Goal, Panic};
+use sunrise_sim::mobs::{Mob, illager, villager};
 
 /// Whether this is the parent process, which ran test `name` in a child process
 /// (the content root freezes the process's block entity types).
@@ -95,7 +95,7 @@ fn the_panic_goal_looks_for_water_in_a_published_empty_shape() {
             let mut pig = Mob::new(60, kind.clone(), Vec3::new(2.5, 64.0, 2.5), 0.0);
             pig.fire_ticks = 20;
             let mut goal = Panic::new(1.0);
-            let mut test_level = sunrise_client::health::TestLevel::new(0);
+            let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let w = game.mob_world_base(&[]);
             let mut cx = Cx {
                 w: &w,

@@ -1,8 +1,9 @@
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{EntityRef, MobRef, WantedPositionError, WorldEpoch};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, mobs::Mob};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]
@@ -40,7 +41,7 @@ fn wanted_position_moves_and_navigation_replaces_the_wish() {
         assert_eq!(mob.speed_modifier(game), Some(1.0));
         let mut taken = game.mobs.lift();
         let w = game.mob_world_base(&[]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         let mut events = Vec::new();
         for _ in 0..10 {
@@ -54,30 +55,26 @@ fn wanted_position_moves_and_navigation_replaces_the_wish() {
             taken[0].position
         );
         assert!((10.5 - taken[0].position.x).abs() < 6.95);
-        game.mobs.restore(
-            taken,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        game.mobs
+            .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         let mut taken = game.mobs.lift();
         let w = game.mob_world_base(&[]);
         let mut goal =
-            sunrise_client::mobs::goals::Stroll::new(1.25).position(|_, _| Some([2.5, 65.0, 8.5]));
+            sunrise_sim::mobs::goals::Stroll::new(1.25).position(|_, _| Some([2.5, 65.0, 8.5]));
         goal.force = true;
-        let mut selector = sunrise_client::mobs::goals::GoalSelector::default();
+        let mut selector = sunrise_sim::mobs::goals::GoalSelector::default();
         selector.add(1, goal);
         selector.tick(
             &mut taken[0],
-            &mut sunrise_client::mobs::goals::Cx {
+            &mut sunrise_sim::mobs::goals::Cx {
                 w: &w,
                 level: &mut level,
                 events: &mut events,
             },
         );
         taken[0].nav_tick(&w);
-        game.mobs.restore(
-            taken,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        game.mobs
+            .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         assert_ne!(mob.wanted_position(game), Some([10.5, 65.0, 3.5]));
         assert_eq!(mob.speed_modifier(game), Some(1.25));
     });
@@ -128,10 +125,8 @@ fn wanted_position_names_invalid_inputs_and_refuses_unavailable_mobs() {
         let taken = game.mobs.lift();
         assert_eq!(mob.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
         assert_eq!(mob.wanted_position(game), None);
-        game.mobs.restore(
-            taken,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        game.mobs
+            .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 15;
         game.dragon.replace(dragon);

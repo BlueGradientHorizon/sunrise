@@ -7,7 +7,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::health::{HurtSource, Hurting, TestLevel, Victim};
+use sunrise_sim::health::{HurtSource, Hurting, TestLevel, Victim};
 use sunrise_world::living_damage::{
     DamageContainer, DamageStat, DamageWorld, Reduction as EngineReduction, actually_hurt,
 };
@@ -489,7 +489,7 @@ fn production_crash_hook_contains_reduction_panics_on_server_thread() {
         );
         return;
     }
-    sunrise_client::crash::install(home.path().to_path_buf(), "client", || None);
+    sunrise_level::crash::install(home.path().to_path_buf(), "client", || None);
 
     let panic_runs = Arc::new(AtomicUsize::new(0));
     let payload_drops = Arc::new(AtomicUsize::new(0));
@@ -498,7 +498,7 @@ fn production_crash_hook_contains_reduction_panics_on_server_thread() {
     let reports_dir = home.path().join("crash-reports");
 
     let handle = std::thread::Builder::new()
-        .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
+        .name(sunrise_level::crash::INTEGRATED_SERVER_THREAD.into())
         .spawn(move || {
             struct PanicPayload(Arc<AtomicUsize>);
             impl Drop for PanicPayload {
@@ -604,13 +604,13 @@ fn production_crash_hook_contains_reduction_panics_on_server_thread() {
                 assert_eq!(faults.len(), 1);
                 assert_eq!(faults[0].mod_id, "server_drop_mod");
                 assert_eq!(faults[0].hook, "living_damage_reduction");
-                assert!(!sunrise_client::crash::server_crashed());
+                assert!(!sunrise_level::crash::server_crashed());
                 assert!(!reports_dir.exists());
 
                 // A reduction panic does not trip `server_crashed()` or write a crash report.
                 let first = run_simple_hit(20.0, 0.0);
                 assert_eq!(first.reduction(EngineReduction::Armor), 12.0);
-                assert!(!sunrise_client::crash::server_crashed());
+                assert!(!sunrise_level::crash::server_crashed());
                 assert!(!reports_dir.exists());
 
                 let faults = mod_api::__private::take_hook_panics();
@@ -621,7 +621,7 @@ fn production_crash_hook_contains_reduction_panics_on_server_thread() {
                 // The second hit still gets server_good_mod's adjustment.
                 let second = run_simple_hit(20.0, 0.0);
                 assert_eq!(second.reduction(EngineReduction::Armor), 12.0);
-                assert!(!sunrise_client::crash::server_crashed());
+                assert!(!sunrise_level::crash::server_crashed());
                 assert!(!reports_dir.exists());
                 assert!(mod_api::__private::take_hook_panics().is_empty());
             });

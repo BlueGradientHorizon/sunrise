@@ -146,7 +146,7 @@ fn part_amount_boundaries_and_threshold_crossing() {
             assert_eq!(wear.take_asked(), [1]);
         }
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
             )
@@ -229,7 +229,7 @@ fn a_part_is_asked_after_unbreaking() {
 fn a_part_breaks_its_tool_now() {
     with_wear_part("minecraft:iron_pickaxe", Rule::Break, |game, wear| {
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
             )

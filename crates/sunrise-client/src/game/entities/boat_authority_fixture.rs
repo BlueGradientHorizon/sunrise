@@ -7,7 +7,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
 
 #[derive(Deserialize)]
@@ -51,7 +51,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             boat.velocity = Vec3::new(x, y, z);
             boat.delta_rotation = case.spin;
             self.boats.push(boat);
-            let mut player = sunrise_client::motion::PlayerMotion::new(self.motion, Vec3::ZERO)?;
+            let mut player = sunrise_sim::motion::PlayerMotion::new(self.motion, Vec3::ZERO)?;
             player.velocity = Vec3::new(
                 attack.player_velocity[0],
                 attack.player_velocity[1],
@@ -62,7 +62,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.inventory.fill(None);
             self.selected = 0;
             if attack.knockback > 0 {
-                self.inventory[0] = sunrise_client::item_data::parse_stack(&format!(
+                self.inventory[0] = sunrise_items::item_data::parse_stack(&format!(
                     r#"{{id:"minecraft:stick",count:1,components:{{"minecraft:enchantments":{{"minecraft:knockback":{}}}}}}}"#,
                     attack.knockback
                 ))?;

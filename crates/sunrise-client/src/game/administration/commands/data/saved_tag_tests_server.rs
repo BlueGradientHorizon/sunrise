@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::{Options, Progress, Settings, load_resources};
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 
 /// What `command` told the player.
 pub(in crate::game) fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> Vec<Text> {

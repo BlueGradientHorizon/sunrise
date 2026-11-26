@@ -6,7 +6,7 @@ use {
 };
 
 pub(in crate::game) fn world_attachments(
-    world: &mut sunrise_client::world::World,
+    world: &mut sunrise_level::world::World,
     holder: mod_api::Holder,
 ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
     use mod_api::{AttachmentError, Holder};
@@ -212,7 +212,7 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
                 binding, world, state, pos,
             ));
         }
-        let mut scene = sunrise_client::collisions::LookupCollisions {
+        let mut scene = sunrise_level::collisions::LookupCollisions {
             block: &|x, y, z| self.block([x, y, z]),
             binding,
         };
@@ -595,7 +595,7 @@ impl mod_api::AttachmentHost for super::native_hooks::HitLevel<'_> {
                 reads.entity_attachments.and_then(|maps| maps.get(&id))
             }
             // A parked guest's map is its hub row's; the player in place's is the game's.
-            (mod_api::Holder::Player(uuid), sunrise_client::health::LivingBody::Player(player)) => {
+            (mod_api::Holder::Player(uuid), sunrise_sim::health::LivingBody::Player(player)) => {
                 match player.attachments {
                     Some(map) => Some(map),
                     None if reads.player_uuid == Some(uuid) => reads.player_attachments,
@@ -684,7 +684,7 @@ impl super::native_hooks::HitLevel<'_> {
     fn party_body(
         &self,
         party: mod_api::__private::LivingParty,
-    ) -> Option<sunrise_client::health::LivingBody<'_>> {
+    ) -> Option<sunrise_sim::health::LivingBody<'_>> {
         let body = match party {
             mod_api::__private::LivingParty::Victim => self.0.victim(),
             mod_api::__private::LivingParty::Causing => self.0.causing_body(),
@@ -692,9 +692,9 @@ impl super::native_hooks::HitLevel<'_> {
         }?;
         Some(match body {
             // A lent attacking player is the player in place, whose UUID the reads know.
-            sunrise_client::health::LivingBody::Player(mut p) if p.uuid.is_none() => {
+            sunrise_sim::health::LivingBody::Player(mut p) if p.uuid.is_none() => {
                 p.uuid = self.0.reads().and_then(|reads| reads.player_uuid);
-                sunrise_client::health::LivingBody::Player(p)
+                sunrise_sim::health::LivingBody::Player(p)
             }
             body => body,
         })
@@ -706,10 +706,10 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
     fn living_entity(&self, party: mod_api::__private::LivingParty) -> Option<mod_api::EntityRef> {
         let reads = self.0.reads()?;
         let id = match self.party_body(party)? {
-            sunrise_client::health::LivingBody::Mob(m) => m.id,
-            sunrise_client::health::LivingBody::Player(p) => u32::try_from(p.id).ok()?,
-            sunrise_client::health::LivingBody::Stand(s)
-            | sunrise_client::health::LivingBody::Dragon(s) => s.id,
+            sunrise_sim::health::LivingBody::Mob(m) => m.id,
+            sunrise_sim::health::LivingBody::Player(p) => u32::try_from(p.id).ok()?,
+            sunrise_sim::health::LivingBody::Stand(s)
+            | sunrise_sim::health::LivingBody::Dragon(s) => s.id,
         };
         Some(mod_api::EntityRef::new(reads.epoch, id))
     }
@@ -1240,8 +1240,8 @@ super::native_tags::impl_tags!(super::native_hooks::HitLevel<'_>, level, level.0
 mod attachment_membership_tests {
     use super::*;
     use crate::game::{commands::Target, native_entity_refs::tests::with_game};
-    use sunrise_client::{join_seq::Joined, mobs::Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{join_seq::Joined, mobs::Mob};
 
     fn old_membership(game: &crate::game::ServerGame<'_>, id: u32) -> bool {
         use crate::game::entity::{Entity as _, entity_lists_of, for_each_entity};
@@ -1288,7 +1288,7 @@ mod attachment_membership_tests {
             let id = game.fangs.list[0].id;
             assert_membership(game, id);
             game.add_ominous_item_spawner(
-                sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+                sunrise_items::items::ItemStack::new("minecraft:stone", 1),
                 [0.5, 70.0, 0.5],
                 60,
             );
@@ -1299,7 +1299,7 @@ mod attachment_membership_tests {
             let mob = game.mobs[0].id;
             assert!(game.set_leash(
                 Target::Mob(mob),
-                sunrise_client::mobs::leash::Holder::Knot(fence),
+                sunrise_sim::mobs::leash::Holder::Knot(fence),
                 None
             ));
             let id = game.resident_entities.knots[0].id;
@@ -1308,14 +1308,14 @@ mod attachment_membership_tests {
             let natural_fence = [3, 70, 3];
             assert!(game.set_leash(
                 Target::Mob(mob),
-                sunrise_client::mobs::leash::Holder::Player,
+                sunrise_sim::mobs::leash::Holder::Player,
                 None
             ));
             assert!(game.use_knot(natural_fence, false));
             let id = game.side.knot_ids[&natural_fence];
             assert_membership(game, id);
             let mut player =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player.entity_id = 880;
             game.player = Some(player);
             game.bind_local_player_residency();
@@ -1384,7 +1384,7 @@ mod attachment_membership_tests {
                 }
             };
             check(game);
-            game.paintings.push(sunrise_client::entities::Painting {
+            game.paintings.push(sunrise_sim::entities::Painting {
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
                 id: 420,

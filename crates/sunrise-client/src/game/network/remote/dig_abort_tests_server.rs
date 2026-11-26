@@ -6,9 +6,10 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::connection::Pipe;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]
@@ -28,7 +29,7 @@ fn stopping_a_retained_client_dig_aborts_only_once() {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "MiningTest").unwrap();
             let pos = [0, 64, 0];
-            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+            game.set_local_mode(sunrise_command::args::GameMode::Survival);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
             game.world
                 .chunks

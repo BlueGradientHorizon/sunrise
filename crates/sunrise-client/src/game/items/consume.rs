@@ -6,13 +6,11 @@ use super::{Dim, Game};
 use crate::game::api_values::TryIntoApi;
 use crate::game::collision_source::Mover;
 use std::convert::Infallible;
-use sunrise_client::{
-    items::{ConsumeEffect, ItemInfo, ItemStack},
-    mobs::Who,
-};
 use sunrise_core::{
     geometry::Vec3, position::BlockPos, random::LegacyRandom, random::RandomSource,
 };
+use sunrise_items::items::{ConsumeEffect, ItemInfo, ItemStack};
+use sunrise_sim::mobs::Who;
 use {
     sunrise_core::use_animation::UseAnimation,
     sunrise_world::{
@@ -81,7 +79,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         if let Some(remainder) =
-            sunrise_client::item_sync::use_remainder(used, self.items().get(&used.item))
+            sunrise_sim::item_sync::use_remainder(used, self.items().get(&used.item))
         {
             if self.held().is_none() {
                 *self.held_mut() = Some(remainder);
@@ -113,7 +111,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// continuation to the owning mob loop. Callback writes and apply share a transaction.
     pub(in crate::game) fn apply_fox_consumption(
         &mut self,
-        decision: &sunrise_client::mobs::fox::Consumption,
+        decision: &sunrise_sim::mobs::fox::Consumption,
     ) -> bool {
         if !self.mobs.iter().any(|m| decision.still_valid(m)) {
             return false;
@@ -130,14 +128,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut mobs = game.mobs.lift();
                 if let Some(mob) = mobs.iter_mut().find(|m| m.id == decision.mob) {
                     let mut events = Vec::new();
-                    sunrise_client::mobs::fox::consumed_before_effects(
+                    sunrise_sim::mobs::fox::consumed_before_effects(
                         &game.mob_world_base(&[]),
                         mob,
                         &mut events,
                         &decision.stack,
                     );
                     game.mobs
-                        .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+                        .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
                     if game.handle_mob_events(events).is_err() {
                         return if mod_api::runtime::isolated_failures() != failures {
                             Err(())
@@ -147,7 +145,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 } else {
                     game.mobs
-                        .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+                        .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
                     return Ok(false);
                 }
                 let can_finish = game.apply_consumable_effects(
@@ -168,7 +166,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .iter()
                     .find(|m| m.id == decision.mob && m.alive() && !m.removed)
                 {
-                    let event = sunrise_client::mobs::MobEvent::GameEvent {
+                    let event = sunrise_sim::mobs::MobEvent::GameEvent {
                         event: if consumable.animation == UseAnimation::Drink {
                             "minecraft:drink"
                         } else {
@@ -347,7 +345,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let bounds = player.dimensions.bounds(at);
         let side = game_side!(self);
-        let free = sunrise_client::motion::MotionWorld {
+        let free = sunrise_sim::motion::MotionWorld {
             side: &side,
             entities: &entities,
             player,
@@ -374,7 +372,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let states: Vec<_> = blocks.map(|(x, y, z)| self.world.block(x, y, z)).collect();
         let liquid = states
             .iter()
-            .any(|&s| self.res.facts().get(s).fluid != sunrise_client::blocks::Fluid::None);
+            .any(|&s| self.res.facts().get(s).fluid != sunrise_items::blocks::Fluid::None);
         if !free
             || liquid
             || avoid.is_some_and(|tag| states.iter().any(|&s| self.state_in_tag(tag, s)))
@@ -479,7 +477,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.award_stat("used", &stack.item, 1);
         self.trigger_item("minecraft:consume_item", stack);
         // FoodProperties.onConsume, the player's one ConsumableListener.
-        if let Some((nutrition, saturation)) = sunrise_client::item_sync::food(stack, info.food) {
+        if let Some((nutrition, saturation)) = sunrise_sim::item_sync::food(stack, info.food) {
             let at = self.feet();
             let pitch = self.world.random.triangle_float(1.0, 0.4);
             if let Some(at) = at {
@@ -501,8 +499,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // added as a `MobEffectInstance(effect, duration)` (amplifier 0).
         if let Some(data) = stack.extra.as_deref() {
             for (id, duration) in &data.stew_effects {
-                if let Some(def) = sunrise_client::brewing::effect(id) {
-                    self.add_player_effect(sunrise_client::effects::EffectInstance::new(
+                if let Some(def) = sunrise_level::brewing::effect(id) {
+                    self.add_player_effect(sunrise_level::effects::EffectInstance::new(
                         def.id, *duration, 0,
                     ));
                 }
@@ -548,9 +546,9 @@ impl EmissionWorld for Emitter<'_, '_> {
             && let Some(at) = self.0.eye_position()
         {
             self.0
-                .server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+                .server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
                     dimension: self.0.dim.id(),
-                    particle: crate::lan::server_effects::ServerParticle::item(stack),
+                    particle: sunrise_sim::lan::server_effects::ServerParticle::item(stack),
                     at,
                     spread: [0.0; 3],
                     speed: [0.0; 3],
@@ -719,11 +717,11 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum MobConsumption<'a> {
-    Fox(&'a sunrise_client::mobs::fox::Consumption),
+    Fox(&'a sunrise_sim::mobs::fox::Consumption),
     Drink(&'a ItemStack),
 }
 impl MobConsumption<'_> {
-    pub(in crate::game) fn still_valid(self, mob: &sunrise_client::mobs::Mob, from: Vec3) -> bool {
+    pub(in crate::game) fn still_valid(self, mob: &sunrise_sim::mobs::Mob, from: Vec3) -> bool {
         match self {
             Self::Fox(decision) => decision.still_valid_at(mob, from),
             Self::Drink(stack) => {
@@ -897,7 +895,7 @@ pub(in crate::game) mod teleport_hook_tests {
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
     struct ConsumptionProbe(Arc<Mutex<Vec<mod_api::ItemStack>>>, Arc<AtomicBool>);
     #[mod_api::__subscriptions]
@@ -1056,7 +1054,7 @@ pub(in crate::game) mod fox_consumption_hook_tests {
         Arc, Mutex,
         atomic::{AtomicU8, Ordering},
     };
-    use sunrise_client::mobs::{Mob, fox};
+    use sunrise_sim::mobs::{Mob, fox};
 
     struct Probe {
         mode: Arc<AtomicU8>,
@@ -1195,7 +1193,7 @@ pub(in crate::game) mod fox_consumption_hook_tests {
             with_game(|game| {
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let stone = game
                     .pack
                     .assets
@@ -1321,7 +1319,7 @@ pub(in crate::game) mod fox_consumption_hook_tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let stone = game
                     .pack
                     .assets

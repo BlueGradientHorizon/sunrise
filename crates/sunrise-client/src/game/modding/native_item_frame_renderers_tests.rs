@@ -12,9 +12,9 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::entities::ItemFrame;
-use sunrise_client::items::ItemStack;
 use sunrise_client::mesher::Vertex;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ItemFrame;
 
 /// One stone quad a block wide, `height` blocks above the entity.
 fn raised_quad(draw: &mut dyn BlockEntityDrawContext, height: f32) {
@@ -110,7 +110,7 @@ fn hanging(id: u32, glow: bool) -> ItemFrame {
         check_interval: 0,
         ticks: 0,
         custom_name: None,
-        random: sunrise_client::random_source::entity(),
+        random: sunrise_level::random_source::entity(),
     }
 }
 

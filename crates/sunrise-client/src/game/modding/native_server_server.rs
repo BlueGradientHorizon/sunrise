@@ -26,17 +26,17 @@ use serde_json::json;
 #[allow(unused_imports)]
 use std::sync::{LazyLock, Mutex, atomic::Ordering};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use sunrise_client::{
-    command::{Arg, ArgType, Context},
-    items::ItemStack,
+use sunrise_client_core::text::Text;
+use sunrise_command::{Arg, ArgType, Context};
+use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::{
     lan::{
         abilities::PlayerAbilities, data::component_nbt, guest::Guest, scoreboard::SidebarContents,
     },
     motion::PlayerMotion,
-    text::Text,
 };
-use sunrise_core::position::BlockPos;
-use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 #[path = "native_server/registered_commands_server.rs"]
 pub(in crate::game) mod registered_commands;
@@ -136,7 +136,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<PlayerRef> {
         if !self.level_in_place(level)
             || !self.side.lan_guest_swaps.is_empty()
-            || !sunrise_client::offline_name::valid_name(name)
+            || !sunrise_sim::offline_name::valid_name(name)
         {
             return None;
         }
@@ -144,7 +144,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .level
             .player_uuid
-            .map(sunrise_client::lan::playerdata::ints_uuid)
+            .map(sunrise_sim::lan::playerdata::ints_uuid)
             == Some(uuid)
         {
             return None;
@@ -371,7 +371,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 || self
                     .level
                     .player_uuid
-                    .map(sunrise_client::lan::playerdata::ints_uuid)
+                    .map(sunrise_sim::lan::playerdata::ints_uuid)
                     != Some(uuid)
             {
                 return None;
@@ -611,7 +611,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .level
                 .player_uuid
-                .map(sunrise_client::lan::playerdata::ints_uuid)
+                .map(sunrise_sim::lan::playerdata::ints_uuid)
                 == Some(player.uuid())
         {
             return Some(self.dim.key());
@@ -878,7 +878,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `chunk_ticket_level_updated`, with no player's state swapped in. The
     /// tickets keep them only while a mod listens (`update_chunk_tickets`).
     pub(in crate::game::server_side) fn run_chunk_ticket_level_updates(&mut self) {
-        use sunrise_client::ticket_levels::UNLOADED;
+        use sunrise_sim::ticket_levels::UNLOADED;
         let changes = self.side.tickets.0.take_changes();
         if changes.is_empty() {
             return;
@@ -901,7 +901,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// after it. The player handle is built from the record, so an unwatch
     /// after a disconnect still names them. Nothing while the log is empty.
     pub(in crate::game) fn run_chunk_watches(&mut self) {
-        use sunrise_client::lan::chunk_watch::ChunkWatchKind;
+        use sunrise_sim::lan::chunk_watch::ChunkWatchKind;
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -946,7 +946,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         line: &str,
         capture: bool,
-    ) -> (bool, Vec<sunrise_client::text::Text>) {
+    ) -> (bool, Vec<sunrise_client_core::text::Text>) {
         if self.lan.is_none() {
             return (false, Vec::new());
         }
@@ -1011,15 +1011,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Ok(Ok(value)) => Ok(value),
             // Failure text can reach a packet or a saved command block. An
             // invalid component still reports an ordinary failed command.
-            Ok(Err(message)) => Err(sunrise_client_lib::api_text::to_serialized_engine(&message)
+            Ok(Err(message)) => Err(sunrise_sim::api_text::to_serialized_engine(&message)
                 .map_or_else(
                     |_| err("command.failed", &[]),
-                    sunrise_client::command::CommandError::new,
+                    sunrise_command::CommandError::new,
                 )),
             Err(RetainedFailure::Disabled) => Err(err("command.unknown.command", &[])),
-            Err(RetainedFailure::Panicked) => {
-                Err(sunrise_client::command::CommandError::unexpected())
-            }
+            Err(RetainedFailure::Panicked) => Err(sunrise_command::CommandError::unexpected()),
         }
     }
     /// The open world's folder (`world/`, beside its `level.dat`): a server
@@ -1559,7 +1557,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn resolve_native_command(
         &mut self,
         context: Context,
-    ) -> Result<mod_api::CommandInvocation, sunrise_client::command::CommandError> {
+    ) -> Result<mod_api::CommandInvocation, sunrise_command::CommandError> {
         use super::commands::err;
         use mod_api::{CommandArgument, CommandArgumentValue as Value};
         let mut arguments = Vec::with_capacity(context.args.len());
@@ -1581,7 +1579,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 return None;
                             }
                             match &self.ui.dispatcher.0.nodes[*node].kind {
-                                sunrise_client::command::NodeKind::Argument {
+                                sunrise_command::NodeKind::Argument {
                                     ty: ArgType::Entity { single, players },
                                     ..
                                 } => Some((*single, *players)),
@@ -1665,7 +1663,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Some(self.dedicated_lan()?.port)
     }
 
-    pub(in crate::game) fn dedicated_lan(&self) -> Option<&sunrise_client::lan::Lan> {
+    pub(in crate::game) fn dedicated_lan(&self) -> Option<&sunrise_sim::lan::Lan> {
         self.options.dedicated.as_ref()?;
         Some(&self.lan.as_ref()?.hub.lan)
     }
@@ -1680,7 +1678,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn server_world_table_items(
         &self,
-    ) -> Option<&Arc<sunrise_client::items::Items>> {
+    ) -> Option<&Arc<sunrise_items::items::Items>> {
         self.side
             .world_tables
             .0
@@ -1822,7 +1820,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             && self
                 .level
                 .player_uuid
-                .map(sunrise_client::lan::playerdata::ints_uuid)
+                .map(sunrise_sim::lan::playerdata::ints_uuid)
                 == Some(uuid)
         {
             let body = self.player.as_ref()?;
@@ -2021,7 +2019,7 @@ pub(in crate::game) mod tests {
                                 .unwrap()
                                 .hub
                                 .update_guest(12, |guest| {
-                                    guest.sender = sunrise_client::lan::PlayerSender::new(
+                                    guest.sender = sunrise_sim::lan::PlayerSender::new(
                                         sent,
                                         Default::default(),
                                     );
@@ -2031,9 +2029,9 @@ pub(in crate::game) mod tests {
                             let packet = received
                                 .try_iter()
                                 .flat_map(|out| match out {
-                                    sunrise_client::lan::Out::Packet(body) => vec![body],
-                                    sunrise_client::lan::Out::Packets(bodies) => bodies,
-                                    sunrise_client::lan::Out::Disconnect(_) => {
+                                    sunrise_sim::lan::Out::Packet(body) => vec![body],
+                                    sunrise_sim::lan::Out::Packets(bodies) => bodies,
+                                    sunrise_sim::lan::Out::Disconnect(_) => {
                                         panic!("reload disconnected guest")
                                     }
                                 })
@@ -2068,7 +2066,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn native_command_feedback_respects_track_output_and_silence() {
         use super::super::commands::execute::Source;
-        use sunrise_client::chunk::block_entity::BlockEntity;
+        use sunrise_level::chunk::block_entity::BlockEntity;
         with_command_sources(|game| {
             let source = Source {
                 block: Some((1, 64, 1)),
@@ -2126,11 +2124,11 @@ pub(in crate::game) mod tests {
             "game::server_side::native_server_server::tests::native_commands_keep_function_block_and_cart_sources",
             || {
                 use mod_api::{CommandSource, PermissionLevel as Permission};
-                use sunrise_client::{
+                use sunrise_core::position::BlockPos;
+                use sunrise_level::{
                     chunk::block_entity::BlockEntity,
                     datapack::{Function, FunctionLine},
                 };
-                use sunrise_core::position::BlockPos;
                 struct Commands(Arc<Mutex<Vec<CommandSource>>>);
                 #[mod_api::__subscriptions]
                 impl mod_api::Hooks for Commands {
@@ -2481,7 +2479,7 @@ pub(in crate::game) mod fake_action_tests {
     use crate::game::native_server::fake_action_tests::place;
     use crate::game::native_server::fake_action_tests::zombie;
     use mod_api::{BlockHit, Hand};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]
@@ -2596,7 +2594,7 @@ pub(in crate::game) mod fake_action_tests {
             );
             assert!(game.side.ender_open.is_none());
             match game.world.block_entities.get(&key) {
-                Some(sunrise_client::chunk::block_entity::BlockEntity::Chest(items)) => assert!(
+                Some(sunrise_level::chunk::block_entity::BlockEntity::Chest(items)) => assert!(
                     items.iter().all(Option::is_none),
                     "the player's items stayed"
                 ),

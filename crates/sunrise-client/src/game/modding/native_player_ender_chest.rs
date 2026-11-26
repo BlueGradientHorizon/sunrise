@@ -7,12 +7,10 @@ use super::{
     native_server::PlayerRead,
 };
 use mod_api::{InventoryView, MenuReplace, OpenMenuError, PlayerDataRefusal, PlayerRef};
-use sunrise_client::{
-    items::ItemStack,
-    lan::{data::component_nbt, menu::Slots},
-    text::Text,
-};
+use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::{data::component_nbt, menu::Slots};
 
 /// `PlayerEnderChestContainer`'s size.
 const SLOTS: usize = 27;
@@ -34,7 +32,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .ender_open
                 .and_then(|key| self.world.block_entities.get(&key))
             {
-                Some(sunrise_client::containers::BlockEntity::Chest(items)) => items,
+                Some(sunrise_level::containers::BlockEntity::Chest(items)) => items,
                 _ => &self.side.ender_items,
             },
             PlayerRead::Guest(g) => &g.ender_items,

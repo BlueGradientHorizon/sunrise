@@ -1,6 +1,6 @@
 //! Fence knot state and the pure leash decisions of leads.
-use sunrise_client::mobs::leash::{self, Holder, Pending};
 use sunrise_core::nbt::Tag;
+use sunrise_sim::mobs::leash::{self, Holder, Pending};
 
 /// Natural fence knot: the fence is its authoritative position, not a render cache.
 /// Its JoinList carries the common residency binding and journal.
@@ -8,10 +8,10 @@ pub struct Knot {
     /// Entity-owned registration metadata; content clones are detached.
     pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub id: u32,
-    pub join: sunrise_client::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     pub fence: [i32; 3],
 }
-sunrise_client::impl_joined!(Knot);
+sunrise_sim::impl_joined!(Knot);
 sunrise_mod_runtime::impl_attachment_lifetime!(Knot);
 
 /// Whether a mob's lead is held by `acting` (`getLeashHolder() == player`).
@@ -42,7 +42,7 @@ pub fn resolve_pending_leash(
         // leashes lost their real UUID, so this owner recovery is best effort.
         Pending::Uuid(u)
             if u == player_uuid
-                && u == sunrise_client::lan::playerdata::uuid_ints(
+                && u == sunrise_sim::lan::playerdata::uuid_ints(
                     sunrise_protocol::crypto::offline_uuid("Player"),
                 )
                 && owner_uuid.is_some() =>

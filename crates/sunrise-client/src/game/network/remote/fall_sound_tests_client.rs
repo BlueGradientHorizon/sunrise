@@ -1,7 +1,8 @@
 use crate::game::native_client_session::tests::logged_client;
 use crate::game::native_entity_refs::tests::with_client_game;
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 /// The `minecraft:block.stone.fall` sounds the landing player's own client plays
 /// for a 5-block fall onto stone, as (volume, pitch).

@@ -1,14 +1,14 @@
 //! What the custom spawners (`CustomSpawner`: cats, the wandering trader, the village siege) call on `ServerLevel`.
 
 use std::collections::HashSet;
-use sunrise_client::{
-    blocks::BlockFacts,
-    join_seq::JoinList,
-    mobs::{Mob, Species, raider, spawn_rules},
-    world::World,
-};
 use sunrise_client_core::gamerules::RuleIndex;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::blocks::BlockFacts;
+use sunrise_level::world::World;
+use sunrise_sim::{
+    join_seq::JoinList,
+    mobs::{Mob, Species, raider, spawn_rules},
+};
 
 /// `SectionPos` of a block position.
 pub fn section(p: [i32; 3]) -> (i32, i32, i32) {

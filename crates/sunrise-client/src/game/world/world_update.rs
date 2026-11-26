@@ -9,7 +9,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             !self.is_logical_server(),
             "client_update_world called on server"
         );
-        if let Err(e) = sunrise_client::spans::time("poll_remote", || self.poll_remote()) {
+        if let Err(e) = sunrise_level::spans::time("poll_remote", || self.poll_remote()) {
             log::warn!("Sunrise: {e}");
         }
         if let Err(e) = self.advance_studio_replay() {
@@ -32,10 +32,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.clear_lod();
             self.all_sections_changed();
         }
-        sunrise_client::spans::time("prepare_lod", || self.prepare_lod());
+        sunrise_level::spans::time("prepare_lod", || self.prepare_lod());
         // The columns the single-player server changed in bulk without sending them, which far terrain still drew
         // as this window last saw them: summarized again (taken every tick, far terrain on or off, so none waits).
-        let changed = sunrise_client::lan::handoff::take_changed();
+        let changed = sunrise_sim::lan::handoff::take_changed();
         if let Some(lod) = &mut self.side.lod.0 {
             for chunk in changed {
                 let column = (chunk.x, chunk.z);
@@ -70,7 +70,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.side.streaming.hold_unknown_tickets();
         self.side.streaming.upload_backlog = self.side.pending_uploads.0.len();
-        let plan = sunrise_client::spans::time("streaming_plan", || {
+        let plan = sunrise_level::spans::time("streaming_plan", || {
             let mut step = self.side.streaming.begin_plan_update(&mut self.world);
             loop {
                 match step {
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         let (commit, protos) = self.side.streaming.prepare_commit(&mut self.world, plan);
         self.side.streaming.submit_protos(protos);
-        let (mut uploads, unloaded) = sunrise_client::spans::time("streaming", || {
+        let (mut uploads, unloaded) = sunrise_level::spans::time("streaming", || {
             self.side.streaming.complete_commit(&mut self.world, commit)
         });
         // Sections chosen to mesh wait for the mods' `section_visibility` (none without a mod).
@@ -105,7 +105,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.ask_loaded_light_emission();
         // Vanilla saves the chunk before its unload hook and drops its block entities afterwards.
-        sunrise_client::spans::time("mods_chunks_changed", || {
+        sunrise_level::spans::time("mods_chunks_changed", || {
             self.native_chunks_loaded();
             self.native_chunks_unloaded(&unloaded);
         });
@@ -122,7 +122,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Unloaded columns first (their summaries are all that remains),
             // then a few resident ones (an edit copies a chunk the worker
             // still holds). The worker summarizes them.
-            sunrise_client::spans::time("lod_observe", || {
+            sunrise_level::spans::time("lod_observe", || {
                 for chunk in &unloaded {
                     lod.observe(chunk.clone(), self.res.facts());
                 }
@@ -140,9 +140,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.world.modified.unloaded(&(chunk.x, chunk.z));
         }
         if !unloaded.is_empty() {
-            let gone: sunrise_client::fast_hash::FxHashSet<(i32, i32)> =
+            let gone: sunrise_level::fast_hash::FxHashSet<(i32, i32)> =
                 unloaded.iter().map(|c| (c.x, c.z)).collect();
-            sunrise_client::spans::time("unload_block_entities", || {
+            sunrise_level::spans::time("unload_block_entities", || {
                 for &column in &gone {
                     self.world.block_entities.unload_column(column);
                 }
@@ -152,7 +152,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .retain(|p, _| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
         }
         let (far_distance, far_reduced) =
-            sunrise_client::spans::time("far_terrain_choice", || self.far_terrain_choice());
+            sunrise_level::spans::time("far_terrain_choice", || self.far_terrain_choice());
         // Terrain still on its way from the server (single player's integrated one
         // too): the view's outermost columns not all in, or its events not all handled.
         let radius = match &self.remote {
@@ -164,7 +164,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let has = |column: (i32, i32)| self.world.chunks.contains_key(&column);
         let now = Instant::now();
         let arriving = {
-            let _span = sunrise_client::spans::guard("view_arrival");
+            let _span = sunrise_level::spans::guard("view_arrival");
             self.side.view_arrival.arriving(view, now, has) || self.remote_backlog() > 0
         };
         // Which far tiles a zoom magnifies (`lod::ZoomAim`), read before
@@ -186,7 +186,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && self.side.pending_uploads.0.is_empty()
                 && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
-                sunrise_client::spans::time("upload", || {
+                sunrise_level::spans::time("upload", || {
                     for upload in &uploads {
                         if self.side.streaming.can_publish_mesh(&self.world, upload) {
                             renderer.upload(upload.key, &upload.mesh);
@@ -203,8 +203,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // mesh of a waiting section replaces it, and sections of
                 // chunks no longer loaded are dropped.
                 let pending = &mut self.side.pending_uploads.0;
-                let order_span = sunrise_client::spans::guard("order_uploads");
-                let fresh: sunrise_client::fast_hash::FxHashSet<(i32, i32, i32)> =
+                let order_span = sunrise_level::spans::guard("order_uploads");
+                let fresh: sunrise_level::fast_hash::FxHashSet<(i32, i32, i32)> =
                     uploads.iter().map(|upload| upload.key).collect();
                 let current = |upload: &sunrise_client_render::streaming::MeshUpload| {
                     self.world
@@ -251,7 +251,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let auto =
                     (!budgeted).then(|| self.side.upload_pace.budget(pending.len(), arriving));
                 let started = Instant::now();
-                let upload_span = sunrise_client::spans::guard("upload_queue");
+                let upload_span = sunrise_level::spans::guard("upload_queue");
                 while let Some(upload) = pending.last() {
                     let mesh = &upload.mesh;
                     if auto.is_some_and(|time| count > 0 && started.elapsed() >= time) {
@@ -297,7 +297,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 );
                 let covered = (self.side.lod_covered_at != Some(at)).then(|| {
                     self.side.lod_covered_at = Some(at);
-                    sunrise_client::spans::time("lod_covered_set", || {
+                    sunrise_level::spans::time("lod_covered_set", || {
                         renderer
                             .lod_detail_columns()
                             .filter(|&(x, z)| {
@@ -318,13 +318,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     });
                 let camera =
                     camera_pos.unwrap_or([player.position.x, player.position.y, player.position.z]);
-                let meshes = sunrise_client::spans::time("lod_update", || {
+                let meshes = sunrise_level::spans::time("lod_update", || {
                     lod.update(camera, detail, lod_distance, covered, lod_aim)
                 });
                 renderer.queue_lods(meshes, lod.removed(), lod.take_cutout());
                 // A finished job can hold hundreds of tiles: spread them
                 // over frames rather than stall one.
-                sunrise_client::spans::time("lod_upload", || {
+                sunrise_level::spans::time("lod_upload", || {
                     renderer.upload_lods(std::time::Duration::from_millis(2))
                 });
             }

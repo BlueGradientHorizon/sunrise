@@ -1,7 +1,8 @@
 use super::*;
 use crate::game::FallingBlock;
-use sunrise_client::{Result, collisions};
+use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::collisions;
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity},
     entity_move::MoverType,
@@ -17,9 +18,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         f.previous = f.position;
         f.age = f.age.wrapping_add(1);
-        f.velocity.y -= sunrise_client::entity_rules::EntityRules::get_gravity(f);
+        f.velocity.y -= sunrise_sim::entity_rules::EntityRules::get_gravity(f);
         let wanted = f.velocity;
-        let mut gate = sunrise_client::move_gate::armed(
+        let mut gate = sunrise_sim::move_gate::armed(
             &self.loop_context,
             f.id,
             "minecraft:falling_block",
@@ -56,7 +57,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             entities: &[],
             border: Some((self.border.geometry(), [f.position.x, f.position.z])),
         };
-        let movement = sunrise_client::move_gate::entities_resolve_with_context(
+        let movement = sunrise_sim::move_gate::entities_resolve_with_context(
             &mut gate,
             &mut collisions,
             f.bounds(),
@@ -75,7 +76,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let from = f.position;
         f.position = next;
-        let body = sunrise_client::motion::BodyMotion {
+        let body = sunrise_sim::motion::BodyMotion {
             world: &self.world,
             collision: self.collision,
             facts: self.res.facts(),
@@ -85,7 +86,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         if !gate.skipped() {
             body.record_move(
-                sunrise_client::motion::BodyCollision {
+                sunrise_sim::motion::BodyCollision {
                     footprint: (f.position, f.bounds()),
                     movement: (wanted, movement),
                     authoritative: false,
@@ -104,12 +105,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let side_server = self.game_side_client();
         let response = self.body_motion(&game_side!(self, side_server)).restitute(
             entity,
-            sunrise_client::motion::BodyMove {
+            sunrise_sim::motion::BodyMove {
                 wanted,
                 moved: movement,
                 effect,
             },
-            sunrise_client::entity_rules::EntityRules::get_gravity(f),
+            sunrise_sim::entity_rules::EntityRules::get_gravity(f),
             0.98_f32,
             f.velocity,
             f.fall_distance,
@@ -125,7 +126,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let facts = self.res.facts();
         let (registry, collision) = (self.pack.assets.registry, self.collision);
         let mut tops = Vec::new();
-        let stuck = sunrise_client::falling_block::apply_effects_from_blocks(
+        let stuck = sunrise_sim::falling_block::apply_effects_from_blocks(
             from,
             f.position,
             recorded.then_some(wanted),
@@ -133,11 +134,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             &mut f.fall_distance,
             &mut tops,
             |p| {
-                use sunrise_client::falling_block::Inside;
+                use sunrise_sim::falling_block::Inside;
                 if &*facts.get(world.block(p.x, p.y, p.z)).name == "minecraft:cobweb" {
                     Inside::Cobweb
                 } else if let Some(column) =
-                    sunrise_client::motion::bubble_column_at(world, registry, facts, collision, p)
+                    sunrise_sim::motion::bubble_column_at(world, registry, facts, collision, p)
                 {
                     Inside::BubbleColumn(column)
                 } else {
@@ -150,12 +151,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let fluids = &self.res.motion().fluids;
         let touches = |family| {
-            sunrise_client::entities::fluid_contacts(
+            sunrise_sim::entities::fluid_contacts(
                 from,
                 f.position,
                 recorded.then_some(wanted),
-                sunrise_client::falling_block::bounds,
-                |p| sunrise_client::entities::fluid_height(world, fluids, p, family),
+                sunrise_sim::falling_block::bounds,
+                |p| sunrise_sim::entities::fluid_height(world, fluids, p, family),
             ) > 0
         };
         let previous_fire = f.fire_ticks;
@@ -170,7 +171,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             fire = 0;
         }
         f.fire_ticks = fire;
-        f.velocity = sunrise_client::entity_rules::scale_air_drag(f.velocity);
+        f.velocity = sunrise_sim::entity_rules::scale_air_drag(f.velocity);
         Ok(())
     }
 

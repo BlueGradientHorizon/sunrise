@@ -1,14 +1,14 @@
 //! `Zombie.hurtServer`'s reinforcements: a hurt zombie on Hard may call
 //! another of its kind from 7 to 40 blocks away to fight its target.
 use super::Game;
-use sunrise_client::mobs::{
+use sunrise_core::random::{LegacyRandom, LevelRandom, RandomSource};
+use sunrise_sim::mobs::{
     MobType, Species, Who,
     finalize::{self, Attr, Op},
     spawn_rules::{self, Reason},
     spawn_selection::{self, NaturalLevel},
     spawner::SpawnerLevel,
 };
-use sunrise_core::random::{LegacyRandom, LevelRandom, RandomSource};
 use sunrise_world::food::Difficulty;
 
 /// `Zombie.REINFORCEMENT_ATTEMPTS`.
@@ -44,11 +44,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
         {
             return;
         }
@@ -74,7 +74,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             spot.map(f64::from),
             false,
             super::creatures::SpawnSite::Finalizing(
-                sunrise_client::mobs::spawn_rules::Reason::Reinforcement,
+                sunrise_sim::mobs::spawn_rules::Reason::Reinforcement,
             ),
         ) else {
             return;

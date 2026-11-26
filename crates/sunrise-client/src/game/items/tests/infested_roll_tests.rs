@@ -2,13 +2,13 @@
 //! was not blocked, even when armor or absorption eats all of it.
 use crate::game::{Options, Progress, Settings, execution_role, load_resources};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::effects::EffectInstance;
-use sunrise_client::mobs::Mob;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 use sunrise_core::random::RandomSource;
+use sunrise_level::chunk::Chunk;
+use sunrise_level::effects::EffectInstance;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::motion::PlayerMotion;
 
 /// A game over 5x5 empty chunks around (0, 0) with a stone floor at y = 3, so
 /// the silverfish the roll spawns at (8.5, 4, 8.5) have a loaded chunk.
@@ -176,7 +176,7 @@ fn a_starving_infested_player_rolls_the_infested_effect() {
             &g.loop_context,
             crate::game::entity::damage_level_of!(
                 g,
-                &sunrise_client::health::NO_ATTACK,
+                &sunrise_sim::health::NO_ATTACK,
                 no_push,
                 None
             ),

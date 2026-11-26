@@ -11,8 +11,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::entities::Painting;
 use sunrise_client::mesher::Vertex;
+use sunrise_sim::entities::Painting;
 
 /// One stone quad a block wide, `height` blocks above the entity.
 fn raised_quad(draw: &mut dyn BlockEntityDrawContext, height: f32) {

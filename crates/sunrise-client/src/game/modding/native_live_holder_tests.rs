@@ -5,7 +5,7 @@ use mod_api::{
     BlockEntityPart, BlockEntityTickEvent, BlockEntityTicksEvent, BlockPart, BlocksEvent, Hooks,
     Host, HostTransaction, Registrar, ServerHost, TransactionError,
 };
-use sunrise_client::{
+use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity},
 };
@@ -223,13 +223,13 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
             wide[256] = 9;
             assert_eq!(entity.set_data_slots(game, wide.clone()), Ok(true));
             assert_eq!(entity.data_slots(game), Some(wide));
-            let saved = sunrise_client::save::block_entity_encode::encode(
+            let saved = sunrise_sim::save::block_entity_encode::encode(
                 pos,
                 game.world.block_entities.get(&pos).unwrap(),
                 "minecraft:stone",
                 &Default::default(),
             );
-            let (loaded_pos, loaded) = sunrise_client::save::decode_block_entity(&saved).unwrap();
+            let (loaded_pos, loaded) = sunrise_sim::save::decode_block_entity(&saved).unwrap();
             game.world.block_entities.remove(&pos);
             assert_eq!(
                 entity.set_data_slots(game, vec![8]),

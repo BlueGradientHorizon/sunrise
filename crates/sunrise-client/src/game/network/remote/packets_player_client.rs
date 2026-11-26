@@ -41,10 +41,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `C::Commands`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_commands_packet(&mut self, p: play::Commands) {
-        let tree = sunrise_client::command::network::from_packet(
-            &p,
-            sunrise_client::command::vanilla::dispatcher(),
-        );
+        let tree =
+            sunrise_command::network::from_packet(&p, sunrise_command::vanilla::dispatcher());
         // The chat's tree follows the server's now; a mod's commands
         // go into it again (`chat_tree_for`).
         let chat_tree = self.chat_tree_for(Some(&tree));
@@ -355,7 +353,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             p.unsigned_content.as_ref().map_or_else(
                 || serde_json::Value::from(p.content.as_str()),
-                sunrise_client::scoreboard::tag_to_json,
+                sunrise_client_core::scoreboard::tag_to_json,
             )
         };
         let signed = signature.is_some();
@@ -446,7 +444,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 for e in &p.entries {
                     if let Some(name) = &e.name {
                         r.tab_players.entry(e.uuid).or_insert_with(|| {
-                            sunrise_client::tab_list::TabPlayer::new(e.uuid, name.clone())
+                            sunrise_level::profile_lookup::TabPlayer::new(e.uuid, name.clone())
                         });
                         r.tab_game_modes
                             .entry(e.uuid)
@@ -511,7 +509,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         t.latency = latency;
                     }
                     if let Some(name) = &e.display_name {
-                        t.display_name = name.as_ref().map(sunrise_client::scoreboard::tag_to_json);
+                        t.display_name = name
+                            .as_ref()
+                            .map(sunrise_client_core::scoreboard::tag_to_json);
                     }
                     if let Some(order) = e.list_order {
                         t.list_order = order;
@@ -609,7 +609,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.dim.id(),
         );
         if dimension_changed {
-            sunrise_client::spans::startup::arm("dimension.change");
+            sunrise_level::spans::startup::arm("dimension.change");
         }
         // handleRespawn makes a new ClientLevel for another dimension
         // key (a proxy's server switch too): its predictions count from 0.
@@ -686,7 +686,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             2 => "below_name".to_owned(),
             n @ 3..=18 => format!(
                 "sidebar.team.{}",
-                sunrise_client::text::COLORS[(n - 3) as usize].1
+                sunrise_client_core::text::COLORS[(n - 3) as usize].1
             ),
             _ => "sidebar".to_owned(),
         };
@@ -776,7 +776,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             s.display = p
                 .display
                 .as_ref()
-                .map(sunrise_client::scoreboard::tag_to_json);
+                .map(sunrise_client_core::scoreboard::tag_to_json);
             s.number_format = p.number_format.as_ref().map(number_format);
         }
     }
@@ -805,8 +805,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn apply_tab_list_packet(&mut self, p: play::TabList) {
         // handleTabListCustomisation: empty text clears it.
         let text = |t: &Tag| {
-            let json = sunrise_client::scoreboard::tag_to_json(t);
-            let text = sunrise_client::scoreboard::comp_text(&json);
+            let json = sunrise_client_core::scoreboard::tag_to_json(t);
+            let text = sunrise_client_core::scoreboard::comp_text(&json);
             text.spans
                 .iter()
                 .any(|span| !span.text.is_empty())

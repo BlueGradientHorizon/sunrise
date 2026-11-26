@@ -7,7 +7,7 @@ use serde_json::Value;
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Literal ranges retain priority; all remaining consumers resolve the same holder snapshot.
     pub(in crate::game::server_side) fn resolved_slot_source(&self, raw: &str) -> R<Option<Value>> {
-        if sunrise_client::command::args::slot_ranges()
+        if sunrise_command::args::slot_ranges()
             .iter()
             .any(|(name, _)| name == raw)
         {

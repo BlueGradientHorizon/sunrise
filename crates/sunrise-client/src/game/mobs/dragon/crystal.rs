@@ -25,8 +25,8 @@ impl Crystal {
     /// `time = random.nextInt(100000)`. The level's random draws nothing. Returns the drawn time
     /// (for `start_time`) and the UUID.
     pub(in crate::game::server_side) fn own_draws() -> (i32, [i32; 4]) {
-        let mut random = sunrise_client::random_source::entity();
-        let uuid = sunrise_client::save::insecure_uuid(&mut random);
+        let mut random = sunrise_level::random_source::entity();
+        let uuid = sunrise_sim::save::insecure_uuid(&mut random);
         (random.next_int_bound(100_000).unwrap_or(0), uuid)
     }
     /// The start of `time` (the spin and bob) for a crystal at `position`: the random draw
@@ -36,7 +36,7 @@ impl Crystal {
     /// either way, so the random stays where it would be.
     pub(in crate::game) fn start_time(position: Vec3, drawn: i32, still: bool) -> i32 {
         if still {
-            sunrise_client::mobs::entity_random(0, position)
+            sunrise_sim::mobs::entity_random(0, position)
                 .next_int_bound(100_000)
                 .unwrap_or(0)
         } else {

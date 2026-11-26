@@ -4,7 +4,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn finish_player_autosaves(&mut self, wait: bool) -> Result<bool> {
         let saved = self.side.player_autosaves.0.completed(wait);
         if !saved.is_empty() {
-            let directory = sunrise_client::lan::playerdata::directory(&self.side.world_root);
+            let directory = sunrise_sim::lan::playerdata::directory(&self.side.world_root);
             for player in saved {
                 self.native_player_save_to_file(player.uuid, &player.name, &directory);
             }
@@ -45,7 +45,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         )?;
         // PlayerEvent.SaveToFile for the owner, once level.dat is written.
         if let Some((uuid, name)) = stored_owner {
-            let directory = sunrise_client::lan::playerdata::directory(&self.side.world_root);
+            let directory = sunrise_sim::lan::playerdata::directory(&self.side.world_root);
             self.native_player_save_to_file(uuid, &name, &directory);
         }
         // PlayerList.saveAll: every placed player saves with the server, to

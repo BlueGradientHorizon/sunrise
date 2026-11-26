@@ -4,8 +4,8 @@ use super::*;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     /// A dead sheep: its table always drops at least one mutton, so the
     /// ordering against the drop list does not wait for a lucky roll.

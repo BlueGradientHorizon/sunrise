@@ -5,10 +5,11 @@ use crate::game::{
 };
 use mod_api::{Flow, HearsProjectileImpactsEvent, Hooks, ProjectileImpactEvent, ServerHost};
 use std::sync::{Arc, Mutex, atomic::Ordering};
-use sunrise_client::{chunk::Chunk, join_seq::JoinSeq};
+use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
+use sunrise_sim::join_seq::JoinSeq;
 pub(in crate::game) static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",
     name: "projectile_lifetime",

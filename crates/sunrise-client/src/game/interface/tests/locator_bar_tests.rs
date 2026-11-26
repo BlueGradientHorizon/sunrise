@@ -5,7 +5,7 @@ use crate::game::{
 };
 use std::time::Duration;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
-use sunrise_client::{level_loading::Reason, locator_bar::WaypointStyles, motion::PlayerMotion};
+use sunrise_client::{level_loading::Reason, locator_bar::WaypointStyles};
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
     connection::Pipe,
@@ -13,6 +13,7 @@ use sunrise_protocol::{
         self, Clientbound as C, SpawnInfo, WaypointId, WaypointTarget, waypoint_operation,
     },
 };
+use sunrise_sim::motion::PlayerMotion;
 
 fn connect(game: &mut crate::game::ClientGame<'_>, position: Vec3) -> Pipe {
     game.native_lifecycle = NativeLifecycle::default();

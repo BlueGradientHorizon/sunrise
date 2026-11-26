@@ -5,13 +5,13 @@
 //! refused request is answered at once, so the client knows to ask again.
 use super::{Dim, Game};
 use std::sync::atomic::Ordering;
-use sunrise_client::{
-    lan::conn::PlayerSender,
-    lod_net::{CHANNEL, Delivery, Job, Verdict},
-};
 use sunrise_protocol::{
     packets::{configuration::CustomPayload, play},
     text::translatable,
+};
+use sunrise_sim::{
+    lan::conn::PlayerSender,
+    lod_net::{CHANNEL, Delivery, Job, Verdict},
 };
 
 /// Bytes a player's connection may have waiting before far terrain holds its

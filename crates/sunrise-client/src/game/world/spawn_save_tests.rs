@@ -39,7 +39,7 @@ fn spawn_batches_refuse_saves_until_all_rows_are_published() {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let mobs: Vec<_> = (1..=2)
                 .map(|i| {
-                    sunrise_client::mobs::Mob::new(
+                    sunrise_sim::mobs::Mob::new(
                         u32::MAX - i,
                         kind.clone(),
                         Vec3::new(5.0 + f64::from(i), 64.0, 5.0),

@@ -70,7 +70,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                 assert_eq!(geometry(&actual), geometry(&expected), "height {height}");
             }
             // A server title lets the actual drawing path exercise both labels.
-            let title = sunrise_client::text::Text::literal("Title");
+            let title = sunrise_client_core::text::Text::literal("Title");
             game.remote
                 .as_mut()
                 .unwrap()

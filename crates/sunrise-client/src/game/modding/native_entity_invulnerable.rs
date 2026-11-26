@@ -8,7 +8,7 @@
 //! kind Sunrise keeps no such state for.
 use super::{Game, commands::Target};
 use mod_api::EntityRef;
-use sunrise_client::mobs::Damage;
+use sunrise_sim::mobs::Damage;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a named causing entity is a creative player.
@@ -27,12 +27,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         id: u32,
         kind: &str,
-        source: sunrise_client::health::HurtSource<'_>,
+        source: sunrise_sim::health::HurtSource<'_>,
         vanilla: bool,
     ) -> bool {
         crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
-                sunrise_client::health::Hurting::Entity(id as i32, kind, source),
+                sunrise_sim::health::Hurting::Entity(id as i32, kind, source),
                 vanilla,
             )
     }
@@ -45,7 +45,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         kind: &str,
         vanilla: bool,
     ) -> bool {
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:lava",
             causing: 0,
             direct: 0,
@@ -57,7 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn native_player_body(
         &self,
         t: Target,
-    ) -> Option<&sunrise_client::motion::PlayerMotion> {
+    ) -> Option<&sunrise_sim::motion::PlayerMotion> {
         match t {
             Target::Player => self.player.as_ref(),
             Target::Guest(conn) => self.lan.as_ref()?.hub.guest(conn)?.motion.as_deref(),
@@ -67,7 +67,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn native_player_body_mut(
         &mut self,
         t: Target,
-    ) -> Option<&mut sunrise_client::motion::PlayerMotion> {
+    ) -> Option<&mut sunrise_sim::motion::PlayerMotion> {
         match t {
             Target::Player => self.player.as_mut(),
             Target::Guest(conn) => self.lan.as_mut()?.hub.guests.motion_mut(conn),
@@ -246,14 +246,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         creative_source: bool,
     ) -> bool {
         let (flag, window) = self.saved_invulnerability(id);
-        sunrise_client::health::BodyImmunity {
+        sunrise_sim::health::BodyImmunity {
             removed: false,
             invulnerable: flag || window > 0,
             creative_source,
             fire_immune: false,
             fall_immune: world_items!(self).entity_type_tags.has_flag(
                 entity_type,
-                sunrise_client::items::EntityTypeTags::FALL_DAMAGE_IMMUNE,
+                sunrise_items::items::EntityTypeTags::FALL_DAMAGE_IMMUNE,
             ),
             source_has_tag: |tag| self.health_resources.damage.immunity_tag(source, tag),
         }
@@ -357,7 +357,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// the vanilla answer, which `entity_invulnerability_check` listeners may change.
     pub(in crate::game::server_side) fn mob_query_invulnerable(
         &self,
-        mob: &sunrise_client::mobs::Mob,
+        mob: &sunrise_sim::mobs::Mob,
         damage_type: &str,
     ) -> bool {
         let source = Damage::of(Self::damage_kind(
@@ -365,13 +365,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             damage_type,
         ));
         let vanilla = mob.refuses_damage(&source);
-        sunrise_client::health::query_invulnerability(
+        sunrise_sim::health::query_invulnerability(
             &self.world,
             self.pack.assets.registry,
             Some(world_items!(self)),
             Some(&self.pack.block_registries),
             &self.damage_hooks,
-            sunrise_client::health::Hurting::Mob(mob, &source),
+            sunrise_sim::health::Hurting::Mob(mob, &source),
             vanilla,
         )
     }
@@ -384,7 +384,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         kind: &str,
     ) -> bool {
         let attacker = self.own_entity_id();
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
             direct: attacker,
@@ -405,7 +405,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<bool> {
         let own = self.native_target_team(self.native_entity_target(entity)?)?;
         let their = self.native_target_team(self.native_entity_target(source)?)?;
-        Some(sunrise_client::scoreboard::teams_allow_damage(own, their))
+        Some(sunrise_client_core::scoreboard::teams_allow_damage(
+            own, their,
+        ))
     }
 
     /// The team an entity is on: a mob's own or its tamed owner's, the
@@ -493,15 +495,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, WorldEpoch};
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]
     fn a_native_mods_data_damage_type_hurts_and_names_the_death() {
-        use sunrise_client::mod_content::ContentMod;
         use sunrise_client::mod_content_client::resolved_resources;
         use sunrise_mod_package::{Package, content::Content};
+        use sunrise_sim::mod_content::ContentMod;
 
         let scratch = tempfile::tempdir().unwrap();
         let manifest = format!(
@@ -534,7 +536,7 @@ mod tests {
             content: Content::read(&path, &package.manifest).unwrap(),
             jars: Vec::new(),
         };
-        let _publication = sunrise_client::datapack_net::isolate_server_publication();
+        let _publication = sunrise_sim::datapack_net::isolate_server_publication();
         with_game(|game| {
             let root = game.options.resources.clone();
             // Use the package's passive-data reader and the world-open path, not
@@ -665,11 +667,11 @@ mod tests {
                     );
                 }
                 let mut player =
-                    sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
                 player.entity_id = 7;
                 game.player = Some(player);
                 crate::game::native_entity_refs::tests::bind_local_player(game, 7, 1);
-                game.set_game_mode(sunrise_client::command::args::GameMode::Survival);
+                game.set_game_mode(sunrise_command::args::GameMode::Survival);
                 let victim = game.entity(7).unwrap();
                 assert_eq!(
                     victim.hurt(game, "minecraft:arrow", 1.0, Some(direct), Some(causing)),
@@ -866,17 +868,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_flag_reaches_players_and_non_mobs_and_refuses_player_damage() {
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
             game.armor_stands
-                .push(sunrise_client::entities::ArmorStand::new(
-                    14,
-                    Vec3::ZERO,
-                    0.0,
-                ));
+                .push(sunrise_sim::entities::ArmorStand::new(14, Vec3::ZERO, 0.0));
             let stand = game.entity(14).unwrap();
 
             // A player's flag, on their body, refusing their damage — and
@@ -902,7 +900,7 @@ mod tests {
             assert!(game.entity_set_invulnerable(stand, true));
             assert_eq!(game.entity_permanently_invulnerable(stand), Some(true));
             let raw = game.persist.raw.get(&14).cloned().unwrap();
-            assert!(sunrise_client::entity_nbt::flag(&raw, "Invulnerable"));
+            assert!(sunrise_sim::entity_nbt::flag(&raw, "Invulnerable"));
             // The timer tag rides along the same compound.
             assert!(game.entity_set_invulnerable_time(stand, 12));
             assert_eq!(game.entity_invulnerable_time(stand), Some(12));
@@ -917,7 +915,7 @@ mod tests {
     /// A lit stone floor under the origin, so a mob's tick survives it.
     fn floor(game: &mut crate::game::ServerGame<'_>) {
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-            let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
             chunk.lit = true;
             game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
         }
@@ -940,7 +938,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_entity_timer_never_shares_the_living_cooldown() {
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             // The #170 recipe: two zombies on a lit stone floor, kept from
             // despawning while their tick runs.
@@ -992,7 +990,7 @@ mod tests {
             ));
             game.mobs[0].invulnerable_flag = true;
             game.mobs[0].invulnerable_time = 9;
-            let tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [0; 4],
                 None,
@@ -1000,9 +998,8 @@ mod tests {
                 |_| None,
                 &Default::default(),
             );
-            let back =
-                sunrise_client::entity_nbt::mob_from_nbt(&tag, game.res.mob_types(), 30, None)
-                    .unwrap();
+            let back = sunrise_sim::entity_nbt::mob_from_nbt(&tag, game.res.mob_types(), 30, None)
+                .unwrap();
             assert!(back.invulnerable_flag);
             assert_eq!(back.invulnerable_time, 9);
         });
@@ -1015,8 +1012,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_window_refuses_damage_and_hides_the_mob_from_enemies() {
-        use sunrise_client::mobs::{Damage, DamageKind, Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{Damage, DamageKind, Mob};
         super::super::native_entity_refs::tests::with_game(|game| {
             // The #170 recipe: two zombies on a lit stone floor, kept from
             // despawning while their tick runs.
@@ -1047,7 +1044,7 @@ mod tests {
             assert!(!game.mobs[0].damage(
                 crate::game::entity::damage_level_of!(
                     game,
-                    &sunrise_client::health::NO_ATTACK,
+                    &sunrise_sim::health::NO_ATTACK,
                     no_push,
                     None
                 ),
@@ -1058,7 +1055,7 @@ mod tests {
             assert!(game.mobs[0].damage(
                 crate::game::entity::damage_level_of!(
                     game,
-                    &sunrise_client::health::NO_ATTACK,
+                    &sunrise_sim::health::NO_ATTACK,
                     no_push,
                     None
                 ),
@@ -1092,7 +1089,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_players_permanent_flag_is_apart_from_their_abilities() {
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -1158,8 +1155,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_non_mobs_saved_window_counts_down_and_refuses() {
-        use sunrise_client::entities::ArmorStand;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ArmorStand;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.armor_stands
                 .push(ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
@@ -1183,8 +1180,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_item_outside_the_ticking_chunks_keeps_its_window() {
-        use sunrise_client::items::ItemStack;
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             // A player's tickets: chunks out of the simulation distance
             // around them do not tick entities.
@@ -1217,8 +1214,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_piercing_query_follows_the_flag_or_the_window_of_every_kind() {
-        use sunrise_client::entities::ArmorStand;
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::entities::ArmorStand;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(300001, pig, Vec3::ZERO, 0.0));
@@ -1249,7 +1246,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_flagged_player_is_no_ones_target() {
         use super::Target;
-        use sunrise_client::motion::PlayerMotion;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             let zombie = game
                 .res
@@ -1290,7 +1287,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_saved_stand_refuses_the_punch_that_would_break_it() {
-        use sunrise_client::entities::ArmorStand;
+        use sunrise_sim::entities::ArmorStand;
         with_game(|game| {
             game.armor_stands
                 .push(ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
@@ -1316,8 +1313,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_players_flag_and_window_ride_the_save() {
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::nbt::Tag;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -1360,7 +1357,7 @@ mod tests {
     #[ignore = "daily"]
     fn the_dragons_saved_flag_refuses_all_but_a_creative_player() {
         use super::super::dragon::Dragon;
-        use sunrise_client::mobs::DamageKind;
+        use sunrise_sim::mobs::DamageKind;
         super::super::native_entity_refs::tests::with_game(|game| {
             let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;

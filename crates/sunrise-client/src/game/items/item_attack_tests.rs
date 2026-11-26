@@ -10,8 +10,8 @@ use mod_api::{
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use {
-    sunrise_client::items::ItemStack, sunrise_client::motion::PlayerMotion,
-    sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
+    sunrise_items::items::ItemStack, sunrise_sim::first_person_sim::Hand,
+    sunrise_sim::first_person_sim::SwingAnimation, sunrise_sim::motion::PlayerMotion,
 };
 
 /// What the Parts heard, and what they answer.

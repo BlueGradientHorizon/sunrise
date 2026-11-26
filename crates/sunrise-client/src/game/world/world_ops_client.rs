@@ -1,7 +1,7 @@
 //! Client-side implementations of `side_ops::world` and client-only world/harness helpers.
 use super::*;
 use crate::game::piston_carry_state::PositionChange;
-use sunrise_client::join_seq::{
+use sunrise_sim::join_seq::{
     Joined as _,
     residency::{Kind, Owner, Source},
 };
@@ -84,7 +84,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .map(|p| p.position)
                 .chain(self.tridents.iter().map(|t| t.position))
                 .map(|at| {
-                    let b = sunrise_client::arrows::arrow_bounds(at);
+                    let b = sunrise_sim::arrows::arrow_bounds(at);
                     (b.min_position().components(), b.max_position().components())
                 })
                 .collect();
@@ -141,10 +141,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let mut scratch_gateways = Default::default();
         let mut scratch_hoppers = HashMap::new();
         let mut scratch_rand_sequences =
-            sunrise_client::random_sequences::RandomSequences::default();
+            sunrise_items::random_sequences::RandomSequences::default();
         let mut client_spill = spill::Spill::default();
         let mut scratch_random_tick_sections =
-            sunrise_client::random_tick_sections::RandomTickSections::default();
+            sunrise_sim::random_tick_sections::RandomTickSections::default();
         let mut scratch_lid_openers = HashMap::new();
         let mut scratch_native_sounds = Vec::new();
         let mut scratch_native_particles = Vec::new();
@@ -220,7 +220,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             rand_sequences: &mut scratch_rand_sequences,
             pending: &mut self.pending,
             spill: &mut client_spill,
-            tickets: sunrise_client::ticket_levels::ChunkTickets::default().levels(),
+            tickets: sunrise_sim::ticket_levels::ChunkTickets::default().levels(),
             random_tick_sections: &mut scratch_random_tick_sections,
             lid_openers: &mut scratch_lid_openers,
             open_containers: &open_containers,
@@ -340,7 +340,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A client's tick of the level it shows holds the colliders as it began, then carries
         // its own player with the one it stands on.
         let _scope = client_level.then(|| {
-            sunrise_client_render::moving_colliders::Scope::enter_level(
+            sunrise_world::moving_colliders::Scope::enter_level(
                 self.client_collider_level(),
                 self.client_placed_moving_colliders(),
             )
@@ -632,7 +632,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         camera: glam::DVec3,
         frame: &OrbFrame,
-        orbs: impl Iterator<Item = (&'a sunrise_client::entities::ExperienceOrb, [f64; 3], f32)>,
+        orbs: impl Iterator<Item = (&'a sunrise_sim::entities::ExperienceOrb, [f64; 3], f32)>,
         orb_view: Option<&sunrise_client::gfx::JoinedFrusta>,
         out: &mut Vec<Vertex>,
     ) {
@@ -706,8 +706,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 o.position.z.floor() as i32,
             );
             let packed = o.render_light(i32::from(light));
-            let s = sunrise_client::entities::ORB_QUAD_SCALE;
-            for (k, uv) in sunrise_client::entities::ORB_QUAD.iter().zip([
+            let s = sunrise_sim::entities::ORB_QUAD_SCALE;
+            for (k, uv) in sunrise_sim::entities::ORB_QUAD.iter().zip([
                 [u0, v0 + dv],
                 [u0 + du, v0 + dv],
                 [u0 + du, v0],
@@ -744,7 +744,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The server thread has already delivered its report: written to disk, or printed
     /// when it couldn't be written. Join through the normal halt path and exit.
     pub(in crate::game) fn exit_after_server_crash(&mut self) {
-        if !sunrise_client::crash::server_crashed() {
+        if !sunrise_level::crash::server_crashed() {
             return;
         }
         let starting = self

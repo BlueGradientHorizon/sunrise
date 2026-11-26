@@ -6,7 +6,7 @@
 //! complete like `guest_suggestions` does with the guest's registries swapped in.
 use super::*;
 use std::sync::Mutex;
-use sunrise_client::command::{Registries, Suggestion};
+use sunrise_command::{Registries, Suggestion};
 
 /// What one provider call saw: the prefix, the arguments before it, and the sender.
 type Seen = Arc<Mutex<Vec<(String, Vec<(String, String)>, Option<(u128, String, u8)>)>>>;
@@ -124,7 +124,7 @@ fn warp(declared: Declared) -> (Value, Dispatcher) {
         &[mod_api::Command::new(
             "warp go <world:test:mode> <name:test:warp>",
         )],
-        &sunrise_client::command::Dispatcher::new(),
+        &sunrise_command::Dispatcher::new(),
         &arguments,
     );
     assert!(problems.is_empty(), "{problems:?}");
@@ -224,7 +224,7 @@ fn a_client_command_refuses_an_argument_type_that_declares_a_provider_by_name() 
     );
 
     // The ordinary argument type keeps building, and completes by its own `suggest`.
-    let mut chat = sunrise_client::command::vanilla::game_dispatcher().clone();
+    let mut chat = sunrise_command::vanilla::game_dispatcher().clone();
     register_dispatcher(&mut chat, &tree, "native_mod_command", &arguments);
     let registries = Registries::default();
     let typed = "warp use cr";
@@ -237,11 +237,8 @@ fn a_client_command_refuses_an_argument_type_that_declares_a_provider_by_name() 
     );
 
     // The server's tree keeps the same usage.
-    let (tree, _, problems) = super::command_tree(
-        &commands,
-        &sunrise_client::command::Dispatcher::new(),
-        &arguments,
-    );
+    let (tree, _, problems) =
+        super::command_tree(&commands, &sunrise_command::Dispatcher::new(), &arguments);
     assert!(problems.is_empty(), "{problems:?}");
     assert_eq!(
         tree["children"]["warp"]["children"]["go"]["children"]["world"]["children"]["name"]["custom_argument"],

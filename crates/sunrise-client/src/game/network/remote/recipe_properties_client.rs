@@ -41,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             };
             let category = |_: i32| None;
             let tag = |name: &str| {
-                let name = sunrise_client::crafting::qualified(name);
+                let name = sunrise_sim::crafting::qualified(name);
                 remote
                     .registries
                     .tag("minecraft:item", &name)
@@ -50,7 +50,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .filter_map(|&id| item(id))
                     .collect()
             };
-            let names = sunrise_client::recipe_book::PacketNames {
+            let names = sunrise_sim::recipe_book::PacketNames {
                 item: &item,
                 category: &category,
                 tag: &tag,

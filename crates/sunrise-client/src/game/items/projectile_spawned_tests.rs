@@ -5,8 +5,9 @@
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::Identifier;
 use serde_json::{Value, json};
-use sunrise_client::{items::ItemStack, mobs::Mob};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Mob;
 
 /// A world whose datapack defines `spawn_test:<name>` for each
 /// `(name, projectile_spawned effects)`.

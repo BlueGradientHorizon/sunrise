@@ -7,9 +7,9 @@ use crate::game::server_side::wind::wind_charged_tests::with_game;
 use crate::game::server_side::wind::wind_charged_tests::*;
 
 /// Count `Clientbound::Explode` packets carrying emitter particle id `particle_id`.
-fn gusts(rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>, particle_id: i32) -> usize {
-    use sunrise_client::lan::Out;
+fn gusts(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>, particle_id: i32) -> usize {
     use sunrise_protocol::{buf::Reader, packets::play};
+    use sunrise_sim::lan::Out;
     let mut count = 0;
     while let Ok(out) = rx.try_recv() {
         let Out::Packet(body) = out else {

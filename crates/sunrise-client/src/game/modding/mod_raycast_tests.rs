@@ -5,8 +5,10 @@ use crate::game::{
     resource_load::{Progress, load_resources},
 };
 use std::sync::Arc;
-use sunrise_client::{audio::Audio, chunk::Chunk, motion::PlayerMotion, settings::Settings};
+use sunrise_client::{audio::Audio, settings::Settings};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> crate::game::ClientGame<'a> {
     let root = std::path::PathBuf::from(

@@ -5,10 +5,8 @@ use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
 use std::cell::RefCell;
-use sunrise_client::{
-    items::ItemStack,
-    menu::{Input, Kind, Menu},
-};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::{Input, Kind, Menu};
 
 thread_local! {
     /// Every question the part was asked: slot, item and count.
@@ -170,8 +168,8 @@ fn a_click_asks_the_part_for_each_slot_and_stack_it_consults_in_order() {
 #[test]
 #[ignore = "daily"]
 fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
-    use sunrise_client::lan::menu::Slots;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+    use sunrise_sim::lan::menu::Slots;
     with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
         with_game(|game| {
             // A maximum of 0 holds none (leaving the slot empty), 3 holds three, and a huge one
@@ -191,7 +189,7 @@ fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
             let pos = (1, 64, 1);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let stone = game
                 .pack
@@ -202,7 +200,7 @@ fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
             game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
             game.world.block_entities.insert(
                 pos,
-                sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+                sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
             );
             let host = game.lan.as_mut().unwrap();
             host.hub.open_container(
@@ -329,14 +327,14 @@ fn without_a_part_nothing_is_asked_and_the_click_is_the_same() {
 #[test]
 #[ignore = "daily"]
 fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
-    use sunrise_client::lan::menu::Slots;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+    use sunrise_sim::lan::menu::Slots;
     with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
         with_guests(|game| {
             let pos = (1, 64, 1);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let stone = game
                 .pack
@@ -347,7 +345,7 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
             game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
             game.world.block_entities.insert(
                 pos,
-                sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+                sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
             );
             let host = game.lan.as_mut().unwrap();
             host.hub.open_container(
@@ -402,7 +400,8 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
 #[ignore = "daily"]
 fn nested_menu_reads_use_base_slot_rules() {
     use crate::game::api_values::test_snapshot;
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity, lan::menu::Slots};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_sim::lan::menu::Slots;
 
     thread_local! {
         static CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };

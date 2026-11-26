@@ -4,10 +4,10 @@
 //! same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::allay;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::allay;
 
 const SUPPLIED: &str = "00006096-0000-0000-0000-000000000001";
 
@@ -60,7 +60,7 @@ fn game<'a>(
 }
 
 fn index(game: &mut crate::game::ServerGame<'_>) -> usize {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(SUPPLIED).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(SUPPLIED).unwrap()) {
         Some(super::commands::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }
@@ -132,7 +132,7 @@ fn pickup_cooldown_saves_the_full_integer_value() {
             "saved {ticks}"
         );
         let tag = game.mob_tree_nbt(i);
-        let loaded = sunrise_client::entity_nbt::mob_from_nbt(
+        let loaded = sunrise_sim::entity_nbt::mob_from_nbt(
             &tag,
             game.res.mob_types(),
             game.mobs[i].id,
@@ -200,7 +200,7 @@ fn the_saved_pickup_cooldown_follows_the_model() {
     // Saved and loaded again: the same value.
     let whole = game.mob_tree_nbt(plain);
     let reloaded =
-        sunrise_client::entity_nbt::mob_from_nbt(&whole, game.res.mob_types(), 99, None).unwrap();
+        sunrise_sim::entity_nbt::mob_from_nbt(&whole, game.res.mob_types(), 99, None).unwrap();
     assert_eq!(
         allay::pickup_cooldown(&reloaded),
         Some(60),

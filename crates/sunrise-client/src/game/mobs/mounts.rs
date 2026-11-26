@@ -9,12 +9,11 @@ use sunrise_core::{
 };
 use sunrise_world::living_air::escape_vector;
 use {
-    sunrise_client::blocks::Fluid, sunrise_client::items::EntityTypeTags,
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Mob, sunrise_client::mobs::MobEvent,
-    sunrise_client::mobs::Species, sunrise_client::mobs::Who, sunrise_client::mobs::equine,
-    sunrise_client::motion::MotionWorld, sunrise_client::motion::PlayerMotion,
-    sunrise_client::pose::Dimensions, sunrise_client::pose::Pose, sunrise_client::sprint::Keys,
-    sunrise_sim::first_person_sim::Hand,
+    sunrise_items::blocks::Fluid, sunrise_items::items::EntityTypeTags,
+    sunrise_items::items::ItemStack, sunrise_sim::first_person_sim::Hand, sunrise_sim::mobs::Mob,
+    sunrise_sim::mobs::MobEvent, sunrise_sim::mobs::Species, sunrise_sim::mobs::Who,
+    sunrise_sim::mobs::equine, sunrise_sim::motion::MotionWorld, sunrise_sim::motion::PlayerMotion,
+    sunrise_sim::pose::Dimensions, sunrise_sim::pose::Pose, sunrise_sim::sprint::Keys,
 };
 
 pub(in crate::game) fn steering_item(
@@ -112,7 +111,7 @@ pub(in crate::game) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
 /// `Entity.getPassengerRidingPosition` for a player on `m`: the vehicle's
 /// attachment point, turned with it, less the player's own vehicle attachment
 /// (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`, a `Vec3(0.0, 0.6, 0.0)` of doubles).
-pub(in crate::game) fn seat_of(m: &sunrise_client::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
+pub(in crate::game) fn seat_of(m: &sunrise_sim::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
     let at = turned(attachment, m.yaw);
     Vec3::new(
         m.position.x + at.x,
@@ -175,13 +174,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.ridden_by_guest(m.id) {
             return false;
         }
-        if sunrise_client::mobs::llama::is_llama(species) {
+        if sunrise_sim::mobs::llama::is_llama(species) {
             return self.interact_llama(index, item);
         }
         if species == Species::HappyGhast {
             return self.interact_happy_ghast(index, item);
         }
-        if sunrise_client::mobs::nautilus::is_nautilus(species) {
+        if sunrise_sim::mobs::nautilus::is_nautilus(species) {
             return self.interact_nautilus(index, item);
         }
         if !equine::is_equine(species) || !m.alive() || Some(m.id) == self.riding {
@@ -425,7 +424,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let silent = m.silent;
         let at = m.position;
-        let offset = sunrise_client::mobs::riders::passenger_attachment(m)[1];
+        let offset = sunrise_sim::mobs::riders::passenger_attachment(m)[1];
         self.damage_held_tool();
         self.mobs[index].set_saddle(None);
         let context = self.who_context(Some(Who::Player), None);
@@ -732,7 +731,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self.animal_tame_cancelled(index, tamer, tamer_entity_id) {
                 let m = &mut self.mobs[index];
                 let mut events = Vec::new();
-                sunrise_client::mobs::equine::refuse_rider(m, &mut events);
+                sunrise_sim::mobs::equine::refuse_rider(m, &mut events);
                 if let Err(e) = self.handle_mob_events(events) {
                     log::warn!("failed horse taming: {e}");
                 }
@@ -762,7 +761,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .find(|m| m.id == mob)
             .map(|m| m.kind.id.clone())
         {
-            let owner = sunrise_client::lan::playerdata::ints_uuid(owner);
+            let owner = sunrise_sim::lan::playerdata::ints_uuid(owner);
             self.native_entity_tame(mob, &kind, Some(owner));
         }
     }
@@ -883,7 +882,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             };
             let join = self.mobs[i].join;
-            let fall = sunrise_client::mobs::living::PassengerFall { distance, modifier };
+            let fall = sunrise_sim::mobs::living::PassengerFall { distance, modifier };
             let mut resume = None;
             let mut events = Vec::new();
             while let Some(i) = self.mob_index.find(&self.mobs, id) {
@@ -896,7 +895,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 let level = crate::game::entity::damage_level_of!(
                     self,
-                    &sunrise_client::health::NO_ATTACK,
+                    &sunrise_sim::health::NO_ATTACK,
                     no_push,
                     None
                 );
@@ -1044,7 +1043,7 @@ pub(in crate::game::server_side) fn dismount_location(
     if equine::is_equine(mount.species) {
         return horse_dismount_location(mount, rider, world);
     }
-    if sunrise_client::mobs::drops::is_animal(mount.species) {
+    if sunrise_sim::mobs::drops::is_animal(mount.species) {
         return animal_dismount_location(mount, rider, world);
     }
     // Entity.getDismountLocationForPassenger: on top of the vehicle's box.
@@ -1237,7 +1236,7 @@ pub(in crate::game::server_side) fn strider_dismount_location(
 /// does with the jump is its `handleStartJump`, and the travel that follows
 /// (a dash, a rear) is the mount's own tick.
 pub(in crate::game) fn start_riding_jump(
-    m: &mut sunrise_client::mobs::Mob,
+    m: &mut sunrise_sim::mobs::Mob,
     data: i32,
 ) -> Option<(&'static str, f32)> {
     // PlayerRideableJumping.canJump: AbstractHorse.isSaddled, and a camel that
@@ -1245,20 +1244,20 @@ pub(in crate::game) fn start_riding_jump(
     if data <= 0 || !m.extra.saddled() {
         return None;
     }
-    if crate::mobs::camel::is_camel(m.species()) {
-        if crate::mobs::camel::refuse_to_move(m) {
+    if sunrise_sim::mobs::camel::is_camel(m.species()) {
+        if sunrise_sim::mobs::camel::refuse_to_move(m) {
             return None;
         }
         // Camel.handleStartJump: the dash sound, the entity action and DASH.
-        crate::mobs::camel::set_dashing(m, true);
-        Some((crate::mobs::camel::voice(m, 3), 1.0))
-    } else if crate::mobs::nautilus::is_nautilus(m.species()) {
+        sunrise_sim::mobs::camel::set_dashing(m, true);
+        Some((sunrise_sim::mobs::camel::voice(m, 3), 1.0))
+    } else if sunrise_sim::mobs::nautilus::is_nautilus(m.species()) {
         // AbstractNautilus.handleStartJump: DASH, and the dash sound it makes
         // itself when the dash runs. The momentum is `onPlayerJump`'s pending
         // scale, which the nautilus spends on its next travel; a guest's ride
         // tick fills `Rider::jump` from the keys the host hears, so the scale
         // its own bar charged comes from this packet.
-        crate::mobs::nautilus::on_player_jump(m, data);
+        sunrise_sim::mobs::nautilus::on_player_jump(m, data);
         None
     } else if equine::is_equine(m.species()) {
         // AbstractHorse.handleStartJump, which is onPlayerJump for the slide
@@ -1318,9 +1317,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn steering_stick_break_converts_to_fishing_rod() {
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -1357,7 +1356,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A mob of the prepared resources' type `kind` (None without them).
-    pub(in crate::game::server_side) fn mob(kind: &str) -> Option<sunrise_client::mobs::Mob> {
+    pub(in crate::game::server_side) fn mob(kind: &str) -> Option<sunrise_sim::mobs::Mob> {
         let root = std::env::var_os("SUNRISE_RESOURCES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -1365,9 +1364,9 @@ pub(in crate::game) mod tests {
                     .join("../../.local/sunrise-client")
                     .join(sunrise_core::VANILLA_VERSION)
             });
-        let types = sunrise_client::mobs::MobTypes::load(&root).ok()?;
+        let types = sunrise_sim::mobs::MobTypes::load(&root).ok()?;
         let t = std::sync::Arc::new(types.types.get(kind)?.clone());
-        Some(sunrise_client::mobs::Mob::new(
+        Some(sunrise_sim::mobs::Mob::new(
             7,
             t,
             sunrise_core::geometry::Vec3::new(1.5, 64.0, -2.5),
@@ -1389,7 +1388,7 @@ pub(in crate::game) mod tests {
         assert_eq!(start_riding_jump(&mut horse, 100), None);
         assert_eq!(horse.extra.counter, 0, "no rear without a jump");
         assert!(!horse.extra.stand_sliding);
-        horse.set_saddle(Some(sunrise_client::items::ItemStack::new(
+        horse.set_saddle(Some(sunrise_items::items::ItemStack::new(
             "minecraft:saddle",
             1,
         )));
@@ -1412,7 +1411,7 @@ pub(in crate::game) mod tests {
             let Some(mut m) = mob(kind) else {
                 continue;
             };
-            m.set_saddle(Some(sunrise_client::items::ItemStack::new(
+            m.set_saddle(Some(sunrise_items::items::ItemStack::new(
                 "minecraft:saddle",
                 1,
             )));
@@ -1422,7 +1421,7 @@ pub(in crate::game) mod tests {
         let Some(mut skeleton) = mob("minecraft:skeleton_horse") else {
             return;
         };
-        skeleton.set_saddle(Some(sunrise_client::items::ItemStack::new(
+        skeleton.set_saddle(Some(sunrise_items::items::ItemStack::new(
             "minecraft:saddle",
             1,
         )));
@@ -1442,7 +1441,7 @@ pub(in crate::game) mod tests {
             return;
         };
         assert_eq!(start_riding_jump(&mut camel, 100), None, "no saddle");
-        camel.set_saddle(Some(sunrise_client::items::ItemStack::new(
+        camel.set_saddle(Some(sunrise_items::items::ItemStack::new(
             "minecraft:saddle",
             1,
         )));
@@ -1473,7 +1472,7 @@ pub(in crate::game) mod tests {
         let Some(mut m) = mob("minecraft:nautilus") else {
             return;
         };
-        m.set_saddle(Some(sunrise_client::items::ItemStack::new(
+        m.set_saddle(Some(sunrise_items::items::ItemStack::new(
             "minecraft:saddle",
             1,
         )));
@@ -1670,7 +1669,7 @@ pub(in crate::game) mod tests {
         game.options.dedicated = Some(Vec::new());
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         game.side.streaming.forced.insert((0, 0));
         Some(Box::new(game))
@@ -1767,7 +1766,7 @@ pub(in crate::game) mod tests {
         seed: i64,
     ) {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
-        let mut m = sunrise_client::mobs::Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
+        let mut m = sunrise_sim::mobs::Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
         m.extra.tame = true;
         m.health = m.attrs.max_health;
         m.random = sunrise_core::random::LegacyRandom::new(seed);
@@ -2018,7 +2017,7 @@ pub(in crate::game) mod tests {
         mount(&mut game, "minecraft:camel_husk", 7, [1.5, 64.0, -2.5], 7);
         assert!(!game.mobs[0].persistent);
         assert!(
-            !sunrise_client::mobs::ai::requires_custom_persistence(&game.mobs[0]),
+            !sunrise_sim::mobs::ai::requires_custom_persistence(&game.mobs[0]),
             "nothing else keeps it: the click must"
         );
         game.inventory[0] = Some(ItemStack::new("minecraft:saddle", 1));
@@ -2105,12 +2104,12 @@ pub(in crate::game) mod off_level_tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             for (id, mount) in [(73, Some(72)), (74, Some(73)), (75, None), (76, Some(75))] {
-                let mut m = sunrise_client::mobs::Mob::new(id, pig.clone(), Vec3::ZERO, 0.0);
+                let mut m = sunrise_sim::mobs::Mob::new(id, pig.clone(), Vec3::ZERO, 0.0);
                 m.extra.mount = mount;
                 m.fluids.eye_in_water = true;
                 game.mobs.push(m);
             }
-            let ghost = sunrise_client::mobs::Mob::new(72, pig, Vec3::ZERO, 0.0);
+            let ghost = sunrise_sim::mobs::Mob::new(72, pig, Vec3::ZERO, 0.0);
             game.persist
                 .off_level
                 .insert(72, crate::game::persist::OffLevel::Mob(ghost));

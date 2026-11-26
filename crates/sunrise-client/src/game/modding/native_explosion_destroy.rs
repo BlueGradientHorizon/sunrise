@@ -4,7 +4,7 @@
 use super::Game;
 use mod_api::{EntityRef, ExplosionDestroyError, ExplosionInteraction, LevelRef};
 use std::collections::HashSet;
-use sunrise_client::mobs::DamageKind;
+use sunrise_sim::mobs::DamageKind;
 
 /// Below this radius the reference tells no detonate listener (`ServerExplosion.explode`).
 const DETONATE_RADIUS: f32 = 1.0e-5;

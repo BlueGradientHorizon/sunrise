@@ -4,14 +4,14 @@ use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use glam::{DVec3, Mat4};
 use sunrise_client::{
-    camera::CameraType,
     gfx::{
         Frustum, JoinedFrusta, OIT_ENTITY, TEXT_POLYGON_OFFSET_OVERLAY, TRANSLUCENT_ITEM_OVERLAY,
     },
-    items::ItemStack,
     mesher::{SHADED_CULL_W, SectionMesh, Vertex},
 };
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_items::items::ItemStack;
+use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::entity_data::Value;
 
 fn parity_witness() -> serde_json::Value {
@@ -1146,7 +1146,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         game.side.view.x_rot = 0.0;
         game.side.settings.render_distance = 8;
         game.side.settings.entity_distance = 1.0;
-        let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+        let chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
         let emit_block =
@@ -1258,7 +1258,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         game.side.view.x_rot = 0.0;
         game.side.settings.render_distance = 8;
         game.side.settings.entity_distance = 1.0;
-        let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+        let chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
         // 1. Display name tags.
@@ -1793,7 +1793,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         remote.entity_id = 7;
 
         for cz in -1..=0 {
-            let chunk = sunrise_client::chunk::Chunk::empty(0, cz);
+            let chunk = sunrise_level::chunk::Chunk::empty(0, cz);
             game.world
                 .chunks
                 .insert((0, cz), std::sync::Arc::new(chunk));

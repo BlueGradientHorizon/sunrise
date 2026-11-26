@@ -10,7 +10,7 @@ impl Options {
                 || !self.execution_role.is_client())
         {
             return Err(
-                sunrise_client::lang::get("sunrise.developer_offline.single_player").into(),
+                sunrise_client_core::lang::get("sunrise.developer_offline.single_player").into(),
             );
         }
         Ok(())

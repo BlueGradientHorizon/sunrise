@@ -5,10 +5,11 @@ use super::Game;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     block_entity_render::vertex_light,
-    items::ItemStack,
     mesher::Vertex,
-    particles::{ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
+    particles::{TrackingBody, TrackingTarget},
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 pub(in crate::game) const TOTEM: &str = "minecraft:totem_of_undying";
 
@@ -145,8 +146,8 @@ pub(in crate::game) mod death_protection_tests {
     use super::death_protection_of;
     use serde_json::json;
     use sunrise_assets::item_model::ItemModels;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
 
     /// The lookup gives what the stack's whole component map gives, for
     /// stacks that keep, set or remove the component.
@@ -198,7 +199,7 @@ pub(in crate::game) mod death_protection_tests {
     /// `[death_protection={}]` animates as a plain totem (#12632).
     #[test]
     fn a_servers_patch_reaches_the_hand_lookup() {
-        use sunrise_client::items::{ConsumeEffect, ConsumeEffectSpec};
+        use sunrise_items::items::{ConsumeEffect, ConsumeEffectSpec};
         use sunrise_protocol::item::{Component, Stack, component};
         use sunrise_protocol::registry::{Builtin, Dynamic, Ids};
 
@@ -230,7 +231,7 @@ pub(in crate::game) mod death_protection_tests {
             let mut wire = Stack::new(item, 1);
             wire.added = added;
             wire.removed = removed;
-            crate::item_sync::from_network(&wire, &builtin, &Dynamic::default())
+            sunrise_sim::item_sync::from_network(&wire, &builtin, &Dynamic::default())
         };
         let models = ItemModels::default();
         // `death_protection={}`: an empty effect list and no saved tag.
@@ -256,7 +257,7 @@ pub(in crate::game) mod death_protection_tests {
             .expect("the apple carries the server's component")
             .into_owned();
         assert_eq!(
-            sunrise_client::items::parse_death_effects(&component).unwrap(),
+            sunrise_items::items::parse_death_effects(&component).unwrap(),
             [
                 ConsumeEffect::ClearAllEffects,
                 ConsumeEffect::ApplyEffects {

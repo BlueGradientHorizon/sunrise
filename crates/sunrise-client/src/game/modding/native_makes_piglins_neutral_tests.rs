@@ -9,11 +9,11 @@ use super::native_entity_refs::tests::{
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{Hooks, Host, ItemPart, MakesPiglinsNeutralEvent, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Species, Who};
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Species, Who};
+use sunrise_sim::motion::PlayerMotion;
 
 /// Each question a part was asked: the item it is attached to and the wearer's entity id.
 static ASKED: Mutex<Vec<(&'static str, u32)>> = Mutex::new(Vec::new());
@@ -179,7 +179,7 @@ fn targets_the_wearer(
     game.set_allow_commands(true);
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();

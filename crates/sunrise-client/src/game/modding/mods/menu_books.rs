@@ -1,10 +1,10 @@
 //! Validate registered destination roles before publishing content menu types.
 use mod_api::RecipeBookLayout;
-use sunrise_client::recipe_book::{
+use sunrise_mod_package::content::MenuType;
+use sunrise_sim::recipe_book::{
     menu_layout::{MenuLayoutMetadata, compile},
     slot_layout::LayoutError,
 };
-use sunrise_mod_package::content::MenuType;
 
 pub(in crate::game) fn validate_registered(menus: &[&MenuType]) -> Result<(), String> {
     for menu in RecipeBookLayout::registered_menus() {

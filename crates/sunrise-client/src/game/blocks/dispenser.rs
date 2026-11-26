@@ -37,13 +37,12 @@ use sunrise_world::{
 };
 #[allow(unused_imports)]
 use {
-    sunrise_client::Result, sunrise_client::block_entities::BlockEntityIdentity,
-    sunrise_client::collisions::SceneCollisions, sunrise_client::containers::BlockEntity,
-    sunrise_client::items::ItemStack, sunrise_client::items::Items, sunrise_client::mobs::Species,
-    sunrise_client::mobs::equip::equippable, sunrise_client::mobs::sulfur_cube,
-    sunrise_client::projectiles::Projectile, sunrise_client::projectiles::ProjectileKind,
-    sunrise_level::particle_options::ParticleOptions,
-    sunrise_level::particle_options::ParticleType,
+    sunrise_client_core::Result, sunrise_items::items::ItemStack, sunrise_items::items::Items,
+    sunrise_level::block_entities::BlockEntityIdentity, sunrise_level::collisions::SceneCollisions,
+    sunrise_level::containers::BlockEntity, sunrise_level::particle_options::ParticleOptions,
+    sunrise_level::particle_options::ParticleType, sunrise_sim::mobs::Species,
+    sunrise_sim::mobs::equip::equippable, sunrise_sim::mobs::sulfur_cube,
+    sunrise_sim::projectiles::Projectile, sunrise_sim::projectiles::ProjectileKind,
 };
 
 /// A behaviour returns a detached stack; the dispenser applies the slot limit afterwards.
@@ -754,7 +753,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return self.spawn_dragon_spawned(
                 at,
                 super::creatures::SpawnSite::Finalizing(
-                    sunrise_client::mobs::spawn_rules::Reason::Dispenser,
+                    sunrise_sim::mobs::spawn_rules::Reason::Dispenser,
                 ),
             );
         }
@@ -774,7 +773,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             at,
             true,
             super::creatures::SpawnSite::Finalizing(
-                sunrise_client::mobs::spawn_rules::Reason::Dispenser,
+                sunrise_sim::mobs::spawn_rules::Reason::Dispenser,
             ),
         )?;
         Some(id)
@@ -803,12 +802,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
             return Ok(());
         };
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let mut m = self.mobs.extract(self.mobs[i].join).unwrap();
         let mut events = Vec::new();
         {
             let w = self.mob_world_base(&[]);
-            sunrise_client::mobs::ai::ambient_sound(&mut m, &w, &mut events);
+            sunrise_sim::mobs::ai::ambient_sound(&mut m, &w, &mut events);
         }
         self.mobs.put_back(i, m);
         self.handle_mob_events(events)
@@ -822,7 +821,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.persistent = false;
-            sunrise_client::entity_nbt::apply_item_components(m, stack);
+            sunrise_sim::entity_nbt::apply_item_components(m, stack);
             match m.species() {
                 Species::Cod
                 | Species::Salmon
@@ -835,10 +834,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let data = stack
                         .data()
                         .and_then(|c| c.other("minecraft:bucket_entity_data"));
-                    let age = data.and_then(|d| sunrise_client::save::number(d.get("age")));
+                    let age = data.and_then(|d| sunrise_sim::save::number(d.get("age")));
                     m.extra.age = age.unwrap_or(0) as i32;
                     m.extra.age_locked =
-                        data.is_some_and(|d| sunrise_client::entity_nbt::flag(d, "age_locked"));
+                        data.is_some_and(|d| sunrise_sim::entity_nbt::flag(d, "age_locked"));
                     m.extra.scratch[3] = 1;
                 }
                 _ => {}
@@ -854,7 +853,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         stack: ItemStack,
     ) -> Result<Dispensed> {
         let items = self.res.shared_items();
-        let Some(data) = sunrise_client::block_entity_item::item_entity_data(&stack, &items) else {
+        let Some(data) = sunrise_sim::block_entity_item::item_entity_data(&stack, &items) else {
             // Without effective ENTITY_DATA, DispenserBlock selects the ordinary drop.
             return Ok((self.default_execute(pos, facing, stack), CLICK));
         };
@@ -871,7 +870,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // `setPersistenceRequired`, as a spawn egg used by hand doesn't;
             // only the elder guardian's and copper golem's constructors do.
             m.persistent = matches!(m.species(), Species::ElderGuardian | Species::CopperGolem);
-            sunrise_client::entity_nbt::apply_item_components(m, &stack);
+            sunrise_sim::entity_nbt::apply_item_components(m, &stack);
         }
         // EntityType.updateCustomEntityTag: a configured egg
         // (`/give @s pig_spawn_egg[minecraft:entity_data={…}]`) spawns the mob
@@ -1010,7 +1009,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // may be picked up.
                 if let Some(a) = shot.arrow.as_mut() {
                     a.set_item(&one);
-                    a.pickup = sunrise_client::arrows::Pickup::Allowed;
+                    a.pickup = sunrise_sim::arrows::Pickup::Allowed;
                 }
                 shot.shoot_own(dir, power, uncertainty);
                 self.spawn_projectile(shot, &one);
@@ -1035,10 +1034,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // EntityType.create rolls a yaw from the level random before the stack config turns it.
         let _ = self.world.random.next_float();
         self.side.next_entity += 1;
-        let (_, uuid) = sunrise_client::mobs::living_random();
+        let (_, uuid) = sunrise_sim::mobs::living_random();
         self.persist.uuids.insert(self.side.next_entity, uuid);
         let stand =
-            sunrise_client::entities::ArmorStand::new(self.side.next_entity, foot, y_rot(facing));
+            sunrise_sim::entities::ArmorStand::new(self.side.next_entity, foot, y_rot(facing));
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
         self.armor_stands.push(stand);
         // EntityType.appendDefaultStackConfig: the dispenser's yaw first, then
@@ -1251,7 +1250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
                 && sulfur_cube::prime(&mut self.mobs[i], false)
             {
                 let m = &mut self.mobs[i];
@@ -1259,7 +1258,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut events = Vec::new();
                 m.voice("entity.tnt.primed", &mut events);
                 self.handle_mob_events(events)?;
-                let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
+                let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Mob(id)), None);
                 self.post_game_event("minecraft:prime_fuse", [at.x, at.y, at.z], ctx);
             }
             return Ok((self.hurt_and_break(stack, 1), CLICK));
@@ -1293,7 +1292,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
                 && self.tnt_prime_allowed(target_pos)
             {
                 self.spawn_primed_tnt(target_pos, false, None, None);
@@ -1400,7 +1399,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// sand T for the skull row, in any orientation.
     pub(in crate::game::server_side) fn can_build_wither(&self, head: Pos) -> bool {
         self.find_wither_pattern(
-            sunrise_client::block_pattern::WITHER_BASE,
+            sunrise_sim::block_pattern::WITHER_BASE,
             [head.0, head.1, head.2],
             self.world.block(head.0, head.1, head.2),
         )
@@ -1545,8 +1544,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let facing = self.prop(old, "facing");
         self.empty_hive(
             [target.0, target.1, target.2],
-            sunrise_client::beehive::facing_step(facing.as_deref()),
-            sunrise_client::beehive::Release::BeeReleased,
+            sunrise_sim::beehive::facing_step(facing.as_deref()),
+            sunrise_sim::beehive::Release::BeeReleased,
         );
     }
     /// `LootTable.getRandomItems` of `table` in the context of `parent`: the
@@ -1611,7 +1610,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.convert_to(
             &old,
             "minecraft:cow",
-            sunrise_client::mobs::conversion::Params {
+            sunrise_sim::mobs::conversion::Params {
                 keep_equipment: false,
                 preserve_can_pick_up_loot: false,
             },
@@ -1651,7 +1650,7 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     use super::*;
     #[allow(unused_imports)]
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]
@@ -1857,7 +1856,7 @@ pub(in crate::game) mod tests {
         stack: ItemStack,
     ) -> (bool, Option<Slot>, bool, [f64; 3]) {
         use sunrise_core::geometry::Vec3;
-        (game.world.chunks).insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        (game.world.chunks).insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let kind = game
             .res
             .mob_types()
@@ -1866,11 +1865,11 @@ pub(in crate::game) mod tests {
             .clone();
         let z = 2 + 3 * row as i32;
         let at = Vec3::new(6.5, 64.0, f64::from(z) + 0.5);
-        let mut zombie = sunrise_client::mobs::Mob::new(10 + row, kind, at, 0.0);
+        let mut zombie = sunrise_sim::mobs::Mob::new(10 + row, kind, at, 0.0);
         zombie.extra.pick_up_loot = true;
         game.mobs.push(zombie);
         game.armor_stands
-            .push(sunrise_client::entities::ArmorStand::new(20 + row, at, 0.0));
+            .push(sunrise_sim::entities::ArmorStand::new(20 + row, at, 0.0));
         let mut stack = stack;
         let done = game.dispense_equipment((5, 64, z), Direction::East, &mut stack);
         let zombie = game.mobs.iter().find(|m| m.id == 10 + row).unwrap();
@@ -2186,9 +2185,9 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     #[allow(unused_imports)]
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
-    #[allow(unused_imports)]
     use sunrise_protocol::packets::configuration::ClientInformation;
+    #[allow(unused_imports)]
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     /// A server with no player of its own, an open hub and one guest (conn 2)
     /// standing at (8.5, 200, 8.5) on a stone floor.
@@ -2315,7 +2314,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_dispenser_skips_an_armor_stand_whose_slot_is_locked() {
-        use sunrise_client::entities::ArmorStand;
+        use sunrise_sim::entities::ArmorStand;
         let mut resources = None;
         let mut game = server_with_guest(&mut resources);
         game.lan.as_mut().unwrap().hub.guests.clear();
@@ -2351,9 +2350,9 @@ pub(in crate::game) mod tests {
         id: u32,
         x: f64,
         z: f64,
-    ) -> sunrise_client::entities::ArmorStand {
+    ) -> sunrise_sim::entities::ArmorStand {
         let at = sunrise_core::geometry::Vec3::new(x, 200.0, z);
-        sunrise_client::entities::ArmorStand::new(id, at, 0.0)
+        sunrise_sim::entities::ArmorStand::new(id, at, 0.0)
     }
 
     /// A guest whose client is still on its loading screen (joined or
@@ -2479,7 +2478,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn the_faced_block_answers_before_the_item_and_vanilla_stands_when_no_part_listens() {
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_level::chunk::Chunk;
 
         let heard = Heard::default();
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -2591,7 +2590,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 1.0,
                 1.0,
             );
-            let who = sunrise_client::mobs::Who::Mob(self.mobs[i].id);
+            let who = sunrise_sim::mobs::Who::Mob(self.mobs[i].id);
             let ctx = self.who_context(Some(who), None);
             self.post_game_event("minecraft:entity_interact", [at.x, at.y, at.z], ctx);
             return (self.hurt_and_break(stack, 16), optional_event("brush"));
@@ -2612,7 +2611,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         let default = (self.items().get(&stack.item)).is_some_and(|info| info.equip_dispensable);
-        let dispensable = sunrise_client::item_sync::dispensable(stack, default);
+        let dispensable = sunrise_sim::item_sync::dispensable(stack, default);
         let Some(slot) = Slot::from_name(equippable.slot).filter(|_| dispensable) else {
             return false;
         };
@@ -2733,7 +2732,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.server_play_sound(&sound, [at.x, at.y, at.z], 1.0, 1.0);
             }
             let who = match target {
-                Target::Mob(i) => Some(sunrise_client::mobs::Who::Mob(self.mobs[i].id)),
+                Target::Mob(i) => Some(sunrise_sim::mobs::Who::Mob(self.mobs[i].id)),
                 Target::Player | Target::Guest(_) | Target::Stand(_) => None,
             };
             let ctx = self.who_context(who, None);
@@ -2845,7 +2844,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 f64::from(pos.2) + r.next_double(),
             ];
             self.server_particle_at(
-                crate::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
+                sunrise_sim::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
                 p,
                 [0.0; 3],
             );
@@ -2870,7 +2869,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
         {
             set_success("tnt", false);
             return (Some(stack), FAIL);
@@ -2972,7 +2971,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.spawn_at_location(at, height, body);
                     }
                     // setItemSlot(BODY, EMPTY): an unequip.
-                    let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
+                    let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Mob(id)), None);
                     self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
                     self.mobs[i].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
                     self.server_play_sound(
@@ -3064,7 +3063,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let id = self.mobs[i].id;
                     // setItemSlot(EQUIPMENT_SLOT_ANTENNA, EMPTY): an unequip.
                     self.mobs[i].set_saddle(None);
-                    let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
+                    let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Mob(id)), None);
                     self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
                     if let Some(antenna) = antenna {
                         self.spawn_at_location(at, 1.5, antenna);
@@ -3095,7 +3094,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// every lead held by it (within a 32 block box around its centre) drop;
     /// a shear game event at the entity and a snip at its block follow.
     pub(in crate::game) fn shear_off_leashes(&mut self, t: Target) -> bool {
-        use sunrise_client::mobs::{Who, leash::Holder};
+        use sunrise_sim::mobs::{Who, leash::Holder};
         let (holder, centre, own) = match t {
             Target::Mob(i) => {
                 let m = &self.mobs[i];
@@ -3127,7 +3126,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // Leashable.dropLeash: a lead item at the leashed entity's feet.
         let drop = |game: &mut Self, j: usize| {
-            if sunrise_client::mobs::leash::remove(&mut game.mobs[j]).is_some() {
+            if sunrise_sim::mobs::leash::remove(&mut game.mobs[j]).is_some() {
                 let at = game.mobs[j].position;
                 game.spawn_at_location(at, 0.0, ItemStack::new("minecraft:lead", 1));
             }
@@ -3183,7 +3182,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             m.persistent = true;
             let (at, id) = (m.position, m.id);
             // setItemSlot: a body item without `equippable` posts UNEQUIP.
-            let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
+            let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Mob(id)), None);
             self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
             self.server_play_sound(
                 "minecraft:entity.sulfur_cube.absorb",

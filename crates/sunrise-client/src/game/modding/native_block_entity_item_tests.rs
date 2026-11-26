@@ -5,9 +5,9 @@ use mod_api::{
     TransactionContext, TransactionError,
 };
 use std::{ops::ControlFlow, sync::Arc};
-use sunrise_client::containers::{BlockEntity, ModBlockEntity, ModContainer};
-use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModContainer};
 
 fn commit(host: &mut dyn ServerHost, test: impl FnOnce(&mut dyn ServerHost, &TransactionContext)) {
     host.transaction(|host, tx| {
@@ -1023,7 +1023,7 @@ fn timing_storage_against_items_across_barrel_cells() {
                 for cz in 0..=side / 16 {
                     game.world.chunks.insert(
                         (cx, cz),
-                        Arc::new(sunrise_client::chunk::Chunk::empty(cx, cz)),
+                        Arc::new(sunrise_level::chunk::Chunk::empty(cx, cz)),
                     );
                 }
             }

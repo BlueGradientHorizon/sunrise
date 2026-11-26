@@ -8,10 +8,11 @@ use crate::game::{
 };
 use mod_api::{prelude::ItemsServerHost, *};
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, items::ItemStack};
 use sunrise_core::{
     geometry::Direction, position::BlockPos, random::RandomSource, ticks::TickTypeId,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 use sunrise_world::{fluid::FluidKind, registry::BlockStateId};
 
 /// The dispenser, facing east, and the block in front of it.

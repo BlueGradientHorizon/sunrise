@@ -25,11 +25,11 @@ fn rocket_impact_listener_can_save_the_advanced_rocket() {
                 let rocket = saved
                     .iter()
                     .find(|tag| {
-                        sunrise_client::entity_nbt::kind(tag).as_deref()
+                        sunrise_sim::entity_nbt::kind(tag).as_deref()
                             == Some("minecraft:firework_rocket")
                     })
                     .expect("impact save includes the resident rocket");
-                let saved_position = sunrise_client::entity_nbt::position(rocket).unwrap();
+                let saved_position = sunrise_sim::entity_nbt::position(rocket).unwrap();
                 assert_eq!(
                     [saved_position.x, saved_position.y, saved_position.z].map(f64::to_bits),
                     hits[0].projectile_pos.map(f64::to_bits),

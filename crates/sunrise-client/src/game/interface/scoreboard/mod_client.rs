@@ -3,13 +3,9 @@ use crate::game::server_side::scoreboard::tab_players_needed;
 use crate::game::server_side::scoreboard::*;
 use std::collections::HashMap;
 use sunrise_client::actions::Action;
-use sunrise_client::{
-    hud::HudBatch,
-    hud_layout, hud_overlays,
-    lan::playerdata::ints_uuid,
-    save::uuid_text,
-    scoreboard::{self as sb},
-};
+use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays};
+use sunrise_client_core::scoreboard::{self as sb};
+use sunrise_sim::{lan::playerdata::ints_uuid, save::uuid_text};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `Hud.extractScoreboardSidebar` / `displayScoreboardSidebar`.
@@ -161,7 +157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side [`client_mob_team`](Self::client_mob_team) for a mob already in hand.
     pub(in crate::game) fn client_mob_team_of(
         &self,
-        m: &sunrise_client::mobs::Mob,
+        m: &sunrise_sim::mobs::Mob,
     ) -> Option<&sb::Team> {
         if self.score.board.teams.is_empty() {
             return None;
@@ -169,7 +165,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.client_team_with_owner(m.id, || tame_owner(m))
     }
     /// Client-side team snapshot for `MobWorld` (viewer, remote players, and client-tracked mobs).
-    pub(in crate::game) fn client_mob_teams(&self) -> sunrise_client::mobs::Teams<'_> {
+    pub(in crate::game) fn client_mob_teams(&self) -> sunrise_sim::mobs::Teams<'_> {
         if self.score.board.teams.is_empty() {
             return Default::default();
         }
@@ -187,7 +183,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .into_iter()
             .filter_map(|(id, name)| Some((id, self.score.board.players_team(&name)?)));
         let players: HashMap<u32, &sb::Team> = own.into_iter().chain(others).collect();
-        sunrise_client::mobs::Teams {
+        sunrise_sim::mobs::Teams {
             player: self.client_player_team(),
             players,
             mobs: self

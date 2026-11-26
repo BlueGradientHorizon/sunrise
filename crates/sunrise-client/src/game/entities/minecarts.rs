@@ -13,20 +13,16 @@ pub(in crate::game) mod save_lending;
 #[allow(unused_imports)]
 use super::{Game, InteractTarget, Keys};
 use std::{collections::HashMap, sync::Arc};
-use sunrise_client::join_seq::ListStamp;
-use sunrise_client::mobs::seen_grid::SeenGrid;
-use sunrise_client::{
-    blocks::Fluid,
-    containers::BlockEntity,
-    items::ItemStack,
-    mesher::Vertex,
-    mobs::{Part, Species, riders},
-    random_source,
-};
+use sunrise_client::{mesher::Vertex, mobs::Part};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::LegacyRandom,
 };
+use sunrise_items::{blocks::Fluid, items::ItemStack};
+use sunrise_level::{containers::BlockEntity, random_source};
+use sunrise_sim::join_seq::ListStamp;
+use sunrise_sim::mobs::seen_grid::SeenGrid;
+use sunrise_sim::mobs::{Species, riders};
 use sunrise_world::registry::BlockStateId;
 #[path = "minecarts/hit.rs"]
 pub(in crate::game) mod hit;
@@ -93,7 +89,7 @@ impl CartKind {
 pub(in crate::game) struct Minecart {
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     pub id: u32,
     pub kind: CartKind,
     pub position: Vec3,
@@ -142,7 +138,7 @@ pub(in crate::game) struct Minecart {
     pub enabled: bool,
     /// Chest minecarts: the loot table rolled into `items` on load, saved
     /// again while the items are still that roll.
-    pub loot: Option<sunrise_client::save::PendingContainerLoot>,
+    pub loot: Option<sunrise_sim::save::PendingContainerLoot>,
     /// `Entity.firstTick`: not ticked yet (saved as `HasTicked`).
     pub first_tick: bool,
     /// `Entity.isInWater` (`wasTouchingWater`): `AbstractMinecart.tick`
@@ -153,7 +149,7 @@ pub(in crate::game) struct Minecart {
     /// Command block minecarts: the cart's `BaseCommandBlock` (command,
     /// success count, last output, output tracking). The block-only flags of
     /// `CommandBlock` stay unset.
-    pub command: sunrise_client::command_block::CommandBlock,
+    pub command: sunrise_level::command_block::CommandBlock,
     /// `Entity.tickCount`, which `MinecartCommandBlock.activateMinecart`
     /// measures its `ACTIVATION_DELAY` against.
     pub tick_count: i32,
@@ -164,7 +160,7 @@ pub(in crate::game) struct Minecart {
     pub command_due: bool,
     /// Spawner minecarts: the cart's `BaseSpawner` (`Delay`, `SpawnData`,
     /// `SpawnPotentials` and the rest as a spawner block saves them).
-    pub spawner: Option<Box<sunrise_client::mobs::spawner::Spawner>>,
+    pub spawner: Option<Box<sunrise_sim::mobs::spawner::Spawner>>,
     /// The synched `DATA_ID_COMMAND_NAME` and `DATA_ID_LAST_OUTPUT`, which
     /// follow the command block only at `onUpdated`.
     pub synced_command: String,
@@ -177,7 +173,7 @@ pub(in crate::game) struct Minecart {
     pub random: LegacyRandom,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 /// `EntityType.MINECART`'s `sized(0.98F, 0.7F)`: float dimensions, widened.
 pub(in crate::game) const WIDTH: f64 = 0.98_f32 as f64;
@@ -290,7 +286,7 @@ pub(in crate::game) fn push_along(push: Vec3, movement: Vec3) -> Vec3 {
 /// The minecart's passenger attachment minus Player.DEFAULT_VEHICLE_ATTACHMENT.
 pub(in crate::game) const SEAT: f64 = PASSENGER_Y - 0.6;
 /// The placeholder container key under which an open cart's items live.
-pub(in crate::game) const CART_KEY_Y: i32 = sunrise_client::lan::menu::VEHICLE_KEY_Y;
+pub(in crate::game) const CART_KEY_Y: i32 = sunrise_sim::lan::menu::VEHICLE_KEY_Y;
 
 /// `OldMinecartBehavior.pushAndPickupEntities`: living entities the cart
 /// offers `startRiding` instead of `Entity.push`. Players click to board;
@@ -433,7 +429,7 @@ impl Minecart {
             loot: None,
             first_tick: true,
             in_water: false,
-            command: sunrise_client::command_block::CommandBlock::default(),
+            command: sunrise_level::command_block::CommandBlock::default(),
             tick_count: 0,
             last_activated: 0,
             command_due: false,
@@ -458,7 +454,7 @@ impl Minecart {
             Vec3::new(p.x - w, p.y, p.z - w),
             Vec3::new(p.x + w, p.y + HEIGHT, p.z + w),
         );
-        sunrise_client::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
+        sunrise_sim::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
     }
 }
 /// `AbstractMinecartContainer.applyNaturalSlowdown`'s keep factor, in the
@@ -576,7 +572,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             for (j, attachment, offset) in seats {
                 let m = &mut self.mobs[j];
                 m.seated(id, attachment, cart_box);
-                sunrise_client::mobs::living::teleports::set_pos(m, cart_seat(pos, offset));
+                sunrise_sim::mobs::living::teleports::set_pos(m, cart_seat(pos, offset));
                 m.previous = cart_seat(prev, offset);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
@@ -699,10 +695,10 @@ impl Minecart {
         &self,
         uuid: [i32; 4],
         raw: Option<&sunrise_core::nbt::Tag>,
-        items: &crate::items::Items,
+        items: &sunrise_items::items::Items,
     ) -> sunrise_core::nbt::Tag {
         use sunrise_core::nbt::{JavaString, Tag};
-        let mut tag = sunrise_client::entity_nbt::vehicle_to_nbt(
+        let mut tag = sunrise_sim::entity_nbt::vehicle_to_nbt(
             self.kind.id(),
             self.position,
             self.velocity,
@@ -711,7 +707,7 @@ impl Minecart {
             uuid,
             raw,
         );
-        sunrise_client::entity_nbt::write_saved_flags(
+        sunrise_sim::entity_nbt::write_saved_flags(
             &mut tag,
             self.ground.on_ground,
             self.no_gravity,
@@ -751,10 +747,7 @@ impl Minecart {
             }
             match self.kind {
                 CartKind::Chest | CartKind::Hopper => {
-                    put(
-                        "Items",
-                        sunrise_client::save::encode_items(&self.items, items),
-                    );
+                    put("Items", sunrise_sim::save::encode_items(&self.items, items));
                     if self.kind == CartKind::Hopper {
                         put("Enabled", Tag::Byte(i8::from(self.enabled)));
                     }
@@ -795,8 +788,7 @@ impl Minecart {
                 // BaseSpawner.save: the delays, ranges, SpawnData and SpawnPotentials.
                 CartKind::Spawner => {
                     if let Some(spawner) = &self.spawner {
-                        for (key, value) in
-                            sunrise_client::mobs::spawner::SpawnerExt::save(&**spawner)
+                        for (key, value) in sunrise_sim::mobs::spawner::SpawnerExt::save(&**spawner)
                         {
                             put(key, value);
                         }
@@ -817,7 +809,7 @@ impl Minecart {
         tag
     }
     pub fn from_nbt(tag: &sunrise_core::nbt::Tag, id: u32, kind: CartKind) -> Option<Self> {
-        let (position, _, _) = sunrise_client::entity_nbt::boat_from_nbt(tag)?;
+        let (position, _, _) = sunrise_sim::entity_nbt::boat_from_nbt(tag)?;
         let mut c = Self::new(id, kind, position);
         c.load(tag)?;
         Some(c)
@@ -827,7 +819,7 @@ impl Minecart {
     /// `None`, with nothing changed, when the compound has no position.
     pub fn load(&mut self, tag: &sunrise_core::nbt::Tag) -> Option<()> {
         use sunrise_core::nbt::Tag;
-        let (position, velocity, yaw) = sunrise_client::entity_nbt::boat_from_nbt(tag)?;
+        let (position, velocity, yaw) = sunrise_sim::entity_nbt::boat_from_nbt(tag)?;
         let kind = self.kind;
         let c = self;
         c.position = position;
@@ -835,9 +827,9 @@ impl Minecart {
         c.velocity = velocity;
         c.yaw = yaw;
         c.previous_yaw = yaw;
-        c.no_gravity = sunrise_client::entity_nbt::flag(tag, "NoGravity");
-        c.ground.on_ground = sunrise_client::entity_nbt::flag(tag, "OnGround");
-        c.pitch = sunrise_client::entity_nbt::rotation(tag)[1];
+        c.no_gravity = sunrise_sim::entity_nbt::flag(tag, "NoGravity");
+        c.ground.on_ground = sunrise_sim::entity_nbt::flag(tag, "OnGround");
+        c.pitch = sunrise_sim::entity_nbt::rotation(tag)[1];
         c.previous_pitch = c.pitch;
         // ValueInput's numeric getters take any NumericTag: getIntOr is its
         // intValue, getShortOr the low 16 bits of it, getBooleanOr
@@ -857,16 +849,16 @@ impl Minecart {
             _ => 0.0,
         };
         // Entity.load: OnGround and fall_distance, as saved.
-        (c.ground.on_ground, c.fall_distance) = sunrise_client::entity_nbt::ground_from_nbt(tag);
+        (c.ground.on_ground, c.fall_distance) = sunrise_sim::entity_nbt::ground_from_nbt(tag);
         c.ticks_frozen = super::boats::saved_ticks_frozen(tag);
         c.flipped = flag("FlippedRotation", false);
         c.first_tick = flag("HasTicked", false);
         if kind.slots() > 0 {
-            c.loot = sunrise_client::save::PendingContainerLoot::from_tag(tag);
+            c.loot = sunrise_sim::save::PendingContainerLoot::from_tag(tag);
             c.items = if c.loot.is_some() {
                 vec![None; kind.slots()]
             } else {
-                sunrise_client::save::decode_items(tag.get("Items"), kind.slots())
+                sunrise_sim::save::decode_items(tag.get("Items"), kind.slots())
             };
         }
         c.enabled = flag("Enabled", true);
@@ -893,7 +885,7 @@ impl Minecart {
         c.custom_display = tag.get("DisplayState").cloned();
         c.custom_offset = int("DisplayOffset");
         if kind == CartKind::CommandBlock {
-            c.command = sunrise_client::command_block::CommandBlock::load(tag);
+            c.command = sunrise_level::command_block::CommandBlock::load(tag);
             // MinecartCommandBlock.readAdditionalSaveData sets the synched command.
             // A changed value invokes onSyncedDataUpdated -> setCommand, resetting successes.
             if c.synced_command != c.command.command {
@@ -904,9 +896,7 @@ impl Minecart {
         }
         // MinecartSpawner.readAdditionalSaveData: BaseSpawner.load.
         if kind == CartKind::Spawner {
-            c.spawner = Some(Box::new(sunrise_client::mobs::spawner::SpawnerExt::load(
-                tag,
-            )));
+            c.spawner = Some(Box::new(sunrise_sim::mobs::spawner::SpawnerExt::load(tag)));
         }
         Some(())
     }
@@ -1079,7 +1069,7 @@ pub(in crate::game) fn scale_tint_alpha<'f>(
 #[cfg(test)]
 #[path = "minecarts/tests.rs"]
 pub(in crate::game) mod tests;
-sunrise_client::impl_joined!(Minecart);
+sunrise_sim::impl_joined!(Minecart);
 sunrise_mod_runtime::impl_attachment_lifetime!(Minecart);
 
 #[cfg(test)]
@@ -1095,7 +1085,7 @@ pub(in crate::game) mod tnt_impact_tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
@@ -1266,13 +1256,13 @@ pub(in crate::game) mod tnt_impact_tests {
         game.side.settings.simulation_distance = 4;
         game.side.settings.render_distance = 12;
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 12.5))
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 12.5))
                 .unwrap(),
         );
         for cx in -2..=2 {
             for cz in -2..=2 {
                 if (cx, cz) != (0, 0) {
-                    let mut chunk = sunrise_client::chunk::Chunk::empty(cx, cz);
+                    let mut chunk = sunrise_level::chunk::Chunk::empty(cx, cz);
                     chunk.lit = true;
                     game.world
                         .chunks
@@ -1313,8 +1303,9 @@ pub(in crate::game) mod tnt_impact_tests {
 #[cfg(test)]
 pub(in crate::game) mod cart_push_tests {
     use super::{CartKind, Minecart};
-    use sunrise_client::{items::ItemStack, save::PendingContainerLoot};
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::save::PendingContainerLoot;
 
     /// Two chest carts pushed apart (`OldMinecartBehavior.pushAndPickupEntities`):
     /// the push runs on copies of the ticked cart, and the one still holding
@@ -1326,7 +1317,7 @@ pub(in crate::game) mod cart_push_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let stone = game
                 .pack
@@ -1376,7 +1367,7 @@ pub(in crate::game) mod cart_push_tests {
     #[ignore = "daily"]
     fn a_moving_carts_team_rules_which_carts_it_pushes() {
         use crate::game::commands::Target;
-        use sunrise_client::scoreboard::CollisionRule;
+        use sunrise_client_core::scoreboard::CollisionRule;
 
         /// Puts a cart on a team of its own, as `/team join` would.
         fn on_a_team(game: &mut crate::game::ServerGame<'_>, id: u32, rule: CollisionRule) {
@@ -1459,7 +1450,8 @@ pub(in crate::game) mod cart_push_tests {
     #[ignore = "daily"]
     fn a_moving_carts_team_keeps_it_from_boarding_a_cow() {
         use crate::game::commands::Target;
-        use sunrise_client::{mobs::Mob, scoreboard::CollisionRule};
+        use sunrise_client_core::scoreboard::CollisionRule;
+        use sunrise_sim::mobs::Mob;
 
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
@@ -1503,9 +1495,9 @@ pub(in crate::game) mod container_drop_tests {
     use super::super::boats::Boat;
     use super::{CartHit, CartKind, Minecart};
     use std::sync::Arc;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_items::items::ItemStack;
 
     /// Advances `r` past the draws a spill takes from the level random, as
     /// vanilla's `Containers.dropContents` takes them: for each slot
@@ -1544,7 +1536,7 @@ pub(in crate::game) mod container_drop_tests {
                 assert!(
                     game.ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+                        .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
                 );
                 let at = Vec3::new(8.5, 64.0, 8.5);
                 if boat {
@@ -1608,7 +1600,7 @@ pub(in crate::game) mod rejected_passenger_tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let cart = 5000;
             game.carts.push(Minecart::new(
@@ -1672,7 +1664,7 @@ pub(in crate::game) mod rejected_passenger_tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.carts.push(Minecart::new(
                 5000,
@@ -1701,7 +1693,7 @@ pub(in crate::game) mod rejected_passenger_tests {
 pub(in crate::game) mod hook_mutation_regressions {
     use super::*;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
     struct MutateRider {
         discard: bool,
@@ -1835,9 +1827,10 @@ pub(in crate::game) mod hook_mutation_regressions {
             mod_platform::testing::with_mods(mods, || {
                 super::super::native_entity_refs::tests::with_game(|game| {
                     game.options.dedicated = Some(Vec::new());
-                    game.ui
-                        .rules
-                        .set("entity_drops", sunrise_client::gamerules::Value::Bool(true));
+                    game.ui.rules.set(
+                        "entity_drops",
+                        sunrise_client_core::gamerules::Value::Bool(true),
+                    );
                     if cart {
                         game.carts
                             .push(Minecart::new(71, CartKind::Rideable, Vec3::ZERO));
@@ -1932,13 +1925,13 @@ pub(in crate::game) mod cart_cost_bench {
         game.side.settings.simulation_distance = 6;
         game.side.settings.render_distance = 12;
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 80.0, 12.5))
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 80.0, 12.5))
                 .unwrap(),
         );
         for cx in -3..=3 {
             for cz in -3..=3 {
                 if (cx, cz) != (0, 0) {
-                    let mut chunk = sunrise_client::chunk::Chunk::empty(cx, cz);
+                    let mut chunk = sunrise_level::chunk::Chunk::empty(cx, cz);
                     chunk.lit = true;
                     game.world
                         .chunks
@@ -2011,7 +2004,7 @@ pub(in crate::game) mod cart_cost_bench {
                 -30.0 + (k % 76) as f64 + 0.5,
                 -30.0 + ((k / 76) % 76) as f64 + 0.5,
             );
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 1000 + k as u32,
                 chicken.clone(),
                 Vec3::new(x, 75.0, z),

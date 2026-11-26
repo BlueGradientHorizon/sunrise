@@ -1,12 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use mod_api::{self, EntityMountEvent, EntityRef, Flow, Hooks, ItemSpawnEvent, ServerHost};
-use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
-    mobs::{Mob, leash::Holder, transport_items},
-};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::{Mob, leash::Holder, transport_items};
 
 use super::{
     boats::Boat,

@@ -76,7 +76,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .is_none_or(|t| t.elapsed() > Duration::from_millis(2000))
         {
             r.joining_narrated = Some(Instant::now());
-            self.say_system_now(&sunrise_client::text::Text::translate(
+            self.say_system_now(&sunrise_client_core::text::Text::translate(
                 "narrator.joining",
                 &[],
             ));
@@ -93,7 +93,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         });
         let atlas = &self.side.gui.atlas;
-        let status = sunrise_client::text::Text::untrusted(r.status.as_str());
+        let status = sunrise_client_core::text::Text::untrusted(r.status.as_str());
         sunrise_client::level_loading::draw_connecting(
             batch,
             atlas,
@@ -122,7 +122,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // own CRIT emitter beside the one the server's Animate brings.
         // magicBoost is 0 on a client, so no ENCHANTED_HIT one.
         if damage * (0.2 + strength * strength * 0.8) > 0.0 && self.critical_attack(strength) {
-            use sunrise_client::particles::{ParticleOptions, ParticleType};
+            use sunrise_level::particle_options::{ParticleOptions, ParticleType};
             let m = &self.mobs[mob];
             self.side.particles.0.tracking_emitter(
                 ParticleOptions::simple(ParticleType::Crit),

@@ -14,11 +14,11 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize},
 };
-use sunrise_client::lan::{
-    Joined, NetConfig, OwnerProfile, PlayerSender, guest::Guest, hub::HubConfig,
-};
 use sunrise_core::profile::AccountProperty;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{
+    Joined, NetConfig, OwnerProfile, PlayerSender, guest::Guest, hub::HubConfig,
+};
 
 const OWNER: u128 = 1;
 const CHILD: &str = "SUNRISE_SINGLEPLAYER_OWNER_CHILD";

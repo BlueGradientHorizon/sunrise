@@ -26,7 +26,7 @@ fn face_south(game: &mut crate::game::ClientGame<'_>) {
     game.yaw = 0.0;
     game.pitch = 0.0;
     game.side.posed_rotation = None;
-    game.side.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+    game.side.camera_type = sunrise_level::camera_math::CameraType::FirstPerson;
 }
 
 /// One view's labels at `at`, the game's camera facing south: what it draws with the name

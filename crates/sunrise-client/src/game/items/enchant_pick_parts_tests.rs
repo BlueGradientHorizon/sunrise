@@ -295,7 +295,7 @@ fn a_client_refresh_keeps_and_a_world_close_retires_the_servers_answers() {
 fn apply_enchantments_starts_from_vanilla_and_refuses_another_count() {
     with_parts(|game, answers| {
         let sword = ItemStack::new("minecraft:diamond_sword", 1);
-        let vanilla = sunrise_client::stations::apply_enchantment(
+        let vanilla = sunrise_sim::stations::apply_enchantment(
             &game.stations().enchantments,
             game.items(),
             7,
@@ -304,7 +304,7 @@ fn apply_enchantments_starts_from_vanilla_and_refuses_another_count() {
             &sword,
         )
         .unwrap();
-        let list = sunrise_client::stations::enchantment_list(
+        let list = sunrise_sim::stations::enchantment_list(
             &game.stations().enchantments,
             game.items(),
             7,
@@ -389,7 +389,7 @@ fn pick_asks_each_hotbar_stack_until_one_may_be_replaced() {
 fn support_snapshot_reaches_both_anvils_and_enchant_without_dispatching_inside_them() {
     use crate::game::execution_role::ExecutionRole;
     use crate::game::stations::{Kind as StationKind, Station};
-    use sunrise_client::menu::{Kind as MenuKind, Menu};
+    use sunrise_sim::menu::{Kind as MenuKind, Menu};
     with_parts(|game, answers| {
         let registered = game.stations().enchantments.list.len();
         let per_install = FIXTURE_ITEMS.len() * registered;
@@ -411,11 +411,8 @@ fn support_snapshot_reaches_both_anvils_and_enchant_without_dispatching_inside_t
         assert!(sharpness_at_30(game, "minecraft:diamond_sword").is_empty());
         game.creative = false;
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
-                game.motion,
-                sunrise_core::geometry::Vec3::ZERO,
-            )
-            .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+                .unwrap(),
         );
         game.build_registries();
         let sharpness = [(Arc::<str>::from(SHARPNESS), 1)];
@@ -632,7 +629,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let scratch = tempfile::tempdir().unwrap();
-            let registry = Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla());
+            let registry = Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
             let create = sunrise_sim::world_options::WorldOptions::default();
             let mut request = crate::game::world_loading::WorldRequest::new(
                 "enchant_tags",

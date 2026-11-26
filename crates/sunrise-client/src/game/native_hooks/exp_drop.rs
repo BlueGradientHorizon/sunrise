@@ -74,4 +74,4 @@ impl GameLevel<'_> {
 /// and for the `block_drops` event its saved data with the `CustomName`, which the removal
 /// clears from the level.
 pub(in crate::game) type LiveBlockEntity =
-    (sunrise_client::containers::BlockEntity, Option<Compound>);
+    (sunrise_level::containers::BlockEntity, Option<Compound>);

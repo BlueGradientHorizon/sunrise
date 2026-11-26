@@ -2,10 +2,10 @@
 //! this conversion: no renderer, text-node preflight or JSON projection.
 use super::Game;
 use mod_api::text::{Text, TextContent, TextFormError as Error, TextNbtSource, TextObject};
-use sunrise_client::command::Registries;
-use sunrise_client::text_grammar::{KINDS, block_pos_parses, path_parses, selector_parses};
+use sunrise_command::Registries;
 use sunrise_core::identifier::Identifier;
 use sunrise_core::nbt::{self, Compound, Limits, Tag};
+use sunrise_sim::text_grammar::{KINDS, block_pos_parses, path_parses, selector_parses};
 
 #[path = "native_text_nbt/profile.rs"]
 mod profile;

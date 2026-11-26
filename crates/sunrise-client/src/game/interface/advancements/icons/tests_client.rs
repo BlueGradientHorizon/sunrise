@@ -4,15 +4,15 @@ use crate::game::server_side::advancements::icons::tests::batch;
 use crate::game::server_side::advancements::icons::tests::fixture;
 use crate::game::server_side::advancements::icons::tests::glint_vertices;
 use std::{collections::BTreeSet, sync::Arc};
-use sunrise_client::{
-    advancements::{Progress, Tree},
-    lan::{ServerAdvancements, data::SyncData},
-};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::{
     buf::{Codec, Reader},
     item::{Component, WirePatch, component, custom},
     packets::play::UpdateAdvancements,
+};
+use sunrise_sim::{
+    advancements::{Progress, Tree},
+    lan::{ServerAdvancements, data::SyncData},
 };
 
 #[test]
@@ -36,7 +36,7 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
         let tree = Tree::load(&fixture().join("data"));
         if case == "local" {
             use crate::game::server_side::advancements::{Toast, text_of, toast_label};
-            use sunrise_client::text::Text;
+            use sunrise_client_core::text::Text;
             game.adv.tree = Arc::new(tree);
             game.adv.loaded = true;
             let tree = game.adv.tree.clone();

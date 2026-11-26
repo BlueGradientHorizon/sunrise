@@ -7,7 +7,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-use sunrise_client::{save, text::Text};
+use sunrise_client_core::text::Text;
+use sunrise_sim::save;
 
 #[derive(Clone, Copy)]
 enum Action {

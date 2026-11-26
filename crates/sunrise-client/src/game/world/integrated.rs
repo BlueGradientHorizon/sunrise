@@ -30,17 +30,17 @@ use std::{
     thread::JoinHandle,
     time::{Duration, Instant},
 };
-use sunrise_client::spans::startup;
-use sunrise_client::{
-    Result,
-    chunk_io::Reports,
-    lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
-};
+use sunrise_client_core::Result;
 use sunrise_level::level_loading::{STATUS_RADIUS, ServerLoadView, Stage};
 use sunrise_level::sim_settings::SimSettings;
+use sunrise_level::spans::startup;
 use sunrise_protocol::connection::Pipe;
 use sunrise_protocol::text::translatable;
 use sunrise_sim::world_options::WorldOptions;
+use sunrise_sim::{
+    chunk_io::Reports,
+    lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
+};
 
 #[path = "integrated/capture.rs"]
 pub(in crate::game) mod capture;
@@ -99,7 +99,7 @@ pub(in crate::game) struct Flags {
     /// The generators of the levels the server has run, by dimension: what
     /// F3's chunk generation entry asks `ServerChunkCache.getGenerator`.
     pub(in crate::game) terrain: Mutex<
-        std::collections::HashMap<&'static str, Arc<sunrise_client::vanillagen::VanillaTerrain>>,
+        std::collections::HashMap<&'static str, Arc<sunrise_sim::vanillagen::VanillaTerrain>>,
     >,
     /// What the server's `LevelLoadListener` reports, for the window's
     /// `LevelLoadingScreen` (`LevelLoadTracker.serverProgress/statusView`).
@@ -151,12 +151,12 @@ impl Drop for Finished {
 pub(in crate::game) struct Integrated {
     pub(in crate::game) flags: Arc<Flags>,
     pub(in crate::game) thread: Option<JoinHandle<()>>,
-    pub(in crate::game) emergency_save: Option<sunrise_client::crash::EmergencySave>,
+    pub(in crate::game) emergency_save: Option<sunrise_level::crash::EmergencySave>,
     pub(in crate::game) tasks: Sender<OwnerRequest>,
     /// The world's name (`level.dat`'s `LevelName`), for the pause menu.
     pub world_name: String,
     pub save_folder: String,
-    pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
+    pub rule_registry: Arc<sunrise_client_core::gamerules::RuleRegistry>,
 }
 impl Integrated {
     /// The window's handle on a server fixture, with no server thread behind it.
@@ -180,10 +180,7 @@ impl Integrated {
         self.tell(OwnerRequest::SetPregen(enabled));
     }
     /// The generator of the server's level in `dimension`, once it has run.
-    pub fn terrain(
-        &self,
-        dimension: &str,
-    ) -> Option<Arc<sunrise_client::vanillagen::VanillaTerrain>> {
+    pub fn terrain(&self, dimension: &str) -> Option<Arc<sunrise_sim::vanillagen::VanillaTerrain>> {
         self.flags.terrain.lock().ok()?.get(dimension).cloned()
     }
     /// The server's load progress and chunk status map.
@@ -301,7 +298,7 @@ impl Integrated {
             tasks: channel().0,
             world_name: "Test world".into(),
             save_folder: "test_world".into(),
-            rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         }
     }
     /// `IntegratedServer.halt(true)`: returns once the world is saved and let go.
@@ -426,7 +423,7 @@ pub(in crate::game) struct Starting {
 /// The world to open and the player who owns it.
 pub(in crate::game) struct Launch {
     pub(in crate::game) folder: String,
-    pub(in crate::game) rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
+    pub(in crate::game) rule_registry: Arc<sunrise_client_core::gamerules::RuleRegistry>,
     pub(in crate::game) name: Option<String>,
     pub(in crate::game) seed: Option<i64>,
     pub(in crate::game) creative: bool,
@@ -591,15 +588,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         self.tick_server_measured(true)?;
                     } else {
                         self.follow_distances(flags);
-                        let cpu = sunrise_client::spans::thread_cpu();
+                        let cpu = sunrise_level::spans::thread_cpu();
                         let started = Instant::now();
                         self.tick_server_measured(false)?;
                         // MinecraftServer.tickServer's tick times, for /tick query.
                         self.clock.record(started.elapsed());
                         // Parallel Tick's Auto decides here, between ticks, how the next one runs.
                         let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
-                        let on_cpu = sunrise_client::spans::thread_cpu().zip(cpu);
-                        sunrise_client::parallel::after_tick(
+                        let on_cpu = sunrise_level::spans::thread_cpu().zip(cpu);
+                        sunrise_sim::parallel::after_tick(
                             elapsed_ms,
                             on_cpu.map(|(end, start)| (end - start).as_secs_f32() * 1000.0),
                         );
@@ -737,24 +734,24 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // No network until it is opened to the LAN; the memory connection
             // is not compressed (`Connection.isMemoryConnection`).
             listen: false,
-            online: sunrise_client::lan::OnlineMode::lan(
+            online: sunrise_sim::lan::OnlineMode::lan(
                 launch.online_auth,
                 Arc::new(|name, digest, ip| {
                     sunrise_server_profiles_http::has_joined(name, digest, ip)
                         .map(|opt| {
-                            opt.map(|p| sunrise_client::lan::VerifiedSession {
+                            opt.map(|p| sunrise_sim::lan::VerifiedSession {
                                 uuid: p.uuid,
                                 properties: p.properties,
                             })
                         })
-                        .map_err(|_| sunrise_client::lan::SessionVerifyError::Unavailable)
+                        .map_err(|_| sunrise_sim::lan::SessionVerifyError::Unavailable)
                 }),
             ),
             gate: Some(Arc::new(move |address, uuid, _| {
                 refused(
                     uuid == owner,
                     published.published.load(Ordering::Relaxed) != 0,
-                    address == sunrise_client::lan::conn::MEMORY_ADDRESS,
+                    address == sunrise_sim::lan::conn::MEMORY_ADDRESS,
                 )
                 .then(|| translatable("multiplayer.disconnect.not_whitelisted", &[]))
             })),
@@ -938,7 +935,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             conn,
                             &sunrise_protocol::packets::play::Clientbound::SystemChat(
                                 sunrise_protocol::packets::play::SystemChat {
-                                    content: sunrise_client::lan::data::component_nbt(
+                                    content: sunrise_sim::lan::data::component_nbt(
                                         &line.component(),
                                     ),
                                     overlay: false,
@@ -1042,7 +1039,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         settings: LanSettings,
     ) -> std::result::Result<u16, String> {
         if self.options.developer_single_player {
-            return Err(sunrise_client::lang::get(
+            return Err(sunrise_client_core::lang::get(
                 "sunrise.developer_offline.single_player",
             ));
         }
@@ -1285,7 +1282,7 @@ pub(in crate::game) fn run_component_harness_on_server(
     options.execution_role = ExecutionRole::IntegratedServer;
     options.dedicated = Some(Vec::new());
     let result = std::thread::Builder::new()
-        .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
+        .name(sunrise_level::crash::INTEGRATED_SERVER_THREAD.into())
         .stack_size(server_thread_stack())
         .spawn(move || {
             let run = || -> Result<()> {
@@ -1336,7 +1333,7 @@ pub(in crate::game) mod tests {
         let scratch = tempfile::tempdir().unwrap();
         let home = scratch.path().to_path_buf();
         let previous = std::panic::take_hook();
-        sunrise_client::crash::install(home.clone(), "client", || None);
+        sunrise_level::crash::install(home.clone(), "client", || None);
         let (tasks, receiver) = channel::<OwnerRequest>();
         let mut server = Integrated {
             emergency_save: None,
@@ -1345,10 +1342,10 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         };
         assert!(server.post(|_| {
-            let _guard = sunrise_client::crash::enter_native_mod(sunrise_client::crash::ModCall {
+            let _guard = sunrise_level::crash::enter_native_mod(sunrise_level::crash::ModCall {
                 id: "example:posted",
                 hook: "server_tick",
                 part: None,
@@ -1357,7 +1354,7 @@ pub(in crate::game) mod tests {
         }));
         server.thread = Some(
             std::thread::Builder::new()
-                .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
+                .name(sunrise_level::crash::INTEGRATED_SERVER_THREAD.into())
                 .stack_size(server_thread_stack())
                 .spawn(move || {
                     crate::game::native_entity_refs::tests::with_game(|game| {
@@ -1427,7 +1424,7 @@ pub(in crate::game) mod tests {
                     tasks,
                     world_name: String::new(),
                     save_folder: String::new(),
-                    rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                    rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
                 },
                 ready,
                 player: "Dev".into(),
@@ -1507,9 +1504,11 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn integrated_rules_screen_shares_server_session_registry() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            let registry = Arc::new(sunrise_client::gamerules::RuleRegistry::with_categories(&[
-                "example:machines".into(),
-            ]));
+            let registry = Arc::new(
+                sunrise_client_core::gamerules::RuleRegistry::with_categories(&[
+                    "example:machines".into(),
+                ]),
+            );
             let request =
                 WorldRequest::new("test", None, None, true, None, registry.clone()).unwrap();
             let (tasks, _receiver) = channel();
@@ -1599,10 +1598,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-        use sunrise_client::{
-            lan::data::{SyncData, WorldTags},
-            text::Text,
-        };
+        use sunrise_client_core::text::Text;
+        use sunrise_sim::lan::data::{SyncData, WorldTags};
 
         if run_fresh_cases(
             "game::server_side::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
@@ -1643,7 +1640,7 @@ pub(in crate::game) mod tests {
                     tasks,
                     world_name: "fixture".into(),
                     save_folder: "fixture".into(),
-                    rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                    rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
                 });
                 let result = game.leave_server(Some(Text::literal("test disconnect")));
                 assert_eq!(
@@ -1675,7 +1672,7 @@ pub(in crate::game) mod tests {
                 tasks,
                 world_name: "First world".into(),
                 save_folder: "first_world".into(),
-                rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
             });
             let local = game.client_session().client_server().unwrap();
             assert!(local.integrated_local);
@@ -1816,12 +1813,12 @@ pub(in crate::game) mod tests {
             native_entity_refs::tests::run_fresh_cases,
             native_living_refs::tests::{ZOMBIE_UUID, hurt_pig, send_to_the_nether, summon_mob},
         };
-        use sunrise_client::{
+        use sunrise_core::nbt::Tag;
+        use sunrise_level::{
             chunk::Chunk,
             containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
-            save::{LevelShape, SaveDir, SessionLock},
         };
-        use sunrise_core::nbt::Tag;
+        use sunrise_sim::save::{LevelShape, SaveDir, SessionLock};
 
         const NAME: &str =
             "game::server_side::integrated::tests::integrated_tick_panic_saves_changed_world";
@@ -1894,7 +1891,7 @@ pub(in crate::game) mod tests {
                 ))),
             );
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(8.5, 64.0, 8.5),
                 )
@@ -1911,7 +1908,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .path();
             let owner_xp = || {
-                let player = sunrise_client::save::read_dat(&owner_file)?;
+                let player = sunrise_sim::save::read_dat(&owner_file)?;
                 match player.get("XpTotal") {
                     Some(sunrise_core::nbt::Tag::Int(xp)) => Some(*xp),
                     _ => None,
@@ -1932,7 +1929,7 @@ pub(in crate::game) mod tests {
             events.lock().unwrap().clear();
             let error = game.integrated_tick_loop(&flags).unwrap_err().to_string();
             assert!(error.contains("integrated tick fixture"));
-            let saved = sunrise_client::save::Level::read(root).unwrap();
+            let saved = sunrise_sim::save::Level::read(root).unwrap();
             assert_eq!(saved.name, "saved after integrated tick panic");
             // A fresh reader has no pending writes or captured payload to fall back to.
             let disk = open();
@@ -2010,7 +2007,7 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         };
         // The receiver deliberately does not run either task between the updates. In particular,
         // the dispatcher can still show the old value when the owner toggles back.
@@ -2059,7 +2056,7 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         };
         server.request_stop();
         assert!(flags.stop.load(Ordering::Relaxed));
@@ -2082,7 +2079,7 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         };
         assert_eq!(server.stop().unwrap_err().to_string(), "disk write failed");
     }

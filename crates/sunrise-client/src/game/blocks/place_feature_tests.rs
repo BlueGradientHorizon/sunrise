@@ -4,7 +4,7 @@
 //! and messages are vanilla 26.3's (tools/test_place_feature_inline_parity.py).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
@@ -61,7 +61,7 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<S
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let messages = game.side.chat_capture.take().unwrap_or_default();
-    let text = messages.first().map(sunrise_client::text::Text::plain);
+    let text = messages.first().map(sunrise_client_core::text::Text::plain);
     (ok, text)
 }
 

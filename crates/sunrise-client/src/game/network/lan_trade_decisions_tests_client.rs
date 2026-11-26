@@ -6,10 +6,10 @@ use crate::game::server_side::lan_trade_decisions_tests::tick_work;
 use crate::game::server_side::lan_trade_decisions_tests::work_screen;
 use crate::game::server_side::lan_trade_decisions_tests::work_screen_mut;
 use mod_api::{ModEntry, Mods};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 pub(in crate::game) fn restock_after_hero_change(test: &str, before_work: bool) {
-    use sunrise_client::effects::EffectInstance;
+    use sunrise_level::effects::EffectInstance;
     super::in_own_process(test, || {
         let mods: Mods = vec![ModEntry::new(
             "remove-hero",

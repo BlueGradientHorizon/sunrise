@@ -2,10 +2,8 @@
 //! banner item to the block when placed and back to the dropped item when
 //! broken (`copy_components` in the banner loot tables).
 use super::maps::MapBanner;
-use sunrise_client::{
-    banner::{self, BannerLayer},
-    containers::BlockEntity,
-};
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::banner::{self, BannerLayer};
 
 /// `MapBanner.fromWorld`: the banner whose block entity is `entity` at `pos`,
 /// with the base colour of its block (`BannerBlockEntity.getBaseColor` is

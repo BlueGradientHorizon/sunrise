@@ -1,11 +1,11 @@
 //! Command block rules: the block's state reads, conditional chaining, power and edit records.
-use sunrise_client::{
+use sunrise_core::position::BlockPos;
+use sunrise_level::{
     block_entities::BlockEntityLease,
     command_block::{self, CommandBlock, Mode},
     containers::BlockEntity,
     world::World,
 };
-use sunrise_core::position::BlockPos;
 use sunrise_world::{
     chunk::BlockState,
     registry::{BlockRegistry, BlockStateId},

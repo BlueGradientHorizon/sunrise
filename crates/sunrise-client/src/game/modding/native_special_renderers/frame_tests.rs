@@ -17,16 +17,12 @@ use sunrise_client::item_render::{ItemRenderState, OwnedSpecialModelFactory};
 #[test]
 #[ignore = "daily"]
 fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
-    use sunrise_client::{
-        chunk::{Chunk, Light, index},
-        entities::ItemEntity,
-        hud::Rect,
-        item_render::GlintFrame,
-        items::ItemStack,
-        mesher::Vertex,
-    };
+    use sunrise_client::{hud::Rect, item_render::GlintFrame, mesher::Vertex};
     use sunrise_core::{geometry::Vec3, nbt::Tag};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::{Chunk, Light, index};
     use sunrise_protocol::connection::Pipe;
+    use sunrise_sim::entities::ItemEntity;
 
     crate::game::in_own_process(
         "game::client_side::native_special_renderers::frame_tests::a_special_dropped_item_outlines_only_its_committed_world_vertices",
@@ -195,7 +191,7 @@ pub(in crate::game) fn draw_stick(
     count: u32,
 ) -> ItemRenderState {
     game.resolve_item(
-        &sunrise_client::items::ItemStack::new("minecraft:stick", count),
+        &sunrise_items::items::ItemStack::new("minecraft:stick", count),
         DisplayContext::ThirdPersonRightHand,
         None,
         0,
@@ -224,7 +220,7 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass() {
 fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
     fn in_pass(_: &mut crate::game::ServerGame<'_>) {
         assert!(
-            !sunrise_client::join_seq::visibility::passes_settled(),
+            !sunrise_sim::join_seq::visibility::passes_settled(),
             "not inside a lifted pass"
         );
         *ASKED_IN_PASS.lock().unwrap() = Some(asked(COUNT));
@@ -256,7 +252,7 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
             .get("minecraft:zombie")
             .unwrap()
             .clone();
-        let mut mob = sunrise_client::mobs::Mob::new(
+        let mut mob = sunrise_sim::mobs::Mob::new(
             ZOMBIE,
             kind,
             sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
@@ -265,7 +261,7 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
         mob.no_ai = true;
         mob.extra.equipment.set(
             sunrise_items::equipment::MAINHAND,
-            Some(sunrise_client::items::ItemStack::new(
+            Some(sunrise_items::items::ItemStack::new(
                 "minecraft:stick",
                 COUNT,
             )),
@@ -274,7 +270,7 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
         if !game.world.chunks.contains_key(&(0, 0)) {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         }
         crate::game::entity::taken_pass_tests::with_spawn(in_pass, || {
             game.tick_creature_entities().unwrap();

@@ -1,10 +1,10 @@
 //! Client placement transport state for mod recipe books.
 use super::Game;
-use sunrise_client::recipe_book::{
+use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
+use sunrise_sim::recipe_book::{
     placement_sync as sync, settings_codec,
     settings_sync::{CHANNEL, Message},
 };
-use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn send_mod_book_placement(&mut self, frame: sync::Frame) {

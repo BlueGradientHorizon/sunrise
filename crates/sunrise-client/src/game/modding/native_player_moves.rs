@@ -1,6 +1,6 @@
 //! `player_move`: the game's half of a movement report the hub holds for the mods.
 use super::Game;
-use sunrise_client::lan::hub::Hub;
+use sunrise_sim::lan::hub::Hub;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// What the hub needs to know of the loaded mods each tick.

@@ -717,7 +717,7 @@ mod tests {
 pub(in crate::game) fn validate_decoded_components<'a>(
     stack_for: impl Fn(&str) -> Option<&'a EngineStack>,
 ) -> Result<(), mod_api::StackWriteError> {
-    if sunrise_client::item_data::StackData::CONSUME_EFFECT_COMPONENTS
+    if sunrise_items::item_data::StackData::CONSUME_EFFECT_COMPONENTS
         .into_iter()
         .any(|id| {
             stack_for(id)

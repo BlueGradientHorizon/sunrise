@@ -3,7 +3,7 @@
 //! (`Sources::viewed`). Neither goes through the forced chunks or the mods' chunk tickets. With no
 //! area on the server both are empty, without allocating.
 use super::Game;
-use sunrise_client::ticket_levels::ViewedTicket;
+use sunrise_sim::ticket_levels::ViewedTicket;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The squares the areas in the level in place keep loaded and generated.

@@ -9,11 +9,11 @@ use super::{Game, Screen, books::BookScreen, dialogs::ClosedDialog};
 use std::sync::Arc;
 use sunrise_client::{
     auth::{self, ChatKeyPair},
-    command::{Dispatcher, Registries},
     confirm_screen::Choice,
     hud::HudBatch,
-    text::Text,
 };
+use sunrise_client_core::text::Text;
+use sunrise_command::{Dispatcher, Registries};
 use sunrise_java_properties::now_millis;
 use sunrise_protocol::{
     packets::play::{self, Serverbound as S},

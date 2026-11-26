@@ -1,7 +1,7 @@
 //! Exercise the server's attack entry points with real enchantment data.
 use super::*;
 use crate::game::*;
-use sunrise_client::{
+use sunrise_sim::{
     mobs::{Damage, Mob, MobEvent, Who, finalize as f},
     projectiles::{Hit, Projectile, ProjectileKind},
 };
@@ -131,8 +131,8 @@ fn mob_thorns_melee_projectiles_and_non_attacks() {
 #[ignore = "daily"]
 fn a_still_guardian_spikes_the_player_who_hit_it() {
     use std::sync::{atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     with_game(|g| {
         g.lan_host(

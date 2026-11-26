@@ -1,7 +1,7 @@
 //! Server-side cartography map loading and registration (`MapItem.scaleMap`, `lockMap`).
 use super::{Game, cartography::LevelMaps, maps::map_id};
 use std::collections::HashMap;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The maps of `stacks` (loaded as needed) for a menu over this level.
@@ -37,12 +37,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 mod tests {
     use crate::game::maps::MapData;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]
     fn crafting_map_takes_use_real_saved_maps() {
-        use sunrise_client::menu::{Env, Input, Kind, Menu};
+        use sunrise_sim::menu::{Env, Input, Kind, Menu};
         crate::game::native_entity_refs::tests::with_game(|game| {
             for mode in [Input::Swap, Input::Pickup, Input::QuickMove] {
                 let source = game.new_map_id(MapData::fresh(4.5, 4.5, 0, "minecraft:overworld"));

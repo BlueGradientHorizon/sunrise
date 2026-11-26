@@ -5,8 +5,8 @@
 use super::native_living_effects::{active_effect, mob_effect};
 use mod_api::{ActiveEffect, EquipmentSlot};
 use std::sync::Arc;
-use sunrise_client::health::{FixedBody, LivingBody, PlayerBody, PlayerHealthRead};
-use sunrise_client::mobs::finalize::{self, EquipmentRead};
+use sunrise_sim::health::{FixedBody, LivingBody, PlayerBody, PlayerHealthRead};
+use sunrise_sim::mobs::finalize::{self, EquipmentRead};
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::attributes::entity::Catalog;
 
@@ -65,7 +65,7 @@ pub(in crate::game) fn body_attribute(
 ) -> Option<f64> {
     match body {
         LivingBody::Mob(m) => m.extra.live.read(catalog, &m.kind.id, name, kind, || {
-            sunrise_client::entity_nbt::attribute_entries(m)
+            sunrise_sim::entity_nbt::attribute_entries(m)
                 .into_iter()
                 .map(|(_, entry)| entry)
                 .collect()
@@ -166,7 +166,7 @@ pub(in crate::game) const ENDER_DRAGON: &str = "minecraft:ender_dragon";
 /// both the full host's `entity_kind` and a hit's view make.
 pub(in crate::game) fn body_kind(
     body: LivingBody<'_>,
-    keys: sunrise_client::health::LivingTypeKeys,
+    keys: sunrise_sim::health::LivingTypeKeys,
 ) -> Option<mod_api::EntityTypeKey> {
     match body {
         LivingBody::Mob(m) => m.kind.type_key,
@@ -195,7 +195,7 @@ pub(in crate::game) fn body_no_ai(body: LivingBody<'_>) -> Option<bool> {
 }
 
 /// An armor stand's body.
-pub(in crate::game) fn stand_body(a: &sunrise_client::entities::ArmorStand) -> LivingBody<'_> {
+pub(in crate::game) fn stand_body(a: &sunrise_sim::entities::ArmorStand) -> LivingBody<'_> {
     LivingBody::Stand(FixedBody {
         id: a.id,
         health: &a.health,

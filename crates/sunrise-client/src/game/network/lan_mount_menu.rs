@@ -13,12 +13,12 @@ use super::{
     mount_menu::{mount_columns, shows_body},
     transactions::{After, SaveChunkScope},
 };
-use sunrise_client::{
-    items::ItemStack,
+use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::{
     menu::{Kind, Menu, QuickCraftDrag},
     mobs::nautilus,
 };
-use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A guest's open mount menu.
 pub(in crate::game) struct GuestMount {
@@ -380,7 +380,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(format!("minecraft:{}", nautilus::saddle_sound(m)))
         } else {
             put_on.map(|s| {
-                sunrise_client::item_sync::equip_sound(s, self.res.items())
+                sunrise_sim::item_sync::equip_sound(s, self.res.items())
                     .unwrap_or_else(|| "minecraft:item.armor.equip_generic".into())
             })
         };
@@ -431,8 +431,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn horse_inventory_click_keeps_complete_body_stack() {
-        use sunrise_client::{items::ItemStack, menu::Input, mobs::Mob};
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::{menu::Input, mobs::Mob};
         crate::game::native_entity_refs::tests::with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
             let mut mob = Mob::new(12, kind, Vec3::ZERO, 0.0);

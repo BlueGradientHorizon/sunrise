@@ -7,8 +7,8 @@ use mod_api::GuiPaintError;
 use std::borrow::Cow;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud_layout::{self, GuiDraw, GuiFaces, GuiItems, Undrawable};
-use sunrise_client::items::ItemStack;
 use sunrise_items::equipment::OFFHAND;
+use sunrise_items::items::ItemStack;
 
 /// Whose hotbar the slots come from: the local player, a live remote player, or a detached camera player.
 #[derive(Clone, Copy)]

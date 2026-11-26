@@ -1,14 +1,14 @@
 //! `BowItem.releaseUsing` through `ProjectileWeaponItem.draw` and `shoot`: the
 //! bow's enchantment components decide the arrows it fires, and the ammunition
 //! is whatever `#minecraft:arrows` lists.
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::use_hand_client::bow_enchantment_tests::game_with_player;
 
 /// The horizontal heading `p` was shot with, in degrees:
 /// `Projectile.shootFromRotation` sends it along `(-sin(yaw), ..., cos(yaw))`.
-pub(in crate::game::server_side) fn heading(p: &sunrise_client::projectiles::Projectile) -> f32 {
+pub(in crate::game::server_side) fn heading(p: &sunrise_sim::projectiles::Projectile) -> f32 {
     (-p.velocity.x as f32)
         .atan2(p.velocity.z as f32)
         .to_degrees()
@@ -46,7 +46,7 @@ fn a_piercing_bow_shoots_arrows_that_pierce_their_level() {
 #[test]
 #[ignore = "daily"]
 fn a_multishot_bow_fires_three_arrows_ten_degrees_apart() {
-    use sunrise_client::arrows::Pickup;
+    use sunrise_sim::arrows::Pickup;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let mut resources = None;
     let mut game = game_with_player(&mut resources, &root);
@@ -96,7 +96,7 @@ fn a_multishot_bow_fires_three_arrows_ten_degrees_apart() {
 fn an_item_a_pack_adds_to_the_arrows_tag_is_ammunition() {
     use crate::game::crossbow::projectile_slot;
     use crate::game::shield::OFFHAND_SLOT;
-    use sunrise_client::items::Items;
+    use sunrise_items::items::Items;
     let tag = |values: &[&str]| {
         std::collections::HashMap::from([(
             "minecraft:arrows".to_owned(),

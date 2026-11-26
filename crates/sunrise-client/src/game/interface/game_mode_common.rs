@@ -1,11 +1,9 @@
 //! Common game-mode queries, adventure predicates, chat abilities, and player abilities.
 use super::{Game, Screen};
 use mod_api::{PlayerAbilities, PlayerRef};
-use sunrise_client::{
-    chat::{ChatAbilities, ChatVisibility},
-    command::args::GameMode,
-    items::ItemStack,
-};
+use sunrise_client::chat::{ChatAbilities, ChatVisibility};
+use sunrise_command::args::GameMode;
+use sunrise_items::items::ItemStack;
 
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::game_modes::{
@@ -154,12 +152,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 None => true,
                 Some(Tag::String(snbt)) => sunrise_core::nbt::parse_snbt(&snbt.to_string_lossy())
                     .is_ok_and(|(pattern, _)| {
-                        sunrise_client::nbt_path::compare_nbt(
+                        sunrise_client_core::nbt_path::compare_nbt(
                             &pattern,
                             self.side_block_entity_nbt(pos).as_ref(),
                         )
                     }),
-                Some(pattern @ Tag::Compound(_)) => sunrise_client::nbt_path::compare_nbt(
+                Some(pattern @ Tag::Compound(_)) => sunrise_client_core::nbt_path::compare_nbt(
                     pattern,
                     self.side_block_entity_nbt(pos).as_ref(),
                 ),
@@ -217,7 +215,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             )
     }
     /// `Entity.doWaterSplashEffect` for a dropped item: server plays sound, client adds particles.
-    pub(crate) fn apply_item_splash(&mut self, splash: sunrise_client::entities::ItemSplash) {
+    pub(crate) fn apply_item_splash(&mut self, splash: sunrise_sim::entities::ItemSplash) {
         self.side_apply_item_splash(splash);
     }
     /// `Level.getMinY`: the current dimension type's minimum y.

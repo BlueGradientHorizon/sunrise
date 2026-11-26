@@ -43,7 +43,7 @@ impl Hooks for EmberMod {
 #[ignore = "daily"]
 fn a_block_part_hears_it_burned_and_writes_the_level() {
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     use std::sync::atomic::{AtomicUsize, Ordering};
     let calls = Arc::new(AtomicUsize::new(0));

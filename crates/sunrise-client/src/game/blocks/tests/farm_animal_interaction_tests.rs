@@ -4,10 +4,10 @@
 //! player (`Sheep.mobInteract`, `MushroomCow.mobInteract`).
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::{Mob, Who};
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::{Mob, Who};
+use sunrise_sim::motion::PlayerMotion;
 
 fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
@@ -122,8 +122,8 @@ fn milk_sounds_carry_pitch_one_and_draw_no_level_random() {
 #[ignore = "daily"]
 fn a_brown_mooshroom_milks_the_effects_of_a_mod_block_item() {
     use crate::game::api_values::TryIntoEngine;
-    use sunrise_client::mod_content::{ContentMod, resource_root};
     use sunrise_mod_package::{content::Content, enabled::EnabledMods};
+    use sunrise_sim::mod_content::{ContentMod, resource_root};
 
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let scratch =

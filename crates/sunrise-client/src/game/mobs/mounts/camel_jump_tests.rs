@@ -5,12 +5,12 @@
 //! (tools/test_camel_jump_parity.py measures the same on vanilla 26.3).
 use crate::game::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 const GUEST: &str = "CamelGuest";
 
@@ -121,7 +121,9 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<Stri
     let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
+        said.iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect(),
     )
 }
 
@@ -192,7 +194,7 @@ fn a_saddled_camels_riding_jump_posts_entity_action() {
     let camel = game
         .mobs
         .iter()
-        .find(|m| m.species() == sunrise_client::mobs::Species::Camel)
+        .find(|m| m.species() == sunrise_sim::mobs::Species::Camel)
         .expect("the camel");
     assert!(camel.extra.flag2, "the camel dashes");
     let event = selected(&mut game);

@@ -1,7 +1,6 @@
 //! Registered play-Ping regression with the production sender-flush completion boundary.
 use crate::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 use sunrise_protocol::{
     buf::Reader,
     packets::{
@@ -10,6 +9,7 @@ use sunrise_protocol::{
         status,
     },
 };
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 fn decode(packet: S) -> (S, usize) {
     let bytes = packet.encode();
@@ -59,7 +59,7 @@ fn pass(game: &mut crate::game::ServerGame<'_>, conn: u32, packet: S) {
         .update_connection(conn, |guest| {
             guest
                 .inbox
-                .push_back(sunrise_client::lan::guest::InboxItem::Packet(packet, None));
+                .push_back(sunrise_sim::lan::guest::InboxItem::Packet(packet, None));
         })
         .unwrap();
     complete_sender_tick(game);
@@ -85,7 +85,7 @@ fn complete_sender_tick(game: &mut crate::game::ServerGame<'_>) {
     let clock_before = game.world.game_time;
     game.tick_lan_packets();
     // tick_lan_packets has ended its Holding scope; production flushes these senders later.
-    sunrise_client::lan::flush_all(
+    sunrise_sim::lan::flush_all(
         game.lan
             .as_ref()
             .unwrap()
@@ -177,8 +177,8 @@ fn player_pong_observes_order_and_sends_typed_ping() {
         EntityRef, Hooks, ModEntry, Mods, PlayerPingRefusal, PlayerPongEvent, ServerHost,
     };
     use std::sync::{Mutex, atomic::Ordering};
-    use sunrise_client::lan::guest::InboxItem;
     use sunrise_protocol::packets::configuration::Ping;
+    use sunrise_sim::lan::guest::InboxItem;
 
     const CHILD: &str = "SUNRISE_PLAYER_PONG_CHILD";
     if run_fresh_cases(
@@ -409,7 +409,7 @@ fn held_guest_play_ping_survives_the_acknowledgement_filter() {
 fn handover_guest_play_ping_survives_the_acknowledgement_filter() {
     let mut resources = None;
     let (mut game, receivers) = fixture(&mut resources);
-    let handover = sunrise_client::lan::arrivals::Handover {
+    let handover = sunrise_sim::lan::arrivals::Handover {
         id: 0x1234,
         since: 123,
         record: serde_json::json!({"fixture": "handover-state-sentinel"}),

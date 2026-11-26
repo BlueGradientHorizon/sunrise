@@ -6,8 +6,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 use sunrise_client::hud::Rect;
+use sunrise_client::particles::ParticleEngine;
 use sunrise_client::particles::polytone::Registry;
-use sunrise_client::particles::{ParticleEngine, ParticleOptions};
+use sunrise_level::particle_options::ParticleOptions;
 
 /// A game over the prepared resources that registers no mod tables of the process (the
 /// particles here are the pack's): a direct `ClientGame`, not the mod fixture's `with_client_game`.
@@ -48,7 +49,7 @@ fn with_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     .unwrap();
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     test(&mut game);
 }
 

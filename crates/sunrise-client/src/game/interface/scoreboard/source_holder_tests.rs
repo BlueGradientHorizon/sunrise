@@ -3,12 +3,10 @@
 //! objectives unlocked for the player asking, not for the host.
 use crate::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
-};
 use sunrise_core::vanilla_bytes::Writer;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{buf::Reader, ids, packets::configuration::ClientInformation};
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 /// A hosted world with `name` joined and placed at the world spawn.
 fn game_with_guest<'a>(

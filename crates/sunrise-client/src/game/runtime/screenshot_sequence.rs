@@ -5,10 +5,8 @@
 use super::{Game, Screen};
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::mpsc::Sender};
-use sunrise_client::{
-    Result,
-    gfx::{ScreenshotRequest, pack_uniforms::FrameTiming},
-};
+use sunrise_client::gfx::{ScreenshotRequest, pack_uniforms::FrameTiming};
+use sunrise_client_core::Result;
 
 const MAX_FRAMES: u32 = 10_000;
 

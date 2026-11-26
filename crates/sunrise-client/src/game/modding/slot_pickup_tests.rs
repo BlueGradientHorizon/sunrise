@@ -12,23 +12,25 @@ use std::{
     cell::{Cell, RefCell},
     sync::{Arc, mpsc},
 };
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::Chunk,
     containers::{
         BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModCrafting, ModLinks,
         ModMenuType,
     },
-    items::ItemStack,
-    lan::{
-        Out, PlayerSender,
-        menu::{ModCraft, Slots},
-    },
-    menu::{Input, Kind, Menu},
 };
 use sunrise_protocol::{
     buf::Reader,
     item::Hashed,
     packets::play::{Clientbound as C, ContainerClick, Serverbound},
+};
+use sunrise_sim::{
+    lan::{
+        Out, PlayerSender,
+        menu::{ModCraft, Slots},
+    },
+    menu::{Input, Kind, Menu},
 };
 
 /// The menu type the pot opens: a prepared registry slot (`minecraft:generic_9x3`) for a
@@ -1211,7 +1213,7 @@ fn a_drag_and_a_creative_clone_never_ask_the_pickup_rule() {
         menu.creative = true;
         serve(game, &menu);
         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.game_mode = sunrise_client::lan::guest::CREATIVE;
+            guest.game_mode = sunrise_sim::lan::guest::CREATIVE;
         });
         menu.click(&game.menu_env(), SHOWN as i32, 2, Input::Clone)
             .unwrap();

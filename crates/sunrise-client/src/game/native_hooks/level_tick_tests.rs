@@ -14,8 +14,8 @@ mod tests {
     fn server_hook_resolves_uuid_only_while_the_entity_is_in_its_active_level() {
         use super::super::super::{Dim, native_entity_refs::tests::with_game};
         use mod_api::EntityUuid;
-        use sunrise_client::mobs::Mob;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::Mob;
 
         const UUID: EntityUuid = EntityUuid(0x0123_4567_89ab_cdef_1020_3040_ffff_ffff);
 
@@ -67,7 +67,7 @@ mod tests {
                 assert_eq!(*game.persist.uuids, uuids_before);
 
                 game.enter_level(Dim::Overworld).unwrap();
-                use sunrise_client::join_seq::Joined;
+                use sunrise_sim::join_seq::Joined;
                 let join = game.mobs[0].join_seq();
                 let taken = game.mobs.extract(join).unwrap();
                 game.native_level_tick_pre(home);

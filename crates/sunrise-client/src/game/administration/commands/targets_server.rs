@@ -132,7 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .find(|s| s.id == id)
                 .map(|s| s.position),
             Target::Knot(id) => self.natural_knot(id).map(|fence| {
-                let p = sunrise_client::mobs::leash::knot_state(fence).position;
+                let p = sunrise_sim::mobs::leash::knot_state(fence).position;
                 [p.x, p.y, p.z]
             }),
             Target::General(id) => self
@@ -159,7 +159,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                 .iter()
                 .find(|m| m.id == id)
                 .map_or_else(String::new, |m| {
-                    sunrise_client::command::args::normalize(&m.kind.id)
+                    sunrise_command::args::normalize(&m.kind.id)
                 }),
             Target::Item(_) => "minecraft:item".into(),
             Target::Orb(_) => "minecraft:experience_orb".into(),

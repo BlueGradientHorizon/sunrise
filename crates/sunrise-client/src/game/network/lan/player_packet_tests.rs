@@ -7,20 +7,18 @@ use std::{
     collections::HashSet,
     sync::{atomic::AtomicI32, mpsc},
 };
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{
-        Joined, Out, PlayerSender,
-        guest::{Guest, InboxItem},
-    },
-};
 use sunrise_core::{
     geometry::Vec3,
     nbt::{self, Tag},
 };
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     buf::Reader,
     packets::{configuration::ClientInformation, play::Serverbound as S},
+};
+use sunrise_sim::lan::{
+    Joined, Out, PlayerSender,
+    guest::{Guest, InboxItem},
 };
 
 const VIEWER: u32 = 1;
@@ -219,8 +217,8 @@ fn use_item(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<String, Value
             g.last_action_tick = 0;
             g.ack_up_to.set(-1);
             g.game_mode = if kind == "spectator" { 3 } else { 0 };
-            g.offhand =
-                (kind != "empty").then(|| crate::items::ItemStack::new("minecraft:snowball", 3));
+            g.offhand = (kind != "empty")
+                .then(|| sunrise_items::items::ItemStack::new("minecraft:snowball", 3));
         });
         let saved = game.level.enabled_features.clone();
         if kind == "disabled" {
@@ -714,9 +712,7 @@ fn crystal_round_trip(game: &mut crate::game::ServerGame<'_>, rows: &mut Map<Str
     assert!(game.crystals.iter().all(|c| c.id != id));
     let tag = tags
         .into_iter()
-        .find(|tag| {
-            sunrise_client::entity_nbt::kind(tag).as_deref() == Some("minecraft:end_crystal")
-        })
+        .find(|tag| sunrise_sim::entity_nbt::kind(tag).as_deref() == Some("minecraft:end_crystal"))
         .unwrap();
     let cleared = tag.get("beam_target").is_none()
         && matches!(tag.get("Fire"), Some(Tag::Short(0)))

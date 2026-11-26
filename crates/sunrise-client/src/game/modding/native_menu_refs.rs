@@ -2,7 +2,8 @@
 use super::Game;
 use mod_api::__private::game::*;
 use mod_api::{DragKind, LevelReadError, MenuClick, MenuRef, MouseButton, PlayerRef, SwapWith};
-use sunrise_client::{items::ItemStack, menu::Input};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::Input;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Submit clicks on the local player's live menu through normal prediction
@@ -113,7 +114,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn menu_merchant_offers(
         &self,
         menu: MenuRef,
-    ) -> Result<Option<&[sunrise_client::merchant::MerchantOffer]>, LevelReadError> {
+    ) -> Result<Option<&[sunrise_sim::merchant::MerchantOffer]>, LevelReadError> {
         if self.native_client_menu_name(menu) != Some("minecraft:merchant") {
             return Ok(None);
         }
@@ -267,8 +268,8 @@ pub(in crate::game) mod tests {
         Arc, Mutex,
         atomic::{AtomicI32, AtomicUsize},
     };
-    use sunrise_client::lan::{Joined, PlayerSender, guest::Guest};
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
     pub(in crate::game) const PANEL: &str = "test:panel";
 
@@ -329,7 +330,7 @@ pub(in crate::game) mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(panel))].into();
         mod_platform::testing::with_mods(mods.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-            sunrise_client::containers::with_mod_menu_types(
+            sunrise_level::containers::with_mod_menu_types(
                 [(
                     PANEL.into(),
                     "test".into(),
@@ -436,11 +437,9 @@ pub(in crate::game) mod tests {
         game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
         let remote = game.remote.as_mut().unwrap();
         remote.level_load.finish();
-        let mut body = sunrise_client::motion::PlayerMotion::new(
-            game.motion,
-            sunrise_core::geometry::Vec3::ZERO,
-        )
-        .unwrap();
+        let mut body =
+            sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+                .unwrap();
         body.entity_id = remote.entity_id;
         game.player = Some(body);
         event_loop
@@ -802,8 +801,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_stack_is_thrown_from_the_eyes_as_player_drop_does() {
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
 
         with_game(|game| {
             // A body to throw from: `with_game` makes none.

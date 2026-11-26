@@ -2,14 +2,11 @@ use super::{Dim, Game};
 use crate::game::server_side::end::CrystalDrawFrame;
 #[cfg(test)]
 use crate::game::server_side::end::*;
-use sunrise_client::{
-    environment::Environment,
-    gfx::CelestialBody,
-    items::ItemStack,
-    mesher::Vertex,
-    particles::{ParticleOptions, ParticleType},
-};
+use sunrise_client::{gfx::CelestialBody, mesher::Vertex};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_level::environment::Environment;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 /// SkyRenderer.renderEndFlash's quad: the end_flash `sprite` at height 100, scale 60, turned by
 /// `pose`, at `intensity`; none when the flash is out or has no sprite. Each quad comes with what
@@ -214,7 +211,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// third of it under a boss bar's world fog.
     pub(in crate::game::client_side) fn end_flash_sky(
         &self,
-        sky: &mut sunrise_client::environment::Sky,
+        sky: &mut sunrise_level::environment::Sky,
         partial: f64,
     ) {
         if self.dimension_type().skybox == sunrise_world::dimension_type::Skybox::End
@@ -275,7 +272,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .facts()
                 .get(self.world.block(block[0], block[1], block[2]))
                 .fluid
-                == sunrise_client::blocks::Fluid::Water;
+                == sunrise_items::blocks::Fluid::Water;
             if water {
                 let bubble = ParticleOptions::simple(ParticleType::Bubble);
                 for _ in 0..4 {
@@ -309,7 +306,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let instance = sunrise_client::sound_engine::SoundInstance::directional(
                 "minecraft:weather.end_flash",
                 sunrise_client_core::sound_source::WEATHER,
-                sunrise_client::random_source::create(),
+                sunrise_level::random_source::create(),
                 self.side.audio.0.listener,
                 flash.x_angle,
                 flash.y_angle,

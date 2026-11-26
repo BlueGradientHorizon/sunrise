@@ -10,13 +10,13 @@ use crate::game::{
     tutorial, view_vector,
 };
 use mod_api::{CrosshairTarget, EntityRef, LevelRef, PlayerAbilities, PlayerRef};
-use sunrise_client::{
-    command::args::GameMode,
-    items::ItemStack,
+use sunrise_command::args::GameMode;
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     join_seq::residency::{Kind, Owner, Source},
     lan::playerdata::uuid_ints,
 };
-use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_world::stepped_interpolation::PosRot;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -56,7 +56,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .computed_value_of("minecraft:attack_speed")
                     .ok()
             })
-            .unwrap_or(sunrise_client::attack_strength::BASE_ATTACK_SPEED);
+            .unwrap_or(sunrise_sim::attack_strength::BASE_ATTACK_SPEED);
         let held_speed = self
             .held()
             .and_then(|s| self.items().get(&s.item))
@@ -651,7 +651,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .map(|k| k.fence)
                 })
                 .map(|fence| {
-                    let p = sunrise_client::mobs::leash::knot_state(fence).position;
+                    let p = sunrise_sim::mobs::leash::knot_state(fence).position;
                     [p.x, p.y, p.z]
                 }),
             Target::General(id) => self

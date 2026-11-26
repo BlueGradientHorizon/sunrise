@@ -48,7 +48,7 @@ pub(in crate::game) fn attach_offscreen_window(
     game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
     game.side.title.0 = None;
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+        sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
             .unwrap(),
     );
     game.side.focused = true;
@@ -924,7 +924,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                         y,
                         w,
                         h,
-                        &sunrise_client::text::Text::literal("iii"),
+                        &sunrise_client_core::text::Text::literal("iii"),
                         i != 1,
                         false,
                     );
@@ -1064,7 +1064,7 @@ fn mounted_widgets_draw_as_the_games_own() {
                     10.0,
                     100.0,
                     20.0,
-                    &sunrise_client::text::Text::literal("Done"),
+                    &sunrise_client_core::text::Text::literal("Done"),
                     true,
                     true,
                 );
@@ -2191,7 +2191,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 
             // A held dialog slider consumes drag on the overlay, not on Options under it.
             use sunrise_client::dialog_screen::{Layout, Part};
-            let dialog = sunrise_client::command::snbt::parse_fully(
+            let dialog = sunrise_command::snbt::parse_fully(
                 r#"{type:"minecraft:notice",title:"Wait",after_action:"wait_for_response",inputs:[{type:"minecraft:number_range",key:"amount",label:"Amount",start:0.0f,end:10.0f,initial:0.0f}]}"#,
             )
             .unwrap();
@@ -2292,7 +2292,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 
             // Only a real Yes/No hit consumes the press while the pack prompt covers gameplay.
             use sunrise_client::confirm_screen::Confirm;
-            use sunrise_client::text::Text;
+            use sunrise_client_core::text::Text;
             use sunrise_protocol::packets::configuration::ResourcePackPush;
             game.handle_pack_push(ResourcePackPush {
                 id: 1,
@@ -2354,7 +2354,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 .set("key.hotbar.1", "key.keyboard.k");
             game.open_player_inventory();
             assert_eq!(game.side.screen, Screen::Inventory);
-            game.inventory[9] = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 2));
+            game.inventory[9] = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 2));
             let batch = game.gui_batch().unwrap();
             let layout = game.built_container(&batch).unwrap();
             let &(_, [x, y, _, _]) = layout.slots.iter().find(|(slot, _)| *slot == 9).unwrap();
@@ -2410,7 +2410,8 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 
             // K drops one stick but must not trigger sort via its translated Q.
             // Q sorts the remainder into the earlier empty slot without dropping it.
-            use sunrise_client::{chunk::Chunk, containers::BlockEntity, items::ItemStack};
+            use sunrise_items::items::ItemStack;
+            use sunrise_level::{chunk::Chunk, containers::BlockEntity};
             let pos = (0, 0, 0);
             game.world
                 .chunks

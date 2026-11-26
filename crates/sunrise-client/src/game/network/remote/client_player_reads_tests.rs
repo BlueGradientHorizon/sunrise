@@ -6,12 +6,13 @@ fn client_player_reads_answer_from_the_local_players_copy() {
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{EntityRef, GameMode};
-    use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
+    use sunrise_client::level_loading::Reason;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
         connection::Pipe,
         packets::play::{self, Clientbound as C, SpawnInfo},
     };
+    use sunrise_sim::motion::PlayerMotion;
 
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
@@ -155,11 +156,11 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         assert_eq!(player.xp_needed_for_next_level(game), Some(13));
 
         // The main inventory retains typed stacks and their damage, in slot order.
-        let mut stack = sunrise_client::items::ItemStack::new("minecraft:diamond_pickaxe", 1);
+        let mut stack = sunrise_items::items::ItemStack::new("minecraft:diamond_pickaxe", 1);
         stack.damage = 7;
         game.inventory.fill(None);
         game.inventory[3] = Some(stack);
-        game.inventory[8] = Some(sunrise_client::items::ItemStack::new("minecraft:stone", 12));
+        game.inventory[8] = Some(sunrise_items::items::ItemStack::new("minecraft:stone", 12));
         player
             .with_inventory(game, |view| {
                 let mut slots = view.iter();

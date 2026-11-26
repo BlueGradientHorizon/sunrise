@@ -2,11 +2,11 @@ use super::*;
 use crate::game::creatures::breeding_tests::Bred;
 use crate::game::creatures::breeding_tests::SeededBreed;
 use mod_api::ServerHost;
-use sunrise_client::mobs::{
+use sunrise_core::random::RandomSource;
+use sunrise_sim::mobs::{
     finalize::{Attr, set_base},
     goals::Breed,
 };
-use sunrise_core::random::RandomSource;
 
 #[test]
 #[ignore = "daily"]
@@ -81,7 +81,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 None,
                 None,
                 None,
-                sunrise_client::mobs::BreedExperience::Deferred,
+                sunrise_sim::mobs::BreedExperience::Deferred,
             );
             assert_eq!(child, Some(base + 3));
             assert_eq!(
@@ -150,8 +150,8 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 .push(Mob::new(fox_base + 2, fox, Vec3::new(1.0, 64.0, 0.0), 0.0));
             game.native_joins_skip();
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let feeder = sunrise_client::lan::playerdata::uuid_ints(game.native_acting_id());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            let feeder = sunrise_sim::lan::playerdata::uuid_ints(game.native_acting_id());
             game.side.love_cause.insert(fox_base + 1, None);
             let fox_child = game.breed(
                 fox_base + 1,
@@ -159,11 +159,11 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 None,
                 None,
                 None,
-                sunrise_client::mobs::BreedExperience::Deferred,
+                sunrise_sim::mobs::BreedExperience::Deferred,
             );
             assert_eq!(fox_child, Some(fox_base + 3));
             let fox_child = game.mobs.iter().find(|mob| mob.id == fox_base + 3).unwrap();
-            assert!(sunrise_client::mobs::fox::trusts(fox_child, feeder));
+            assert!(sunrise_sim::mobs::fox::trusts(fox_child, feeder));
             assert_eq!(
                 *joins.lock().unwrap(),
                 vec![
@@ -185,7 +185,7 @@ fn breeding_announces_the_orb_before_the_lower_id_child() {
                 None,
                 Some(choice),
                 None,
-                sunrise_client::mobs::BreedExperience::Deferred,
+                sunrise_sim::mobs::BreedExperience::Deferred,
             );
             assert_eq!(child, None);
             // The baby is built before the hook now (its draws and entity number are spent), so a
@@ -215,7 +215,7 @@ pub(in crate::game) fn tick_breeding(
     game.mobs.clear();
     game.ui.rules.set(
         "mob_drops",
-        sunrise_client::gamerules::Value::Bool(mob_drops),
+        sunrise_client_core::gamerules::Value::Bool(mob_drops),
     );
     let base = game.side.next_entity;
     game.side.next_entity += 2;
@@ -239,7 +239,7 @@ pub(in crate::game) fn tick_breeding(
     parent.extra.variant = 1;
     partner.extra.variant = 2;
     parent.extra.variant2 = 1;
-    partner.extra.variant2 = if sunrise_client::mobs::llama::is_llama(partner.species()) {
+    partner.extra.variant2 = if sunrise_sim::mobs::llama::is_llama(partner.species()) {
         4
     } else {
         2
@@ -265,7 +265,7 @@ pub(in crate::game) fn tick_breeding(
     );
     let others = [partner.seen(None, game.items())];
     let mut events = Vec::new();
-    let mut test_level = sunrise_client::health::TestLevel::new(321);
+    let mut test_level = sunrise_sim::health::TestLevel::new(321);
     let mut experience = None;
     {
         let world = MobWorld {

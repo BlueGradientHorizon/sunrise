@@ -3,10 +3,10 @@
 //! player as its source, at the mob. The offspring is `getBreedOffspring(level, this)`,
 //! so a mooshroom's 1-in-1024 colour flip is rolled with the parent as its own mate.
 use crate::game::InteractTarget;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Mob, Species, Who};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Mob, Species, Who};
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::creatures_client::spawn_egg_mob_tests::game;

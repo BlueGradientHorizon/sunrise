@@ -1,7 +1,9 @@
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play;
+use sunrise_sim::motion::PlayerMotion;
 
 /// `MultiPlayerGameMode.piercingAttack`: a spear's jab sends its STAB action and nothing else,
 /// even with the look changed since the last move packet, so the 20-tick position reminder
@@ -13,7 +15,7 @@ fn a_spear_jab_sends_only_its_stab() {
         let (mut peer, _writer) = super::connect_menu_test(game);
         peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
             .unwrap();
-        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_local_mode(sunrise_command::args::GameMode::Survival);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
         game.world
             .chunks

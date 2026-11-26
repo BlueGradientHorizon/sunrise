@@ -7,12 +7,12 @@ use mod_api::{
     UnspawnedMobRef, WorldEpoch,
 };
 use std::{cell::RefCell, rc::Rc};
-use sunrise_client::mobs::{Mob, Species, finalize};
 use sunrise_core::geometry::Vec3;
 use sunrise_mod_runtime::{
     attachments::Attachments,
     pending_children::{Action, Borrow, Error, Owned, PendingChildren},
 };
+use sunrise_sim::mobs::{Mob, Species, finalize};
 
 /// All unpublished per-object data travels with its actual Mob. A route must move its
 /// existing UUID and attachments here, then install them only at residency commit.
@@ -231,7 +231,7 @@ impl PendingChildrenEdits for Children {
         }
         // Pending identity is action/lease/slot, never this placeholder resident id.
         // The UUID and complete constructor RNG are retained without publishing persist data.
-        let (random, uuid) = sunrise_client::mobs::living_random();
+        let (random, uuid) = sunrise_sim::mobs::living_random();
         let mut mob = Mob::with_random(
             0,
             kind,
@@ -382,10 +382,11 @@ pub(in crate::game::server_side) fn valid_child(
 fn size_ok(species: Species, size: Option<u32>) -> bool {
     match (species, size) {
         (Species::Slime | Species::MagmaCube | Species::SulfurCube, Some(size)) => {
-            i32::try_from(size).is_ok_and(|size| sunrise_client::mobs::cube::SIZES.contains(&size))
+            i32::try_from(size).is_ok_and(|size| sunrise_sim::mobs::cube::SIZES.contains(&size))
         }
-        (Species::Phantom, Some(size)) => i32::try_from(size)
-            .is_ok_and(|size| sunrise_client::mobs::phantom::SIZES.contains(&size)),
+        (Species::Phantom, Some(size)) => {
+            i32::try_from(size).is_ok_and(|size| sunrise_sim::mobs::phantom::SIZES.contains(&size))
+        }
         (Species::Slime | Species::MagmaCube | Species::SulfurCube | Species::Phantom, None) => {
             false
         }
@@ -396,11 +397,9 @@ fn size_ok(species: Species, size: Option<u32>) -> bool {
 
 fn apply_size(mob: &mut Mob, size: u32) {
     match mob.species() {
-        Species::Slime | Species::MagmaCube => {
-            sunrise_client::mobs::cube::set_size(mob, size as i32)
-        }
-        Species::SulfurCube => sunrise_client::mobs::sulfur_cube::set_size(mob, size as i32, true),
-        Species::Phantom => sunrise_client::mobs::phantom::set_size(mob, size as i32),
+        Species::Slime | Species::MagmaCube => sunrise_sim::mobs::cube::set_size(mob, size as i32),
+        Species::SulfurCube => sunrise_sim::mobs::sulfur_cube::set_size(mob, size as i32, true),
+        Species::Phantom => sunrise_sim::mobs::phantom::set_size(mob, size as i32),
         _ => unreachable!("species size checked before mutation"),
     }
 }

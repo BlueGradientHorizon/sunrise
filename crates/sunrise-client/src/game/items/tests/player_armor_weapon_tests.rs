@@ -1,8 +1,9 @@
 //! `CombatRules.getDamageAfterAbsorb` on a player victim: the attacker's weapon
 //! thins the armour fraction (`EnchantmentHelper.modifyArmorEffectiveness`), so
 //! a mob holding a Breach mace hits a player harder.
-use sunrise_client::{items::ItemStack, mobs::Mob, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
 fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     let mut resources = None;

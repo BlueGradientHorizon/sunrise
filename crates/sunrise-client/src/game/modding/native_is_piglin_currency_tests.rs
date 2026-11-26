@@ -12,11 +12,11 @@ use super::native_entity_refs::tests::{
 };
 use mod_api::{Hooks, Host, IsPiglinCurrencyEvent, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Mob, Species, piglin};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
+use sunrise_sim::mobs::{Mob, Species, piglin};
 
 /// An emerald is currency when it carries `minecraft:custom_data`.
 #[derive(Clone)]
@@ -80,7 +80,7 @@ fn field(game: &mut crate::game::ServerGame<'_>) {
     game.set_allow_commands(true);
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
@@ -171,10 +171,7 @@ fn stored(m: &Mob, item: &str) -> u32 {
 }
 
 fn off_hand(game: &crate::game::ServerGame<'_>, id: u32) -> Option<ItemStack> {
-    sunrise_client::mobs::finalize::item_stack(
-        mob(game, id),
-        sunrise_client::mobs::finalize::OFFHAND,
-    )
+    sunrise_sim::mobs::finalize::item_stack(mob(game, id), sunrise_sim::mobs::finalize::OFFHAND)
 }
 
 /// Thrown barter items (no other items are on the ground in these tests).
@@ -330,7 +327,7 @@ fn without_parts_only_the_gold_ingot_is_currency_isolated() {
         hit(game, p);
         assert_eq!(off_hand(game, p), None);
         let i = index(game, p);
-        let main = sunrise_client::mobs::finalize::item_stack(&game.mobs[i], 0).unwrap();
+        let main = sunrise_sim::mobs::finalize::item_stack(&game.mobs[i], 0).unwrap();
         assert_eq!(&*main.item, GOLDEN_SWORD);
         assert_eq!(main.custom_data(), Some(&coin_data()));
         assert_eq!(thrown(game), 0);
@@ -379,14 +376,14 @@ fn loved_emerald_root(scratch: &std::path::Path) -> std::path::PathBuf {
         std::fs::write(path, text).unwrap();
     }
     let package = sunrise_mod_package::Package::read(&dir).unwrap();
-    let loved = sunrise_client::mod_content::ContentMod {
+    let loved = sunrise_sim::mod_content::ContentMod {
         id: package.manifest.id.clone(),
         content: sunrise_mod_package::content::Content::read(&dir, &package.manifest).unwrap(),
         jars: Vec::new(),
     };
     let inventory =
         sunrise_mod_package::enabled::EnabledMods::new([("loved".to_owned(), mod_api::Side::Both)]);
-    sunrise_client::mod_content::resource_root(
+    sunrise_sim::mod_content::resource_root(
         &base,
         std::path::Path::new(""),
         &[loved],

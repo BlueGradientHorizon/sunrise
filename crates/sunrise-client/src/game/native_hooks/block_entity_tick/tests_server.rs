@@ -4,7 +4,8 @@ use crate::game::Dim;
 use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::BlockUpdateFlags;
 use std::sync::Arc;
-use sunrise_client::{containers::ModContainer, items::ItemStack};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::ModContainer;
 
 #[test]
 #[ignore = "daily"]

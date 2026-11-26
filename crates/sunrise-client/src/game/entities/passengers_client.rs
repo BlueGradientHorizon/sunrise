@@ -2,8 +2,8 @@ use super::Game;
 use crate::game::server_side::passengers::Riders;
 use crate::game::server_side::passengers::player_box_top;
 use std::collections::HashMap;
-use sunrise_client::mobs::riders;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::mobs::riders;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side seat for a remote general entity row (`remote.general.rows`).
@@ -290,7 +290,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let offset = riders::vehicle_attachment(m, 0.0);
                     let seat = Vec3::new(at.x, at.y, at.z);
                     m.seated(v, offset, Aabb::new(seat, seat));
-                    sunrise_client::mobs::living::teleports::set_pos(
+                    sunrise_sim::mobs::living::teleports::set_pos(
                         m,
                         Vec3::new(at.x, at.y - offset, at.z),
                     );
@@ -303,8 +303,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     continue;
                 };
                 let vehicle = &self.mobs[j];
-                let place = if sunrise_client::mobs::camel::is_camel(vehicle.species())
-                    || vehicle.species() == sunrise_client::mobs::Species::HappyGhast
+                let place = if sunrise_sim::mobs::camel::is_camel(vehicle.species())
+                    || vehicle.species() == sunrise_sim::mobs::Species::HappyGhast
                     || vehicle.kind.passenger_attachments.len() > 1
                 {
                     self.client_passenger_place(v, self.mobs[i].id)
@@ -313,7 +313,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 let attach = Self::mob_passenger_attachment(
                     vehicle,
-                    sunrise_client::mobs::drops::is_animal(self.mobs[i].species()),
+                    sunrise_sim::mobs::drops::is_animal(self.mobs[i].species()),
                     place.0,
                     place.1,
                 );
@@ -327,7 +327,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     vehicle.rider.is_some() || self.riding == Some(v),
                     self.items().entity_type_tags.has_bit(
                         rider.kind.flags.entity_tag_slot,
-                        sunrise_client::items::EntityTypeTags::NON_CONTROLLING_RIDER,
+                        sunrise_items::items::EntityTypeTags::NON_CONTROLLING_RIDER,
                     ),
                 );
                 let takes_body = riders::takes_vehicle_body(vehicle, rider, controlling);
@@ -336,7 +336,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let m = &mut self.mobs[i];
                 let offset = riders::vehicle_attachment(m, vehicle_width);
                 m.seated(v, offset, vehicle_box);
-                sunrise_client::mobs::living::teleports::set_pos(
+                sunrise_sim::mobs::living::teleports::set_pos(
                     m,
                     riders::seat(attach, offset, pos, yaw),
                 );

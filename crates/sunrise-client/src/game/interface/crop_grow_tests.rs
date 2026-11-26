@@ -49,7 +49,7 @@ fn a_mod_stops_one_cane_and_hears_the_other_grow() {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = &game.pack.assets.registry;
             let sand = registry.default_state("minecraft:sand").unwrap();

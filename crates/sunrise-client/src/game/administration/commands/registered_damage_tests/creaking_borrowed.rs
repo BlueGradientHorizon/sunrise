@@ -10,15 +10,12 @@ use mod_api::{
     ServerHost, ShouldApplyEffectTickThisTickEvent, VanillaGameEventEvent,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    brewing,
-    containers::BlockEntity,
-    mobs::{Who, creaking},
-};
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_level::{brewing, containers::BlockEntity};
+use sunrise_sim::mobs::{Who, creaking};
 
 const HOME: [i32; 3] = [8, 64, 8];
 const FISH_AFTER_HURT: [f64; 3] = [12.5, 64.0, 4.5];
@@ -450,7 +447,7 @@ pub(in crate::game) fn run_borrowed_creaking_hurt_finishes_before_the_tick_conti
                 );
             }
             if case == "sting" {
-                let poison = |m: &sunrise_client::mobs::Mob| {
+                let poison = |m: &sunrise_sim::mobs::Mob| {
                     m.extra
                         .effects
                         .iter()

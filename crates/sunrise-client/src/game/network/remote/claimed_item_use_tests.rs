@@ -6,8 +6,10 @@ use crate::game::{
 };
 use mod_api::{ClientHost, ClientItemUseBehavior, Hooks, ItemKey, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, interaction_input::Button, items::ItemStack};
+use sunrise_client::interaction_input::Button;
 use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 pub(in crate::game) const OWNER: &str = "client_use_fixture";
 pub(in crate::game) const SHIELD: &str = "minecraft:shield";

@@ -18,7 +18,7 @@ fn stack(game: &crate::game::ServerGame<'_>, snbt: &str) -> ItemStack {
 fn guest<'a>(
     game: &'a crate::game::ServerGame<'_>,
     conn: u32,
-) -> &'a sunrise_client::lan::guest::Guest {
+) -> &'a sunrise_sim::lan::guest::Guest {
     game.lan.as_ref().unwrap().hub.guest(conn).unwrap()
 }
 
@@ -78,8 +78,8 @@ fn inventory_slots_are_read_and_written_by_vanillas_numbers() {
             .unwrap()
             .hub
             .update_guest(13, |g| {
-                use sunrise_client::items::ItemStack as EngineStack;
                 use sunrise_items::equipment::{BODY, SADDLE};
+                use sunrise_items::items::ItemStack as EngineStack;
 
                 g.inventory[35] = Some(EngineStack::new("minecraft:stone", 12));
                 g.equipment.set(

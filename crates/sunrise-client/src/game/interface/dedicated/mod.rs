@@ -18,26 +18,23 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use sunrise_client::{
-    Result,
-    lan::{
-        LoginGate, NetConfig, NetLog, OnlineMode, hub::HubConfig, viewed_levels::areas as viewed,
-    },
-    server::{
-        eula,
-        properties::{GAME_MODES, ServerProperties, SystemEntropy},
-        user_cache::UserCache,
-        user_lists::{
-            BanEntry, BanList, Change, IpBanList, NameAndId, OpEntry, OpList, WhiteEntry,
-            WhiteList, format_date,
-        },
-    },
-    text::Text,
-};
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_perf_format::v1::{StopReason, Trigger};
 use sunrise_protocol::text::translatable;
 use sunrise_server_files::profiles;
+use sunrise_server_files::{
+    eula,
+    properties::{GAME_MODES, ServerProperties, SystemEntropy},
+    user_cache::UserCache,
+    user_lists::{
+        BanEntry, BanList, Change, IpBanList, NameAndId, OpEntry, OpList, WhiteEntry, WhiteList,
+        format_date,
+    },
+};
+use sunrise_sim::lan::{
+    LoginGate, NetConfig, NetLog, OnlineMode, hub::HubConfig, viewed_levels::areas as viewed,
+};
 
 pub(in crate::game) mod biome_regions;
 mod missing_mods;
@@ -57,7 +54,7 @@ mod language_tests;
 struct Watchdog {
     /// The thread running the ticks, whose stack the report carries.
     server: sunrise_threads::stack_dump::Watched,
-    save_failure_diagnostics: sunrise_client::chunk_io::SaveFailureDiagnostics,
+    save_failure_diagnostics: sunrise_sim::chunk_io::SaveFailureDiagnostics,
     base: Instant,
     next_nanos: AtomicU64,
     tick_nanos: AtomicU64,
@@ -81,7 +78,7 @@ impl Watchdog {
     /// Started from the thread that runs the ticks.
     fn start(
         max_tick_time: i64,
-        save_failure_diagnostics: sunrise_client::chunk_io::SaveFailureDiagnostics,
+        save_failure_diagnostics: sunrise_sim::chunk_io::SaveFailureDiagnostics,
     ) -> Option<Arc<Self>> {
         let max = Duration::from_millis(u64::try_from(max_tick_time).ok().filter(|m| *m > 0)?);
         let watchdog = Arc::new(Self {
@@ -135,7 +132,7 @@ impl Watchdog {
                 let message = format!(
                     "ServerWatchdog detected that a single server tick took {took} seconds (should be max {should})"
                 );
-                match sunrise_client::crash::report_watchdog(
+                match sunrise_level::crash::report_watchdog(
                     std::path::Path::new("."),
                     "server",
                     message,
@@ -257,7 +254,7 @@ fn log_from(thread: &str, level: &str, message: &str) {
         "ERROR" => ::log::Level::Error,
         _ => ::log::Level::Info,
     };
-    sunrise_client::logging::write_mirrored_as(thread, file_level, message);
+    sunrise_level::logging::write_mirrored_as(thread, file_level, message);
     CAPTURE.with_borrow_mut(|lines| {
         if let Some(lines) = lines {
             lines.push(message.to_owned());
@@ -316,12 +313,10 @@ pub(in crate::game) fn preflight(options: &mut Options) -> Result<bool> {
             | "jfrProfile"
             | "game-tests" => {}
             "initSettings" => init_settings = true,
-            name if name == sunrise_client::save::level_mods::ALLOW_FLAG => {
-                allow_missing_mods = true
-            }
+            name if name == sunrise_sim::save::level_mods::ALLOW_FLAG => allow_missing_mods = true,
             "help" => {
                 let allow = missing_mods::in_english(|| {
-                    sunrise_client::lang::get("sunrise.missing_mods.server.help")
+                    sunrise_client_core::lang::get("sunrise.missing_mods.server.help")
                 });
                 eprintln!(
                     "Option                Description\n------                -----------\n--allowMissingMods    {allow}\n--help\n--game-tests          Enables test-only mod content (or SUNRISE_GAME_TESTS=1/true)\n--initSettings        Initializes 'server.properties' and 'eula.txt', then quits\n--nogui\n--port <Integer>      (default: -1)\n--universe <String>   (default: .)\n--world <String>"
@@ -350,14 +345,14 @@ pub(in crate::game) fn preflight(options: &mut Options) -> Result<bool> {
     }
     // A dedicated server's tree: /op, /ban, /whitelist... (single player's
     // server thread is an integrated one and never gets here).
-    sunrise_client::command::vanilla::set_dedicated_commands(true);
+    sunrise_command::vanilla::set_dedicated_commands(true);
     // Sunrise's own commands are the owner's choice, off as on vanilla.
     if props
         .raw
-        .get(sunrise_client::command::vanilla::PREGEN_PROPERTY)
+        .get(sunrise_command::vanilla::PREGEN_PROPERTY)
         .is_some_and(|v| v.trim().eq_ignore_ascii_case("true"))
     {
-        sunrise_client::command::vanilla::set_sunrise_commands(true);
+        sunrise_command::vanilla::set_sunrise_commands(true);
     }
     props.store(&settings)?;
     // `RegionFileVersion.configure`: the compression every region file this
@@ -568,12 +563,9 @@ impl Lists {
 
 /// DedicatedServerProperties.LEGACY_PRESET_NAMES: the old `level-type`
 /// names, before the presets had their own ids.
-const LEGACY_PRESET_NAMES: [(&str, sunrise_client::save::WorldPreset); 2] = [
-    ("default", sunrise_client::save::WorldPreset::Normal),
-    (
-        "largebiomes",
-        sunrise_client::save::WorldPreset::LargeBiomes,
-    ),
+const LEGACY_PRESET_NAMES: [(&str, sunrise_sim::save::WorldPreset); 2] = [
+    ("default", sunrise_sim::save::WorldPreset::Normal),
+    ("largebiomes", sunrise_sim::save::WorldPreset::LargeBiomes),
 ];
 
 /// A tick slower than this, in milliseconds, enters the slow ring (five ticks' worth, a stall players feel) unless `SUNRISE_SPIKES` names another.
@@ -608,7 +600,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Add the adopted packs' English at the dedicated server-starting notice.
     /// World and registry-load listeners still see only the built-in language.
     fn start_loaded_dedicated_world(&mut self, packs: &super::functions::PackStack) {
-        use sunrise_client::lang::{self, Language, ResourceSource};
+        use sunrise_client_core::lang::{self, Language, ResourceSource};
 
         let layers = self
             .pack
@@ -617,11 +609,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .chain(
                 packs
                     .enabled_packs()
-                    .map(sunrise_client::datapack::DataPack::source),
+                    .map(sunrise_level::datapack::DataPack::source),
             )
             .map(|source| source as &dyn ResourceSource);
         let language = Language::load_server(&self.ui.vanilla_root, layers, |value| {
-            sunrise_client::text_grammar::build(value, &self.ui.registries, false)
+            sunrise_sim::text_grammar::build(value, &self.ui.registries, false)
         });
         lang::set(language);
         self.native_server_starting(true);
@@ -655,7 +647,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let level_type = &props.level_type;
         let preset = parse_identifier(level_type)
             .as_deref()
-            .and_then(sunrise_client::save::WorldPreset::of_id)
+            .and_then(sunrise_sim::save::WorldPreset::of_id)
             .or_else(|| {
                 LEGACY_PRESET_NAMES
                     .iter()
@@ -670,12 +662,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         "Failed to parse level-type {level_type}, defaulting to minecraft:normal"
                     ),
                 );
-                sunrise_client::save::WorldPreset::Normal
+                sunrise_sim::save::WorldPreset::Normal
             });
-        let flat = preset == sunrise_client::save::WorldPreset::Flat;
+        let flat = preset == sunrise_sim::save::WorldPreset::Flat;
         let settings = if flat {
             let biomes = world_biomes!(self);
-            let (settings, errors) = sunrise_client::flatgen::settings_from_json(
+            let (settings, errors) = sunrise_sim::flatgen::settings_from_json(
                 &props.generator_settings,
                 |b| self.pack.assets.registry.default_state(b).is_some(),
                 |b| biomes.get(biomes.id(b)).name == b,
@@ -687,12 +679,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             None
         };
-        let options = sunrise_client::save::WorldGen {
+        let options = sunrise_sim::save::WorldGen {
             preset,
             structures: props.generate_structures,
             bonus_chest: false,
         };
-        sunrise_client::save::write_world_gen_settings_with(
+        sunrise_sim::save::write_world_gen_settings_with(
             dir, props.seed, options, settings, None, None,
         )
     }
@@ -767,7 +759,7 @@ struct ServerState {
     /// When the running capture takes its next memory snapshot, and how many it has taken.
     memory_due: Option<(f64, u32)>,
     /// The always-on health history and slow ring, and the `.hzperf` a report writes from them.
-    perf: sunrise_client::server_perf::ServerPerf,
+    perf: sunrise_sim::server_perf::ServerPerf,
     /// The perf clock's zero: the tick loop's start.
     perf_epoch: Instant,
     /// The Sunrise switches a capture records.
@@ -808,7 +800,7 @@ fn ban_ip_info(names: &[&str]) -> Option<Text> {
         "commands.banip.info",
         &[
             Text::literal(names.len().to_string()),
-            sunrise_client::scoreboard_cmd::format_list(
+            sunrise_sim::scoreboard_cmd::format_list(
                 names
                     .iter()
                     .map(|n| Text::literal((*n).to_owned()))
@@ -925,7 +917,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         *USER_CACHE.lock().unwrap() = Some(cache);
         // Services.create: the services' public keys, fetched in the
         // background (they check players' chat keys).
-        let secure_chat = Arc::new(sunrise_client::lan::SecureChat::new(
+        let secure_chat = Arc::new(sunrise_sim::lan::SecureChat::new(
             props.enforce_secure_profile && props.online_mode,
             || {
                 let discovery = profiles::discovery_url();
@@ -962,12 +954,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Arc::new(|name, digest, ip| {
                     sunrise_server_profiles_http::has_joined(name, digest, ip)
                         .map(|opt| {
-                            opt.map(|p| sunrise_client::lan::VerifiedSession {
+                            opt.map(|p| sunrise_sim::lan::VerifiedSession {
                                 uuid: p.uuid,
                                 properties: p.properties,
                             })
                         })
-                        .map_err(|_| sunrise_client::lan::SessionVerifyError::Unavailable)
+                        .map_err(|_| sunrise_sim::lan::SessionVerifyError::Unavailable)
                 }),
             )?))
         } else {
@@ -1072,7 +1064,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // DedicatedServer.initServer: a legacy `announce-player-achievements`
         // sets the show_advancement_messages rule once, as the file is read.
         if let Some(announce) = props.announce_player_achievements {
-            let value = sunrise_client::gamerules::Value::Bool(announce);
+            let value = sunrise_client_core::gamerules::Value::Bool(announce);
             if self.ui.rules.set("show_advancement_messages", value) {
                 self.game_rule_changed("minecraft:show_advancement_messages", value, None);
             }
@@ -1099,7 +1091,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // DedicatedServer's constructor: `enable-code-of-conduct` reads the
         // `codeofconduct` folder, and a folder it can't read stops the start.
         let code_of_conducts = if props.code_of_conduct {
-            sunrise_client::lan::code_of_conduct::read(std::path::Path::new("codeofconduct"))?
+            sunrise_sim::lan::code_of_conduct::read(std::path::Path::new("codeofconduct"))?
         } else {
             Vec::new()
         };
@@ -1115,7 +1107,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .options
             .transfers
             .clone()
-            .map(sunrise_client::lan::arrivals::Transfers::new);
+            .map(sunrise_sim::lan::arrivals::Transfers::new);
         if transfers.is_some() {
             return Err("server.toml's [transfer] is on, but players can join this server without the proxy \
                  (Sunrise has no Velocity forwarding any more): turn [transfer] off"
@@ -1164,10 +1156,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             levels: self.side.level_shapes,
             sunrise_clients_only: props
                 .raw
-                .get(sunrise_client::lan::SUNRISE_CLIENTS_ONLY)
+                .get(sunrise_sim::lan::SUNRISE_CLIENTS_ONLY)
                 .is_some_and(|v| v.trim().eq_ignore_ascii_case("true")),
-            lod_distance: sunrise_client::lod_net::distance_property(
-                props.raw.get(sunrise_client::lod_net::PROPERTY).as_deref(),
+            lod_distance: sunrise_sim::lod_net::distance_property(
+                props.raw.get(sunrise_sim::lod_net::PROPERTY).as_deref(),
             ),
             server_links: if props.bug_report_link.is_empty() {
                 Vec::new()
@@ -1281,14 +1273,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             force_game_mode: props.force_game_mode,
             report: None,
             memory_due: None,
-            perf: sunrise_client::server_perf::ServerPerf::new(
+            perf: sunrise_sim::server_perf::ServerPerf::new(
                 0.0,
                 self.options.spikes.unwrap_or(SLOW_TICK_MS),
             ),
             perf_epoch: Instant::now(),
-            sunrise: sunrise_client::server_perf::sunrise_options(
-                sunrise_client::lod_net::distance_property(
-                    props.raw.get(sunrise_client::lod_net::PROPERTY).as_deref(),
+            sunrise: sunrise_sim::server_perf::sunrise_options(
+                sunrise_sim::lod_net::distance_property(
+                    props.raw.get(sunrise_sim::lod_net::PROPERTY).as_deref(),
                 ),
             ),
             compression: props.network_compression_threshold,
@@ -1298,7 +1290,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ),
             max_players: props.max_players.max(0) as usize,
         };
-        sunrise_client::server_perf::warm_hardware();
+        sunrise_sim::server_perf::warm_hardware();
         if let Some(file) = std::env::var_os("SUNRISE_TRACE").filter(|f| !f.is_empty()) {
             self.record_report(
                 &mut state,
@@ -1385,7 +1377,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let ticked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut detail = |timing: super::levels::TickTiming| {
                     if capturing || timing.wall_ms > slow_ms {
-                        tick_detail = Some(sunrise_client::server_perf::TickDetail {
+                        tick_detail = Some(sunrise_sim::server_perf::TickDetail {
                             cpu_ms: timing.cpu_ms,
                             spans: timing.raw,
                         });
@@ -1420,9 +1412,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.perf_captures_done(done);
             // DedicatedServer.sendLowDiskSpaceWarning: the operators hear of it
             // (no window drains the toasts here).
-            if sunrise_client::chunk_io::PROCESS_REPORTS
-                .take()
-                .low_disk_space
+            if sunrise_sim::chunk_io::PROCESS_REPORTS.take().low_disk_space
                 && let Some(host) = self.lan.as_ref()
             {
                 host.hub.send_low_disk_space_warning();
@@ -1549,7 +1539,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         let guest = self.lan.as_ref().and_then(|h| {
             // A held player (arriving from another server) is sent the level too, so it
             // holds the world loaded around it as a placed player does.
@@ -2555,8 +2545,8 @@ mod tests {
         };
         use mod_api::{Authority, Hooks, ModEntry, ServerHost, WorldLifecycleEvent, WorldPhase};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::save::{LevelShape, SaveDir};
         use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+        use sunrise_sim::save::{LevelShape, SaveDir};
 
         struct CloseEvents(Arc<Mutex<Vec<(WorldPhase, String)>>>);
         #[mod_api::__subscriptions]
@@ -2597,11 +2587,8 @@ mod tests {
                 );
                 let fail_next_save = |game: &mut crate::game::ServerGame<'_>| {
                     let key = (2, 0);
-                    let mut chunk = sunrise_client::chunk::Chunk::with_layout(
-                        key.0,
-                        key.1,
-                        game.world.layout(),
-                    );
+                    let mut chunk =
+                        sunrise_level::chunk::Chunk::with_layout(key.0, key.1, game.world.layout());
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
                     Arc::make_mut(chunk.saved.get_or_insert_with(Default::default))
@@ -2666,7 +2653,9 @@ mod tests {
         ] {
             game.options.execution_role = role;
             let lines = capture_log(|| {
-                game.native_broadcast(sunrise_client::text::Text::literal("destination probe"))
+                game.native_broadcast(sunrise_client_core::text::Text::literal(
+                    "destination probe",
+                ))
             });
             assert_eq!(lines, expected, "{role:?}");
         }
@@ -2781,8 +2770,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_missing_level_file_keeps_the_existing_world_generator() {
-        use sunrise_client::save::Level;
         use sunrise_java_properties::Properties;
+        use sunrise_sim::save::Level;
 
         let world = tempfile::tempdir().unwrap();
         let dir = world.path();
@@ -2807,7 +2796,7 @@ mod tests {
                 game.prepare_world_metadata(dir, &props, false).unwrap();
             },
         );
-        let generation = sunrise_client::save::read_dat(&settings_path).unwrap();
+        let generation = sunrise_sim::save::read_dat(&settings_path).unwrap();
         assert_eq!(
             generation.get("data").and_then(|data| data.get("seed")),
             Some(&sunrise_core::nbt::Tag::Long(12345)),
@@ -2957,7 +2946,7 @@ mod tests {
     #[ignore = "daily"]
     fn console_logging_survives_closed_stdout() {
         if let Some(home) = std::env::var_os(CHILD_HOME) {
-            sunrise_client::logging::init(std::path::Path::new(&home), "Server thread");
+            sunrise_level::logging::init(std::path::Path::new(&home), "Server thread");
             // Let the parent close the real stdout pipe only after libtest's startup output.
             io::stdout().write_all(READY.as_bytes()).unwrap();
             io::stdout().flush().unwrap();
@@ -2970,7 +2959,7 @@ mod tests {
                         log_from("User Authenticator #1", "WARN", WARNING);
                     });
                     assert_eq!(captured, [LOGIN, WARNING]);
-                    sunrise_client::logging::flush();
+                    sunrise_level::logging::flush();
                 })
                 .unwrap()
                 .join()
@@ -3159,8 +3148,8 @@ mod tests {
 mod console_source_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
 
     /// Runs `command` as the console does and returns whether it worked and every message it printed.
     fn console(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, String) {

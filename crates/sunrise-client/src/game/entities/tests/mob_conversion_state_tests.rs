@@ -4,10 +4,10 @@
 //! `MushroomCow.shear`).
 use super::super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::{MobEvent, Species};
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::{MobEvent, Species};
+use sunrise_sim::motion::PlayerMotion;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -164,7 +164,7 @@ fn a_struck_villager_leaves_a_witch_that_keeps_its_state() {
     assert!(witch.persistent, "Villager.thunderHit makes it persistent");
     // `Raider.finalizeSpawn`: a witch made by a conversion can join a raid.
     assert!(
-        sunrise_client::mobs::raider::state(witch).is_some_and(|r| r.can_join_raid),
+        sunrise_sim::mobs::raider::state(witch).is_some_and(|r| r.can_join_raid),
         "the conversion's finalizeSpawn lets it join a raid"
     );
 }
@@ -188,8 +188,8 @@ fn a_zombifying_piglin_leaves_a_nauseous_zombified_piglin() {
     game.handle_mob_events(vec![MobEvent::Convert {
         from: Box::new(from),
         kind: "minecraft:zombified_piglin",
-        params: sunrise_client::mobs::conversion::Params::KEEP_ALL,
-        after: sunrise_client::mobs::conversion::After::Nausea,
+        params: sunrise_sim::mobs::conversion::Params::KEEP_ALL,
+        after: sunrise_sim::mobs::conversion::After::Nausea,
         before_travel: true,
     }])
     .unwrap();

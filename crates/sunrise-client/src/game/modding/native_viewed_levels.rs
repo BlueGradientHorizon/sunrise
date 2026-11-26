@@ -15,7 +15,7 @@
 //! server-only reads, the other reads and the entity reads (until step 9d) refuse it.
 use super::Game;
 use mod_api::{DimensionKey, LevelRef};
-use sunrise_client::world::World;
+use sunrise_level::world::World;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// On a client, the key of the level `dimension` names: the one it shows, or one the server
@@ -85,7 +85,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.native_client_level() != Some(level) {
             return None;
         }
-        sunrise_client::datapack_net::received()
+        sunrise_sim::datapack_net::received()
     }
 }
 

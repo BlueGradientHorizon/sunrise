@@ -7,10 +7,10 @@ use mod_api::{
     LivingKnockbackEvent,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::health::{Attack, Hurting, Knock, NO_ATTACK};
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Damage, DamageKind, Mob, Who};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::health::{Attack, Hurting, Knock, NO_ATTACK};
+use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
 
 /// What a knockback heard: the attacker and the stacks it holds (by item id).
 type Held = (i32, Option<String>, Option<String>);
@@ -233,7 +233,7 @@ fn a_canceled_push_is_reported() {
 #[test]
 #[ignore = "daily"]
 fn thorns_name_the_wearer_not_the_incoming_attacker() {
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
     let heard = heard(|game, _| {
         let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
         player.entity_id = 7;
@@ -260,7 +260,7 @@ fn thorns_name_the_wearer_not_the_incoming_attacker() {
 }
 
 fn player_with_sword(game: &mut crate::game::ServerGame<'_>) {
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
     let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
     player.entity_id = 7;
     game.player = Some(player);
@@ -424,7 +424,7 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
                 })
                 .unwrap();
             let mut victim =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(3.0, 64.0, 5.0))
                     .unwrap();
             victim.entity_id = 13;
             game.lan
@@ -440,7 +440,7 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
             // A fresh body is a creative one: change the mode away and back so the survival
             // abilities apply to it.
             game.as_guest(13, |g| {
-                use sunrise_client::command::args::GameMode;
+                use sunrise_command::args::GameMode;
                 g.set_game_mode(GameMode::Creative);
                 g.set_game_mode(GameMode::Survival);
             })
@@ -472,10 +472,10 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
 #[test]
 #[ignore = "daily"]
 fn a_mobs_fireball_on_the_player_names_the_shooter_and_its_bow() {
-    use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
+    use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
     let heard = heard(|game, _| {
         player_with_sword(game);
-        game.set_game_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_game_mode(sunrise_command::args::GameMode::Survival);
         zombie_at(game, 42, Vec3::new(0.0, 0.0, 6.0));
         game.mobs
             .last_mut()
@@ -581,7 +581,7 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
 fn with_detached_credit<R>(
     game: &mut crate::game::ServerGame<'_>,
     victim: i32,
-    push: impl FnOnce(&mut sunrise_client::health::DamageLevel<'_>) -> R,
+    push: impl FnOnce(&mut sunrise_sim::health::DamageLevel<'_>) -> R,
 ) -> R {
     let plan = game.prepare_knockback_credit(victim, None, &NO_ATTACK);
     let mut credit = plan.lend(&mut game.side.last_hurt_by_player);
@@ -674,11 +674,11 @@ pub(in crate::game) fn credit_pig(game: &mut crate::game::ServerGame<'_>) {
     game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.side
         .tickets
         .0
-        .update(Some(sunrise_client::ticket_levels::Sources {
+        .update(Some(sunrise_sim::ticket_levels::Sources {
             players: vec![(0, 0)],
             forced: Vec::new(),
             portal: Vec::new(),
@@ -722,7 +722,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
         let kind = game.res.mob_types().get("minecraft:wolf").unwrap().clone();
         let mut wolf = Mob::new(101, kind, Vec3::new(1.0, 0.0, 0.0), 0.0);
         wolf.extra.tame = true;
-        wolf.extra.owner = Some(sunrise_client::lan::playerdata::uuid_ints(12));
+        wolf.extra.owner = Some(sunrise_sim::lan::playerdata::uuid_ints(12));
         wolf.extra
             .set_main_hand_stack(Some(ItemStack::new("minecraft:bone", 1)));
         game.mobs.push(wolf);
@@ -733,7 +733,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
         })
         .unwrap();
         for (owner, strength) in [(Some(12), 0.2), (None, 0.4), (Some(999), 0.4)] {
-            game.mobs[1].extra.owner = owner.map(sunrise_client::lan::playerdata::uuid_ints);
+            game.mobs[1].extra.owner = owner.map(sunrise_sim::lan::playerdata::uuid_ints);
             game.mobs[0].invulnerable = 0;
             game.mobs[0].velocity = Vec3::ZERO;
             assert!(game.mob_hits_mob(100, 1.0, Damage::mob(101, [1.0, 0.0, 0.0])));
@@ -742,7 +742,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
                 "the listener's credit-dependent strength edit did not apply"
             );
             if owner == Some(12) {
-                game.mobs[1].extra.owner = Some(sunrise_client::lan::playerdata::uuid_ints(999));
+                game.mobs[1].extra.owner = Some(sunrise_sim::lan::playerdata::uuid_ints(999));
                 assert!(!game.mob_hits_mob(100, 0.5, Damage::mob(101, [1.0, 0.0, 0.0])));
                 let credit = game.side.last_hurt_by_player[&100];
                 assert_eq!(
@@ -828,8 +828,8 @@ fn queued_player_hurts_select_the_current_source_not_an_older_hit_of_the_same_ty
     let heard = heard(|game, _| {
         player_with_sword(game);
         super::native_entity_refs::tests::bind_local_player(game, 7, 777);
-        game.set_game_mode(sunrise_client::command::args::GameMode::Creative);
-        game.set_game_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_game_mode(sunrise_command::args::GameMode::Creative);
+        game.set_game_mode(sunrise_command::args::GameMode::Survival);
         zombie_at(game, 42, Vec3::new(1.0, 0.0, 0.0));
         zombie_at(game, 43, Vec3::new(-1.0, 0.0, 0.0));
         game.mobs[0]

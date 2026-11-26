@@ -2,17 +2,15 @@ use super::Game;
 use super::commands::Target;
 use crate::game::native_living_body::dragon_body;
 use crate::game::native_living_body::stand_body;
-use sunrise_client::health::{LivingBody, PlayerBody, PlayerHealthRead};
+use sunrise_sim::health::{LivingBody, PlayerBody, PlayerHealthRead};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The entity id `who` names as a hit's causing entity: a mob's own, the player in place's
     /// for `Who::Player`; 0 for none.
-    pub(in crate::game) fn causer_id(&self, who: Option<sunrise_client::mobs::Who>) -> i32 {
+    pub(in crate::game) fn causer_id(&self, who: Option<sunrise_sim::mobs::Who>) -> i32 {
         match who {
-            Some(sunrise_client::mobs::Who::Mob(id)) => id as i32,
-            Some(sunrise_client::mobs::Who::Player) => {
-                self.player.as_ref().map_or(0, |p| p.entity_id)
-            }
+            Some(sunrise_sim::mobs::Who::Mob(id)) => id as i32,
+            Some(sunrise_sim::mobs::Who::Player) => self.player.as_ref().map_or(0, |p| p.entity_id),
             None => 0,
         }
     }
@@ -44,7 +42,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                     health: PlayerHealthRead::Synced(&p.health.data, p.health.ids),
                     attributes: Some(&p.attributes),
                     effects: self.native_living_player_effects(target),
-                    equipment: sunrise_client::health::player_equipment(
+                    equipment: sunrise_sim::health::player_equipment(
                         &self.inventory,
                         self.selected,
                         &self.armor,

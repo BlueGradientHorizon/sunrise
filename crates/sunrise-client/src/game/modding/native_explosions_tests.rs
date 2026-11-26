@@ -10,16 +10,16 @@ use mod_api::{
     LivingDeathEvent, LivingExperienceDropEvent, LootDropsEvent, ModEntry, ServerHost,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_core::{
+    geometry::Vec3,
+    position::{BlockPos, ChunkPos},
+};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{
     mobs::Mob,
     mobs::Who,
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
-};
-use sunrise_core::{
-    geometry::Vec3,
-    position::{BlockPos, ChunkPos},
 };
 
 /// One `explode` call.
@@ -260,7 +260,7 @@ fn a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick() {
             assert!(game.mob_hits_mob(
                 41,
                 1.0,
-                sunrise_client::mobs::Damage::player([14.5, 80.0, 14.5])
+                sunrise_sim::mobs::Damage::player([14.5, 80.0, 14.5])
             ));
             assert_eq!(living.alive(game), Some(true));
             assert_eq!(living.kill_credit(game).map(|killer| killer.id()), Some(11));
@@ -391,7 +391,7 @@ fn a_mob_blast_breaks_blocks_only_when_its_source_may_grief() {
                 floor(game);
                 assert!(game.ui.rules.set(
                     "mob_griefing",
-                    sunrise_client::gamerules::Value::Bool(griefing),
+                    sunrise_client_core::gamerules::Value::Bool(griefing),
                 ));
                 mob(
                     game,

@@ -3,8 +3,8 @@
 //! (tools/test_orb_score_store_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 const ORB: &str = "00000000-0000-0000-0000-0000000000a7";
 const STAND: &str = "00000000-0000-0000-0000-0000000000a8";

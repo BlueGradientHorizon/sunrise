@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             icon.removed.clear();
             icon.wire = Default::default();
         }
-        sunrise_client::item_sync::from_network(&icon, &remote.builtin, &remote.registries)
+        sunrise_sim::item_sync::from_network(&icon, &remote.builtin, &remote.registries)
     }
 }
 

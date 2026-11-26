@@ -2,12 +2,12 @@
 //! what a load brings back of a saved song, the `BLOCK_CHANGE` of an insert and
 //! of an eject, and which click the `has_record` state allows.
 use std::sync::Arc;
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, Jukebox},
-    items::ItemStack,
-    mobs::Who,
 };
+use sunrise_sim::mobs::Who;
 use sunrise_world::registry::BlockStateId;
 
 /// The game events posted while `f` runs, as `(event, position, source)`.
@@ -72,7 +72,7 @@ fn load_saved(game: &mut crate::game::ServerGame<'_>, clock: Option<i64>) {
          RecordItem:{{id:\"minecraft:music_disc_11\",count:1,}},{clock}}}"
     ))
     .unwrap();
-    let (pos, model) = sunrise_client::save::decode_block_entity(&tag).unwrap();
+    let (pos, model) = sunrise_sim::save::decode_block_entity(&tag).unwrap();
     game.world.block_entities.insert(pos, model);
 }
 
@@ -246,7 +246,7 @@ fn only_a_saved_clock_brings_a_song_back() {
              RecordItem:{{id:\"minecraft:music_disc_11\",count:1,}},{clock}}}"
         ))
         .unwrap();
-        match sunrise_client::save::decode_block_entity(&tag).unwrap().1 {
+        match sunrise_sim::save::decode_block_entity(&tag).unwrap().1 {
             BlockEntity::Jukebox(j) => j,
             other => panic!("not a jukebox: {other:?}"),
         }

@@ -2,8 +2,8 @@
 //! the entity once it is in the level. What a mob saves of it, how a value read
 //! back resolves, and the same for the player in `lastHurtByPlayer`.
 use super::Game;
-use sunrise_client::mobs::{Mob, Who};
 use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_sim::mobs::{Mob, Who};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.addAdditionalSaveData`'s `last_hurt_by_mob` and

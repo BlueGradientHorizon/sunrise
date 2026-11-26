@@ -4,10 +4,10 @@ use super::*;
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn block_fall(
         &mut self,
-        event: sunrise_client::landing::FallEvent,
+        event: sunrise_sim::landing::FallEvent,
     ) {
         let (position, state) = match event {
-            sunrise_client::landing::FallEvent::Sound {
+            sunrise_sim::landing::FallEvent::Sound {
                 sound,
                 volume,
                 pitch,
@@ -21,7 +21,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 return;
             }
-            sunrise_client::landing::FallEvent::BlockFallSound { position, state } => {
+            sunrise_sim::landing::FallEvent::BlockFallSound { position, state } => {
                 (position, state)
             }
             _ => return,

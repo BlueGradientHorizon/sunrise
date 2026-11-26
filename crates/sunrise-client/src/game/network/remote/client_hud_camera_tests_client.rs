@@ -12,14 +12,16 @@ use crate::game::remote::tests::client_hud_camera_tests::spawn;
 use crate::game::{
     Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
 };
-use sunrise_client::{items::ItemStack, level_loading::Reason, motion::PlayerMotion};
+use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::{
     connection::Pipe,
     entity_data::{Value, serializer},
     item::Stack,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 /// `Hud.getPlayerVehicleWithHealth` and `Hud.getAirBubbleYLine`: the watched rider can
 /// ride the dragon or the local player, but a boat leaves the food and air rows unchanged.

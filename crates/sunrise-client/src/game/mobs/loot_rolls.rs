@@ -5,10 +5,10 @@ use super::commands::Target;
 use super::creatures::death_hurt_source;
 use mod_api::entity::health::HurtSource;
 use mod_api::{EntityRef, LivingRef};
-use sunrise_client::items::{ItemStack, Items};
-use sunrise_client::mobs::drops::{DeathRolls, roll_asked};
-use sunrise_client::random_sequences::RandomSequences;
 use sunrise_core::random::LegacyRandom;
+use sunrise_items::items::{ItemStack, Items};
+use sunrise_items::random_sequences::RandomSequences;
+use sunrise_sim::mobs::drops::{DeathRolls, roll_asked};
 
 /// A table's rolls with a mod listening to `enchanted_entity_loot`: the
 /// randoms stay in the game, where the listener's host reaches them.
@@ -257,7 +257,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mobs
                 .iter()
                 .find(|mob| mob.id == id)
-                .map(|mob| sunrise_client::mobs::drops::loot_entity(mob, None))
+                .map(|mob| sunrise_sim::mobs::drops::loot_entity(mob, None))
                 .unwrap_or_else(|| sunrise_world::loot::LootEntity::new(&self.target_type(target))),
             Target::Player => self.killer_loot_entity(None),
             Target::Guest(conn) => self.killer_loot_entity(Some(conn)),

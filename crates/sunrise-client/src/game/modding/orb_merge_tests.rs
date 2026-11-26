@@ -1,9 +1,9 @@
 //! The experience orb's saved form (docs: `entity_nbt::orb_to_nbt`) and the exact-total
 //! write boundary that keeps a merge's result reloadable.
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::entities::ExperienceOrb;
-use sunrise_client::entity_nbt::{orb_to_nbt, orbs_from_nbt};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::entities::ExperienceOrb;
+use sunrise_sim::entity_nbt::{orb_to_nbt, orbs_from_nbt};
 
 fn orb(id: u32, value: i32, count: u32) -> ExperienceOrb {
     let at = Vec3::new(0.5, 70.0, 0.5);

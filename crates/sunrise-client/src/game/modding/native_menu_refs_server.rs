@@ -4,9 +4,9 @@ use super::{
 };
 use mod_api::__private::game::*;
 use mod_api::{EntityRef, MenuRef, MenuSlotBacking, PlayerRef};
-use sunrise_client::{
-    containers::BlockEntity,
-    items::ItemStack,
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{
     lan::{
         guest::Guest,
         menu::{SlotBacking, Slots, VEHICLE_KEY_Y},
@@ -130,7 +130,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             guest
                 .menu
                 .as_ref()
-                .map_or(46, sunrise_client::lan::menu::Menu::slot_count),
+                .map_or(46, sunrise_sim::lan::menu::Menu::slot_count),
         )
     }
 
@@ -492,7 +492,7 @@ pub(in crate::game) mod tests {
     use super::super::{lan::LanSettings, native_entity_refs::tests::with_game};
     use super::*;
     use crate::game::client_side::native_menu_refs::tests::guest;
-    use sunrise_client::lan::{NetConfig, hub::HubConfig};
+    use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 
     #[test]
     #[ignore = "daily"]
@@ -710,8 +710,8 @@ pub(in crate::game) mod tests {
             *host.menus.entry(1).or_default().crafting.table = Some((
                 7,
                 0,
-                Box::new(sunrise_client::menu::Menu::new(
-                    sunrise_client::menu::Kind::Crafting,
+                Box::new(sunrise_sim::menu::Menu::new(
+                    sunrise_sim::menu::Kind::Crafting,
                 )),
                 [0; 3],
             ));
@@ -723,7 +723,8 @@ pub(in crate::game) mod tests {
             host.hub.guests.replace(0, guest());
             assert_eq!(inventory.slot_count(game), None);
 
-            use sunrise_client::{containers::BlockEntity, lan::menu::Slots};
+            use sunrise_level::containers::BlockEntity;
+            use sunrise_sim::lan::menu::Slots;
             let a = (1, 2, 3);
             let b = (2, 2, 3);
             let stone = ItemStack::new("minecraft:stone", 3);

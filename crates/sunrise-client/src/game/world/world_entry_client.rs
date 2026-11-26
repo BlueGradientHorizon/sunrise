@@ -68,7 +68,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
                 .name("world-creation".into())
                 .spawn(move || {
-                    sunrise_client::vanillagen::shared_data_from(
+                    sunrise_sim::vanillagen::shared_data_from(
                         &dir,
                         &overrides,
                         registry,
@@ -85,7 +85,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         title.finish_preparing();
                         title.failed(format!(
                             "{}: {error}",
-                            sunrise_client::lang::get("createWorld.preparing")
+                            sunrise_client_core::lang::get("createWorld.preparing")
                         ));
                     }
                 }
@@ -123,7 +123,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     title.finish_preparing();
                     title.failed(format!(
                         "{}: {e}",
-                        sunrise_client::lang::get_or(
+                        sunrise_client_core::lang::get_or(
                             "createWorld.preparing",
                             "Preparing for world creation..."
                         )

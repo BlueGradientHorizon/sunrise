@@ -80,10 +80,10 @@ pub(in crate::game) mod tests {
     use crate::game::lan_actions::attack_checks::tests::disconnects;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     /// handleAttack disconnects a player who attacks a dropped item, an experience orb,
     /// themselves, an arrow or a thrown trident (`invalid_entity_attacked`); a pig is

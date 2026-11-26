@@ -5,7 +5,7 @@ use sunrise_core::geometry::Vec3;
 #[ignore = "daily"]
 fn selectors_reject_criteria_absent_from_the_selected_definition() {
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -58,9 +58,9 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
     );
     let select = |g: &mut crate::game::ServerGame<'_>, condition: &str| {
         let text = format!("@a[advancements={{{condition}}}]");
-        let selector = sunrise_client::command::selector::parse(
-            &mut sunrise_client::command::Reader::new(&text),
-            &sunrise_client::command::args::Registries::default(),
+        let selector = sunrise_command::selector::parse(
+            &mut sunrise_command::Reader::new(&text),
+            &sunrise_command::args::Registries::default(),
             true,
         )
         .unwrap();

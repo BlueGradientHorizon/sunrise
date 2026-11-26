@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::item_data::WrittenBook;
+use sunrise_items::item_data::WrittenBook;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Write pages into the book and quill at `slot`, or sign it into a written book by `author`.

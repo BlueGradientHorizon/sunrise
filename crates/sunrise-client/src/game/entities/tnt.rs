@@ -2,16 +2,17 @@
 //! power 4, `TntRenderer` swell and white flash, and `TntBlock.useItemOn`
 //! (flint and steel / fire charge).
 use super::{Game, entity::Entity};
-use sunrise_client::entity_rules::EntityRules;
-use sunrise_client::lan::playerdata::uuid_ints;
-use sunrise_client::{
-    Result, collisions::SceneCollisions, items::ItemStack, mobs::Who, text::Text,
-};
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::collisions::SceneCollisions;
+use sunrise_sim::entity_rules::EntityRules;
+use sunrise_sim::lan::playerdata::uuid_ints;
+use sunrise_sim::mobs::Who;
 use sunrise_world::level::flags as level_flags;
 
 #[derive(Clone, Debug)]
@@ -21,7 +22,7 @@ pub(in crate::game) struct PrimedTnt {
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(in crate::game) join: sunrise_client::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
@@ -51,7 +52,7 @@ pub(in crate::game) struct PrimedTnt {
     pub block_state: Option<sunrise_world::registry::BlockStateId>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 impl PrimedTnt {
     /// The live state encoded for each existing save view.
@@ -61,7 +62,7 @@ impl PrimedTnt {
     ) -> sunrise_core::nbt::Tag {
         self.block_state.map_or_else(
             || sunrise_core::nbt::Tag::String("minecraft:tnt".into()),
-            |state| sunrise_client::entity_nbt::state_to_nbt(registry, state),
+            |state| sunrise_sim::entity_nbt::state_to_nbt(registry, state),
         )
     }
 
@@ -79,7 +80,7 @@ impl PrimedTnt {
                 self.position.z + h,
             ),
         );
-        sunrise_client::pose::SizeAnswer::sized_box(
+        sunrise_sim::pose::SizeAnswer::sized_box(
             self.size_answer,
             Self::DIMENSIONS,
             self.position,
@@ -99,8 +100,8 @@ impl PrimedTnt {
     /// fallen more than 2.5 blocks, read with [`Self::collision_context`].
     pub(in crate::game) fn powder_snow_subject(
         &self,
-    ) -> sunrise_client::collisions::PowderSnowSubject<'static> {
-        sunrise_client::collisions::PowderSnowSubject {
+    ) -> sunrise_level::collisions::PowderSnowSubject<'static> {
+        sunrise_level::collisions::PowderSnowSubject {
             fall_distance: self.fall_distance,
             ..Default::default()
         }
@@ -108,7 +109,7 @@ impl PrimedTnt {
     pub(in crate::game) fn collision_context(
         &self,
     ) -> sunrise_world::collision_context::CollisionContext<'static> {
-        sunrise_client::motion::BodyMotion::entity_context(self.id, self.position)
+        sunrise_sim::motion::BodyMotion::entity_context(self.id, self.position)
     }
     /// Entity.checkFallDamage after a move that stepped `moved_y`: out of
     /// water, each step down is narrowed to a float before it adds to the
@@ -131,14 +132,14 @@ impl PrimedTnt {
     /// is at the top of, which send their surface particles.
     pub(in crate::game::server_side) fn apply_effects_from_blocks(
         &mut self,
-        motion: sunrise_client::motion::BodyMotion<'_>,
+        motion: sunrise_sim::motion::BodyMotion<'_>,
         registry: &sunrise_world::registry::BlockRegistry,
         from: Vec3,
         original: Option<Vec3>,
     ) -> Vec<BlockPos> {
         let (world, facts, collision) = (motion.world, motion.facts, motion.collision);
         let mut tops = Vec::new();
-        let stuck = sunrise_client::falling_block::apply_effects_from_blocks(
+        let stuck = sunrise_sim::falling_block::apply_effects_from_blocks(
             from,
             self.position,
             original,
@@ -146,9 +147,9 @@ impl PrimedTnt {
             &mut self.fall_distance,
             &mut Vec::new(),
             |p| match &*facts.get(world.block(p.x, p.y, p.z)).name {
-                "minecraft:powder_snow" => sunrise_client::falling_block::Inside::PowderSnow,
-                "minecraft:cobweb" => sunrise_client::falling_block::Inside::Cobweb,
-                _ => sunrise_client::falling_block::Inside::Nothing,
+                "minecraft:powder_snow" => sunrise_sim::falling_block::Inside::PowderSnow,
+                "minecraft:cobweb" => sunrise_sim::falling_block::Inside::Cobweb,
+                _ => sunrise_sim::falling_block::Inside::Nothing,
             },
         );
         if let Some(multiplier) = stuck {
@@ -163,11 +164,11 @@ impl PrimedTnt {
     #[cfg(test)]
     pub(in crate::game::server_side) fn tick(
         &mut self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
-        assets: &sunrise_client::assets::Assets,
-        facts: &sunrise_client::blocks::BlockFacts,
-        fluids: &sunrise_client::motion::FluidResources,
+        assets: &sunrise_level::assets::Assets,
+        facts: &sunrise_items::blocks::BlockFacts,
+        fluids: &sunrise_sim::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
         border: Option<&sunrise_core::geometry::border::BorderGeometry>,
         blocks: Option<&sunrise_world::movement_properties::BoundMovementProperties>,
@@ -189,18 +190,18 @@ impl PrimedTnt {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::game) fn tick_among(
         &mut self,
-        world: &sunrise_client::world::World,
+        world: &sunrise_level::world::World,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
-        assets: &sunrise_client::assets::Assets,
-        facts: &sunrise_client::blocks::BlockFacts,
-        fluids: &sunrise_client::motion::FluidResources,
+        assets: &sunrise_level::assets::Assets,
+        facts: &sunrise_items::blocks::BlockFacts,
+        fluids: &sunrise_sim::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
         border: Option<&sunrise_core::geometry::border::BorderGeometry>,
         blocks: Option<&sunrise_world::movement_properties::BoundMovementProperties>,
-        side: Option<&dyn sunrise_client::motion::SideLevel>,
+        side: Option<&dyn sunrise_sim::motion::SideLevel>,
         entities: &[Aabb],
     ) -> Vec<BlockPos> {
-        let motion = sunrise_client::motion::BodyMotion {
+        let motion = sunrise_sim::motion::BodyMotion {
             world,
             collision,
             facts,
@@ -225,11 +226,11 @@ impl PrimedTnt {
 
     pub(in crate::game::server_side) fn move_before_fall(
         &mut self,
-        motion: sunrise_client::motion::BodyMotion<'_>,
+        motion: sunrise_sim::motion::BodyMotion<'_>,
         border: Option<&sunrise_core::geometry::border::BorderGeometry>,
         entities: &[Aabb],
-    ) -> (sunrise_client::motion::BodyMove, bool) {
-        let sunrise_client::motion::BodyMotion {
+    ) -> (sunrise_sim::motion::BodyMove, bool) {
+        let sunrise_sim::motion::BodyMotion {
             world,
             collision,
             context,
@@ -243,7 +244,7 @@ impl PrimedTnt {
         // The TNT's Entity.move goes through the move gate (#2414), armed
         // before the stuck multiplier of the move itself; PR 1a records the
         // movement unchanged.
-        let mut gate = sunrise_client::move_gate::armed(
+        let mut gate = sunrise_sim::move_gate::armed(
             context,
             self.id,
             "minecraft:tnt",
@@ -262,12 +263,12 @@ impl PrimedTnt {
         // Entity.collide: the world border's walls and the entities that
         // `canBeCollidedWith` it (a boat, a shulker) stop it too.
         let border = border.map(|b| (b, [self.position.x, self.position.z]));
-        let mut collisions = sunrise_client::collisions::EntityCollisions {
+        let mut collisions = sunrise_level::collisions::EntityCollisions {
             blocks: scene,
             entities,
             border,
         };
-        let moved = sunrise_client::move_gate::entities_resolve_with_context(
+        let moved = sunrise_sim::move_gate::entities_resolve_with_context(
             &mut gate,
             &mut collisions,
             self.bounds(),
@@ -277,7 +278,7 @@ impl PrimedTnt {
             self.collision_context(),
         )
         .unwrap_or(Vec3::ZERO);
-        let recorded = sunrise_client::entities::move_applies(wanted, moved);
+        let recorded = sunrise_sim::entities::move_applies(wanted, moved);
         if recorded {
             self.position = Vec3::new(
                 self.position.x + moved.x,
@@ -288,7 +289,7 @@ impl PrimedTnt {
         let authoritative = context.side() == sunrise_world::native_load_context::LoopSide::Server;
         if !gate.skipped() {
             motion.record_move(
-                sunrise_client::motion::BodyCollision {
+                sunrise_sim::motion::BodyCollision {
                     footprint: (self.position, self.bounds()),
                     movement: (wanted, moved),
                     authoritative,
@@ -300,7 +301,7 @@ impl PrimedTnt {
         }
         let effect = motion.legacy_contact(self.position, &self.ground);
         (
-            sunrise_client::motion::BodyMove {
+            sunrise_sim::motion::BodyMove {
                 wanted,
                 moved,
                 effect,
@@ -311,9 +312,9 @@ impl PrimedTnt {
 
     pub(in crate::game::server_side) fn move_restitution(
         &self,
-        motion: sunrise_client::motion::BodyMotion<'_>,
-        movement: sunrise_client::motion::BodyMove,
-    ) -> sunrise_client::motion::BodyRestitution {
+        motion: sunrise_sim::motion::BodyMotion<'_>,
+        movement: sunrise_sim::motion::BodyMove,
+    ) -> sunrise_sim::motion::BodyRestitution {
         motion.restitute(
             (self.id, "minecraft:tnt"),
             movement,
@@ -326,14 +327,14 @@ impl PrimedTnt {
 
     pub(in crate::game::server_side) fn finish_tick(
         &mut self,
-        motion: sunrise_client::motion::BodyMotion<'_>,
-        assets: &sunrise_client::assets::Assets,
-        fluids: &sunrise_client::motion::FluidResources,
+        motion: sunrise_sim::motion::BodyMotion<'_>,
+        assets: &sunrise_level::assets::Assets,
+        fluids: &sunrise_sim::motion::FluidResources,
         recorded: Option<Vec3>,
     ) -> Vec<BlockPos> {
         let tops = self.apply_effects_from_blocks(motion, assets.registry, self.previous, recorded);
         // Entity.scale(getAirDrag()): 0.98F, widened before it scales motion.
-        self.velocity = sunrise_client::entity_rules::scale_air_drag(self.velocity);
+        self.velocity = sunrise_sim::entity_rules::scale_air_drag(self.velocity);
         if self.ground.on_ground {
             self.velocity = Vec3::new(
                 self.velocity.x * 0.7,
@@ -371,7 +372,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
     }
     /// Primes TNT a level event announced, or, when the mods refuse, puts
     /// back the block the fire or signal had already taken out.
@@ -408,8 +409,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // An id from the entity counter at once, so a command can name it.
         self.side.next_entity += 1;
         // Entity: the UUID is the first two draws of the TNT's own random.
-        let uuid =
-            sunrise_client::save::insecure_uuid(&mut sunrise_client::random_source::entity());
+        let uuid = sunrise_sim::save::insecure_uuid(&mut sunrise_level::random_source::entity());
         self.persist.uuids.insert(self.side.next_entity, uuid);
         self.tnts.push(PrimedTnt {
             size_answer: None,
@@ -442,7 +442,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// so powder snow it was pushed into makes it stuck.
     pub(in crate::game) fn finish_tnt_piston_move(&mut self, i: usize, from: Vec3) {
         let t = &mut self.tnts[i];
-        let factor = sunrise_client::motion::block_speed_factor_at(
+        let factor = sunrise_sim::motion::block_speed_factor_at(
             &self.world,
             &self.res.motion().blocks,
             &self.loop_context,
@@ -471,7 +471,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None,
         );
         let tops = t.apply_effects_from_blocks(
-            sunrise_client::motion::BodyMotion {
+            sunrise_sim::motion::BodyMotion {
                 world: &self.world,
                 facts: self.res.facts(),
                 collision: self.collision,
@@ -504,7 +504,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `entities` are the boxes that stop its move (`Game::entity_collisions` with `Mover::Passive`).
     pub(in crate::game) fn tick_one_tnt(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
         let t = &mut self.tnts[i];
-        let motion = sunrise_client::motion::BodyMotion {
+        let motion = sunrise_sim::motion::BodyMotion {
             world: &self.world,
             collision: self.collision,
             facts: self.res.facts(),
@@ -547,7 +547,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None,
         );
         let tops = t.finish_tick(
-            sunrise_client::motion::BodyMotion {
+            sunrise_sim::motion::BodyMotion {
                 world: &self.world,
                 collision: self.collision,
                 facts: self.res.facts(),
@@ -590,13 +590,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
             {
                 return Ok(());
             }
             // ExplosionInteraction.TNT: the tnt_explosion_drop_decay rule.
-            let interaction =
-                self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
+            let interaction = self
+                .destroy_type(sunrise_client_core::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
             self.side.combat.0.explosion_in_water = in_water;
             self.side.combat.0.explosion_direct = Some(id);
             self.set_blast_owner(owner, guest);
@@ -612,7 +612,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .with_entity(
                             id,
                             "minecraft:tnt",
-                            sunrise_client::health::DirectEntity::Other,
+                            sunrise_sim::health::DirectEntity::Other,
                         ),
                 )
             });
@@ -631,7 +631,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let uuid = self.uuid_for(id);
         let owner = self.tnt_owner_uuid(self.tnts[i].owner, self.tnts[i].guest);
         let t = &self.tnts[i];
-        sunrise_client::entity_nbt::tnt_to_nbt(
+        sunrise_sim::entity_nbt::tnt_to_nbt(
             t.position,
             t.velocity,
             t.ground.on_ground,
@@ -717,9 +717,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// The attack a player-owned blast's hits land in: its causing player's,
     /// so a mob it kills is that player's kill.
-    pub(in crate::game::server_side) fn blast_owner_attack(
-        &self,
-    ) -> sunrise_client::health::Attack {
+    pub(in crate::game::server_side) fn blast_owner_attack(&self) -> sunrise_sim::health::Attack {
         let id = self
             .side
             .combat
@@ -737,7 +735,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         id: u32,
     ) -> Option<(Who, Option<u32>)> {
-        let uuid = sunrise_client::entity_nbt::tnt_owner(self.persist.raw.get(&id)?)?;
+        let uuid = sunrise_sim::entity_nbt::tnt_owner(self.persist.raw.get(&id)?)?;
         let guest = self.lan.as_ref().and_then(|host| {
             let mut guests = host.hub.guests.iter();
             guests.find(|g| uuid_ints(g.uuid) == uuid).map(|g| g.conn)
@@ -767,7 +765,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
         {
             // TntBlock.useItemOn: the rule is off, the acting player's overlay
             // says so, and PASS lets the item's own useOn light a fire there.
@@ -925,7 +923,7 @@ pub(in crate::game) mod tests {
             (None, Tag::String("minecraft:tnt".into())),
         ] {
             tnt.block_state = state;
-            let saved = sunrise_client::entity_nbt::tnt_to_nbt(
+            let saved = sunrise_sim::entity_nbt::tnt_to_nbt(
                 tnt.position,
                 tnt.velocity,
                 tnt.ground.on_ground,
@@ -1007,15 +1005,15 @@ pub(in crate::game) mod tests {
         if !root.join("movement-properties.nbt").exists() {
             return;
         }
-        let assets = sunrise_client::assets::Assets::load(&root).unwrap();
+        let assets = sunrise_level::assets::Assets::load(&root).unwrap();
         let render = sunrise_client::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             &assets,
         )
         .unwrap();
-        let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
-        let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
-        let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
+        let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
+        let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
+        let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
         let world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let border =
             sunrise_core::geometry::border::BorderGeometry::new([20.0, 20.0], 10.0, 29_999_984)
@@ -1080,16 +1078,16 @@ pub(in crate::game) mod tests {
         if !root.join("movement-properties.nbt").exists() {
             return;
         }
-        let assets = sunrise_client::assets::Assets::load(&root).unwrap();
+        let assets = sunrise_level::assets::Assets::load(&root).unwrap();
         let render = sunrise_client::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             &assets,
         )
         .unwrap();
-        let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
-        let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
-        let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
-        let motion = sunrise_client::motion::MotionResources::load(&root, &assets).unwrap();
+        let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
+        let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
+        let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
+        let motion = sunrise_sim::motion::MotionResources::load(&root, &assets).unwrap();
         let mut after = Vec::new();
         // The tops of the blocks: stone 1, soul sand 7/8, honey 15/16.
         for (block, top) in [
@@ -1161,15 +1159,15 @@ pub(in crate::game) mod tests {
         if !root.join("movement-properties.nbt").exists() {
             return;
         }
-        let assets = sunrise_client::assets::Assets::load(&root).unwrap();
+        let assets = sunrise_level::assets::Assets::load(&root).unwrap();
         let render = sunrise_client::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             &assets,
         )
         .unwrap();
-        let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
-        let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
-        let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
+        let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
+        let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
+        let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
         let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
@@ -1318,15 +1316,15 @@ pub(in crate::game) mod tests {
         if !root.join("movement-properties.nbt").exists() {
             return;
         }
-        let assets = sunrise_client::assets::Assets::load(&root).unwrap();
+        let assets = sunrise_level::assets::Assets::load(&root).unwrap();
         let render = sunrise_client::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             &assets,
         )
         .unwrap();
-        let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
-        let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
-        let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
+        let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
+        let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
+        let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
         let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let soul_sand = assets
@@ -1435,15 +1433,15 @@ pub(in crate::game) mod tests {
         if !root.join("movement-properties.nbt").exists() {
             return;
         }
-        let assets = sunrise_client::assets::Assets::load(&root).unwrap();
+        let assets = sunrise_level::assets::Assets::load(&root).unwrap();
         let render = sunrise_client::assets::RenderAssets::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             &assets,
         )
         .unwrap();
-        let facts = sunrise_client::blocks::BlockFacts::load(&root, assets.registry).unwrap();
-        let fluids = sunrise_client::motion::FluidResources::new(&assets, &facts).unwrap();
-        let collision = sunrise_client::collisions::load(&root, assets.registry).unwrap();
+        let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
+        let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
+        let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
         let mut world = sunrise_client::assets::test_scene_world(&assets, &render, 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let soul_sand = assets
@@ -1576,7 +1574,7 @@ pub(in crate::game) mod tests {
             for x in -2..=2 {
                 game.world.chunks.insert(
                     (x, z),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(x, z)),
                 );
             }
         }
@@ -1609,7 +1607,7 @@ pub(in crate::game) mod tests {
         game.tnts.clear();
         game.world.loaded_entities.push((
             (0, 0),
-            vec![sunrise_client::world::PendingEntity::after_tnt_portal(
+            vec![sunrise_level::world::PendingEntity::after_tnt_portal(
                 transfer,
             )],
         ));
@@ -1695,8 +1693,8 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
-        use sunrise_client::mobs::Mob;
-        use sunrise_client::nether_portal::PortalState;
+        use sunrise_sim::mobs::Mob;
+        use sunrise_sim::nether_portal::PortalState;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
         game.start_audio_capture();
@@ -1725,7 +1723,7 @@ pub(in crate::game) mod tests {
             cube.silent = silent;
             cube.extra.set_body(Some("minecraft:tnt".into()));
             // Fuse 1: explodes on this tick.
-            cube.extra.sulfur_fuse = sunrise_client::mobs::sulfur_cube::Fuse::set(1);
+            cube.extra.sulfur_fuse = sunrise_sim::mobs::sulfur_cube::Fuse::set(1);
             game.mobs.push(cube);
             game.portals.entities.insert(
                 9123,
@@ -1821,7 +1819,7 @@ pub(in crate::game) mod tests {
             assert_eq!(t.power, 2.5);
             let state = t.block_state_nbt(game.pack.assets.registry);
             assert_eq!(state, Tag::String("minecraft:stone".into()));
-            let saved = crate::entity_nbt::tnt_to_nbt(
+            let saved = sunrise_sim::entity_nbt::tnt_to_nbt(
                 t.position,
                 t.velocity,
                 t.ground.on_ground,
@@ -2019,7 +2017,7 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game) fn run_silent_potions_keep_the_splash_without_its_sound() {
         on_big_stack(|| {
-            use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
+            use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
                 return;
@@ -2112,7 +2110,7 @@ pub(in crate::game) mod tests {
                 mob.swell = mob.max_swell;
                 mob.extra.flag = true;
                 let mut events = Vec::new();
-                sunrise_client::mobs::hostile::creeper_tick(mob, &mut events);
+                sunrise_sim::mobs::hostile::creeper_tick(mob, &mut events);
                 assert!(mob.removed);
                 game.mobs.retain(|m| m.id != id);
                 game.side.pending_sounds.clear();
@@ -2254,7 +2252,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game::server_side) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
      {
         on_big_stack(|| {
-            use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
+            use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
                 return;
@@ -2391,14 +2389,14 @@ pub(in crate::game) mod tests {
         assert_ne!(primed.position, primed.previous, "ticked on the next tick");
     }
 }
-sunrise_client::impl_joined!(PrimedTnt);
+sunrise_sim::impl_joined!(PrimedTnt);
 sunrise_mod_runtime::impl_attachment_lifetime!(PrimedTnt);
 
 #[cfg(test)]
 pub(in crate::game) mod entity_collision_tests {
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
     use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
 
     /// `Entity.collide` for primed TNT, a falling block and an experience orb:
     /// a boat holds the TNT and the orb up, a shulker the sand, as they hold

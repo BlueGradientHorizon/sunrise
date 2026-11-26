@@ -17,7 +17,7 @@ use super::super::{Dim, Game, commands::Target};
 use super::Level;
 use mod_api::EntityRef;
 use std::collections::{HashMap, HashSet};
-use sunrise_client::join_seq::JoinSeq;
+use sunrise_sim::join_seq::JoinSeq;
 
 /// A raw record of `persist.anon` (kind and position bits) as it was: what an aborted spawn
 /// puts back.

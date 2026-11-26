@@ -1,12 +1,10 @@
 use crate::game::native_entity_refs::tests::with_client_game;
 use serde_json::Value;
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::{Chunk, Light},
-    items::ItemStack,
-    screen_effects::Blend,
-};
+use sunrise_client::screen_effects::Blend;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::{Chunk, Light};
 use sunrise_protocol::{
     buf::pack_degrees,
     entity_data::Value as EntityDataValue,

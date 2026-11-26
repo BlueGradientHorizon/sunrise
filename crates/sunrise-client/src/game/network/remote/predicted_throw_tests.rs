@@ -6,16 +6,18 @@ use crate::game::remote::predict_clicks;
 #[test]
 #[ignore = "daily"]
 fn a_predicted_throw_from_a_slot_swings_the_hand() {
-    use sunrise_client::{
-        banner::Banners,
-        brewing::Brewing,
-        crafting::Recipes,
+    use sunrise_items::{
         enchant::Enchantments,
         items::{ItemStack, Items},
+    };
+    use sunrise_level::brewing::Brewing;
+    use sunrise_sim::item_names::Names;
+    use sunrise_sim::{
+        banner::Banners,
+        crafting::Recipes,
         menu::{Env, Input, Kind, Menu},
         stations::StationRecipes,
     };
-    use sunrise_sim::item_names::Names;
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

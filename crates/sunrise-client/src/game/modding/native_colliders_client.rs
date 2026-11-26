@@ -4,9 +4,9 @@ use crate::game::server_side::native_colliders::PlacementKey;
 use crate::game::server_side::native_colliders::origin_bits;
 use crate::game::server_side::native_colliders::stack_in_graph;
 use mod_api::EntityRef;
-use sunrise_client::colliders::ColliderState;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::collider_sync::{self, Message};
+use sunrise_sim::colliders::ColliderState;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A client forgets the collider of an entity the server stopped showing it.
@@ -95,8 +95,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The colliders of the client's current level, where they stand now.
     pub(in crate::game) fn client_placed_moving_colliders(
         &mut self,
-    ) -> sunrise_client_render::moving_colliders::Prepared {
-        use sunrise_client_render::moving_colliders::{Placed, Prepared};
+    ) -> sunrise_world::moving_colliders::Prepared {
+        use sunrise_world::moving_colliders::{Placed, Prepared};
         let level = self.dim;
         let mut any = false;
         self.client_each_collider(|_, _| {
@@ -166,7 +166,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        use sunrise_client_render::moving_colliders::{HistoryScope, Scope};
+        use sunrise_world::moving_colliders::{HistoryScope, Scope};
 
         let level = self.client_collider_level();
         if level.is_some_and(Scope::covers) {

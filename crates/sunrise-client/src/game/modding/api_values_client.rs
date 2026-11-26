@@ -3,7 +3,7 @@ use crate::game::api_values::TryIntoEngine;
 use crate::game::api_values::engine_display_context;
 use sunrise_items::items::Items;
 
-impl TryIntoApi for (sunrise_client::text::Text, u32) {
+impl TryIntoApi for (sunrise_client_core::text::Text, u32) {
     type Api = (mod_api::Text, u32);
     type Error = mod_api::text::TextFormError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -55,7 +55,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
         pos: [i32; 3],
         block: &str,
         state: sunrise_world::registry::BlockStateId,
-        entity: &crate::containers::ModBlockEntity,
+        entity: &sunrise_level::containers::ModBlockEntity,
         draw: &mut super::native_block_entity_draw::BlockEntityDraw,
     ) {
         if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntitySubmit) {

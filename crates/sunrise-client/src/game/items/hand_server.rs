@@ -1,6 +1,6 @@
 use super::Game;
 use {
-    sunrise_client::items::ItemStack, sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_sim::first_person_sim::Hand,
     sunrise_sim::first_person_sim::SwingAnimation, sunrise_sim::first_person_sim::swing_duration,
 };
 
@@ -8,7 +8,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The item whose attack damage and speed modifiers the player has (`attack_item`).
     pub(in crate::game::server_side) fn attack_item_info(
         &self,
-    ) -> Option<&sunrise_client::items::ItemInfo> {
+    ) -> Option<&sunrise_items::items::ItemInfo> {
         self.items().get(self.side.attack_item.as_deref()?)
     }
     /// Server-side `LivingEntity.swing` handler called via `side_ops::presentation`.

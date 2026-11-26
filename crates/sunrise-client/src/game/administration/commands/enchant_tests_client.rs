@@ -9,17 +9,17 @@ use crate::game::{
     native_hotbar_slot::hotbar_slot_tests::{logged_in, sent},
 };
 use std::sync::Arc;
-use sunrise_client::{
-    creative::Creative,
-    items::ItemStack,
-    lan::{Out, data::SyncData},
-    menu::Input,
-    scoreboard::tag_to_json,
-};
+use sunrise_client::creative::Creative;
+use sunrise_client_core::scoreboard::tag_to_json;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::{
     buf::Reader,
     packets::play::{Clientbound as C, GameEvent, Serverbound as S},
     registry::Builtin,
+};
+use sunrise_sim::{
+    lan::{Out, data::SyncData},
+    menu::Input,
 };
 
 #[test]

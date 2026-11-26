@@ -46,7 +46,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
         for cz in -1..=1 {
             game.world.chunks.insert(
                 (cx, cz),
-                Arc::new(sunrise_client::chunk::Chunk::empty(cx, cz)),
+                Arc::new(sunrise_level::chunk::Chunk::empty(cx, cz)),
             );
             game.block_ticks
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(cx, cz))
@@ -61,7 +61,7 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<S
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said = game.side.chat_capture.take().unwrap_or_default();
-    (ok, said.first().map(sunrise_client::text::Text::plain))
+    (ok, said.first().map(sunrise_client_core::text::Text::plain))
 }
 
 /// The stored result and success of `execute store … run place feature

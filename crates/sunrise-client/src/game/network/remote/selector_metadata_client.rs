@@ -9,11 +9,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !remote.selector_metadata_supported {
             return Ok(());
         }
-        match sunrise_client::lan::commands::selector_sync::decode(data)? {
-            sunrise_client::lan::commands::selector_sync::Snapshot::Tokens(tokens) => {
+        match sunrise_sim::lan::commands::selector_sync::decode(data)? {
+            sunrise_sim::lan::commands::selector_sync::Snapshot::Tokens(tokens) => {
                 self.ui.registries.selector_tokens = tokens;
             }
-            sunrise_client::lan::commands::selector_sync::Snapshot::Unsupported(revision) => {
+            sunrise_sim::lan::commands::selector_sync::Snapshot::Unsupported(revision) => {
                 remote.selector_metadata_supported = false;
                 self.ui.registries.selector_tokens.clear();
                 log::warn!(

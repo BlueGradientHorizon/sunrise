@@ -19,7 +19,7 @@ impl mod_api::Hooks for Logouts {
 }
 
 fn player_file(root: &Path, uuid: u128) -> PathBuf {
-    sunrise_client::lan::playerdata::path(root, uuid)
+    sunrise_sim::lan::playerdata::path(root, uuid)
 }
 
 fn advancements_file(root: &Path, uuid: u128) -> PathBuf {
@@ -31,7 +31,7 @@ fn advancements_file(root: &Path, uuid: u128) -> PathBuf {
 
 /// A half-done turn: the engine panics after the player's inventory changes.
 fn taking_turn(game: &mut crate::game::ServerGame<'_>) {
-    game.inventory[0] = Some(sunrise_client::items::ItemStack {
+    game.inventory[0] = Some(sunrise_items::items::ItemStack {
         item: "minecraft:diamond".into(),
         count: 3,
         damage: 0,
@@ -54,13 +54,13 @@ fn scenario(interruption: Interruption) {
         let root = tempfile::tempdir().unwrap();
         let root = root.path().to_path_buf();
         game.side.world_root = root.clone();
-        game.side.save.0 = std::sync::Arc::new(sunrise_client::save::SaveDir::new(
+        game.side.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
             root.clone(),
-            sunrise_client::save::LevelShape::OVERWORLD,
+            sunrise_sim::save::LevelShape::OVERWORLD,
             Some(Default::default()),
         ));
         game.level.name = "interrupted turn".into();
-        game.side.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&root).unwrap());
+        game.side.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(&root).unwrap());
         game.side.world_adopted = true;
         assert!(
             !game.advancement_tree().list.is_empty(),

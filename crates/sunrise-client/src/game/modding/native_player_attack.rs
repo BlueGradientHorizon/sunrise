@@ -6,7 +6,7 @@
 use super::Game;
 use super::native_server::PlayerRead;
 use mod_api::PlayerRef;
-use sunrise_client::attack_strength::{BASE_ATTACK_SPEED, delay};
+use sunrise_sim::attack_strength::{BASE_ATTACK_SPEED, delay};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.getAttackStrengthScale(partial)` for `player`.
@@ -41,7 +41,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// modifiers.
 fn guest_attack_speed(
     game: &Game<'_, crate::game::server_side::ServerState>,
-    guest: &sunrise_client::lan::guest::Guest,
+    guest: &sunrise_sim::lan::guest::Guest,
     item: Option<&str>,
 ) -> f64 {
     let base = guest

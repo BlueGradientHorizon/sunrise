@@ -9,7 +9,8 @@ use super::{
     },
 };
 use std::collections::HashMap;
-use sunrise_client::{advancements::Advancement, items::ItemStack, menu::Menu};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{advancements::Advancement, menu::Menu};
 
 /// The live owner's generation covers its slots, offer list, selection, and packet snapshot.
 /// The action's player epoch separately covers the cursor and player-owned destinations.
@@ -38,7 +39,7 @@ pub(in crate::game) struct Journal {
     pub(in crate::game) guests: HashMap<u32, Restore>,
     pub(in crate::game) windows: HashMap<u32, Restore>,
     pub(in crate::game) mobs: HashMap<u32, Restore>,
-    pub(in crate::game) sequences: Option<sunrise_client::random_sequences::RandomSequences>,
+    pub(in crate::game) sequences: Option<sunrise_items::random_sequences::RandomSequences>,
     pub(in crate::game) active: Option<u32>,
     pub(in crate::game) correct_on_abort: std::collections::BTreeSet<(u32, i32)>,
     pub(in crate::game) refused_clicks: std::collections::BTreeSet<(u32, i32)>,
@@ -46,7 +47,7 @@ pub(in crate::game) struct Journal {
 
 pub(in crate::game) enum Effect {
     Orb([f64; 3], u32),
-    Drops(u32, Vec<sunrise_client::items::ItemStack>),
+    Drops(u32, Vec<sunrise_items::items::ItemStack>),
     Reward(u128, Advancement),
     Notice(u128, String, u32),
 }
@@ -138,7 +139,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         level
             .packets
-            .get_or_insert_with(sunrise_client::lan::conn::transaction_packets::Scope::begin);
+            .get_or_insert_with(sunrise_sim::lan::conn::transaction_packets::Scope::begin);
     }
 
     /// Keep the fields merchant operations own, not the mob's health, equipment or effects,
@@ -182,7 +183,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn merchant_drops(
         &mut self,
         conn: u32,
-        stacks: Vec<sunrise_client::items::ItemStack>,
+        stacks: Vec<sunrise_items::items::ItemStack>,
     ) {
         if self.merchant_take_active() {
             if !stacks.is_empty() {

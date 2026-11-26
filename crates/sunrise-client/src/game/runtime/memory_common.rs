@@ -9,10 +9,10 @@ use std::sync::{
     mpsc::{Receiver, Sender},
 };
 use std::thread::JoinHandle;
-use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
-use sunrise_client::fast_hash::FxHashSet;
-use sunrise_client::server_perf::MemoryCost;
 use sunrise_client_render::gfx::RendererMemorySnapshot;
+use sunrise_level::chunk::{Chunk, ColumnCensus, Section};
+use sunrise_level::fast_hash::FxHashSet;
+use sunrise_sim::server_perf::MemoryCost;
 
 pub(in crate::game) const MB: f64 = 1048576.0;
 /// Entity types and players listed apart; the rest only count in the totals.

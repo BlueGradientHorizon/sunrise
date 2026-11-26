@@ -5,8 +5,9 @@
 //! fence position in another level is another knot.
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, mobs::leash::Holder, motion::PlayerMotion};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{mobs::leash::Holder, motion::PlayerMotion};
 
 pub(in crate::game) const PIG: &str = "0000609a-0000-0000-0000-000000000001";
 pub(in crate::game) const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";
@@ -76,7 +77,7 @@ pub(in crate::game) fn step(game: &mut crate::game::ServerGame<'_>) {
 }
 
 pub(in crate::game) fn mob(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> usize {
-    match game.target_with_uuid(sunrise_client::save::uuid_from_text(uuid).unwrap()) {
+    match game.target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap()) {
         Some(super::Target::Mob(id)) => game.mobs.iter().position(|m| m.id == id).unwrap(),
         other => panic!("{other:?}"),
     }
@@ -233,7 +234,7 @@ fn commands_that_would_move_or_remove_a_natural_knot_fail() {
     assert_eq!(knots(&game), [id], "the knot is still there");
     let i = mob(&mut game, PIG);
     assert_eq!(game.mobs[i].extra.leash, Some(Holder::Knot([8, 201, 0])));
-    let at = sunrise_client::mobs::leash::knot_state([8, 201, 0]).position;
+    let at = sunrise_sim::mobs::leash::knot_state([8, 201, 0]).position;
     assert_eq!(
         game.target_position(super::Target::Knot(id)),
         Some([at.x, at.y, at.z])

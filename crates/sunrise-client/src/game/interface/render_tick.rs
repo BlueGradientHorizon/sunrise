@@ -7,16 +7,11 @@ use mod_api::{
     __private::{SelectedBlockScreenEffectRenderer, block_screen_effect_render},
     BlockScreenEffect,
 };
-use sunrise_client::assets::Properties;
 use sunrise_client::camera::NearPlane;
 use sunrise_client::fog::{FogData, FogInputs, FogType, settle_rain_fog, update_rain_fog};
 use sunrise_client::{
     animate_tick::{AnimateContext, AnimateSampling, AnimateStep, marker_particle_target},
-    blocks::{BlockFacts, Fluid},
-    mobs::Mob,
-    motion::{PlayerMotion, WATER},
-    particles::{ParticleLevel, ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
-    world::World,
+    particles::{ParticleLevel, TrackingBody, TrackingTarget},
 };
 use sunrise_client::{
     hud_overlays,
@@ -27,6 +22,14 @@ use sunrise_client::{
 use sunrise_core::{
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
+};
+use sunrise_items::blocks::{BlockFacts, Fluid};
+use sunrise_level::assets::Properties;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_level::world::World;
+use sunrise_sim::{
+    mobs::Mob,
+    motion::{PlayerMotion, WATER},
 };
 use sunrise_world::dimension_type::{CardinalLight, Skybox};
 use sunrise_world::{
@@ -193,7 +196,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn frame_cloud_uv(
         &self,
         title: bool,
-        sky: &sunrise_client::environment::Sky,
+        sky: &sunrise_level::environment::Sky,
     ) -> Option<[f32; 2]> {
         if title || !sunrise_client::clouds::visible(&self.side.settings.clouds, sky.cloud_color[3])
         {
@@ -231,7 +234,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn frame_fog(
         &self,
         camera: glam::DVec3,
-        sky: &sunrise_client::environment::Sky,
+        sky: &sunrise_level::environment::Sky,
         biome: u16,
         water_fog_color: [f32; 3],
     ) -> FogData {
@@ -444,7 +447,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .into_iter()
                 .zip(sunrise_items::equipment::SLOT_NAMES)
                 .filter_map(|(stack, slot)| {
-                    let e = sunrise_client::item_sync::equippable(stack?, self.res.items())?;
+                    let e = sunrise_sim::item_sync::equippable(stack?, self.res.items())?;
                     if e.slot != slot {
                         return None;
                     }
@@ -588,7 +591,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 ];
                 let state = self.world.block(pos[0], pos[1], pos[2]);
                 if self.res.facts().get(state).render_shape
-                    != sunrise_client::blocks::RenderShape::Invisible
+                    != sunrise_items::blocks::RenderShape::Invisible
                     && self.state_view_blocking(state, pos, near_plane)
                 {
                     block = Some(state);
@@ -773,7 +776,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // A client mod's `clear_particles`, before this tick adds any.
         self.apply_mod_particle_clear();
         self.update_animation_inputs();
-        let mut laps = sunrise_client::spans::laps();
+        let mut laps = sunrise_level::spans::laps();
         let eye = self.eye_position();
         // Vanilla particle culling, weather splashes, and rain fog read `mainCamera().position()` directly.
         let cam_pos = self.side.view.position;
@@ -854,7 +857,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let biome = world
                     .noise_biome(x, y, z)
                     .map(|id| &biomes.get(id).attributes);
-                let sample = sunrise_client::environment::Sample {
+                let sample = sunrise_level::environment::Sample {
                     day_time: world.day_time,
                     rain,
                     thunder,
@@ -1091,7 +1094,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ParticleEngine.tick` (and the pickups and sounds it raises): in `Minecraft.tick` after
     /// `Level.tickBlockEntities`, so a particle a block entity just added ages with the rest.
     pub(in crate::game) fn tick_particle_engine(&mut self) {
-        let mut laps = sunrise_client::spans::laps();
+        let mut laps = sunrise_level::spans::laps();
         let world = &self.world;
         let facts = self.res.facts();
         // SpellParticle.isCloseToScopingPlayer: the eye of a local player looking
@@ -1218,7 +1221,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .polytone_particles
             .as_ref()
             .and_then(|p| p.frame.read().ok().map(|f| f.clone()))
-            .unwrap_or_else(|| sunrise_client::environment::Frame {
+            .unwrap_or_else(|| sunrise_level::environment::Frame {
                 rain,
                 thunder,
                 game_time: self.world.game_time,
@@ -1272,7 +1275,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// ([`Self::world_runs`]). Values are uploaded when each pipeline prepares its draw.
     pub(in crate::game::client_side) fn evaluate_pack_expressions(
         &mut self,
-        frame: Option<&sunrise_client::environment::Frame>,
+        frame: Option<&sunrise_level::environment::Frame>,
     ) {
         let world = self.world_runs();
         if let (Some(frame), Some(renderer)) = (frame, self.side.renderer.0.as_mut()) {
@@ -1293,7 +1296,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 mod tests {
     use super::{Properties, World, splash_height};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
     use sunrise_world::registry::BlockStateId;
 
     /// #3810: under a stone roof more than 64 blocks above the camera, as in a
@@ -1333,8 +1336,10 @@ mod tests {
     #[ignore = "daily"]
     fn equipment_camera_overlays_emit_in_vanilla_slot_order() {
         use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
-        use sunrise_client::{camera::CameraType, hud::Rect, items::ItemStack};
+        use sunrise_client::hud::Rect;
         use sunrise_core::{geometry::Vec3, nbt::Tag};
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::camera_math::CameraType;
 
         in_own_process(
             "game::client_side::render_tick::tests::equipment_camera_overlays_emit_in_vanilla_slot_order",
@@ -1525,7 +1530,7 @@ mod tests {
             );
             // The eye is at y 65.62, so all eight test points are in block (0, 65, 0).
             let mut player =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player.position = Vec3::new(0.5, 64.0, 0.5);
             player.fire_ticks = 100;
             game.player = Some(player);

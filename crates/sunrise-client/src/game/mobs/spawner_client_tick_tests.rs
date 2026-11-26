@@ -6,8 +6,8 @@
 use super::*;
 use std::sync::Arc;
 use sunrise_client::block_entity_anim::Ticker;
-use sunrise_client::chunk::block_entity::{Next, SpawnData, Spawner, TrialSpawner, Vault};
 use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::block_entity::{Next, SpawnData, Spawner, TrialSpawner, Vault};
 
 type Pos = (i32, i32, i32);
 use sunrise_protocol::chunk::{BlockEntityInfo, ChunkData, LightData};
@@ -190,12 +190,12 @@ fn client_tick_entity(
                 ("lit", flag("lit")),
                 ("signal_fire", flag("signal")),
             ],
-            BlockEntity::Campfire(Box::new(sunrise_client::chunk::block_entity::Campfire {
+            BlockEntity::Campfire(Box::new(sunrise_level::chunk::block_entity::Campfire {
                 items: std::array::from_fn(|i| {
                     e["items"][i]
                         .as_bool()
                         .unwrap()
-                        .then(|| sunrise_client::items::ItemStack::new("minecraft:porkchop", 1))
+                        .then(|| sunrise_items::items::ItemStack::new("minecraft:porkchop", 1))
                 }),
                 ..Default::default()
             })),
@@ -258,7 +258,7 @@ fn client_tick_entity(
                 display_item: e["display"]
                     .as_bool()
                     .unwrap()
-                    .then(|| sunrise_client::items::ItemStack::new("minecraft:diamond", 1)),
+                    .then(|| sunrise_items::items::ItemStack::new("minecraft:diamond", 1)),
                 connected_players: if e["connected"].as_bool().unwrap() {
                     vec![PLAYER]
                 } else {
@@ -291,7 +291,7 @@ fn send_column(
     listed: &[usize],
     fills: &serde_json::Value,
 ) -> bool {
-    let mut chunk = sunrise_client::chunk::Chunk::empty(at.0, at.1);
+    let mut chunk = sunrise_level::chunk::Chunk::empty(at.0, at.1);
     // The case's fills over this column, then its block entities' own states.
     for fill in fills.as_array().into_iter().flatten() {
         let corner = |k: &str, i: usize| int(&fill[k][i]);
@@ -330,7 +330,7 @@ fn send_column(
             packed_xz: (((k.0 & 15) << 4) | (k.2 & 15)) as u8 as i8,
             y: k.1 as i16,
             kind: *kind,
-            tag: sunrise_client::lan::chunks::entity_tag(entity, active, game.res.items())
+            tag: sunrise_sim::lan::chunks::entity_tag(entity, active, game.res.items())
                 .unwrap_or(Tag::End),
         });
     }
@@ -354,7 +354,7 @@ fn send_column(
     let format = game.remote.as_ref().unwrap().chunk_format.clone();
     game.remote_chunk(&packet, Some((&format, Ok(chunk))));
     let order: Vec<Pos> = listed.iter().map(|&i| entities[i].0).collect();
-    sunrise_client::block_entities::chunk_map_order(order.iter().copied()) != order
+    sunrise_level::block_entities::chunk_map_order(order.iter().copied()) != order
 }
 
 /// The particle and sound requests captured since the tick began, as one stream in the order
@@ -370,7 +370,7 @@ fn event_stream(
     let mut particles = particles.into_iter();
     let mut taken = 0;
     let particle_row = |(o, p, v): (
-        sunrise_client::particles::ParticleOptions,
+        sunrise_level::particle_options::ParticleOptions,
         [f64; 3],
         [f64; 3],
     )| {
@@ -419,16 +419,16 @@ fn start_case(
     let p = &case["player"];
     let at = |i: usize| p["pos"][i].as_f64().unwrap();
     let mut player =
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(at(0), at(1), at(2)))
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(at(0), at(1), at(2)))
             .unwrap();
     player.health.dead = p["dead"].as_bool().unwrap();
     game.player = Some(player);
     game.mode = if p["spectator"].as_bool().unwrap() {
-        sunrise_client::command::args::GameMode::Spectator
+        sunrise_command::args::GameMode::Spectator
     } else {
-        sunrise_client::command::args::GameMode::Survival
+        sunrise_command::args::GameMode::Survival
     };
-    game.remote.as_mut().unwrap().profile = sunrise_client::lan::playerdata::ints_uuid(PLAYER);
+    game.remote.as_mut().unwrap().profile = sunrise_sim::lan::playerdata::ints_uuid(PLAYER);
     game.level.player_uuid = Some(PLAYER);
     game.side
         .particles

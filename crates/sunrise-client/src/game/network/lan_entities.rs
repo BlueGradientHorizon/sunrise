@@ -4,11 +4,11 @@
 //! simulating them, each as vanilla pairs it (`getAddEntityPacket` and the
 //! synched data that differs from the defaults), and who rides what.
 use super::Game;
-use sunrise_client::lan::{
+use sunrise_protocol::entity_data::{PaintingHolder, PaintingVariant, Value, serializer};
+use sunrise_sim::lan::{
     entity::{EntityState, Riding, States},
     playerdata::ints_uuid,
 };
-use sunrise_protocol::entity_data::{PaintingHolder, PaintingVariant, Value, serializer};
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};
 
 /// Allocate once: a native summon may need its id before the tracking tick.
@@ -112,11 +112,11 @@ fn cart_display_data(
 
 /// An armor stand's pose (`ArmorStandPose`), each part that differs from the
 /// default, as DATA_HEAD_POSE to DATA_RIGHT_LEG_POSE (entries 16 to 21).
-fn push_stand_poses(meta: &mut Vec<(u8, i32, Value)>, a: &sunrise_client::entities::ArmorStand) {
+fn push_stand_poses(meta: &mut Vec<(u8, i32, Value)>, a: &sunrise_sim::entities::ArmorStand) {
     for (i, (rotation, default)) in a
         .pose
         .iter()
-        .zip(sunrise_client::entities::ArmorStand::DEFAULT_POSE)
+        .zip(sunrise_sim::entities::ArmorStand::DEFAULT_POSE)
         .enumerate()
     {
         if *rotation != default {
@@ -130,7 +130,7 @@ fn push_stand_poses(meta: &mut Vec<(u8, i32, Value)>, a: &sunrise_client::entiti
 }
 
 #[cfg(test)]
-fn stand_poses(a: &sunrise_client::entities::ArmorStand) -> Vec<(u8, i32, Value)> {
+fn stand_poses(a: &sunrise_sim::entities::ArmorStand) -> Vec<(u8, i32, Value)> {
     let mut meta = Vec::new();
     push_stand_poses(&mut meta, a);
     meta
@@ -177,7 +177,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             {
                 host.hub
                     .tracking_after_sounds
-                    .push(sunrise_client::lan::hub::TrackingBatch {
+                    .push(sunrise_sim::lan::hub::TrackingBatch {
                         events: after_sounds,
                         held: Vec::new(),
                         ..batch
@@ -200,7 +200,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.run_native_tracking();
     }
 
-    fn send_tracking_out(&self, conn: u32, part: Vec<sunrise_client::lan::Body>) -> Vec<i32> {
+    fn send_tracking_out(&self, conn: u32, part: Vec<sunrise_sim::lan::Body>) -> Vec<i32> {
         match self.lan.as_ref() {
             Some(host) => host.hub.send_tracking_out(conn, part),
             None => Vec::new(),
@@ -212,7 +212,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         player: u128,
         name: &str,
-        e: &sunrise_client::lan::entity::TrackEvent,
+        e: &sunrise_sim::lan::entity::TrackEvent,
     ) {
         let (id, kind) = (e.entity as u32, &*e.tracked.kind);
         if e.start {
@@ -253,7 +253,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 pass.insert(0, d);
             }
         }
-        let mut mixed = sunrise_client::fast_hash::FxHashSet::default();
+        let mut mixed = sunrise_level::fast_hash::FxHashSet::default();
         for row in &self.resident_entities.general.rows {
             if let Some(vehicle) = row.mount
                 && !self
@@ -350,7 +350,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             let p = c.position;
             let shown = c.custom_display.as_ref().and_then(|t| {
-                sunrise_client::entity_nbt::state_from_nbt(self.pack.assets.registry, t)
+                sunrise_sim::entity_nbt::state_from_nbt(self.pack.assets.registry, t)
             });
             let default = super::minecarts::default_display_offset(c.kind) as i32;
             let e = add_state(
@@ -446,7 +446,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 e.meta.push((
                     2,
                     serializer::OPTIONAL_COMPONENT,
-                    Value::OptText(Some(sunrise_client::scoreboard::json_to_tag(
+                    Value::OptText(Some(sunrise_client_core::scoreboard::json_to_tag(
                         &name.component(),
                     ))),
                 ));
@@ -461,7 +461,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .push((3, serializer::BOOLEAN, Value::Bool(false)));
             // A pose put back to its default (`/data`) is sent as that default.
             e.defaults.push((15, serializer::BYTE, Value::Byte(0)));
-            for (i, default) in sunrise_client::entities::ArmorStand::DEFAULT_POSE
+            for (i, default) in sunrise_sim::entities::ArmorStand::DEFAULT_POSE
                 .iter()
                 .enumerate()
             {
@@ -655,7 +655,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return;
             };
             if kept.len() > self.side.others.0.len() + 64 {
-                let ids: sunrise_client::fast_hash::FxHashSet<u32> =
+                let ids: sunrise_level::fast_hash::FxHashSet<u32> =
                     self.side.others.0.iter().map(|o| o.id).collect();
                 kept.retain(|id, _| ids.contains(id));
             }
@@ -669,7 +669,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         id: u32,
         tag: &Tag,
         e: &mut EntityState,
-    ) -> Option<sunrise_client::items::ItemStack> {
+    ) -> Option<sunrise_items::items::ItemStack> {
         if !matches!(
             e.kind.as_str(),
             "minecraft:text_display" | "minecraft:block_display" | "minecraft:item_display"
@@ -716,11 +716,11 @@ struct KeptDisplay {
     meta: Vec<(u8, i32, Value)>,
     defaults: Vec<(u8, i32, Value)>,
     /// An item display's item and the index in `meta` its stack goes in.
-    item: Option<sunrise_client::items::ItemStack>,
+    item: Option<sunrise_items::items::ItemStack>,
 }
 thread_local! {
     static KEPT_DISPLAYS: std::cell::RefCell<
-        sunrise_client::fast_hash::FxHashMap<super::Dim, sunrise_client::fast_hash::FxHashMap<u32, KeptDisplay>>,
+        sunrise_level::fast_hash::FxHashMap<super::Dim, sunrise_level::fast_hash::FxHashMap<u32, KeptDisplay>>,
     > = Default::default();
 }
 
@@ -732,7 +732,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         tag: &Tag,
         e: &mut EntityState,
-    ) -> Option<sunrise_client::items::ItemStack> {
+    ) -> Option<sunrise_items::items::ItemStack> {
         use {
             sunrise_sim::text_display_data::display_data,
             sunrise_sim::text_display_data::text_display_data,
@@ -759,9 +759,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "minecraft:item_display" => {
                 // DATA_ITEM_STACK and DATA_ITEM_DISPLAY_ID (`ItemDisplayContext`).
-                item_stack = tag
-                    .get("item")
-                    .and_then(sunrise_client::save::item_from_nbt);
+                item_stack = tag.get("item").and_then(sunrise_sim::save::item_from_nbt);
                 let context = match tag.get("item_display") {
                     Some(Tag::String(s)) => match s.to_string_lossy().as_str() {
                         "thirdperson_lefthand" => 1,
@@ -877,7 +875,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let kind = catalog.key(row.type_slot);
             let e = out.add(
                 row.id as i32,
-                sunrise_client::lan::playerdata::ints_uuid(row.uuid),
+                sunrise_sim::lan::playerdata::ints_uuid(row.uuid),
                 kind,
             );
             let (p, v) = (row.position, row.velocity);
@@ -896,9 +894,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         let hub = &mut host.hub;
-        let owner = |who: Option<sunrise_client::mobs::Who>| match who {
-            Some(sunrise_client::mobs::Who::Mob(id)) => id as i32,
-            Some(sunrise_client::mobs::Who::Player) | None => 0,
+        let owner = |who: Option<sunrise_sim::mobs::Who>| match who {
+            Some(sunrise_sim::mobs::Who::Mob(id)) => id as i32,
+            Some(sunrise_sim::mobs::Who::Player) | None => 0,
         };
         let at = |p: sunrise_core::geometry::Vec3| [p.x, p.y, p.z];
         for f in self.fangs.list.iter().filter(|f| f.id > after) {
@@ -998,7 +996,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         for p in self.creatures.projectiles.iter().filter(|p| p.id > after) {
-            use sunrise_client::projectiles::ProjectileKind as K;
+            use sunrise_sim::projectiles::ProjectileKind as K;
             // A spectral arrow is its own entity type.
             let kind = p.entity_type();
             let data = match p.guest.and_then(|conn| hub.guest(conn)) {
@@ -1144,7 +1142,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for t in self.tridents.iter().filter(|t| t.id > after) {
             let data = match t.guest.and_then(|conn| hub.guest(conn)) {
                 Some(g) => g.entity_id,
-                None => owner(Some(sunrise_client::mobs::Who::Player)),
+                None => owner(Some(sunrise_sim::mobs::Who::Player)),
             };
             let e = add_state(
                 out,
@@ -1433,10 +1431,7 @@ mod tests {
                     $game.lan_assign_ids();
                     assert_eq!(taken[0].id, 0);
                     assert_eq!($list[0].id, base + 1);
-                    $list.restore(
-                        taken,
-                        sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
-                    );
+                    $list.restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                     $game.lan_assign_ids();
                     assert_eq!(
                         $list.iter().map(|p| p.id).collect::<Vec<_>>(),
@@ -1517,7 +1512,7 @@ mod tests {
     #[ignore = "daily"]
     fn kept_display_data_is_what_a_build_gives() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let snbt = |s: &str| sunrise_client::command::snbt::parse_fully(s).unwrap();
+            let snbt = |s: &str| sunrise_command::snbt::parse_fully(s).unwrap();
             let displays: [(&str, Tag, Tag); 3] = [
                 (
                     "minecraft:text_display",
@@ -1587,7 +1582,7 @@ mod tests {
 
     #[test]
     fn armor_stand_poses_send_only_what_differs() {
-        let mut stand = sunrise_client::entities::ArmorStand::new(1, Default::default(), 0.0);
+        let mut stand = sunrise_sim::entities::ArmorStand::new(1, Default::default(), 0.0);
         stand.pose[0] = [10.0, 20.0, 0.0];
         let meta = stand_poses(&stand);
         assert_eq!(
@@ -1598,7 +1593,7 @@ mod tests {
                 Value::Floats(vec![10.0, 20.0, 0.0])
             )]
         );
-        let plain = sunrise_client::entities::ArmorStand::new(1, Default::default(), 0.0);
+        let plain = sunrise_sim::entities::ArmorStand::new(1, Default::default(), 0.0);
         assert!(stand_poses(&plain).is_empty());
     }
 
@@ -1640,7 +1635,7 @@ mod tests {
                 45.0,
                 true,
             );
-            let mut s = sunrise_client::entities::ArmorStand::new(10, Default::default(), 0.0);
+            let mut s = sunrise_sim::entities::ArmorStand::new(10, Default::default(), 0.0);
             s.pose[0] = [5.0, 0.0, 0.0];
             push_stand_poses(&mut e.meta, &s);
             vehicle_meta(e, 2, 1, 3.5);

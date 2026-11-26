@@ -231,9 +231,10 @@ mod tests {
             native_client_session::tests::logged_client,
             native_entity_refs::tests::with_client_game,
         };
-        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::chunk::Chunk;
         use sunrise_protocol::packets::play::{self, Clientbound as C};
+        use sunrise_sim::motion::PlayerMotion;
         let state = std::sync::Arc::new(AttackBatch::default());
         let mods = vec![mod_api::ModEntry::new(
             "attack_batch_test",

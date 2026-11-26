@@ -10,7 +10,7 @@ use std::{
     sync::mpsc::{Receiver, TryRecvError},
     time::{Duration, Instant},
 };
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
@@ -297,8 +297,8 @@ pub(in crate::game) mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
     use std::sync::{Arc, mpsc};
-    use sunrise_client::save::{LevelShape, SaveDir};
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+    use sunrise_sim::save::{LevelShape, SaveDir};
 
     pub(in crate::game) fn finish_server_staged_save(
         game: &mut crate::game::ServerGame<'_>,
@@ -320,7 +320,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn both_successful_save_paths_resolve_the_banner_in_the_active_language() {
-        use sunrise_client::lang::{Language, scoped};
+        use sunrise_client_core::lang::{Language, scoped};
 
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
@@ -338,7 +338,7 @@ pub(in crate::game) mod tests {
                 );
                 scoped(language, || {
                     game.save_game().unwrap();
-                    let explicit = sunrise_client::lang::get("commands.save.success");
+                    let explicit = sunrise_client_core::lang::get("commands.save.success");
                     let mut save = ClosingSave {
                         quit: false,
                         close: false,
@@ -347,7 +347,7 @@ pub(in crate::game) mod tests {
                         stage: Stage::Writes(Some(game.side.save.0.flush_later().unwrap())),
                     };
                     assert!(!finish_server_staged_save(game, &mut save));
-                    let incremental = sunrise_client::lang::get("commands.save.success");
+                    let incremental = sunrise_client_core::lang::get("commands.save.success");
                     assert_eq!(
                         (explicit.as_str(), incremental.as_str()),
                         (translated, translated)

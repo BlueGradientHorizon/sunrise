@@ -10,8 +10,9 @@ use std::{
     sync::{Arc, atomic::Ordering, mpsc::channel},
     time::{Duration, Instant},
 };
-use sunrise_client::{Result, lan::OwnerProfile};
+use sunrise_client_core::Result;
 use sunrise_protocol::crypto::offline_uuid;
+use sunrise_sim::lan::OwnerProfile;
 use sunrise_sim::world_options::WorldOptions;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -49,7 +50,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         create: Option<&WorldOptions>,
     ) -> Result<()> {
         self.client_logging_out();
-        sunrise_client::command::vanilla::set_sunrise_commands(
+        sunrise_command::vanilla::set_sunrise_commands(
             self.options.pregen || self.side.settings.extras.pregen,
         );
         let auth = sunrise_client::auth::current();
@@ -113,7 +114,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.pack.clone(),
             self.side.settings.sim_settings(),
         );
-        sunrise_client::parallel::set_setting(settings.parallel_tick);
+        sunrise_sim::parallel::set_setting(settings.parallel_tick);
         let flags = Arc::new(Flags {
             reports: self.side.client_reports.0.clone(),
             ..Flags::default()
@@ -155,12 +156,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         #[cfg(test)]
         let run_server = mod_api::testing::inherit_mods(run_server);
         let thread = std::thread::Builder::new()
-            .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
+            .name(sunrise_level::crash::INTEGRATED_SERVER_THREAD.into())
             .stack_size(server_thread_stack())
             .spawn(move || run_server(&()))?;
         let emergency_flags = flags.clone();
         let server_id = thread.thread().id();
-        let emergency_save = sunrise_client::crash::on_emergency_save(move || {
+        let emergency_save = sunrise_level::crash::on_emergency_save(move || {
             emergency_flags.emergency_save(server_id, Duration::from_secs(30));
         });
         let handle = Integrated {

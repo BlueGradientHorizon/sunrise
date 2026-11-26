@@ -1,7 +1,7 @@
 // Test module extracted without changing its logical path.
 use super::*;
 use crate::game::commands::Target;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]
@@ -32,7 +32,7 @@ fn constructed_and_saved_mob_uuids_survive_repeated_reconstruction() {
                 fields.insert("UUID".into(), Tag::IntArray(uuid.to_vec()));
             }
             // Reset only this test thread, after resource/game setup has drawn.
-            sunrise_client::random_source::set_thread_uniquifier(12345).unwrap();
+            sunrise_level::random_source::set_thread_uniquifier(12345).unwrap();
             let mut id = game.load_mob(tag, None).unwrap();
             let uuid = saved_uuid.unwrap_or(CONSTRUCTOR_UUID);
             assert_eq!(game.persist.uuid_of(id), Some(uuid));
@@ -51,7 +51,7 @@ fn constructed_and_saved_mob_uuids_survive_repeated_reconstruction() {
                 assert_eq!(entity_nbt::uuid(&tag), Some(uuid));
                 game.forget_entity(id);
                 game.mobs.retain(|mob| mob.id != id);
-                sunrise_client::random_source::set_thread_uniquifier(12345).unwrap();
+                sunrise_level::random_source::set_thread_uniquifier(12345).unwrap();
                 id = game.load_mob(tag, None).unwrap();
                 assert_eq!(game.persist.uuid_of(id), Some(uuid));
                 assert_eq!(
@@ -109,7 +109,7 @@ fn cloud_fangs_and_kept_entities_keep_their_constructor_uuid() {
     with_game(|game, _| {
         for kind in KINDS {
             for saved in [None, Some(SAVED)] {
-                sunrise_client::random_source::set_thread_uniquifier(12345).unwrap();
+                sunrise_level::random_source::set_thread_uniquifier(12345).unwrap();
                 let tag = positioned(kind, saved);
                 let id = if kind == "minecraft:marker" {
                     game.load_other(tag, kind).unwrap()
@@ -129,7 +129,7 @@ fn cloud_fangs_and_kept_entities_keep_their_constructor_uuid() {
                     "{kind} {saved:?}: saving draws no second UUID"
                 );
                 assert_eq!(
-                    sunrise_client::random_source::entity().next_int(),
+                    sunrise_level::random_source::entity().next_int(),
                     NEXT_ENTITY_FIRST_INT,
                     "{kind} {saved:?}: one constructor draw"
                 );

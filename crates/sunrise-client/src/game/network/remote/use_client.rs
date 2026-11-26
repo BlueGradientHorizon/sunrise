@@ -324,7 +324,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // aimed at, with or without a stronghold to throw the eye at.
             "minecraft:ender_eye" => !self.aims_at_end_portal_frame(),
             // Item.use: a kinetic weapon starts being used.
-            id if sunrise_client::spear::Kinetic::of(id).is_some() => true,
+            id if sunrise_sim::spear_sim::Kinetic::of(id).is_some() => true,
             // ShieldItem.use: anything that blocks attacks, off cooldown.
             // Item.use: a consumable or `blocks_attacks` the server's patch
             // adds starts the use (Consumable.startConsuming, startUsingItem).
@@ -333,7 +333,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .items()
                     .get(&held.item)
                     .and_then(|i| i.use_cooldown.as_ref());
-                let group = sunrise_client::cooldowns::group(held, default);
+                let group = sunrise_items::cooldowns::group(held, default);
                 if self.blocks_attacks(held).is_some() {
                     if !self.cooldowns.is_on_cooldown(&group) {
                         self.start_using_item();
@@ -483,7 +483,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(instrument) = self.res.items().instrument(held) else {
             return;
         };
-        let group = sunrise_client::cooldowns::group(held, None);
+        let group = sunrise_items::cooldowns::group(held, None);
         if self.cooldowns.is_on_cooldown(&group) {
             return;
         }

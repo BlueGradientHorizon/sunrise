@@ -230,7 +230,7 @@ fn the_sky_draws_its_expression_uniform() {
         .unwrap();
         let atlas = &game.side.gui.atlas;
         let values = |expressions: &[sunrise_client::polytone_post::ExpressionUniform]| {
-            let frame = sunrise_client::environment::Frame::default();
+            let frame = sunrise_level::environment::Frame::default();
             expressions
                 .iter()
                 .map(|e| e.evaluate(&frame))
@@ -266,7 +266,7 @@ fn corner(game: &mut crate::game::ClientGame<'_>) -> [u8; 3] {
 /// A game frame.
 pub(in crate::game::client_side) fn frame(
     game: &mut crate::game::ClientGame<'_>,
-) -> sunrise_client::Result<bool> {
+) -> sunrise_client_core::Result<bool> {
     game.render_with(|renderer, frame| renderer.render(frame))
 }
 
@@ -274,7 +274,7 @@ pub(in crate::game::client_side) fn frame(
 /// frame, a loading screen's), from a screenshot of it.
 pub(in crate::game::client_side) fn corner_of(
     game: &mut crate::game::ClientGame<'_>,
-    draw: impl FnOnce(&mut crate::game::ClientGame<'_>) -> sunrise_client::Result<bool>,
+    draw: impl FnOnce(&mut crate::game::ClientGame<'_>) -> sunrise_client_core::Result<bool>,
 ) -> [u8; 3] {
     game.side.renderer.0.as_mut().unwrap().screenshot =
         Some(sunrise_client::gfx::ScreenshotRequest {

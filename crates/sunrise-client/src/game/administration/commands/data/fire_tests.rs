@@ -3,10 +3,10 @@ use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };
 use std::collections::HashSet;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_ENTITY_FIRE_TICKS_WITNESS").unwrap_or_else(|| {
@@ -281,9 +281,8 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
             Some(&Tag::Short(0)),
             "chunk save must write live Fire:0s, not raw -5s"
         );
-        let reloaded =
-            sunrise_client::entity_nbt::spit_or_bullet_from_nbt(&saved_bullet, None, None)
-                .expect("saved bullet reloads");
+        let reloaded = sunrise_sim::entity_nbt::spit_or_bullet_from_nbt(&saved_bullet, None, None)
+            .expect("saved bullet reloads");
         assert_eq!(reloaded.fire_ticks, 0);
         game.kill_target(neg_bullet);
 

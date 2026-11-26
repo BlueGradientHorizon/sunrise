@@ -3,22 +3,22 @@ use super::*;
 
 /// Side-specific inputs supplied to [`Game::mob_world_base_with`] by server or client.
 pub(in crate::game) struct MobWorldSideParams<'s> {
-    pub(in crate::game) side: &'s dyn sunrise_client::motion::SideLevel,
+    pub(in crate::game) side: &'s dyn sunrise_sim::motion::SideLevel,
     pub(in crate::game) trading_players:
-        Option<&'s dyn sunrise_client::mobs::villager_brain::TradingPlayers>,
+        Option<&'s dyn sunrise_sim::mobs::villager_brain::TradingPlayers>,
     pub(in crate::game) player: Option<PlayerView>,
     pub(in crate::game) player_identity: Option<([i32; 4], u32)>,
-    pub(in crate::game) leash_boats: &'s [(u32, sunrise_client::mobs::leash::HolderState)],
-    pub(in crate::game) teams: std::sync::Arc<sunrise_client::mobs::Teams<'s>>,
+    pub(in crate::game) leash_boats: &'s [(u32, sunrise_sim::mobs::leash::HolderState)],
+    pub(in crate::game) teams: std::sync::Arc<sunrise_sim::mobs::Teams<'s>>,
     pub(in crate::game) lid_openers: &'s std::collections::HashMap<(i32, i32, i32), i32>,
-    pub(in crate::game) mod_effects: Option<&'s dyn sunrise_client::mobs::ModEffectTicks>,
-    pub(in crate::game) mob_hooks: Option<&'s dyn sunrise_client::mobs::MobHooks>,
-    pub(in crate::game) goal_host: Option<&'s dyn sunrise_client::mobs::part_goals::GoalHost>,
+    pub(in crate::game) mod_effects: Option<&'s dyn sunrise_sim::mobs::ModEffectTicks>,
+    pub(in crate::game) mob_hooks: Option<&'s dyn sunrise_sim::mobs::MobHooks>,
+    pub(in crate::game) goal_host: Option<&'s dyn sunrise_sim::mobs::part_goals::GoalHost>,
     pub(in crate::game) asks_animal_tame: bool,
     pub(in crate::game) asks_living_destroy_block: bool,
     pub(in crate::game) asks_baby_spawn: bool,
-    pub(in crate::game) who_lookup: Option<&'s dyn sunrise_client::mobs::WhoLookup>,
-    pub(in crate::game) difficulty: sunrise_client::mobs::spawning::LocalDifficulty,
+    pub(in crate::game) who_lookup: Option<&'s dyn sunrise_sim::mobs::WhoLookup>,
+    pub(in crate::game) difficulty: sunrise_sim::mobs::spawning::LocalDifficulty,
 }
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
@@ -81,23 +81,23 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             mob_griefing: self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
             universal_anger: self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::UNIVERSAL_ANGER),
+                .bool_at(sunrise_client_core::gamerules::vanilla::UNIVERSAL_ANGER),
             mob_drops: self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
+                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS),
             pvp: self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::PVP),
+                .bool_at(sunrise_client_core::gamerules::vanilla::PVP),
             max_entity_cramming: self
                 .ui
                 .rules
-                .int_at(sunrise_client::gamerules::vanilla::MAX_ENTITY_CRAMMING),
+                .int_at(sunrise_client_core::gamerules::vanilla::MAX_ENTITY_CRAMMING),
             dimension_type: self.dimension_type(),
             world_seed: self.level.seed,
             sea_level: self.dim.sea_level(),
@@ -117,7 +117,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// `Level.getEntity`: revenge goals must resolve the dragon too.
-    pub(in crate::game) fn dragon_target(&self) -> Option<(u32, sunrise_client::mobs::TargetInfo)> {
+    pub(in crate::game) fn dragon_target(&self) -> Option<(u32, sunrise_sim::mobs::TargetInfo)> {
         let d = self.dragon.as_ref().filter(|d| d.alive())?;
         let p = d.position;
         let bounds = Aabb::new(
@@ -126,7 +126,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         );
         Some((
             d.id,
-            sunrise_client::mobs::TargetInfo {
+            sunrise_sim::mobs::TargetInfo {
                 position: p,
                 eye_y: p.y + 6.8,
                 bounds,

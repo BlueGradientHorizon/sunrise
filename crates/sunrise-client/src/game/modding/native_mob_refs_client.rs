@@ -1,12 +1,12 @@
 #[allow(unused_imports)]
-use sunrise_client::mobs::{self};
+use sunrise_sim::mobs;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     #[test]
     #[ignore = "daily"]
@@ -109,7 +109,7 @@ pub(in crate::game) mod tests {
         use sunrise_core::random::{LegacyRandom, RandomSource};
         with_game(|game| {
             for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
                 chunk.lit = true;
                 game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
             }

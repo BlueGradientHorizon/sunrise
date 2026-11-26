@@ -2,11 +2,11 @@
 use super::{Game, commands::Target};
 
 pub(in crate::game) enum SpecializedSource<'a> {
-    Player(&'a sunrise_client::motion::PlayerMotion),
-    Guest(&'a sunrise_client::lan::guest::Guest),
+    Player(&'a sunrise_sim::motion::PlayerMotion),
+    Guest(&'a sunrise_sim::lan::guest::Guest),
     Hook(&'a super::fishing::Hook),
 }
-use sunrise_client::join_seq::{
+use sunrise_sim::join_seq::{
     Joined,
     residency::{
         Journal, Kind, Owner, Source,
@@ -73,7 +73,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game::server_side) fn acting_player_join(
         &self,
-    ) -> sunrise_client::join_seq::JoinSeq {
+    ) -> sunrise_sim::join_seq::JoinSeq {
         self.side
             .lan_acting
             .and_then(|conn| self.command_guest(conn))

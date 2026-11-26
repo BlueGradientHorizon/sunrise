@@ -3,7 +3,7 @@
 use super::{Arg, Context, Game, R, err};
 use crate::game::structure_blocks::{load_settings, template_size};
 use std::sync::OnceLock;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 use sunrise_core::position::BlockPos;
 use {
     sunrise_core::{
@@ -84,7 +84,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if raw.starts_with('{') {
                     let (tag, _) = sunrise_core::nbt::parse_snbt(&raw)
                         .map_err(|_| err("command.failed", &[]))?;
-                    let json = sunrise_client::scoreboard::tag_to_json(&tag).to_string();
+                    let json = sunrise_client_core::scoreboard::tag_to_json(&tag).to_string();
                     let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
                     let placed = self
                         .with_level(|b, level, ticks| {
@@ -350,13 +350,12 @@ pub(in crate::game) mod live_dungeon_spawner_tests {
     use super::*;
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{
-        chunk::Chunk,
-        containers::BlockEntity,
+    use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_sim::{
         mobs::spawner::{SpawnDataExt, SpawnerExt},
         motion::PlayerMotion,
     };
-    use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -528,10 +527,8 @@ pub(in crate::game) mod live_dungeon_spawner_tests {
             assert_eq!(game.world.random.clone().next_long(), random);
             assert!(game.run_command("setblock 26 200 24 spawner strict"));
             let mut wrong = BlockEntity::for_block("minecraft:chest").unwrap();
-            wrong.slots_mut()[0] = Some(sunrise_client::items::ItemStack::new(
-                "minecraft:diamond",
-                3,
-            ));
+            wrong.slots_mut()[0] =
+                Some(sunrise_items::items::ItemStack::new("minecraft:diamond", 3));
             game.world.block_entities.insert((26, 200, 24), wrong);
             let before = format!("{:?}", game.world.block_entities.get(&(26, 200, 24)));
             game.with_level(|_, level, _| {

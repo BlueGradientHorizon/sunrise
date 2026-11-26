@@ -3,8 +3,8 @@ use crate::game::server_side::native_level_sound_except_tests::decode_packets;
 use crate::game::server_side::native_level_sound_except_tests::in_isolated_process;
 use mod_api::SoundSource;
 use std::sync::{Arc, mpsc};
-use sunrise_client::lan::PlayerSender;
 use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_sim::lan::PlayerSender;
 
 /// A transaction that emits Nether effects and commits while the Overworld is active replays each
 /// effect in its recorded `Dim` (so Nether events/particles/sounds never leak to Overworld guests
@@ -17,9 +17,9 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
     in_isolated_process(
         "cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order",
         || {
-            use sunrise_client::gamerules::Value;
-            use sunrise_client::particles::{ParticleOptions, ParticleType};
+            use sunrise_client_core::gamerules::Value;
             use sunrise_core::random::RandomSource;
+            use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
             with_guests(|game| {
                 game.options.dedicated = Some(Vec::new());

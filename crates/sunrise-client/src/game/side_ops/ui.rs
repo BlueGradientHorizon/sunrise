@@ -1,7 +1,7 @@
 //! Role-dispatched UI, chat, block-entity NBT, item-splash, and level-bound side operations.
 use crate::game::Game;
-use sunrise_client::entities::ItemSplash;
 use sunrise_core::nbt::Tag;
+use sunrise_sim::entities::ItemSplash;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     #[inline(always)]

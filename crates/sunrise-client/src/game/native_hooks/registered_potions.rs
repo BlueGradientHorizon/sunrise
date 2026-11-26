@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 pub(in crate::game) fn registered_potions() -> &'static [mod_api::PotionInfo] {
     static LIST: OnceLock<Vec<mod_api::PotionInfo>> = OnceLock::new();
     LIST.get_or_init(|| {
-        sunrise_client::brewing::POTIONS
+        sunrise_level::brewing::POTIONS
             .iter()
             .map(|potion| mod_api::PotionInfo::new(format!("minecraft:{}", potion.id)))
             .collect()

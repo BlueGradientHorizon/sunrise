@@ -3,8 +3,9 @@
 //! the clients are told of the change, the neighbours are not, so a state that
 //! starts providing a signal powers nothing until something else updates it.
 use crate::game::{Hit, game_tests::tests::server_game};
-use sunrise_client::{command::args::GameMode, items::ItemStack};
+use sunrise_command::args::GameMode;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_items::items::ItemStack;
 
 /// A stack of `item` whose `minecraft:block_state` component holds `props`.
 fn with_block_state(item: &str, props: &[(&str, &str)]) -> ItemStack {

@@ -1,7 +1,7 @@
 //! Client layout roles; never inspect stacks or server container identities.
 use super::{Game, Screen};
 use mod_api::{MenuRef, MenuSlotKind};
-use sunrise_client::containers::{ModMenuType, mod_menu_type};
+use sunrise_level::containers::{ModMenuType, mod_menu_type};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>> {
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn content_declaration_roles() {
-        use sunrise_client::containers::{ModCrafting, ModLinks};
+        use sunrise_level::containers::{ModCrafting, ModLinks};
         let content = ModMenuType {
             id: "test:roles",
             owner: "test",

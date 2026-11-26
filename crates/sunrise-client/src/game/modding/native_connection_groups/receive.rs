@@ -1,6 +1,6 @@
 //! Give a completed bundle's group data to the packet that owns it and check
 //! the net cost against the connection's resident group limit before adoption.
-use sunrise_client::{chunk::Chunk, fast_hash::FxHashMap, world::World};
+use sunrise_level::{chunk::Chunk, fast_hash::FxHashMap, world::World};
 use sunrise_protocol::{
     Error, Result, connection_groups::Section, packets::play::Clientbound as C,
 };
@@ -56,7 +56,7 @@ pub(in crate::game) fn column_groups(
         .map_or(0, |resident| resident.connection_groups.len());
     let new = sections.iter().map(|section| section.entries.len()).sum();
     check_group_capacity(world, old, new, limit)?;
-    let mut seen = sunrise_client::fast_hash::FxHashSet::default();
+    let mut seen = sunrise_level::fast_hash::FxHashSet::default();
     for section in sections {
         let [x, y, z] = section.pos;
         if (x, z) != (chunk.x, chunk.z) || !world.shape.has_section(y) || !seen.insert(y) {
@@ -134,7 +134,7 @@ pub(in crate::game) fn block_groups(
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::chunk_map::ConnectionGroupCount;
+    use sunrise_level::chunk_map::ConnectionGroupCount;
     use sunrise_protocol::connection_groups::{Cell, Entry};
     use sunrise_world::registry::BlockStateId;
 

@@ -3,8 +3,9 @@
 //! sinking, slowing, climbing and freezing are `PlayerMotion`'s
 //! (`crate::motion`); placing it is the powder snow bucket's `BlockItem.place`.
 use super::Game;
-use sunrise_client::{cauldron, items::ItemStack};
 use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::cauldron;
 
 /// The two ordered float draws of `Entity.playEntityOnFireExtinguishedSound`.
 pub(in crate::game) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
@@ -91,7 +92,7 @@ impl<S: crate::game::Side> cauldron::Player for HeldSlot<'_, '_, S> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// An inventory with room for 3 more arrows: one stack of 61 and stone everywhere else.
     fn room_for_three() -> Vec<Option<ItemStack>> {

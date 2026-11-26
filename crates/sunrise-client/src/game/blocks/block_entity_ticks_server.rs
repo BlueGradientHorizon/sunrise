@@ -1,12 +1,12 @@
 use super::Game;
 use crate::game::block_entity_ticks::Enclosing;
-use sunrise_client::{
-    Result,
+use sunrise_client_core::Result;
+use sunrise_gameplay::block_entity_ticks::block_ticking_at;
+use sunrise_level::{
     block_entities::{Pos, Ticking},
     containers::{BlockEntity, FurnaceKind},
-    furnace::FurnaceCooking,
 };
-use sunrise_gameplay::block_entity_ticks::block_ticking_at;
+use sunrise_sim::furnace::FurnaceCooking;
 use sunrise_world::registry::BlockStateId;
 
 impl Drop for Enclosing<'_, '_> {
@@ -73,10 +73,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 items,
                 was_lit,
                 |fuel| {
-                    sunrise_client::providers::Evaluation::new(self.active_providers(), &mut random)
+                    sunrise_level::providers::Evaluation::new(self.active_providers(), &mut random)
                         .cooking_fuel(
                             fuel,
-                            &mut sunrise_client::furnace::FurnaceConditions {
+                            &mut sunrise_sim::furnace::FurnaceConditions {
                                 world: &super::advancements::View(self),
                                 pos: [pos.0, pos.1, pos.2],
                             },
@@ -97,7 +97,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return Ok(());
                 };
                 plan.apply(furnace, &mut drops, |s| {
-                    crate::crafting::CraftingRemainder::crafting_remainder(items, s)
+                    sunrise_sim::crafting::CraftingRemainder::crafting_remainder(items, s)
                 })
             };
             let Some(BlockEntity::Furnace(f)) = self.world.block_entities.get(&pos) else {
@@ -159,7 +159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|i| {
                 let state = BlockStateId(i as u32);
                 let name: &str = &self.res.facts().get(state).name;
-                let factory = sunrise_client::block_entity_types::factory_block(name);
+                let factory = sunrise_client_core::block_entity_types::factory_block(name);
                 match factory {
                     "minecraft:hopper"
                     | "minecraft:crafter"

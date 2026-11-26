@@ -38,7 +38,7 @@ fn request(root: &Path) -> super::world_loading::WorldRequest {
         Some(1),
         true,
         None,
-        Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+        Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
     )
     .unwrap();
     request.save_root = root.to_owned();
@@ -86,7 +86,7 @@ fn generic_entries_follow_real_server_tables_and_atomic_reload() {
     ) {
         return;
     }
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let pack = scratch.path().join("datapacks/entries");
     write(
@@ -340,7 +340,7 @@ fn generic_entries_follow_real_server_tables_and_atomic_reload() {
 #[test]
 #[ignore = "daily"]
 fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     mod_platform::testing::with_mods(
         vec![ModEntry::new("registry_entry_test", Box::new(RegistryMod))].into(),
         || {
@@ -443,14 +443,14 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                 let server_set = mod_api::DatapackRegistrySet::from_candidate(candidate);
                 // A same-process server snapshot is deliberately present on the client Game too.
                 game.mods.datapack_registries = Some(Arc::new(server_set.clone()));
-                sunrise_client::datapack_net::serve(Some(Arc::new(server_set)));
-                let offer = sunrise_client::datapack_net::offer().unwrap();
-                let sunrise_client::datapack_net::Step::Send(bytes) =
-                    sunrise_client::datapack_net::server_step(true, Some(&offer))
+                sunrise_sim::datapack_net::serve(Some(Arc::new(server_set)));
+                let offer = sunrise_sim::datapack_net::offer().unwrap();
+                let sunrise_sim::datapack_net::Step::Send(bytes) =
+                    sunrise_sim::datapack_net::server_step(true, Some(&offer))
                 else {
                     panic!("expected negotiated snapshot");
                 };
-                sunrise_client::datapack_net::accept(&bytes).unwrap();
+                sunrise_sim::datapack_net::accept(&bytes).unwrap();
                 let remote = host(game)
                     .registry_entry("registry_entry_test:spell", "addon:remote")
                     .unwrap();
@@ -483,7 +483,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                     host(game).registry_entry_in_tag(&step, "minecraft:vibrations"),
                     Some(false)
                 );
-                sunrise_client::datapack_net::clear_received();
+                sunrise_sim::datapack_net::clear_received();
                 assert_eq!(host(game).registry_entry_in_tag(&remote, "addon:hot"), None);
             });
         },
@@ -496,7 +496,7 @@ fn generic_worldgen_entries_use_published_decoded_owner_without_terrain_locator(
     use sunrise_world::worldgen::{
         generator::GeneratorData, live::LiveFeatures, overrides::WorldgenOverrides,
     };
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let _publication = sunrise_sim::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     with_game(|game| {
         game.load_world(request(scratch.path())).unwrap();

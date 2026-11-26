@@ -15,11 +15,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !book.is_registered() || !self.native_player_current(player) {
             return false;
         }
-        let flags = sunrise_client::recipe_book::BookFlags {
+        let flags = sunrise_sim::recipe_book::BookFlags {
             open: settings.open,
             filtering: settings.filtering,
         };
-        let mut result = Err(sunrise_client::recipe_book::BookError::Full);
+        let mut result = Err(sunrise_sim::recipe_book::BookError::Full);
         let ran = self.native_as_player_handle(player, |game| {
             result = game.level.recipe_book.custom.set(book.as_str(), flags);
         });

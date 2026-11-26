@@ -3,8 +3,8 @@
 //! blow through `Entity.isInvulnerableToBase`'s `!source.isCreativePlayer()`.
 use super::super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 /// A world with one player standing at (0.5, 64, 0.5) and nothing else.
 fn game<'a>(
@@ -39,9 +39,9 @@ fn game<'a>(
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     game.creative = creative;
     game.mode = if creative {
-        sunrise_client::command::args::GameMode::Creative
+        sunrise_command::args::GameMode::Creative
     } else {
-        sunrise_client::command::args::GameMode::Survival
+        sunrise_command::args::GameMode::Survival
     };
     // A full attack charge (`getAttackStrengthScale(0.5)` = 1).
     game.side.attack_ticks = 20;
@@ -183,7 +183,7 @@ fn a_creative_player_hurts_an_invulnerable_mob() {
     );
     // The same hit from a creative player: `source.isCreativePlayer()`.
     game.creative = true;
-    game.mode = sunrise_client::command::args::GameMode::Creative;
+    game.mode = sunrise_command::args::GameMode::Creative;
     game.side.attack_ticks = 20;
     assert!(game.attack(), "the second attack reached the pig");
     assert_eq!(

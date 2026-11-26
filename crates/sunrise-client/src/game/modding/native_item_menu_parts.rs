@@ -3,7 +3,7 @@
 //! and `can_fit_inside_container_items`. Each asks the parts of the stack's item, with the
 //! loop context of the side that runs the menu or the match, and no `Host`.
 use super::api_values::TryIntoApi;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 use sunrise_world::native_load_context::LoopContext;
 
 /// Says once per hook and item that a stack couldn't cross to the mods, so its parts weren't
@@ -34,7 +34,7 @@ pub(crate) fn can_grindstone_repair(
     }
     match stack.try_into_api() {
         Ok(api) => {
-            sunrise_client::stations::native_can_grindstone_repair(context, &api, can_repair);
+            sunrise_sim::stations::native_can_grindstone_repair(context, &api, can_repair);
         }
         Err(error) => refuse_stack("can_grindstone_repair", &stack.item, error),
     }
@@ -51,7 +51,7 @@ pub(crate) fn is_combine_repairable(
         return;
     }
     match stack.try_into_api() {
-        Ok(api) => sunrise_client::crafting::native_hooks::native_is_combine_repairable(
+        Ok(api) => sunrise_sim::crafting::native_hooks::native_is_combine_repairable(
             context, &api, repairable,
         ),
         Err(error) => refuse_stack("is_combine_repairable", &stack.item, error),
@@ -70,7 +70,7 @@ pub(crate) fn can_fit_inside_container_items(
         return;
     }
     match stack.try_into_api() {
-        Ok(api) => sunrise_client::menu::container_items::native_can_fit_inside_container_items(
+        Ok(api) => sunrise_sim::menu::container_items::native_can_fit_inside_container_items(
             context, &api, fits,
         ),
         Err(error) => refuse_stack("can_fit_inside_container_items", &stack.item, error),
@@ -82,7 +82,7 @@ pub(crate) fn can_fit_inside_container_items(
 pub(crate) fn item_name(
     context: &LoopContext,
     stack: &ItemStack,
-    name: &mut Option<sunrise_client::text::Text>,
+    name: &mut Option<sunrise_client_core::text::Text>,
 ) {
     use super::api_values::TryIntoEngine;
     if !mod_api::__private::item_listens(mod_api::HookId::ItemName, &stack.item) {
@@ -93,7 +93,7 @@ pub(crate) fn item_name(
         Err(error) => return refuse_stack("item_name", &stack.item, error),
     };
     let mut answer: Option<mod_api::Text> = None;
-    sunrise_client::stations::native_item_name(context, &api, &mut answer);
+    sunrise_sim::stations::native_item_name(context, &api, &mut answer);
     if let Some(text) = answer {
         match text.try_into_engine(&()) {
             Ok(text) => *name = Some(text),

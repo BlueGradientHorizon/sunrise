@@ -174,7 +174,7 @@ mod dispatch_tests {
     use mod_platform::testing::with_mods;
     use std::sync::Mutex;
     use sunrise_client::hud::HudBatch;
-    use sunrise_client::text::{Style, Text};
+    use sunrise_client_core::text::{Style, Text};
 
     /// What `pop_clip` answered past the last open clip, each call.
     static REFUSED: Mutex<Vec<Result<(), GuiClipRefusal>>> = Mutex::new(Vec::new());

@@ -31,7 +31,7 @@ fn terrain_sources_are_kept_only_while_a_pack_is_loaded() {
     }
     with_client_game(|game| {
         let _event_loop = frame_scene(game);
-        let sky = sunrise_client::environment::Sky::default();
+        let sky = sunrise_level::environment::Sky::default();
         let camera = glam::DVec3::new(0.5, 65.5, 0.5);
         let renderer = game.side.renderer.0.as_mut().expect("a renderer");
         // Flat draws are what read the sources: a device without them keeps none, and has

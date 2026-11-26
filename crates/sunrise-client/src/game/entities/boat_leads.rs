@@ -12,10 +12,10 @@
 //! it by the rope either. Here the pull lands on the server's copy and the
 //! rider's client overwrites it the same way (`tick_boats`).
 use super::{Game, boats::Boat};
-use sunrise_client::mobs::leash::{self, Holder, HolderState, Pending};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
+use sunrise_sim::mobs::leash::{self, Holder, HolderState, Pending};
 
 /// `AbstractBoat`'s `getBbWidth` and `getBbHeight`.
 pub(in crate::game) const WIDTH: f32 = 1.375;
@@ -72,9 +72,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let want = player.or(self.level.player_uuid);
                 // A server's guest (single player's window included) first.
                 let guest = self.lan.as_ref().and_then(|host| {
-                    let g = host.hub.guests.iter().find(|g| {
-                        Some(sunrise_client::lan::playerdata::uuid_ints(g.uuid)) == want
-                    })?;
+                    let g =
+                        host.hub.guests.iter().find(|g| {
+                            Some(sunrise_sim::lan::playerdata::uuid_ints(g.uuid)) == want
+                        })?;
                     Some((host, g))
                 });
                 if let Some((host, g)) = guest {
@@ -242,7 +243,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let drops = self
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS);
+                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS);
                 self.release_boat_leash(b, drops);
                 return;
             }
@@ -253,7 +254,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Holder::Mob(id) = holder
             && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
         {
-            sunrise_client::mobs::happy_ghast::notify_leash_holder(m);
+            sunrise_sim::mobs::happy_ghast::notify_leash_holder(m);
         }
         let away = distance(state.center, center(b));
         if away > leash::SNAP {
@@ -318,7 +319,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     h.hub
                         .guests
                         .iter()
-                        .any(|g| sunrise_client::lan::playerdata::uuid_ints(g.uuid) == u)
+                        .any(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid) == u)
                 });
                 if guest || (self.level.player_uuid == Some(u) && self.player.is_some()) {
                     Some((Holder::Player, Some(u)))
@@ -503,7 +504,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let uuid = self.boat_leash_player(b);
                 guests
                     .iter()
-                    .find(|(u, _)| Some(sunrise_client::lan::playerdata::uuid_ints(*u)) == uuid)
+                    .find(|(u, _)| Some(sunrise_sim::lan::playerdata::uuid_ints(*u)) == uuid)
                     .map(|&(_, id)| id)
             }
             Holder::Mob(id) | Holder::Boat(id) => Some(id as i32),

@@ -4,10 +4,10 @@
 //! behind on the host.
 use super::super::lan;
 use super::apply;
-use sunrise_client::mobs::{Mob, MobTypes, tame};
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::entity_data::Value;
 use sunrise_protocol::registry::Builtin;
+use sunrise_sim::mobs::{Mob, MobTypes, tame};
 
 fn root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -25,8 +25,8 @@ fn cat() -> Option<Mob> {
 }
 
 /// A hub with no players and empty registries, for `mob_meta`.
-pub(super) fn meta_hub() -> sunrise_client::lan::hub::Hub {
-    use sunrise_client::lan::{Lan, NetConfig, chunks::ChunkEncoder, data, hub};
+pub(super) fn meta_hub() -> sunrise_sim::lan::hub::Hub {
+    use sunrise_sim::lan::{Lan, NetConfig, chunks::ChunkEncoder, data, hub};
     let sync = std::sync::Arc::new(data::SyncData::empty());
     let config = NetConfig {
         announce: false,
@@ -69,7 +69,7 @@ pub(super) fn meta_hub() -> sunrise_client::lan::hub::Hub {
 }
 
 /// What the host sends for `m`, and the flags byte among it.
-fn sent(m: &Mob, hub: &sunrise_client::lan::hub::Hub) -> (Vec<(u8, i32, Value)>, Option<i8>) {
+fn sent(m: &Mob, hub: &sunrise_sim::lan::hub::Hub) -> (Vec<(u8, i32, Value)>, Option<i8>) {
     let (mut meta, mut defaults) = (Vec::new(), Vec::new());
     lan::mob_meta(m, hub, None, 0, &mut meta, &mut defaults);
     let flags = meta

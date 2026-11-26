@@ -83,7 +83,7 @@ fn a_frame_the_listener_filled_survives_the_loss_of_its_support() {
         |game, gate| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             // No wall behind it: the survival check fails when its interval is up.
             assert!(game.run_command("summon minecraft:item_frame 8 100 8 {Facing:3b}"));

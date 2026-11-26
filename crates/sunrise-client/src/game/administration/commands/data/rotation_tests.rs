@@ -146,9 +146,9 @@ pub(in crate::game) fn run_a_cloud_and_a_falling_block_save_the_rotation_they_we
             .unwrap();
         for merge in &witness.merges {
             let label = &merge.label;
-            let patch = sunrise_client::command::snbt::parse_fully(&merge.merge_nbt).unwrap();
+            let patch = sunrise_command::snbt::parse_fully(&merge.merge_nbt).unwrap();
             let old = game.data_of(&DataRef::Entity(falling)).unwrap();
-            let merged = sunrise_client::data_cmd::merged(&old, &patch);
+            let merged = sunrise_sim::data_cmd::merged(&old, &patch);
             game.set_data_of(&DataRef::Entity(falling), merged).unwrap();
             let live = game.data_of(&DataRef::Entity(falling)).unwrap();
             let expected = rotation_tag(merge.after_merge_bits);

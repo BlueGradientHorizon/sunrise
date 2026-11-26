@@ -7,8 +7,8 @@ mod tests {
         Arc,
         atomic::{AtomicBool, AtomicU32, Ordering},
     };
-    use sunrise_client::join_seq::JoinSeq;
     use sunrise_core::position::{BlockPos, ChunkPos};
+    use sunrise_sim::join_seq::JoinSeq;
 
     #[derive(Default)]
     struct Observed {

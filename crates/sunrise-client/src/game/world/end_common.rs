@@ -1,6 +1,6 @@
 //! Common End environment and portal-frame aim helpers shared by server and client games.
 use super::{Game, Resources, remote::Remote};
-use sunrise_client::environment::Environment;
+use sunrise_level::environment::Environment;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The environment attributes of the current dimension.

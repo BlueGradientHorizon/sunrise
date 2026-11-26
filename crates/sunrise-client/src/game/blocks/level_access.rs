@@ -1048,7 +1048,7 @@ impl LevelAccess for GameLevel<'_> {
     }
     fn sun_angle(&self, _pos: BlockPos) -> f32 {
         self.environment
-            .sample(&sunrise_client::environment::Sample {
+            .sample(&sunrise_level::environment::Sample {
                 day_time: self.world.day_time,
                 ..Default::default()
             })
@@ -1089,7 +1089,7 @@ impl LevelAccess for GameLevel<'_> {
         let mut scene = collisions::SceneCollisions {
             world: &*self.world,
             binding: self.collision,
-            subject: player.map(|player| sunrise_client::collisions::PowderSnowSubject {
+            subject: player.map(|player| sunrise_level::collisions::PowderSnowSubject {
                 fall_distance: player.fall_distance,
                 leather_boots: player.leather_boots,
                 ..Default::default()
@@ -1248,7 +1248,7 @@ impl LevelAccess for GameLevel<'_> {
         if !self.collision.publishes_shapes(state) {
             return None;
         }
-        sunrise_client::collisions::published_shapes(
+        sunrise_level::collisions::published_shapes(
             self.world,
             self.registry,
             state,
@@ -1278,7 +1278,7 @@ impl LevelAccess for GameLevel<'_> {
         let tag = Tag::Compound(nbt);
         let previous = self.world.block_entities.get(&(pos.x, pos.y, pos.z));
         if let Some((key, entity)) =
-            sunrise_client::save::decode_block_entity_replacing(&tag, name, previous)
+            sunrise_sim::save::decode_block_entity_replacing(&tag, name, previous)
         {
             self.world.block_entities.insert(key, entity);
             self.notify_block_entity_load_additional(key);

@@ -1,7 +1,6 @@
 use crate::game::{Game, Result, transactions};
-use sunrise_client::{
-    block_entities::BlockEntityIdentity, mobs::Who, sculk::Context as SculkContext,
-};
+use sunrise_level::{block_entities::BlockEntityIdentity, sculk::Context as SculkContext};
+use sunrise_sim::mobs::Who;
 use sunrise_world::registry::BlockStateId;
 
 #[cfg(test)]
@@ -61,7 +60,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn side_tick_bell(
         &mut self,
         pos: [i32; 3],
-        tags: &sunrise_client::items::EntityTypeTags,
+        tags: &sunrise_items::items::EntityTypeTags,
     ) {
         <__Side as SideOps>::side_tick_bell(self, pos, tags)
     }
@@ -142,7 +141,7 @@ pub(in crate::game) trait SideOps: Sized {
     fn side_tick_bell(
         game: &mut crate::game::Game<'_, Self>,
         pos: [i32; 3],
-        tags: &sunrise_client::items::EntityTypeTags,
+        tags: &sunrise_items::items::EntityTypeTags,
     );
     fn side_award_stat(
         game: &mut crate::game::Game<'_, Self>,
@@ -213,7 +212,7 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_tick_bell(
         game: &mut crate::game::Game<'_, Self>,
         pos: [i32; 3],
-        tags: &sunrise_client::items::EntityTypeTags,
+        tags: &sunrise_items::items::EntityTypeTags,
     ) {
         {
             game.server_tick_bell(pos, tags);
@@ -321,7 +320,7 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_tick_bell(
         game: &mut crate::game::Game<'_, Self>,
         pos: [i32; 3],
-        tags: &sunrise_client::items::EntityTypeTags,
+        tags: &sunrise_items::items::EntityTypeTags,
     ) {
         {
             game.client_tick_bell(pos, tags);

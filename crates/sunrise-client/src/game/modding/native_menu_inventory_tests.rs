@@ -2,8 +2,9 @@ use super::api_values::TryIntoApi;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::__private::game::Fields;
 use mod_api::{HostTransaction, ItemPlace, ServerHost, TransactionError};
-use sunrise_client::{items::ItemStack, lan::playerdata};
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::playerdata;
 
 struct Listener;
 #[mod_api::__subscriptions]
@@ -100,7 +101,7 @@ fn exercise(reopen: bool) {
                     g.inventory[9] = Some(ItemStack::new("minecraft:stone", 10));
                     g.inventory[11] = Some(ItemStack::new("minecraft:ender_pearl", 12));
                     if reopen {
-                        let mut level = sunrise_client::save::Level {
+                        let mut level = sunrise_sim::save::Level {
                             player_uuid: Some(playerdata::uuid_ints(g.uuid)),
                             ..Default::default()
                         };
@@ -108,7 +109,7 @@ fn exercise(reopen: bool) {
                         level.write(root.path(), &Default::default()).unwrap();
                         playerdata::save_now(g, root.path(), &Default::default()).unwrap();
                         g.inventory.fill(None);
-                        let reopened = sunrise_client::save::Level::read(root.path()).unwrap();
+                        let reopened = sunrise_sim::save::Level::read(root.path()).unwrap();
                         assert!(playerdata::load_owner(g, root.path(), Some(&reopened)));
                         assert_eq!(g.uuid, 12);
                     }
@@ -307,7 +308,7 @@ mod owner {
             assert_ne!(game.dim.id(), "minecraft:the_nether");
             // The `Game`'s own player, living and with room: not the owner's, who is a guest.
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(8.5, 64.0, 8.5),
                 )

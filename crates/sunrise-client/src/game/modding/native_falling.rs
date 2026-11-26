@@ -66,7 +66,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         let mut damage =
-            sunrise_client::falling_block::Damage::falling(&self.res.facts().get(state).name);
+            sunrise_sim::falling_block::Damage::falling(&self.res.facts().get(state).name);
         if falling.hurts {
             damage.hurt_entities = true;
             damage.per_distance = 2.0;
@@ -296,7 +296,7 @@ mod tests {
     ) {
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let state = game
             .pack
             .assets

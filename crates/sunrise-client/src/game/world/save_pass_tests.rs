@@ -27,11 +27,11 @@ impl Hooks for SaveOnPickup {
 #[test]
 #[ignore = "daily"]
 fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
-    use sunrise_client::{
-        chunk::Chunk,
+    use sunrise_level::chunk::Chunk;
+    use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
+    use sunrise_sim::{
         motion::PlayerMotion,
         save::{LevelShape, SaveDir},
-        server::user_lists::{BanList, IpBanList, OpList, WhiteList},
     };
     let mut missing = Vec::new();
     for (case, line) in ["save-all flush", "execute run save-all flush"]
@@ -64,7 +64,7 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
             })));
             game.build_registries();
             game.ui.dispatcher = chat_common::SessionDispatcher(Arc::new(
-                sunrise_client::command::vanilla::build_for(false, true),
+                sunrise_command::vanilla::build_for(false, true),
             ));
             game.world
                 .chunks
@@ -76,7 +76,7 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
                     let pass = game.$($field).+.lift();
                     assert!(game.save_game().is_err(), stringify!($($field).+));
                     assert!(game.save_level(true).is_err());
-                    game.$($field).+.restore(pass, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                    game.$($field).+.restore(pass, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 }};
             }
             refuses!(mobs);

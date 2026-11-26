@@ -26,7 +26,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
         {
             self.server_level_event_at(id, pos, data);
             return;
@@ -48,7 +48,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
         {
             self.deliver_level_event(id, pos, data);
             return;

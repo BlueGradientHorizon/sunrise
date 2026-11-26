@@ -7,7 +7,7 @@ use mod_api::{
     FluidStateError, FluidTypeProperties, StateConstraint, StateMatchError, StateProperties,
     WeatheringAge,
 };
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 use sunrise_mod_package::content::FluidMeasures;
 use sunrise_world::fluid::FluidKind;
 use sunrise_world::level::{fluid_drip_particle, fluid_explosion_resistance, fluid_randomly_ticks};
@@ -30,7 +30,7 @@ impl<'a> BlockTables<'a> {
     }
 
     /// The item table the generated forwarders convert item values with.
-    pub(in crate::game) fn items(&self) -> &sunrise_client::items::Items {
+    pub(in crate::game) fn items(&self) -> &sunrise_items::items::Items {
         self.res.items()
     }
 
@@ -238,7 +238,7 @@ impl<'a> BlockTables<'a> {
     /// stepping on, placing, hitting and falling on it. None for an unknown state.
     pub(in crate::game) fn block_state_sound(&self, state: BlockStateId) -> Option<BlockSoundType> {
         self.pack.assets.registry.state(state)?;
-        Some(sunrise_client::block_sounds::own(
+        Some(sunrise_sim::block_sounds::own(
             &self.res.facts().get(state).sounds,
         ))
     }
@@ -435,7 +435,7 @@ fn fluid_measures(id: &str, kind: Option<FluidKind>) -> FluidMeasures {
             let source = kind
                 .and_then(FluidKind::mod_fluid)
                 .map_or(id, |fluid| fluid.get().id.as_str());
-            sunrise_client::mod_content::fluid_measures(source).unwrap_or_default()
+            sunrise_sim::mod_content::fluid_measures(source).unwrap_or_default()
         }
     }
 }

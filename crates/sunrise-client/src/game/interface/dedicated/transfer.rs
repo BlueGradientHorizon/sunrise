@@ -12,8 +12,8 @@
 use crate::game::{Dim, Game};
 use serde_json::{Value, json};
 use std::time::Instant;
-use sunrise_client::lan::arrivals;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::lan::arrivals;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A proxy's `player-*` request; the reply is one JSON line, `{"ok": true, ...}` or
@@ -201,7 +201,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "retried": true,
             });
         }
-        let result = sunrise_client::lan::import::import_player(
+        let result = sunrise_sim::lan::import::import_player(
             &mut host.hub,
             &self.motion.attributes,
             uuid,
@@ -235,7 +235,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// What an import brought that the game keeps itself: the advancements (`PlayerAdvancements
     /// .applyFrom` drops those this server lacks) and the statistics.
-    fn take_arrival_records(&mut self, uuid: u128, done: &sunrise_client::lan::import::Imported) {
+    fn take_arrival_records(&mut self, uuid: u128, done: &sunrise_sim::lan::import::Imported) {
         let tree = self.advancement_tree();
         let host = self.lan.as_mut().expect("server host is present");
         let Some(index) = host.hub.guests.iter().position(|g| g.uuid == uuid) else {
@@ -243,7 +243,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         host.hub.guests.update(index, |g| {
             if let Some(saved) = &done.advancements {
-                let mut progress = sunrise_client::advancements::Progress::from_json(saved);
+                let mut progress = sunrise_sim::advancements::Progress::from_json(saved);
                 progress
                     .criteria
                     .retain(|id, _| tree.by_id.contains_key(id));
@@ -312,7 +312,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let i = host.hub.imported_arrival(uuid, id)?;
         let g = host.hub.guests.take_for_save(i);
         let written =
-            sunrise_client::lan::playerdata::save_now(&g, &self.side.world_root, self.res.items())
+            sunrise_sim::lan::playerdata::save_now(&g, &self.side.world_root, self.res.items())
                 .and_then(|()| {
                     self.write_arrival_records(
                         self.lan.as_ref().expect("server host is present"),
@@ -324,7 +324,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         host.hub.guests.insert(i, g);
         written?;
         let announced = host.hub.confirm_arrival(uuid, id)?;
-        let directory = sunrise_client::lan::playerdata::directory(&self.side.world_root);
+        let directory = sunrise_sim::lan::playerdata::directory(&self.side.world_root);
         self.native_player_save_to_file(uuid, &name, &directory);
         self.arrival_placed(uuid, &name, announced);
         Ok(true)

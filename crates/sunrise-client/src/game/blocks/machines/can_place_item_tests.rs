@@ -4,11 +4,11 @@ use mod_api::{
     BlockEntityPart, BlockPart, CanPlaceItemEvent, Hooks, ITEMS, ModEntry, Mods, Registrar,
     RegistrationContext, STORAGE,
 };
-use sunrise_client::{
+use sunrise_core::position::ChunkPos;
+use sunrise_level::{
     chunk::Chunk,
     containers::{ModBlockEntity, ModBlockEntityFields, ModContainerInsertRule},
 };
-use sunrise_core::position::ChunkPos;
 
 const TARGET: Pos = (8, 64, 8);
 const ABOVE: Pos = (8, 65, 8);

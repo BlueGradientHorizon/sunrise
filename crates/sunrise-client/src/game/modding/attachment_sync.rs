@@ -7,11 +7,11 @@
 //! and who sees the holder. It is prepared against the current epoch and published at
 //! the root commit, in order with the player's other packets.
 use super::Game;
-use crate::lan::{conn::PlayerSender, hub::AttachmentSnapshot};
 use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
-use sunrise_client::raw_payloads::Endpoint;
 use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::attachment_sync::{self, Message};
+use sunrise_sim::lan::{conn::PlayerSender, hub::AttachmentSnapshot};
+use sunrise_sim::raw_payloads::Endpoint;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The messages that give a player `holder`'s synced attachments whole: its

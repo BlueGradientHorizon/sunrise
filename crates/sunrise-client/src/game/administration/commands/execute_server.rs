@@ -4,7 +4,8 @@ use crate::game::commands::execute::StoreEntry;
 use crate::game::commands::execute::StoreTarget;
 use crate::game::commands::execute::fork_limit_reached;
 use crate::game::commands::execute::is_player_in_place;
-use sunrise_client::{command::CommandError, nbt_path::NbtPath, text::Text};
+use sunrise_client_core::{nbt_path::NbtPath, text::Text};
+use sunrise_command::CommandError;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ExecuteCommand.isChunkLoaded`: an entity-ticking loading status and
@@ -28,7 +29,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let Some(Arg::Str(p)) = c.get("path") else {
                 return Ok((false, 0));
             };
-            let path = NbtPath::parse(p).map_err(sunrise_client::data_cmd::path_error)?;
+            let path = NbtPath::parse(p).map_err(sunrise_sim::data_cmd::path_error)?;
             let n = path.count(&data) as i32;
             return Ok((n > 0, n));
         }
@@ -165,9 +166,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .find(|m| m.id == id)
                     .and_then(|m| m.extra.owner)
                     // A guest owner too, not only the player in place.
-                    .and_then(|u| {
-                        self.target_by_uuid(sunrise_client::lan::playerdata::ints_uuid(u))
-                    })
+                    .and_then(|u| self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(u)))
                     .filter(|owner| {
                         matches!(
                             owner,
@@ -200,13 +199,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 leash
                     .and_then(|(holder, player)| match holder {
                         // The player who tied it (the host's when unrecorded).
-                        sunrise_client::mobs::leash::Holder::Player => {
+                        sunrise_sim::mobs::leash::Holder::Player => {
                             let uuid = player.or(self.level.player_uuid)?;
-                            self.target_by_uuid(sunrise_client::lan::playerdata::ints_uuid(uuid))
+                            self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid))
                         }
-                        sunrise_client::mobs::leash::Holder::Mob(i) => Some(Target::Mob(i)),
-                        sunrise_client::mobs::leash::Holder::Boat(_)
-                        | sunrise_client::mobs::leash::Holder::Knot(_) => None,
+                        sunrise_sim::mobs::leash::Holder::Mob(i) => Some(Target::Mob(i)),
+                        sunrise_sim::mobs::leash::Holder::Boat(_)
+                        | sunrise_sim::mobs::leash::Holder::Knot(_) => None,
                     })
                     .into_iter()
                     .collect()
@@ -224,23 +223,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         // including loaded owners that cannot be a Who.
                         let Some(owner) = p.owner else {
                             return p.owner_uuid.and_then(|uuid| {
-                                self.target_by_uuid(sunrise_client::lan::playerdata::ints_uuid(
-                                    uuid,
-                                ))
+                                self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid))
                             });
                         };
                         match (owner, p.guest) {
                             // A guest's shot: `Who::Player` is them.
-                            (sunrise_client::mobs::Who::Player, Some(conn))
+                            (sunrise_sim::mobs::Who::Player, Some(conn))
                                 if self.side.lan_acting == Some(conn) =>
                             {
                                 Some(Target::Player)
                             }
-                            (sunrise_client::mobs::Who::Player, Some(conn)) => {
+                            (sunrise_sim::mobs::Who::Player, Some(conn)) => {
                                 Some(Target::Guest(conn))
                             }
-                            (sunrise_client::mobs::Who::Player, None) => Some(Target::Player),
-                            (sunrise_client::mobs::Who::Mob(id), _) => Some(Target::Mob(id)),
+                            (sunrise_sim::mobs::Who::Player, None) => Some(Target::Player),
+                            (sunrise_sim::mobs::Who::Mob(id), _) => Some(Target::Mob(id)),
                         }
                     })
                     .into_iter()
@@ -306,7 +303,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .iter()
                         .find(|m| m.id == id)
                         .and_then(|m| {
-                            use sunrise_client::mobs::{Species, Who, ai::brain_target};
+                            use sunrise_sim::mobs::{Species, Who, ai::brain_target};
                             if !attacker && m.species() == Species::Warden {
                                 return self
                                     .warden_attack_target(m, None)
@@ -361,7 +358,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
+            .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
         if self.side.exec.0.commands > limit {
             return Err(err("command.failed", &[]));
@@ -444,10 +441,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// ExecuteCommand: `ctx` is the context holding the `execute` literal.
     pub(in crate::game::server_side) fn run_execute(&mut self, ctx: &Context) -> R<i32> {
         // BuildContexts: a modifier may not bring the sources to this many.
-        let fork_limit =
-            self.ui
-                .rules
-                .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_FORKS) as usize;
+        let fork_limit = self
+            .ui
+            .rules
+            .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_FORKS)
+            as usize;
         let mut sources = vec![
             self.side
                 .command_source
@@ -648,7 +646,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let r = self.data_ref(c, 0)?;
             let path = match c.get("path") {
                 Some(Arg::Str(p)) => {
-                    NbtPath::parse(p).map_err(sunrise_client::data_cmd::path_error)?
+                    NbtPath::parse(p).map_err(sunrise_sim::data_cmd::path_error)?
                 }
                 _ => return Err(err("command.failed", &[])),
             };
@@ -702,7 +700,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `Entity.getYRot` and `getXRot`: the entity's angles, not the direction its model faces.
     pub(in crate::game) fn target_rotation(&self, t: Target) -> [f32; 2] {
         use crate::game::entity::Entity;
-        use sunrise_client::entity_nbt::loaded_rotation;
+        use sunrise_sim::entity_nbt::loaded_rotation;
         let saved_rotation = |id| self.persist.raw.get(&id).map_or([0.0; 2], loaded_rotation);
         match t {
             Target::Player => [self.yaw, self.pitch],
@@ -739,7 +737,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                 .item_frames
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], crate::entities::ItemFrame::entity_rotation),
+                .map_or([0.0; 2], sunrise_sim::entities::ItemFrame::entity_rotation),
             Target::Painting(id) => self
                 .paintings
                 .iter()
@@ -809,7 +807,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                 .iter()
                 .find(|a| a.id == id)
                 .and_then(|a| a.raw.as_deref())
-                .map_or([0.0; 2], sunrise_client::entity_nbt::rotation),
+                .map_or([0.0; 2], sunrise_sim::entity_nbt::rotation),
             Target::Hook(id) => self
                 .fishing_hook_by_id(id)
                 .map_or([0.0; 2], |(hook, _)| [hook.yaw, hook.pitch]),
@@ -845,7 +843,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         ) {
             if crate::game::Side::native_command_filter(&self.side) {
                 return self
-                    .player(sunrise_client::lan::playerdata::ints_uuid(uuid))
+                    .player(sunrise_sim::lan::playerdata::ints_uuid(uuid))
                     .and_then(|player| self.native_entity_target(player.entity()));
             }
             return Some(Target::Player);
@@ -877,7 +875,7 @@ pub(in crate::game) mod passenger_relation_tests {
             game.set_allow_commands(true);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())
@@ -1102,7 +1100,9 @@ pub(in crate::game) mod score_condition_tests {
         let said = game.side.chat_capture.take().unwrap_or_default();
         (
             ok,
-            said.iter().map(sunrise_client::text::Text::plain).collect(),
+            said.iter()
+                .map(sunrise_client_core::text::Text::plain)
+                .collect(),
         )
     }
 }

@@ -3,8 +3,9 @@ use crate::game::native_hooks::trident_family_tests::Probe;
 use crate::game::native_hooks::trident_family_tests::Seen;
 use mod_api::ModEntry;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn fixture(
     run: impl FnOnce(&mut crate::game::ServerGame<'_>, &Arc<Mutex<Seen>>),

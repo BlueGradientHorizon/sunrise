@@ -2,8 +2,10 @@
 //! in place of `playerWillDestroy` and the removal.
 use crate::game::{BlockEntity, native_entity_refs::tests::with_game};
 use std::{path::PathBuf, sync::Arc};
-use sunrise_client::{chunk::Chunk, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::registry::BlockStateId;
 
 const POS: [i32; 3] = [5, 63, 4];

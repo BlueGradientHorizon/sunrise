@@ -1,6 +1,7 @@
 use mod_api::HurtSource;
 use std::sync::Arc;
-use sunrise_client::{health::AcceptedHit, items::ItemStack};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::health::AcceptedHit;
 
 /// The source a player's death hooks hear (`living_death`, `living_drops`,
 /// `living_death_post`): the accepted hit retained on the body, else the

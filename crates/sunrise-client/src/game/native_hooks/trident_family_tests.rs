@@ -7,12 +7,12 @@ use mod_api::{
     ServerHost,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    items::ItemStack,
+use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     mobs::{Mob, Who},
     projectiles::{Projectile, ProjectileKind},
 };
-use sunrise_core::{geometry::Vec3, nbt::Tag};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::game) struct Hit {
@@ -332,7 +332,7 @@ fn unlistened_projectile_factory_keeps_family_without_copying_weapon() {
                         assert!(attack.projectile_weapon.is_none());
                         assert!(attack.held.iter().all(Option::is_none));
                         assert_eq!(
-                            attack.direct_is_arrow(&sunrise_client::mobs::Damage::of(
+                            attack.direct_is_arrow(&sunrise_sim::mobs::Damage::of(
                                 game.projectile_damage_kind(&shot),
                             )),
                             is_arrow

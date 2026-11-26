@@ -28,7 +28,7 @@ pub(in crate::game) mod entity_inside_tests {
     #[ignore = "daily"]
     fn landing_writes_apply_at_the_batch_end() {
         use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-        use sunrise_client::block_contact::{landed, take_pending};
+        use sunrise_sim::block_contact::{landed, take_pending};
         use sunrise_world::level::LandingWrite;
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -41,7 +41,7 @@ pub(in crate::game) mod entity_inside_tests {
             );
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.world.set(1, 64, 1, farmland).unwrap();
             game.world.set(2, 64, 1, farmland).unwrap();
@@ -227,14 +227,14 @@ pub(in crate::game) mod sweep_tests {
             .unwrap();
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         for x in [1, 2] {
             game.world.set(x, 100, 0, stone).unwrap();
         }
         if game.player.is_none() {
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5),
                 )
@@ -257,9 +257,9 @@ pub(in crate::game) mod sweep_tests {
     /// scope: what a server turn walks, or the client's own tick.
     pub(in crate::game) fn sweep_game_player_runs(
         game: &mut crate::game::ServerGame<'_>,
-        runs: impl FnOnce(&mut sunrise_client::motion::MotionWorld) -> crate::Result<()>,
+        runs: impl FnOnce(&mut sunrise_sim::motion::MotionWorld) -> sunrise_client_core::Result<()>,
     ) -> (f64, f64, bool) {
-        use sunrise_client::motion::MotionWorld;
+        use sunrise_sim::motion::MotionWorld;
         let before = game.player.as_ref().unwrap().velocity.x;
         let crate::game::Game {
             world,
@@ -273,12 +273,12 @@ pub(in crate::game) mod sweep_tests {
             ..
         } = game;
         let entities: [sunrise_core::geometry::Aabb; 0] = [];
-        sunrise_client::block_contact::in_level(
-            sunrise_client::parallel::TickThread::mint(),
+        sunrise_sim::block_contact::in_level(
+            sunrise_sim::parallel::TickThread::mint(),
             Some("minecraft:overworld"),
             || {
                 let mut w = MotionWorld {
-                    side: sunrise_client::motion::dry_side(),
+                    side: sunrise_sim::motion::dry_side(),
                     tag_items: None,
                     block_registries: Some(&pack.block_registries),
                     loop_context,
@@ -309,7 +309,7 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-push", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let (before, after, dead) = sweep_game_player(game);
                 assert!(!dead);
                 assert_eq!(
@@ -328,14 +328,14 @@ pub(in crate::game) mod sweep_tests {
                     .events
                     .iter()
                     .find_map(|event| match event {
-                        sunrise_client::motion::MotionEvent::InsideEffect {
-                            id, duration, ..
-                        } => Some((*id, *duration)),
+                        sunrise_sim::motion::MotionEvent::InsideEffect { id, duration, .. } => {
+                            Some((*id, *duration))
+                        }
                         _ => None,
                     })
                     .expect("the wither effect crossed to the server");
                 assert_eq!(effect, ("minecraft:wither", 40));
-                assert!(sunrise_client::block_contact::take_pending().is_empty());
+                assert!(sunrise_sim::block_contact::take_pending().is_empty());
             });
         });
     }
@@ -356,8 +356,7 @@ pub(in crate::game) mod sweep_tests {
                 let mods = install_inside_mod("inside-kill", &part);
                 mod_platform::testing::with_mods(mods, || {
                     crate::game::native_entity_refs::tests::with_game(|game| {
-                        let _ =
-                            sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                        let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                         let (before, after, dead) = sweep_game_player(game);
                         assert_eq!(
                             part.contacts.lock().unwrap().len(),
@@ -388,7 +387,7 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-panic", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let (before, after, dead) = sweep_game_player(game);
                 assert!(!dead);
                 assert_eq!(
@@ -408,7 +407,7 @@ pub(in crate::game) mod sweep_tests {
                         .iter()
                         .any(|event| matches!(
                             event,
-                            sunrise_client::motion::MotionEvent::EnterBlock { .. }
+                            sunrise_sim::motion::MotionEvent::EnterBlock { .. }
                         )),
                     "the vanilla moments still ran"
                 );
@@ -427,7 +426,7 @@ pub(in crate::game) mod sweep_tests {
         // DamageLevel is never built. (A dummy binding here would race the
         // process-wide `block_contact::HOOKS` OnceLock — first setter wins —
         // against the other tests' real one.)
-        let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+        let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
         crate::game::native_entity_refs::tests::with_game(|game| {
             let (before, after, dead) = sweep_game_player(game);
             assert!(!dead);
@@ -440,11 +439,11 @@ pub(in crate::game) mod sweep_tests {
                     .iter()
                     .any(|event| matches!(
                         event,
-                        sunrise_client::motion::MotionEvent::EnterBlock { .. }
+                        sunrise_sim::motion::MotionEvent::EnterBlock { .. }
                     )),
                 "the vanilla moments still ran"
             );
-            assert!(sunrise_client::block_contact::take_pending().is_empty());
+            assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
 
@@ -459,7 +458,7 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-order", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let (_, _, dead) = sweep_game_player(game);
                 assert!(!dead);
                 let effects: Vec<_> = game
@@ -469,9 +468,9 @@ pub(in crate::game) mod sweep_tests {
                     .events
                     .iter()
                     .filter_map(|event| match event {
-                        sunrise_client::motion::MotionEvent::InsideEffect {
-                            id, duration, ..
-                        } => Some((*id, *duration)),
+                        sunrise_sim::motion::MotionEvent::InsideEffect { id, duration, .. } => {
+                            Some((*id, *duration))
+                        }
                         _ => None,
                     })
                     .collect();
@@ -500,7 +499,7 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-once", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let stone = game
                     .pack
                     .assets
@@ -509,14 +508,14 @@ pub(in crate::game) mod sweep_tests {
                     .unwrap();
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 for x in [1, 2] {
                     game.world.set(x, 100, 0, stone).unwrap();
                 }
                 if game.player.is_none() {
                     game.player = Some(
-                        sunrise_client::motion::PlayerMotion::new(
+                        sunrise_sim::motion::PlayerMotion::new(
                             game.motion,
                             sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5),
                         )
@@ -561,14 +560,14 @@ pub(in crate::game) mod sweep_tests {
                 .unwrap();
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             for x in [1, 2] {
                 game.world.set(x, 100, 0, stone).unwrap();
             }
             if game.player.is_none() {
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
+                    sunrise_sim::motion::PlayerMotion::new(
                         game.motion,
                         sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5),
                     )
@@ -584,7 +583,7 @@ pub(in crate::game) mod sweep_tests {
                     to: sunrise_core::geometry::Vec3::new(2.5, 100.0, 0.5),
                     original: None,
                 });
-            let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+            let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
             let velocity = game.player.as_ref().unwrap().velocity.x;
             sweep_game_player_runs(game, |w| {
                 w.server_stuck_in_blocks(sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5))?;
@@ -603,14 +602,11 @@ pub(in crate::game) mod sweep_tests {
                 .events
                 .iter()
                 .filter(|event| {
-                    matches!(
-                        event,
-                        sunrise_client::motion::MotionEvent::EnterBlock { .. }
-                    )
+                    matches!(event, sunrise_sim::motion::MotionEvent::EnterBlock { .. })
                 })
                 .count();
             assert_eq!(entered, 2, "each block still reported, vanilla's moments");
-            assert!(sunrise_client::block_contact::take_pending().is_empty());
+            assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
 
@@ -618,7 +614,7 @@ pub(in crate::game) mod sweep_tests {
     /// player's, over `Game::sweep_item_inside`.
     pub(in crate::game) fn item_at_blocks(
         game: &mut crate::game::ServerGame<'_>,
-    ) -> sunrise_client::entities::ItemEntity {
+    ) -> sunrise_sim::entities::ItemEntity {
         let stone = game
             .pack
             .assets
@@ -627,14 +623,14 @@ pub(in crate::game) mod sweep_tests {
             .unwrap();
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         for x in [1, 2] {
             game.world.set(x, 100, 0, stone).unwrap();
         }
-        let mut item = sunrise_client::entities::ItemEntity::new(
+        let mut item = sunrise_sim::entities::ItemEntity::new(
             7,
-            sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+            sunrise_items::items::ItemStack::new("minecraft:stone", 1),
             sunrise_core::geometry::Vec3::new(2.5, 100.0, 0.5),
             sunrise_core::geometry::Vec3::ZERO,
             0.0,
@@ -651,11 +647,11 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-item", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let mut item = item_at_blocks(game);
                 let before = item.velocity.x;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
                         game.sweep_item_inside(&mut item);
@@ -670,7 +666,7 @@ pub(in crate::game) mod sweep_tests {
                     (item.velocity.x - before - 1.0).abs() < 1e-9,
                     "both pushes reached the item"
                 );
-                assert!(sunrise_client::block_contact::take_pending().is_empty());
+                assert!(sunrise_sim::block_contact::take_pending().is_empty());
             });
         });
     }
@@ -688,14 +684,14 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-item-panic", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let item = item_at_blocks(game);
                 game.dropped.push(item);
                 let rows = game.dropped.len();
                 let mut items = game.dropped.lift();
                 let before = items[0].velocity.x;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
                         game.sweep_item_inside(&mut items[0]);
@@ -718,7 +714,7 @@ pub(in crate::game) mod sweep_tests {
                     game.world.block(1, 100, 0).0 != 0,
                     "the level reads as it was"
                 );
-                assert!(sunrise_client::block_contact::take_pending().is_empty());
+                assert!(sunrise_sim::block_contact::take_pending().is_empty());
             });
         });
     }
@@ -729,11 +725,11 @@ pub(in crate::game) mod sweep_tests {
     #[ignore = "daily"]
     fn an_item_without_a_part_is_left_alone() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+            let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
             let mut item = item_at_blocks(game);
             let before = (item.velocity.x, item.health, item.fire_ticks);
-            sunrise_client::block_contact::in_level(
-                sunrise_client::parallel::TickThread::mint(),
+            sunrise_sim::block_contact::in_level(
+                sunrise_sim::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
                     game.sweep_item_inside(&mut item);
@@ -744,7 +740,7 @@ pub(in crate::game) mod sweep_tests {
                 before,
                 "no writes without a part"
             );
-            assert!(sunrise_client::block_contact::take_pending().is_empty());
+            assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
 
@@ -757,7 +753,7 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-shot", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let stone = game
                     .pack
                     .assets
@@ -766,21 +762,21 @@ pub(in crate::game) mod sweep_tests {
                     .unwrap();
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 for x in [1, 2] {
                     game.world.set(x, 100, 0, stone).unwrap();
                 }
-                let mut shot = sunrise_client::projectiles::Projectile::new(
-                    sunrise_client::projectiles::ProjectileKind::Snowball,
+                let mut shot = sunrise_sim::projectiles::Projectile::new(
+                    sunrise_sim::projectiles::ProjectileKind::Snowball,
                     sunrise_core::geometry::Vec3::new(2.5, 100.0, 0.5),
                     None,
                 );
                 shot.id = 9;
                 shot.previous = sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5);
                 let before = shot.velocity.x;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
                         game.sweep_projectile_inside(&mut shot);
@@ -797,8 +793,8 @@ pub(in crate::game) mod sweep_tests {
                 );
                 // A removed arrow's flush stops: nothing applies past its death.
                 part.contacts.lock().unwrap().clear();
-                let mut arrow = sunrise_client::projectiles::Projectile::new(
-                    sunrise_client::projectiles::ProjectileKind::Arrow {
+                let mut arrow = sunrise_sim::projectiles::Projectile::new(
+                    sunrise_sim::projectiles::ProjectileKind::Arrow {
                         base_damage: 1.0,
                         critical: false,
                         effect: None,
@@ -814,8 +810,8 @@ pub(in crate::game) mod sweep_tests {
                     a.removed = true;
                 }
                 let before = arrow.velocity.x;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
                         game.sweep_projectile_inside(&mut arrow);
@@ -836,7 +832,7 @@ pub(in crate::game) mod sweep_tests {
     #[ignore = "daily"]
     fn a_projectile_without_a_part_is_left_alone() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+            let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
             let stone = game
                 .pack
                 .assets
@@ -845,18 +841,18 @@ pub(in crate::game) mod sweep_tests {
                 .unwrap();
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.world.set(1, 100, 0, stone).unwrap();
-            let mut shot = sunrise_client::projectiles::Projectile::new(
-                sunrise_client::projectiles::ProjectileKind::Snowball,
+            let mut shot = sunrise_sim::projectiles::Projectile::new(
+                sunrise_sim::projectiles::ProjectileKind::Snowball,
                 sunrise_core::geometry::Vec3::new(1.5, 100.0, 0.5),
                 None,
             );
             shot.previous = sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5);
             let before = (shot.velocity.x, shot.fire_ticks, shot.fall_distance);
-            sunrise_client::block_contact::in_level(
-                sunrise_client::parallel::TickThread::mint(),
+            sunrise_sim::block_contact::in_level(
+                sunrise_sim::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
                     game.sweep_projectile_inside(&mut shot);
@@ -867,7 +863,7 @@ pub(in crate::game) mod sweep_tests {
                 before,
                 "no writes without a part"
             );
-            assert!(sunrise_client::block_contact::take_pending().is_empty());
+            assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
 
@@ -881,7 +877,7 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-arrow", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let stone = game
                     .pack
                     .assets
@@ -890,7 +886,7 @@ pub(in crate::game) mod sweep_tests {
                     .unwrap();
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 for x in [1, 2] {
                     game.world.set(x, 100, 0, stone).unwrap();
@@ -898,8 +894,8 @@ pub(in crate::game) mod sweep_tests {
                 let flying = arrow_shot(9, (0.5, 100.0, 0.5), (2.5, 100.0, 0.5));
                 let before = flying.velocity.x;
                 let mut flying = flying;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
                         game.sweep_projectile_inside(&mut flying);
@@ -918,8 +914,8 @@ pub(in crate::game) mod sweep_tests {
                 // A stuck arrow: no move, the block it sits in still tells the part.
                 let mut stuck = arrow_shot(10, (1.5, 100.0, 0.5), (1.5, 100.0, 0.5));
                 stuck.velocity = sunrise_core::geometry::Vec3::ZERO;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
                         game.sweep_projectile_inside(&mut stuck);
@@ -930,7 +926,7 @@ pub(in crate::game) mod sweep_tests {
                     vec![[1, 100, 0]],
                     "the stuck arrow keeps the contact of its block"
                 );
-                assert!(sunrise_client::block_contact::take_pending().is_empty());
+                assert!(sunrise_sim::block_contact::take_pending().is_empty());
             });
         });
     }
@@ -948,7 +944,7 @@ pub(in crate::game) mod sweep_tests {
         let mods = install_inside_mod("inside-arrow-panic", &part);
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let stone = game
                     .pack
                     .assets
@@ -957,7 +953,7 @@ pub(in crate::game) mod sweep_tests {
                     .unwrap();
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 for x in [1, 2] {
                     game.world.set(x, 100, 0, stone).unwrap();
@@ -969,8 +965,8 @@ pub(in crate::game) mod sweep_tests {
                 game.creatures.projectiles.push(shot);
                 let rows = game.creatures.projectiles.len();
                 let mut projectiles = game.creatures.projectiles.lift();
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
+                sunrise_sim::block_contact::in_level(
+                    sunrise_sim::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
                         projectiles.update(0, |p| game.sweep_projectile_inside(p));
@@ -978,7 +974,7 @@ pub(in crate::game) mod sweep_tests {
                 );
                 game.creatures.projectiles.restore(
                     projectiles,
-                    sunrise_client::join_seq::RestoreOrder::SpawnsFirst,
+                    sunrise_sim::join_seq::RestoreOrder::SpawnsFirst,
                 );
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
@@ -1001,7 +997,7 @@ pub(in crate::game) mod sweep_tests {
                     (arrow.velocity.x - velocity).abs() < 1e-9,
                     "the panicking callback's staged writes never applied"
                 );
-                assert!(sunrise_client::block_contact::take_pending().is_empty());
+                assert!(sunrise_sim::block_contact::take_pending().is_empty());
             });
         });
     }
@@ -1011,9 +1007,9 @@ pub(in crate::game) mod sweep_tests {
         id: u32,
         from: (f64, f64, f64),
         to: (f64, f64, f64),
-    ) -> sunrise_client::projectiles::Projectile {
-        let mut shot = sunrise_client::projectiles::Projectile::new(
-            sunrise_client::projectiles::ProjectileKind::Arrow {
+    ) -> sunrise_sim::projectiles::Projectile {
+        let mut shot = sunrise_sim::projectiles::Projectile::new(
+            sunrise_sim::projectiles::ProjectileKind::Arrow {
                 base_damage: 1.0,
                 critical: false,
                 effect: None,

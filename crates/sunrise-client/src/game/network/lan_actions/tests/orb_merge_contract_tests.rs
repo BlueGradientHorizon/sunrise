@@ -3,9 +3,9 @@
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_item_places::tests::{guest, open_to_lan};
 use mod_api::{ExperienceOrbCanMergeEvent, ExperienceOrbMergeEvent, Flow, Hooks, ServerHost};
-use sunrise_client::entities::ExperienceOrb;
-use sunrise_client::entity_nbt::{orb_to_nbt, orbs_from_nbt};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::entities::ExperienceOrb;
+use sunrise_sim::entity_nbt::{orb_to_nbt, orbs_from_nbt};
 
 fn orb(id: u32, x: f64, value: i32, count: u32) -> ExperienceOrb {
     let at = Vec3::new(x, 70.0, 0.5);

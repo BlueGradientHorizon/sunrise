@@ -8,20 +8,22 @@ pub(in crate::game) mod tests {
     use mod_api::ModEntry;
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{
-        chunk::Chunk,
-        containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
-    };
     use sunrise_core::{
         nbt::{Compound, Limits, Tag, read_named},
         position::ChunkPos,
+    };
+    use sunrise_level::{
+        chunk::Chunk,
+        containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
     };
 
     #[test]
     #[ignore = "daily"]
     fn break_only_serializes_admitted_loot_not_removal_notices() {
-        use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+        use sunrise_command::args::GameMode;
         use sunrise_core::geometry::Vec3;
+        use sunrise_items::items::ItemStack;
+        use sunrise_sim::motion::PlayerMotion;
 
         for with_observers in [false, true] {
             let count = Arc::new(AtomicI32::new(11));
@@ -166,7 +168,7 @@ pub(in crate::game) mod tests {
                         game.world
                             .block_entities
                             .ticking(game.world.block(x, 64, 1).0),
-                        sunrise_client::block_entities::Ticking::Yes,
+                        sunrise_level::block_entities::Ticking::Yes,
                     );
                     let Some(BlockEntity::Mod(row)) = game.world.block_entities.get(&(x, 64, 1))
                     else {

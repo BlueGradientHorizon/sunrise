@@ -3,10 +3,8 @@
 //! (`register_entity_renderers`), drawn by that renderer instead.
 use super::Game;
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::{
-    mesher::Vertex,
-    projectiles::{Projectile, ProjectileKind},
-};
+use sunrise_client::mesher::Vertex;
+use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws the thrown item projectile `a` at `at` (the frame's position; `c` the same relative

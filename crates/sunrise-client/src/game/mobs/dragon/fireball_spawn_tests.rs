@@ -1,7 +1,7 @@
 use crate::game::{Game, Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 
 fn end_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -58,11 +58,11 @@ fn end_game<'a>(
 /// The level's dragon fireballs: its projectiles of that kind.
 fn dragon_fireballs<'a>(
     game: &'a Game<'_, crate::game::server_side::ServerState>,
-) -> Vec<&'a sunrise_client::projectiles::Projectile> {
+) -> Vec<&'a sunrise_sim::projectiles::Projectile> {
     game.creatures
         .projectiles
         .iter()
-        .filter(|p| p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball)
+        .filter(|p| p.kind == sunrise_sim::projectiles::ProjectileKind::DragonFireball)
         .collect()
 }
 

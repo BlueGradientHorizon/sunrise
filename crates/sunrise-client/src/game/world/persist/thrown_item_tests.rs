@@ -71,7 +71,7 @@ fn load_witness_26_3() -> (i32, i32, Vec<WitnessCase>) {
             let tag = parse_exact_snbt(&nbt);
             let ints = entity_nbt::uuid(&tag).unwrap();
             let uuid = uuid_text(ints);
-            let uuid_u128 = sunrise_client::lan::playerdata::ints_uuid(ints);
+            let uuid_u128 = sunrise_sim::lan::playerdata::ints_uuid(ints);
             assert!(
                 seen_uuids.insert(uuid.clone()),
                 "duplicate summon UUID in witness: {uuid}"

@@ -1,7 +1,7 @@
 //! Landing impacts for falling blocks, before their placement/drop decision.
 use super::{FallingBlock, Game, Landing};
-use sunrise_client::falling_block;
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+use sunrise_sim::falling_block;
 use sunrise_world::level::LevelEvent;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -17,13 +17,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(impact) = block.damage.impact(block.fall_distance) {
             if impact.amount > 0.0 {
                 let mob_kind = if stalactite {
-                    sunrise_client::mobs::DamageKind::FallingStalactite
+                    sunrise_sim::mobs::DamageKind::FallingStalactite
                 } else if anvil {
-                    sunrise_client::mobs::DamageKind::FallingAnvil
+                    sunrise_sim::mobs::DamageKind::FallingAnvil
                 } else {
-                    sunrise_client::mobs::DamageKind::FallingBlock
+                    sunrise_sim::mobs::DamageKind::FallingBlock
                 };
-                let attack = sunrise_client::health::Attack {
+                let attack = sunrise_sim::health::Attack {
                     attacker: block.id as i32,
                     direct: Some(block.id as i32),
                     position: Some([block.position.x, block.position.y, block.position.z]),
@@ -38,9 +38,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .filter(|mob| mob.alive() && !mob.removed && bounds.intersects(mob.bounds()))
                     .map(|mob| mob.join)
                     .collect();
-                let source = sunrise_client::mobs::Damage {
+                let source = sunrise_sim::mobs::Damage {
                     from: attack.position,
-                    ..sunrise_client::mobs::Damage::of(mob_kind)
+                    ..sunrise_sim::mobs::Damage::of(mob_kind)
                 };
                 for join in victims {
                     let Some(index) = self.mobs.locate(join) else {
@@ -209,7 +209,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // new block entity's saved defaults before loadWithComponents.
                 if let sunrise_core::nbt::Tag::Compound(fields) = &mut tag {
                     fields.extend(carried.clone());
-                    self.load_block_entity_nbt(pos, &sunrise_client::snbt::to_snbt(&tag));
+                    self.load_block_entity_nbt(pos, &sunrise_client_core::snbt::to_snbt(&tag));
                 }
             }
         }
@@ -234,7 +234,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
         {
             if let Some(id) = sound_event {
                 self.level_events.push(LevelEvent::LevelEvent {
@@ -272,7 +272,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(id) = self.health_resources.damage.id(kind) else {
             return;
         };
-        let attack = sunrise_client::health::Attack {
+        let attack = sunrise_sim::health::Attack {
             attacker: entity as i32,
             direct: Some(entity as i32),
             position: Some([position.x, position.y, position.z]),
@@ -285,12 +285,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // LivingEntity.hurtServer: ENTITY_HURT_PLAYER, the falling block
             // (`DamageSources.fallingBlock(this)` and the like) being both the
             // causing and the direct entity.
-            let block = sunrise_client::advancements::EntityView {
+            let block = sunrise_sim::advancements::EntityView {
                 kind: "minecraft:falling_block".into(),
                 position: [position.x, position.y, position.z],
                 ..Default::default()
             };
-            self.trigger_entity_hurt_player(&sunrise_client::advancements::DamageView {
+            self.trigger_entity_hurt_player(&sunrise_sim::advancements::DamageView {
                 kind: kind.to_owned(),
                 direct: Some(block.clone()),
                 is_direct: true,
@@ -312,8 +312,9 @@ mod tests {
         Registrar, RegistrationContext, ServerHost,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{items::ItemStack, motion::PlayerMotion};
     use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Vec3};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::motion::PlayerMotion;
 
     const ANVIL: &str = "minecraft:falling_anvil";
 
@@ -406,7 +407,7 @@ mod tests {
         game.falling_hurt_player(
             241,
             Vec3::ZERO,
-            sunrise_client::falling_block::bounds(Vec3::ZERO),
+            sunrise_sim::falling_block::bounds(Vec3::ZERO),
             8.0,
             ANVIL,
         );

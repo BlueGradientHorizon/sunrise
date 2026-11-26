@@ -4,13 +4,13 @@
 use super::transactions::decision::{Admission, engine::Target};
 use crate::game::native_guest_turn_tests::with_guests;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use sunrise_client::menu::{Kind, Menu};
+use sunrise_sim::menu::{Kind, Menu};
 
 /// Give guest `conn` an inventory menu carrying `count` sticks on its cursor, and some play
 /// state, as a guest who has clicked in their inventory has.
 fn open_inventory(game: &mut crate::game::ServerGame<'_>, conn: u32, count: u32) {
     let mut menu = Box::new(Menu::new(Kind::Inventory));
-    menu.carried = Some(sunrise_client::items::ItemStack::new(
+    menu.carried = Some(sunrise_items::items::ItemStack::new(
         "minecraft:stick",
         count,
     ));

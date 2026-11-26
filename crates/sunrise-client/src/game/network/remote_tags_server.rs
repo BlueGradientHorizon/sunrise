@@ -125,7 +125,7 @@ pub(in crate::game) mod tests {
                 Some(1),
                 true,
                 None,
-                std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
             )
             .unwrap();
             request.save_root = save.path().to_owned();
@@ -177,7 +177,7 @@ pub(in crate::game) mod tests {
                     game.registry_entry_in_tag(&entry, "tag_reload:probe"),
                     Some(!expect_empty)
                 );
-                game.trigger_entity_hurt_player(&sunrise_client::advancements::DamageView {
+                game.trigger_entity_hurt_player(&sunrise_sim::advancements::DamageView {
                     kind: damage_type.into(),
                     ..Default::default()
                 });

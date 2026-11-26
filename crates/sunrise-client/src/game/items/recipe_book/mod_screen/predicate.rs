@@ -34,7 +34,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .inventory
             .iter()
             .flatten()
-            .filter(|stack| sunrise_client::menu::place::usable_for_crafting(stack))
+            .filter(|stack| sunrise_sim::menu::place::usable_for_crafting(stack))
             .cloned()
             .collect();
         let base = self.native_screen_container_slot_base();
@@ -49,7 +49,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let amount = i32::try_from(
                     stack
                         .count
-                        .min(sunrise_client::menu::item_max_stack(self.items(), &stack)),
+                        .min(sunrise_sim::menu::item_max_stack(self.items(), &stack)),
                 )
                 .unwrap_or(i32::MAX);
                 stack.count = 1;

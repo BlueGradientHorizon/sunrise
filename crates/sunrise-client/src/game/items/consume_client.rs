@@ -1,11 +1,9 @@
 use super::Game;
 use crate::game::server_side::consume::ItemConsumable;
 use std::convert::Infallible;
-use sunrise_client::{
-    items::ItemStack,
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_core::random::LegacyRandom;
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_world::consumable::EmissionWorld;
 
 struct ClientEmitter<'a, 'g>(&'a mut Game<'g, crate::game::client_side::ClientState>);

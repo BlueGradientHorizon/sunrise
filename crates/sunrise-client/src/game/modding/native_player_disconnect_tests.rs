@@ -3,9 +3,9 @@
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{Text, prelude::*};
 use std::sync::{Arc, mpsc::Receiver};
-use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::text::translatable;
+use sunrise_sim::lan::{Out, PlayerSender};
 
 fn left_reason(game: &crate::game::ServerGame<'_>, conn: u32) -> String {
     let hub = &game.lan.as_ref().unwrap().hub;

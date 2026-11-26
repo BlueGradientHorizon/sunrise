@@ -3,11 +3,11 @@ use crate::game::server_side::block_entity_anims::AnimTick;
 use crate::game::server_side::block_entity_anims::PLAYER;
 use sunrise_client::{
     block_entity_anim::{BellEntity, ConduitTarget, Ticker},
-    containers::BlockEntity,
-    particles::{ParticleOptions, ParticleType},
     skins,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `SkullBlockRenderer.getPlayerSkin`: the skin sprite of the profile of
@@ -91,7 +91,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_tick_bell(
         &mut self,
         pos: [i32; 3],
-        tags: &sunrise_client::items::EntityTypeTags,
+        tags: &sunrise_items::items::EntityTypeTags,
     ) {
         let player = self.client_player_view().map(|p| BellEntity {
             position: [p.position.x, p.position.y, p.position.z],
@@ -109,7 +109,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 alive: m.alive() && !m.removed,
                 raider: tags.has_bit(
                     m.kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::RAIDERS,
+                    sunrise_items::items::EntityTypeTags::RAIDERS,
                 ),
             })
         };
@@ -140,7 +140,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         else {
             return None;
         };
-        let u = sunrise_client::lan::playerdata::ints_uuid(*uuid);
+        let u = sunrise_sim::lan::playerdata::ints_uuid(*uuid);
         let id = self
             .remote
             .as_ref()
@@ -239,7 +239,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let registry = self.pack.assets.registry;
                     let is_water = |p: [i32; 3]| {
                         facts.get(world.block(p[0], p[1], p[2])).fluid
-                            == sunrise_client::blocks::Fluid::Water
+                            == sunrise_items::blocks::Fluid::Water
                     };
                     let is_frame = |p: [i32; 3]| {
                         registry
@@ -313,8 +313,8 @@ pub(in crate::game) mod conduit_target_tests {
     };
     use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, containers::BlockEntity};
     use sunrise_core::nbt::Tag;
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
     fn game_with_client(
         resources: &mut Option<Arc<crate::game::Resources>>,
@@ -405,7 +405,7 @@ pub(in crate::game) mod conduit_target_tests {
         let uuid = server.persist.uuids[&drowned];
         let key = (CONDUIT[0], CONDUIT[1], CONDUIT[2]);
         // What `sendBlockUpdated` puts on the wire.
-        let tag = crate::lan::chunks::entity_tag(
+        let tag = sunrise_sim::lan::chunks::entity_tag(
             &server.world.block_entities[&key],
             false,
             &Default::default(),

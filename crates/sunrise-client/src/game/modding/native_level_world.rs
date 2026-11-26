@@ -7,11 +7,11 @@ use mod_api::{
     BoolGameRuleKey, FeatureFlags, LevelDimensionShape, LevelDimensionType, LevelReadError,
     LevelRef,
 };
-use sunrise_client::command::vanilla::DIFFICULTIES;
-use sunrise_client::world::World;
 use sunrise_client_core::gamerules::Value as GameRuleValue;
+use sunrise_command::vanilla::DIFFICULTIES;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::LegacyRandom;
+use sunrise_level::world::World;
 use sunrise_world::registry::BlockStateId;
 use {sunrise_core::dimension::Dimension as LevelDimension, sunrise_world::level::LevelAccess};
 
@@ -29,8 +29,8 @@ fn weather_flags((rain, thunder): (f32, f32)) -> (bool, bool) {
 /// `Level.isRainingAt` over `world`, the column of the level in dimension `dim`.
 pub(in crate::game) fn rain_at(
     world: &World,
-    facts: &sunrise_client::blocks::BlockFacts,
-    biomes: &sunrise_client::biome::Biomes,
+    facts: &sunrise_items::blocks::BlockFacts,
+    biomes: &sunrise_level::biome::Biomes,
     behaviours: &sunrise_world::level::Behaviours,
     dim: Dim,
     pos: BlockPos,
@@ -50,8 +50,8 @@ pub(in crate::game) fn rain_at(
 /// while the server ticks another answers like the one in place.
 struct RainView<'a> {
     world: &'a World,
-    facts: &'a sunrise_client::blocks::BlockFacts,
-    biomes: &'a sunrise_client::biome::Biomes,
+    facts: &'a sunrise_items::blocks::BlockFacts,
+    biomes: &'a sunrise_level::biome::Biomes,
     dimension: LevelDimension,
     raining: bool,
     /// `LevelAccess::random` asks for a generator; the read draws none.
@@ -434,15 +434,15 @@ mod tests {
     use mod_api::{GameRuleChangedEvent, GameRuleValue, Hooks, LevelHost, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::gamerules;
+    use sunrise_client_core::gamerules;
+    use sunrise_level::chunk::Chunk;
 
     #[test]
     #[ignore = "daily"]
     fn dimension_shape_reads_current_parked_and_stale_levels() {
         use super::super::Dim;
         use mod_api::{Authority, Host, LevelDimensionShape};
-        use sunrise_client::chunk::LevelShape;
+        use sunrise_level::chunk::LevelShape;
 
         with_game(|game| {
             game.world.shape = LevelShape::new(-32, 320, 256, true, false).unwrap();
@@ -536,7 +536,7 @@ mod tests {
             ] {
                 let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
                 assert_eq!(
-                    sunrise_client::motion::SideLevel::is_raining_at(&side, &game.world, at),
+                    sunrise_sim::motion::SideLevel::is_raining_at(&side, &game.world, at),
                     rains,
                     "{pos:?}"
                 );
@@ -1012,7 +1012,7 @@ mod tests {
 
     #[test]
     fn weather_requires_skylight_no_ceiling_and_not_end() {
-        use sunrise_client::chunk::LevelShape;
+        use sunrise_level::chunk::LevelShape;
         let rain = (1.0, 0.5);
         assert_eq!(
             super::weather_for_level(LevelShape::OVERWORLD, false, rain),

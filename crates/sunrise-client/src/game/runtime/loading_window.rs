@@ -209,7 +209,7 @@ pub(in crate::game) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         first_person: true,
         bob: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
-        sky: sunrise_client::environment::Sky::default(),
+        sky: sunrise_level::environment::Sky::default(),
         shadow_scene_revision: (0, 0),
         shadow_cache: false,
         distance: 12.0,
@@ -362,7 +362,7 @@ pub(in crate::game) fn start_client_game<'a>(
     if let Some(scenario) = game.options.benchmark.clone() {
         let control = game
             .control
-            .get_or_insert_with(sunrise_client::control::Server::local);
+            .get_or_insert_with(sunrise_sim::control::Server::local);
         sunrise_client::benchmark::start(
             control.sender(),
             sunrise_client::benchmark::Setup {
@@ -370,7 +370,7 @@ pub(in crate::game) fn start_client_game<'a>(
                 started,
                 app: sunrise_bench::App {
                     name: "sunrise-client".into(),
-                    version: sunrise_client::crash::version(),
+                    version: sunrise_level::crash::version(),
                     commit: option_env!("SUNRISE_COMMIT").map(str::to_owned),
                     mods: Vec::new(),
                 },

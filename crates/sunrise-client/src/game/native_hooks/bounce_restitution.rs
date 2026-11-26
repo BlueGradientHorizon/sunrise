@@ -23,7 +23,7 @@ impl StepOnView<'_> {
     /// `Block.stepOn` before the simulation checks the blocks it traversed.
     pub(in crate::game) fn native_step_on(
         &mut self,
-        step: sunrise_client::block_contact::StepContact<'_>,
+        step: sunrise_sim::block_contact::StepContact<'_>,
         movement: &mut [f64; 3],
     ) -> Vec<mod_api::EntityWrite> {
         use crate::game::api_values::{TryIntoApi, TryIntoEngine};
@@ -99,14 +99,14 @@ impl StepOnView<'_> {
                 }
             },
         );
-        sunrise_client::block_contact::landed(c.state, c.position, blocks);
+        sunrise_sim::block_contact::landed(c.state, c.position, blocks);
         entity_writes
     }
 }
 
 /// The restitution the simulation's own code (client-lib) asks of a block an entity lands on.
-const RESTITUTION_HOOKS: sunrise_client::block_contact::RestitutionHooks =
-    sunrise_client::block_contact::RestitutionHooks {
+const RESTITUTION_HOOKS: sunrise_sim::block_contact::RestitutionHooks =
+    sunrise_sim::block_contact::RestitutionHooks {
         listens: |state| {
             crate::game::api_values::block_state::block_listens(
                 mod_api::HookId::BounceRestitution,
@@ -122,6 +122,6 @@ const RESTITUTION_HOOKS: sunrise_client::block_contact::RestitutionHooks =
 /// Bind the block contacts and the bounce restitution the simulation reports to the block
 /// parts; the first binding stays.
 pub(in crate::game) fn install_block_contact_hooks() {
-    let _ = sunrise_client::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
-    let _ = sunrise_client::block_contact::RESTITUTION_HOOKS.set(RESTITUTION_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::RESTITUTION_HOOKS.set(RESTITUTION_HOOKS);
 }

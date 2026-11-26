@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::tab_list::TabPlayer;
+use sunrise_level::profile_lookup::TabPlayer;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -37,10 +37,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_effect_def(
         &self,
         effect: i32,
-    ) -> Option<&'static sunrise_client::brewing::EffectDef> {
+    ) -> Option<&'static sunrise_level::brewing::EffectDef> {
         let r = self.remote.as_ref()?;
         let name = r.builtin.get("minecraft:mob_effect")?.name(effect)?;
-        sunrise_client::brewing::effect(name)
+        sunrise_level::brewing::effect(name)
     }
     /// A mob effect's network id as the effect (`brewing::EFFECTS` id).
     pub(in crate::game::client_side) fn remote_effect_id(
@@ -58,7 +58,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `handleAddObjective`: add, remove or change an objective.
     pub(in crate::game) fn remote_objective(&mut self, p: play::SetObjective) {
-        use sunrise_client::scoreboard::{RenderType, tag_to_json};
+        use sunrise_client_core::scoreboard::{RenderType, tag_to_json};
         let board = &mut self.score.board;
         match (p.method, p.display) {
             (1, _) => board.remove_objective(&p.name),
@@ -122,7 +122,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Bats never push, nor passengers of one vehicle, nor a spectator; the
             // box test comes before the lookups that far mobs never need (#14053).
             if !m.alive()
-                || m.species() == sunrise_client::mobs::Species::Bat
+                || m.species() == sunrise_sim::mobs::Species::Bat
                 || self
                     .riding
                     .is_some_and(|v| v == m.id || m.extra.mount == Some(v))
@@ -139,7 +139,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 |t| board.players_team(&t.name),
             );
             if r.remote_player_info_game_mode(m.id as i32) == Some(SPECTATOR)
-                || !sunrise_client::scoreboard::pushable_by(mob_team, player_team, true)
+                || !sunrise_client_core::scoreboard::pushable_by(mob_team, player_team, true)
             {
                 continue;
             }
@@ -171,10 +171,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let bb = b.bounds();
             let times = usize::from(
                 bounds.intersects(bb.inflate(area))
-                    && sunrise_client::scoreboard::pushable_by(None, player_team, true),
+                    && sunrise_client_core::scoreboard::pushable_by(None, player_team, true),
             ) + usize::from(
                 bounds.intersects(bb)
-                    && sunrise_client::scoreboard::pushable_by(player_team, None, true),
+                    && sunrise_client_core::scoreboard::pushable_by(player_team, None, true),
             );
             if times > 0
                 && crate::game::boat_passengers::boat_pushes(bb, bounds, false)
@@ -299,7 +299,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } else {
                 0
             };
-            let crouching = p.local_crouching || matches!(p.pose, crate::pose::Pose::Crouching);
+            let crouching =
+                p.local_crouching || matches!(p.pose, sunrise_sim::pose::Pose::Crouching);
             let mut shared: u8 = 0;
             if crouching {
                 shared |= 0x02;
@@ -416,7 +417,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `handleSetPlayerTeamPacket`.
     pub(in crate::game) fn remote_team(&mut self, p: play::SetPlayerTeam) {
-        use sunrise_client::scoreboard::{CollisionRule, Visibility, tag_to_json};
+        use sunrise_client_core::scoreboard::{CollisionRule, Visibility, tag_to_json};
         let board = &mut self.score.board;
         let team = if p.method == 0 {
             board.add_team(&p.name)
@@ -440,7 +441,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             team.suffix = tag_to_json(&params.suffix);
             team.color = params
                 .color
-                .and_then(|c| sunrise_client::text::COLORS.get(c as usize))
+                .and_then(|c| sunrise_client_core::text::COLORS.get(c as usize))
                 .map(|c| c.1.to_owned());
             team.allow_friendly_fire = params.options & 1 != 0;
             team.see_friendly_invisibles = params.options & 2 != 0;

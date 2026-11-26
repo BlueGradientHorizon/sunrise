@@ -117,7 +117,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // MultiPlayerGameMode.useItem's prediction: an item cooling down
         // passes (its packet still goes).
-        let group = sunrise_client::cooldowns::group(&held, info.use_cooldown.as_ref());
+        let group = sunrise_items::cooldowns::group(&held, info.use_cooldown.as_ref());
         if self.cooldowns.is_on_cooldown(&group) {
             return false;
         }
@@ -140,7 +140,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // fill or pickup leaves the hand alone), and the blocks it sets are
         // this use's prediction.
         if &*held.item == "minecraft:bucket"
-            || sunrise_client::items::bucket_contents(&held.item).is_some()
+            || sunrise_items::items::bucket_contents(&held.item).is_some()
         {
             let (succeeded, changes, sounds) = self.with_hand(hand, |g| g.remote_use_bucket(&held));
             if let Some(changes) = changes {
@@ -159,7 +159,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // hit; the server alone tests LiquidBlock and the placement permission.
         if held.item.ends_with("_spawn_egg") {
             let succeeded = self.bucket_hit().is_some()
-                && sunrise_client::block_entity_item::item_entity_data(&held, self.res.items())
+                && sunrise_sim::block_entity_item::item_entity_data(&held, self.res.items())
                     .is_some_and(|data| self.spawn_egg_allowed(&data.kind));
             if succeeded {
                 self.with_hand(hand, Game::swing_arm);

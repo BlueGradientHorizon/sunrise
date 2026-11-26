@@ -16,7 +16,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let player =
             mod_api::__private::has_part_hook(mod_api::HookId::IsNotReplaceableByPickAction)
                 .then(|| self.native_acting_id());
-        let picked = sunrise_client::pick_item::plan(
+        let picked = sunrise_sim::pick_item::plan(
             &self.inventory[..36],
             self.selected,
             stack,
@@ -26,18 +26,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(picked) = picked else {
             return false;
         };
-        sunrise_client::pick_item::apply(
-            &mut self.inventory[..36],
-            &mut self.selected,
-            stack,
-            picked,
-        );
+        sunrise_sim::pick_item::apply(&mut self.inventory[..36], &mut self.selected, stack, picked);
         true
     }
     /// `ItemStack.isNotReplaceableByPickAction` for `held` in hotbar `slot`: vanilla's answer
     /// (enchanted), then the parts of its item, asked for `player` when parts are listening.
     fn pick_keeps(&self, player: Option<u128>, held: &ItemStack, slot: usize) -> bool {
-        let mut not_replaceable = sunrise_client::pick_item::vanilla_not_replaceable(held);
+        let mut not_replaceable = sunrise_sim::pick_item::vanilla_not_replaceable(held);
         let listens = |item: &str| {
             mod_api::__private::item_listens(mod_api::HookId::IsNotReplaceableByPickAction, item)
         };

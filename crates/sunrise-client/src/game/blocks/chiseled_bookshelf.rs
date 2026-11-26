@@ -5,11 +5,13 @@
 //! show through the block state's `slot_N_occupied`, which reaches a server's
 //! clients with the block update.
 use super::{Game, Hit, machines::dir_from_name};
-use sunrise_client::{containers::BlockEntity, items::ItemStack, mobs::Who};
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::mobs::Who;
 use sunrise_world::level::{flags, hit_slot};
 
 const BLOCK: &str = "minecraft:chiseled_bookshelf";

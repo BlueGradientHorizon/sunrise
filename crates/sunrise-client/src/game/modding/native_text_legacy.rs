@@ -1,6 +1,6 @@
 //! `text_from_legacy`: legacy `§` formatting codes read as the font draws them.
 use super::Game;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Legacy formatting codes read as the font draws them.

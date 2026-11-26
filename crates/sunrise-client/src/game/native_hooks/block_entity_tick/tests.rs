@@ -12,13 +12,13 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::{
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::Chunk,
     containers::{ModBlockEntityFields, ModContainer},
-    items::ItemStack,
-    motion::PlayerMotion,
 };
-use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) const POS: Pos = (1, 64, 1);
 pub(in crate::game) const CHUNK: (i32, i32) = (0, 0);
@@ -68,7 +68,7 @@ pub(in crate::game) fn access<'a, 'g>(
 
 pub(in crate::game) fn enable_block_ticks(game: &mut crate::game::ServerGame<'_>) {
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(
+        sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(8.5, 65.0, 8.5),
         )
@@ -190,7 +190,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
     with_ticker(|game, _| {
         let subject = place_subject(game, KIND);
         game.spawn_item(
-            sunrise_client::items::ItemStack::new("minecraft:stone", 5),
+            sunrise_items::items::ItemStack::new("minecraft:stone", 5),
             [1.0, 64.0, 1.0],
             [0.0; 3],
             0,
@@ -256,8 +256,8 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
     use crate::game::{
         native_entity_refs::tests::fixture_root, native_guest_turn_tests::with_guests_at,
     };
-    use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::{Out, PlayerSender};
 
     const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::aborted_block_entity_edits_preserve_a_queued_client_update";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_SYNC", &["run"]) {
@@ -600,7 +600,7 @@ fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
             game.world.set(POS.0, POS.1, POS.2, pot).unwrap();
             game.world.set(2, 64, 1, pot).unwrap();
             let stock = ItemStack::new("minecraft:diamond", 64);
-            let item = sunrise_client::save::item_to_nbt(&stock, game.res.items());
+            let item = sunrise_sim::save::item_to_nbt(&stock, game.res.items());
             crate::game::spill::put_saved_entity(
                 &mut game.world,
                 AT,
@@ -764,7 +764,7 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
             let scratch = tempfile::tempdir().unwrap();
             let save_root = scratch.path().to_owned();
             let shape = game.world.shape;
-            let save = sunrise_client::save::SaveDir::new(
+            let save = sunrise_sim::save::SaveDir::new(
                 save_root.clone(),
                 shape,
                 Some(game.res.shared_items()),
@@ -773,7 +773,7 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
             save.save(&chunks, registry, game.res.biomes()).unwrap();
             drop(save);
 
-            let mut loaded = sunrise_client::save::SaveDir::new(save_root, shape, None)
+            let mut loaded = sunrise_sim::save::SaveDir::new(save_root, shape, None)
                 .load(CHUNK.0, CHUNK.1, registry, game.res.biomes())
                 .unwrap();
             game.world.install_chunk_block_entities(&mut loaded);
@@ -1265,7 +1265,7 @@ fn ticker_and_handle_setters_require_explicit_set_changed() {
         assert!(game.world.block_log.as_ref().unwrap().is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
 
-        let stack = sunrise_client::items::ItemStack::new("minecraft:stone", 2)
+        let stack = sunrise_items::items::ItemStack::new("minecraft:stone", 2)
             .try_into_api()
             .unwrap();
         {
@@ -1322,7 +1322,7 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
 #[test]
 #[ignore = "daily"]
 fn chunk_save_reloads_reordered_slotless_items() {
-    use sunrise_client::save;
+    use sunrise_sim::save;
 
     const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::chunk_save_reloads_reordered_slotless_items";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ITEMS_ORDER", &["run"]) {
@@ -1434,7 +1434,7 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
         game.world
             .block_entities
             .set_mod_containers(Default::default());
-        let decoded = sunrise_client::items::ItemStack::new("minecraft:stone", 3);
+        let decoded = sunrise_items::items::ItemStack::new("minecraft:stone", 3);
         if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&POS) {
             entity.items = vec![Some(decoded)];
         } else {
@@ -1481,7 +1481,7 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
             entity.items.is_empty(),
             "stale decoded item slots must be cleared when slotless Items NBT changes"
         );
-        let saved = sunrise_client::save::block_entity_encode::encode(
+        let saved = sunrise_sim::save::block_entity_encode::encode(
             POS,
             game.world.block_entities.get(&POS).unwrap(),
             MACHINE,
@@ -1500,7 +1500,7 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
                 })
                 .unwrap();
         }
-        let saved = sunrise_client::save::block_entity_encode::encode(
+        let saved = sunrise_sim::save::block_entity_encode::encode(
             POS,
             game.world.block_entities.get(&POS).unwrap(),
             MACHINE,
@@ -1520,7 +1520,7 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
                 })
                 .unwrap();
         }
-        let saved_canonical = sunrise_client::save::block_entity_encode::encode(
+        let saved_canonical = sunrise_sim::save::block_entity_encode::encode(
             POS,
             game.world.block_entities.get(&POS).unwrap(),
             MACHINE,
@@ -1529,7 +1529,7 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
         assert_eq!(saved_canonical.get("Items"), Some(&expected_decoded));
 
         let (reloaded_pos, reloaded) =
-            sunrise_client::save::decode_block_entity_for_block(&saved_canonical, MACHINE)
+            sunrise_sim::save::decode_block_entity_for_block(&saved_canonical, MACHINE)
                 .expect("slotless entity reloads");
         assert_eq!(reloaded_pos, POS);
         let BlockEntity::Mod(reloaded_mod) = &reloaded else {
@@ -1556,17 +1556,15 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
                 .unwrap();
         }
 
-        let (_, container_reloaded) = sunrise_client::save::decode_block_entity_for_block(
-            &saved_canonical,
-            CONTAINER_MACHINE,
-        )
-        .expect("container-backed entity reloads");
+        let (_, container_reloaded) =
+            sunrise_sim::save::decode_block_entity_for_block(&saved_canonical, CONTAINER_MACHINE)
+                .expect("container-backed entity reloads");
         let BlockEntity::Mod(container_mod) = &container_reloaded else {
             panic!("expected mod block entity");
         };
         assert_eq!(
             container_mod.items,
-            vec![Some(sunrise_client::items::ItemStack::new(
+            vec![Some(sunrise_items::items::ItemStack::new(
                 "minecraft:stone",
                 3
             ))]
@@ -1618,7 +1616,7 @@ fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transac
         game.world.block_entities.set_mod_containers(
             [(
                 state.0,
-                Arc::new(sunrise_client::containers::ModContainer {
+                Arc::new(sunrise_level::containers::ModContainer {
                     slots: 2,
                     ..Default::default()
                 }),
@@ -1626,7 +1624,7 @@ fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transac
             .into_iter()
             .collect(),
         );
-        let stone = sunrise_client::items::ItemStack::new("minecraft:stone", 1)
+        let stone = sunrise_items::items::ItemStack::new("minecraft:stone", 1)
             .try_into_api()
             .unwrap();
         let mut access = ResidentBlockEntityAccess::for_handle(game, handle, state);

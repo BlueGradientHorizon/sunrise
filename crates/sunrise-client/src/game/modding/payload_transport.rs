@@ -7,10 +7,10 @@ use mod_api::{
     TransactionContext, TransactionScopeError, TransactionUnavailable,
 };
 use std::sync::Arc;
-use sunrise_client::raw_payloads::{
+use sunrise_protocol::payload_negotiation::Phase;
+use sunrise_sim::raw_payloads::{
     Body, ClientEvent, Endpoint, Incoming, Prepared, Side, connection::Epoch,
 };
-use sunrise_protocol::payload_negotiation::Phase;
 
 /// Fits the journal-growth allowance already charged by each prepared operation.
 pub(in crate::game) struct Deferred {
@@ -156,7 +156,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 "disconnect.genericReason",
                 vec![Text::literal(format!(
                     "a mod's payload handler failed ({})",
-                    sunrise_client::raw_payloads::mod_of(&incoming.id)
+                    sunrise_sim::raw_payloads::mod_of(&incoming.id)
                 ))],
             ));
         } else if let Some(reason) = reason {

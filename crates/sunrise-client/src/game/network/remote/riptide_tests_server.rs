@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::remote::riptide_tests::OWNER;
-use sunrise_client::lan::guest::InboxItem;
 use sunrise_protocol::connection::ConnReader;
+use sunrise_sim::lan::guest::InboxItem;
 
 /// Transfer the client's real play packets to the integrated server's normal
 /// connection drain. The test drives ticks without scheduling two game loops.

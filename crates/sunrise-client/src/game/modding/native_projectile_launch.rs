@@ -1,11 +1,9 @@
 //! Owner-created rotational throws, distinct from generic entity summoning.
 use super::{Game, commands::Target};
 use mod_api::{Identifier, LivingRef, ProjectileRef};
-use sunrise_client::{
-    items::ItemStack,
-    projectiles::{Projectile, ProjectileKind},
-};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn spawn_projectile_from_rotation(
@@ -101,6 +99,6 @@ pub(in crate::game::server_side) fn thrown_projectile_kind(
         "minecraft:wind_charge" => ProjectileKind::WindCharge,
         "minecraft:splash_potion" => ProjectileKind::Potion(Box::new(carried.clone()), false),
         "minecraft:lingering_potion" => ProjectileKind::Potion(Box::new(carried.clone()), true),
-        id => ProjectileKind::Thrown(sunrise_client::projectiles::thrown_type(id)?),
+        id => ProjectileKind::Thrown(sunrise_sim::projectiles::thrown_type(id)?),
     })
 }

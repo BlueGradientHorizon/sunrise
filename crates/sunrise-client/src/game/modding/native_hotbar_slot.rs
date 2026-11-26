@@ -33,7 +33,7 @@ pub(in crate::game) mod hotbar_slot_tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
-    use sunrise_client::command::args::GameMode;
+    use sunrise_command::args::GameMode;
     use sunrise_protocol::connection::ConnReader;
     use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 

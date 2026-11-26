@@ -165,7 +165,7 @@ mod tests {
     /// thread's own tables change after; installing and resolving refuse a phase's worker by name.
     #[test]
     fn a_phase_keeps_the_listen_snapshot_it_captured() {
-        use sunrise_client::parallel::TickThread;
+        use sunrise_sim::parallel::TickThread;
         struct Part;
         #[mod_api::sunrise_part]
         impl mod_api::BlockPart for Part {
@@ -217,7 +217,7 @@ mod tests {
             let states: Vec<BlockStateId> = (0..3).map(BlockStateId).collect();
             let on_tick: Vec<bool> = states.iter().map(|&s| block_listens(hook, s)).collect();
             assert_eq!(on_tick, [true, false, false]);
-            let on_pool = sunrise_client::parallel::par_map_on(&states, 1, 4, |part, out| {
+            let on_pool = sunrise_sim::parallel::par_map_on(&states, 1, 4, |part, out| {
                 let ids: Vec<_> = part
                     .iter()
                     .map(|&s| (s, std::thread::current().id()))

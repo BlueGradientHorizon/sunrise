@@ -6,11 +6,11 @@ use crate::game::commands::items::list_operation;
 use crate::game::commands::items::mob_slot;
 use crate::game::commands::items::set_custom_data;
 use crate::game::commands::items::*;
-use sunrise_client::{
-    containers::BlockEntity, furnace::FurnaceCooking, items::ItemStack, scoreboard_cmd::Tracker,
-    text::Text,
-};
+use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{furnace::FurnaceCooking, scoreboard_cmd::Tracker};
 
 #[path = "items/slot_sources_server.rs"]
 pub(in crate::game) mod slot_sources;
@@ -23,7 +23,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         m: &serde_json::Value,
         stack: Option<ItemStack>,
         rng: &mut sunrise_core::random::LegacyRandom,
-        this: Option<&sunrise_client::advancements::EntityView>,
+        this: Option<&sunrise_sim::advancements::EntityView>,
         origin: [f64; 3],
         depth: u32,
     ) -> Option<ItemStack> {
@@ -132,7 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             return Some(stack);
                         }
                         if m["target"].as_str() == Some("item_name") {
-                            let name = sunrise_client::scoreboard::json_to_tag(&m["name"]);
+                            let name = sunrise_client_core::scoreboard::json_to_tag(&m["name"]);
                             edit_components(&mut stack, |c| {
                                 c.insert("minecraft:item_name".into(), name);
                             });
@@ -176,7 +176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .as_array()
                             .into_iter()
                             .flatten()
-                            .map(sunrise_client::scoreboard::json_to_tag)
+                            .map(sunrise_client_core::scoreboard::json_to_tag)
                             .collect();
                         edit_components(&mut stack, |c| {
                             let old: Vec<Tag> = match c.get(&"minecraft:lore".into()) {
@@ -192,7 +192,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             Value::String(snbt) => sunrise_core::nbt::parse_snbt(snbt)
                                 .map(|(t, _)| t)
                                 .unwrap_or(Tag::Compound(Default::default())),
-                            v => sunrise_client::scoreboard::json_to_tag(v),
+                            v => sunrise_client_core::scoreboard::json_to_tag(v),
                         };
                         set_custom_data(&mut stack, &tag);
                     }
@@ -217,7 +217,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 if remove {
                                     c.insert(marker, Tag::Compound(Default::default()));
                                 } else {
-                                    c.insert(key, sunrise_client::scoreboard::json_to_tag(v));
+                                    c.insert(key, sunrise_client_core::scoreboard::json_to_tag(v));
                                 }
                             }
                         });
@@ -925,8 +925,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             "minecraft:unequip"
                         },
                         [at.x, at.y, at.z],
-                        sunrise_client::sculk::Context {
-                            source: Some(sunrise_client::mobs::Who::Mob(*id).into()),
+                        sunrise_level::sculk::Context {
+                            source: Some(sunrise_sim::mobs::Who::Mob(*id).into()),
                             living: true,
                             ..Default::default()
                         },
@@ -978,8 +978,8 @@ pub(in crate::game) mod mob_equipment_command_tests {
     #[test]
     #[ignore = "daily"]
     fn world_pack_enchantments_reach_actual_game_catalog() {
-        use sunrise_client::enchant::EffectContext;
         use sunrise_core::random::LegacyRandom;
+        use sunrise_items::enchant::EffectContext;
         with_game(|game| {
             let clock = game.world.game_time;
             game.side.world_root =
@@ -1204,7 +1204,7 @@ pub(in crate::game) mod registered_slot_source_preservation_tests {
         let mut resources = None;
         let (mut game, _) = scene(&mut resources, "slot-source-player-this-world");
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(0.5, 101.0, 0.5),
             )
@@ -1251,7 +1251,7 @@ pub(in crate::game) mod registered_slot_source_preservation_tests {
             ));
         }
         for command in commands {
-            let dispatcher = sunrise_client::command::vanilla::game_dispatcher();
+            let dispatcher = sunrise_command::vanilla::game_dispatcher();
             assert!(
                 dispatcher
                     .parse(&command, &game.ui.registries)

@@ -5,8 +5,8 @@
 //! `StrawBedBlock.getSleptInBedStatType`).
 use super::super::*;
 use crate::game::game_tests::tests::server_game;
-use crate::motion::{MotionWorld, PlayerMotion};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 use sunrise_world::registry::BlockStateId;
 
 /// `ServerPlayer.jumpFromGround`: a jump off the ground counts as `custom.jump`.
@@ -55,7 +55,7 @@ fn a_worn_out_helmet_awards_the_broken_statistic() {
     helmet.damage = 54;
     game.armor[0] = Some(helmet);
     // `getDamageAfterArmorAbsorb` -> `Player.hurtArmor`: max(1, 4 / 4) points.
-    let source = sunrise_client::health::HurtSource {
+    let source = sunrise_sim::health::HurtSource {
         damage_type: "minecraft:generic",
         causing: 0,
         direct: 0,

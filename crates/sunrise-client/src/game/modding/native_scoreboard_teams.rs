@@ -10,7 +10,7 @@ use mod_api::{
     CollisionRule, ScoreHolder, TeamColor, TeamError, TeamMembersReadError, TeamRef,
     TeamVisibility, TextFormError,
 };
-use sunrise_client::{
+use sunrise_client_core::{
     scoreboard::{self as sb, Comp, comp_text},
     text::Text as EngineText,
 };
@@ -530,7 +530,7 @@ mod tests {
 
             // A guest's tracked board follows the board, teams included.
             game.lan_sync_scoreboard();
-            let view = sunrise_client::lan::scoreboard::View::of(&game.score.board);
+            let view = sunrise_sim::lan::scoreboard::View::of(&game.score.board);
             assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].scoreboard, view);
 
             // The client's snapshot of the teams reads what the board holds.
@@ -548,7 +548,7 @@ mod tests {
 
             // Saved, the file holds the team and its members.
             game.save_scoreboard();
-            let saved = sunrise_client::save::read_dat(&saved_board).unwrap();
+            let saved = sunrise_sim::save::read_dat(&saved_board).unwrap();
             let loaded = sb::Scoreboard::unpack(saved.get("data").unwrap());
             assert_eq!(loaded.team("red").unwrap().color.as_deref(), Some("blue"));
             assert!(loaded.players_team("offline").is_some());

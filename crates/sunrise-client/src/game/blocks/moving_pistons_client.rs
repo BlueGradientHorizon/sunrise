@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let chunks = &self.world.chunks;
         let (cx, cz) = (seed.x >> 4, seed.z >> 4);
-        let region: [[Option<&sunrise_client::chunk::Chunk>; 3]; 3] = std::array::from_fn(|dz| {
+        let region: [[Option<&sunrise_level::chunk::Chunk>; 3]; 3] = std::array::from_fn(|dz| {
             std::array::from_fn(|dx| {
                 chunks
                     .get(&(cx + dx as i32 - 1, cz + dz as i32 - 1))

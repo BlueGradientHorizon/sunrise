@@ -26,8 +26,8 @@ pub(in crate::game) fn arrow_attackable(tags: &UpdateTags, type_id: Option<i32>)
 pub(in crate::game) mod tests {
     use super::*;
     use std::sync::mpsc;
-    use sunrise_client::lan::Out;
     use sunrise_protocol::packets::configuration::{RegistryTags, TagEntry, UpdateTags};
+    use sunrise_sim::lan::Out;
 
     pub(in crate::game) fn tags(redirectable: &[i32]) -> UpdateTags {
         UpdateTags {

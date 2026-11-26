@@ -5,14 +5,14 @@ use crate::game::machines::shelf_signal;
 use crate::game::sculk::TEST_POSTED_EVENTS;
 use crate::game::{Hit, Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    containers::{BlockEntity, ChiseledBookshelf},
-    items::ItemStack,
-    mobs::Who,
-};
 use sunrise_core::geometry::Direction;
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
+    chunk::Chunk,
+    containers::{BlockEntity, ChiseledBookshelf},
+};
+use sunrise_sim::mobs::Who;
 
 const POS: [i32; 3] = [8, 64, 8];
 const CENTRE: [f64; 3] = [8.5, 64.5, 8.5];

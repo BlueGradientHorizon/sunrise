@@ -7,7 +7,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         match shot.kind {
             ProjectileKind::Arrow { .. } => DamageKind::Arrow,
             ProjectileKind::Trident => DamageKind::Named(
-                sunrise_client::mobs::NamedDamage::registered(
+                sunrise_sim::mobs::NamedDamage::registered(
                     &self.health_resources.damage,
                     "minecraft:trident",
                 )
@@ -36,15 +36,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Classify a projectile's vanilla `DamageSource.getDirectEntity()` family.
     pub(in crate::game) fn projectile_direct_entity(
         kind: &ProjectileKind,
-    ) -> sunrise_client::health::DirectEntity {
+    ) -> sunrise_sim::health::DirectEntity {
         match kind {
             ProjectileKind::Arrow { .. } | ProjectileKind::Trident => {
-                sunrise_client::health::DirectEntity::Arrow
+                sunrise_sim::health::DirectEntity::Arrow
             }
             ProjectileKind::LargeFireball { .. } => {
-                sunrise_client::health::DirectEntity::LargeFireball
+                sunrise_sim::health::DirectEntity::LargeFireball
             }
-            _ => sunrise_client::health::DirectEntity::Projectile,
+            _ => sunrise_sim::health::DirectEntity::Projectile,
         }
     }
     /// Only listeners need a saved weapon copy; physical family classification never does.

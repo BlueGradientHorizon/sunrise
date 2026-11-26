@@ -1,6 +1,6 @@
 use crate::game::in_own_process;
 use crate::game::native_server::command_failure_tests::with_failure_sources;
-use sunrise_client::text;
+use sunrise_client_core::text;
 
 #[test]
 #[ignore = "daily"]
@@ -9,11 +9,9 @@ fn tracked_executor_failure_survives_saved_depth_boundary() {
         minecarts::{CartKind, Minecart},
         native_entity_refs::tests::run_with_game_stack,
     };
-    use sunrise_client::{
-        chunk::block_entity::BlockEntity,
-        save::{LevelShape, SaveDir},
-    };
     use sunrise_core::position::BlockPos;
+    use sunrise_level::chunk::block_entity::BlockEntity;
+    use sunrise_sim::save::{LevelShape, SaveDir};
 
     in_own_process(
         "game::server_side::native_server_server::command_failure_tests::tracked_executor_failure_survives_saved_depth_boundary",

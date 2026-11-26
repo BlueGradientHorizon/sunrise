@@ -4,8 +4,8 @@ use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
 use {
-    sunrise_client::chunk::Chunk, sunrise_client::items::ItemStack, sunrise_client::mobs::Who,
     sunrise_items::firework::FireworkExplosion, sunrise_items::firework::FireworkShape,
+    sunrise_items::items::ItemStack, sunrise_level::chunk::Chunk, sunrise_sim::mobs::Who,
 };
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -42,7 +42,7 @@ pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap(),
     );
     game.world.random = sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(114));
     test(&mut game);

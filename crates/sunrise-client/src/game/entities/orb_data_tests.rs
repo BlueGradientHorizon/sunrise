@@ -14,7 +14,7 @@ fn game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         game.set_allow_commands(true);
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         test(game);
     });
 }
@@ -24,7 +24,7 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<S
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let said = game.side.chat_capture.take().unwrap_or_default();
-    (ok, said.first().map(sunrise_client::text::Text::plain))
+    (ok, said.first().map(sunrise_client_core::text::Text::plain))
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn load(game: &mut crate::game::ServerGame<'_>, snbt: &str, n: i32) -> u32 {
 fn orb<'a>(
     game: &'a crate::game::ServerGame<'_>,
     id: u32,
-) -> &'a sunrise_client::entities::ExperienceOrb {
+) -> &'a sunrise_sim::entities::ExperienceOrb {
     game.orbs.iter().find(|o| o.id == id).unwrap()
 }
 
@@ -104,7 +104,7 @@ fn orb<'a>(
 #[test]
 #[ignore = "daily"]
 fn the_merge_keeps_the_live_orb_and_its_portal_process() {
-    use sunrise_client::nether_portal::{PortalState, Process};
+    use sunrise_sim::nether_portal::{PortalState, Process};
     game(|game| {
         // No Tags, so no raw compound; a moving orb with a rotation.
         let id = load(

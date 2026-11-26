@@ -1,6 +1,6 @@
 //! Stack-aware remainder decisions made before borrowing the brewing stand for consumption.
 use super::*;
-use sunrise_client::items::Items;
+use sunrise_items::items::Items;
 
 pub(in crate::game) struct BrewingRemainder(Option<Option<ItemStack>>);
 
@@ -10,9 +10,9 @@ impl BrewingRemainder {
         items: &Items,
         stack: &ItemStack,
     ) -> Option<ItemStack> {
-        self.0
-            .clone()
-            .unwrap_or_else(|| crate::crafting::CraftingRemainder::crafting_remainder(items, stack))
+        self.0.clone().unwrap_or_else(|| {
+            sunrise_sim::crafting::CraftingRemainder::crafting_remainder(items, stack)
+        })
     }
 }
 
@@ -30,7 +30,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             mod_api::HookId::CraftingRemainder,
                             &s.item,
                         )
-                        && sunrise_client::brewing::brewing_fuel(world_items!(self), s).is_some()
+                        && sunrise_level::brewing::brewing_fuel(world_items!(self), s).is_some()
                 })
                 .map(|s| self.crafting_remainder(s)),
             _ => None,

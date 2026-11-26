@@ -51,7 +51,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn natural_boarding_drops_a_lead_only_after_a_successful_mount() {
-        use sunrise_client::mobs::MobEvent;
+        use sunrise_sim::mobs::MobEvent;
 
         let unleashed = Arc::new(Mutex::new(0));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(

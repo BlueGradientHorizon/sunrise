@@ -206,7 +206,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
         {
             return false;
         }
@@ -266,9 +266,9 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;
-    use sunrise_client::entities::ArmorStand;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
+    use sunrise_sim::entities::ArmorStand;
 
     fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: CartKind) -> MinecartRef {
         game.carts.push(Minecart::new(id, kind, Vec3::ZERO));
@@ -396,8 +396,9 @@ mod tests {
             let mut features = game.level.enabled_features.to_vec();
             features.push("minecraft:minecart_improvements".into());
             game.level.enabled_features = features.into();
-            game.ui.rules =
-                sunrise_client::gamerules::GameRules::with_features(&game.level.enabled_features);
+            game.ui.rules = sunrise_client_core::gamerules::GameRules::with_features(
+                &game.level.enabled_features,
+            );
             assert_eq!(rideable.max_speed(game), Some(8.0 / 20.0));
             assert_eq!(furnace.max_speed(game), Some(8.0 / 20.0 * 0.5));
             game.carts.update(0, |c| c.in_water = true);
@@ -461,7 +462,7 @@ mod tests {
             assert!(!furnace.prime_fuse(game));
             game.ui.rules.set(
                 "tnt_explodes",
-                sunrise_client::gamerules::Value::Bool(false),
+                sunrise_client_core::gamerules::Value::Bool(false),
             );
             game.carts.update(3, |c| c.fuse = -1);
             assert!(!tnt.prime_fuse(game));
@@ -517,14 +518,14 @@ mod tests {
             assert!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
             );
             assert!(game.perform_cart_command(id));
             assert!(
                 !game
                     .ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
                 "the new command ran"
             );
             assert!(!rideable.set_command(game, "say hi"));

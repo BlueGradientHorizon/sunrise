@@ -12,9 +12,9 @@
 //! says which).
 use super::{Game, commands::Target};
 use mod_api::LivingRef;
-use sunrise_client::mobs::villager;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
+use sunrise_sim::mobs::villager;
 use sunrise_world::climbing::{self, ClimbingWorld};
 use sunrise_world::registry::BlockStateId;
 
@@ -126,8 +126,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 if !matches!(
                     m.species(),
-                    sunrise_client::mobs::Species::Villager
-                        | sunrise_client::mobs::Species::WanderingTrader
+                    sunrise_sim::mobs::Species::Villager
+                        | sunrise_sim::mobs::Species::WanderingTrader
                 ) {
                     return false;
                 }
@@ -144,12 +144,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let slept = mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                     let slept = villager::start_sleeping(m, pos, &w, &mut events);
                     if slept {
-                        sunrise_client::mobs::living::teleports::set_pos(m, at);
+                        sunrise_sim::mobs::living::teleports::set_pos(m, at);
                     }
                     slept
                 });
                 self.mobs
-                    .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                    .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 let _ = self.handle_mob_events(events);
                 slept
             }
@@ -188,7 +188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     villager::stop_sleeping(m, &w, &mut events);
                 }
                 self.mobs
-                    .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                    .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 let _ = self.handle_mob_events(events);
                 true
             }
@@ -260,7 +260,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// The climbing decision for a mob currently lent out of the game's list.
     pub(in crate::game::server_side) fn native_mob_is_climbing(
         &self,
-        mob: &sunrise_client::mobs::Mob,
+        mob: &sunrise_sim::mobs::Mob,
     ) -> bool {
         let mut world = FlagClimbing {
             world: &self.world,
@@ -429,7 +429,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 /// `LivingEntity.onClimbable` reads the world through `ClimbingWorld`; this
 /// walks the level the flag's entity stands in, at its feet.
 struct FlagClimbing<'a> {
-    world: &'a sunrise_client::world::World,
+    world: &'a sunrise_level::world::World,
     context: &'a sunrise_world::native_load_context::LoopContext,
     entity: u32,
     position: BlockPos,
@@ -457,7 +457,7 @@ impl ClimbingWorld for FlagClimbing<'_> {
     fn set_last_climbable_position(&mut self, _: BlockPos) {}
     fn adjust_ladder(&mut self, position: BlockPos, state: BlockStateId, tagged: bool) -> bool {
         let mut ladder = tagged;
-        sunrise_client::motion::native_is_ladder(
+        sunrise_sim::motion::native_is_ladder(
             self.context,
             self.entity,
             position,
@@ -474,7 +474,7 @@ impl ClimbingWorld for FlagClimbing<'_> {
         ladder: bool,
     ) -> bool {
         let mut climbable = ladder;
-        sunrise_client::motion::ladder::native_makes_open_trapdoor_above_climbable(
+        sunrise_sim::motion::ladder::native_makes_open_trapdoor_above_climbable(
             self.context,
             state,
             position,
@@ -493,11 +493,11 @@ pub(in crate::game) mod tests {
         BlockPart, EntityRef, Hooks, LivingRef, LoopContext, MakesOpenTrapdoorAboveClimbableEvent,
         Registrar, WorldEpoch,
     };
-    use sunrise_client::entities::ArmorStand;
-    use sunrise_client::mobs::{Mob, villager};
-    use sunrise_client::motion::{MotionWorld, PlayerMotion};
     use sunrise_core::geometry::Vec3;
     use sunrise_core::position::BlockPos;
+    use sunrise_sim::entities::ArmorStand;
+    use sunrise_sim::mobs::{Mob, villager};
+    use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
     /// A live cow `id` at `(5.5, 64, 5.5)`, with its handle.
     fn cow(game: &mut crate::game::ServerGame<'_>, id: u32) -> LivingRef {
@@ -574,7 +574,7 @@ pub(in crate::game) mod tests {
             assert!(!game.living_start_sleeping(mob, [5, 64, 5]));
             assert!(!game.living_stop_sleeping(mob));
             // NoAI, PersistenceRequired and Age are the save's own tags.
-            let tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[0],
                 [1, 2, 3, 4],
                 None,
@@ -582,7 +582,7 @@ pub(in crate::game) mod tests {
                 |_| None,
                 &Default::default(),
             );
-            let restored = sunrise_client::entity_nbt::mob_from_nbt(
+            let restored = sunrise_sim::entity_nbt::mob_from_nbt(
                 &tag,
                 game.res.mob_types(),
                 7,
@@ -604,7 +604,7 @@ pub(in crate::game) mod tests {
             let zombie_ref = game.mob(game.entity(13).unwrap()).unwrap();
             assert!(game.mob_set_persistence_required(zombie_ref));
             assert!(game.mob_set_no_ai(zombie_ref, true));
-            let tag = sunrise_client::entity_nbt::mob_to_nbt(
+            let tag = sunrise_sim::entity_nbt::mob_to_nbt(
                 &game.mobs[1],
                 [5, 6, 7, 8],
                 None,
@@ -612,7 +612,7 @@ pub(in crate::game) mod tests {
                 |_| None,
                 &Default::default(),
             );
-            let restored = sunrise_client::entity_nbt::mob_from_nbt(
+            let restored = sunrise_sim::entity_nbt::mob_from_nbt(
                 &tag,
                 game.res.mob_types(),
                 8,
@@ -666,7 +666,7 @@ pub(in crate::game) mod tests {
                         "zombie",
                         [5.0, 64.0, 5.0],
                         super::super::creatures::SpawnSite::Finalizing(
-                            sunrise_client::mobs::spawn_rules::Reason::Command,
+                            sunrise_sim::mobs::spawn_rules::Reason::Command,
                         ),
                     )
                     .unwrap();
@@ -684,7 +684,7 @@ pub(in crate::game) mod tests {
                 "zombie",
                 [5.0, 64.0, 5.0],
                 super::super::creatures::SpawnSite::Finalizing(
-                    sunrise_client::mobs::spawn_rules::Reason::Command,
+                    sunrise_sim::mobs::spawn_rules::Reason::Command,
                 ),
             )
             .unwrap();
@@ -698,7 +698,7 @@ pub(in crate::game) mod tests {
         owner: bool,
     ) {
         use super::super::{execution_role::ExecutionRole, lan::LanSettings};
-        use sunrise_client::lan::{NetConfig, hub::HubConfig};
+        use sunrise_sim::lan::{NetConfig, hub::HubConfig};
         game.options.execution_role = if dedicated {
             ExecutionRole::DedicatedServer
         } else {
@@ -735,23 +735,20 @@ pub(in crate::game) mod tests {
         game.lan.as_mut().unwrap().hub.singleplayer_owner = owner.then_some(12);
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
     }
 
     pub(in crate::game) fn guest(
         game: &mut crate::game::ServerGame<'_>,
         conn: u32,
-    ) -> (
-        LivingRef,
-        std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
-    ) {
+    ) -> (LivingRef, std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) {
         use std::sync::{
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::lan::{Joined, PlayerSender, guest::Guest};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
         let (tx, rx) = std::sync::mpsc::channel();
         let mut g = Guest::new(
             Joined {
@@ -806,7 +803,7 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn sync_guests(game: &mut crate::game::ServerGame<'_>) {
-        use sunrise_client::lan::hub::TickCtx;
+        use sunrise_sim::lan::hub::TickCtx;
         let mut ctx = TickCtx {
             world: &mut game.world,
             entities: &[],
@@ -829,10 +826,10 @@ pub(in crate::game) mod tests {
     }
 
     pub(in crate::game) fn packets(
-        rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+        rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
     ) -> Vec<sunrise_protocol::packets::play::Clientbound> {
-        use sunrise_client::lan::Out;
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+        use sunrise_sim::lan::Out;
         rx.try_iter()
             .flat_map(|out| match out {
                 Out::Packet(body) => vec![body],
@@ -860,8 +857,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_flags_normal_guest_sleep_writes_survive_turns_and_sync() {
-        use sunrise_client::pose::Pose;
         use sunrise_protocol::packets::play::Clientbound as C;
+        use sunrise_sim::pose::Pose;
         // The integrated owner, a LAN guest, and a dedicated guest all act
         // through the real enter/leave path, not a standalone window body.
         for (dedicated, owner) in [(false, true), (false, false), (true, false)] {
@@ -1152,7 +1149,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_flags_guest_glide_stop_survives_own_turn_and_vines() {
-        use sunrise_client::pose::Pose;
+        use sunrise_sim::pose::Pose;
         with_game(|game| {
             guest_server(game, false, true);
             let (living, _rx) = guest(game, 12);
@@ -1227,7 +1224,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_flags_nested_guest_flags_restore_outer_and_refuse_fake_sleep() {
-        use sunrise_client::{lan::guest::Guest, motion::PlayerMotion};
+        use sunrise_sim::{lan::guest::Guest, motion::PlayerMotion};
         with_game(|game| {
             guest_server(game, false, true);
             let (outer, _rx) = guest(game, 12);
@@ -1318,7 +1315,7 @@ pub(in crate::game) mod tests {
             bed(game, "minecraft:straw_bed", [6, 64, 6]); // no foot -> no sleep shape
             balance.drain_balanced();
             for pos in [[5, 64, 5], [4, 64, 4], [1600, 64, 1600], [6, 64, 6]] {
-                let before = sunrise_client::entity_nbt::mob_to_nbt(
+                let before = sunrise_sim::entity_nbt::mob_to_nbt(
                     &game.mobs[0],
                     [1, 2, 3, 4],
                     None,
@@ -1328,7 +1325,7 @@ pub(in crate::game) mod tests {
                 );
                 assert!(!game.living_start_sleeping(living, pos), "{pos:?}");
                 assert_eq!(
-                    sunrise_client::entity_nbt::mob_to_nbt(
+                    sunrise_sim::entity_nbt::mob_to_nbt(
                         &game.mobs[0],
                         [1, 2, 3, 4],
                         None,
@@ -1394,7 +1391,7 @@ pub(in crate::game) mod tests {
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = game.pack.assets.registry;
             let state = |name: &str| registry.default_state(name).unwrap();
@@ -1540,7 +1537,7 @@ pub(in crate::game) mod tests {
             with_game(|game| {
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let registry = game.pack.assets.registry;
                 let state = |name: &str, properties: &[(&str, &str)]| {

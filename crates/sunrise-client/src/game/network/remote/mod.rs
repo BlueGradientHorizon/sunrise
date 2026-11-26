@@ -53,19 +53,13 @@ use std::{
     time::{Duration, Instant},
 };
 #[allow(unused_imports)]
-use sunrise_client::{
-    chunk::Chunk,
-    containers::BlockEntity,
-    items::ItemStack,
-    join_seq::JoinSeq,
-    menu::Input,
-    mobs::{Mob, MobType},
-    motion::PlayerMotion,
-    net::{Event, Session},
-    sprint::Keys,
-};
+use sunrise_client::net::{Event, Session};
 use sunrise_core::{geometry::Vec3, profile::AccountProperty};
+#[allow(unused_imports)]
+use sunrise_items::items::ItemStack;
 use sunrise_level::chunk_streamer::{ChunkGenerator, Proto};
+#[allow(unused_imports)]
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 #[allow(unused_imports)]
 use sunrise_protocol::{
     item::Stack,
@@ -80,6 +74,14 @@ use sunrise_protocol::{
 };
 use sunrise_server_files::profiles::ServicesKeySet;
 use sunrise_sim::first_person_sim::Hand;
+#[allow(unused_imports)]
+use sunrise_sim::{
+    join_seq::JoinSeq,
+    menu::Input,
+    mobs::{Mob, MobType},
+    motion::PlayerMotion,
+    sprint::Keys,
+};
 #[allow(unused_imports)]
 use {
     sunrise_core::nbt::Tag,
@@ -136,8 +138,8 @@ pub(in crate::game) use super::villager_client::builtin_registries;
 pub(in crate::game) mod chat_queue;
 
 /// A text component the server sent, for the HUD.
-pub(in crate::game) fn remote_text(tag: &Tag) -> sunrise_client::text::Text {
-    use sunrise_client::scoreboard::{comp_text, tag_to_json};
+pub(in crate::game) fn remote_text(tag: &Tag) -> sunrise_client_core::text::Text {
+    use sunrise_client_core::scoreboard::{comp_text, tag_to_json};
     comp_text(&tag_to_json(tag))
 }
 
@@ -187,7 +189,7 @@ pub(in crate::game) fn entity_sound_state(
 
 /// `ClientboundOpenScreenPacket.title` as a container screen draws it: the
 /// component's styles, and the `§` codes a literal holds (`StringDecomposer`).
-pub(in crate::game) fn menu_title(tag: &Tag) -> sunrise_client::text::Text {
+pub(in crate::game) fn menu_title(tag: &Tag) -> sunrise_client_core::text::Text {
     remote_text(tag).resolve_legacy()
 }
 
@@ -228,7 +230,7 @@ pub(in crate::game) struct Tracked {
     pub(in crate::game) tick_count: i32,
     /// What `entity_size` answered at this copy's last size refresh, with the synced pose it
     /// was asked for, unless the copy is a mob, which keeps its own (`Mob::size_answer`).
-    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 
 /// An item has joined the client level, but has no stack to draw yet.
@@ -362,7 +364,7 @@ pub(in crate::game) enum RemoteDimensionEntry {
 }
 
 pub(in crate::game) struct Remote {
-    pub(in crate::game) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
+    pub(in crate::game) professions: Arc<sunrise_sim::mobs::villager::ResolvedProfessions>,
     pub session: Session,
     /// Display-only address computed at connection setup. Never holds the raw friend invite.
     pub(in crate::game) display_address: Option<String>,
@@ -379,23 +381,23 @@ pub(in crate::game) struct Remote {
     /// The synced attachments the server sent, by holder.
     pub attachments: HashMap<Holder, ResidentAttachments>,
     /// The colliders the server sent, by entity id (`sunrise:collider_sync`).
-    pub colliders: HashMap<u32, sunrise_client::colliders::ColliderState>,
+    pub colliders: HashMap<u32, sunrise_sim::colliders::ColliderState>,
     /// The colliders at the last client tick, before any packets handled between ticks.
     pub(in crate::game) collider_shove_start:
-        Option<(Dim, sunrise_client_render::moving_colliders::Prepared)>,
+        Option<(Dim, sunrise_world::moving_colliders::Prepared)>,
     /// How old the copy of the collider carrying the player is (`sunrise:carry_age`).
-    pub carry_age: sunrise_client::colliders::CarryAge,
+    pub carry_age: sunrise_sim::colliders::CarryAge,
     /// The server samples far terrain for us, this far at most (`lod_net`).
-    pub far_terrain: Option<sunrise_client::lod_net::Offer>,
+    pub far_terrain: Option<sunrise_sim::lod_net::Offer>,
     pub(in crate::game) builtin: Arc<Builtin>,
     pub(in crate::game) lang: Arc<Language>,
     pub(in crate::game) registries: Arc<Dynamic>,
     /// The block, item and fluid tags of `registries` by name, as native mods read them
     /// (`install_remote_tags`).
-    pub(in crate::game) tags: Option<sunrise_client::items::Items>,
+    pub(in crate::game) tags: Option<sunrise_items::items::Items>,
     /// The game's enchantments and the server's that it lacks (a data
     /// pack's), from their synced data; `None` when the server has none.
-    pub(in crate::game) enchantments: Option<Arc<sunrise_client::enchant::Enchantments>>,
+    pub(in crate::game) enchantments: Option<Arc<sunrise_items::enchant::Enchantments>>,
     pub(in crate::game) joined: bool,
     /// `ServerReconfigScreen` is up since this tick.
     pub(in crate::game) reconfiguring: Option<u64>,
@@ -427,11 +429,11 @@ pub(in crate::game) struct Remote {
     /// the client's own environment of that type: what gameplay reads. `None` when the type is
     /// refused, or has no data at all: neither the server sent it nor the client's resources hold
     /// it (`fill_known_entries` fills a known pack's entries from the client's own files).
-    pub(in crate::game) level_environment: Option<Arc<sunrise_client::environment::Environment>>,
+    pub(in crate::game) level_environment: Option<Arc<sunrise_level::environment::Environment>>,
     /// The same over the packs' Polytone stack of that type, what the frame draws (`None` without
     /// pack modifiers, or for a type the packs have no stack of: any but the three vanilla IDs).
     pub(in crate::game) level_pack_environment:
-        Option<Arc<sunrise_client::environment::Environment>>,
+        Option<Arc<sunrise_level::environment::Environment>>,
     /// The level's synchronized dimension type, which both environments are built from again
     /// when the packs change.
     pub(in crate::game) synced_type: Option<(String, serde_json::Value)>,
@@ -484,9 +486,9 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) carried: std::cell::Cell<Option<usize>>,
     pub(in crate::game) was_shared_flags: u8,
     pub(in crate::game) was_living_flags: u8,
-    pub(in crate::game) last_recorded_pose: Option<crate::pose::Pose>,
+    pub(in crate::game) last_recorded_pose: Option<sunrise_sim::pose::Pose>,
     /// Live `LocalPlayer.abilities`, mutated in arrival order by `CHANGE_GAME_MODE` and `PlayerAbilities`.
-    pub(in crate::game) abilities: sunrise_client::lan::abilities::PlayerAbilities,
+    pub(in crate::game) abilities: sunrise_sim::lan::abilities::PlayerAbilities,
     /// The old player's motion, from a Respawn with KEEP_ENTITY_DATA
     /// (`handleRespawn`: `newPlayer.setDeltaMovement(oldPlayer.getDeltaMovement())`),
     /// for the player made at the next teleport: a portal's teleport adds to it.
@@ -502,7 +504,7 @@ pub(in crate::game) struct Remote {
     /// The ClientInformation last sent (`Options.broadcastOptions` sends it
     /// again when a view distance, Chat, skin or Main Hand option changes).
     pub(in crate::game) sent_info: sunrise_protocol::packets::configuration::ClientInformation,
-    pub(in crate::game) group_count: sunrise_client::chunk_map::ConnectionGroupCount,
+    pub(in crate::game) group_count: sunrise_level::chunk_map::ConnectionGroupCount,
     /// BlockStatePredictionHandler: blocks changed ahead of the server (a predicted break),
     /// with what it remembers of each of them. Until the server acknowledges the
     /// sequence its block updates only replace the remembered state; then the block
@@ -519,7 +521,7 @@ pub(in crate::game) struct Remote {
     /// (`CraftingMenu.slotChangedCraftingGrid`): the client never computes it.
     pub(in crate::game) craft_result: Option<ItemStack>,
     /// The open menu's title as the server named it, with its styles.
-    pub(in crate::game) menu_title: Option<sunrise_client::text::Text>,
+    pub(in crate::game) menu_title: Option<sunrise_client_core::text::Text>,
     pub(in crate::game) menu_title_snapshot: Option<Arc<mod_api::Text>>,
     pub(in crate::game) state_id: i32,
     /// Window 0's state and carried stack while another menu is active.
@@ -529,7 +531,7 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) inventory_craft_result: Option<ItemStack>,
     pub(in crate::game) use_target: Option<[i32; 3]>,
     pub(in crate::game) cauldron_entries:
-        Option<sunrise_client::cauldron::interactions::Dispatcher<()>>,
+        Option<sunrise_sim::cauldron::interactions::Dispatcher<()>>,
     /// Receipts are connection-scoped; unlike block prediction sequences, they
     /// are never reset on a level change.
     pub(in crate::game) cauldron_receipt: i64,
@@ -542,10 +544,10 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) synced_attributes:
         HashMap<i32, HashMap<sunrise_world::attributes::entity::AttributeId, f64>>,
     /// Per-tick remote entity scratch retained between frames.
-    pub(in crate::game) tick_fluids: Vec<Option<sunrise_client::mobs::living::Fluids>>,
+    pub(in crate::game) tick_fluids: Vec<Option<sunrise_sim::mobs::living::Fluids>>,
     pub(in crate::game) tick_rain: Vec<bool>,
     pub(in crate::game) tick_standings: Vec<Option<String>>,
-    pub(in crate::game) tick_water_fx: Vec<sunrise_client::mobs::MobEvent>,
+    pub(in crate::game) tick_water_fx: Vec<sunrise_sim::mobs::MobEvent>,
     /// Complete network riding graph, including invisible plugin seat entities.
     pub(in crate::game) passenger_vehicles: HashMap<u32, PassengerSeat>,
     pub(in crate::game) lerps: HashMap<i32, Lerp>,
@@ -603,7 +605,7 @@ pub(in crate::game) struct Remote {
     /// (ClientboundCommandsPacket) once it has sent one, else the game's own,
     /// plus the commands native mods own (`chat::chat_tree_for`). Rebuilt where
     /// that base changes, not at each keystroke.
-    pub chat_tree: sunrise_client::command::Dispatcher,
+    pub chat_tree: sunrise_command::Dispatcher,
     pub(in crate::game) selector_metadata_supported: bool,
     /// Whether a `ClientboundCommandsPacket` has supplied the server's tree.
     /// The local fallback is for UI completion only; vanilla signs command
@@ -689,7 +691,7 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) stop_mining: bool,
     /// `CommonPlayerSpawnInfo.isFlat`: the level is a superflat one.
     pub(in crate::game) flat: bool,
-    pub(in crate::game) death_message: Option<sunrise_client::text::Text>,
+    pub(in crate::game) death_message: Option<sunrise_client_core::text::Text>,
     /// `LocalPlayer.showDeathScreen`: off with `immediate_respawn`.
     pub(in crate::game) show_death_screen: bool,
     /// `Player.isReducedDebugInfo`: the server's `reduced_debug_info` rule.
@@ -756,8 +758,8 @@ pub(in crate::game) fn face_direction(face: [i32; 3]) -> u8 {
 /// A protocol number format as the scoreboard's.
 pub(in crate::game) fn number_format(
     f: &play::NumberFormat,
-) -> sunrise_client::scoreboard::NumberFormat {
-    use sunrise_client::scoreboard::{NumberFormat, tag_to_json};
+) -> sunrise_client_core::scoreboard::NumberFormat {
+    use sunrise_client_core::scoreboard::{NumberFormat, tag_to_json};
     match f {
         play::NumberFormat::Blank => NumberFormat::Blank,
         play::NumberFormat::Styled(t) => NumberFormat::Styled(tag_to_json(t)),
@@ -808,7 +810,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         for p in &self.creatures.projectiles {
             out.push(json!({"id": p.id, "kind": format!("{:?}", p.kind).split([' ', '{']).next().unwrap_or(""), "position": at(p.position), "velocity": at(p.velocity),
-                "player_owned": p.owner == Some(sunrise_client::mobs::Who::Player),
+                "player_owned": p.owner == Some(sunrise_sim::mobs::Who::Player),
                 "on_fire": p.arrow.as_ref().is_some_and(|a| a.on_fire())}));
         }
         for (kind, p, _) in self.potions.thrown_entities() {
@@ -869,7 +871,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             }
             log::warn!("Cannot send cached custom components to this peer");
         }
-        let mut wire = sunrise_client::lan::guest::stack_to_network_projecting(
+        let mut wire = sunrise_sim::lan::guest::stack_to_network_projecting(
             |name| self.item_id(name),
             // Built-in first, as a hub's `SyncData::id` does: potions are one.
             |registry, name| {
@@ -890,7 +892,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             s,
             projected,
         )?;
-        sunrise_client::lan::guest::canonicalize_stack_patch(
+        sunrise_sim::lan::guest::canonicalize_stack_patch(
             &mut wire,
             source,
             self.items(),
@@ -1151,7 +1153,7 @@ pub(in crate::game) fn hand_id(hand: Hand) -> i32 {
 /// off hand gets no turn. `FireworkRocketItem.use` answers SUCCESS while the
 /// player glides (the rocket boosts them) and PASS otherwise.
 pub(in crate::game) fn use_ends_click(
-    info: &sunrise_client::items::ItemInfo,
+    info: &sunrise_items::items::ItemInfo,
     fall_flying: bool,
 ) -> bool {
     item_has_use(info) || (fall_flying && &*info.id == "minecraft:firework_rocket")
@@ -1218,14 +1220,14 @@ pub(in crate::game) fn boat_interact_passes(
 /// server decides; this is the client's guess of whether to go on. A carrot or warped fungus
 /// on a stick is not here: `FoodOnAStickItem.use` passes on a client, and only the server's
 /// answer to a boost that can run swings the hand.
-pub(in crate::game) fn item_has_use(info: &sunrise_client::items::ItemInfo) -> bool {
+pub(in crate::game) fn item_has_use(info: &sunrise_items::items::ItemInfo) -> bool {
     let id = info.id.trim_start_matches("minecraft:");
     id.ends_with("_spear")
         || info.is("minecraft:fishing_rod") // a content mod's rod too
         || info.consumable.is_some()
         || (info.equip_slot.is_some() && info.swappable)
         || info.blocks_attacks.is_some()
-        || sunrise_client::items::bucket_contents(&info.id).is_some()
+        || sunrise_items::items::bucket_contents(&info.id).is_some()
         || id.ends_with("_boat")
         || id.ends_with("_raft")
         || id.ends_with("_bundle")
@@ -1690,7 +1692,7 @@ pub(in crate::game) mod tests {
                 );
                 for id in [66, 67] {
                     remote.level_players.insert(id, id as u128);
-                    game.mobs.push(sunrise_client::mobs::Mob::new(
+                    game.mobs.push(sunrise_sim::mobs::Mob::new(
                         id as u32,
                         kind.clone(),
                         sunrise_core::geometry::Vec3::ZERO,
@@ -1874,12 +1876,10 @@ pub(in crate::game) mod tests {
     fn block_alias_survival_consumption_and_client_prediction() {
         use crate::game::{Options, Progress, Settings, World, load_resources};
         use std::{path::PathBuf, sync::Arc};
-        use sunrise_client::{
-            chunk::Chunk,
-            items::ItemStack,
-            mod_content::{ContentMod, build},
-        };
+        use sunrise_items::items::ItemStack;
+        use sunrise_level::chunk::Chunk;
         use sunrise_mod_package::content::{Block, Content, Item};
+        use sunrise_sim::mod_content::{ContentMod, build};
         let base = PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
         );
@@ -2036,7 +2036,7 @@ pub(in crate::game) mod tests {
                     .insert((x, z), Arc::new(Chunk::empty(x, z)));
             }
         }
-        client.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        client.set_local_mode(sunrise_command::args::GameMode::Survival);
         client.player = None;
         client.selected = 0;
         let target = client
@@ -2069,11 +2069,9 @@ pub(in crate::game) mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    use sunrise_client::{
-        containers::{Beacon, BlockEntity},
-        items::ItemStack,
-    };
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::{Beacon, BlockEntity};
 
     /// #12040: a server's client moves at the speed the server's attributes give it, never its
     /// effects' own. Vanilla's server removes a Speed that runs out in ServerPlayer.doTick, after
@@ -2085,12 +2083,12 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_servers_client_takes_its_speed_from_the_attributes_not_the_effect() {
         use crate::game::{Audio, Options, Progress, Settings, load_resources};
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play::{
             AttributeModifier, AttributeSnapshot, Clientbound as C, RemoveMobEffect,
             UpdateAttributes, UpdateMobEffect,
         };
+        use sunrise_sim::motion::PlayerMotion;
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
         );
@@ -2204,11 +2202,11 @@ pub(in crate::game) mod swim_start_tests;
 /// `Entity.baseTick`'s fluid update for a mob this window only displays (`fluids`, sampled before
 /// the tick), with the splash it draws, and the block it stands on.
 pub(in crate::game) fn client_fluid_step(
-    m: &mut sunrise_client::mobs::Mob,
-    fluids: Option<sunrise_client::mobs::living::Fluids>,
+    m: &mut sunrise_sim::mobs::Mob,
+    fluids: Option<sunrise_sim::mobs::living::Fluids>,
     standing: Option<String>,
     own: Option<i32>,
-    fx: &mut Vec<sunrise_client::mobs::MobEvent>,
+    fx: &mut Vec<sunrise_sim::mobs::MobEvent>,
 ) {
     if let Some(fluids) = fluids {
         let was = m.fluids.in_water;
@@ -2220,7 +2218,7 @@ pub(in crate::game) fn client_fluid_step(
         // only: ClientLevel draws addParticle, and playSeededSound
         // drops Entity.playSound (the server broadcasts that).
         if m.fluids.in_water && !was && !first && Some(m.id as i32) != own {
-            sunrise_client::mobs::living::client_water_splash(m, fx);
+            sunrise_sim::mobs::living::client_water_splash(m, fx);
         }
         m.first_tick = false;
     }

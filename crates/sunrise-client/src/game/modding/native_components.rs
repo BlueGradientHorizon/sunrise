@@ -2,9 +2,9 @@
 #[allow(unused_imports)]
 use super::Game;
 #[allow(unused_imports)]
-use sunrise_client::items::ItemStack;
-#[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
+#[allow(unused_imports)]
+use sunrise_items::items::ItemStack;
 
 /// Failure to access a native item component.
 #[derive(Debug)]
@@ -46,7 +46,7 @@ pub(in crate::game) fn stack_attack_bonus_preview(
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Metadata backing ItemResource::damageable through the gameplay property path.
     pub(in crate::game) fn item_resource_damageable(&self, stack: &ItemStack) -> bool {
-        sunrise_client::stations::is_damageable(self.items(), stack)
+        sunrise_sim::stations::is_damageable(self.items(), stack)
     }
     /// Metadata backing ItemResource::foil through the gameplay property path.
     pub(in crate::game) fn item_resource_foil(&self, stack: &ItemStack) -> bool {
@@ -75,7 +75,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             damage: 0,
             extra: None,
         };
-        sunrise_client::stations::is_valid_repair_item(
+        sunrise_sim::stations::is_valid_repair_item(
             &self.items().enchantments,
             self.items(),
             stack,
@@ -94,7 +94,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> Option<Tag> {
         let item = mod_api::__private::item_key_id(item)?;
         let prototype = self.pack.item_models.prototypes.get(item)?;
-        Some(sunrise_client::scoreboard::json_to_tag(
+        Some(sunrise_client_core::scoreboard::json_to_tag(
             prototype.get(component)?,
         ))
     }
@@ -116,7 +116,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The slot `stack` is equipped to (`Equippable.slot`) after its component patch, behind
     /// `ItemResource::equippable_slot`, through the opaque backend. API @API:item_components@.
     pub(in crate::game) fn item_equippable_slot(&self, stack: &ItemStack) -> Option<String> {
-        sunrise_client::item_sync::equippable_slot(stack, self.items())
+        sunrise_sim::item_sync::equippable_slot(stack, self.items())
     }
     /// `InstrumentItem.getUseDuration`: effective named or inline instrument; no instrument means zero.
     pub(in crate::game) fn native_item_instrument_duration(&self, stack: &ItemStack) -> i32 {
@@ -187,8 +187,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn mod_item_name(
         &self,
         stack: &ItemStack,
-    ) -> Option<sunrise_client::text::Text> {
-        sunrise_client::stations::item_name_part(&self.loop_context, stack)
+    ) -> Option<sunrise_client_core::text::Text> {
+        sunrise_sim::stations::item_name_part(&self.loop_context, stack)
     }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
     pub(in crate::game) fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
@@ -246,7 +246,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let enchantments = self
             .item_combat_component(stack, "minecraft:enchantments")
             .unwrap_or_else(|| serde_json::json!({}));
-        let tag = sunrise_client::scoreboard::json_to_tag(
+        let tag = sunrise_client_core::scoreboard::json_to_tag(
             &serde_json::json!({"minecraft:enchantments": enchantments}),
         );
         let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
@@ -426,7 +426,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
 #[cfg(test)]
 pub(in crate::game) mod equippable_slot_tests {
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// `Equippable.slot`: armour goes where it is worn, a plain item goes nowhere.
     #[test]
@@ -559,7 +559,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
         use mod_api::{ComponentId, ItemResource, Tag};
         use serde_json::json;
         use std::{fs, path::Path};
-        use sunrise_client::items::ItemStack;
+        use sunrise_items::items::ItemStack;
         fn link_fixture_source(source: &Path, target: &Path) {
             #[cfg(unix)]
             std::os::unix::fs::symlink(source, target).unwrap();
@@ -624,7 +624,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
                 &ItemStack::new("minecraft:oak_planks", 1),
             ));
             assert!(wood.repairable(game, &plank));
-            assert!(sunrise_client::stations::is_valid_repair_item(
+            assert!(sunrise_sim::stations::is_valid_repair_item(
                 &game.items().enchantments,
                 game.items(),
                 &engine(&wood, 1),
@@ -756,9 +756,9 @@ pub(in crate::game) mod combat_query_tests {
     use super::super::api_values::test_snapshot;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::{Aabb, Vec3};
     use sunrise_core::random::RandomSource;
+    use sunrise_sim::motion::PlayerMotion;
 
     fn actor(game: &mut crate::game::ServerGame<'_>) -> mod_api::LivingRef {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -769,9 +769,10 @@ pub(in crate::game) mod combat_query_tests {
         mod_api::ItemResource::of(&test_snapshot(stack))
     }
     fn patch(stack: &mut ItemStack, id: &str, value: serde_json::Value) {
-        stack
-            .data_mut()
-            .set_other(id, Some(sunrise_client::scoreboard::json_to_tag(&value)));
+        stack.data_mut().set_other(
+            id,
+            Some(sunrise_client_core::scoreboard::json_to_tag(&value)),
+        );
     }
 
     #[test]
@@ -944,7 +945,7 @@ pub(in crate::game) mod combat_query_tests {
                 .unwrap()
                 .clone();
             game.mobs
-                .push(sunrise_client::mobs::Mob::new(21, kind, Vec3::ZERO, 0.0));
+                .push(sunrise_sim::mobs::Mob::new(21, kind, Vec3::ZERO, 0.0));
             let zombie = mod_api::LivingRef::new(game.entity(21).unwrap());
             assert_eq!(
                 plain
@@ -1109,7 +1110,7 @@ pub(in crate::game) fn stack_can_be_hurt_by(
         .prototypes
         .get(stack.item.as_ref())
         .and_then(|components| components.get("minecraft:damage_resistant"));
-    sunrise_client::item_damage::stack_can_be_hurt_by(default, catalog, stack, name)
+    sunrise_sim::item_damage::stack_can_be_hurt_by(default, catalog, stack, name)
 }
 
 pub(in crate::game) const ITEM_ENVIRONMENT_DAMAGE: [&str; 4] = [

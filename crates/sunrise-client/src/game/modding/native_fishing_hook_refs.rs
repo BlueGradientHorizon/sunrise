@@ -55,8 +55,8 @@ mod tests {
     };
     use super::*;
     use mod_api::WorldEpoch;
-    use sunrise_client::{mobs::Mob, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     #[test]
     #[ignore = "daily"]

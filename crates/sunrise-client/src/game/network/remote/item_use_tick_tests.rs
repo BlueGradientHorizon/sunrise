@@ -1,6 +1,6 @@
 use mod_api::{Flow, Hooks, HostSide, LivingEntityUseItemTickEvent, ModEntry, Mods};
 use std::sync::{Arc, Mutex};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 struct Effects(Arc<Mutex<Vec<i32>>>);
 #[mod_api::sunrise_part]

@@ -7,10 +7,10 @@
 //! only an entity whose `Pos` is the click point's height. Placement uses
 //! outline bounds, collision shapes and suffocation predicates.
 use super::{Game, Hit, InteractTarget, Keys};
-use sunrise_client::cushion::blocks_in;
-use sunrise_client::entities::{Cushion, dye_index};
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::cushion::blocks_in;
+use sunrise_sim::entities::{Cushion, dye_index};
 
 /// `Direction.fromYRot(yaw).toYRot()`: the nearest 90 degree step.
 pub(crate) fn snap_yaw(yaw: f32) -> f32 {
@@ -48,7 +48,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     pub(in crate::game::server_side) fn cushion_survives(&self, c: &Cushion) -> bool {
-        sunrise_client::cushion::survives(&PlacementWorld(self), aabb(c.bounds()))
+        sunrise_sim::cushion::survives(&PlacementWorld(self), aabb(c.bounds()))
     }
 
     /// `Cushion.destroyIfInFire`: a fire-tagged block inside the deflated box.
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             0.75,
             0.8,
         );
-        let ctx = self.who_context(Some(sunrise_client::mobs::Who::Player), None);
+        let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Player), None);
         self.post_game_event(
             "minecraft:entity_place",
             [position.x, position.y, position.z],
@@ -340,7 +340,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
             || self.infinite_materials(source.as_ref())
         {
             return true;
@@ -380,7 +380,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
         // collidedWithFluid: the fluid box of the cushion's own block against its box.
         if let Some((height, _)) =
-            self.fluid_height_of(x, y, z, Some(sunrise_client::blocks::Fluid::Lava))
+            self.fluid_height_of(x, y, z, Some(sunrise_items::blocks::Fluid::Lava))
         {
             let fluid = Aabb::new(
                 Vec3::new(f64::from(x), f64::from(y), f64::from(z)),
@@ -465,7 +465,7 @@ pub(in crate::game) mod tests {
     /// cushion never moves, so a save keeps what it was loaded with.
     #[test]
     fn a_cushion_save_keeps_its_loaded_ground_state() {
-        use crate::entity_nbt::{cushion_from_nbt, cushion_to_nbt};
+        use sunrise_sim::entity_nbt::{cushion_from_nbt, cushion_to_nbt};
         let d = |v: f64| Tag::Double(v.to_bits());
         let pos = Tag::List(vec![d(0.5), d(64.0), d(0.5)]);
         let raw = Tag::compound([

@@ -417,8 +417,8 @@ pub(in crate::game) fn eggs(game: &crate::game::ServerGame<'_>) -> u32 {
 }
 
 pub(in crate::game) fn tick_in_level(game: &mut crate::game::ServerGame<'_>) -> Result<()> {
-    sunrise_client::block_contact::in_level(
-        sunrise_client::parallel::TickThread::mint(),
+    sunrise_sim::block_contact::in_level(
+        sunrise_sim::parallel::TickThread::mint(),
         Some(game.dim.id()),
         || game.tick_creature_entities(),
     )
@@ -445,7 +445,7 @@ pub(in crate::game) fn prime_hook(mob: &mut Mob, family: Family) {
         }
         Family::Knockback => {
             mob.add_effect(
-                sunrise_client::brewing::effect("borrowed-panic:hit")
+                sunrise_level::brewing::effect("borrowed-panic:hit")
                     .unwrap()
                     .id,
                 10,
@@ -519,7 +519,7 @@ pub(in crate::game) fn fixture_mob(
                 Output::Egg => mob.extra.egg_time = 1,
                 // NoAI chickens still lay; keep the replacement's timer above zero on both ticks.
                 Output::Reset => mob.extra.egg_time = 3,
-                Output::Guest | Output::Mixed => sunrise_client::mobs::cube::set_size(&mut mob, 2),
+                Output::Guest | Output::Mixed => sunrise_sim::mobs::cube::set_size(&mut mob, 2),
                 Output::Quiet | Output::Push => {}
             }
         }
@@ -985,14 +985,14 @@ fn player_living_breathe_panic_rolls_back_transactional_writes() {
         game.as_guest(12, |game| {
             game.player.as_mut().unwrap().air = 100;
             game.selected = 0;
-            game.inventory[0] = Some(sunrise_client::items::ItemStack::new(
+            game.inventory[0] = Some(sunrise_items::items::ItemStack::new(
                 "minecraft:iron_sword",
                 1,
             ));
-            let step = sunrise_client::breathing::AirStep {
+            let step = sunrise_sim::breathing::AirStep {
                 air: 100,
                 max: 300,
-                vanilla: sunrise_client::breathing::Breath {
+                vanilla: sunrise_sim::breathing::Breath {
                     can_breathe: true,
                     consume: 0,
                     refill: 4,

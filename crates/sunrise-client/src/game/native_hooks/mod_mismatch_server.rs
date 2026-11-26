@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::save::level_mods;
+use sunrise_sim::save::level_mods;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A server opened a world: its saved code and content mods against the loaded ones.

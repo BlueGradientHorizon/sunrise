@@ -12,7 +12,7 @@ pub(in crate::game) mod input_burst_tests;
 #[ignore = "daily"]
 fn a_creative_drop_sends_no_creative_slot() {
     with_pressing_game(|game, packets, _| {
-        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_local_mode(sunrise_command::args::GameMode::Creative);
         game.set_test_forced_hit(None);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
         // The setup's stack is the server's as well.
@@ -47,7 +47,7 @@ fn a_creative_drop_sends_no_creative_slot() {
 #[ignore = "daily"]
 fn a_toolbar_load_goes_out_before_a_drop_in_its_tick() {
     with_pressing_game(|game, packets, _| {
-        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_local_mode(sunrise_command::args::GameMode::Creative);
         game.set_test_forced_hit(None);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
         game.remote_synced();
@@ -103,7 +103,7 @@ fn clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown() {
         assert_eq!(game.clicks.miss_time, 8);
 
         game.clicks.miss_time = 0;
-        game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        game.set_local_mode(sunrise_command::args::GameMode::Creative);
         assert_eq!(attack_mapping.click(game), Ok(()));
         game.remote_handle_input();
         assert_eq!(sent(packets), ["minecraft:punch"]);

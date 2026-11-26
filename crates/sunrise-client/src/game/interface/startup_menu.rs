@@ -103,10 +103,10 @@ impl StartupMenu {
         &mut self,
         root: PathBuf,
         settings: &Settings,
-        additional_data: Arc<[Arc<sunrise_client::datapack::DataPack>]>,
+        additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
         splashes: &str,
     ) {
-        sunrise_client::lang::set(sunrise_client::lang::Language::load(
+        sunrise_client_core::lang::set(sunrise_client_core::lang::Language::load(
             &[&sunrise_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )],
@@ -626,7 +626,7 @@ impl Loading {
 
     fn open_menu_options(&mut self, page: Page) {
         self.menu.options.open_at(false, page);
-        self.menu.options.languages = sunrise_client::lang::available(&[
+        self.menu.options.languages = sunrise_client_core::lang::available(&[
             &sunrise_assets::resource_source::ResourceSource::directory(self.menu.root.clone()),
         ]);
         let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
@@ -659,7 +659,7 @@ impl Loading {
                     self.save_menu_settings();
                 }
                 Event::Language(code) => {
-                    sunrise_client::lang::set(sunrise_client::lang::Language::load(
+                    sunrise_client_core::lang::set(sunrise_client_core::lang::Language::load(
                         &[&sunrise_assets::resource_source::ResourceSource::directory(
                             self.menu.root.clone(),
                         )],
@@ -721,7 +721,7 @@ impl Loading {
                     packs::open_folder(&dir);
                 }
                 Event::OpenModFolder => {
-                    let dir = crate::game::game_dir().join(sunrise_client::mod_list::DIR);
+                    let dir = crate::game::game_dir().join(sunrise_mod_package::mod_list::DIR);
                     let _ = std::fs::create_dir_all(&dir);
                     packs::open_folder(&dir);
                 }
@@ -779,7 +779,7 @@ impl Loading {
                 Event::Credits => {
                     if let Some(gui) = &self.gui {
                         let name = self.options.as_ref().map_or_else(
-                            || sunrise_client::offline_name::generate(0),
+                            || sunrise_sim::offline_name::generate(0),
                             Options::player_name,
                         );
                         let screen = sunrise_client::win_screen::WinScreen::new(
@@ -1432,7 +1432,7 @@ impl Loading {
         // The buttons crates add to the title screen show by what is installed now
         // (`sunrise_hooks::title`), as on the game's own title screen.
         self.sync_title_mods();
-        let logs = sunrise_client::logging::recent_lines();
+        let logs = sunrise_level::logging::recent_lines();
         let Some(gui) = &self.gui else {
             // The pack's screens do not exist yet: the boot screen holds the
             // window, the wordmark and the console's lines while they load.
@@ -1571,8 +1571,8 @@ impl Loading {
 
 /// The Mods screen before a game exists lists the installed packages as `Game::start_mods`
 /// does, without what loading finds out (refusals, the native mods built in).
-fn list_menu_mods(mods: &mut sunrise_client::mod_list::ModList) {
-    use sunrise_client::mod_list::{DIR, Installed, ModInfo};
+fn list_menu_mods(mods: &mut sunrise_mod_package::mod_list::ModList) {
+    use sunrise_mod_package::mod_list::{DIR, Installed, ModInfo};
     mods.installed.clear();
     mods.info.clear();
     for path in sunrise_mod_package::find(&crate::game::game_dir().join(DIR)) {
@@ -1648,7 +1648,7 @@ mod tests {
     #[ignore = "daily"]
     fn queued_creation_is_reconciled_at_handoff() {
         use mod_api::{Hooks, Registrar, RegistrationContext};
-        use sunrise_client::gamerules::Value;
+        use sunrise_client_core::gamerules::Value;
         struct Mod;
         #[mod_api::__subscriptions]
         impl Hooks for Mod {
@@ -2026,7 +2026,7 @@ mod tests {
         );
         let mut screen = sunrise_client::pack_screen::PackScreen::new(
             &sunrise_client::screen_draw::Measure(&loading.boot.font),
-            sunrise_client::text::Text::translate("dataPack.title", &[]),
+            sunrise_client_core::text::Text::translate("dataPack.title", &[]),
             480,
             270,
             false,

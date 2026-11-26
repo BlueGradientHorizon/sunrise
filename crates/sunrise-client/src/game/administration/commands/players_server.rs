@@ -1,6 +1,8 @@
 use super::{Game, Target};
-use sunrise_client::{command::args::Selector, lan::guest::Guest, text::Text};
+use sunrise_client_core::text::Text;
+use sunrise_command::args::Selector;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::lan::guest::Guest;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Run `f` for the player `t` (None for anything else): in place, or
@@ -47,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.lan.as_ref()?.hub.send_to(
                 conn,
                 &C::SystemChat(play::SystemChat {
-                    content: sunrise_client::lan::data::component_nbt(&line.component()),
+                    content: sunrise_sim::lan::data::component_nbt(&line.component()),
                     overlay: false,
                 }),
             );
@@ -125,7 +127,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 None => source
                     .block
                     .and_then(|pos| match self.world.block_entities.get(&pos) {
-                        Some(sunrise_client::containers::BlockEntity::CommandBlock(block)) => {
+                        Some(sunrise_level::containers::BlockEntity::CommandBlock(block)) => {
                             Some(block.name())
                         }
                         _ => None,

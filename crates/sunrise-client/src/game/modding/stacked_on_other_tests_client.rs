@@ -1,6 +1,7 @@
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{ModEntry, Mods};
-use sunrise_client::{items::ItemStack, menu::Input};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::Input;
 
 pub(in crate::game) mod item_part_tests {
     use super::*;
@@ -33,7 +34,7 @@ pub(in crate::game) mod item_part_tests {
             with_client_game(|game| {
                 let (mut reader, _writer) = crate::game::remote::tests::connect_menu_test(game);
                 crate::game::remote::tests::spawn_menu_test(game);
-                let mut body = sunrise_client::motion::PlayerMotion::new(
+                let mut body = sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
                 )

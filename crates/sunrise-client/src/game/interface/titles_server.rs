@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.sendOverlayMessage`: queue an action-bar `SystemChat` packet.
@@ -12,7 +12,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .guest_packets
             .push(sunrise_protocol::packets::play::Clientbound::SystemChat(
                 sunrise_protocol::packets::play::SystemChat {
-                    content: sunrise_client::lan::data::component_nbt(&message.component()),
+                    content: sunrise_sim::lan::data::component_nbt(&message.component()),
                     overlay: true,
                 },
             ));

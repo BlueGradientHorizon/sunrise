@@ -30,7 +30,7 @@ pub(in crate::game) mod on_entity_item_update_tests {
     };
     use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     /// An item part that writes the entity's pickup delay to 7 on every update and
     /// records the entities it was told about; `cancels` ends the tick.
@@ -126,7 +126,7 @@ pub(in crate::game) mod on_entity_item_update_tests {
         game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
             .begin_open(mod_api::Authority::IntegratedServer);
-        game.world = sunrise_client::world::World::new(game.res.facts().air, 1);
+        game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

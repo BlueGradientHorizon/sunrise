@@ -3,7 +3,7 @@
 //! `CauldronInteractions`' bucket and bottle interactions award it next to
 //! their own cauldron statistic (washing a shulker box does not).
 use crate::game::{Hit, game_tests::tests::server_game};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 const POS: [i32; 3] = [2, 4, 3];
 
@@ -18,7 +18,7 @@ fn cauldron_game<'a>(
     let mut game = server_game(resources);
     game.creative = false;
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(
+        sunrise_sim::motion::PlayerMotion::new(
             game.motion,
             sunrise_core::geometry::Vec3::new(2.5, 4.0, 2.5),
         )

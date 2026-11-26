@@ -55,7 +55,7 @@ fn the_entity_destroy_block_names_reaches_the_listener() {
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let mut items = game.items().clone();
         items.set_loot_tables(tables);
         game.server_items = Some(Arc::new(items));

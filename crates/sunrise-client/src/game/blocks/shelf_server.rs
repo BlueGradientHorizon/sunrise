@@ -1,9 +1,9 @@
 //! Server-side shelf item swaps (`ShelfBlock.useItemOn`).
 use super::{Game, Hit, machines::dir_from_name};
-use sunrise_client::containers::BlockEntity;
 use sunrise_core::geometry::Direction;
+use sunrise_level::containers::BlockEntity;
 
-fn accepts(limit: Option<u32>, stack: Option<&sunrise_client::items::ItemStack>) -> bool {
+fn accepts(limit: Option<u32>, stack: Option<&sunrise_items::items::ItemStack>) -> bool {
     limit.is_none_or(|limit| stack.is_none_or(|stack| stack.count <= limit))
 }
 
@@ -145,8 +145,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .iter()
                     .find(|(key, _)| key == "minecraft:use_effects")
                     .map_or(default, |(_, tag)| {
-                        sunrise_client::save::number(tag.get("interact_vibrations")).unwrap_or(1)
-                            != 0
+                        sunrise_sim::save::number(tag.get("interact_vibrations")).unwrap_or(1) != 0
                     })
             });
             if vibrations {
@@ -173,11 +172,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod stack_limit_tests {
     #[test]
     fn shelf_swap_refuses_an_oversized_offer_without_capping_unmodified_shelves() {
-        let stack = sunrise_client::items::ItemStack::new("minecraft:stick", 99);
+        let stack = sunrise_items::items::ItemStack::new("minecraft:stick", 99);
         assert!(super::accepts(None, Some(&stack)));
         assert!(!super::accepts(Some(10), Some(&stack)));
         assert!(super::accepts(Some(10), None));
-        let stack = sunrise_client::items::ItemStack::new("minecraft:stick", 10);
+        let stack = sunrise_items::items::ItemStack::new("minecraft:stick", 10);
         assert!(super::accepts(Some(10), Some(&stack)));
     }
 }

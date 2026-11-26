@@ -6,13 +6,13 @@ use mod_api::{
     LivingIncomingDamageEvent, ModEntry, ServerHost,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
+use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::{
     mobs::{Mob, Who},
     projectiles::{Projectile, ProjectileKind},
 };
-use sunrise_core::{geometry::Vec3, nbt::Tag, position::ChunkPos};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::game) struct Hit {

@@ -1,7 +1,7 @@
 //! Single-source-of-truth live pickable target query and non-mob projectile hit dispatch.
-use sunrise_client::mobs::Who;
-use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 /// Per-projectile target filters (`canHitEntity` overrides).
 #[derive(Clone, Copy, Debug, Default)]

@@ -3,9 +3,9 @@
 //! or `ShoulderEntityRight`, and flies off again when the player is hurt,
 //! falls, swims, flies or sleeps (`ServerPlayer.handleShoulderEntities`).
 use super::Game;
-use sunrise_client::mobs::Species;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_sim::mobs::Species;
 
 const KEYS: [&str; 2] = ["ShoulderEntityLeft", "ShoulderEntityRight"];
 
@@ -46,7 +46,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         // The acting player must be the saved owner (`getOwner`).
-        if !sunrise_client::mobs::tame::owned_by(self.mobs[i].extra.owner, self.acting_uuid()) {
+        if !sunrise_sim::mobs::tame::owned_by(self.mobs[i].extra.owner, self.acting_uuid()) {
             return;
         }
         if self.riding.is_some()
@@ -136,10 +136,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .collect();
         let peaceful = self.ui.difficulty == 0;
         let maps = self.side.world_tables.0.as_ref().map_or_else(
-            || sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla().as_ref(),
+            || sunrise_sim::neoforge_mob_maps::NeoForgeMobMaps::vanilla().as_ref(),
             |tables| tables.data_maps.mob_maps.as_ref(),
         );
-        if let Some((sound, volume, pitch)) = sunrise_client::mobs::parrot::shoulder_sound(
+        if let Some((sound, volume, pitch)) = sunrise_sim::mobs::parrot::shoulder_sound(
             maps,
             &mut self.world.random,
             alive,
@@ -147,7 +147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             peaceful,
             &nearby,
         ) {
-            let sound = sunrise_client::mobs::entity_sounds::full_id(sound);
+            let sound = sunrise_sim::mobs::entity_sounds::full_id(sound);
             self.server_play_sound(&sound, at, volume, pitch);
         }
     }
@@ -221,8 +221,8 @@ mod variant_tests {
 mod mod_parrot_tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::mobs::Mob;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::mobs::Mob;
+    use sunrise_sim::motion::PlayerMotion;
 
     /// A parrot lands on its owner's shoulder by its class, saved there as
     /// itself, so a content mod's parrot type (#4031) does too, under its own

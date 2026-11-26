@@ -7,7 +7,8 @@ use mod_api::{
     AttachedEnergy, AttachedItems, AttachmentType, EnergyHandler, HostTransaction, ITEM_STACKS,
     ItemResource, ResourceHandler, ServerHost, StackList,
 };
-use sunrise_client::{chunk::Chunk, items::ItemStack};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 static ITEMS: AttachmentType<StackList<ItemResource>> = AttachmentType {
     namespace: "storage_test",

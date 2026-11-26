@@ -4,16 +4,16 @@
 //! sent, never the type's other defaults.
 use super::Game;
 use std::sync::Arc;
-use sunrise_client::items::ItemStack;
-use sunrise_client::{
-    items::Items,
+use sunrise_items::items::ItemStack;
+use sunrise_items::items::Items;
+use sunrise_protocol::packets::play::{AttributeModifier, AttributeSnapshot};
+use sunrise_sim::{
     lan::attributes::{add_modifier, instance, operation_named, syncable_snapshots},
     mobs::{
         GearKnockback, Mob, Species,
         finalize::{self, Attr, Op},
     },
 };
-use sunrise_protocol::packets::play::{AttributeModifier, AttributeSnapshot};
 
 /// `EquipmentSlotGroup.test`: whether a modifier's slot group covers a slot.
 /// For one snapshot of the mobs, each type's movement speed: its synced
@@ -21,8 +21,8 @@ use sunrise_protocol::packets::play::{AttributeModifier, AttributeSnapshot};
 /// by name. The pointers are only compared while the snapshot holds the types.
 #[derive(Default)]
 pub(in crate::game) struct SpeedByType(
-    sunrise_client::fast_hash::FxHashMap<
-        *const sunrise_client::mobs::MobType,
+    sunrise_level::fast_hash::FxHashMap<
+        *const sunrise_sim::mobs::MobType,
         (Option<i32>, Option<f64>),
     >,
 );
@@ -55,7 +55,7 @@ fn gear_knockback(items: &Items, worn: &[Option<&ItemStack>; 6]) -> Vec<(f64, Op
         let Some(stack) = stack else {
             continue;
         };
-        for row in sunrise_client::item_attributes::attribute_modifiers(stack, items).iter() {
+        for row in sunrise_sim::item_attributes::attribute_modifiers(stack, items).iter() {
             if row.attribute == "minecraft:knockback_resistance" && slot_in_group(&row.slot, slot) {
                 let op = match operation_named(&row.operation) {
                     1 => Op::AddMultipliedBase,
@@ -161,7 +161,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Attr::MovementSpeed.id(),
             sunrise_world::attribute_map::ValueKind::Computed,
             || {
-                sunrise_client::entity_nbt::attribute_entries(m)
+                sunrise_sim::entity_nbt::attribute_entries(m)
                     .into_iter()
                     .map(|(_, e)| e)
                     .collect()
@@ -234,7 +234,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// first use.
     pub(in crate::game) fn stand_attributes(
         &self,
-        live: &sunrise_client::living_attributes::LivingAttributes,
+        live: &sunrise_sim::living_attributes::LivingAttributes,
         out: &mut Vec<AttributeSnapshot>,
     ) {
         const KIND: &str = "minecraft:armor_stand";
@@ -310,7 +310,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(key) = p.attributes.key("minecraft:waypoint_transmit_range")
             && let Ok(Some(handle)) = p.attributes.get_instance(Some(key))
         {
-            let crouching = p.pose == sunrise_client::pose::Pose::Crouching;
+            let crouching = p.pose == sunrise_sim::pose::Pose::Crouching;
             let _ = p.attributes.edit(&handle, |value, observer| {
                 if crouching {
                     value.add_or_update_transient(CROUCH.clone(), observer)

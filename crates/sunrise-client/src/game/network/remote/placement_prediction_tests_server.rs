@@ -8,11 +8,11 @@ fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
         let (mut peer, _writer) = super::tests::connect_menu_test(game);
         peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
             .unwrap();
-        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_local_mode(sunrise_command::args::GameMode::Survival);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let hit = top_of(0, 0);
         game.set_test_forced_hit(Some(hit));
         let registry = game.pack.assets.registry;

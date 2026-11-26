@@ -24,7 +24,7 @@ impl Resources {
     pub(in crate::game) fn recipes(&self) -> &Recipes {
         &self.rest().recipes
     }
-    pub(in crate::game) fn transformers(&self) -> &sunrise_client::block_transform::Transformers {
+    pub(in crate::game) fn transformers(&self) -> &sunrise_sim::block_transform::Transformers {
         &self.rest().transformers
     }
     pub(in crate::game) fn biomes(&self) -> &Arc<Biomes> {
@@ -46,10 +46,10 @@ impl Resources {
     }
     /// The player's, the armor stand's and the dragon's registry keys, resolved with these
     /// resources.
-    pub(in crate::game) fn living_type_keys(&self) -> sunrise_client::health::LivingTypeKeys {
+    pub(in crate::game) fn living_type_keys(&self) -> sunrise_sim::health::LivingTypeKeys {
         self.rest().living_type_keys
     }
-    pub(in crate::game) fn mob_data(&self) -> &sunrise_client::mobs::MobData {
+    pub(in crate::game) fn mob_data(&self) -> &sunrise_sim::mobs::MobData {
         &self.rest().mob_data
     }
     pub(in crate::game) fn providers(&self) -> &Providers {
@@ -77,13 +77,13 @@ impl Resources {
     }
     /// The variant registries finalizeSpawn selects from
     /// (`data/minecraft/<registry>`), shared with world generation.
-    pub fn spawn_registries(&self) -> &sunrise_client::mobs::finalize::SpawnRegistries {
+    pub fn spawn_registries(&self) -> &sunrise_sim::mobs::finalize::SpawnRegistries {
         &self.core.spawn_registries
     }
     pub(in crate::game) fn threads(&self) -> usize {
         self.core.threads
     }
-    pub(in crate::game) fn stations(&self) -> &sunrise_client::stations::StationData {
+    pub(in crate::game) fn stations(&self) -> &sunrise_sim::stations::StationData {
         &self.rest().stations
     }
 }
@@ -111,7 +111,7 @@ pub struct UiResources {
 #[rustfmt::skip]
 pub struct PlainTexts(
     pub(in crate::game)
-        std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_client::text::Text>>,
+        std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_client_core::text::Text>>,
 );
 
 #[cfg(feature = "client")]

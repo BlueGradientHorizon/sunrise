@@ -34,18 +34,14 @@ impl Drop for NeverClone {
         self.0.fetch_add(1, Ordering::SeqCst);
     }
 }
-impl sunrise_client::mobs::goals::Goal for NeverClone {
+impl sunrise_sim::mobs::goals::Goal for NeverClone {
     fn flags(&self) -> u8 {
         0
     }
-    fn can_use(
-        &mut self,
-        _: &mut Mob,
-        _: &mut sunrise_client::mobs::goals::Cx<'_, '_, '_>,
-    ) -> bool {
+    fn can_use(&mut self, _: &mut Mob, _: &mut sunrise_sim::mobs::goals::Cx<'_, '_, '_>) -> bool {
         false
     }
-    fn box_clone(&self) -> Box<dyn sunrise_client::mobs::goals::Goal> {
+    fn box_clone(&self) -> Box<dyn sunrise_sim::mobs::goals::Goal> {
         panic!("pending ownership must never clone opaque goals")
     }
 }

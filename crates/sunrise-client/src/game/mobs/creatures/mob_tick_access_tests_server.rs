@@ -11,7 +11,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 /// As on NeoForge, where each projectile ticks in turn: a mod that moves a mob in one arrow's
 /// Post moves it for the next arrow of the same tick, which hits it there.
@@ -78,7 +78,7 @@ fn a_mob_outside_the_entity_tick_list_checks_no_despawn() {
             game.side
                 .tickets
                 .0
-                .update(Some(sunrise_client::ticket_levels::Sources {
+                .update(Some(sunrise_sim::ticket_levels::Sources {
                     forced: vec![(0, 0)],
                     ..Default::default()
                 }));

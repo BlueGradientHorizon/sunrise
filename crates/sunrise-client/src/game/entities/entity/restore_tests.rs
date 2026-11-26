@@ -1,9 +1,9 @@
 use crate::game::native_entity_refs::tests::with_game;
 use std::sync::{Arc, Mutex};
-use sunrise_client::join_seq::Joined;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
+use sunrise_sim::join_seq::Joined;
 
 // Use the real NBT spawn loader, including its id allocation and join hooks,
 // while every list is held by the production take/restore boundary.

@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::{chunk::Chunk, containers::BlockEntity};
 use sunrise_core::nbt::Tag;
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 use sunrise_mod_runtime::attachments::{
     AttachmentCodec, AttachmentError, AttachmentType, Attachments,
 };

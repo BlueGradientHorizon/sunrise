@@ -11,7 +11,6 @@ log = "0.4"
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab" }
 serde_json = "1.0.151"
 sunrise-client-core = { path = "../sunrise-client-core" }
-sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false }
 sunrise-assets = { path = "../sunrise-assets" }
 sunrise-core = { path = "../sunrise-core" }
 sunrise-gameplay-common = { path = "../sunrise-gameplay-common" }
@@ -25,7 +24,8 @@ sunrise-level = { path = "../sunrise-level" }
 
 [dev-dependencies]
 mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
-sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-mob-kind"] }
+sunrise-sim = { path = "../sunrise-sim", features = ["test-mob-kind"] }
+
 
 [lints]
 workspace = true

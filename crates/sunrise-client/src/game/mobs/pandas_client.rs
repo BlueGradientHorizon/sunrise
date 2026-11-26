@@ -1,9 +1,7 @@
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{Species, panda},
-    particles::{ParticleOptions, ParticleType},
-};
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::mobs::{Species, panda};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What a window draws of its pandas: the crumbs of a bite
@@ -19,7 +17,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let (crumbs, sneeze) = panda::effects(m);
             if let (Some(crumbs), Some(item)) = (
                 crumbs,
-                sunrise_client::mobs::finalize::item(m, sunrise_client::mobs::finalize::MAINHAND),
+                sunrise_sim::mobs::finalize::item(m, sunrise_sim::mobs::finalize::MAINHAND),
             ) {
                 bites.push((item, crumbs));
             }

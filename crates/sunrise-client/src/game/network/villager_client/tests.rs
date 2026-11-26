@@ -1,6 +1,7 @@
 use super::*;
 use std::sync::Arc;
-use sunrise_client::mobs::{MobTypes, render};
+use sunrise_client::mobs::render;
+use sunrise_sim::mobs::MobTypes;
 fn table() -> ResolvedProfessions {
     ordered_table(&["test:engineer"])
 }
@@ -111,12 +112,12 @@ fn vanilla_farmer_metadata_and_texture() {
     );
 }
 
-pub(in crate::game) fn meta_hub(name: &str) -> sunrise_client::lan::hub::Hub {
+pub(in crate::game) fn meta_hub(name: &str) -> sunrise_sim::lan::hub::Hub {
     profession_hub(name, false)
 }
 /// A hub with no players and empty registries, for `mob_meta`.
-fn profession_hub(name: &str, vanilla_professions: bool) -> sunrise_client::lan::hub::Hub {
-    use sunrise_client::lan::{Lan, NetConfig, chunks::ChunkEncoder, data, hub};
+fn profession_hub(name: &str, vanilla_professions: bool) -> sunrise_sim::lan::hub::Hub {
+    use sunrise_sim::lan::{Lan, NetConfig, chunks::ChunkEncoder, data, hub};
     let mut sync = data::SyncData::empty();
     for (registry, id) in [
         ("minecraft:villager_type", "minecraft:plains"),
@@ -228,7 +229,7 @@ fn villager_client_packet_slots_and_unresolved_identity() {
             server.extra.profession = server_table
                 .resolve(name)
                 .and_then(|slot| server_table.state(slot))
-                .unwrap_or_else(|| sunrise_client::mobs::villager::ProfessionState::from_id(name));
+                .unwrap_or_else(|| sunrise_sim::mobs::villager::ProfessionState::from_id(name));
             let mut client = Mob::new(2, kind.clone(), sunrise_core::geometry::Vec3::ZERO, 0.0);
             let (mut meta, mut defaults) = (Vec::new(), Vec::new());
             server_meta(
@@ -254,13 +255,13 @@ fn villager_client_packet_slots_and_unresolved_identity() {
                 Some(expected_slot as usize)
             );
             match &client.extra.profession {
-                sunrise_client::mobs::villager::ProfessionState::Registered { slot, .. } => {
+                sunrise_sim::mobs::villager::ProfessionState::Registered { slot, .. } => {
                     assert_eq!(*slot, expected_slot as u16);
                 }
                 state => assert_eq!(state.index(), Some(expected_slot as u8)),
             }
             assert_eq!(server.extra.profession.id(), name);
-            let saved = sunrise_client::mobs::villager::professions::save::villager_data(&server);
+            let saved = sunrise_sim::mobs::villager::professions::save::villager_data(&server);
             assert_eq!(
                 saved.get("profession"),
                 Some(&sunrise_core::nbt::Tag::String(name.into()))

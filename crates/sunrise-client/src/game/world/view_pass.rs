@@ -13,7 +13,8 @@
 //! area was withdrawn keeps its passes, with no ticket, until its chunks were forgotten and it was
 //! closed on the clients.
 use super::{Dim, Game};
-use sunrise_client::{Result, lan::hub::TickCtx};
+use sunrise_client_core::Result;
+use sunrise_sim::lan::hub::TickCtx;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// What the players' viewed areas ask of level `dim`: None for nothing, else whether one of
@@ -45,7 +46,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
             .collect();
         for dim in viewed {
-            let _span = sunrise_client::spans::guard("view_pass");
+            let _span = sunrise_level::spans::guard("view_pass");
             self.enter_level(dim)?;
             self.update_dedicated_streaming();
             self.lan_update_streaming();
@@ -97,8 +98,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The level's entities as `tick_lan` describes them for the tracking pass: nobody is in the
     /// level, so no player rides one.
-    fn view_pass_states(&mut self) -> sunrise_client::lan::entity::States {
-        let mut states = sunrise_client::lan::entity::States::default();
+    fn view_pass_states(&mut self) -> sunrise_sim::lan::entity::States {
+        let mut states = sunrise_sim::lan::entity::States::default();
         if !self.lan.as_ref().is_some_and(|h| h.hub.viewed_here()) {
             return states;
         }
@@ -185,11 +186,11 @@ pub(in crate::game) mod tests {
     /// 3, views 2 levels; its packets.
     pub(in crate::game) fn host_a_viewer(
         game: &mut crate::game::ServerGame<'_>,
-    ) -> std::sync::mpsc::Receiver<sunrise_client::lan::Out> {
+    ) -> std::sync::mpsc::Receiver<sunrise_sim::lan::Out> {
         host_with_viewer(game, || {
             let (tx, rx) = std::sync::mpsc::channel();
             (
-                sunrise_client::lan::PlayerSender::new(tx, std::sync::Arc::default()),
+                sunrise_sim::lan::PlayerSender::new(tx, std::sync::Arc::default()),
                 rx,
             )
         })
@@ -197,9 +198,9 @@ pub(in crate::game) mod tests {
 
     fn host_with_viewer<T>(
         game: &mut crate::game::ServerGame<'_>,
-        make_sender: impl FnOnce() -> (sunrise_client::lan::PlayerSender, T),
+        make_sender: impl FnOnce() -> (sunrise_sim::lan::PlayerSender, T),
     ) -> T {
-        use sunrise_client::lan::{Joined, NetConfig, guest::Guest, hub::HubConfig};
+        use sunrise_sim::lan::{Joined, NetConfig, guest::Guest, hub::HubConfig};
         let net = NetConfig {
             announce: false,
             ..NetConfig::lan(0, "view-pass-test".into(), 2)
@@ -270,12 +271,12 @@ pub(in crate::game) mod tests {
         sounds: Vec<sunrise_protocol::packets::play::Sound>,
     }
 
-    pub(in crate::game) fn sent(rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>) -> Sent {
+    pub(in crate::game) fn sent(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Sent {
         let mut sent = Sent::default();
         let bodies = rx.try_iter().flat_map(|o| match o {
-            sunrise_client::lan::Out::Packet(body) => vec![body],
-            sunrise_client::lan::Out::Packets(bodies) => bodies,
-            sunrise_client::lan::Out::Disconnect(_) => Vec::new(),
+            sunrise_sim::lan::Out::Packet(body) => vec![body],
+            sunrise_sim::lan::Out::Packets(bodies) => bodies,
+            sunrise_sim::lan::Out::Disconnect(_) => Vec::new(),
         });
         for body in bodies {
             let mut r = Reader::new(&body);
@@ -330,10 +331,10 @@ pub(in crate::game) mod tests {
         name: &str,
     ) -> (
         crate::game::ServerGame<'a>,
-        std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+        std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
         Sent,
     ) {
-        use sunrise_client::lan::viewed_levels::areas::ChunkAreaMode;
+        use sunrise_sim::lan::viewed_levels::areas::ChunkAreaMode;
         stream_the_nether_in(resources, name, ChunkAreaMode::Loaded)
     }
 
@@ -341,13 +342,13 @@ pub(in crate::game) mod tests {
     fn stream_the_nether_in<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         name: &str,
-        mode: sunrise_client::lan::viewed_levels::areas::ChunkAreaMode,
+        mode: sunrise_sim::lan::viewed_levels::areas::ChunkAreaMode,
     ) -> (
         crate::game::ServerGame<'a>,
-        std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+        std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
         Sent,
     ) {
-        use sunrise_client::lan::viewed_levels::areas::{ChunkArea, ChunkAreaMode};
+        use sunrise_sim::lan::viewed_levels::areas::{ChunkArea, ChunkAreaMode};
         let ticking = mode == ChunkAreaMode::Ticking;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let home = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join(name);
@@ -516,7 +517,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_entity_in_a_ticking_viewed_area_is_added_moved_and_removed_wrapped() {
-        use sunrise_client::lan::viewed_levels::areas::ChunkAreaMode;
+        use sunrise_sim::lan::viewed_levels::areas::ChunkAreaMode;
         let mut resources = None;
         let (mut game, rx, _) =
             stream_the_nether_in(&mut resources, "view-entities", ChunkAreaMode::Ticking);
@@ -589,11 +590,11 @@ pub(in crate::game) mod tests {
     }
 
     /// Everything the viewer was sent since the last call, in order, each packet decoded.
-    fn every(rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>) -> Vec<Got> {
+    fn every(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<Got> {
         let bodies = rx.try_iter().flat_map(|o| match o {
-            sunrise_client::lan::Out::Packet(body) => vec![body],
-            sunrise_client::lan::Out::Packets(bodies) => bodies,
-            sunrise_client::lan::Out::Disconnect(_) => Vec::new(),
+            sunrise_sim::lan::Out::Packet(body) => vec![body],
+            sunrise_sim::lan::Out::Packets(bodies) => bodies,
+            sunrise_sim::lan::Out::Disconnect(_) => Vec::new(),
         });
         decode_ordered(bodies)
     }
@@ -644,14 +645,14 @@ pub(in crate::game) mod tests {
             BlockPart, BlockUpdateFlags, BlocksEvent, Compound, Hooks, LevelSide, ModEntry, Mods,
             Registrar, RegistrationContext, Tag,
         };
-        use sunrise_client::{
+        use sunrise_protocol::connection_groups::{Cell, Entry, Section};
+        use sunrise_sim::{
             lan::{
                 PlayerSender,
                 viewed_levels::areas::{ChunkArea, ChunkAreaMode},
             },
             raw_payloads::{Side, Transport},
         };
-        use sunrise_protocol::connection_groups::{Cell, Entry, Section};
 
         const NAME: &str = "game::server_side::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
         if run_fresh_cases(NAME, "SUNRISE_VIEW_GROUP_REOPEN", &["run"]) {
@@ -846,7 +847,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The viewer, a server player.
-    fn viewer<'h>(game: &'h crate::game::ServerGame<'_>) -> &'h sunrise_client::lan::guest::Guest {
+    fn viewer<'h>(game: &'h crate::game::ServerGame<'_>) -> &'h sunrise_sim::lan::guest::Guest {
         let hub = &game.lan.as_ref().unwrap().hub;
         hub.guests.iter().find(|g| g.uuid == 2).unwrap()
     }
@@ -1003,7 +1004,7 @@ pub(in crate::game) mod tests {
     /// was told of its clocks meanwhile, each update's clocks as their totals and rates.
     fn clocks_after(
         game: &mut crate::game::ServerGame<'_>,
-        rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+        rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
         command: &str,
     ) -> Vec<Vec<(i64, f32)>> {
         game.enter_level(Dim::Overworld).unwrap();

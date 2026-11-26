@@ -1,7 +1,7 @@
 //! Server-side player food and experience writes for native mods.
 use super::Game;
 use mod_api::PlayerRef;
-use sunrise_client::entities::Experience;
+use sunrise_sim::entities::Experience;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether `player` still names the same player on this server.
@@ -150,8 +150,9 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{EntityRef, WorldEpoch};
-    use sunrise_client::{items::ItemStack, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::motion::PlayerMotion;
 
     /// The acting player with a body, as a hook's turn finds them.
     fn acting_player(game: &mut crate::game::ServerGame<'_>) -> PlayerRef {

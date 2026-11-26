@@ -1,8 +1,8 @@
 use super::super::{Dim, native_guest_turn_tests::with_guests};
 use mod_api::{AttachmentAccess, AttachmentHolder, Host, PlayerRef, ServerHost};
 use std::sync::{Arc, Mutex};
-use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentCodec, AttachmentError, AttachmentType, Holder, index::AttachmentIndex,
 };

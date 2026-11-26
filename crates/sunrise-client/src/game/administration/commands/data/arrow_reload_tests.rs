@@ -3,14 +3,14 @@
 //! resident entity.
 use super::Target;
 use crate::game::{Options, Progress, Settings, load_resources};
-use sunrise_client::arrows::Pickup;
-use sunrise_client::projectiles::ProjectileKind;
 use sunrise_core::nbt::Tag;
+use sunrise_sim::arrows::Pickup;
+use sunrise_sim::projectiles::ProjectileKind;
 
 /// What `entity_merge_nbt` does: the saved compound, `nbt` merged in, loaded back.
 fn merge(game: &mut crate::game::ServerGame<'_>, target: Target, nbt: Tag) {
     let old = game.command_target_nbt(target).unwrap();
-    let merged = sunrise_client::data_cmd::merged(&old, &nbt);
+    let merged = sunrise_sim::data_cmd::merged(&old, &nbt);
     assert_ne!(merged, old);
     game.apply_entity_nbt(target, merged).unwrap();
 }

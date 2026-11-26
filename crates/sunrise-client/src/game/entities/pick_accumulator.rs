@@ -136,14 +136,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_sulfur_cube_holding_a_block_is_not_picked_from_inside() {
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();
             game.set_allow_commands(true);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             // A monster can't be summoned on peaceful.
             assert!(game.run_command("difficulty normal"));
@@ -154,7 +154,7 @@ mod tests {
             let cube = game
                 .mobs
                 .iter()
-                .find(|m| m.species() == sunrise_client::mobs::Species::SulfurCube)
+                .find(|m| m.species() == sunrise_sim::mobs::Species::SulfurCube)
                 .expect("the cube");
             let (id, bounds) = (cube.id, cube.bounds());
             let (min, max) = (bounds.min_position(), bounds.max_position());

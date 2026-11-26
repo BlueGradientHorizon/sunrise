@@ -19,7 +19,7 @@ impl Default for DragonPart {
             Vec3::ZERO,
             Vec3::ZERO,
             Default::default(),
-            sunrise_client::save::insecure_uuid(&mut random_source::entity()),
+            sunrise_sim::save::insecure_uuid(&mut random_source::entity()),
         )
     }
 }
@@ -67,7 +67,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         id: u32,
     ) -> Option<(&Dragon, usize)> {
-        use sunrise_client::join_seq::residency::{Source, table::EntityLookup};
+        use sunrise_sim::join_seq::residency::{Source, table::EntityLookup};
         let EntityLookup::Found {
             location,
             value: Target::DragonPart(_),

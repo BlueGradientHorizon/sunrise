@@ -4,9 +4,9 @@ use std::{
     num::NonZeroU32,
     sync::{Arc, Mutex},
 };
-use sunrise_client::join_seq::residency::table::EntityLookup;
-use sunrise_client::join_seq::residency::{Kind, Source};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::join_seq::residency::table::EntityLookup;
+use sunrise_sim::join_seq::residency::{Kind, Source};
 
 #[test]
 #[ignore = "daily"]
@@ -143,12 +143,11 @@ fn refused_body_construction_does_not_begin_guest_or_hook_loans() {
             }
         ));
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let mut bad =
-            sunrise_client::motion::MotionResources::load(&root, &game.pack.assets).unwrap();
+        let mut bad = sunrise_sim::motion::MotionResources::load(&root, &game.pack.assets).unwrap();
         bad.attributes = std::sync::Arc::new(sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
             "data_version": sunrise_core::version::DATA_VERSION, "attributes": [], "entities": {}
         })).unwrap());
-        assert!(sunrise_client::motion::PlayerMotion::new(&bad, Vec3::ZERO).is_err());
+        assert!(sunrise_sim::motion::PlayerMotion::new(&bad, Vec3::ZERO).is_err());
         let original = game.motion;
         game.motion = Box::leak(Box::new(bad));
         game.lan
@@ -239,11 +238,11 @@ fn owned_hooks_keep_their_own_uuid_and_source_across_nested_actor_loans() {
 #[test]
 #[ignore = "daily"]
 fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
-    use sunrise_client::lan::{NetConfig, guest::Guest, hub::HubConfig};
     use sunrise_protocol::{
         connection::Pipe,
         packets::play::{self, Clientbound as C},
     };
+    use sunrise_sim::lan::{NetConfig, guest::Guest, hub::HubConfig};
     let mut profile = 0_u128;
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = Pipe::pair();
@@ -296,11 +295,10 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
         game.remove_local_player_body();
         assert_eq!(game.server_resident_entity(7), EntityLookup::Missing);
     });
-    let expected = sunrise_client::lan::playerdata::uuid_ints(profile);
+    let expected = sunrise_sim::lan::playerdata::uuid_ints(profile);
     crate::game::native_entity_refs::tests::with_game(|game| {
         let mut player =
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5))
-                .unwrap();
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5)).unwrap();
         player.entity_id = 7;
         game.player = Some(player);
         game.level.player_uuid = Some(expected);
@@ -341,7 +339,7 @@ fn production_login_and_local_body_constructor_admit_profile_and_real_loan() {
             level_seeds: game.side.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
-        let motion = sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+        let motion = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
         let mut guest = Guest::connectionless(12, 12, "SourceGuest".into(), 12, [0.0; 3], motion);
         guest.placed = true;
         game.lan.as_mut().unwrap().hub.guests.push(guest);

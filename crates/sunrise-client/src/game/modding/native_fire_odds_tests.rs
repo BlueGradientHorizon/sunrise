@@ -43,7 +43,8 @@ impl Hooks for FireOddsMod {
 #[ignore = "daily"]
 fn a_block_part_answers_fire_odds_for_one_face() {
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
 
     let mods: mod_api::Mods =
         vec![mod_api::ModEntry::new("fire_odds", Box::new(FireOddsMod))].into();
@@ -74,7 +75,7 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+            game.set_local_mode(sunrise_command::args::GameMode::Survival);
 
             let registry = game.pack.assets.registry;
             let glass = registry.default_state("minecraft:tinted_glass").unwrap();
@@ -126,7 +127,7 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             let key = (at.x, at.y, at.z);
             game.world.block_entities.insert(
                 key,
-                sunrise_client::containers::BlockEntity::Campfire(Box::default()),
+                sunrise_level::containers::BlockEntity::Campfire(Box::default()),
             );
             let client_level = game.native_client_level().expect("connected client level");
             let entity = game

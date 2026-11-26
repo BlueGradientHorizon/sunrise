@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use mod_api::{self, Hooks, LivingEquipmentChangeEvent, LivingEquipmentListenedEvent, ServerHost};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 use super::api_values::TryIntoApi;
 use super::native_guest_turn_tests::with_guests;

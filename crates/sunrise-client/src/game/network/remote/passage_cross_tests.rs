@@ -5,12 +5,12 @@ use super::tests::connect_menu_test;
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{PassageCrossError, PassageCrossRefusal, PassageId};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::lan::hub::passage_cross::refusal_code;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::connection::{ConnReader, ConnWriter};
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 use sunrise_protocol::passage_sync::{Message, PassageForm, encode};
+use sunrise_sim::lan::hub::passage_cross::refusal_code;
 
 /// What the window sent since the last call, as play packets.
 pub(in crate::game) fn sent(reader: &mut ConnReader) -> Vec<S> {

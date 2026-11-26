@@ -1,13 +1,10 @@
 //! Game event regressions for server-side block actions.
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    containers::BlockEntity,
-    items::ItemStack,
-    mobs::{Mob, Who},
-};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+use sunrise_sim::mobs::{Mob, Who};
 #[test]
 #[ignore = "daily"]
 fn entering_hive_posts_block_change_from_bee() {
@@ -57,7 +54,7 @@ fn lowering_cauldron_by_bottle_posts_block_change_without_source() {
         super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
         assert_eq!(
             game.use_on_cauldron([2, 4, 3]).unwrap(),
-            sunrise_client::cauldron::Outcome::Success
+            sunrise_sim::cauldron::Outcome::Success
         );
         super::sculk::TEST_POSTED_EVENTS.with(|events| {
             assert!(events.borrow().as_ref().unwrap().contains(&(
@@ -72,7 +69,7 @@ fn lowering_cauldron_by_bottle_posts_block_change_without_source() {
 #[test]
 #[ignore = "daily"]
 fn tying_to_fence_and_knot_posts_block_attach_from_player() {
-    use sunrise_client::mobs::leash::Holder;
+    use sunrise_sim::mobs::leash::Holder;
     crate::game::native_entity_refs::tests::with_game(|game| {
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
         let mut cow = Mob::new(42, kind, Vec3::new(2.5, 4.0, 3.5), 0.0);
@@ -149,10 +146,10 @@ fn saddling_a_pig_posts_equip_from_the_pig() {
 #[test]
 #[ignore = "daily"]
 fn a_landing_posts_the_block_game_event_its_rule_posts() {
-    use crate::motion::{MotionEvent, MotionWorld, PlayerMotion};
-    use sunrise_client::landing::FallEvent;
     use sunrise_core::position::BlockPos;
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_sim::landing::FallEvent;
+    use sunrise_sim::motion::{MotionEvent, MotionWorld, PlayerMotion};
     use sunrise_world::fall_damage::FallDamageWorld;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -295,7 +292,7 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
         super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
         assert_eq!(
             game.use_on_cauldron([2, 4, 3]).unwrap(),
-            sunrise_client::cauldron::Outcome::Success,
+            sunrise_sim::cauldron::Outcome::Success,
             "the use acts"
         );
         super::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap())

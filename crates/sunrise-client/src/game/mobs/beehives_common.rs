@@ -1,13 +1,14 @@
 //! Common beehive block-state query shared by server ticking and client interaction prediction.
 use super::Game;
-use sunrise_client::beehive;
+use sunrise_sim::beehive;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The hive's honey level and front, from its block state.
     pub(in crate::game) fn hive_state(&self, at: [i32; 3]) -> Option<(Option<i32>, [i32; 2])> {
         let state = self.world.block(at[0], at[1], at[2]);
-        let name =
-            sunrise_client::block_entity_types::factory_block(&self.res.facts().get(state).name);
+        let name = sunrise_client_core::block_entity_types::factory_block(
+            &self.res.facts().get(state).name,
+        );
         if !self
             .res
             .items()

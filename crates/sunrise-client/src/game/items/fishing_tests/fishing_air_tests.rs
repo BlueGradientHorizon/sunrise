@@ -64,7 +64,7 @@ fn cave_air_above_a_water_source_is_open_water_and_catches_treasure() {
     let catches = |open_water: bool| -> Vec<LootStack> {
         (0..400)
             .flat_map(|seed| {
-                let mut sequences = sunrise_client::random_sequences::RandomSequences::default();
+                let mut sequences = sunrise_items::random_sequences::RandomSequences::default();
                 let mut level_random = sunrise_core::random::LegacyRandom::new(seed);
                 fishing_loot(
                     &loot,

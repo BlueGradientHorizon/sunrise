@@ -12,14 +12,14 @@
 use super::entity::{Entity as _, entity_lists_of, for_each_entity};
 use super::{Dim, Game, Result};
 use std::collections::HashMap;
-use sunrise_client::fast_hash::FxHashMap;
-use sunrise_client::mobs::{Species, spawn_rules};
-use sunrise_client::nether_portal::{ENTITY_DELAY, PortalState};
-use sunrise_client::world::PendingEntity;
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3},
     position::BlockPos,
 };
+use sunrise_level::fast_hash::FxHashMap;
+use sunrise_level::world::PendingEntity;
+use sunrise_sim::mobs::{Species, spawn_rules};
+use sunrise_sim::nether_portal::{ENTITY_DELAY, PortalState};
 use sunrise_world::level::flags as level_flags;
 use {
     sunrise_core::nbt::Tag,
@@ -46,8 +46,8 @@ pub(in crate::game) const PROJECTILE_DELAY: i32 = 2;
 /// One level's loaded state the portal search reads: the level in place or a parked one.
 pub(in crate::game) struct PortalSide<'a> {
     pub(in crate::game) dim: Dim,
-    pub(in crate::game) world: &'a sunrise_client::world::World,
-    pub(in crate::game) border: &'a sunrise_client::worldborder::WorldBorder,
+    pub(in crate::game) world: &'a sunrise_level::world::World,
+    pub(in crate::game) border: &'a sunrise_level::worldborder::WorldBorder,
 }
 
 impl PortalSide<'_> {
@@ -65,7 +65,7 @@ impl PortalSide<'_> {
         (cz - reach..=cz + reach).flat_map(move |z| (cx - reach..=cx + reach).map(move |x| (x, z)))
     }
     pub(in crate::game::server_side) fn bounds_of(
-        border: &sunrise_client::worldborder::WorldBorder,
+        border: &sunrise_level::worldborder::WorldBorder,
     ) -> BorderBounds {
         let [min_x, min_z, max_x, max_z] = border.bounds();
         BorderBounds {
@@ -175,7 +175,7 @@ pub(in crate::game) struct Portals {
     pub(in crate::game) loaded: bool,
     pub(in crate::game) dirty: bool,
     /// Per-chunk portal palette masks, kept across ticks (portal_sections).
-    pub(in crate::game) sections: sunrise_client::portal_sections::PortalSections,
+    pub(in crate::game) sections: sunrise_sim::portal_sections::PortalSections,
     /// The attributes a respawn hands from the old player to the new one.
     pub(in crate::game) respawn_attributes: respawn_attributes::RespawnAttributes,
 }
@@ -191,19 +191,19 @@ pub(in crate::game::server_side) fn rotate_y(v: Vec3, degrees: f32) -> Vec3 {
 }
 /// Whether a projectile is an arrow, which goes through a portal like the
 /// other entities.
-pub(in crate::game::server_side) fn is_arrow(p: &sunrise_client::projectiles::Projectile) -> bool {
+pub(in crate::game::server_side) fn is_arrow(p: &sunrise_sim::projectiles::Projectile) -> bool {
     matches!(
         p.kind,
-        sunrise_client::projectiles::ProjectileKind::Arrow { .. }
+        sunrise_sim::projectiles::ProjectileKind::Arrow { .. }
     )
 }
 /// The projectiles besides arrows that a portal sends on: the thrown items
 /// and fireballs a chunk saves. A pearl has its own rules (it keeps its owner's
 /// dimension) and a wind charge is not saved, so both stay.
 pub(in crate::game::server_side) fn is_portal_projectile(
-    p: &sunrise_client::projectiles::Projectile,
+    p: &sunrise_sim::projectiles::Projectile,
 ) -> bool {
-    use sunrise_client::projectiles::ProjectileKind;
+    use sunrise_sim::projectiles::ProjectileKind;
     !is_arrow(p)
         && !matches!(
             p.kind,
@@ -211,17 +211,14 @@ pub(in crate::game::server_side) fn is_portal_projectile(
                 | ProjectileKind::WindCharge
                 | ProjectileKind::BreezeWindCharge
         )
-        && sunrise_client::entity_nbt::saved_with_chunk(p)
+        && sunrise_sim::entity_nbt::saved_with_chunk(p)
 }
 /// Width and height of a projectile that goes through a portal.
 pub(in crate::game::server_side) fn projectile_box(
-    p: &sunrise_client::projectiles::Projectile,
+    p: &sunrise_sim::projectiles::Projectile,
 ) -> (f32, f32) {
     if is_arrow(p) {
-        (
-            sunrise_client::arrows::WIDTH,
-            sunrise_client::arrows::HEIGHT,
-        )
+        (sunrise_sim::arrows::WIDTH, sunrise_sim::arrows::HEIGHT)
     } else {
         let size = p.kind.size() as f32;
         (size, size)
@@ -238,14 +235,14 @@ pub(in crate::game::server_side) fn move_passengers(tag: &mut Tag, by: Vec3, tur
         return;
     };
     for rider in riders {
-        if let Some(at) = sunrise_client::entity_nbt::position(rider)
+        if let Some(at) = sunrise_sim::entity_nbt::position(rider)
             && let Tag::Compound(r) = rider
         {
             r.insert(
                 "Pos".into(),
                 doubles([at.x + by.x, at.y + by.y, at.z + by.z]),
             );
-            let [yaw, pitch] = sunrise_client::entity_nbt::rotation(rider);
+            let [yaw, pitch] = sunrise_sim::entity_nbt::rotation(rider);
             if let Tag::Compound(r) = rider {
                 r.insert(
                     "Rotation".into(),
@@ -309,7 +306,7 @@ pub(in crate::game::server_side) fn set_arrival_pose(
     [yaw, pitch]: [f32; 2],
     yaw_turn: f32,
 ) {
-    if let Some(was) = sunrise_client::entity_nbt::position(tag) {
+    if let Some(was) = sunrise_sim::entity_nbt::position(tag) {
         move_passengers(tag, at.subtract(was), yaw_turn);
     }
     if let Tag::Compound(c) = tag {
@@ -357,7 +354,7 @@ pub(in crate::game::server_side) fn arrival_from_tag(a: &Tag) -> Option<Arrival>
         Some(Tag::Double(v)) => Some(f64::from_bits(*v)),
         _ => None,
     };
-    let dim = Dim::from_id(&sunrise_client::save::text(a.get("dimension"))?);
+    let dim = Dim::from_id(&sunrise_sim::save::text(a.get("dimension"))?);
     let (Some(x), Some(y), Some(z), Some(tag)) = (int("x"), int("y"), int("z"), a.get("entity"))
     else {
         return None;
@@ -436,10 +433,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.isAllowedToEnterPortal`.
     pub(in crate::game) fn may_enter(&self, target: Dim) -> bool {
         target != Dim::Nether
-            || self
-                .ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ALLOW_ENTERING_NETHER_USING_PORTALS)
+            || self.ui.rules.bool_at(
+                sunrise_client_core::gamerules::vanilla::ALLOW_ENTERING_NETHER_USING_PORTALS,
+            )
     }
     /// The plan of an entity of `width` by `height` at `at` going through the
     /// portal at `entry` (`getDimensionTransitionFromExit` and the scaled,
@@ -587,7 +583,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn portal_blocks(
         &self,
         side: &PortalSide<'_>,
-        save: Option<&sunrise_client::save::SaveDir>,
+        save: Option<&sunrise_sim::save::SaveDir>,
         center: BlockPos,
         radius: i32,
     ) -> Vec<BlockPos> {
@@ -626,7 +622,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn find_portal_in(
         &self,
         side: &PortalSide<'_>,
-        save: Option<&sunrise_client::save::SaveDir>,
+        save: Option<&sunrise_sim::save::SaveDir>,
         plan: &Plan,
     ) -> Option<(BlockPos, FoundRectangle)> {
         let to_nether = plan.dim == Dim::Nether;
@@ -856,7 +852,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .mobs
             .iter()
             .filter(|_| !vehicles)
-            .filter(|m| sunrise_client::mobs::sulfur_cube::removes_before_portal_tick(m))
+            .filter(|m| sunrise_sim::mobs::sulfur_cube::removes_before_portal_tick(m))
             .map(|m| m.id)
             .collect();
         for (id, allowed, delay) in ids {
@@ -904,7 +900,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn restore_portal_cooldown(&mut self, id: u32, tag: &Tag) {
         if let Some(cooldown) = tag
             .get("PortalCooldown")
-            .and_then(sunrise_client::nbt_path::int_value)
+            .and_then(sunrise_client_core::nbt_path::int_value)
             && cooldown != 0
         {
             self.portals.entities.insert(
@@ -922,7 +918,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(portal) = self.portals.entities.get_mut(&id) {
             portal.cooldown = tag
                 .get("PortalCooldown")
-                .and_then(sunrise_client::nbt_path::int_value)
+                .and_then(sunrise_client_core::nbt_path::int_value)
                 .unwrap_or(0);
         } else {
             self.restore_portal_cooldown(id, tag);
@@ -934,16 +930,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// portal state, as the projectile writer does. An entity the portal
     /// state does not know is not on a cooldown, and writes 0.
     pub(in crate::game::server_side) fn save_portal_cooldown(&self, id: u32, tag: &mut Tag) {
-        sunrise_client::nether_portal::put_portal_cooldown(
+        sunrise_sim::nether_portal::put_portal_cooldown(
             tag,
-            sunrise_client::nether_portal::portal_cooldown(&self.portals.entities, id),
+            sunrise_sim::nether_portal::portal_cooldown(&self.portals.entities, id),
         );
     }
     /// `Entity.saveWithoutId`: the modeled non-arrow projectile codecs
     /// share the live cooldown between command reads and chunk writes.
     pub(in crate::game::server_side) fn save_projectile_portal_cooldown(
         &self,
-        projectile: &sunrise_client::projectiles::Projectile,
+        projectile: &sunrise_sim::projectiles::Projectile,
         tag: &mut Tag,
     ) {
         if projectile.arrow.is_none()
@@ -1048,7 +1044,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             at,
             false,
             super::creatures::SpawnSite::Finalizing(
-                sunrise_client::mobs::spawn_rules::Reason::Structure,
+                sunrise_sim::mobs::spawn_rules::Reason::Structure,
             ),
         ) {
             // `EntityType.spawn` calls `Mob.playAmbientSound` once the mob is in
@@ -1221,7 +1217,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         to: Vec3,
         width: f32,
         height: f32,
-        portal_sections: &mut sunrise_client::portal_sections::PortalSections,
+        portal_sections: &mut sunrise_sim::portal_sections::PortalSections,
     ) -> Option<BlockPos> {
         let half = f64::from(width) / 2.0;
         let bounds = sunrise_core::geometry::Aabb::new(
@@ -1266,9 +1262,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn may_hold_portal(
         &self,
         reach: sunrise_core::geometry::Aabb,
-        sections: &mut sunrise_client::portal_sections::PortalSections,
+        sections: &mut sunrise_sim::portal_sections::PortalSections,
     ) -> bool {
-        use sunrise_client::section_mask::SectionMask;
+        use sunrise_level::section_mask::SectionMask;
         let (min, max) = (reach.min_position(), reach.max_position());
         if !min.is_finite() || !max.is_finite() {
             return true;
@@ -1302,7 +1298,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// a nether or End portal state in its palette.
     pub(in crate::game::server_side) fn level_may_hold_portal(
         &self,
-        sections: &mut sunrise_client::portal_sections::PortalSections,
+        sections: &mut sunrise_sim::portal_sections::PortalSections,
     ) -> bool {
         self.world.chunks.iter().any(|(&key, chunk)| {
             !sections
@@ -1437,7 +1433,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let (mut tag, list, i) = if let Some(i) = self.dropped.iter().position(|e| e.id == id) {
             let uuid = self.uuid_for(id);
-            let tag = sunrise_client::entity_nbt::item_entity_to_nbt(
+            let tag = sunrise_sim::entity_nbt::item_entity_to_nbt(
                 &self.dropped[i],
                 uuid,
                 self.persist_raw(id),
@@ -1466,7 +1462,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             (tag, List::Rocket, i)
         } else if let Some(i) = self.orbs.iter().position(|o| o.id == id) {
             let uuid = self.uuid_for(id);
-            let tag = sunrise_client::entity_nbt::orb_to_nbt(&self.orbs[i], uuid);
+            let tag = sunrise_sim::entity_nbt::orb_to_nbt(&self.orbs[i], uuid);
             (tag, List::Orb, i)
         } else {
             let i = self
@@ -1482,7 +1478,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .and_then(|a| a.last_state)
                 .map(|s| self.state_to_nbt(s));
             let raw = self.persist_raw(id);
-            let tag = sunrise_client::entity_nbt::arrow_to_nbt(
+            let tag = sunrise_sim::entity_nbt::arrow_to_nbt(
                 p,
                 uuid,
                 p.owner_uuid,
@@ -1491,7 +1487,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.res.items(),
             )
             .or_else(|| {
-                sunrise_client::entity_nbt::fireball_to_nbt(
+                sunrise_sim::entity_nbt::fireball_to_nbt(
                     p,
                     uuid,
                     p.owner_uuid,
@@ -1500,7 +1496,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 )
             })
             .or_else(|| {
-                sunrise_client::entity_nbt::throwable_to_nbt(
+                sunrise_sim::entity_nbt::throwable_to_nbt(
                     p,
                     uuid,
                     p.owner_uuid,
@@ -1624,9 +1620,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return;
             };
             // `PositionMoveRotation.of(this)` takes the cart's `getKnownMovement`.
-            let m = super::vehicle_teleport::cart_known_movement(
-                sunrise_client::entity_nbt::motion(&tag),
-            );
+            let m =
+                super::vehicle_teleport::cart_known_movement(sunrise_sim::entity_nbt::motion(&tag));
             if let Tag::Compound(c) = &mut tag {
                 c.insert("Motion".into(), doubles([m.x, m.y, m.z]));
             }
@@ -1674,10 +1669,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self.is_logical_server() || self.portals.arrivals.is_empty() {
             return;
         }
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let waiting = std::mem::take(&mut self.world.loaded_entities);
-        sunrise_client::spans::time("resolve_arrivals", || self.resolve_arrivals());
-        sunrise_client::spans::time("spawn_arrivals", || self.spawn_loaded_entities());
+        sunrise_level::spans::time("resolve_arrivals", || self.resolve_arrivals());
+        sunrise_level::spans::time("spawn_arrivals", || self.spawn_loaded_entities());
         self.world.loaded_entities.extend(waiting);
     }
     /// Entities waiting for the loaded dimension whose exit area is loaded:
@@ -1705,8 +1700,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 tnt_used_portal,
             } = self.portals.arrivals.remove(i);
             self.portals.dirty = true;
-            let motion = sunrise_client::entity_nbt::motion(&tag);
-            let [yaw, pitch] = sunrise_client::entity_nbt::rotation(&tag);
+            let motion = sunrise_sim::entity_nbt::motion(&tag);
+            let [yaw, pitch] = sunrise_sim::entity_nbt::rotation(&tag);
             let was_yaw = yaw;
             let (at, motion, [yaw, pitch]) = if plan.end {
                 // Relative.DELTA: the motion is kept.
@@ -1718,7 +1713,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 (at, motion, turn)
             } else {
                 let exit =
-                    sunrise_client::spans::time("exit_portal", || self.nether_exit_portal(&plan));
+                    sunrise_level::spans::time("exit_portal", || self.nether_exit_portal(&plan));
                 let Some(exit) = exit else {
                     continue;
                 };
@@ -1738,7 +1733,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             super::persist::mark_fresh(&mut tag);
             let immediate = matches!(
-                sunrise_client::entity_nbt::kind(&tag).as_deref(),
+                sunrise_sim::entity_nbt::kind(&tag).as_deref(),
                 Some("minecraft:item" | "minecraft:tnt")
             );
             let tag = if tnt_used_portal {
@@ -1780,7 +1775,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The portal's runtime reason must reach admission before join callbacks;
         // saved NBT alone cannot request TNT's transient blast immunity.
         let (tag, reason) = pending.into_parts();
-        let uuid = sunrise_client::entity_nbt::uuid(&tag);
+        let uuid = sunrise_sim::entity_nbt::uuid(&tag);
         let is_item = matches!(tag.get("id"), Some(Tag::String(kind))
             if kind.0.iter().copied().eq("minecraft:item".encode_utf16()));
         let is_tnt = matches!(tag.get("id"), Some(Tag::String(kind))
@@ -1794,7 +1789,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(entity) = uuid.and_then(|uuid| {
             self.level_entity_by_uuid(
                 self.native_current_level()?,
-                mod_api::EntityUuid(sunrise_client::lan::playerdata::ints_uuid(uuid)),
+                mod_api::EntityUuid(sunrise_sim::lan::playerdata::ints_uuid(uuid)),
             )
         }) else {
             return;
@@ -1826,8 +1821,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 })
                 .collect();
             if let Some(item) = arrival {
-                let mut cells = sunrise_client::entities::ItemCells::new(&items);
-                sunrise_client::entities::merge_with_neighbours(
+                let mut cells = sunrise_sim::entities::ItemCells::new(&items);
+                sunrise_sim::entities::merge_with_neighbours(
                     &mut items,
                     &mut removed,
                     &mut cells,
@@ -1880,14 +1875,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let uuid = f.saved.as_ref().map_or_else(
             || {
                 if f.id == 0 {
-                    sunrise_client::save::random_uuid()
+                    sunrise_sim::save::random_uuid()
                 } else {
                     self.uuid_for(f.id)
                 }
             },
             |saved| saved.0,
         );
-        let modelled = sunrise_client::entity_nbt::falling_block_to_nbt(
+        let modelled = sunrise_sim::entity_nbt::falling_block_to_nbt(
             self.state_to_nbt(f.state),
             f.position,
             f.velocity,
@@ -1942,7 +1937,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         self.portals.loaded = true;
-        let Some(root) = sunrise_client::save::read_dat(&self.arrivals_path()) else {
+        let Some(root) = sunrise_sim::save::read_dat(&self.arrivals_path()) else {
             return;
         };
         let Some(Tag::List(list)) = root.get("arrivals") else {
@@ -1969,7 +1964,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(arrival_tag)
             .collect();
         let root = Tag::compound([("arrivals", Tag::List(list))]);
-        if sunrise_client::save::write_dat(&self.arrivals_path(), root).is_ok() {
+        if sunrise_sim::save::write_dat(&self.arrivals_path(), root).is_ok() {
             self.portals.dirty = false;
         }
     }
@@ -1979,8 +1974,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `canUsePortal(false)` of a mob: what the mob itself decides
     /// (`mobs::mob_can_use_portal`), riding nothing, not asleep, and not
     /// carrying the players this side does.
-    pub(in crate::game) fn mob_portal_eligible(&self, m: &sunrise_client::mobs::Mob) -> bool {
-        sunrise_client::mobs::mob_can_use_portal(m)
+    pub(in crate::game) fn mob_portal_eligible(&self, m: &sunrise_sim::mobs::Mob) -> bool {
+        sunrise_sim::mobs::mob_can_use_portal(m)
             && m.extra.mount.is_none()
             && self.riding != Some(m.id)
             && (!self.guest_rides(m.id) || self.carries_riders())
@@ -2019,16 +2014,15 @@ pub(in crate::game) mod tests {
             game.set_allow_commands(true);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             assert!(game.run_command(r#"summon minecraft:pig 0 64 0 {UUID:[I;0,0,0,175],Tags:["portal_root"],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,175],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,176]}]}]}"#));
             let root = game
                 .mobs
                 .iter()
                 .find(|m| {
-                    game.persist_raw(m.id).is_some_and(|t| {
-                        sunrise_client::entity_nbt::uuid(t) == Some([0, 0, 0, 175])
-                    })
+                    game.persist_raw(m.id)
+                        .is_some_and(|t| sunrise_sim::entity_nbt::uuid(t) == Some([0, 0, 0, 175]))
                 })
                 .unwrap()
                 .id;
@@ -2062,7 +2056,7 @@ pub(in crate::game) mod tests {
                 for x in (target.x >> 4) - 1..=(target.x >> 4) + 1 {
                     game.side
                         .streaming
-                        .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(x, z));
+                        .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(x, z));
                 }
             }
             game.resolve_arrivals();
@@ -2207,14 +2201,14 @@ pub(in crate::game) mod tests {
             ));
             let mob = |name: &str, id| {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
-                sunrise_client::mobs::Mob::new(id, kind, Vec3::ZERO, 0.0)
+                sunrise_sim::mobs::Mob::new(id, kind, Vec3::ZERO, 0.0)
             };
             let (cow, pig) = (mob("minecraft:cow", 102), mob("minecraft:pig", 104));
             game.mobs.push(cow);
             game.mobs.push(pig);
             assert_eq!(game.dimension_changing_delay(12), 10);
-            let mut projectile = sunrise_client::projectiles::Projectile::new(
-                sunrise_client::projectiles::ProjectileKind::Snowball,
+            let mut projectile = sunrise_sim::projectiles::Projectile::new(
+                sunrise_sim::projectiles::ProjectileKind::Snowball,
                 Vec3::ZERO,
                 None,
             );
@@ -2263,7 +2257,7 @@ pub(in crate::game) mod tests {
             id,
             PortalState {
                 cooldown: 0,
-                process: Some(sunrise_client::nether_portal::Process {
+                process: Some(sunrise_sim::nether_portal::Process {
                     entry,
                     time: 7,
                     inside: true,
@@ -2294,7 +2288,7 @@ pub(in crate::game) mod tests {
             let mut tag = Tag::compound([("PortalCooldown", Tag::Int(cooldown))]);
             set_arrival_pose(&mut tag, Vec3::ZERO, Vec3::ZERO, [90.0, 0.0], 90.0);
             assert_eq!(tag.get("PortalCooldown"), Some(&Tag::Int(cooldown)));
-            assert_eq!(sunrise_client::entity_nbt::position(&tag), Some(Vec3::ZERO));
+            assert_eq!(sunrise_sim::entity_nbt::position(&tag), Some(Vec3::ZERO));
         }
     }
 
@@ -2330,7 +2324,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_mod_cancels_one_items_portal_trip_and_allows_the_other() {
         with_gate(|game, spare, heard| {
-            let stone = || sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+            let stone = || sunrise_items::items::ItemStack::new("minecraft:stone", 1);
             game.spawn_item(stone(), [0.5, 64.0, 0.5], [0.0; 3], 0);
             game.spawn_item(stone(), [2.5, 64.0, 0.5], [0.0; 3], 0);
             let ids: Vec<u32> = game.dropped.iter().map(|d| d.id).collect();
@@ -2361,7 +2355,7 @@ pub(in crate::game) mod tests {
     fn discarded_item_does_not_travel() {
         with_gate_mode(true, |game, _, heard| {
             game.spawn_item(
-                sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+                sunrise_items::items::ItemStack::new("minecraft:stone", 1),
                 [0.5, 64.0, 0.5],
                 [0.0; 3],
                 0,
@@ -2385,7 +2379,7 @@ pub(in crate::game) mod tests {
     fn discarded_mob_and_tnt_do_not_travel() {
         with_gate_mode(true, |game, _, heard| {
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 101,
                 kind,
                 Vec3::new(0.5, 64.0, 0.5),
@@ -2408,12 +2402,8 @@ pub(in crate::game) mod tests {
         with_gate(|game, spare, heard| {
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             for id in [101, 102, 103] {
-                let mut mob = sunrise_client::mobs::Mob::new(
-                    id,
-                    kind.clone(),
-                    Vec3::new(0.5, 64.0, 0.5),
-                    0.0,
-                );
+                let mut mob =
+                    sunrise_sim::mobs::Mob::new(id, kind.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0);
                 if id != 101 {
                     mob.extra.mount = Some(101);
                 }
@@ -2443,7 +2433,7 @@ pub(in crate::game) mod tests {
             with_gate(|game, spare, heard| {
                 let kind = game.res.mob_types().get("minecraft:camel").unwrap().clone();
                 for id in [101, 102, 103] {
-                    let mut mob = sunrise_client::mobs::Mob::new(
+                    let mut mob = sunrise_sim::mobs::Mob::new(
                         id,
                         kind.clone(),
                         Vec3::new(0.5, 64.0, 0.5),
@@ -2484,12 +2474,8 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .clone();
             for id in [101, 102] {
-                let mut mob = sunrise_client::mobs::Mob::new(
-                    id,
-                    kind.clone(),
-                    Vec3::new(0.5, 64.0, 0.5),
-                    0.0,
-                );
+                let mut mob =
+                    sunrise_sim::mobs::Mob::new(id, kind.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0);
                 if id == 102 {
                     mob.extra.mount = Some(101);
                     mob.extra.vehicle_order = 20;
@@ -2540,14 +2526,14 @@ pub(in crate::game) mod tests {
                 let path = game.arrivals_path();
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();
                 game.save_portal_arrivals();
-                let written = sunrise_client::save::read_dat(&path).unwrap();
+                let written = sunrise_sim::save::read_dat(&path).unwrap();
                 let Some(Tag::List(saved)) = written.get("arrivals") else {
                     panic!("missing arrivals list");
                 };
                 assert_eq!(saved.len(), 1);
                 let saved = arrival_from_tag(&saved[0]).unwrap();
                 assert_eq!(
-                    sunrise_client::entity_nbt::uuid(&saved.tag),
+                    sunrise_sim::entity_nbt::uuid(&saved.tag),
                     Some([0, 0, 0, 584])
                 );
 
@@ -2567,7 +2553,7 @@ pub(in crate::game) mod tests {
                 let records = game.entity_chunks(&std::collections::HashSet::from([chunk]), false);
                 assert_eq!(records[0].1.len(), 1);
                 assert_eq!(
-                    sunrise_client::entity_nbt::uuid(&records[0].1[0]),
+                    sunrise_sim::entity_nbt::uuid(&records[0].1[0]),
                     Some([0, 0, 0, 584])
                 );
             });

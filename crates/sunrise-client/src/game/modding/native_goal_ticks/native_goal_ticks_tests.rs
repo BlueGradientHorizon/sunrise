@@ -10,8 +10,8 @@ use mod_api::{
     Registrar, RegistrationContext,
 };
 use std::sync::Mutex;
-use sunrise_client::mobs::{self, Mob, goals::Cx};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_sim::mobs::{self, Mob, goals::Cx};
 
 /// The mods of these tests, installed with their parts, as a game's open does:
 /// `with_mods` for the mods, `install_parts` for what they register,
@@ -156,7 +156,7 @@ fn tick_goals(game: &mut crate::game::ServerGame<'_>, index: usize) {
 fn tick_goals_as(
     game: &mut crate::game::ServerGame<'_>,
     index: usize,
-    player: Option<sunrise_client::mobs::PlayerView>,
+    player: Option<sunrise_sim::mobs::PlayerView>,
     identity: Option<([i32; 4], u32)>,
 ) {
     // The native-authoritative side, whose mob tick builds the goal host.
@@ -166,11 +166,11 @@ fn tick_goals_as(
         .iter()
         .map(|m| creatures::seen(m, game.level.player_uuid, game.items()))
         .collect();
-    let mut index_by_id = sunrise_client::fast_hash::FxHashMap::<u32, u32>::default();
+    let mut index_by_id = sunrise_level::fast_hash::FxHashMap::<u32, u32>::default();
     for (i, s) in snapshot.iter().enumerate() {
         index_by_id.entry(s.id).or_insert(i as u32);
     }
-    let mut test_level = sunrise_client::health::TestLevel::new(0);
+    let mut test_level = sunrise_sim::health::TestLevel::new(0);
     let mut level = test_level.level();
     let mut events = Vec::new();
     {
@@ -188,7 +188,7 @@ fn tick_goals_as(
         mobs[index].ai.goals = selector;
     }
     game.mobs
-        .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+        .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
 }
 
 /// The events of one mob's goal, in order.
@@ -350,7 +350,7 @@ fn a_higher_priority_goal_interrupts_a_running_mod_goal() {
 #[test]
 #[ignore = "daily"]
 fn set_target_follows_the_write_rules() {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     struct SetTarget;
     impl Goal for SetTarget {
         fn flags(&self) -> GoalFlags {
@@ -506,7 +506,7 @@ fn the_host_answers_without_panicking() {
         // A loaded chunk the level handle can vouch for (`is_loaded`).
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let other = game.entity(71).unwrap();
         set_other(other);
@@ -556,8 +556,8 @@ fn mob_of(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str, at: [f64;
 
 /// A survival player standing at `at`, as mobs see one (`world::test_player`'s
 /// shape, local to these tests for the crate-split source tree).
-fn view_player(at: [f64; 3]) -> sunrise_client::mobs::PlayerView {
-    use sunrise_client::mobs::PlayerView;
+fn view_player(at: [f64; 3]) -> sunrise_sim::mobs::PlayerView {
+    use sunrise_sim::mobs::PlayerView;
     PlayerView {
         position: Vec3::new(at[0], at[1], at[2]),
         bounds: sunrise_core::geometry::Aabb::new(
@@ -718,7 +718,7 @@ fn a_goal_jump_goes_through_the_jump_control_input() {
 #[test]
 #[ignore = "daily"]
 fn set_target_refuses_what_the_write_handle_refuses() {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     /// What the `SetTarget` goal's call returned.
     static ANSWERS: Mutex<Vec<bool>> = Mutex::new(Vec::new());
     static TARGET: Mutex<Option<EntityRef>> = Mutex::new(None);
@@ -907,7 +907,7 @@ fn the_player_the_tick_sees_resolves_by_its_captured_identity() {
         // Never starts: every tick reads the player afresh as a candidate.
         fn can_use(&mut self, cx: &mut GoalContext<'_>) -> bool {
             let host = cx.host();
-            let uuid = sunrise_client::lan::playerdata::ints_uuid([1, 2, 3, 4]);
+            let uuid = sunrise_sim::lan::playerdata::ints_uuid([1, 2, 3, 4]);
             let by_uuid = host.player(uuid).is_some();
             let entity = host.entity(5000);
             let position = entity.and_then(|entity| entity.position(host));
@@ -968,7 +968,7 @@ fn the_player_the_tick_sees_resolves_by_its_captured_identity() {
 #[ignore = "cost probe"]
 fn mod_goal_tick_cost() {
     use std::time::Instant;
-    use sunrise_client::mobs::goals::GoalSelector;
+    use sunrise_sim::mobs::goals::GoalSelector;
 
     fn spin(selector: &mut GoalSelector, m: &mut Mob, cx: &mut Cx, rounds: usize) -> f64 {
         // Warm up, then the best of three: a debug-build probe, but a stable one.
@@ -998,7 +998,7 @@ fn mod_goal_tick_cost() {
             .iter()
             .map(|m| creatures::seen(m, game.level.player_uuid, game.items()))
             .collect();
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         let mut events = Vec::new();
         game.options.dedicated = Some(Vec::new());
@@ -1082,7 +1082,7 @@ fn a_finalize_spawn_listener_keeps_the_mod_goals() {
             .clone();
         let mut m = Mob::new(60, kind, Vec3::new(3.5, 65.0, 3.5), 0.0);
         m.ground.on_ground = true;
-        let reason = sunrise_client::mobs::spawn_rules::Reason::Natural;
+        let reason = sunrise_sim::mobs::spawn_rules::Reason::Natural;
         game.finalize_with(&mut m, reason, None);
         assert!(
             m.ai.goals.entries().any(|(_, name, _)| name == "Counter"),
@@ -1225,12 +1225,12 @@ impl Hooks for LeapMod {
 /// [`Leap`]. Its position, velocity and ground flag after each of 40 mob
 /// ticks, as bits.
 fn leap_trace(mod_goal: bool) -> Vec<[u64; 7]> {
-    use sunrise_client::mobs::Who;
+    use sunrise_sim::mobs::Who;
     let mut trace = Vec::new();
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-            let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+            let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
             chunk.lit = true;
             game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
         }

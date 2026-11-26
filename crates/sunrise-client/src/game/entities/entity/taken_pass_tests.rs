@@ -5,11 +5,11 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use sunrise_client::join_seq::JoinList;
 use sunrise_mod_runtime::attachments::{
     AttachmentRegistration, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
     index::AttachmentIndex,
 };
+use sunrise_sim::join_seq::JoinList;
 
 type Spawn = fn(&mut crate::game::ServerGame<'_>);
 thread_local! {
@@ -137,14 +137,14 @@ impl LifecycleFixture {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let mut ids = |game: &mut crate::game::ServerGame<'_>| {
                 observe(game);
-                use sunrise_client::join_seq::Joined;
+                use sunrise_sim::join_seq::Joined;
                 let mut unique = std::collections::HashSet::new();
                 macro_rules! lookup {
                     ($list:expr) => {
                         for (index, entity) in $list.iter().enumerate() {
                             let join = entity.join_seq();
                             assert!(join.is_joined());
-                            assert!(join < sunrise_client::join_seq::JoinSeq::upcoming());
+                            assert!(join < sunrise_sim::join_seq::JoinSeq::upcoming());
                             assert!(unique.insert(join), "duplicate owner join");
                             assert_eq!($list.locate(join), Some(index));
                         }
@@ -156,7 +156,7 @@ impl LifecycleFixture {
                 lookup!(game.breath_clouds);
                 if let Some(dragon) = game.dragon.as_ref() {
                     assert!(dragon.join.is_joined());
-                    assert!(dragon.join < sunrise_client::join_seq::JoinSeq::upcoming());
+                    assert!(dragon.join < sunrise_sim::join_seq::JoinSeq::upcoming());
                     assert!(unique.insert(dragon.join));
                     assert_eq!(game.dragon.locate(dragon.join), Some(0));
                 }
@@ -333,7 +333,7 @@ pub(in crate::game) fn in_both_dimensions(
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.side.world_root = root.0.clone();
             game.enter_level(dimension).unwrap();
-            use sunrise_client::join_seq::residency::{Kind, Owner};
+            use sunrise_sim::join_seq::residency::{Kind, Owner};
             let balance = PassBalance {
                 journal: game
                     .resident_entities
@@ -357,12 +357,12 @@ pub(in crate::game) fn in_both_dimensions(
 }
 
 pub(in crate::game) struct PassBalance {
-    journal: sunrise_client::join_seq::residency::Journal,
-    owner: sunrise_client::join_seq::residency::Owner,
+    journal: sunrise_sim::join_seq::residency::Journal,
+    owner: sunrise_sim::join_seq::residency::Owner,
 }
 impl PassBalance {
     pub(in crate::game) fn drain_balanced(&self) -> usize {
-        use sunrise_client::join_seq::residency::Change;
+        use sunrise_sim::join_seq::residency::Change;
         let mut events = Vec::new();
         self.journal.drain_into(&mut events);
         let mut depth = 0usize;
@@ -406,7 +406,7 @@ pub(in crate::game) fn assert_mob_spawn_survives(
     const SPAWNED: u32 = 1_900_000_000;
     fn spawn(game: &mut crate::game::ServerGame<'_>) {
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        let mut mob = sunrise_client::mobs::Mob::new(
+        let mut mob = sunrise_sim::mobs::Mob::new(
             SPAWNED,
             kind,
             sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
@@ -444,7 +444,7 @@ pub(in crate::game) fn assert_mob_spawn_survives(
     if !game.world.chunks.contains_key(&(0, 0)) {
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
     }
     game.tick_creature_entities().unwrap();
@@ -454,7 +454,7 @@ pub(in crate::game) fn assert_mob_spawn_survives(
     game.mobs.clear();
     game.mobs.restore(
         original,
-        sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+        sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
     );
     balance.assert_parked(game);
 }
@@ -466,8 +466,8 @@ pub(in crate::game) fn assert_projectile_spawn_survives(
 ) {
     const ID: u32 = 1_900_000_002;
     fn spawn(game: &mut crate::game::ServerGame<'_>) {
-        let mut p = sunrise_client::projectiles::Projectile::new(
-            sunrise_client::projectiles::ProjectileKind::Egg,
+        let mut p = sunrise_sim::projectiles::Projectile::new(
+            sunrise_sim::projectiles::ProjectileKind::Egg,
             sunrise_core::geometry::Vec3::new(3.5, 80.0, 3.5),
             None,
         );
@@ -509,7 +509,7 @@ pub(in crate::game) fn assert_projectile_spawn_survives(
     game.creatures.projectiles.clear();
     game.creatures.projectiles.restore(
         original,
-        sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+        sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
     );
 }
 
@@ -533,7 +533,7 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
             let expected: Vec<_> = game.side.others.0.iter().map(|e| (e.id, e.join)).collect();
             assert_eq!(expected.len(), 2, "{kind}");
             assert_ne!(expected[0].1, expected[1].1);
-            assert_ne!(expected[0].1, sunrise_client::join_seq::JoinSeq::UNJOINED);
+            assert_ne!(expected[0].1, sunrise_sim::join_seq::JoinSeq::UNJOINED);
             for tag in ["first", "second"] {
                 assert!(game.run_command(&format!(
                     "data merge entity @e[tag={tag},limit=1] {{Rotation:[45.0f,10.0f]}}"
@@ -565,7 +565,7 @@ fn mob_tick_restores_spawn_buffer_before_multiple_survivors_without_renumbering(
     fn seed(game: &mut crate::game::ServerGame<'_>, ids: std::ops::RangeInclusive<u32>, x: f64) {
         for (index, id) in ids.enumerate() {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            let mut mob = sunrise_client::mobs::Mob::new(
+            let mut mob = sunrise_sim::mobs::Mob::new(
                 id,
                 kind,
                 sunrise_core::geometry::Vec3::new(x + index as f64 * 2.0, 80.0, 1.5),
@@ -578,7 +578,7 @@ fn mob_tick_restores_spawn_buffer_before_multiple_survivors_without_renumbering(
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         seed(game, 71..=73, 1.5);
         let original: Vec<_> = game.mobs.iter().map(|m| (m.id, m.join)).collect();
         // Synthetic additions at the actual lift, then the complete production

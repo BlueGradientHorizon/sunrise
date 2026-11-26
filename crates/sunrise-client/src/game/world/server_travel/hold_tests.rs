@@ -2,12 +2,10 @@
 //! `Guest::landing`) until the chunks are lit; however the hold ends, the moves are heard again (#15727).
 use crate::game::{lan::LanHost, lan::LanSettings};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
-};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 const CONN: u32 = 7;
 const FAR: f64 = 96_000.5;
@@ -226,8 +224,8 @@ fn drain_packets(game: &mut crate::game::ServerGame<'_>) {
 #[ignore = "daily"]
 fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
     use super::LevelTeleport;
-    use sunrise_client::lan::guest::InboxItem;
     use sunrise_protocol::packets::play::{self, Serverbound as S};
+    use sunrise_sim::lan::guest::InboxItem;
 
     let mut resources = None;
     let (mut game, _rx) = server(&mut resources);
@@ -346,9 +344,9 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
 #[test]
 #[ignore = "daily"]
 fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
-    use sunrise_client::items::ItemStack;
-    use sunrise_client::lan::guest::InboxItem;
+    use sunrise_items::items::ItemStack;
     use sunrise_protocol::packets::play::{self, Serverbound as S};
+    use sunrise_sim::lan::guest::InboxItem;
 
     mod_platform::testing::with_mods(Vec::new().into(), || {
         for personal in [false, true] {
@@ -469,7 +467,7 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
 #[test]
 #[ignore = "daily"]
 fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
-    use sunrise_client::world_spawn::PlayerSpawnFinder;
+    use sunrise_sim::world_spawn::PlayerSpawnFinder;
 
     mod_platform::testing::with_mods(Vec::new().into(), || {
         let mut resources = None;

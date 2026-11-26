@@ -1,7 +1,7 @@
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_sim::motion::PlayerMotion;
 
 fn load_witness_26_3() -> String {
     let path = std::env::var("SUNRISE_STAND_LOW_HEALTH_WITNESS").unwrap_or_else(|_| {
@@ -125,7 +125,7 @@ pub(in crate::game) fn run_a_stand_breaks_on_low_health_only_through_damage_and_
                     row.step
                 );
                 if let Some(a) = stand {
-                    let saved = sunrise_client::entity_nbt::armor_stand_to_nbt(
+                    let saved = sunrise_sim::entity_nbt::armor_stand_to_nbt(
                         a,
                         [1, 2, 3, 4],
                         None,

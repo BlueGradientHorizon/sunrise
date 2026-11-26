@@ -173,7 +173,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "fps" => self.debug_fps_line(d),
                 "game_version" => d.priority(format!(
                     "Minecraft {v} ({v}/sunrise)",
-                    v = sunrise_client::save::VERSION_NAME
+                    v = sunrise_sim::save::VERSION_NAME
                 )),
                 "gpu_utilization" => d.line(overlay::gpu_line(self.side.gpu_utilization)),
                 "heightmap" => self.debug_heightmap_lines(d, server.as_ref()),
@@ -441,7 +441,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         pos: [i32; 3],
     ) -> (String, Vec<(&'static str, String)>) {
-        use sunrise_client::blocks::Fluid;
+        use sunrise_items::blocks::Fluid;
         let f = self
             .res
             .facts()

@@ -1,7 +1,8 @@
 //! Snapshot position-owned loot with clone's selected block entities.
 use super::*;
-use sunrise_client::{containers::BlockEntity, save::PendingContainerLoot};
 use sunrise_core::nbt::Tag;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::save::PendingContainerLoot;
 
 pub(in crate::game) struct CloneBlockPayload {
     entity: Option<BlockEntity>,

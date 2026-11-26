@@ -1,6 +1,6 @@
 //! Common jigsaw block helpers shared by client UI and server handlers.
 use super::Game;
-use sunrise_client::jigsaw_block;
+use sunrise_level::jigsaw_block;
 
 pub(in crate::game) type Pos = (i32, i32, i32);
 

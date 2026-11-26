@@ -36,19 +36,19 @@ use mod_api::{CameraType, SoundPlay, SoundRef};
 use mod_api::{FluidStack, LogicalSide, TriState};
 use std::{sync::Arc, time::Duration};
 use sunrise_client::{
-    biome::BiomeColors,
-    block_entities::Pos,
     chat::ChatSource,
-    containers::BlockEntity,
     extras::Corner,
-    first_person::Hand,
     hud::{HudBatch, rgba},
-    items::ItemStack,
     keybinds,
-    mod_list::{Installed, KeyMapping, NativePage, NativeSetting, NativeSettingValue},
     music::{Music, MusicLayer},
-    text::Text,
 };
+use sunrise_client_core::text::Text;
+use sunrise_items::items::ItemStack;
+use sunrise_level::{biome::BiomeColors, block_entities::Pos, containers::BlockEntity};
+use sunrise_mod_package::mod_list::{
+    Installed, KeyMapping, NativePage, NativeSetting, NativeSettingValue,
+};
+use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
 use winit::{event::MouseButton, keyboard::KeyCode};
 
@@ -205,7 +205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game) fn client_chunks_unloaded(
         &mut self,
-        _unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
+        _unloaded: &[std::sync::Arc<sunrise_level::chunk::Chunk>],
     ) {
     }
     pub(in crate::game) fn client_apply_after_use_components(&mut self, stack: &ItemStack) {
@@ -666,7 +666,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         window: i32,
         name: &str,
-    ) -> Option<&'static sunrise_client::containers::ModMenuType> {
+    ) -> Option<&'static sunrise_level::containers::ModMenuType> {
         let menu = &self.active_native_screen()?.menu;
         (menu.window == window && menu.name == name).then_some(menu.mod_type)?
     }
@@ -749,7 +749,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         batch: &HudBatch,
         slot: Option<usize>,
-        lines: &mut Vec<(sunrise_client::text::Text, u32)>,
+        lines: &mut Vec<(sunrise_client_core::text::Text, u32)>,
     ) {
         let Some(screen) = self
             .shown_native_screen()
@@ -1620,8 +1620,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let reason = self.options.offline_reason.take()?;
                 Some(
                     sunrise_client::toasts::SystemToast::new(
-                        sunrise_client::text::Text::tr("sunrise.title.playing_offline", &[]),
-                        Some(sunrise_client::text::Text::literal(reason)),
+                        sunrise_client_core::text::Text::tr("sunrise.title.playing_offline", &[]),
+                        Some(sunrise_client_core::text::Text::literal(reason)),
                     )
                     .with_display_time(sunrise_client::toasts::SystemToast::LONG_DISPLAY_TIME),
                 )
@@ -1968,11 +1968,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .collect();
         rows.extend(native.packages().iter().map(|package| {
             let m = &package.manifest;
-            self.side
-                .settings
-                .mods
-                .info
-                .insert(m.id.clone(), sunrise_client::mod_list::ModInfo::of(m, None));
+            self.side.settings.mods.info.insert(
+                m.id.clone(),
+                sunrise_mod_package::mod_list::ModInfo::of(m, None),
+            );
             Installed {
                 id: m.id.clone(),
                 title: format!("{} {}", m.name, m.version),

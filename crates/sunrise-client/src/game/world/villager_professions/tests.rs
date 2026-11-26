@@ -6,8 +6,8 @@ use mod_api::{
     TradeSetKey,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
-use sunrise_client::mobs;
 use sunrise_core::nbt::Tag;
+use sunrise_sim::mobs;
 
 fn definition() -> ProfessionDefinition {
     let id = |name| Identifier::parse(name).unwrap();
@@ -64,10 +64,10 @@ fn resource_root(scratch: &std::path::Path) -> std::path::PathBuf {
     let package = sunrise_mod_package::Package::read(&module).unwrap();
     let content = sunrise_mod_package::Content::read(&module, &package.manifest).unwrap();
     let root = scratch.join("resources");
-    sunrise_client::mod_content::build(
+    sunrise_sim::mod_content::build(
         &base,
         std::path::Path::new(""),
-        &[sunrise_client::mod_content::ContentMod {
+        &[sunrise_sim::mod_content::ContentMod {
             id: "test".into(),
             content,
             jars: vec![],
@@ -85,7 +85,7 @@ fn request(root: &std::path::Path) -> world_loading::WorldRequest {
         Some(1),
         true,
         None,
-        Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+        Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
     )
     .unwrap();
     value.save_root = root.into();
@@ -324,7 +324,7 @@ fn assert_engineer_acquisition(game: &mut crate::game::ServerGame<'_>) {
     let registry = game.pack.assets.registry;
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     for x in 0..4 {
         for z in 0..4 {
             game.world
@@ -335,9 +335,9 @@ fn assert_engineer_acquisition(game: &mut crate::game::ServerGame<'_>) {
     game.world
         .set(1, 64, 0, registry.default_state("test:assembler").unwrap())
         .unwrap();
-    let save_tables = sunrise_client::save::SaveTables::new(&game.pack.assets);
+    let save_tables = sunrise_sim::save::SaveTables::new(&game.pack.assets);
     let poi =
-        sunrise_client::save::encode_poi(&game.world.chunks[&(0, 0)], &save_tables, Some(&table))
+        sunrise_sim::save::encode_poi(&game.world.chunks[&(0, 0)], &save_tables, Some(&table))
             .unwrap();
     let records = poi
         .tag
@@ -352,7 +352,7 @@ fn assert_engineer_acquisition(game: &mut crate::game::ServerGame<'_>) {
     };
     assert_eq!(records.len(), 1);
     assert_eq!(
-        sunrise_client::save::text(records[0].get("type")).as_deref(),
+        sunrise_sim::save::text(records[0].get("type")).as_deref(),
         Some("test:assembler")
     );
     assert_eq!(records[0].get("pos"), Some(&Tag::IntArray(vec![1, 64, 0])));
@@ -376,11 +376,11 @@ fn assert_engineer_acquisition(game: &mut crate::game::ServerGame<'_>) {
         ),
     ]);
     let mut mob =
-        sunrise_client::entity_nbt::mob_from_nbt(&raw, game.res.mob_types(), 901, Some(registry))
+        sunrise_sim::entity_nbt::mob_from_nbt(&raw, game.res.mob_types(), 901, Some(registry))
             .unwrap();
     mob.ground.on_ground = true;
     let mut world = game.mob_world_base(&[]);
-    let mut damage = sunrise_client::health::TestLevel::new(1);
+    let mut damage = sunrise_sim::health::TestLevel::new(1);
     let mut level = damage.level();
     for time in 0..250 {
         world.game_time = time;
@@ -461,7 +461,7 @@ fn villager_game_load_resolves_saved_names_for_both_species_without_reroll() {
                 let mob = &game.mobs[index];
                 assert!(matches!(
                     mob.extra.profession,
-                    sunrise_client::mobs::villager::ProfessionState::Registered { .. }
+                    sunrise_sim::mobs::villager::ProfessionState::Registered { .. }
                 ));
                 assert_eq!(
                     game.stations()
@@ -478,7 +478,7 @@ fn villager_game_load_resolves_saved_names_for_both_species_without_reroll() {
                     game.mobs[index].extra.trade.as_deref(),
                     Some(original.as_ref())
                 );
-                let saved = sunrise_client::entity_nbt::mob_to_nbt(
+                let saved = sunrise_sim::entity_nbt::mob_to_nbt(
                     &game.mobs[index],
                     [11, 12, 13, 14],
                     None,
@@ -487,7 +487,7 @@ fn villager_game_load_resolves_saved_names_for_both_species_without_reroll() {
                     &Default::default(),
                 );
                 assert_eq!(
-                    sunrise_client::save::text(
+                    sunrise_sim::save::text(
                         saved
                             .get("VillagerData")
                             .and_then(|data| data.get("profession"))
@@ -508,13 +508,13 @@ fn villager_game_missing_mod_keeps_both_species_unresolved_and_offers_untouched(
             let index = game.mobs.iter().position(|mob| mob.id == id).unwrap();
             assert!(matches!(
                 game.mobs[index].extra.profession,
-                sunrise_client::mobs::villager::ProfessionState::Unresolved(_)
+                sunrise_sim::mobs::villager::ProfessionState::Unresolved(_)
             ));
             assert_eq!(game.mobs[index].extra.profession.index(), None);
             let original = game.mobs[index].extra.trade.as_ref().unwrap().clone();
             if kind == "minecraft:villager" {
                 game.ensure_offers(index);
-                let mut mob = sunrise_client::entity_nbt::mob_from_nbt(
+                let mut mob = sunrise_sim::entity_nbt::mob_from_nbt(
                     &saved_engineer(kind),
                     game.res.mob_types(),
                     999,
@@ -522,7 +522,7 @@ fn villager_game_missing_mod_keeps_both_species_unresolved_and_offers_untouched(
                 )
                 .unwrap();
                 let mut world = game.mob_world_base(&[]);
-                let mut damage = sunrise_client::health::TestLevel::new(7);
+                let mut damage = sunrise_sim::health::TestLevel::new(7);
                 let mut level = damage.level();
                 for time in 0..100 {
                     world.game_time = time;
@@ -557,7 +557,7 @@ fn villager_load_world_save_dir_preserves_custom_workstation() {
         |game| {
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.world
                 .set(
                     1,
@@ -574,7 +574,7 @@ fn villager_load_world_save_dir_preserves_custom_workstation() {
                 .save
                 .0
                 .tables
-                .get_or_init(|| Arc::new(sunrise_client::save::SaveTables::new(&game.pack.assets)));
+                .get_or_init(|| Arc::new(sunrise_sim::save::SaveTables::new(&game.pack.assets)));
             let chunks = vec![game.world.chunks[&(0, 0)].clone()];
             game.side
                 .save

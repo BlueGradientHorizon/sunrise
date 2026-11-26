@@ -229,7 +229,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let uuid = self.side.lan_acting_uuid.or_else(|| {
             self.level
                 .player_uuid
-                .map(sunrise_client::lan::playerdata::ints_uuid)
+                .map(sunrise_sim::lan::playerdata::ints_uuid)
         })?;
         self.player(uuid)
     }

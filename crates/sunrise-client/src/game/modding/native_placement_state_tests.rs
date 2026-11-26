@@ -9,11 +9,11 @@ use mod_api::{
     RegistrationContext, StateForPlacementEvent, WorldEpoch,
 };
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
 };
+use sunrise_level::chunk::Chunk;
 
 const BLOCK: &str = "placement_read:camouflage";
 const POS: BlockPos = BlockPos::new(8, 70, 8);
@@ -191,7 +191,7 @@ fn placement_read_leaves_queued_spill_untouched() {
         let level = game.level(game.dim.id()).unwrap();
         let block = game.block_key("minecraft:oak_log").unwrap();
         let context = PlacementContext::new(POS, Direction::Up, None);
-        let stack = sunrise_client::items::ItemStack::new("minecraft:stick", 3);
+        let stack = sunrise_items::items::ItemStack::new("minecraft:stick", 3);
         let pos = [8.5, 70.5, 8.5];
         let motion = Some([0.0, 0.25, 0.0]);
         let delay = 10;

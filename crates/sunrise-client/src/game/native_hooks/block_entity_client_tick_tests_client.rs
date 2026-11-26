@@ -18,14 +18,14 @@ use crate::game::native_hooks::block_entity_client_tick_tests::take_events;
 use crate::game::native_hooks::block_entity_client_tick_tests::ticked;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use sunrise_client::containers::BlockEntity;
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_level::containers::BlockEntity;
 
 #[test]
 #[ignore = "daily"]
 fn a_clients_frames_tick_its_declared_copies_until_they_go() {
     use crate::game::execution_role::ExecutionRole;
-    use sunrise_client::{
+    use sunrise_level::{
         chunk::Chunk,
         containers::{ModBlockEntity, ModBlockEntityFields},
     };
@@ -90,10 +90,10 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
                 // A spawner that sees a player at any range: two particles each client tick.
                 let mut pig = Compound::new();
                 pig.insert("id".into(), Tag::String("minecraft:pig".into()));
-                let spawner = sunrise_client::chunk::block_entity::Spawner {
+                let spawner = sunrise_level::chunk::block_entity::Spawner {
                     required_player_range: -1,
-                    next: Some(sunrise_client::chunk::block_entity::Next::Own(
-                        sunrise_client::chunk::block_entity::SpawnData {
+                    next: Some(sunrise_level::chunk::block_entity::Next::Own(
+                        sunrise_level::chunk::block_entity::SpawnData {
                             entity: pig,
                             ..Default::default()
                         },
@@ -111,7 +111,7 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
         // The player the spawner looks for (`hasNearbyAlivePlayer` needs one, whatever the range).
         let [x, y, z] = SPAWNER_AT.map(f64::from);
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(x, y + 2.0, z),
             )

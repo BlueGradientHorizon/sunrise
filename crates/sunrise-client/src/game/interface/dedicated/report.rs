@@ -10,19 +10,19 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use sunrise_client::perf_net::Refusal;
-use sunrise_client::server_perf::{
-    self, CaptureEnd, CaptureOptions, SamplerOptions, ServerPerf, WorldCounts,
-    traffic::{Conn, Wire},
-    world::{LevelCounts, MobCost, MobCosts, WorkerJobs},
-};
 pub(in crate::game) use sunrise_gameplay::dedicated::report::*;
 use sunrise_level::chunk_streamer::job_stats;
 use sunrise_perf_format::{
     files,
     v1::{GpuMode, Start, StopReason, SunriseOptions, Trigger},
 };
+use sunrise_sim::perf_net::Refusal;
 use sunrise_sim::perf_types::Threads;
+use sunrise_sim::server_perf::{
+    self, CaptureEnd, CaptureOptions, SamplerOptions, ServerPerf, WorldCounts,
+    traffic::{Conn, Wire},
+    world::{LevelCounts, MobCost, MobCosts, WorkerJobs},
+};
 use sunrise_world::level::BlockId;
 
 /// What a capture is asked to record, and how it was asked.
@@ -251,7 +251,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Capture snapshots resolve registry labels; gauges use the same view without labels.
     pub(in crate::game::server_side) fn level_counts(&self) -> Vec<LevelCounts> {
         let level = |dim: Dim,
-                     world: &sunrise_client::world::World,
+                     world: &sunrise_level::world::World,
                      view: super::super::levels::EntityCountView<'_>| {
             let mut block_entities = BTreeMap::<String, u32>::new();
             for entity in world.block_entities.values() {
@@ -380,7 +380,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use super::*;
     use std::time::Instant;
-    use sunrise_client::spans;
+    use sunrise_level::spans;
 
     fn server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -421,7 +421,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_capture_of_a_server_with_names_text_and_a_seed_holds_none_of_them() {
         use std::io::Read;
-        use sunrise_client::containers::BlockEntity;
+        use sunrise_level::containers::BlockEntity;
         use {sunrise_level::signs_data::SignData, sunrise_level::signs_data::SignText};
         let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let mut resources = None;
@@ -431,7 +431,7 @@ mod tests {
         game.options.player_name = Some("SteveSecret".into());
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
         let at = sunrise_core::geometry::Vec3::new(0.5, 4.0, 0.5);
-        let mut cow = sunrise_client::mobs::Mob::new(1, kind, at, 0.0);
+        let mut cow = sunrise_sim::mobs::Mob::new(1, kind, at, 0.0);
         cow.custom_name = Some("Zorblax".into());
         game.mobs.push(cow);
         let sign = SignData {

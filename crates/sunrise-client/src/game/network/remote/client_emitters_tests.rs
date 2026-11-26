@@ -2,7 +2,7 @@ use super::super::{C, play};
 use crate::game::{
     native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
 };
-use sunrise_client::particles::ParticleType::{Crit, EnchantedHit};
+use sunrise_level::particle_options::ParticleType::{Crit, EnchantedHit};
 use sunrise_protocol::entity_data::{Value, serializer};
 
 pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce()) {

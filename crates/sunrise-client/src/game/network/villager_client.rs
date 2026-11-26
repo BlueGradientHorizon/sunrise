@@ -1,7 +1,7 @@
 //! Villager registry indices shared by matching mod loads; no additional packet format.
-use sunrise_client::mobs::villager::VILLAGER_TYPES;
-use sunrise_client::mobs::{Mob, Species, villager::ResolvedProfessions};
 use sunrise_protocol::{entity_data::Value, registry::Builtin};
+use sunrise_sim::mobs::villager::VILLAGER_TYPES;
+use sunrise_sim::mobs::{Mob, Species, villager::ResolvedProfessions};
 /// VillagerData as the network sends it: the type and the profession by
 /// their built-in registry ids, then the level.
 pub(in crate::game) fn villager_data(m: &mut Mob, data: &[i32], builtin: &Builtin) {
@@ -22,9 +22,9 @@ pub(in crate::game) fn villager_data(m: &mut Mob, data: &[i32], builtin: &Builti
         .get("minecraft:villager_profession")
         .and_then(|r| r.name(profession))
         .and_then(|name| name.strip_prefix("minecraft:"))
-        .and_then(sunrise_client::mobs::villager::profession_index)
+        .and_then(sunrise_sim::mobs::villager::profession_index)
     {
-        m.extra.profession = sunrise_client::mobs::villager::ProfessionState::from_index(p);
+        m.extra.profession = sunrise_sim::mobs::villager::ProfessionState::from_index(p);
     }
     m.extra.villager_level = level.max(1);
 }
@@ -59,7 +59,7 @@ pub(in crate::game) fn receive(
 
 pub(in crate::game) fn server_meta(
     m: &Mob,
-    hub: &sunrise_client::lan::hub::Hub,
+    hub: &sunrise_sim::lan::hub::Hub,
     player: Option<i32>,
     time: i64,
     meta: &mut Vec<(u8, i32, Value)>,
@@ -124,7 +124,7 @@ pub(in crate::game) fn builtin_registries(root: &std::path::Path) -> Option<Arc<
     if let Some((_, builtin)) = cache.iter().find(|(cached, _)| cached == root) {
         return Some(builtin.clone());
     }
-    let builtin = Arc::new(sunrise_client::lan::data::with_custom_stats(
+    let builtin = Arc::new(sunrise_sim::lan::data::with_custom_stats(
         Builtin::find(root).and_then(|p| Builtin::load(&p).ok())?,
     ));
     cache.push((root.to_owned(), builtin.clone()));

@@ -3,7 +3,7 @@
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{Flow, Hooks, PlayerMoveEvent, ServerHost};
 use std::sync::{Arc, Mutex};
-use sunrise_client::lan::hub::{Accepted, PendingMove};
+use sunrise_sim::lan::hub::{Accepted, PendingMove};
 
 type Heard = Arc<Mutex<Vec<(u128, [f64; 3], [f32; 2], [f64; 3], [f32; 2])>>>;
 
@@ -119,8 +119,8 @@ impl Hooks for Ruling {
 /// Guest 13 stands where it was placed, loaded, long past its first tick, with two turns of its
 /// head (yaw 10, then 20) in its inbox, both in the one client tick.
 fn two_turns_waiting(game: &mut crate::game::ServerGame<'_>) {
-    use sunrise_client::lan::guest::InboxItem;
     use sunrise_protocol::packets::play::{self, Serverbound as S};
+    use sunrise_sim::lan::guest::InboxItem;
     let hub = &mut game.lan.as_mut().unwrap().hub;
     hub.ticks = 10;
     hub.update_guest(13, |g| {

@@ -826,7 +826,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
                 let base = crate::game::mods::content_overlay(
                     &resources,
                     &sources,
-                    &sunrise_client::logging::game_home().join("jars"),
+                    &sunrise_level::logging::game_home().join("jars"),
                 )
                 .unwrap()
                 .root;
@@ -1091,9 +1091,9 @@ fn an_arm_pose_answer_replaces_the_pose_the_item_gives() {
         }
     }
 
-    let stick = sunrise_client::items::ItemStack::new("minecraft:stick", 1);
+    let stick = sunrise_items::items::ItemStack::new("minecraft:stick", 1);
     with_client_game(|game| {
-        let mut m = sunrise_client::mobs::Mob::new(
+        let mut m = sunrise_sim::mobs::Mob::new(
             1,
             game.client_res().player_type().clone().unwrap(),
             sunrise_core::geometry::Vec3::ZERO,
@@ -1486,16 +1486,16 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
             atomic::{AtomicUsize, Ordering},
         },
     };
-    use sunrise_client::{
-        items::ItemStack,
+    use sunrise_core::{geometry::Vec3, use_animation::UseAnimation};
+    use sunrise_items::equipment::{MAINHAND, OFFHAND};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::{
         mobs::{
             Mob,
             anim::{self, Poses},
         },
         motion::PlayerMotion,
     };
-    use sunrise_core::{geometry::Vec3, use_animation::UseAnimation};
-    use sunrise_items::equipment::{MAINHAND, OFFHAND};
 
     struct MobPose(Arc<AtomicUsize>);
     #[mod_api::__subscriptions]

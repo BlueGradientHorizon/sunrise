@@ -1,7 +1,7 @@
 use super::*;
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn text_string(&self, text: &mod_api::Text) -> String {
-        sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
+        sunrise_sim::api_text::to_engine_inprocess(text).plain()
     }
 }
 
@@ -30,8 +30,8 @@ mod tests {
                 ("Space", "tail", "Space / Cake + tail"),
                 ("Espace", "fin", "Espace / Cake + fin"),
             ] {
-                sunrise_client::lang::scoped(
-                    sunrise_client::lang::Language::of(
+                sunrise_client_core::lang::scoped(
+                    sunrise_client_core::lang::Language::of(
                         "test",
                         [
                             ("test.plain".into(), "%2$s / %1$s".into()),
@@ -66,7 +66,7 @@ mod tests {
             let plain: Vec<_> = lines
                 .iter()
                 .map(|line| {
-                    let line: sunrise_client::text::Text = line.try_into_engine(&()).unwrap();
+                    let line: sunrise_client_core::text::Text = line.try_into_engine(&()).unwrap();
                     assert!(line.chars().all(|(_, style)| style.is_bold()));
                     line.plain()
                 })
@@ -78,7 +78,7 @@ mod tests {
             let plain: Vec<_> = lines
                 .iter()
                 .map(|line| {
-                    let line: sunrise_client::text::Text = line.try_into_engine(&()).unwrap();
+                    let line: sunrise_client_core::text::Text = line.try_into_engine(&()).unwrap();
                     line.plain()
                 })
                 .collect();
@@ -97,7 +97,7 @@ mod tests {
             assert_eq!(host.text_width(&deep), 6);
             assert_eq!(host.text_split(&deep, 100).len(), 1);
             assert_eq!(
-                sunrise_client_lib::api_text::to_serialized_engine(&deep),
+                sunrise_sim::api_text::to_serialized_engine(&deep),
                 Err(mod_api::TextFormError::TooDeep)
             );
 
@@ -107,8 +107,8 @@ mod tests {
                 arguments: vec![],
             });
             for (value, width, lines) in [("A", 6, 1), ("AA", 12, 2)] {
-                sunrise_client::lang::scoped(
-                    sunrise_client::lang::Language::of(
+                sunrise_client_core::lang::scoped(
+                    sunrise_client_core::lang::Language::of(
                         "test",
                         [("test.measure".into(), value.into())],
                     ),

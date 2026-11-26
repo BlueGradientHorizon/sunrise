@@ -2,8 +2,9 @@
 #![cfg(test)]
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::Identifier;
-use sunrise_client::{items::ItemStack, mobs::Mob};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]
@@ -36,7 +37,7 @@ fn owner_launch_sets_owner_before_insertion_and_uses_projectile_random() {
         let entity_type = Identifier::parse("minecraft:snowball").unwrap();
         // This thread's next unique seed is 1234 (odd multiplier inverse),
         // independent of world RNG and any draws during resource loading.
-        sunrise_client::random_source::set_thread_uniquifier(2709830126447559882).unwrap();
+        sunrise_level::random_source::set_thread_uniquifier(2709830126447559882).unwrap();
         let shot = game
             .spawn_projectile_from_rotation(owner, &entity_type, &stack, 0.0, 1.5, 1.0)
             .unwrap();
@@ -99,7 +100,7 @@ fn owner_launch_sets_owner_before_insertion_and_uses_projectile_random() {
             .find(|p| p.id == shot.entity().id())
             .unwrap();
         match &projectile.kind {
-            sunrise_client::projectiles::ProjectileKind::Potion(stack, false) => {
+            sunrise_sim::projectiles::ProjectileKind::Potion(stack, false) => {
                 assert_eq!(stack.count, 1)
             }
             _ => panic!("expected splash potion payload"),
@@ -175,7 +176,7 @@ fn owner_launch_reports_explicit_guest_to_launch_listeners() {
                 .unwrap();
             let count = game.creatures.projectiles.len();
             let mut before = game.world.random.clone();
-            sunrise_client::random_source::set_thread_uniquifier(2709830126447559882).unwrap();
+            sunrise_level::random_source::set_thread_uniquifier(2709830126447559882).unwrap();
             assert!(
                 game.spawn_projectile_from_rotation(owner, &kind, &stack, 0.0, 1.5, 1.0)
                     .is_none()
@@ -183,7 +184,7 @@ fn owner_launch_reports_explicit_guest_to_launch_listeners() {
             assert_eq!(game.creatures.projectiles.len(), count);
             assert_eq!(game.world.random.next_long(), before.next_long());
             assert_eq!(
-                sunrise_client::random_source::create().next_double(),
+                sunrise_level::random_source::create().next_double(),
                 0.6465821602909256
             );
             assert_eq!(observed.lock().unwrap().len(), 1);

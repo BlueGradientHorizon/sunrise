@@ -1,6 +1,6 @@
 //! Validate the complete mod recipe-book generation before publishing any tab.
 use super::*;
-use sunrise_client::recipe_book::{DisplayResources, ModBookIndex};
+use sunrise_sim::recipe_book::{DisplayResources, ModBookIndex};
 
 pub(super) struct Resources<'a, 'w, S: crate::game::Side>(pub(super) &'a Game<'w, S>);
 impl<S: crate::game::Side> DisplayResources for Resources<'_, '_, S> {
@@ -41,16 +41,14 @@ impl<S: crate::game::Side> DisplayResources for Resources<'_, '_, S> {
     fn menu_layout(
         &self,
         id: &str,
-    ) -> Option<sunrise_client::recipe_book::menu_layout::MenuLayoutMetadata> {
-        let menu = sunrise_client::containers::mod_menu_type(id)?;
-        Some(
-            sunrise_client::recipe_book::menu_layout::MenuLayoutMetadata {
-                slots: u16::try_from(menu.slots).ok()?,
-                crafting: menu
-                    .crafting
-                    .map(|grid| (grid.grid as u16, grid.size as u16, grid.result as u16)),
-            },
-        )
+    ) -> Option<sunrise_sim::recipe_book::menu_layout::MenuLayoutMetadata> {
+        let menu = sunrise_level::containers::mod_menu_type(id)?;
+        Some(sunrise_sim::recipe_book::menu_layout::MenuLayoutMetadata {
+            slots: u16::try_from(menu.slots).ok()?,
+            crafting: menu
+                .crafting
+                .map(|grid| (grid.grid as u16, grid.size as u16, grid.result as u16)),
+        })
     }
     fn recipe_type(&self, kind: &str) -> bool {
         self.0.recipes().by_type.contains_key(kind)

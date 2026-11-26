@@ -5,17 +5,14 @@ use crate::game::{
 };
 use serde_json::json;
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk,
-    mobs::Mob,
-    motion::PlayerMotion,
-    sound_engine::{SoundInstance, TickContext},
-};
+use sunrise_client::sound_engine::{SoundInstance, TickContext};
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{Clientbound, EntityEvent},
 };
+use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
 #[test]
 #[ignore = "daily"]

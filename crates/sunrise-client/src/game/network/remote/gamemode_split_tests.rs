@@ -4,7 +4,7 @@ use super::super::*;
 use crate::game::game_mode::mode_from_id;
 use crate::game::native_entity_refs::tests::with_client_game;
 use serde_json::Value as JsonValue;
-use sunrise_client::command::args::GameMode;
+use sunrise_command::args::GameMode;
 use sunrise_protocol::connection::ConnReader;
 
 pub(in crate::game) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
@@ -779,9 +779,9 @@ pub(in crate::game) fn run_split_mode_hud_rendering_reach_miss_inventory_and_inp
         "game::remote::abilities::gamemode_split_tests::split_mode_hud_rendering_reach_miss_inventory_and_input_rules",
         || {
             use sunrise_client::fog::FogType;
-            use sunrise_client::items::ItemStack;
-            use sunrise_client::motion::WATER;
             use sunrise_core::nbt::Tag;
+            use sunrise_items::items::ItemStack;
+            use sunrise_sim::motion::WATER;
             use winit::event::MouseButton;
 
             struct NoopLoop;

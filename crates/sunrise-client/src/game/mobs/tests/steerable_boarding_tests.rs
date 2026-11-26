@@ -5,23 +5,23 @@ use crate::game::{
 };
 use serde_json::json;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
-    lan::{
-        Joined, NetConfig, PlayerSender,
-        guest::{Guest, InboxItem},
-        hub::HubConfig,
-    },
-    mobs::Mob,
-};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     buf::Reader,
     packets::{
         configuration::ClientInformation,
         play::{Interact, PlayerInput, Serverbound},
     },
+};
+use sunrise_sim::{
+    lan::{
+        Joined, NetConfig, PlayerSender,
+        guest::{Guest, InboxItem},
+        hub::HubConfig,
+    },
+    mobs::Mob,
 };
 
 const TEST: &str =

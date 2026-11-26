@@ -14,7 +14,7 @@ use mod_api::BlockEdit;
 use mod_api::ColumnBlocks;
 use mod_api::Heightmap;
 use std::sync::Arc;
-use sunrise_client::{
+use sunrise_level::{
     block_edit::{BulkPublication, Run},
     chunk::ColumnLayout,
     containers::BlockEntity,
@@ -419,7 +419,7 @@ fn replace_block_entities(
 mod tests {
     use super::*;
     use mod_api::BlockRun;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
     use sunrise_world::heightmap::HeightmapType;
 
     #[test]
@@ -618,12 +618,12 @@ mod tests {
     fn a_block_entitys_published_shapes_go_with_it_when_its_block_changes() {
         let mut w = world();
         w.set(1, 5, 1, BlockStateId(3)).unwrap();
-        let mut press = sunrise_client::containers::ModBlockEntity::new(
+        let mut press = sunrise_level::containers::ModBlockEntity::new(
             "machines:press".into(),
             Default::default(),
         );
         press.set_shapes(Some(Arc::new(
-            sunrise_client::containers::PublishedShapes::new(mod_api::BlockEntityShapes {
+            sunrise_level::containers::PublishedShapes::new(mod_api::BlockEntityShapes {
                 outline: vec![],
                 collision: vec![[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]],
             })
@@ -646,7 +646,7 @@ mod tests {
         );
         let made = |n: &str| {
             (n == "machines:press").then(|| {
-                BlockEntity::Mod(Box::new(sunrise_client::containers::ModBlockEntity::new(
+                BlockEntity::Mod(Box::new(sunrise_level::containers::ModBlockEntity::new(
                     "machines:press".into(),
                     Default::default(),
                 )))
@@ -674,7 +674,7 @@ mod tests {
         // a mod block's, as `Game::new_block_entity` makes it
         let made = |n: &str| {
             (n == "machines:press").then(|| {
-                BlockEntity::Mod(Box::new(sunrise_client::containers::ModBlockEntity::new(
+                BlockEntity::Mod(Box::new(sunrise_level::containers::ModBlockEntity::new(
                     "machines:press".into(),
                     Default::default(),
                 )))
@@ -869,7 +869,7 @@ mod tests {
             |n| {
                 calls.push(n.to_string());
                 (n.as_ref() == "machines:press").then(|| {
-                    BlockEntity::Mod(Box::new(sunrise_client::containers::ModBlockEntity::new(
+                    BlockEntity::Mod(Box::new(sunrise_level::containers::ModBlockEntity::new(
                         format!("press-{}", calls.len()),
                         Default::default(),
                     )))
@@ -905,7 +905,7 @@ mod tests {
         let made = make_block_entities(&[7_u32, 8, 7, 8], |state| {
             calls.push(*state);
             (*state == 8).then(|| {
-                BlockEntity::Mod(Box::new(sunrise_client::containers::ModBlockEntity::new(
+                BlockEntity::Mod(Box::new(sunrise_level::containers::ModBlockEntity::new(
                     "machines:heater".into(),
                     Default::default(),
                 )))

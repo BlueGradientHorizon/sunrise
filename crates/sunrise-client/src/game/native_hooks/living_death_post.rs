@@ -26,7 +26,7 @@ pub(in crate::game) mod tests {
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    use sunrise_client::mobs::DamageKind;
+    use sunrise_sim::mobs::DamageKind;
 
     #[derive(Default)]
     pub(in crate::game) struct Post {
@@ -235,7 +235,7 @@ pub(in crate::game) use crate::game::server_side::native_hooks_server::living_de
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     guest.health = 0.0;
                     guest.inventory[0] =
-                        Some(sunrise_client::items::ItemStack::new("minecraft:stone", 1));
+                        Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1));
                 });
                 let id = game.lan.as_ref().unwrap().hub.guests[0].entity_id as u32;
 

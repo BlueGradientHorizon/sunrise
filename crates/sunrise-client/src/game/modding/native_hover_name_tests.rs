@@ -3,20 +3,20 @@ use super::native_entity_refs::tests::with_game;
 use crate::game::api_values::TryIntoApi;
 use mod_api::prelude::{ItemsHost, TextHost};
 use mod_api::{ItemStack, text::TextContent};
-use sunrise_client::lang::{Language, scoped};
+use sunrise_client_core::lang::{Language, scoped};
 
 #[test]
 #[ignore = "daily"]
 fn a_hover_name_is_a_component_each_viewer_renders_in_their_language() {
     with_game(|game| {
-        let named: ItemStack = sunrise_client::item_data::parse_stack(
+        let named: ItemStack = sunrise_items::item_data::parse_stack(
             r#"{id:"minecraft:diamond_pickaxe",count:1,components:{"minecraft:custom_name":"Hammer"}}"#,
         )
         .unwrap()
         .unwrap()
         .try_into_api()
         .unwrap();
-        let plain: ItemStack = sunrise_client::items::ItemStack::new("minecraft:stone", 1)
+        let plain: ItemStack = sunrise_items::items::ItemStack::new("minecraft:stone", 1)
             .try_into_api()
             .unwrap();
 

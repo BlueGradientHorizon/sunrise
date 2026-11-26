@@ -1,7 +1,7 @@
 use super::*;
 use std::io::Write as _;
-use sunrise_client::crafting::ResolvedSources;
 use sunrise_mod_package::{content::RECIPE_PRIORITIES_PATH, manifest::JarRef};
+use sunrise_sim::crafting::ResolvedSources;
 use sunrise_world::{loot::PackOverlay, native_load_context::DataLoadOrigin};
 
 fn write(path: &Path, bytes: impl AsRef<[u8]>) {
@@ -208,7 +208,7 @@ fn check_layers(kind: &str, replace_allowed: bool, malformed_jar: bool) {
     );
     let resolved = ResolvedSources::load(
         overlay.root.prepared(),
-        &sunrise_client::items::Items::empty(),
+        &sunrise_items::items::Items::empty(),
         &PackOverlay {
             files,
             priority_layers: layers,

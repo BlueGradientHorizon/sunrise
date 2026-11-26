@@ -5,8 +5,8 @@
 //! (tools/test_stand_break_loot_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
@@ -154,7 +154,9 @@ fn sticks(game: &mut crate::game::ServerGame<'_>) -> String {
     game.side.chat_capture = Some(Vec::new());
     game.run_command(STICK);
     let said = game.side.chat_capture.take().unwrap_or_default();
-    said.iter().map(sunrise_client::text::Text::plain).collect()
+    said.iter()
+        .map(sunrise_client_core::text::Text::plain)
+        .collect()
 }
 
 #[test]

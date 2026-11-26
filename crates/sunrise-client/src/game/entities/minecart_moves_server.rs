@@ -1,8 +1,8 @@
 use super::Game;
 use super::minecarts::Minecart;
 use crate::game::collision_source::Mover;
-use sunrise_client::collisions::SceneCollisions;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::collisions::SceneCollisions;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Entity.move for a cart: collisions zero the blocked components, the world border's walls
@@ -11,7 +11,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // The cart's own move is a self move (#2414: vanilla's
         // `AbstractMinecart.move` passes SELF for its own tick); PR 1a
         // records the movement unchanged.
-        let mut gate = sunrise_client::move_gate::armed(
+        let mut gate = sunrise_sim::move_gate::armed(
             &self.loop_context,
             c.id,
             c.kind.id(),
@@ -38,12 +38,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             self.entity_collisions(Mover::Cart(c))
         };
-        let mut scene = sunrise_client::collisions::EntityCollisions {
+        let mut scene = sunrise_level::collisions::EntityCollisions {
             blocks: scene,
             entities: &entities,
             border: Some((self.border.geometry(), [c.position.x, c.position.z])),
         };
-        if let Ok(moved) = sunrise_client::move_gate::entities_resolve(
+        if let Ok(moved) = sunrise_sim::move_gate::entities_resolve(
             &mut gate,
             &mut scene,
             c.bounds(),
@@ -58,7 +58,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 c.position.z + moved.z,
             );
             let side = game_side!(self);
-            let motion = sunrise_client::motion::BodyMotion {
+            let motion = sunrise_sim::motion::BodyMotion {
                 world: &self.world,
                 collision: self.collision,
                 facts: self.res.facts(),
@@ -68,13 +68,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             if !gate.skipped() {
                 motion.record_move(
-                    sunrise_client::motion::BodyCollision {
+                    sunrise_sim::motion::BodyCollision {
                         footprint: (c.position, c.bounds()),
                         movement: (delta, moved),
                         authoritative: true,
-                        context: sunrise_client::motion::BodyMotion::entity_context(
-                            c.id, c.position,
-                        ),
+                        context: sunrise_sim::motion::BodyMotion::entity_context(c.id, c.position),
                         subject: None,
                     },
                     &mut c.ground,
@@ -103,12 +101,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let entity = (c.id, c.kind.id());
             let response = self.body_motion(&game_side!(self)).restitute(
                 entity,
-                sunrise_client::motion::BodyMove {
+                sunrise_sim::motion::BodyMove {
                     wanted: delta,
                     moved,
                     effect,
                 },
-                sunrise_client::entity_rules::EntityRules::get_gravity(c),
+                sunrise_sim::entity_rules::EntityRules::get_gravity(c),
                 0.95_f32,
                 c.velocity,
                 c.fall_distance,

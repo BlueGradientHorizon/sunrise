@@ -3,8 +3,9 @@ use mod_api::{
     BlockPart, BlockPos, ClientHost, Direction, Flow, Hooks, ModEntry, PlayHitSoundEvent, Registrar,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 type Hits = Arc<Mutex<Vec<(BlockPos, Direction)>>>;
 struct Quiet(Hits);

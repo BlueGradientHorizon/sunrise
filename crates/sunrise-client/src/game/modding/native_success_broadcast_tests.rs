@@ -9,9 +9,9 @@ use std::sync::{
     atomic::{AtomicI32, AtomicUsize},
     mpsc,
 };
-use sunrise_client::gamerules::Value as Rule;
-use sunrise_client::lan::{Joined, Out, PlayerSender, guest::Guest};
+use sunrise_client_core::gamerules::Value as Rule;
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
 /// The source (an operator), the `execute as` target (an operator), an operator listed at
 /// level 0 and a player who is not an operator.
@@ -121,16 +121,16 @@ fn with_operators(
                 game.build_registries();
                 // A dedicated server's command tree (`save-off`), as `run_dedicated` selects it
                 // (process-wide: each test runs in its own process).
-                sunrise_client::command::vanilla::set_dedicated_commands(true);
+                sunrise_command::vanilla::set_dedicated_commands(true);
                 game.register_native_commands();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let back = game.enter_command_level(super::Dim::Nether);
                 assert_eq!(game.dim, super::Dim::Nether, "the fixture has a Nether");
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 if let Some(back) = back {
                     game.enter_command_level(back);
                 }
@@ -171,7 +171,7 @@ fn chats(
                     if let Clientbound::SystemChat(p) =
                         Clientbound::decode(id, reader.rest()).unwrap()
                     {
-                        lines.push(sunrise_client::scoreboard::tag_to_json(&p.content));
+                        lines.push(sunrise_client_core::scoreboard::tag_to_json(&p.content));
                     }
                 }
             }
@@ -359,8 +359,8 @@ fn a_tracking_command_block_is_logged_while_feedback_is_off() {
     crate::game::in_own_process(
         "game::server_side::native_success_broadcast_tests::a_tracking_command_block_is_logged_while_feedback_is_off",
         || {
-            use sunrise_client::{chunk::block_entity::BlockEntity, command_block::CommandBlock};
             use sunrise_core::position::BlockPos;
+            use sunrise_level::{chunk::block_entity::BlockEntity, command_block::CommandBlock};
             with_operators(|game, receivers| {
                 let state = game
                     .pack
@@ -519,7 +519,7 @@ fn console_output_is_logged_and_broadcast_once() {
     crate::game::in_own_process(
         "game::server_side::native_success_broadcast_tests::console_output_is_logged_and_broadcast_once",
         || {
-            use sunrise_client::server::user_lists::{BanList, IpBanList, OpList, WhiteList};
+            use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
             with_operators(|game, receivers| {
                 chats(game, receivers);
                 set_rules(game, true, true);

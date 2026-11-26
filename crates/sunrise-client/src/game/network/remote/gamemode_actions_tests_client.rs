@@ -5,8 +5,10 @@ use crate::game::remote::gamemode_actions_tests::outgoing;
 use crate::game::remote::gamemode_actions_tests::ranged_stick;
 use mod_api::InteractionAttempt;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, first_person::Hand, items::ItemStack};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+use sunrise_sim::first_person_sim::Hand;
 
 #[test]
 #[ignore = "daily"]
@@ -179,8 +181,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                         else {
                             panic!("expected crosshair knot target");
                         };
-                        let knot_origin =
-                            sunrise_client::mobs::leash::knot_state([0, 66, 1]).position;
+                        let knot_origin = sunrise_sim::mobs::leash::knot_state([0, 66, 1]).position;
                         let raw = [
                             point[0] - knot_origin.x,
                             point[1] - knot_origin.y,

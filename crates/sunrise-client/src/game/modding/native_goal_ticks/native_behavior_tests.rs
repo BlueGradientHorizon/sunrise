@@ -11,9 +11,9 @@ use mod_api::{
     MemoryStatus, ModEntry, RegisteredBehavior, Registrar, RegistrationContext,
 };
 use std::sync::Mutex;
-use sunrise_client::health::DamageLevel;
-use sunrise_client::join_seq::RestoreOrder;
-use sunrise_client::mobs::{self, Mob, MobWorld};
+use sunrise_sim::health::DamageLevel;
+use sunrise_sim::join_seq::RestoreOrder;
+use sunrise_sim::mobs::{self, Mob, MobWorld};
 
 // The journals and registration plan below are shared across these tests.
 static TEST: Mutex<()> = Mutex::new(());
@@ -120,7 +120,7 @@ fn with_mob_world(
         .collect();
     let mut w = game.mob_world_base(&snapshot);
     w.goal_host = Some(&*game);
-    let mut test_level = sunrise_client::health::TestLevel::new(0);
+    let mut test_level = sunrise_sim::health::TestLevel::new(0);
     let mut level = test_level.level();
     drive(&mut mobs[0], &w, &mut level);
     game.mobs.restore(mobs, RestoreOrder::SurvivorsFirst);
@@ -458,7 +458,7 @@ fn behaviors_join_after_vanilla_of_their_priority_and_activity() {
     install_game_mods();
     with_game(|game| {
         villager(game, 8, [3.5, 65.0, 3.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         villager_tick(game, 8, 100, 3000, &mut level);
         let keys = mobs::villager_brain::entry_keys(game.mobs.iter().find(|m| m.id == 8).unwrap())
@@ -495,7 +495,7 @@ fn a_behavior_writes_the_walk_target_and_the_refusals_hold() {
     with_game(|game| {
         villager(game, 8, [3.5, 65.0, 3.5]);
         zombie(game, 9, [5.5, 65.0, 5.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         // Idle at day 3000 (no job site): the behavior starts.
         villager_tick(game, 8, 100, 3000, &mut level);
@@ -538,7 +538,7 @@ fn only_an_active_activity_starts_but_core_always_does() {
     install_game_mods();
     with_game(|game| {
         villager(game, 8, [3.5, 65.0, 3.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         for i in 0..10 {
             villager_tick(game, 8, 100 + i, 3000, &mut level);
@@ -575,7 +575,7 @@ fn a_running_behavior_keeps_ticking_across_the_activity_change() {
     install_game_mods();
     with_game(|game| {
         villager(game, 8, [3.5, 65.0, 3.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         // Day: Idle starts the behavior. Night (day 13000): Rest takes the
         // activity, and the running behavior keeps ticking anyway, as
@@ -620,7 +620,7 @@ fn refresh_stops_a_running_behavior_and_the_rebuild_is_fresh() {
     install_game_mods();
     with_game(|game| {
         villager(game, 8, [3.5, 65.0, 3.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         villager_tick(game, 8, 100, 3000, &mut level);
         assert_eq!(
@@ -674,7 +674,7 @@ fn a_villager_without_mod_behaviors_draws_what_a_parts_free_one_does() {
         game: &mut crate::game::ServerGame<'_>,
     ) -> ((u64, Option<f64>), (u64, Option<f64>)) {
         villager(game, 8, [3.5, 65.0, 3.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         for i in 0..50 {
             villager_tick(game, 8, 100 + i, 3000, &mut level);
@@ -748,7 +748,7 @@ fn a_sniffer_behavior_sets_a_walk_target() {
     with_game(|game| {
         mob_of(game, "minecraft:sniffer", 8, [3.5, 65.0, 3.5]);
         zombie(game, 9, [5.5, 65.0, 5.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         animal_tick(game, 8, 100, 3000, &mut level);
         let reads = READS
@@ -786,7 +786,7 @@ fn animal_behaviors_join_after_vanilla_of_their_priority() {
         let mut bare = None;
         with_game(|game| {
             mob_of(game, "minecraft:sniffer", 8, [3.5, 65.0, 3.5]);
-            let mut test_level = sunrise_client::health::TestLevel::new(0);
+            let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
             animal_tick(game, 8, 100, 3000, &mut level);
             bare = Some(
@@ -799,7 +799,7 @@ fn animal_behaviors_join_after_vanilla_of_their_priority() {
     install_game_mods();
     with_game(|game| {
         mob_of(game, "minecraft:sniffer", 8, [3.5, 65.0, 3.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         animal_tick(game, 8, 100, 3000, &mut level);
         let joined =
@@ -851,7 +851,7 @@ fn grown_up_stops_a_running_ghastling_behavior() {
             mobs::finalize::set_baby(&mut mobs[0], true);
             game.mobs.restore(mobs, RestoreOrder::SurvivorsFirst);
         }
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         animal_tick(game, 8, 100, 3000, &mut level);
         assert_eq!(
@@ -942,7 +942,7 @@ fn a_breeze_behavior_starts_in_fight_and_writes_its_target() {
     with_game(|game| {
         mob_of(game, "minecraft:breeze", 8, [3.5, 65.0, 3.5]);
         zombie(game, 9, [5.5, 65.0, 5.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         // A breeze's default activity is FIGHT.
         monster_tick(game, 8, 100, 3000, &mut level);
@@ -980,7 +980,7 @@ fn warden_behaviors_join_after_vanilla_of_their_priority() {
                 mobs::warden::register(&mut mobs[0]);
                 game.mobs.restore(mobs, RestoreOrder::SurvivorsFirst);
             }
-            let mut test_level = sunrise_client::health::TestLevel::new(0);
+            let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
             warden_tick(game, 8, 100, 3000, &mut level);
             bare = Some(
@@ -999,7 +999,7 @@ fn warden_behaviors_join_after_vanilla_of_their_priority() {
             mobs::warden::register(&mut mobs[0]);
             game.mobs.restore(mobs, RestoreOrder::SurvivorsFirst);
         }
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         warden_tick(game, 8, 100, 3000, &mut level);
         let joined =
@@ -1049,7 +1049,7 @@ fn a_panicking_behavior_leaves_the_rest_of_the_tick_working() {
     install_game_mods();
     with_game(|game| {
         villager(game, 8, [3.5, 65.0, 3.5]);
-        let mut test_level = sunrise_client::health::TestLevel::new(0);
+        let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let mut level = test_level.level();
         // One behavior panics in its start; the other starts and ticks in
         // the same brain tick, and the mob's own goal selector answers

@@ -1,6 +1,7 @@
 use super::{Game, Hit};
-use sunrise_client::{animate_tick::make_campfire_smoke, items::ItemStack};
+use sunrise_client::animate_tick::make_campfire_smoke;
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `CampfireBlock.useItemOn` as this client runs it before the server's

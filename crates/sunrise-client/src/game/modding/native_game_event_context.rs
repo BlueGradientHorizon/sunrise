@@ -54,14 +54,15 @@ mod tests {
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, GameEventContext};
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
     use sunrise_client_core::who::EventSource;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
 
     fn sensor<'a>(
         game: &'a mut crate::game::ServerGame<'_>,
-    ) -> Option<&'a mut sunrise_client::sculk::SculkEntity> {
+    ) -> Option<&'a mut sunrise_level::sculk::SculkEntity> {
         match game.world.block_entities.get_mut(&(1, 64, 1)) {
-            Some(sunrise_client::containers::BlockEntity::Sculk(entity)) => Some(entity),
+            Some(sunrise_level::containers::BlockEntity::Sculk(entity)) => Some(entity),
             _ => None,
         }
     }

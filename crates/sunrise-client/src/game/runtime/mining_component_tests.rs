@@ -1,7 +1,8 @@
 use super::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]

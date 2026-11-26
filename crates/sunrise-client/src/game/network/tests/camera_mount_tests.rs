@@ -4,8 +4,9 @@ use crate::game::{
     native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
 };
 use serde_json::Value;
-use sunrise_client::camera::{Camera, CameraType};
+use sunrise_client::camera::Camera;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 const RIDER: i32 = 31;
@@ -223,8 +224,7 @@ pub(in crate::game::client_side) fn run_a_spectated_rider_backs_off_by_its_livin
     with_client_game(|game| {
         let _server = logged_client(game);
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5))
-                .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 1.0, 0.5)).unwrap(),
         );
         let mut seen = std::collections::BTreeSet::new();
         for first in records {

@@ -9,8 +9,8 @@
 use super::{Game, commands::Target};
 use mod_api::{__private::game::Fields, PlayerRef};
 use std::path::Path;
-use sunrise_client::{
-    items::ItemStack,
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     lan::{guest::Guest, playerdata},
     save::{Level, read_dat, write_dat},
 };

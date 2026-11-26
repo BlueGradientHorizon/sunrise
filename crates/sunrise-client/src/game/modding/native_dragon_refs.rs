@@ -151,10 +151,10 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{MobRef, WorldEpoch};
-    use sunrise_client::{entities::ArmorStand, mobs::Mob};
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::entity_data::{Value, serializer};
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     fn dragon_in(game: &mut crate::game::ServerGame<'_>) -> (EntityRef, DragonRef) {
         let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
@@ -410,7 +410,7 @@ mod tests {
             let (entity, _) = dragon_in(game);
             let mob = game.mob(entity).unwrap();
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 30, 7);
             let target = game.entity(30).unwrap();
             let living = game.living(target).unwrap();
@@ -565,7 +565,7 @@ mod tests {
             remote.entity_id = 7;
             remote.profile = 42;
             game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.spawn_entity(15, "minecraft:ender_dragon", [0.0; 3], [0.0; 3]);
             place_parts(game);
             // The server tells this client of the dragon alone; the parts are its copies of it.

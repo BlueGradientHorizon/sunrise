@@ -68,7 +68,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let p = d.parts[0].0;
             // Level event 2008: an explosion puff where a block broke.
             self.server_particle_at(
-                crate::lan::server_effects::ServerParticle::simple(ParticleType::Explosion),
+                sunrise_sim::lan::server_effects::ServerParticle::simple(ParticleType::Explosion),
                 [p.x, p.y, p.z],
                 [0.0; 3],
             );

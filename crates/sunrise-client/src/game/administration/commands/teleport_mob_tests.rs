@@ -1,6 +1,6 @@
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::mobs::{Mob, path::Path};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{Mob, path::Path};
 
 #[test]
 #[ignore = "daily"]

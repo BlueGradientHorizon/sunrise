@@ -6,8 +6,8 @@ use super::level_sounds::LevelSound;
 use mod_api::SoundSource;
 use sunrise_gameplay::allays::{AllayLevel, AllayPlayer, SightView};
 use {
-    sunrise_client::items::ItemStack, sunrise_client::mobs::Species, sunrise_client::mobs::allay,
-    sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_sim::first_person_sim::Hand,
+    sunrise_sim::mobs::Species, sunrise_sim::mobs::allay,
 };
 
 impl Game<'_, crate::game::server_side::ServerState> {

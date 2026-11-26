@@ -11,21 +11,18 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use sunrise_client::{
-    blocks::BlockFacts,
-    camera::{CameraEntity, CameraType, LivingCamera},
-    collisions::SceneCollisions,
-};
-use sunrise_client::{
-    entities::nameplate::NameplateDistances,
-    hud::HudBatch,
-    mobs::{Anim, Brain, Mob, MobType, render::FrameDraw},
-    mouse::Rotation,
-    pose::Pose,
-};
+use sunrise_client::{hud::HudBatch, mobs::render::FrameDraw, mouse::Rotation};
 use sunrise_core::{
     geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
     position::BlockPos,
+};
+use sunrise_items::blocks::BlockFacts;
+use sunrise_level::camera_math::{CameraEntity, CameraType, LivingCamera};
+use sunrise_level::collisions::SceneCollisions;
+use sunrise_sim::{
+    entities::nameplate::NameplateDistances,
+    mobs::{Anim, Brain, Mob, MobType},
+    pose::Pose,
 };
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity, CollisionItem},
@@ -135,7 +132,7 @@ impl RayWorld for VisualRays<'_, '_> {
 /// `setInvisible` alone, as pose plugins hide the real body under the pose
 /// (#3788); a world in the frame has only the effect.
 pub(in crate::game::client_side) fn own_invisible(
-    effects: &sunrise_client::effects::PlayerEffects,
+    effects: &sunrise_level::effects::PlayerEffects,
     shared_flag: bool,
 ) -> bool {
     shared_flag || effects.get("invisibility").is_some()
@@ -146,9 +143,9 @@ pub(in crate::game::client_side) fn own_invisible(
 /// translucent.
 pub(in crate::game::client_side) fn body_visible(
     invisible: bool,
-    team: Option<&sunrise_client::scoreboard::Team>,
+    team: Option<&sunrise_client_core::scoreboard::Team>,
 ) -> bool {
-    !sunrise_client::scoreboard::invisible_to(team, team, false, invisible)
+    !sunrise_client_core::scoreboard::invisible_to(team, team, false, invisible)
 }
 /// The player's model type for each resources root it was asked for.
 pub(in crate::game) static PLAYER_TYPES: Mutex<Vec<(PathBuf, Option<Arc<MobType>>)>> =
@@ -196,7 +193,7 @@ pub(in crate::game::client_side) fn load_player_type(
                 type_key: Default::default(),
                 id: "minecraft:player".into(),
                 // Players render as a humanoid; the species only drives local AI.
-                species: sunrise_client::mobs::Species::Zombie,
+                species: sunrise_sim::mobs::Species::Zombie,
                 width: 0.6,
                 height: 1.8,
                 eye_height: 1.62,
@@ -486,7 +483,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let mut m = Mob::new(0, kind, p.position, self.yaw);
             m.head_pitch = self.pitch;
             // The render state starts with the profile's paired default skin and model.
-            let skin = sunrise_client::tab_list::default_skin(self.own_uuid());
+            let skin = sunrise_level::profile_lookup::default_skin(self.own_uuid());
             m.skin = Some(skin.into());
             m.slim = skin.contains("/slim/");
             self.side.player_model = Some(m);
@@ -569,7 +566,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // (`LivingEntityRenderer.solveBodyRot`).
             Some(RiddenBody::Living(body)) => {
                 m.body_yaw +=
-                    wrap(sunrise_client::mobs::riders::solve_body_rot(yaw, body) - m.body_yaw);
+                    wrap(sunrise_sim::mobs::riders::solve_body_rot(yaw, body) - m.body_yaw);
             }
             // A minecart's, a cushion's: the body turns as on foot.
             None => {
@@ -704,7 +701,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .riding
             .and_then(|id| self.boats.iter().find(|b| b.id == id))
         {
-            let (yaw, clamped) = sunrise_client::camera::clamp_boat_rotation(self.yaw, b.yaw);
+            let (yaw, clamped) = sunrise_level::camera_math::clamp_boat_rotation(self.yaw, b.yaw);
             self.yaw = yaw;
             // clampRotation moves `yRotO` with the view.
             self.side.rope_rot_old.0 += clamped;
@@ -756,7 +753,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The player's own team: a client is in it by its remote profile name.
     pub(in crate::game::client_side) fn own_team(
         &self,
-    ) -> Option<&sunrise_client::scoreboard::Team> {
+    ) -> Option<&sunrise_client_core::scoreboard::Team> {
         self.remote
             .as_ref()
             .and_then(|r| self.score.board.players_team(&r.profile_name))
@@ -1103,7 +1100,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// armour glint when the worn elytra `hasFoil()`.
     pub(in crate::game::client_side) fn wings_overlay(
         &self,
-        stack: Option<&sunrise_client::items::ItemStack>,
+        stack: Option<&sunrise_items::items::ItemStack>,
     ) -> u32 {
         let item_glint = |item: &str| {
             let props = &self.res.items().enchantments.props;
@@ -1124,7 +1121,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn wings_geometry(
         &self,
         chest: Option<&str>,
-        stack: Option<&sunrise_client::items::ItemStack>,
+        stack: Option<&sunrise_items::items::ItemStack>,
         cape: Option<&str>,
         baby: bool,
         base: glam::Mat4,
@@ -1137,9 +1134,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The worn stack's own `equippable`, for the chest slot, with an asset
         // (getEquipmentIfRenderable: anything else counts as nothing worn).
         let equippable = match stack {
-            Some(s) => sunrise_client::item_sync::equippable(s, self.items()),
-            None => chest
-                .and_then(|item| sunrise_client::item_sync::item_equippable(item, self.items())),
+            Some(s) => sunrise_sim::item_sync::equippable(s, self.items()),
+            None => {
+                chest.and_then(|item| sunrise_sim::item_sync::item_equippable(item, self.items()))
+            }
         };
         let Some(asset) = equippable
             .filter(|e| e.slot == "chest")
@@ -1245,8 +1243,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .slot_stack(sunrise_items::equipment::CHEST)
             .filter(|s| chest == Some(&*s.item))
         {
-            Some(s) => sunrise_client::item_sync::equippable(s, items),
-            None => chest.and_then(|item| sunrise_client::item_sync::item_equippable(item, items)),
+            Some(s) => sunrise_sim::item_sync::equippable(s, items),
+            None => chest.and_then(|item| sunrise_sim::item_sync::item_equippable(item, items)),
         };
         let layers = equippable
             .filter(|e| e.slot == "chest")
@@ -1325,10 +1323,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         entity_id: u32,
         m: &Mob,
-        stacks: [Option<&sunrise_client::items::ItemStack>; 2],
+        stacks: [Option<&sunrise_items::items::ItemStack>; 2],
     ) -> [Option<sunrise_core::arm_pose::ArmPose>; 2] {
         use super::api_values::{TryIntoApi, TryIntoEngine};
-        use sunrise_client::mobs::anim::humanoid_arm_poses;
+        use sunrise_sim::mobs::anim::humanoid_arm_poses;
         let stacks =
             stacks.map(|stack| stack.filter(|s| s.count > 0 && &*s.item != "minecraft:air"));
         let mut poses = stacks.map(|stack| {
@@ -2009,12 +2007,13 @@ pub(in crate::game) mod preview_tests {
 
     #[test]
     fn an_invisible_player_hides_its_own_body() {
-        use sunrise_client::{effects::EffectInstance, scoreboard::Scoreboard};
+        use sunrise_client_core::scoreboard::Scoreboard;
+        use sunrise_level::effects::EffectInstance;
         // The effect as a server's UpdateMobEffect or a drunk potion adds it.
-        let id = sunrise_client::brewing::effect("minecraft:invisibility")
+        let id = sunrise_level::brewing::effect("minecraft:invisibility")
             .unwrap()
             .id;
-        let mut effects = sunrise_client::effects::PlayerEffects::default();
+        let mut effects = sunrise_level::effects::PlayerEffects::default();
         assert!(body_visible(own_invisible(&effects, false), None));
         effects.add(EffectInstance::new(id, 3600, 0));
         let invisible = own_invisible(&effects, false);
@@ -2035,10 +2034,10 @@ pub(in crate::game) mod preview_tests {
     /// real body under the pose is not drawn.
     #[test]
     fn the_servers_invisible_flag_hides_the_own_body_without_the_effect() {
-        let effects = sunrise_client::effects::PlayerEffects::default();
+        let effects = sunrise_level::effects::PlayerEffects::default();
         assert!(own_invisible(&effects, true));
         assert!(!body_visible(own_invisible(&effects, true), None));
-        let mut board = sunrise_client::scoreboard::Scoreboard::default();
+        let mut board = sunrise_client_core::scoreboard::Scoreboard::default();
         let team = board.add_team("blue");
         assert!(body_visible(own_invisible(&effects, true), Some(team)));
     }
@@ -2185,7 +2184,7 @@ pub(in crate::game) mod preview_tests {
     #[test]
     fn a_living_vehicles_rider_faces_its_body_within_85_degrees() {
         let body = |head, vehicle| {
-            (sunrise_client::mobs::riders::solve_body_rot(head, vehicle) * 1000.0).round() / 1000.0
+            (sunrise_sim::mobs::riders::solve_body_rot(head, vehicle) * 1000.0).round() / 1000.0
         };
         assert_eq!(body(60.0, 40.0), 40.0);
         assert_eq!(body(100.0, 40.0), 52.0);

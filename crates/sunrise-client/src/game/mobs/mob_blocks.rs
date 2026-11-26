@@ -2,12 +2,9 @@
 //! block state an enderman holds (`CarriedBlockLayer`). Also the block
 //! models mobs wear (`SnowGolemHeadLayer`, `MushroomCowMushroomLayer`).
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    mesher::Vertex,
-    mobs::{Mob, Species, render},
-    particles::ELDER_GUARDIAN_LIFETIME,
-};
+use sunrise_client::{mesher::Vertex, mobs::render, particles::ELDER_GUARDIAN_LIFETIME};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Mob, Species};
 
 // `FishingRodCast`: the main hand takes precedence when both hold rods.
 fn fishing_cast_item(
@@ -152,7 +149,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             * glam::Mat4::from_rotation_x((60.0 - 150.0 * t).to_radians())
             * glam::Mat4::from_scale(glam::Vec3::new(k, -k, -k))
             * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.56, 3.5));
-        let poses = sunrise_client::mobs::anim::Poses::new(model);
+        let poses = sunrise_sim::mobs::anim::Poses::new(model);
         self.mark_entity(out.len(), "minecraft:elder_guardian");
         render::draw(
             model,
@@ -175,8 +172,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         light: u32,
         out: &mut Vec<Vertex>,
     ) {
-        use sunrise_client::mobs::anim::Poses;
-        if !sunrise_client::mobs::raider::is_captain(mob) {
+        use sunrise_sim::mobs::anim::Poses;
+        if !sunrise_sim::mobs::raider::is_captain(mob) {
             return;
         }
         let Some((pole, flag)) = &self.side.entity_models.banner else {
@@ -203,7 +200,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             render::draw(flag, m, &flag_poses, r, white, light, 0, out);
         }
         let layers =
-            std::iter::once(("base", "white")).chain(sunrise_client::item_data::OMINOUS_LAYERS);
+            std::iter::once(("base", "white")).chain(sunrise_items::item_data::OMINOUS_LAYERS);
         for (pattern, dye) in layers {
             let Some(r) = uv(&format!("entity/banner/{pattern}")) else {
                 continue;
@@ -345,7 +342,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             out,
         );
         let overlay = block_overlay(
-            sunrise_client::mobs::sulfur_cube::fuse(mob),
+            sunrise_sim::mobs::sulfur_cube::fuse(mob),
             alpha,
             mob.hurt_time > 0 || mob.death_time > 0,
         );
@@ -480,7 +477,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && (&*mob.kind.id == "minecraft:player" || mob.species() == Species::Mannequin)
                 && off_hand == mob.extra.using_off_hand
                 && mob.extra.using_item > 0
-                && sunrise_client::mobs::anim::state(mob, alpha as f32).swing < 1.0e-5;
+                && sunrise_sim::mobs::anim::state(mob, alpha as f32).swing < 1.0e-5;
             let t = if spyglass_to_eye {
                 render::held_to_eye_matrix(mob, alpha as f32, camera, self, left)
             } else {
@@ -490,9 +487,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 continue;
             };
             let slot = if off_hand {
-                sunrise_client::mobs::gear::OFF
+                sunrise_sim::mobs::gear::OFF
             } else {
-                sunrise_client::mobs::gear::MAIN
+                sunrise_sim::mobs::gear::MAIN
             };
             let local_player = self
                 .side
@@ -509,7 +506,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 stack.clone()
             } else if mob.species() == Species::Witch
-                && sunrise_client::mobs::witch::holds_potion(item)
+                && sunrise_sim::mobs::witch::holds_potion(item)
                 && &**item != "minecraft:potion"
             {
                 // A drinking witch's main hand holds the potion's type, drawn as a potion item.
@@ -523,7 +520,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 stack
             };
-            if !local_player && sunrise_client::mobs::gear::enchanted(mob, slot) {
+            if !local_player && sunrise_sim::mobs::gear::enchanted(mob, slot) {
                 // The gear's enchantments are not tracked, only that it has some.
                 stack.enchant("minecraft:unbreaking", 1);
             }
@@ -611,9 +608,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The layer also draws on an invisible mob.
         let species = mob.species();
         if species == Species::SnowGolem
-            || sunrise_client::mobs::species::body_slot(species)
-            || sunrise_client::mobs::equine::is_equine(species)
-            || sunrise_client::mobs::raider::is_captain(mob)
+            || sunrise_sim::mobs::species::body_slot(species)
+            || sunrise_sim::mobs::equine::is_equine(species)
+            || sunrise_sim::mobs::raider::is_captain(mob)
         {
             return;
         }
@@ -632,14 +629,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         // Helmets are drawn by HumanoidArmorLayer, not CustomHeadLayer
         // (LivingEntityRenderer.extractRenderState: HumanoidArmorLayer.shouldRender).
-        if sunrise_client::item_sync::equippable(&stack, self.res.items())
+        if sunrise_sim::item_sync::equippable(&stack, self.res.items())
             .is_some_and(|e| e.asset_id.is_some() && e.slot == "head")
         {
             return;
         }
-        if !local_player
-            && sunrise_client::mobs::gear::enchanted(mob, sunrise_client::mobs::gear::HEAD)
-        {
+        if !local_player && sunrise_sim::mobs::gear::enchanted(mob, sunrise_sim::mobs::gear::HEAD) {
             stack.enchant("minecraft:unbreaking", 1);
         }
         let Some(head) = render::part_transform(mob, alpha as f32, camera, self, "head") else {
@@ -726,7 +721,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .iter()
                         .find(|(k, _)| k == "minecraft:profile")
                 })
-                .map(|(_, t)| sunrise_client::scoreboard::tag_to_json(t))
+                .map(|(_, t)| sunrise_client_core::scoreboard::tag_to_json(t))
                 .unwrap_or(serde_json::Value::Null);
             let has_foil = stack.data().is_some_and(|d| !d.enchantments.is_empty());
             self.side.client_pack.item_renderer.submit_special(
@@ -767,8 +762,8 @@ fn worn_head_animation(wearer: &Mob, mount: Option<u32>, mobs: &[Mob], alpha: f3
     mount
         .and_then(|id| mobs.iter().find(|m| m.id == id))
         .map_or_else(
-            || sunrise_client::mobs::anim::state(wearer, alpha).pos,
-            |v| sunrise_client::mobs::anim::walk_position(v, alpha),
+            || sunrise_sim::mobs::anim::state(wearer, alpha).pos,
+            |v| sunrise_sim::mobs::anim::walk_position(v, alpha),
         )
 }
 
@@ -778,13 +773,13 @@ mod tests {
     use glam::{Mat4, Vec3};
 
     /// A mob of the prepared resources' type `kind` (None without them).
-    fn mob(id: u32, kind: &str) -> Option<sunrise_client::mobs::Mob> {
+    fn mob(id: u32, kind: &str) -> Option<sunrise_sim::mobs::Mob> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
-        let types = sunrise_client::mobs::MobTypes::load(&root).ok()?;
+        let types = sunrise_sim::mobs::MobTypes::load(&root).ok()?;
         let t = std::sync::Arc::new(types.types.get(kind)?.clone());
-        Some(sunrise_client::mobs::Mob::new(
+        Some(sunrise_sim::mobs::Mob::new(
             id,
             t,
             sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),

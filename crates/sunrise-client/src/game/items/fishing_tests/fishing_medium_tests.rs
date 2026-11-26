@@ -5,7 +5,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
 use std::sync::{Arc, Mutex};
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::motion::PlayerMotion;
 
 const JUNK: &str = "minecraft:gameplay/fishing/junk";
 /// The bobber's caster stands here; a medium's surface is 4 blocks under their feet.
@@ -75,7 +75,7 @@ fn mods(probes: &[(&'static str, &Arc<Mutex<Probe>>)]) -> mod_api::Mods {
 fn caster(game: &mut crate::game::ServerGame<'_>) {
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.player =
         Some(PlayerMotion::new(game.motion, Vec3::new(FEET[0], FEET[1], FEET[2])).unwrap());
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
@@ -250,7 +250,7 @@ fn a_client_keeps_only_the_surface_and_draws_the_bobber_floating() {
             game.remote.as_mut().unwrap().logged_in = true;
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let feet = Vec3::new(FEET[0], FEET[1], FEET[2]);
             let answer = game
                 .hook_medium(1, Vec3::new(5.5, 59.5, 0.5), Some(feet), true)

@@ -478,7 +478,7 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
                     let home = game.level("minecraft:overworld").unwrap();
                     game.world
                         .chunks
-                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                     assert_eq!(home.set_connection_group(game, POS, Some(10)), Ok(true));
                     game.enter_level(dim).unwrap();
                     assert_eq!(custom.set_connection_group(game, POS, Some(20)), Ok(true));
@@ -742,7 +742,7 @@ fn a_level_with_a_player_in_it_is_not_unloaded() {
         game.enter_level(dim).unwrap();
         // The player stands in the level in place.
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
             )
@@ -1033,7 +1033,7 @@ fn a_level_with_a_player_in_it_is_not_deleted() {
         let dim = super::Dim::extra("guest:a").unwrap();
         game.enter_level(dim).unwrap();
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(
+            sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
             )

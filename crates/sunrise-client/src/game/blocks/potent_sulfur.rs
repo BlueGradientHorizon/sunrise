@@ -9,9 +9,7 @@ use super::{Game, potions::mob_effect_id};
 pub(in crate::game) use crate::game::potent_sulfur_common::{
     GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE, PassMobs,
 };
-use sunrise_client::{
-    Result, block_entities::Pos, containers::BlockEntity, effects::EffectInstance, mobs::Mob,
-};
+use sunrise_client_core::Result;
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
 use sunrise_gameplay::potent_sulfur::{
     EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, geyser_positional,
@@ -20,6 +18,8 @@ use sunrise_gameplay::potent_sulfur::{
 use sunrise_level::potent_sulfur_level::{
     SulfurLevel, can_be_reached_by_noxious_gas, unobstructed_block_count,
 };
+use sunrise_level::{block_entities::Pos, containers::BlockEntity, effects::EffectInstance};
+use sunrise_sim::mobs::Mob;
 use sunrise_world::{level::flags, registry::BlockStateId};
 
 /// `PotentSulfurBlockEntity.applyNauseaEffect` on a mob that passed the
@@ -253,7 +253,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if !mob.extra.passenger
                 && !tags.has_bit(
                     mob.kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::NOT_AFFECTED_BY_GEYSERS,
+                    sunrise_items::items::EntityTypeTags::NOT_AFFECTED_BY_GEYSERS,
                 )
                 && mob.velocity.y < limit
             {
@@ -349,7 +349,7 @@ pub(in crate::game) mod pass_tests {
             for x in [0, 2, 4] {
                 game.world.chunks.insert(
                     (x, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(x, 0)),
                 );
             }
             let water = game

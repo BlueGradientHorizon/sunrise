@@ -136,10 +136,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             match self.search_spawn([x, y, z].map(|v| v.floor() as i32), &mut None) {
                 Ok(at) => at,
                 Err(chunk) => {
-                    self.side.tickets.0.add_spawn(
-                        chunk,
-                        sunrise_client::ticket_levels::SpawnTicketKind::Search,
-                    );
+                    self.side
+                        .tickets
+                        .0
+                        .add_spawn(chunk, sunrise_sim::ticket_levels::SpawnTicketKind::Search);
                     return Err(RespawnTargetUnavailable::Loading);
                 }
             }

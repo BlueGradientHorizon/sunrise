@@ -1,6 +1,6 @@
 use super::Text;
 use crate::game::commands::enchant_tests::RIPTIDE;
-use sunrise_client::scoreboard::comp_text;
+use sunrise_client_core::scoreboard::comp_text;
 
 pub(in crate::game) fn enchant_outcome(
     game: &mut crate::game::ServerGame<'_>,

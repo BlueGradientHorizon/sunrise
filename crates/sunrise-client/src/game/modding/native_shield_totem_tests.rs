@@ -6,8 +6,8 @@ use mod_api::{
     self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingShieldBlockEvent, LivingUseTotemEvent,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::mobs::{Damage, DamageKind, Mob};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_sim::mobs::{Damage, DamageKind, Mob};
 
 #[derive(Default)]
 struct Heard {
@@ -88,7 +88,7 @@ fn the_shield_hook_sees_the_hit_before_armor_and_enchantment_reductions() {
         let mut hit = zombie(game, 226001);
         // A mob's attack: its armor takes a share of the 10 later, in `actuallyHurt`.
         assert!(hit.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             10.0,
             Damage::mob(226002, [2.0, 0.0, 2.0])
         ));
@@ -108,7 +108,7 @@ fn a_blocked_damage_above_the_hit_is_clamped_to_it() {
         let mut hit = zombie(game, 226003);
         let before = hit.health;
         hit.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             6.0,
             Damage::of(DamageKind::Generic),
         );
@@ -129,7 +129,7 @@ fn setting_blocked_false_blocks_nothing() {
         let mut hit = zombie(game, 226004);
         let before = hit.health;
         hit.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             6.0,
             Damage::of(DamageKind::Generic),
         );
@@ -169,7 +169,7 @@ fn an_uncanceled_totem_saves_the_mob() {
         hit.extra
             .set_main_hand(Some("minecraft:totem_of_undying".into()));
         hit.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+            damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
             1000.0,
             Damage::of(DamageKind::Generic),
         );
@@ -196,7 +196,7 @@ fn the_shield_hook_draws_from_the_hits_random() {
                 *game.world.random = sunrise_core::random::LegacyRandom::new(5);
                 let mut hit = zombie(game, 226007);
                 hit.damage(
-                    damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
+                    damage_level_of!(game, &sunrise_sim::health::NO_ATTACK, no_push, None),
                     1.0,
                     Damage::of(DamageKind::Generic),
                 );

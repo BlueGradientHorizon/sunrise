@@ -29,7 +29,8 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime},
 };
-use sunrise_client::{Result, gamepad::Button, keybinds, text::Text, title::world_management};
+use sunrise_client::{gamepad::Button, keybinds, title::world_management};
+use sunrise_client_core::{Result, text::Text};
 use sunrise_core::geometry::Vec3;
 use sunrise_system::scrub::Scrubber;
 use winit::{
@@ -190,7 +191,7 @@ pub(in crate::game) struct SessionMeta {
 }
 
 pub(in crate::game::client_side) fn home() -> PathBuf {
-    sunrise_client::logging::game_home()
+    sunrise_level::logging::game_home()
 }
 pub(in crate::game::client_side) fn recordings_dir() -> PathBuf {
     home().join("recordings")
@@ -1812,12 +1813,12 @@ pub(in crate::game::client_side) fn write_bundle(
                 &[],
             )?;
         }
-        let log = sunrise_client::logging::logs_dir(home).join("latest.log");
+        let log = sunrise_level::logging::logs_dir(home).join("latest.log");
         if log.is_file() {
             add_text_file(&mut zip, &log, "logs/latest.log", &scrubber)?;
         }
         // Only a crash from this recording is evidence for this repro.
-        if let Some(crash) = sunrise_client::logging::newest_crash_report(home)
+        if let Some(crash) = sunrise_level::logging::newest_crash_report(home)
             && crash
                 .metadata()
                 .and_then(|m| m.modified())

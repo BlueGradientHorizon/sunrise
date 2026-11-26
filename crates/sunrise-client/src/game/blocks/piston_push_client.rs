@@ -11,15 +11,15 @@ use crate::game::collision_source::Mover;
 use crate::game::piston_push::{
     Body, Lid, Push, PushTarget, ShulkerPush, carrying::support_of, pushed_movement, shulker_lid,
 };
-use sunrise_client::collisions::{SceneCollisions, with_piston_noclip};
-use sunrise_client::entity_rules::EntityRules;
-use sunrise_client::join_seq::{JoinSeq, Joined};
-use sunrise_client::motion::{BodyCollision, BodyMotion, BodyMove, MotionWorld};
-use sunrise_client_render::moving_colliders::{self, Placed, Prepared, Shove};
 use sunrise_core::geometry::{
     Aabb, Axis, COLLISION_EPSILON, Direction, Vec3, entity_collision_bounds,
 };
 use sunrise_core::position::BlockPos;
+use sunrise_level::collisions::{SceneCollisions, with_piston_noclip};
+use sunrise_sim::entity_rules::EntityRules;
+use sunrise_sim::join_seq::{JoinSeq, Joined};
+use sunrise_sim::motion::{BodyCollision, BodyMotion, BodyMove, MotionWorld};
+use sunrise_world::moving_colliders::{self, Placed, Prepared, Shove};
 use sunrise_world::{
     entity_move::MoverType, level::data::PushReaction, move_gate::MoveGate,
     piston_movement::PistonMovement, piston_push,
@@ -33,7 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mover: MoverType,
         movement: Vec3,
         auto_jump: bool,
-    ) -> sunrise_client::Result<Option<Vec3>> {
+    ) -> sunrise_client_core::Result<Option<Vec3>> {
         let Some(player) = self.player.as_ref() else {
             return Ok(None);
         };
@@ -798,7 +798,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     fn client_shove_pass(&mut self, start: &Prepared, carried_support: Option<u32>) {
         let end = self.client_placed_moving_colliders();
-        let starts: sunrise_client::fast_hash::FxHashMap<u32, &Placed> =
+        let starts: sunrise_level::fast_hash::FxHashMap<u32, &Placed> =
             start.placed().map(|p| (p.id, p)).collect();
         let mut sweeps: Vec<_> = end
             .placed()
@@ -871,7 +871,8 @@ mod client_lid_tests {
     use crate::game::boats::Boat;
     use crate::game::native_entity_refs::tests::with_client_game;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, mobs::Mob, motion::PlayerMotion};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     /// `isPassengerOfSameVehicle` on a client's own player: a shulker riding a
     /// boat spares the player riding the same boat; once the shulker rides

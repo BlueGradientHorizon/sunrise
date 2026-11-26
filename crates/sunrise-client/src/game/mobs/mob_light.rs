@@ -1,6 +1,6 @@
 //! The light a mob is drawn with.
 use super::Game;
-use sunrise_client::mobs::Mob;
+use sunrise_sim::mobs::Mob;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `EntityRenderer.getPackedLightCoords`: the light `mob` is drawn with at `alpha`.

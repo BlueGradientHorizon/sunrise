@@ -1,9 +1,9 @@
 //! `Game` as the `CustomSpawnerLevel` the custom spawners run on: each service forwards to the game's own method.
 use super::{Game, creatures::SpawnSite};
 use std::collections::HashSet;
-use sunrise_client::mobs::{Species, raider, spawn_rules};
 use sunrise_client_core::gamerules::RuleIndex;
 use sunrise_gameplay::custom_spawner::{CustomSpawnerLevel, SpawnerParts, SpawnerPlayer};
+use sunrise_sim::mobs::{Species, raider, spawn_rules};
 
 impl CustomSpawnerLevel for Game<'_, crate::game::server_side::ServerState> {
     fn parts(&mut self) -> SpawnerParts<'_> {

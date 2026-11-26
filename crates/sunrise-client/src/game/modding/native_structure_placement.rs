@@ -353,7 +353,7 @@ mod tests {
         );
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         // The shared fixture is unticked: a dedicated server is what a server
         // host call asks for.
@@ -364,8 +364,8 @@ mod tests {
     #[ignore = "daily"]
     fn a_carried_structure_places_its_blocks_block_entity_and_entity() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_client::containers::BlockEntity;
-        use sunrise_client::mobs::Species;
+        use sunrise_level::containers::BlockEntity;
+        use sunrise_sim::mobs::Species;
 
         with_game(|game| {
             ready_chunked_game(game);

@@ -40,8 +40,8 @@ mod tests {
             }];
             game.apply_packet(sunrise_protocol::packets::play::Clientbound::CustomPayload(
                 sunrise_protocol::packets::configuration::CustomPayload {
-                    channel: sunrise_client::lan::commands::selector_sync::CHANNEL.into(),
-                    data: sunrise_client::lan::commands::selector_sync::encode(&tokens),
+                    channel: sunrise_sim::lan::commands::selector_sync::CHANNEL.into(),
+                    data: sunrise_sim::lan::commands::selector_sync::encode(&tokens),
                 },
             ))
             .unwrap();
@@ -51,11 +51,11 @@ mod tests {
             for data in [
                 vec![2],
                 vec![9],
-                sunrise_client::lan::commands::selector_sync::encode(&tokens),
+                sunrise_sim::lan::commands::selector_sync::encode(&tokens),
             ] {
                 game.apply_packet(sunrise_protocol::packets::play::Clientbound::CustomPayload(
                     sunrise_protocol::packets::configuration::CustomPayload {
-                        channel: sunrise_client::lan::commands::selector_sync::CHANNEL.into(),
+                        channel: sunrise_sim::lan::commands::selector_sync::CHANNEL.into(),
                         data,
                     },
                 ))

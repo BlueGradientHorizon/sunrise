@@ -2,7 +2,7 @@
 use super::native_entity_refs::tests::{with_client_game, with_game_at};
 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ServerHost};
 use std::{path::PathBuf, sync::Arc};
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 mod background {
     use super::*;
@@ -100,7 +100,7 @@ fn cancelled_landing_restores_farmland_before_its_crop_is_notified() {
                 game.world.set(1, 65, 1, wheat).unwrap();
                 game.landing_block_updates(
                     Some(7),
-                    &sunrise_client::landing::FallEvent::Write {
+                    &sunrise_sim::landing::FallEvent::Write {
                         position: sunrise_core::position::BlockPos::new(1, 64, 1),
                         from: farmland,
                         state: dirt,

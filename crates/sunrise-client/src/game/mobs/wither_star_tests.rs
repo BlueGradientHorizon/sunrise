@@ -1,14 +1,14 @@
 //! The wither's nether star: `WitherBoss.dropCustomDeathLoot` spawns it and
 //! then calls `ItemEntity.setExtendedLifetime` (`age = -6000`), so the age
 //! discard (`age >= 6000`) takes it at tick 12000 instead of 6000.
-use crate::entities::ItemEntity;
-use crate::items::ItemStack;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::Species;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::entities::ItemEntity;
+use sunrise_sim::mobs::Species;
+use sunrise_sim::motion::PlayerMotion;
 
 /// The star the wither leaves starts at `age = -6000`, so it is still there at
 /// tick 11999 and discarded at 12000, while an ordinary drop beside it is
@@ -120,9 +120,10 @@ fn a_stars_negative_age_survives_item_nbt() {
         0.0,
     );
     star.age = -6000;
-    let tag = crate::entity_nbt::item_entity_to_nbt(&star, [1, 2, 3, 4], None, &Default::default());
+    let tag =
+        sunrise_sim::entity_nbt::item_entity_to_nbt(&star, [1, 2, 3, 4], None, &Default::default());
     assert_eq!(tag.get("Age"), Some(&Tag::Short(-6000)));
-    let loaded = crate::entity_nbt::item_entity_from_nbt(&tag, 7, 0.0).unwrap();
+    let loaded = sunrise_sim::entity_nbt::item_entity_from_nbt(&tag, 7, 0.0).unwrap();
     assert_eq!(loaded.age, -6000);
     assert_eq!(&*loaded.stack.item, "minecraft:nether_star");
 }

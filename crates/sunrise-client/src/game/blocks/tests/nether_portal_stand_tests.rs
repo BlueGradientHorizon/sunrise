@@ -6,8 +6,8 @@
 
 use super::*;
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::entities::ArmorStand;
-use sunrise_client::motion::PlayerMotion;
+use sunrise_sim::entities::ArmorStand;
+use sunrise_sim::motion::PlayerMotion;
 
 /// `ArmorStand`'s portal: stone at `y`, nether portal blocks at `y + 1` and
 /// `y + 2` in the column of `(x, z)`.
@@ -67,12 +67,12 @@ fn armor_stands_in_a_nether_portal_go_through_and_cool_down() {
         .arrivals
         .iter()
         .find(|a| {
-            sunrise_client::save::text(a.tag.get("id")).as_deref() == Some("minecraft:armor_stand")
+            sunrise_sim::save::text(a.tag.get("id")).as_deref() == Some("minecraft:armor_stand")
         })
         .expect("the stand waits for its exit to load");
     // `Entity.setPortalCooldown` gives it `getDimensionChangingDelay`.
     assert_eq!(
-        sunrise_client::save::number(arrival.tag.get("PortalCooldown")),
+        sunrise_sim::save::number(arrival.tag.get("PortalCooldown")),
         Some(i64::from(ENTITY_DELAY))
     );
 }

@@ -4,14 +4,13 @@
 //! clicks (`mouse_tweaks.rs`), so they work wherever vanilla's do.
 use crate::game::{Game, Screen};
 use sunrise_client::{
-    containers::BlockEntity,
     creative::Creative,
     hud::{HudBatch, rgba},
-    inv_sort,
-    items::ItemStack,
     keybinds,
-    menu::Input,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{inv_sort, menu::Input};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// A sort button's side in GUI pixels.

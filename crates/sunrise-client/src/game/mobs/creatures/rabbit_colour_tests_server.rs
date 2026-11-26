@@ -59,7 +59,7 @@ fn a_baby_rabbit_takes_a_parents_colour_or_a_fresh_biome_variant() {
             None,
             None,
             None,
-            sunrise_client::mobs::BreedExperience::Deferred,
+            sunrise_sim::mobs::BreedExperience::Deferred,
         );
         let child = game
             .mobs
@@ -89,7 +89,7 @@ fn a_baby_rabbit_takes_a_parents_colour_or_a_fresh_biome_variant() {
         if game
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS)
         {
             let _ = parent.next_int_bound(7);
         }

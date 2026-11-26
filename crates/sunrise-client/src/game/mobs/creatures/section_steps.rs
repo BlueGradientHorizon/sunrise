@@ -1,6 +1,6 @@
 use super::Game;
-use sunrise_client::projectiles::Projectile;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::projectiles::Projectile;
 
 pub(in crate::game) struct Steps {
     enabled: bool,

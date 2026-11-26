@@ -1,8 +1,9 @@
 //! The effective damage-resistant component at its actual item-damage callers.
 use super::*;
 use crate::game::native_entity_refs::tests::{with_game, with_game_at};
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 fn stack(input: &str) -> ItemStack {
     let (item, patch) = input

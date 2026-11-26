@@ -4,8 +4,9 @@
 //! goals on the game's ticks; tools/ and vanilla 26.3 measured the same
 //! scene (no home and radius 12 retaliate, radius 3 does not).
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, mobs::Who};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Who;
 
 /// (pen, home NBT): pens 60 blocks apart, beyond a zombie's alert range.
 const CASES: [(&str, &str); 3] = [

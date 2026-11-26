@@ -20,12 +20,13 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                 ScreenOpeningEvent, ScreenSlot,
             };
             use std::sync::{Arc, Mutex};
-            use sunrise_client::{hud::HudBatch, menu::Input};
+            use sunrise_client::hud::HudBatch;
             use sunrise_protocol::{
                 menu_extra::{self, CHANNEL, Message},
                 packets::configuration::CustomPayload,
                 registry::Ids,
             };
+            use sunrise_sim::menu::Input;
 
             const MENU: &str = "test:close_native";
             const POS: [i32; 3] = [11, 64, 19];
@@ -101,7 +102,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                 Box::new(Listener(probe.clone())),
             )]
             .into();
-            sunrise_client::containers::with_mod_menu_types(
+            sunrise_level::containers::with_mod_menu_types(
                 [(
                     MENU.into(),
                     "close_native_probe".into(),
@@ -467,7 +468,8 @@ fn server_close_runs_sign_and_inventory_removal_without_echo() {
         "sunrise_client::game::client_side::remote_client::tests::client_close_tests::server_close_runs_sign_and_inventory_removal_without_echo",
         || {
             with_client_game(|game| {
-                use sunrise_client::{containers::BlockEntity, signs::SignData};
+                use sunrise_level::containers::BlockEntity;
+                use sunrise_level::signs_data::SignData;
 
                 let mut reader = logged_in(game);
                 game.world

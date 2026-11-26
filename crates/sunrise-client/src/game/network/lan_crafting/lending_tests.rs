@@ -4,13 +4,13 @@ use std::sync::{
     atomic::{AtomicI32, AtomicUsize, Ordering},
     mpsc,
 };
-use sunrise_client::{
-    containers::{
-        Furnace, FurnaceKind, ModBlockEntity, ModBlockEntityFields, ModCrafting, ModLinks,
-    },
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig, menu::Menu as HubMenu},
+use sunrise_level::containers::{
+    Furnace, FurnaceKind, ModBlockEntity, ModBlockEntityFields, ModCrafting, ModLinks,
 };
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{
+    Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig, menu::Menu as HubMenu,
+};
 
 const STATION: (i32, i32, i32) = (4, 200, 4);
 const CHEST: (i32, i32, i32) = (32, 200, 4);
@@ -54,10 +54,10 @@ fn setup(game: &mut crate::game::ServerGame<'_>) -> &'static ModMenuType {
     game.build_registries();
     game.world
         .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.world
         .chunks
-        .insert((2, 0), Arc::new(sunrise_client::chunk::Chunk::empty(2, 0)));
+        .insert((2, 0), Arc::new(sunrise_level::chunk::Chunk::empty(2, 0)));
     game.lan_host(
         crate::game::lan::LanSettings {
             port: 0,

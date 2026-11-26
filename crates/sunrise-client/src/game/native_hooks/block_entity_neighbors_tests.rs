@@ -4,8 +4,8 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use sunrise_client::chunk::Chunk;
 use sunrise_core::position::BlockPos;
+use sunrise_level::chunk::Chunk;
 
 pub(in crate::game) type Notices = Arc<Mutex<Vec<(BlockPos, BlockPos)>>>;
 pub(in crate::game) struct Counter(pub(in crate::game) Notices);

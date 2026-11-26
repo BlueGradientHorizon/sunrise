@@ -6,7 +6,7 @@ use mod_api::{
     RegistrationContext, ServerHost,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 /// What the Part and `item_toss` heard, and what the Part answers.
 #[derive(Default)]

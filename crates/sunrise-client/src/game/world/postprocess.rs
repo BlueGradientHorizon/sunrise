@@ -5,8 +5,9 @@
 //! block shapes against their neighbours.
 use super::Game;
 use std::sync::Arc;
-use sunrise_client::{Result, blocks::Fluid};
+use sunrise_client_core::Result;
 use sunrise_core::position::BlockPos;
+use sunrise_items::blocks::Fluid;
 
 /// Block.UPDATE_INVISIBLE | UPDATE_KNOWN_SHAPE | UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS.
 const POSTPROCESS_FLAGS: i32 = 276;

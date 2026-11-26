@@ -1,9 +1,9 @@
 //! Narrow, per-victim context prepared before the hit borrows its victim.
 use super::combat::PlayerCredit;
 use std::collections::HashMap;
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     health::{Attack, Hurting, KnockbackCredit},
-    items::ItemStack,
     mobs::{Damage, Mob, Who},
 };
 
@@ -61,7 +61,7 @@ impl KnockbackCredit for CreditLoan<'_> {
                 .and_then(|ext| ext.pending_hurt_player.as_mut())
         {
             // notifyTradeUpdated draws before the victim's own hurt sound or effects.
-            pending.trade_pitch = sunrise_client::merchant::trade_update_pitch(
+            pending.trade_pitch = sunrise_sim::merchant::trade_update_pitch(
                 &mut mob.ambient_timer,
                 interval,
                 &mut mob.random,

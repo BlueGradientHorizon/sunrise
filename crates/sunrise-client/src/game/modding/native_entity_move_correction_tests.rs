@@ -8,11 +8,11 @@ use crate::game::game_tests::tests::server_game;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LoopContext};
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
-use sunrise_client::lan::guest::{InboxItem, SURVIVAL};
-use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 use sunrise_core::position::ChunkPos;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
+use sunrise_sim::lan::guest::{InboxItem, SURVIVAL};
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 /// A listener that cancels every move.
 struct CancelAll;
@@ -75,7 +75,7 @@ fn hosted_guest_starting<R>(
             .default_state("minecraft:stone")
             .unwrap()
             .0;
-        let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+        let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         for x in 0..16 {
             for z in 0..16 {
                 chunk.set(x, 99, z, stone);
@@ -219,7 +219,7 @@ fn vehicle_put_back(
     game: &crate::game::ServerGame<'_>,
     rx: &std::sync::mpsc::Receiver<Out>,
 ) -> bool {
-    sunrise_client::lan::flush_all(
+    sunrise_sim::lan::flush_all(
         game.lan
             .as_ref()
             .unwrap()
@@ -447,7 +447,7 @@ fn a_cancelled_move_of_a_creative_guest_sends_the_correction() {
     hosted_guest_starting(
         "entity-move-creative-cancel",
         [0.5, 100.0, 0.5],
-        sunrise_client::lan::guest::CREATIVE,
+        sunrise_sim::lan::guest::CREATIVE,
         false,
         mods(CancelAll),
         |game, _rx, at| {
@@ -474,7 +474,7 @@ fn a_replaced_move_of_a_creative_guest_sends_the_correction() {
     hosted_guest_starting(
         "entity-move-creative-replace",
         [0.5, 100.0, 0.5],
-        sunrise_client::lan::guest::CREATIVE,
+        sunrise_sim::lan::guest::CREATIVE,
         false,
         mods(ReplaceEach([0.1, 0.0, 0.0])),
         |game, _rx, at| {
@@ -532,7 +532,7 @@ fn a_big_step_of_a_creative_guest_without_a_listener_sends_no_correction() {
     hosted_guest_starting(
         "entity-move-creative-plain",
         [0.5, 100.0, 0.5],
-        sunrise_client::lan::guest::CREATIVE,
+        sunrise_sim::lan::guest::CREATIVE,
         false,
         Vec::new().into(),
         |game, _rx, at| {

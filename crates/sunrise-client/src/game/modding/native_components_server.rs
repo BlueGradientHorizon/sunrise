@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_item_combat_actor(
@@ -53,9 +53,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             pool,
             value,
         );
-        Ok(sunrise_client::stations::apply_enchantment_list(
-            stack, picked,
-        ))
+        Ok(sunrise_sim::stations::apply_enchantment_list(stack, picked))
     }
 }
 
@@ -96,7 +94,7 @@ pub(in crate::game) mod item_resource_property_tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             // Authoritative tag reads are available only while a world is owned.
             game.side.session_lock.0 =
-                Some(sunrise_client::save::SessionLock::acquire(&game.side.save.0.root).unwrap());
+                Some(sunrise_sim::save::SessionLock::acquire(&game.side.save.0.root).unwrap());
             for (input, expected) in inputs.iter().zip(&expected) {
                 assert_eq!(input["name"], expected["name"]);
                 let support::Outcome {
@@ -113,7 +111,7 @@ pub(in crate::game) mod item_resource_property_tests {
                     expected["use_duration"].as_i64().unwrap() as i32
                 );
                 assert_eq!(
-                    sunrise_client::stations::is_damageable(game.items(), &stack),
+                    sunrise_sim::stations::is_damageable(game.items(), &stack),
                     item.damageable(game)
                 );
                 assert_eq!(
@@ -121,14 +119,14 @@ pub(in crate::game) mod item_resource_property_tests {
                     item.foil(game)
                 );
                 assert_eq!(
-                    sunrise_client::stations::rarity(
+                    sunrise_sim::stations::rarity(
                         &stack,
                         props.map_or("common", |value| value.rarity.as_str())
                     ),
                     item.rarity(game).as_str()
                 );
                 assert_eq!(
-                    sunrise_client::stations::is_valid_repair_item(
+                    sunrise_sim::stations::is_valid_repair_item(
                         definitions,
                         game.items(),
                         &stack,

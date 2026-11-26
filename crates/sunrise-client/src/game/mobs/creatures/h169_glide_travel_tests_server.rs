@@ -1,7 +1,8 @@
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn with_role_game(
     role: crate::game::execution_role::ExecutionRole,

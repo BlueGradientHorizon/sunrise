@@ -7,20 +7,24 @@ use super::Game;
 use super::remote_chat::Behind;
 use std::{sync::Arc, time::Instant};
 use sunrise_client::{
-    Result,
     clipboard::EditShortcut,
     confirm_screen::Confirm,
-    dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind, text_height},
     dialog_screen::{BOX, Layout, Part, WARNING_SPRITES, waiting_button},
     font::Font,
     hud::{HudBatch, rgba},
     multiline_edit::MultiLineEdit,
-    text::{ClickEvent, Text},
     ui,
     widgets::{self, Kind as WidgetKind, ScreenInfo, Target},
 };
+use sunrise_client_core::{
+    Result,
+    text::{ClickEvent, Text},
+};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::registry::Dynamic;
+use sunrise_sim::dialog::{
+    AfterAction, Body, Click, Control, Dialog, InputValue, Kind, text_height,
+};
 use winit::keyboard::KeyCode;
 
 /// An open `DialogScreen`.
@@ -726,7 +730,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     batch.text_styled(atlas, &text, x, y, u32::MAX, true);
                     // AbstractStringWidget: only the styled glyph under the
                     // pointer requests a hand, not the whole message widget.
-                    let under = |wanted: fn(&sunrise_client::text::Style) -> bool| {
+                    let under = |wanted: fn(&sunrise_client_core::text::Style) -> bool| {
                         sunrise_client::dialog_screen::line_style_at(
                             &atlas.font,
                             &text,

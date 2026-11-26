@@ -7,15 +7,15 @@ use mod_api::{
     BlockEntityShapes, BlockEntityShapesError, BlockEntityTypeKey, LevelRef, PlayerRef,
     TransactionContext,
 };
-use sunrise_client::{
-    block_entity_nbt,
-    containers::{BlockEntity, ModBlockEntity},
-    save,
-    world::World,
-};
+use sunrise_client_core::block_entity_nbt;
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
+use sunrise_level::{
+    containers::{BlockEntity, ModBlockEntity},
+    world::World,
+};
+use sunrise_sim::save;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -326,7 +326,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .native_block_entity_write_target(entity)
             .ok_or(BlockEntityError::Stale)?;
         let nbt = Tag::Compound(mod_payload(data));
-        if sunrise_client::nbt_path::too_deep(&nbt, 0) {
+        if sunrise_client_core::nbt_path::too_deep(&nbt, 0) {
             return Ok(false);
         }
         let Some(old) = self
@@ -420,7 +420,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Err(BlockEntityShapesError::NotDeclared);
         }
         let shapes = shapes
-            .map(sunrise_client::containers::PublishedShapes::new)
+            .map(sunrise_level::containers::PublishedShapes::new)
             .transpose()?
             .map(std::sync::Arc::new);
         let Some(current) = self.mod_block_entity_write_target(key) else {
@@ -475,7 +475,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             BlockEntity::Banner(banner) => banner.name.clone(),
             _ => world.block_names.get(&(x, y, z)).map(|name| match name {
                 Tag::String(text) => text.to_string_lossy(),
-                component => sunrise_client::component::name_text(component).plain(),
+                component => sunrise_client_core::component::name_text(component).plain(),
             }),
         }
     }
@@ -687,7 +687,7 @@ fn loaded_payload(old: &Tag, payload: &Tag, replace: bool) -> Tag {
     let base = if replace {
         let mut metadata = Compound::new();
         if let Tag::Compound(fields) = old {
-            for key in ["id", "x", "y", "z", sunrise_client::containers::SHAPES_KEY] {
+            for key in ["id", "x", "y", "z", sunrise_level::containers::SHAPES_KEY] {
                 if let Some(value) = fields.get(&key.into()) {
                     metadata.insert(key.into(), value.clone());
                 }
@@ -697,13 +697,13 @@ fn loaded_payload(old: &Tag, payload: &Tag, replace: bool) -> Tag {
     } else {
         old.clone()
     };
-    sunrise_client::data_cmd::merged(&base, payload)
+    sunrise_sim::data_cmd::merged(&base, payload)
 }
 
 /// A mod's data payload as the block entity takes it: without the fields the engine owns, which
 /// are its identity and position, and its published shapes (`set_shapes` alone writes those).
 pub(in crate::game) fn mod_payload(mut data: Compound) -> Compound {
-    for field in ["id", "x", "y", "z", sunrise_client::containers::SHAPES_KEY] {
+    for field in ["id", "x", "y", "z", sunrise_level::containers::SHAPES_KEY] {
         data.remove(&field.into());
     }
     data
@@ -715,7 +715,7 @@ mod payload_tests {
 
     #[test]
     fn merge_and_replace_keep_the_published_shapes_whatever_the_payload_carries() {
-        use sunrise_client::containers::SHAPES_KEY;
+        use sunrise_level::containers::SHAPES_KEY;
         let shapes = Tag::Compound(Compound::from([(
             "collision".into(),
             Tag::LongArray(vec![1, 2, 3, 4, 5, 6]),
@@ -754,7 +754,7 @@ fn save_with_metadata(
     pos: (i32, i32, i32),
     entity: &BlockEntity,
     block: &str,
-    items: &crate::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Option<Compound> {
     let pending = world
         .chunks
@@ -783,7 +783,7 @@ pub(in crate::game) fn save_without_metadata(
     pos: (i32, i32, i32),
     entity: &BlockEntity,
     block: &str,
-    items: &crate::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> Option<Compound> {
     save_with_metadata(world, pos, entity, block, items).map(block_entity_payload)
 }
@@ -801,7 +801,7 @@ fn nameable(
     pos: (i32, i32, i32),
     entity: &BlockEntity,
     block: &str,
-    items: &crate::items::Items,
+    items: &sunrise_items::items::Items,
 ) -> bool {
     let mut tag = save::block_entity_encode::encode(pos, entity, block, items);
     if let Tag::Compound(map) = &mut tag {
@@ -901,7 +901,7 @@ pub(in crate::game) fn block_entity_handle(
 pub(in crate::game) fn world_block_entity_data(
     world: &World,
     registry: &sunrise_world::registry::BlockRegistry,
-    items: &crate::items::Items,
+    items: &sunrise_items::items::Items,
     entity: BlockEntityRef,
 ) -> Option<Compound> {
     let block_entity = resident_block_entity(world, entity)?;
@@ -933,7 +933,8 @@ mod tests {
     use mod_api::ServerHost;
     use mod_api::TransactionError;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, containers::ModBlockEntityFields, lan::menu::Slots};
+    use sunrise_level::{chunk::Chunk, containers::ModBlockEntityFields};
+    use sunrise_sim::lan::menu::Slots;
     use sunrise_world::registry::BlockStateId;
 
     #[test]
@@ -960,7 +961,7 @@ mod tests {
     /// timer counting down, its total, its fuel and its bottles.
     #[test]
     fn saved_data_carries_vanilla_machine_progress() {
-        use sunrise_client::{
+        use sunrise_level::{
             brewing::BrewingStand,
             containers::{Furnace, FurnaceKind},
         };
@@ -1273,8 +1274,8 @@ mod tests {
             let player = game.player(12).unwrap();
             let chest = game.block_entity(level, [0, 64, 0]).unwrap();
             if replacing {
-                use sunrise_client::lan::{Out, PlayerSender};
                 use sunrise_protocol::{buf::Reader, ids::play::clientbound};
+                use sunrise_sim::lan::{Out, PlayerSender};
                 let (tx, rx) = std::sync::mpsc::channel();
                 game.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
                     guest.sender = PlayerSender::new(tx, Arc::default());
@@ -1364,13 +1365,13 @@ mod tests {
             assert_eq!(game.open_block_menu(12, (0, 64, 0)), MenuOpen::Refused);
             game.lan = host;
             let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
-            guest.kind = sunrise_client::lan::guest::GuestKind::Fake;
+            guest.kind = sunrise_sim::lan::guest::GuestKind::Fake;
             game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
             // Fake players have no client menu. This is a refusal, not a hook cancellation.
             assert_eq!(game.open_block_menu(12, (0, 64, 0)), MenuOpen::Refused);
             assert!(!player.open_menu(game, chest).unwrap());
             let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
-            guest.kind = sunrise_client::lan::guest::GuestKind::Network;
+            guest.kind = sunrise_sim::lan::guest::GuestKind::Network;
             game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
             assert!(player.open_menu(game, chest).unwrap());
             assert_eq!(chest.lock(game), None);
@@ -1386,7 +1387,7 @@ mod tests {
             assert!(std::ptr::eq(lock, resident));
             assert!(!player.open_menu(game, chest).unwrap());
             {
-                let value = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
+                let value = Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
                 game.lan
                     .as_mut()
                     .unwrap()
@@ -1527,13 +1528,13 @@ mod tests {
             // though the hub still has the old mode until the turn ends.
             assert!(guest12.open_menu(game, single).unwrap());
             game.as_guest(12, |game| {
-                assert!(game.set_game_mode(sunrise_client::command::args::GameMode::Spectator));
+                assert!(game.set_game_mode(sunrise_command::args::GameMode::Spectator));
                 assert_eq!(single.viewers(game), Some(vec![]));
             })
             .unwrap();
             game.guest_close_all(12);
             game.as_guest(12, |game| {
-                assert!(game.set_game_mode(sunrise_client::command::args::GameMode::Survival));
+                assert!(game.set_game_mode(sunrise_command::args::GameMode::Survival));
             })
             .unwrap();
 
@@ -1546,7 +1547,7 @@ mod tests {
             // A fake player holding the same menu is not a viewer.
             assert!(guest13.open_menu(game, left).unwrap());
             let mut fake = game.lan.as_mut().unwrap().hub.guests.remove(1);
-            fake.kind = sunrise_client::lan::guest::GuestKind::Fake;
+            fake.kind = sunrise_sim::lan::guest::GuestKind::Fake;
             game.lan.as_mut().unwrap().hub.guests.insert(1, fake);
             assert_eq!(left.viewers(game), Some(vec![guest12]));
 

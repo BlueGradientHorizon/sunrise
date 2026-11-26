@@ -23,8 +23,8 @@ impl Hooks for SmokeMod {
 #[test]
 #[ignore = "daily"]
 fn client_placement_predicts_signal_fire_from_a_block_part() {
-    use sunrise_client::mod_content::{ContentMod, build};
     use sunrise_mod_package::content::{Block, Content};
+    use sunrise_sim::mod_content::{ContentMod, build};
 
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let root = tempfile::tempdir().unwrap();
@@ -67,8 +67,8 @@ fn client_placement_predicts_signal_fire_from_a_block_part() {
                 game.connect_local(pipe, "SmokePrediction").unwrap();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-                game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+                game.set_local_mode(sunrise_command::args::GameMode::Survival);
                 for (i, (block, expected)) in [
                     ("smoke_test:bale", true),
                     ("minecraft:hay_block", true),

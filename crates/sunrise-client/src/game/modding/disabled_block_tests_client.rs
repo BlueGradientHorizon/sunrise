@@ -5,7 +5,7 @@ pub(in crate::game) mod tests {
     use crate::game::server_side::disabled_block_tests::tests::place_dispenser;
     use crate::game::server_side::disabled_block_tests::tests::with_inert_block;
     use std::sync::atomic::Ordering;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     #[test]
     #[ignore = "daily"]

@@ -6,11 +6,8 @@
 //! (`ViewedWorlds::remove`, `take`, `clear`).
 use super::worlds::ViewedWorlds;
 use std::time::Instant;
-use sunrise_client::{
-    section_mask::SectionMask,
-    streaming::{MeshSource, ViewedLevel, ViewedMeshing},
-    world::World,
-};
+use sunrise_client::streaming::{MeshSource, ViewedLevel, ViewedMeshing};
+use sunrise_level::{section_mask::SectionMask, world::World};
 
 impl ViewedWorlds {
     /// A frame's meshing of the viewed levels. While no level is wanted and none keeps a set it
@@ -82,7 +79,7 @@ mod tests {
     use super::*;
     use crate::game::remote_chunks::ChunkFormat;
     use std::{sync::Arc, time::Duration};
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::registry::DimensionType;
     use sunrise_world::registry::BlockStateId;
 

@@ -1,7 +1,7 @@
 //! Server-side beacon ticking, effects, sounds, and advancement trigger.
 use super::Game;
 use crate::game::beacon_common::{EFFECTS, effect_box_hits};
-use sunrise_client::{
+use sunrise_level::{
     containers::{Beacon, BlockEntity},
     effects::EffectInstance,
 };

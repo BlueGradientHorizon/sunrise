@@ -14,10 +14,11 @@ fn two_dyes_mix_by_their_crafting_recipe() {
         return;
     }
     let registry = sunrise_world::level::data::load_registry(&root).unwrap();
-    let facts = crate::blocks::BlockFacts::load(&root, &registry).unwrap();
+    let facts = sunrise_items::blocks::BlockFacts::load(&root, &registry).unwrap();
     let overlay = sunrise_world::loot::PackOverlay::NONE;
     let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-    let items = crate::items::Items::load(&root, &registry, &facts, &overlay, &defaults).unwrap();
+    let items =
+        sunrise_items::items::Items::load(&root, &registry, &facts, &overlay, &defaults).unwrap();
     let recipes = Recipes::load(&root, &items, &overlay, &crate::game::test_server_load()).unwrap();
     let dye = |name: &str| {
         u8::try_from(

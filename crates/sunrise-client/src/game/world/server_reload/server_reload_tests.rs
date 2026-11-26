@@ -110,12 +110,12 @@ fn write(path: &Path, bytes: impl AsRef<[u8]>) {
 fn build_mod_resources(
     base: &Path,
     jar_store: &Path,
-    mods: &[sunrise_client::mod_content::ContentMod],
+    mods: &[sunrise_sim::mod_content::ContentMod],
     prepared: &Path,
     inventory: &sunrise_mod_package::enabled::EnabledMods,
 ) -> sunrise_assets::resource_source::ResourceRoot {
-    sunrise_client::mod_content::build(base, jar_store, mods, prepared, inventory).unwrap();
-    let resolved = sunrise_client::mod_content::resolved_server_resources(
+    sunrise_sim::mod_content::build(base, jar_store, mods, prepared, inventory).unwrap();
+    let resolved = sunrise_sim::mod_content::resolved_server_resources(
         base,
         prepared.to_owned(),
         jar_store,
@@ -431,7 +431,7 @@ fn request(root: &Path) -> WorldRequest {
         Some(1),
         true,
         None,
-        std::sync::Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+        std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
     )
     .unwrap();
     request.save_root = root.to_owned();
@@ -461,7 +461,7 @@ fn dedicated_world_open_publishes_crafting_item_tags() {
                 crate::game::execution_role::ExecutionRole::DedicatedServer;
             game.load_world(request(root)).unwrap();
             use mod_api::LoopContext;
-            use sunrise_client_render::api_context::LoopReader;
+            use sunrise_level::api_context::LoopReader;
             let tag = mod_api::__private::tag_key(
                 &mod_api::Identifier::parse("test:crafting_inputs").unwrap(),
             )
@@ -511,7 +511,7 @@ fn missing_original_at_reload_preserves_the_published_data_and_reports_its_owner
     let jar =
         sunrise_mod_package::manifest::JarRef::new("original".into(), "1".into(), "a".repeat(128))
             .unwrap();
-    let jar_file = jar.cache_path(&sunrise_client::logging::game_home().join("jars"));
+    let jar_file = jar.cache_path(&sunrise_level::logging::game_home().join("jars"));
     std::fs::create_dir_all(jar_file.parent().unwrap()).unwrap();
     let mut zip = zip::ZipWriter::new(std::fs::File::create(&jar_file).unwrap());
     zip.start_file(
@@ -540,7 +540,7 @@ fn missing_original_at_reload_preserves_the_published_data_and_reports_its_owner
     let resources = build_mod_resources(
         &base,
         jar_file.parent().unwrap(),
-        &[sunrise_client::mod_content::ContentMod {
+        &[sunrise_sim::mod_content::ContentMod {
             id: "reload_test".into(),
             content,
             jars: vec![jar.clone()],
@@ -628,7 +628,7 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
     let resources = build_mod_resources(
         &base,
         Path::new(""),
-        &[sunrise_client::mod_content::ContentMod {
+        &[sunrise_sim::mod_content::ContentMod {
             id: "reload_test".into(),
             content,
             jars: Vec::new(),
@@ -822,7 +822,7 @@ fn server_reload_skips_unparsable_files_and_delivers_the_rest() {
     let resources = build_mod_resources(
         &base,
         Path::new(""),
-        &[sunrise_client::mod_content::ContentMod {
+        &[sunrise_sim::mod_content::ContentMod {
             id: "reload_test".into(),
             content,
             jars: Vec::new(),
@@ -1103,7 +1103,7 @@ fn server_reload_retains_listeners_for_other_hooks() {
     let resources = build_mod_resources(
         &base,
         Path::new(""),
-        &[sunrise_client::mod_content::ContentMod {
+        &[sunrise_sim::mod_content::ContentMod {
             id: "reload_test".into(),
             content,
             jars: Vec::new(),

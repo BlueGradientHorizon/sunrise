@@ -76,8 +76,8 @@ pub(in crate::game) mod camera_type_tests {
     #[ignore = "daily"]
     fn shared_camera_pose_requests_apply_before_frame_consumers() {
         use std::sync::atomic::Ordering;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
 
         let calls = Arc::new(Calls::default());
         let mods: mod_api::Mods = vec![ModEntry::new(

@@ -27,7 +27,7 @@ pub(crate) fn sound_type(
     };
     let own = sound.clone();
     mod_api::dispatch_sound_type(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         pos,
         api_state,
         entity,
@@ -68,7 +68,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         entity: Option<(u32, &str)>,
         cause: BlockSoundCause,
     ) -> BlockSoundType {
-        sunrise_client::block_sounds::sound_type(
+        sunrise_sim::block_sounds::sound_type(
             &self.loop_context,
             self.res.facts(),
             BlockPos::new(x, y, z),
@@ -95,9 +95,9 @@ impl GameLevel<'_> {
         let entity = self
             .native_player_entity
             .map(|id| (id as u32, "minecraft:player"));
-        let own = sunrise_client::block_sounds::own(&self.facts.get(state).sounds);
+        let own = sunrise_sim::block_sounds::own(&self.facts.get(state).sounds);
         let mut answer = own.clone();
-        sunrise_client::block_sounds::native_sound_type(
+        sunrise_sim::block_sounds::native_sound_type(
             self.loop_context,
             pos,
             state,
@@ -124,13 +124,13 @@ pub(in crate::game) mod tests {
     use super::playable;
     use mod_api::BlockSoundCause::{Break, Dig, Fall, Place, Step};
     use std::sync::Arc;
-    use sunrise_client::mobs::{Mob, MobEvent, equine};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_sim::mobs::{Mob, MobEvent, equine};
     use sunrise_world::level::LevelAccess;
 
     #[test]
     fn sound_answers_validate_levels_and_names_without_requiring_loaded_events() {
-        let stone = sunrise_client::blocks::Sounds {
+        let stone = sunrise_items::blocks::Sounds {
             volume: 1.0,
             pitch: 1.0,
             break_sound: "minecraft:block.stone.break".into(),
@@ -140,7 +140,7 @@ pub(in crate::game) mod tests {
             fall: "minecraft:block.stone.fall".into(),
         };
         for value in [-1.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
-            let mut sound = sunrise_client::block_sounds::own(&stone);
+            let mut sound = sunrise_sim::block_sounds::own(&stone);
             sound.volume = value;
             assert!(!playable(&sound));
             sound.volume = 1.0;
@@ -148,17 +148,17 @@ pub(in crate::game) mod tests {
             assert!(!playable(&sound));
         }
         for value in [0.0, 1.0, 2.0, f32::MAX] {
-            let mut sound = sunrise_client::block_sounds::own(&stone);
+            let mut sound = sunrise_sim::block_sounds::own(&stone);
             sound.volume = value;
             sound.pitch = value;
             assert!(playable(&sound));
         }
         for event in ["", "not_namespaced", "mod:bad path"] {
-            let mut sound = sunrise_client::block_sounds::own(&stone);
+            let mut sound = sunrise_sim::block_sounds::own(&stone);
             sound.step = event.into();
             assert!(!playable(&sound));
         }
-        let mut sound = sunrise_client::block_sounds::own(&stone);
+        let mut sound = sunrise_sim::block_sounds::own(&stone);
         sound.step = "unknown:unloaded_event".into();
         assert!(playable(&sound));
     }
@@ -248,7 +248,7 @@ pub(in crate::game) mod tests {
                 .unwrap()
                 .clone();
             let creeper = Mob::new(8, kind, Vec3::ZERO, 0.0);
-            let step = sunrise_client::mobs::entity_sounds::step(
+            let step = sunrise_sim::mobs::entity_sounds::step(
                 &creeper,
                 &game.mob_world_base(&[]),
                 [5, 64, 5],
@@ -286,7 +286,7 @@ pub(in crate::game) mod tests {
             let snow = registry.default_state("minecraft:snow").unwrap();
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.world.set(5, 64, 5, stone).unwrap();
             game.world.set(5, 65, 5, snow).unwrap();
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();

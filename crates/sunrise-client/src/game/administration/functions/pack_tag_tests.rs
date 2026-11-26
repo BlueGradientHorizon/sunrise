@@ -1,7 +1,7 @@
 //! A data pack's own item and block tags, at load and at run time.
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_level::chunk::Chunk;
 
 /// `ReloadableServerRegistries.reload` binds the packs' tags before
 /// `ServerFunctionLibrary` compiles the functions (`ReloadableServerResources`
@@ -52,7 +52,7 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
     );
     game.side.world_root = dir.clone();
     game.player = Some(
-        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap(),
     );
     game.build_registries();
     game.set_allow_commands(true);

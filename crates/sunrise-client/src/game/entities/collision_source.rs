@@ -2,8 +2,8 @@
 //! queries and the stand's root-vehicle grid, offered to the one rule in
 //! `sunrise_client::entity_solids` (which a mob's own move reads too).
 use super::{Game, boats::Boat, commands::Target, minecarts::Minecart};
-use sunrise_client::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 
 /// The mover asking, as the game's callers name it.
 #[derive(Clone, Copy)]

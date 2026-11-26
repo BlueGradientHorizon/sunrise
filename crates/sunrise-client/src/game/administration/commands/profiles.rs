@@ -8,11 +8,9 @@
 //! SaveAllCommand, SaveOffCommand, SaveOnCommand), on the switches the lists
 //! share.
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client::{
-    server::user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry},
-    text::Text,
-};
+use sunrise_client_core::text::Text;
 use sunrise_protocol::text::translatable;
+use sunrise_server_files::user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// StopCommand: the server loop (game/interface/dedicated/mod.rs) ends after this tick.
@@ -29,7 +27,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Ok(()) => Text::translate("commands.save.success", &[]),
             Err(e) => {
                 log::error!("Sunrise: /save-all: {e}");
-                Text::translate("commands.save.failed", &[]).with_color(sunrise_client::text::RED)
+                Text::translate("commands.save.failed", &[])
+                    .with_color(sunrise_client_core::text::RED)
             }
         }
     }

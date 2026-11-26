@@ -6,13 +6,13 @@ use mod_api::{
 };
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, mpsc};
-use sunrise_client::lan::{Out, PlayerSender};
-use sunrise_client::{
-    items::ItemStack,
+use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play::{Clientbound, ContainerClick};
+use sunrise_sim::lan::{Out, PlayerSender};
+use sunrise_sim::{
     merchant::{Session, Trader},
     mobs::finalize::{self, Attr, Op},
 };
-use sunrise_protocol::packets::play::{Clientbound, ContainerClick};
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum PlayerWrite {
@@ -256,7 +256,7 @@ pub(in crate::game) fn open(
         trading::MerchantState,
     };
     spawn(game, 40, "minecraft:villager");
-    game.mobs[0].extra.profession = sunrise_client::mobs::villager::ProfessionState::from_index(5);
+    game.mobs[0].extra.profession = sunrise_sim::mobs::villager::ProfessionState::from_index(5);
     let mut offer = offer("minecraft:wheat", "minecraft:emerald");
     offer.base_cost_a.stack.count = 1;
     offer.uses = 0;
@@ -310,15 +310,15 @@ pub(in crate::game) fn prepare_work(
     game: &mut crate::game::ServerGame<'_>,
     save: &std::path::Path,
 ) {
-    use sunrise_client::mobs::villager_brain;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+    use sunrise_sim::mobs::villager_brain;
 
     game.side.world_root = save.to_path_buf();
     game.enter_level(super::Dim::Overworld).unwrap();
     game.options.dedicated = Some(Vec::new());
     game.side
         .streaming
-        .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+        .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
     assert!(game.entity_ticking_area()(0, 0));
     let composter = game
         .pack
@@ -343,7 +343,7 @@ pub(in crate::game) fn prepare_work(
 
 pub(in crate::game) fn tick_work(game: &mut crate::game::ServerGame<'_>) {
     let worked_at = |game: &crate::game::ServerGame<'_>| {
-        sunrise_client::mobs::villager::ext(game.mob_object(40).unwrap())
+        sunrise_sim::mobs::villager::ext(game.mob_object(40).unwrap())
             .unwrap()
             .brain
             .as_ref()
@@ -383,7 +383,7 @@ pub(in crate::game) fn work_screen_mut<'a>(
 pub(in crate::game::server_side) fn reloaded_trader(
     game: &crate::game::ServerGame<'_>,
 ) -> Box<Trader> {
-    let saved = sunrise_client::entity_nbt::mob_to_nbt(
+    let saved = sunrise_sim::entity_nbt::mob_to_nbt(
         game.mob_object(40).unwrap(),
         [1, 2, 3, 4],
         None,
@@ -391,7 +391,7 @@ pub(in crate::game::server_side) fn reloaded_trader(
         |_| None,
         game.items(),
     );
-    sunrise_client::entity_nbt::mob_from_nbt(
+    sunrise_sim::entity_nbt::mob_from_nbt(
         &saved,
         game.res.mob_types(),
         999,
@@ -573,7 +573,7 @@ fn an_offer_edit_after_the_work_step_survives_the_restock() {
 
                     tick_work(game);
 
-                    let got = |o: &sunrise_client::merchant::MerchantOffer| {
+                    let got = |o: &sunrise_sim::merchant::MerchantOffer| {
                         (o.result.clone(), o.uses, o.demand)
                     };
                     let want = (ItemStack::new("minecraft:diamond", 1), 3, 17);
@@ -666,8 +666,8 @@ impl Hooks for FishBreath {
 #[ignore = "daily"]
 fn an_earlier_restock_does_not_skip_a_paused_mobs_first_action() {
     use std::sync::atomic::{AtomicBool, Ordering};
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     super::in_own_process(
         "game::server_side::lan_trade_decisions_tests::an_earlier_restock_does_not_skip_a_paused_mobs_first_action",

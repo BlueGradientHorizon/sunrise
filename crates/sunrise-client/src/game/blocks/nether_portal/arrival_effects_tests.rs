@@ -1,7 +1,8 @@
 //! Actual departure/recreation and TNT blasts, not calls to the arrival-effects helper.
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::{chunk::Chunk, items::ItemStack};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 fn prepare(game: &mut crate::game::ServerGame<'_>) {
     game.build_registries();
@@ -185,7 +186,7 @@ pub(in crate::game::server_side) fn run_portal_arrival_effects_tnt_protection_is
             );
             assert_tnt_blast(game, true);
             game.forget_entity(id);
-            let uuid = sunrise_client::entity_nbt::uuid(&saved);
+            let uuid = sunrise_sim::entity_nbt::uuid(&saved);
             game.load_tnt(saved, uuid);
             assert!(
                 !game.tnts[0].used_portal,

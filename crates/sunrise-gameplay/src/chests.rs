@@ -1,4 +1,4 @@
-use sunrise_client::containers::{ChestHalf, is_chest_block};
+use sunrise_level::containers::{ChestHalf, is_chest_block};
 
 pub fn is_shulker_box(name: &str) -> bool {
     name.ends_with("shulker_box")

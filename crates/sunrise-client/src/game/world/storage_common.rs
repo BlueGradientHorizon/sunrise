@@ -1,9 +1,9 @@
 //! Common double-chest and container-layout helpers shared by client and server.
 use super::Game;
-use sunrise_client::containers::{BlockEntity, is_chest_block};
 use sunrise_gameplay::chests::chest_half;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::chests::{chest_connected_pos, is_shulker_box};
+use sunrise_level::containers::{BlockEntity, is_chest_block};
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The other half of the open double chest and whether the open one is
@@ -60,7 +60,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_client::containers::ChestHalf;
+    use sunrise_level::containers::ChestHalf;
 
     #[test]
     fn double_chest_halves_connect_around_the_facing() {

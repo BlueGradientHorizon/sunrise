@@ -2,7 +2,7 @@
 //! `RegistryDataCollector`): install gameplay tags, then notify native mods.
 use super::Game;
 use std::sync::Arc;
-use sunrise_client::items::{Items, TagRegistry};
+use sunrise_items::items::{Items, TagRegistry};
 use sunrise_protocol::{item::Names, packets::configuration::UpdateTags, registry::SyncedNames};
 
 /// The registries whose tags the tag helpers read.
@@ -330,7 +330,7 @@ pub(in crate::game) mod tests {
                     Some(1),
                     true,
                     None,
-                    Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                    Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
                 )
                 .unwrap();
                 request.save_root = save.path().to_owned();
@@ -391,7 +391,7 @@ pub(in crate::game) mod tests {
                 let builtin = game.remote.as_ref().unwrap().builtin.clone();
 
                 use mod_api::LoopContext;
-                use sunrise_client_render::api_context::LoopReader;
+                use sunrise_level::api_context::LoopReader;
                 let tag =
                     mod_api::__private::tag_key(&Identifier::parse("test:items").unwrap()).unwrap();
                 let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
@@ -468,7 +468,7 @@ pub(in crate::game) mod tests {
                 // Build the server's item catalog from its packs, not the client table whose
                 // item tags were intentionally replaced by the preceding empty update.
                 let server_items =
-                    sunrise_client::items::Items::catalog(root, &overlay, item_data.defaults())
+                    sunrise_items::items::Items::catalog(root, &overlay, item_data.defaults())
                         .unwrap();
                 let sources = crate::game::lan::sync::server_sources(
                     root,
@@ -477,7 +477,7 @@ pub(in crate::game) mod tests {
                     &overlay,
                 )
                 .unwrap();
-                let wire = sunrise_client::lan::data::SyncData::load(
+                let wire = sunrise_sim::lan::data::SyncData::load(
                     root,
                     &overlay,
                     item_data.defaults(),
@@ -589,7 +589,7 @@ pub(in crate::game) mod tests {
                 game.handle_packet(login()).unwrap();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 place(game, [0, 0, 0], "minecraft:enchanting_table");
                 place(game, [-2, 0, -1], "minecraft:bookshelf");
                 let builtin = game.remote.as_ref().unwrap().builtin.clone();
@@ -676,7 +676,7 @@ pub(in crate::game) mod tests {
                 game.handle_packet(login()).unwrap();
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 place(game, [0, 0, 0], "minecraft:enchanting_table");
                 place(game, [-2, 0, -1], "minecraft:glass");
                 let builtin = game.remote.as_ref().unwrap().builtin.clone();
@@ -787,7 +787,7 @@ pub(in crate::game) mod tests {
         };
         let predicting = |game: &mut crate::game::ClientGame<'_>| {
             let hooks = game.damage_hooks.client_side();
-            let mut lent = sunrise_client::health::LentLevel::take(&mut game.world);
+            let mut lent = sunrise_sim::health::LentLevel::take(&mut game.world);
             let seen = {
                 let hit = crate::game::native_hooks::HitLevel(
                     game.predicting_damage_level(&mut lent, &hooks),

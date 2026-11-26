@@ -124,7 +124,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         at: [f64; 3],
         context: mod_api::GameEventContext,
     ) -> bool {
-        let Some(event) = sunrise_client::sculk::intern(event) else {
+        let Some(event) = sunrise_level::sculk::intern(event) else {
             return false;
         };
         if !self.level_in_place(level) || !in_bounds(at) {
@@ -268,7 +268,7 @@ mod tests {
             let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let note = game
                 .pack
@@ -334,7 +334,7 @@ mod tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let stone = game
                     .pack
@@ -402,7 +402,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_global_level_event_reaches_every_player_or_falls_back_to_a_plain_one() {
         use mod_api::{LevelRef, WorldEpoch};
-        use sunrise_client::gamerules::Value;
+        use sunrise_client_core::gamerules::Value;
         super::super::native_entity_refs::tests::with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
@@ -459,13 +459,13 @@ mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::gamerules::Value;
-        use sunrise_client::lan::{
-            Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
-        };
+        use sunrise_client_core::gamerules::Value;
         use sunrise_protocol::packets::{
             configuration::ClientInformation,
             play::{Clientbound, LevelEvent},
+        };
+        use sunrise_sim::lan::{
+            Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
         };
         super::super::native_entity_refs::tests::with_game(|game| {
             let net = NetConfig {

@@ -9,8 +9,9 @@ use mod_api::{
     SpawnPlacementType, SpawnReason,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    chunk::{Chunk, Light, block_entity::Next},
+use sunrise_core::nbt::{Compound, Tag};
+use sunrise_level::chunk::{Chunk, Light, block_entity::Next};
+use sunrise_sim::{
     mobs::{
         data::Placement,
         spawn_rules::check_spawn_rules,
@@ -20,7 +21,6 @@ use sunrise_client::{
     },
     motion::PlayerMotion,
 };
-use sunrise_core::nbt::{Compound, Tag};
 
 #[derive(Debug, PartialEq)]
 enum Draw {
@@ -165,7 +165,7 @@ fn spawners_check_registered_placements_for_types_outside_the_mob_table() {
                 assert_eq!(data.placement("minecraft:arrow"), Placement::InWater);
                 assert_eq!(
                     data.heightmap("minecraft:arrow"),
-                    sunrise_client::mobs::spawn_selection::Heightmap::OceanFloor
+                    sunrise_sim::mobs::spawn_selection::Heightmap::OceanFloor
                 );
                 assert!(game.natural_level().mob_type("minecraft:arrow").is_none());
                 game.set_difficulty_forced(2);

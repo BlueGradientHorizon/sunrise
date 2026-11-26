@@ -1,9 +1,7 @@
 use super::*;
-use sunrise_client::{
-    blocks::{MAP_COLORS, RenderShape},
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_client_render::streaming::WorkerContext;
+use sunrise_items::blocks::{MAP_COLORS, RenderShape};
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn block_provider_options(
@@ -66,7 +64,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .find_with(&self.loop_context, &grid, n, &scale)
             .map(|(name, result)| (name.to_owned(), result))
     }
-    pub(in crate::game) fn display_index(&self) -> &sunrise_client::recipe_book::RecipeIndex {
+    pub(in crate::game) fn display_index(&self) -> &sunrise_sim::recipe_book::RecipeIndex {
         if self.is_logical_server() {
             &self.stations().recipe_index
         } else {
@@ -113,7 +111,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// The server's recipes a client was sent, over its own; None on a
     /// server and until a server sends any.
-    pub(in crate::game) fn synced_recipes(&self) -> Option<&sunrise_client::crafting::Recipes> {
+    pub(in crate::game) fn synced_recipes(&self) -> Option<&sunrise_sim::crafting::Recipes> {
         self.recipe_tables.synced.as_ref()
     }
     pub(in crate::game) fn client_recipes(&self) -> &Recipes {
@@ -160,7 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Option<u32> {
         let chunks = &self.world.chunks;
         let (cx, cz) = (pos[0] >> 4, pos[2] >> 4);
-        let region: [[Option<&sunrise_client::chunk::Chunk>; 3]; 3] = std::array::from_fn(|dz| {
+        let region: [[Option<&sunrise_level::chunk::Chunk>; 3]; 3] = std::array::from_fn(|dz| {
             std::array::from_fn(|dx| {
                 chunks
                     .get(&(cx + dx as i32 - 1, cz + dz as i32 - 1))

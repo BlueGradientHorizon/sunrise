@@ -1,7 +1,7 @@
 //! Packet and prediction regressions for vanilla 26.3 game mode actions.
 use std::time::Duration;
-use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::connection::ConnReader;
 use sunrise_protocol::packets::{
     configuration::Ping,

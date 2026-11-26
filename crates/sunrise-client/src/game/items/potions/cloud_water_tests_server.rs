@@ -8,9 +8,9 @@ use crate::game::native_entity_refs::tests::{
     bind_local_player, prepare_entity_ticking_neighborhood, with_game,
 };
 use serde_json::Value;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it() {
     let witness = read_witness();

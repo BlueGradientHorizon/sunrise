@@ -1,11 +1,9 @@
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
-};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
 pub(in crate::game) fn scene<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,

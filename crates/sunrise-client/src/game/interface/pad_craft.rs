@@ -38,7 +38,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sunrise_client::{gamepad, items::ItemStack};
+use sunrise_client::gamepad;
+use sunrise_items::items::ItemStack;
 
 /// How long a request waits for the server's answer before the craft ends.
 const ANSWER_WAIT: Duration = Duration::from_secs(2);

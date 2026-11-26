@@ -3,11 +3,9 @@
 //! (`Panda.mobInteract`), the start a sneeze gives the grown pandas about,
 //! and the crumbs and the sneeze a window draws.
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{Species, panda},
-};
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Species, panda};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Panda.canPickUpAndEat`'s tag.
@@ -24,7 +22,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
             if m.species() != Species::Panda || !m.alive() || !self.creatures.ticked.contains(&m.id)
@@ -32,7 +30,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 continue;
             }
             let id = m.id;
-            let wants = |g: &Self, e: &sunrise_client::entities::ItemEntity| {
+            let wants = |g: &Self, e: &sunrise_sim::entities::ItemEntity| {
                 e.pickup_delay == 0 && g.panda_eats_from_ground(&e.stack.item)
             };
             // Mob.aiStep: the items within the box grown by (1, 0, 1).
@@ -99,12 +97,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut loved = false;
         if m.is_baby() {
             // Panda.mobInteract: a baby an age lock holds back passes.
-            if !sunrise_client::mobs::ai::can_age_up(m) {
+            if !sunrise_sim::mobs::ai::can_age_up(m) {
                 return false;
             }
             // ageUp((int) (-getAge() / 20 * 0.1F), true).
             let seconds = ((-m.extra.age / 20) as f32 * 0.1) as i32;
-            sunrise_client::mobs::ai::age_up(m, seconds, true);
+            sunrise_sim::mobs::ai::age_up(m, seconds, true);
         } else if m.extra.age == 0 && m.extra.in_love <= 0 {
             m.extra.in_love = 600;
             m.extra.love_player = true;
@@ -172,7 +170,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         self.mobs
-            .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+            .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
 }
 
@@ -183,7 +181,7 @@ pub(in crate::game) mod nested_spawn_tests {
     fn lifted_mob_callback_keeps_nested_spawns_until_the_next_pass() {
         crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
             let kind = game.res.mob_types().get("minecraft:panda").unwrap().clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 99,
                 kind,
                 sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
@@ -204,8 +202,8 @@ pub(in crate::game) mod nested_spawn_tests {
 pub(in crate::game) mod pickup_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
-    use sunrise_client::advancements as adv;
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::advancements as adv;
+    use sunrise_sim::motion::PlayerMotion;
     use sunrise_world::lazy_json::LazyJson;
 
     const ADV: &str = "sunrise:test/panda_pickup";
@@ -261,7 +259,7 @@ pub(in crate::game) mod pickup_tests {
             for cz in -2..=2 {
                 game.world.chunks.insert(
                     (cx, cz),
-                    std::sync::Arc::new(crate::chunk::Chunk::empty(cx, cz)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(cx, cz)),
                 );
             }
         }

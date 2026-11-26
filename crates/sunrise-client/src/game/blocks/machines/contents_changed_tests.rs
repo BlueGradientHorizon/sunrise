@@ -2,8 +2,9 @@ use super::BlockEntity;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::*;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{chunk::Chunk, items::ItemStack};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
 
 const DEPOT: &str = "contents_changed:depot";
 
@@ -878,7 +879,7 @@ fn a_panicking_root_commit_notice_leaves_the_phase_none() {
             game.world.block_entities.set_mod_containers(
                 [(
                     state.0,
-                    Arc::new(sunrise_client::containers::ModContainer {
+                    Arc::new(sunrise_level::containers::ModContainer {
                         slots: 1,
                         ..Default::default()
                     }),
@@ -1020,7 +1021,7 @@ fn bookshelf_abort_restores_items_flags_and_last_slot_but_keeps_issued_effects()
                             assert!(entity.set_changed(host).unwrap());
                         }
                         _ => {
-                            let mut stack = sunrise_client::save::item_to_nbt(
+                            let mut stack = sunrise_sim::save::item_to_nbt(
                                 &ItemStack::new("minecraft:book", 1),
                                 &Default::default(),
                             );

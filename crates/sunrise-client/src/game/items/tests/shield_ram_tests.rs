@@ -2,8 +2,8 @@
 //! (`applyItemBlocking`'s `blockingFactor`).
 use crate::game::*;
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::mobs::{Damage, MobEvent, Who};
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::{Damage, MobEvent, Who};
 
 fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> crate::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(

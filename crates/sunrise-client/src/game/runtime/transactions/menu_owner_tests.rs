@@ -1,8 +1,6 @@
 use super::*;
-use sunrise_client::{
-    items::ItemStack,
-    menu::{Kind, Menu},
-};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::{Kind, Menu};
 
 #[test]
 fn taking_and_returning_the_same_menu_invalidates_the_owner_read() {

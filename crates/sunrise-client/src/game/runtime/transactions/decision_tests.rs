@@ -523,7 +523,7 @@ fn save_during_action_savepoint_refused() {
     assert_eq!(
         host.place(&menu, |_| {
             // Production save admission uses this exact process-wide signal.
-            assert!(!sunrise_client::join_seq::visibility::passes_settled());
+            assert!(!sunrise_sim::join_seq::visibility::passes_settled());
             Reply::Allow
         }),
         Outcome::Applied

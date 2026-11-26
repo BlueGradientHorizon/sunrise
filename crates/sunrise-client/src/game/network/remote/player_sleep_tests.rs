@@ -5,14 +5,15 @@
 #[ignore = "daily"]
 fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
     use crate::game::native_entity_refs::tests::with_client_game;
-    use sunrise_client::{chunk::Chunk, mobs::Mob, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::{
         buf::Reader,
         connection::Pipe,
         entity_data::{Value, serializer},
         packets::play::{self, Clientbound as C},
     };
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     let deliver = |game: &mut crate::game::ClientGame<'_>, packet: C| {
         let body = packet.encode();

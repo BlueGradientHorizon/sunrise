@@ -6,8 +6,8 @@ use mod_api::{
     ItemKey, MenuKey, RegistryName, StateConstraint, StateMatchError,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::command::{Reader, args::Registries, block};
-use sunrise_client::items::ItemStack;
+use sunrise_command::{Reader, args::Registries, block};
+use sunrise_items::items::ItemStack;
 use sunrise_world::chunk::BlockState;
 use sunrise_world::fluid::{FluidKind, FluidState as EngineFluidState};
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
@@ -121,7 +121,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Item.getCraftingRemainder`: Sunrise currently stores the remainder's
     /// item id, so the result is a single plain stack.
     pub(super) fn item_crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
-        crate::crafting::CraftingRemainder::crafting_remainder(self.res.items(), stack)
+        sunrise_sim::crafting::CraftingRemainder::crafting_remainder(self.res.items(), stack)
     }
 
     pub(in crate::game) fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
@@ -238,7 +238,7 @@ pub(super) fn description_id(kind: &str, id: &str) -> Option<String> {
     Some(format!("{kind}.{namespace}.{}", path.replace('/', ".")))
 }
 
-impl<__Side: crate::game::Side> crate::crafting::CraftingRemainder for Game<'_, __Side> {
+impl<__Side: crate::game::Side> sunrise_sim::crafting::CraftingRemainder for Game<'_, __Side> {
     fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
         Game::crafting_remainder(self, stack)
     }
@@ -426,7 +426,7 @@ mod tests {
 
             // Enchantments load with the item tables, which this harness stops short of;
             // read them the way a world open does.
-            let items = sunrise_client::items::Items::load(
+            let items = sunrise_items::items::Items::load(
                 &root,
                 game.pack.assets.registry,
                 game.res.facts(),
@@ -1250,8 +1250,8 @@ mod crafting_remainder_tests {
                     damage: 2,
                     ..ItemStack::new("minecraft:wooden_hoe", 1)
                 };
-                let furnace = crate::containers::Furnace {
-                    kind: crate::containers::FurnaceKind::Furnace,
+                let furnace = sunrise_level::containers::Furnace {
+                    kind: sunrise_level::containers::FurnaceKind::Furnace,
                     items: [
                         Some(ItemStack::new("minecraft:iron_ore", 1)),
                         Some(fuel.clone()),
@@ -1264,11 +1264,11 @@ mod crafting_remainder_tests {
                     speed: 1.0,
                     recipes_used: Default::default(),
                 };
-                use sunrise_client::containers::BlockEntity;
+                use sunrise_level::containers::BlockEntity;
                 let pos = (8, 64, 8);
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let state = game
                     .pack

@@ -1,10 +1,10 @@
 use super::*;
 
-use sunrise_client::mobs::{
+use sunrise_core::random::LegacyRandom;
+use sunrise_sim::mobs::{
     BreedExperience,
     goals::{Breed, Cx, Goal},
 };
-use sunrise_core::random::LegacyRandom;
 
 /// Isolate the goal's stream from earlier tick work, but leave the actual
 /// Breed, subsequent aiStep and queued Game event handling in the route.
@@ -56,7 +56,7 @@ fn equine_breeding_inheritance_precedes_same_tick_healing_and_grazing() {
         ] {
             let result = tick_breeding(game, parent, partner, 42, true);
             let horse = parent == "minecraft:horse" && partner == parent;
-            let llama = sunrise_client::mobs::llama::is_llama(result.child.species());
+            let llama = sunrise_sim::mobs::llama::is_llama(result.child.species());
             assert_eq!(
                 result.child.extra.variant,
                 if horse {
@@ -153,8 +153,8 @@ fn camel_breeding_leaves_the_parent_stream_unchanged() {
 #[ignore = "daily"]
 fn first_chicken_breed_matches_without_mods_and_with_an_empty_mod() {
     use mod_api::{self, Hooks};
-    use sunrise_client::mobs::{BreedExperience, MobEvent, goals::Breed};
     use sunrise_core::random::LegacyRandom;
+    use sunrise_sim::mobs::{BreedExperience, MobEvent, goals::Breed};
     struct Empty;
     #[mod_api::__subscriptions]
     impl Hooks for Empty {}
@@ -183,7 +183,7 @@ fn first_chicken_breed_matches_without_mods_and_with_an_empty_mod() {
             parent.ai.goals.clear();
             parent.ai.goals.add(2, Breed::new(1.0));
             let mut events = Vec::new();
-            let mut test_level = sunrise_client::health::TestLevel::new(321);
+            let mut test_level = sunrise_sim::health::TestLevel::new(321);
             let level = &mut test_level.level();
             for _ in 0..200 {
                 // The fixture has no floor; keep the pair within breeding range.

@@ -35,27 +35,25 @@ use crate::game::creatures::to_loot;
 use crate::game::creatures::*;
 use mod_api::{EquipmentSlot, LootDrops, SoundSource};
 use std::sync::Arc;
-use sunrise_client::health::source_damage_type;
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
 use sunrise_gameplay::projectile_world::ProjWorld;
+use sunrise_sim::health::source_damage_type;
 use {
-    sunrise_client::Result, sunrise_client::arrows::EntityHit,
-    sunrise_client::fast_hash::FxHashMap, sunrise_client::health::Attack,
-    sunrise_client::health::HealthEvent, sunrise_client::health::HurtSource,
-    sunrise_client::items::ItemStack, sunrise_client::join_seq::JoinSeq,
-    sunrise_client::mobs::Damage, sunrise_client::mobs::DamageKind, sunrise_client::mobs::Mob,
-    sunrise_client::mobs::MobEvent, sunrise_client::mobs::MobWorld,
-    sunrise_client::mobs::PlayerView, sunrise_client::mobs::Seen, sunrise_client::mobs::Species,
-    sunrise_client::mobs::Who, sunrise_client::mobs::ai::eating_sound,
-    sunrise_client::mobs::ai::eating_sound_is_bound, sunrise_client::mobs::ai::feed_animal,
-    sunrise_client::mobs::ai::takes_food, sunrise_client::mobs::entity_sounds::full_id,
-    sunrise_client::mobs::finalize::Group, sunrise_client::mobs::spawning,
-    sunrise_client::projectiles::Hit, sunrise_client::projectiles::Projectile,
-    sunrise_client::projectiles::ProjectileKind, sunrise_level::particle_options::ParticleType,
+    sunrise_client_core::Result, sunrise_items::items::ItemStack,
+    sunrise_level::fast_hash::FxHashMap, sunrise_level::particle_options::ParticleType,
+    sunrise_sim::arrows::EntityHit, sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent,
+    sunrise_sim::health::HurtSource, sunrise_sim::join_seq::JoinSeq, sunrise_sim::mobs::Damage,
+    sunrise_sim::mobs::DamageKind, sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobEvent,
+    sunrise_sim::mobs::MobWorld, sunrise_sim::mobs::PlayerView, sunrise_sim::mobs::Seen,
+    sunrise_sim::mobs::Species, sunrise_sim::mobs::Who, sunrise_sim::mobs::ai::eating_sound,
+    sunrise_sim::mobs::ai::eating_sound_is_bound, sunrise_sim::mobs::ai::feed_animal,
+    sunrise_sim::mobs::ai::takes_food, sunrise_sim::mobs::entity_sounds::full_id,
+    sunrise_sim::mobs::finalize::Group, sunrise_sim::mobs::spawning, sunrise_sim::projectiles::Hit,
+    sunrise_sim::projectiles::Projectile, sunrise_sim::projectiles::ProjectileKind,
 };
 
 #[path = "borrowed_tick_server.rs"]
@@ -97,11 +95,9 @@ pub(in crate::game) mod section_steps;
 #[ignore = "daily"]
 fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
     use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
-    use sunrise_client::{
-        chunk::block_entity::BlockEntity,
-        mobs::spawner::{SpawnDataExt, SpawnerExt},
-    };
     use sunrise_core::nbt::Tag;
+    use sunrise_level::chunk::block_entity::BlockEntity;
+    use sunrise_sim::mobs::spawner::{SpawnDataExt, SpawnerExt};
     peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
         game.set_mode_id(0);
         game.side.forced_hit = Some(crate::game::Hit {
@@ -157,7 +153,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// (`Entity.id`, the same counter as the rest) when it has none. Its id.
     pub(in crate::game) fn add_projectile(
         &mut self,
-        mut p: sunrise_client::projectiles::Projectile,
+        mut p: sunrise_sim::projectiles::Projectile,
     ) -> u32 {
         if p.id == 0 {
             self.side.next_entity += 1;
@@ -178,7 +174,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
         }
         let player = (p.owner == Some(Who::Player))
-            .then(|| sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()));
+            .then(|| sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid()));
         let name = if player.is_some() {
             self.acting_player_name().to_owned()
         } else {
@@ -361,7 +357,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if arrow.owner == Some(Who::Player) {
                     if hurt && let Some(m) = self.mobs.iter().find(|m| same_target(m, id)) {
                         let victim = self.mob_entity(m);
-                        let direct = sunrise_client::advancements::EntityView {
+                        let direct = sunrise_sim::advancements::EntityView {
                             kind: if arrow.is_spectral_arrow() {
                                 "minecraft:spectral_arrow"
                             } else {
@@ -438,7 +434,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             } else {
                 "minecraft:arrow"
             };
-            let ctx = sunrise_client::enchant::EffectContext {
+            let ctx = sunrise_items::enchant::EffectContext {
                 this: victim.as_deref(),
                 attacker: owner.as_deref(),
                 direct_attacker: Some(arrow_type),
@@ -509,10 +505,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         parent: u32,
         partner: u32,
-        equine: Option<Box<sunrise_client::mobs::equine::Offspring>>,
+        equine: Option<Box<sunrise_sim::mobs::equine::Offspring>>,
         parent_variant: Option<bool>,
         wolf_voice: Option<u8>,
-        experience: sunrise_client::mobs::BreedExperience,
+        experience: sunrise_sim::mobs::BreedExperience,
     ) -> Option<u32> {
         let p = self.mobs.iter().find(|m| m.id == parent).cloned()?;
         let q = self.mobs.iter().find(|m| m.id == partner).cloned();
@@ -530,7 +526,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.award_breeding_experience(parent, [p.position.x, p.position.y, p.position.z]);
             return None;
         }
-        let coin = if sunrise_client::mobs::draws_parent_variant(p.species()) {
+        let coin = if sunrise_sim::mobs::draws_parent_variant(p.species()) {
             match parent_variant {
                 Some(choice) => choice,
                 None => {
@@ -624,17 +620,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .get(&partner)
                     .copied()
                     .and_then(|conn| self.killer_uuid(conn));
-                sunrise_client::mobs::fox::trust_breeders(
+                sunrise_sim::mobs::fox::trust_breeders(
                     child,
-                    parent_cause.map(sunrise_client::lan::playerdata::uuid_ints),
-                    partner_cause.map(sunrise_client::lan::playerdata::uuid_ints),
+                    parent_cause.map(sunrise_sim::lan::playerdata::uuid_ints),
+                    partner_cause.map(sunrise_sim::lan::playerdata::uuid_ints),
                 );
             }
             // Goat.getBreedOffspring: GoatAi.initMemories, then the baby
             // screams if the parent a coin toss picks does, or on a 2% roll.
             if p.species() == Species::Goat {
                 child.extra.lost_horns = [false; 2];
-                sunrise_client::mobs::finalize::goat_init_memories(child, &mut self.world.random);
+                sunrise_sim::mobs::finalize::goat_init_memories(child, &mut self.world.random);
                 let pick_parent = self.world.random.next_boolean();
                 let parent_screams = if pick_parent {
                     p.extra.screaming
@@ -646,11 +642,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Inheritance was drawn synchronously in the breeding goal,
             // before the parent's later same-tick aiStep rolls.
             if let Some(o) = equine {
-                sunrise_client::mobs::equine::apply_offspring(child, &o);
+                sunrise_sim::mobs::equine::apply_offspring(child, &o);
                 break 'offspring;
             }
             // Camel.getBreedOffspring creates a camel with default attributes.
-            if sunrise_client::mobs::camel::is_camel(p.species()) {
+            if sunrise_sim::mobs::camel::is_camel(p.species()) {
                 break 'offspring;
             }
             if p.species() == Species::Cat {
@@ -685,7 +681,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     other.extra.variant
                 };
                 if p.extra.tame {
-                    sunrise_client::mobs::tame::set_tame(child, true);
+                    sunrise_sim::mobs::tame::set_tame(child, true);
                     child.extra.owner = p.extra.owner;
                     let mixed = dye_mix(
                         &self.loop_context,
@@ -701,7 +697,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             // Panda.getBreedOffspring: genes from both parents.
             if p.species() == Species::Panda {
-                sunrise_client::mobs::panda::inherit(child, &p, q.as_ref().unwrap_or(&p));
+                sunrise_sim::mobs::panda::inherit(child, &p, q.as_ref().unwrap_or(&p));
                 break 'offspring;
             }
             // Axolotl.getBreedOffspring: the drawn variant, and the baby is persistent.
@@ -719,7 +715,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Offspring inherit a parent's variant (pigs/cows/chickens) or mixed wool.
             child.extra.variant = p.extra.variant;
             // Fox, Pig, Cow and Chicken.getBreedOffspring: either parent's variant.
-            if sunrise_client::mobs::draws_parent_variant(p.species())
+            if sunrise_sim::mobs::draws_parent_variant(p.species())
                 && p.species() != Species::Cat
                 && !coin
             {
@@ -786,7 +782,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mut hurt: bool,
         weapon: Option<&ItemStack>,
     ) -> Option<(usize, bool)> {
-        use sunrise_client::{health::HitLend, mobs::MobHurtAction};
+        use sunrise_sim::{health::HitLend, mobs::MobHurtAction};
 
         let victim = self.mobs.get(index)?;
         let (id, join) = (victim.id, victim.join);
@@ -866,7 +862,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         from: &Mob,
         kind: &str,
-        params: sunrise_client::mobs::conversion::Params,
+        params: sunrise_sim::mobs::conversion::Params,
         pre_checked: bool,
         at_conversion: Option<&Mob>,
         after: impl FnOnce(&mut Self, &mut Mob),
@@ -894,19 +890,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let mut from = self.mobs.iter().find(|m| m.id == from.id)?.clone();
         if let Some(at) = at_conversion {
-            sunrise_client::mobs::conversion::motion_at(&mut from, at);
+            sunrise_sim::mobs::conversion::motion_at(&mut from, at);
         }
         self.side.next_entity += 1;
         let mut mob = Mob::new(self.side.next_entity, t, from.position, from.yaw);
-        sunrise_client::mobs::conversion::single(&from, &mut mob, params);
+        sunrise_sim::mobs::conversion::single(&from, &mut mob, params);
         self.transfer_conversion_identity(from.id, mob.id);
         if matches!(from.species(), Species::Zombie | Species::Husk) {
             let at = [from.position.x, from.position.y, from.position.z];
             let special = self.local_difficulty(at).special();
-            sunrise_client::mobs::finalize::zombie_attributes(
+            sunrise_sim::mobs::finalize::zombie_attributes(
                 &mut mob,
                 special,
-                sunrise_client::mobs::spawn_rules::Reason::Conversion,
+                sunrise_sim::mobs::spawn_rules::Reason::Conversion,
             );
         }
         match (from.species(), kind) {
@@ -915,7 +911,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             (Species::Pig, "minecraft:zombified_piglin") => {
                 let old = self.mobs.iter_mut().find(|m| m.id == from.id)?;
-                sunrise_client::mobs::conversion::pig_thunder_hit(old, &mut mob);
+                sunrise_sim::mobs::conversion::pig_thunder_hit(old, &mut mob);
             }
             (Species::Hoglin, "minecraft:zoglin")
             | (Species::Piglin | Species::PiglinBrute, "minecraft:zombified_piglin") => {
@@ -973,7 +969,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // Entity.random first supplies the UUID, then LivingEntity's initial
         // yaw; species constructor draws continue from that same stream.
-        let (own, uuid) = sunrise_client::mobs::living_random();
+        let (own, uuid) = sunrise_sim::mobs::living_random();
         self.persist.uuids.insert(self.side.next_entity, uuid);
         let mut mob = Mob::with_random(
             self.side.next_entity,
@@ -1000,7 +996,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.finalize_plain(
                     &mut mob,
                     &difficulty,
-                    sunrise_client::mobs::spawn_rules::Reason::MobSummoned,
+                    sunrise_sim::mobs::spawn_rules::Reason::MobSummoned,
                 );
             }
         }
@@ -1016,7 +1012,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         table: &'static str,
         at: [f64; 3],
     ) -> bool {
-        use sunrise_client::mobs::drops;
+        use sunrise_sim::mobs::drops;
         use sunrise_world::loot::EntityLootParams;
         let loot = self.side.server_loot.0.get();
         let this = self
@@ -1075,8 +1071,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     conn,
                     &sunrise_protocol::packets::play::Clientbound::GameEvent(
                         sunrise_protocol::packets::play::GameEvent {
-                            event: sunrise_client::lan::hub::game_event::GUARDIAN_ELDER_EFFECT,
-                            param: crate::mobs::guardian::elder_curse_param(silent),
+                            event: sunrise_sim::lan::hub::game_event::GUARDIAN_ELDER_EFFECT,
+                            param: sunrise_sim::mobs::guardian::elder_curse_param(silent),
                         },
                     ),
                 );
@@ -1175,7 +1171,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let victim_kind = self.entity_kind_for_who(hit_who);
                 let base = self.shot_damage_base(&arrow, victim_kind.as_deref(), hit_who);
                 let rounded = arrow.arrow_damage_rounded(base);
-                if !sunrise_client::arrows::record_pierce_hit(&mut arrow, hit_who) {
+                if !sunrise_sim::arrows::record_pierce_hit(&mut arrow, hit_who) {
                     self.projectile_landed_event(
                         arrow.id,
                         arrow.owner,
@@ -1217,7 +1213,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 } else {
                     self.arrow_hit_one_entity(&mut arrow, hit_who, amount)?
                 };
-                sunrise_client::arrows::apply_pierce_hit(&mut arrow, outcome);
+                sunrise_sim::arrows::apply_pierce_hit(&mut arrow, outcome);
                 self.flush_arrow_events(&mut arrow);
                 if let Who::Mob(id) = hit_who {
                     self.settle_mob_hurt(id);
@@ -1255,7 +1251,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let rain = self.arrow_rain();
                 let scene = self.arrow_scene(&rain);
                 let live = self.live_proj_world(query, &[]);
-                sunrise_client::arrows::step_pierce_next_live(
+                sunrise_sim::arrows::step_pierce_next_live(
                     &mut arrow,
                     &scene,
                     &live,
@@ -1296,7 +1292,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if hears {
                         {
                             let rain = self.arrow_rain();
-                            sunrise_client::arrows::apply_block_contact(
+                            sunrise_sim::arrows::apply_block_contact(
                                 &mut arrow,
                                 &self.arrow_scene(&rain),
                                 BlockPos::new(pos[0], pos[1], pos[2]),
@@ -1317,7 +1313,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let keep = {
             let rain = self.arrow_rain();
-            sunrise_client::arrows::finish_pierce_tick(&mut arrow, &self.arrow_scene(&rain))
+            sunrise_sim::arrows::finish_pierce_tick(&mut arrow, &self.arrow_scene(&rain))
         };
         self.flush_arrow_events(&mut arrow);
         if keep {
@@ -1428,7 +1424,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && self
                             .ui
                             .rules
-                            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
                         && let Some(area) = self
                             .mobs
                             .iter()
@@ -1449,7 +1445,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if let Some(ty) = sunrise_level::particle_options::ParticleType::from_name(kind)
                     {
                         self.server_level_particles(
-                            &crate::lan::server_effects::ServerParticle::simple(ty),
+                            &sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                             at,
                             spread,
                             speed,
@@ -1465,8 +1461,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     count,
                 } => {
                     self.server_level_particles(
-                        &crate::lan::server_effects::ServerParticle::item(
-                            sunrise_client::items::ItemStack::new(item, 1),
+                        &sunrise_sim::lan::server_effects::ServerParticle::item(
+                            sunrise_items::items::ItemStack::new(item, 1),
                         ),
                         at,
                         spread,
@@ -1779,7 +1775,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         Species::SulfurCube => Some("minecraft:sulfur_cube"),
                         _ => None,
                     }
-                    .map(|kind| sunrise_client::advancements::EntityView {
+                    .map(|kind| sunrise_sim::advancements::EntityView {
                         kind: kind.into(),
                         position: at,
                         ..Default::default()
@@ -1791,7 +1787,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         super::explosion::ExplosionSource::default().with_silence(silent);
                     if let Some(id) = source_mob {
                         source = source
-                            .with_damage_direct(id, sunrise_client::health::DirectEntity::Living);
+                            .with_damage_direct(id, sunrise_sim::health::DirectEntity::Living);
                     }
                     if let Some(id) = source_mob
                         && matches!(species, Species::Creeper | Species::Wither)
@@ -1800,11 +1796,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             Species::Creeper => "minecraft:creeper",
                             _ => "minecraft:wither",
                         };
-                        source = source.with_entity(
-                            id,
-                            kind,
-                            sunrise_client::health::DirectEntity::Living,
-                        );
+                        source =
+                            source.with_entity(id, kind, sunrise_sim::health::DirectEntity::Living);
                     }
                     let result = match species {
                         Species::Creeper | Species::Wither => self.with_hive_emptying_blast(|g| {
@@ -1969,7 +1962,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 MobEvent::Hiss { mob } => {
                     if let Some(m) = self.mobs.iter().find(|m| m.id == mob) {
                         let at = m.center();
-                        let sound = sunrise_client::mobs::finalize::variant_sound(m, "hiss")
+                        let sound = sunrise_sim::mobs::finalize::variant_sound(m, "hiss")
                             .unwrap_or("entity.cat.hiss");
                         self.server_play_sound(&full_id(sound), at, 1.0, 1.0);
                     }
@@ -2079,7 +2072,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 None
                             ),
                             amount,
-                            sunrise_client::mobs::Damage::of(kind),
+                            sunrise_sim::mobs::Damage::of(kind),
                         );
                         self.finish_mob_damage_at(index);
                     }
@@ -2167,7 +2160,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             SpawnSite::Raw
                         } else {
                             SpawnSite::Finalizing(
-                                sunrise_client::mobs::spawn_rules::Reason::MobSummoned,
+                                sunrise_sim::mobs::spawn_rules::Reason::MobSummoned,
                             )
                         },
                     ) {
@@ -2240,7 +2233,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     motion,
                 } => {
                     let instrument =
-                        sunrise_client::mobs::goat::create_horn(self.mob_uuid(mob), screaming);
+                        sunrise_sim::mobs::goat::create_horn(self.mob_uuid(mob), screaming);
                     let mut horn = ItemStack::new("minecraft:goat_horn", 1);
                     horn.data_mut().set_other(
                         "minecraft:instrument",
@@ -2503,7 +2496,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             && self
                                 .ui
                                 .rules
-                                .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
                         {
                             let at = [
                                 f64::from(pos[0]) + 0.5,
@@ -2531,7 +2524,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     {
                         if ty == sunrise_level::particle_options::ParticleType::SonicBoom {
                             self.lan_sonic_boom(
-                                &crate::lan::server_effects::ServerParticle::simple(ty),
+                                &sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                                 at,
                             );
                         }
@@ -2540,7 +2533,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             && ty != sunrise_level::particle_options::ParticleType::SonicBoom
                         {
                             self.server_particle_at(
-                                crate::lan::server_effects::ServerParticle::simple(ty),
+                                sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                                 at,
                                 [0.0; 3],
                             );
@@ -2558,7 +2551,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 r.next_gaussian() * 0.02,
                             ];
                             self.server_particle_at(
-                                crate::lan::server_effects::ServerParticle::simple(ty),
+                                sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                                 p,
                                 v,
                             );
@@ -2574,7 +2567,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if let Some(ty) = sunrise_level::particle_options::ParticleType::from_name(kind)
                     {
                         self.server_particle_at(
-                            crate::lan::server_effects::ServerParticle::simple(ty),
+                            sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                             at,
                             velocity,
                         );
@@ -2585,7 +2578,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     color: [r, g, b],
                 } => {
                     self.server_particle_at(
-                        crate::lan::server_effects::ServerParticle::colored(
+                        sunrise_sim::lan::server_effects::ServerParticle::colored(
                             sunrise_level::particle_options::ParticleType::EntityEffect,
                             [r, g, b, 1.0],
                         ),
@@ -2603,7 +2596,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if (0..=2399).contains(&previous) {
                         self.potions
                             .effects
-                            .add(sunrise_client::effects::EffectInstance::new(
+                            .add(sunrise_level::effects::EffectInstance::new(
                                 "regeneration",
                                 (previous + 100).min(2400),
                                 0,
@@ -2684,21 +2677,21 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 MobEvent::LockGaze { mob, partner } => {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
-                        sunrise_client::mobs::animal_brain::lock_gaze(m, partner);
+                        sunrise_sim::mobs::animal_brain::lock_gaze(m, partner);
                     }
                 }
                 MobEvent::BreedTarget { mob, partner } => {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
-                        sunrise_client::mobs::animal_brain::set_breed_partner(m, partner);
+                        sunrise_sim::mobs::animal_brain::set_breed_partner(m, partner);
                     }
                 }
                 MobEvent::Retreat { mob, from, at } => {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
-                        sunrise_client::mobs::piglin::receive_retreat(m, from, at);
+                        sunrise_sim::mobs::piglin::receive_retreat(m, from, at);
                     }
                 }
                 MobEvent::StartRiding { rider, vehicle } => {
-                    if sunrise_client::mobs::riders::start_riding(&mut self.mobs, rider, vehicle) {
+                    if sunrise_sim::mobs::riders::start_riding(&mut self.mobs, rider, vehicle) {
                         self.seat_mob(rider);
                         self.break_leash(rider, true, false);
                         // sendEventAndTriggers: the server players already on it.
@@ -2715,7 +2708,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 MobEvent::NotifyLeashHolder { holder } => {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == holder) {
-                        sunrise_client::mobs::happy_ghast::notify_leash_holder(m);
+                        sunrise_sim::mobs::happy_ghast::notify_leash_holder(m);
                     }
                 }
                 MobEvent::Vibration {
@@ -2761,7 +2754,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 MobEvent::ThrowGift { table, from, to } => self.throw_gift(&table, from, to),
                 MobEvent::PatrolTarget { mob, target } => {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
-                        sunrise_client::mobs::raider::set_patrol_target(m, target);
+                        sunrise_sim::mobs::raider::set_patrol_target(m, target);
                     }
                 }
                 MobEvent::RaiderTarget {
@@ -2814,7 +2807,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     ) && !self
                         .ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS)
+                        .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS)
                     {
                         continue;
                     }
@@ -2872,7 +2865,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .iter()
                         .filter(|m| m.alive())
                         .min_by(|a, b| {
-                            let d = |m: &sunrise_client::mobs::Mob| {
+                            let d = |m: &sunrise_sim::mobs::Mob| {
                                 (m.position.x - from[0]).powi(2) + (m.position.z - from[2]).powi(2)
                             };
                             d(a).total_cmp(&d(b))
@@ -2919,7 +2912,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || attacker.or(owner).map_or(attack.attacker, |id| id as i32),
             |known| known.map_or(0, |id| id as i32),
         );
-        let mut outcome = sunrise_client::health::BlockOutcome::default();
+        let mut outcome = sunrise_sim::health::BlockOutcome::default();
         // The hit's own push, held back until after the shield's (`hurtServer`
         // runs `applyItemBlocking` before `dealDefaultKnockback`).
         let mut default_push: Option<([f64; 2], HurtSource<'_>)> = None;
@@ -2973,7 +2966,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 new.iter().any(|e| {
                     matches!(
                         e,
-                        sunrise_client::motion::MotionEvent::Health(HealthEvent::Phase(
+                        sunrise_sim::motion::MotionEvent::Health(HealthEvent::Phase(
                             "thorns-sound"
                         ))
                     )
@@ -2995,7 +2988,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 player.events[events_before..].iter().any(|event| {
                     matches!(
                         event,
-                        sunrise_client::motion::MotionEvent::Health(HealthEvent::Criterion { .. })
+                        sunrise_sim::motion::MotionEvent::Health(HealthEvent::Criterion { .. })
                     )
                 })
             })
@@ -3007,12 +3000,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .or(owner)
                 .and_then(|id| self.mob_index.get(&self.mobs, id))
                 .map(|m| self.mob_entity(m));
-            self.trigger_entity_hurt_player(&sunrise_client::advancements::DamageView {
+            self.trigger_entity_hurt_player(&sunrise_sim::advancements::DamageView {
                 kind: damage_type.to_owned(),
                 // Arrows and the like name no direct entity here; a
                 // rocket's burst names the rocket.
                 direct: if rocket {
-                    Some(sunrise_client::advancements::EntityView {
+                    Some(sunrise_sim::advancements::EntityView {
                         kind: "minecraft:firework_rocket".to_owned(),
                         position: from.unwrap_or_default(),
                         ..Default::default()
@@ -3068,7 +3061,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(false);
         };
         // CamelHusk.interact: any click on it keeps it (`setPersistenceRequired`).
-        sunrise_client::mobs::camel::keep_on_interact(&mut self.mobs[index]);
+        sunrise_sim::mobs::camel::keep_on_interact(&mut self.mobs[index]);
         // PlayerInteractTrigger: the name tag as it was before it named the mob.
         let used = self.held().cloned();
         if self.name_mob(index) {
@@ -3129,7 +3122,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && let Some((bucket, sound)) = bucketable(self.mobs[index].species())
         {
             let mut filled = ItemStack::new(bucket, 1);
-            filled.extra = Some(Box::new(sunrise_client::entity_nbt::bucket_components(
+            filled.extra = Some(Box::new(sunrise_sim::entity_nbt::bucket_components(
                 &self.mobs[index],
             )));
             let center = self.mobs[index].center();
@@ -3301,7 +3294,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let sneaking = self.server_acting_sneak();
         let held_damage = held.as_ref().map_or(0, |h| h.damage as i32);
         let held_extra = held.as_ref().and_then(|h| h.extra.clone());
-        let feeder = sunrise_client::health::Attack {
+        let feeder = sunrise_sim::health::Attack {
             player_uuid: self.player_uuid_of(self.side.lan_acting),
             ..Default::default()
         };
@@ -3380,7 +3373,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Species::Mooshroom if shears && !m.is_baby() => {
                 let player = Some(self.native_acting_id());
                 self.shear_mooshroom(index, player, held.as_ref().expect("held shears"));
-                let ctx = self.who_context(Some(sunrise_client::mobs::Who::Player), None);
+                let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Player), None);
                 self.post_game_event("minecraft:shear", feet, ctx);
                 self.damage_held_tool();
             }
@@ -3417,7 +3410,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 );
                 drops.extend(stacks.into_iter().map(|s| (s.item.to_string(), s.count)));
                 wool = true;
-                let ctx = self.who_context(Some(sunrise_client::mobs::Who::Player), None);
+                let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Player), None);
                 self.post_game_event("minecraft:shear", feet, ctx);
                 self.damage_held_tool();
             }
@@ -3477,7 +3470,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             {
                 m.extra.set_body_damage(
                     m.extra.body_damage()
-                        - (sunrise_client::mobs::WOLF_ARMOR_DURABILITY as f32 * 0.125) as i32,
+                        - (sunrise_sim::mobs::WOLF_ARMOR_DURABILITY as f32 * 0.125) as i32,
                 );
                 consume = true;
                 eat = Some(("item.wolf_armor.repair", 1.0, 1.0));
@@ -3527,7 +3520,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Species::Wolf
                 if !m.extra.tame
                     && item == "minecraft:bone"
-                    && !sunrise_client::mobs::tame::angry(m) =>
+                    && !sunrise_sim::mobs::tame::angry(m) =>
             {
                 consume = true;
                 let rolled = m.random.next_int_bound(3).unwrap_or(1) == 0;
@@ -3535,7 +3528,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     rolled && !self.animal_tame_cancelled(index, acting_id, acting_entity_id);
                 let m = &mut self.mobs[index];
                 if tamed {
-                    sunrise_client::mobs::tame::set_tame(m, true);
+                    sunrise_sim::mobs::tame::set_tame(m, true);
                     m.extra.owner = Some(acting);
                     m.persistent = true;
                     m.nav_stop();
@@ -3692,12 +3685,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let hurt = m.damage(
                     crate::game::entity::damage_level_of!(
                         self,
-                        &sunrise_client::health::NO_ATTACK,
+                        &sunrise_sim::health::NO_ATTACK,
                         &mut credit_plan.lend(&mut self.side.last_hurt_by_player),
                         None
                     ),
                     f32::MAX,
-                    sunrise_client::mobs::Damage::player(player_at.unwrap_or(center)),
+                    sunrise_sim::mobs::Damage::player(player_at.unwrap_or(center)),
                 );
                 if let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) {
                     // The feeder gets the kill, as for a normal player attack.
@@ -3735,9 +3728,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // adult remember it (`gotFish`), to swim to a treasure.
             Species::Dolphin if fish => {
                 eat = Some(("entity.dolphin.eat", 1.0, 1.0));
-                if sunrise_client::mobs::ai::can_age_up(m) {
+                if sunrise_sim::mobs::ai::can_age_up(m) {
                     let secs = ((-m.extra.age / 20) as f32 * 0.1) as i32;
-                    sunrise_client::mobs::ai::age_up(m, secs, true);
+                    sunrise_sim::mobs::ai::age_up(m, secs, true);
                 } else {
                     m.extra.flag = true;
                 }
@@ -3844,7 +3837,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if ignited_creeper {
             self.native_creeper_ignite(
                 self.mobs[index].id,
-                sunrise_client::lan::playerdata::ints_uuid(acting),
+                sunrise_sim::lan::playerdata::ints_uuid(acting),
                 &item,
             );
         }
@@ -3864,9 +3857,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let (spread, count) = ([0.5, 0.0, 0.5], if fresh { 4 } else { 2 });
             // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
             // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
-            self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+            self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
                 dimension: self.dim.id(),
-                particle: crate::lan::server_effects::ServerParticle::simple(ty),
+                particle: sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                 at,
                 spread,
                 speed: [0.2; 3],
@@ -4034,7 +4027,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         // LivingEntity.die: a sleeper gets up, and its bed is free again.
-        if let Some(bed) = sunrise_client::mobs::villager::sleeping_pos(m) {
+        if let Some(bed) = sunrise_sim::mobs::villager::sleeping_pos(m) {
             self.wake_villager(m.id);
             // The body may be gone already.
             self.set_bed_occupied(bed, false);
@@ -4052,8 +4045,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut catalyst_xp = 0;
         let consumed =
             self.catalyst_takes_experience([m.position.x, m.position.y, m.position.z], |_| {
-                catalyst_xp = if sunrise_client::mobs::drops::drops_experience(&dying) {
-                    sunrise_client::mobs::drops::base_experience(&mut dying).max(0) as u32
+                catalyst_xp = if sunrise_sim::mobs::drops::drops_experience(&dying) {
+                    sunrise_sim::mobs::drops::base_experience(&mut dying).max(0) as u32
                 } else {
                     0
                 };
@@ -4152,7 +4145,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         let mut target_index = self.mobs.iter().position(|m| m.id == target);
         // One subscription decision for the hit's attacker loan.
-        let listened = sunrise_client::health::hit_host_listened();
+        let listened = sunrise_sim::health::hit_host_listened();
         let attacker_index = match source.attacker {
             Some(Who::Mob(id)) if listened => self.mobs.iter().position(|m| m.id == id),
             _ => None,
@@ -4166,13 +4159,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .mobs
                         .get_disjoint_mut([ti, ai])
                         .expect("two different mobs");
-                    (t, sunrise_client::health::HitLend::mob(a))
+                    (t, sunrise_sim::health::HitLend::mob(a))
                 }
                 None => (
                     &mut self.mobs[ti],
                     listened
                         .then(|| {
-                            sunrise_client::health::HitLend::attacking_player(
+                            sunrise_sim::health::HitLend::attacking_player(
                                 self.player.as_mut(),
                                 attack.attacker,
                                 &self.potions.effects,
@@ -4341,7 +4334,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if let Some(b) = self.boats.iter().find(|b| b.id == id) {
                     // A boat's box: 1.375 wide and 0.5625 high around its position.
                     let w = 0.6875;
-                    return Some(sunrise_client::mobs::Vehicle {
+                    return Some(sunrise_sim::mobs::Vehicle {
                         nautilus: false,
                         bounds: Aabb::new(
                             Vec3::new(b.position.x - w, b.position.y, b.position.z - w),
@@ -4352,7 +4345,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 let m = self.mobs.iter().find(|m| m.id == id)?;
                 matches!(m.species(), Species::Nautilus | Species::ZombieNautilus).then(|| {
-                    sunrise_client::mobs::Vehicle {
+                    sunrise_sim::mobs::Vehicle {
                         nautilus: true,
                         bounds: m.bounds(),
                         velocity: m.velocity,
@@ -4415,7 +4408,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .any(|m| m.id == id && m.alive() && m.species() == Species::Breeze)
         {
             let mut deflected = p.clone();
-            if deflected.deflect_by(id, sunrise_client::projectiles::Turn::Reverse, [1.0; 3]) {
+            if deflected.deflect_by(id, sunrise_sim::projectiles::Turn::Reverse, [1.0; 3]) {
                 let sound = LevelSound::new(
                     "minecraft:entity.breeze.deflect",
                     [at.x, at.y, at.z],
@@ -4496,9 +4489,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             };
             let kind = match p.kind {
                 ProjectileKind::SmallFireball | ProjectileKind::LargeFireball { .. } => {
-                    sunrise_client::mobs::DamageKind::Fireball
+                    sunrise_sim::mobs::DamageKind::Fireball
                 }
-                _ => sunrise_client::mobs::DamageKind::Thrown,
+                _ => sunrise_sim::mobs::DamageKind::Thrown,
             };
             self.hit_special_full(
                 id,
@@ -4660,7 +4653,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 && let Some(m) = self.mobs.iter().find(|m| m.id == id)
                             {
                                 let victim = self.mob_entity(m);
-                                let direct = sunrise_client::advancements::EntityView {
+                                let direct = sunrise_sim::advancements::EntityView {
                                     kind: t.id.into(),
                                     position: [p.position.x, p.position.y, p.position.z],
                                     ..Default::default()
@@ -4792,7 +4785,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     }
                 }
                 let taken = self.player.as_ref().is_some_and(|pl| {
-                    sunrise_client::projectiles::owner_can_take_pearl(
+                    sunrise_sim::projectiles::owner_can_take_pearl(
                         !pl.health.dead_or_dying(),
                         self.sleeping.is_some(),
                     )
@@ -4802,7 +4795,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && self
                             .ui
                             .rules
-                            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS)
+                            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
                         && self.ui.difficulty != 0
                         && let Some(pl) = self.player.as_ref()
                     {
@@ -4941,7 +4934,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .with_entity(
                             p.id,
                             "minecraft:fireball",
-                            sunrise_client::health::DirectEntity::LargeFireball,
+                            sunrise_sim::health::DirectEntity::LargeFireball,
                         ),
                 );
                 self.side.combat.0.explosion_direct = None;
@@ -5053,7 +5046,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             if self.damage_projectile_with_weapon(p, id, 4.0, source, aim) {
                                 if let Some(m) = self.mobs.iter_mut().find(|m| same_target(m)) {
                                     // Shulker.hurtServer: a shulker hit by a bullet.
-                                    sunrise_client::mobs::shulker::hit_by_bullet(m);
+                                    sunrise_sim::mobs::shulker::hit_by_bullet(m);
                                 }
                                 self.settle_hurt_teleports()?;
                                 self.shot_post_attack(
@@ -5104,7 +5097,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             atp[2] + r.next_gaussian() * 0.2,
                         ];
                         self.server_particle_at(
-                            crate::lan::server_effects::ServerParticle::simple(ty),
+                            sunrise_sim::lan::server_effects::ServerParticle::simple(ty),
                             at,
                             [0.0; 3],
                         );
@@ -5150,7 +5143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(uuid) = self.player_uuid_of(self.side.lan_acting) {
             self.side.last_hurt_by_player.insert(
                 victim,
-                super::combat::PlayerCredit(sunrise_client::lan::playerdata::ints_uuid(uuid)),
+                super::combat::PlayerCredit(sunrise_sim::lan::playerdata::ints_uuid(uuid)),
             );
         }
     }
@@ -5183,7 +5176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == victim) {
-            sunrise_client::health::KnockbackCredit::accepted_mob_hit(&mut credit, mob);
+            sunrise_sim::health::KnockbackCredit::accepted_mob_hit(&mut credit, mob);
         }
     }
     /// `AgeableMob.setAgeLocked`: a golden dandelion on mob `index` flips its
@@ -5193,9 +5186,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn set_age_locked(&mut self, index: usize) {
         let m = &mut self.mobs[index];
         if m.species() == Species::Tadpole {
-            sunrise_client::mobs::aquatic::set_age_locked_data(m);
+            sunrise_sim::mobs::aquatic::set_age_locked_data(m);
         } else {
-            sunrise_client::mobs::ai::set_age_locked_data(m);
+            sunrise_sim::mobs::ai::set_age_locked_data(m);
         }
         self.consume_held();
         let m = &mut self.mobs[index];
@@ -5236,7 +5229,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 return Ok(thrown);
             }
             _ if item.ends_with("_spawn_egg") => return self.use_spawn_egg(stack),
-            _ => match sunrise_client::projectiles::thrown_by_item(item) {
+            _ => match sunrise_sim::projectiles::thrown_by_item(item) {
                 Some(t) => ProjectileKind::Thrown(t),
                 None => return Ok(false),
             },
@@ -5283,7 +5276,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// projectiles and effects that follow from them.
     pub(in crate::game) fn tick_creature_entities(&mut self) -> Result<()> {
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
-        let mut laps = sunrise_client::spans::laps();
+        let mut laps = sunrise_level::spans::laps();
         let blocked = self.mobs_below_off_level();
         let level_id = self.dim.id();
         // `EntityEvent.Size` for the sizes that changed outside the mob ticks (spawns,
@@ -5404,7 +5397,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut restocks = Vec::new();
         // The level's random and attachments, lent to the mobs (brain behaviours draw from
         // the random, and a hit's damage hooks get both) and taken back after their ticks.
-        let lent = sunrise_client::health::LentLevel::take(&mut self.world);
+        let lent = sunrise_sim::health::LentLevel::take(&mut self.world);
         let mut stand_result = Ok(());
         let (lent, dispatch_panic) = self.tick_borrowed_creatures(borrowed_tick::BorrowedMobTick {
             mobs: &mut mobs,
@@ -5448,7 +5441,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             // A set: a scan of every mob for each binding is quadratic, and a
             // server's loaded mobs run into the thousands.
-            let live: sunrise_client::fast_hash::FxHashSet<u32> =
+            let live: sunrise_level::fast_hash::FxHashSet<u32> =
                 mobs.iter().map(|m| m.id).collect();
             bindings.retain(|id, _| live.contains(id));
             host.mob_players = bindings;
@@ -5457,7 +5450,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // first, as `append` put them; with none, the ticked list goes back
         // as it is instead of being copied into a new one, every mob a tick.
         self.mobs
-            .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+            .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
         if aborted {
             // These death callbacks have not run, and the borrowed block writes
             // must still invalidate paths on the next attempted pass.
@@ -5498,7 +5491,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         stand_result?;
         self.native_tick_post_batch(round);
-        self.tick_armor_stands_before(sunrise_client::join_seq::JoinSeq::MAX)?;
+        self.tick_armor_stands_before(sunrise_sim::join_seq::JoinSeq::MAX)?;
         // ... and entity event 60 goes out as it is: the poof.
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
@@ -5538,7 +5531,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Vanilla's spawning and raids run before ChunkMap.tick.
         self.tick_spawners();
         let ticked =
-            sunrise_client::spans::time("tick_creature_entities", || self.tick_creature_entities());
+            sunrise_level::spans::time("tick_creature_entities", || self.tick_creature_entities());
         self.dismount_underwater_mob_riders();
         ticked
     }
@@ -5577,7 +5570,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let vanish = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::ENDER_PEARLS_VANISH_ON_DEATH);
+            .bool_at(sunrise_client_core::gamerules::vanilla::ENDER_PEARLS_VANISH_ON_DEATH);
         if !hear && !alone_any {
             return self.tick_projectiles_live(through, ticking, vanish, round);
         }
@@ -5667,11 +5660,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
                         ))
                 {
-                    winds.push(sunrise_client::projectiles::TargetCandidate {
+                    winds.push(sunrise_sim::projectiles::TargetCandidate {
                         who: Who::Mob(q.id),
                         bounds: q.bounds(),
                         position: q.position,
-                        order: sunrise_client::projectiles::TargetOrder::entity(
+                        order: sunrise_sim::projectiles::TargetOrder::entity(
                             q.position,
                             q.join.get(),
                         ),
@@ -5719,7 +5712,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let (keep, hit) = if p.arrow.is_some() {
                         let rain = self.arrow_rain();
                         let scene = self.arrow_scene(&rain);
-                        sunrise_client::arrows::tick_to_block_contact_live(
+                        sunrise_sim::arrows::tick_to_block_contact_live(
                             p,
                             &scene,
                             &live,
@@ -5732,7 +5725,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if (p.is_thrown() && !matches!(p.kind, ProjectileKind::LlamaSpit))
                         || p.is_arrow() && p.arrow.as_ref().is_none_or(|a| !a.no_physics)
                     {
-                        for block in sunrise_client::powder_snow::contacts(
+                        for block in sunrise_sim::powder_snow::contacts(
                             p.previous,
                             p.position,
                             p.bounds(),
@@ -5751,7 +5744,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     water_splashes.append(&mut p.water_splashes);
                     if let Some((hurt_at, is_lava)) = p.take_bullet_hurt() {
                         let silent = self.entity_silent(p.id);
-                        let ctx = sunrise_client::sculk::Context {
+                        let ctx = sunrise_level::sculk::Context {
                             owner: p.owner,
                             owner_uuid: p.owner_uuid,
                             ..self.entity_event_context(p.id, None)
@@ -5761,7 +5754,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // ThrownEnderpearl.onAboveBubbleColumn / onInsideBubbleColumn.
                     if keep && hit == Hit::None && matches!(p.kind, ProjectileKind::EnderPearl) {
                         let (at, h) = (p.position, 0.125);
-                        sunrise_client::motion::bubble_column_push_over(
+                        sunrise_sim::motion::bubble_column_push_over(
                             live.w.world,
                             live.w.registry,
                             live.w.facts,
@@ -5778,7 +5771,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let mut shot_after_hit = false;
                     if let Some(a) = p.arrow.as_mut() {
                         for event in a.events.drain(..) {
-                            if event == sunrise_client::arrows::ArrowEvent::ShootEvent {
+                            if event == sunrise_sim::arrows::ArrowEvent::ShootEvent {
                                 if matches!(hit, Hit::Block { .. }) {
                                     shot_after_hit = true;
                                 } else {
@@ -5948,7 +5941,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         game.creatures.projectiles.restore(
             projectiles,
-            sunrise_client::join_seq::RestoreOrder::SpawnsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SpawnsFirst,
         );
         section_steps::finish(game, section_steps);
         let result = game.apply_projectile_hits(hits, &mut vehicle_winds, pending, hears_impact);
@@ -5961,7 +5954,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         flushed
     }
     pub(in crate::game) fn touch_arrows(&mut self) {
-        use sunrise_client::arrows::Touch;
+        use sunrise_sim::arrows::Touch;
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -6013,7 +6006,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         self.creatures.projectiles.restore(
             projectiles,
-            sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
+            sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
         );
     }
     /// `SpawnEggItem.useOn` for a block, or `use` for a fluid source.
@@ -6035,7 +6028,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(false);
         }
         let items = self.res.shared_items();
-        let Some(data) = sunrise_client::block_entity_item::item_entity_data(stack, &items)
+        let Some(data) = sunrise_sim::block_entity_item::item_entity_data(stack, &items)
             .filter(|data| self.spawn_egg_allowed(&data.kind))
         else {
             self.side.use_failed = true;
@@ -6088,7 +6081,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
         // `PostSpawnProcessor` puts the egg's components on it.
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-            sunrise_client::entity_nbt::apply_item_components(m, stack);
+            sunrise_sim::entity_nbt::apply_item_components(m, stack);
         }
         self.apply_spawn_egg_entity_data(id, &data);
         self.post_block_game_event("minecraft:entity_place", p, Some(Who::Player), None);
@@ -6099,7 +6092,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game) fn finish_creature_entities(
         &mut self,
-        laps: &mut sunrise_client::spans::Laps,
+        laps: &mut sunrise_level::spans::Laps,
         primable: &[(u32, i32)],
     ) -> Result<()> {
         self.drain_entity_inside();
@@ -6138,9 +6131,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_arrow_event(
         &mut self,
         at: Vec3,
-        event: sunrise_client::arrows::ArrowEvent,
+        event: sunrise_sim::arrows::ArrowEvent,
     ) {
-        use sunrise_client::arrows::{ArrowEvent, BlockReaction};
+        use sunrise_sim::arrows::{ArrowEvent, BlockReaction};
         match event {
             ArrowEvent::Particle { .. } => {}
             ArrowEvent::PotionPuff { id, .. } => {
@@ -6187,11 +6180,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn arrow_scene<'s>(
         &'s self,
         rain: &'s dyn Fn(BlockPos) -> bool,
-    ) -> sunrise_client::arrows::ArrowScene<'s, 's> {
+    ) -> sunrise_sim::arrows::ArrowScene<'s, 's> {
         self.arrow_scene_with(
             rain,
             self.grief_hooked()
-                .then_some(self as &dyn sunrise_client::mobs::MobHooks),
+                .then_some(self as &dyn sunrise_sim::mobs::MobHooks),
             self,
         )
     }
@@ -6232,14 +6225,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 f64::from(pos.z) + r.next_double(),
             ];
             self.server_level_particles(
-                &crate::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
+                &sunrise_sim::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
                 splash,
                 [0.0; 3],
                 1.0,
                 1,
             );
             self.server_level_particles(
-                &crate::lan::server_effects::ServerParticle::simple(ParticleType::Bubble),
+                &sunrise_sim::lan::server_effects::ServerParticle::simple(ParticleType::Bubble),
                 bubble,
                 [0.0, 0.01, 0.0],
                 0.2,
@@ -6252,7 +6245,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mooshroom_shear_puff(&mut self, at: [f64; 3], height: f64) {
         let at = [at[0], at[1] + 0.5 * height, at[2]];
         self.server_level_particles(
-            &crate::lan::server_effects::ServerParticle::simple(ParticleType::Explosion),
+            &sunrise_sim::lan::server_effects::ServerParticle::simple(ParticleType::Explosion),
             at,
             [0.0; 3],
             0.0,
@@ -6267,10 +6260,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .mobs
             .iter()
             .find(|m| {
-                m.id == id
-                    && m.alive()
-                    && !m.removed
-                    && !sunrise_client::mobs::villager::sleeping(m)
+                m.id == id && m.alive() && !m.removed && !sunrise_sim::mobs::villager::sleeping(m)
             })
             .map(|m| m.position)
         else {
@@ -6292,7 +6282,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && m.alive()
                         && !m.removed
                         && m.position == from
-                        && !sunrise_client::mobs::villager::sleeping(m)
+                        && !sunrise_sim::mobs::villager::sleeping(m)
                 })
             {
                 return Ok(());
@@ -6431,7 +6421,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(stack) = m.item_by_slot(slot) else {
             return;
         };
-        if !sunrise_client::stations::is_damageable(self.res.items(), &stack) {
+        if !sunrise_sim::stations::is_damageable(self.res.items(), &stack) {
             return;
         }
         let at = [m.position.x, m.position.y, m.position.z];
@@ -6469,11 +6459,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .mobs
             .iter()
             .find(|m| m.id == id)
-            .and_then(|m| sunrise_client::mobs::finalize::equipment_stack(m, slot))
+            .and_then(|m| sunrise_sim::mobs::finalize::equipment_stack(m, slot))
         else {
             return;
         };
-        if !sunrise_client::stations::is_damageable(self.res.items(), &stack) {
+        if !sunrise_sim::stations::is_damageable(self.res.items(), &stack) {
             return;
         }
         let (updated, broken) = self.damage_living_stack(&stack, 1, id);
@@ -6483,7 +6473,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let at = [m.position.x, m.position.y, m.position.z];
         m.set_equipment_stack(slot as usize, updated);
         if broken.is_some() {
-            let event = sunrise_client::mobs::item_break::equipment_break_event(slot);
+            let event = sunrise_sim::mobs::item_break::equipment_break_event(slot);
             self.lan_entity_event(id as i32, event, at);
         }
     }
@@ -6521,9 +6511,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let wearable = |me: &Self, stack: &ItemStack, name: &str| -> Option<u32> {
             let info = me.res.items().get(&stack.item)?;
             if info.equip_slot.is_none()
-                || !sunrise_client::item_sync::damage_on_hurt(stack, info.equip_damage_on_hurt)
+                || !sunrise_sim::item_sync::damage_on_hurt(stack, info.equip_damage_on_hurt)
                 || info.max_damage == 0
-                || !sunrise_client::stations::is_damageable(me.res.items(), stack)
+                || !sunrise_sim::stations::is_damageable(me.res.items(), stack)
                 || !me.stack_can_be_hurt_by(stack, name).unwrap_or(true)
             {
                 return None;
@@ -6588,8 +6578,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         m.set_equipment_stack(EquipmentSlot::Body as usize, updated);
         if broken.is_some() {
             // LivingEntity.onEquippedItemBroken through the level's broadcast.
-            let event =
-                sunrise_client::mobs::item_break::equipment_break_event(EquipmentSlot::Body);
+            let event = sunrise_sim::mobs::item_break::equipment_break_event(EquipmentSlot::Body);
             self.lan_entity_event(id as i32, event, at);
         }
     }
@@ -6611,7 +6600,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         from: &Mob,
         kind: &str,
-        params: sunrise_client::mobs::conversion::Params,
+        params: sunrise_sim::mobs::conversion::Params,
         pre_checked: bool,
         after: impl FnOnce(&mut Self, &mut Mob),
     ) -> Option<u32> {
@@ -6634,7 +6623,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .ok_or_else(|| format!("unknown or unsupported mob {kind}"))?;
         if baby && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.extra.age = if m.species() == Species::Sniffer {
-                sunrise_client::mobs::sniffer::BABY_START_AGE
+                sunrise_sim::mobs::sniffer::BABY_START_AGE
             } else {
                 -24000
             };
@@ -6829,7 +6818,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             if !pending.pushes.is_empty() {
                 for mob in &mut self.mobs {
-                    sunrise_client::mobs::apply_mob_pushes(mob, &mut pending.pushes);
+                    sunrise_sim::mobs::apply_mob_pushes(mob, &mut pending.pushes);
                 }
                 // As in the producer's successful final sweep, removed targets
                 // have no remaining owner to receive a push.
@@ -6900,11 +6889,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn last_blow(
         &self,
         m: &Mob,
-    ) -> Option<sunrise_client::advancements::DamageView> {
+    ) -> Option<sunrise_sim::advancements::DamageView> {
         let (d, _) = m.last_damage?;
         let mut view = self.damage_view(d);
         if let Some(kind) = m.last_direct {
-            view.direct = Some(sunrise_client::advancements::EntityView {
+            view.direct = Some(sunrise_sim::advancements::EntityView {
                 kind: kind.into(),
                 position: d.from.unwrap_or_default(),
                 ..Default::default()
@@ -6915,10 +6904,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     /// A mob's damage source as advancement predicates see it: its type, the
     /// causing entity, and the projectile when one dealt it.
-    pub(in crate::game) fn damage_view(
-        &self,
-        d: Damage,
-    ) -> sunrise_client::advancements::DamageView {
+    pub(in crate::game) fn damage_view(&self, d: Damage) -> sunrise_sim::advancements::DamageView {
         let source = match d.attacker {
             // Its callers are KilledTrigger's: the source as their killing_blow sees it.
             Some(Who::Player) => Some(self.player_entity_for_any(&[
@@ -6940,14 +6926,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => None,
         };
         let direct = match projectile {
-            Some(kind) => Some(sunrise_client::advancements::EntityView {
+            Some(kind) => Some(sunrise_sim::advancements::EntityView {
                 kind: kind.into(),
                 position: d.from.unwrap_or_default(),
                 ..Default::default()
             }),
             None => source.clone(),
         };
-        sunrise_client::advancements::DamageView {
+        sunrise_sim::advancements::DamageView {
             kind: source_damage_type(d).to_owned(),
             // DamageSource.isDirect: the causing entity is the direct one.
             is_direct: projectile.is_none(),
@@ -7057,7 +7043,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// a mob tick: a Creaking's heart response or a Warden's anger and targeting.
     /// Wardens can react even when the base hurt call returned false.
     pub(in crate::game) fn settle_mob_hurt(&mut self, id: u32) {
-        use sunrise_client::mobs::{creaking, warden};
+        use sunrise_sim::mobs::{creaking, warden};
 
         let Some(index) = self.mobs.iter().position(|m| {
             m.id == id
@@ -7097,7 +7083,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     pub(in crate::game) fn settle_creaking_hurt(&mut self, id: u32) {
         if let Some(index) = self.mob_index.find(&self.mobs, id)
-            && sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[index])
+            && sunrise_sim::mobs::creaking::has_pending_hurt(&self.mobs[index])
         {
             self.finish_creaking_hurt(index);
         }
@@ -7107,7 +7093,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob = &mut self.mobs[index];
         let (id, join) = (mob.id, mob.join);
         let mut events = Vec::new();
-        let reaction = sunrise_client::mobs::creaking::take_hurt(mob, &mut events);
+        let reaction = sunrise_sim::mobs::creaking::take_hurt(mob, &mut events);
         let _ = self.handle_mob_events(events);
         if let Some((home, by_player)) = reaction
             && self
@@ -7183,12 +7169,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS);
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS);
         if let Some(amount) = self
             .mobs
             .iter_mut()
             .find(|m| m.id == parent)
-            .and_then(|m| sunrise_client::mobs::breeding_experience(m, mob_drops))
+            .and_then(|m| sunrise_sim::mobs::breeding_experience(m, mob_drops))
         {
             self.add_orb(at, amount);
         }
@@ -7197,14 +7183,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         parent: u32,
         at: [f64; 3],
-        experience: sunrise_client::mobs::BreedExperience,
+        experience: sunrise_sim::mobs::BreedExperience,
     ) {
         match experience {
-            sunrise_client::mobs::BreedExperience::Deferred => {
+            sunrise_sim::mobs::BreedExperience::Deferred => {
                 self.award_breeding_experience(parent, at)
             }
-            sunrise_client::mobs::BreedExperience::Drawn(Some(amount)) => self.add_orb(at, amount),
-            sunrise_client::mobs::BreedExperience::Drawn(None) => {}
+            sunrise_sim::mobs::BreedExperience::Drawn(Some(amount)) => self.add_orb(at, amount),
+            sunrise_sim::mobs::BreedExperience::Drawn(None) => {}
         }
     }
     /// `ServerPlayer.tellNeutralMobsThatIDied`: the mobs within 32 blocks
@@ -7221,7 +7207,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::FORGIVE_DEAD_PLAYERS)
+            .bool_at(sunrise_client_core::gamerules::vanilla::FORGIVE_DEAD_PLAYERS)
         {
             return;
         }
@@ -7240,14 +7226,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter(|m| {
                 host.mob_players.get(&m.id).copied() == conn
                     && m.bounds().intersects(area)
-                    && sunrise_client::mobs::ai::forgives_dead_player(m)
+                    && sunrise_sim::mobs::ai::forgives_dead_player(m)
             })
             .map(|m| m.id)
             .collect();
         for id in ids {
             let Some(epoch) = self.native_lifecycle.epoch() else {
                 if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) {
-                    sunrise_client::mobs::ai::forgive_dead_player(mob);
+                    sunrise_sim::mobs::ai::forgive_dead_player(mob);
                 }
                 continue;
             };
@@ -7256,11 +7242,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .native_mob_target_event(mob_ref, None, false)
                 .and_then(|target| self.native_mob_bind_target(id, target))
                 .map_or(
-                    sunrise_client::mobs::TargetChange::Keep,
-                    sunrise_client::mobs::TargetChange::Set,
+                    sunrise_sim::mobs::TargetChange::Keep,
+                    sunrise_sim::mobs::TargetChange::Set,
                 );
             if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) {
-                sunrise_client::mobs::ai::forgive_dead_player_with_change(mob, change);
+                sunrise_sim::mobs::ai::forgive_dead_player_with_change(mob, change);
             }
         }
     }
@@ -7270,10 +7256,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         p: &Mob,
         partner: u32,
         child: Mob,
-        experience: sunrise_client::mobs::BreedExperience,
+        experience: sunrise_sim::mobs::BreedExperience,
     ) -> Option<u32> {
         let parent = p.id;
-        let order = if sunrise_client::mobs::orb_after_child(p.species()) {
+        let order = if sunrise_sim::mobs::orb_after_child(p.species()) {
             OrbOrder::AfterChild
         } else {
             OrbOrder::BeforeChild
@@ -7359,7 +7345,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .creatures
                 .projectiles
                 .visibility_lease()
-                .ok_or_else(sunrise_client::join_seq::visibility::PassLease::enter);
+                .ok_or_else(sunrise_sim::join_seq::visibility::PassLease::enter);
             let Some(mut p) = self.creatures.projectiles.extract(join) else {
                 continue;
             };
@@ -7399,7 +7385,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let (keep, hit) = if p.arrow.is_some() {
                     let rain = self.arrow_rain();
                     let scene = self.arrow_scene(&rain);
-                    sunrise_client::arrows::tick_to_block_contact_live(
+                    sunrise_sim::arrows::tick_to_block_contact_live(
                         &mut p,
                         &scene,
                         &live,
@@ -7413,7 +7399,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if (p.is_thrown() && !matches!(p.kind, ProjectileKind::LlamaSpit))
                     || p.is_arrow() && p.arrow.as_ref().is_none_or(|a| !a.no_physics)
                 {
-                    for block in sunrise_client::powder_snow::contacts(
+                    for block in sunrise_sim::powder_snow::contacts(
                         p.previous,
                         p.position,
                         p.bounds(),
@@ -7426,7 +7412,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let mut bubbles = Vec::new();
                 if keep && hit == Hit::None && matches!(p.kind, ProjectileKind::EnderPearl) {
                     let (at, h) = (p.position, 0.125);
-                    sunrise_client::motion::bubble_column_push_over(
+                    sunrise_sim::motion::bubble_column_push_over(
                         live.w.world,
                         live.w.registry,
                         live.w.facts,
@@ -7457,7 +7443,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if let Some((hurt_at, is_lava)) = p.take_bullet_hurt() {
                 let at = hurt_at.components();
                 let silent = self.entity_silent(pid);
-                let ctx = sunrise_client::sculk::Context {
+                let ctx = sunrise_level::sculk::Context {
                     owner: p.owner,
                     owner_uuid: p.owner_uuid,
                     ..self.entity_event_context(pid, None)
@@ -7479,7 +7465,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let mut pending_arrow_events = Vec::new();
             if let Some(a) = p.arrow.as_mut() {
                 for event in a.events.drain(..) {
-                    if event == sunrise_client::arrows::ArrowEvent::ShootEvent {
+                    if event == sunrise_sim::arrows::ArrowEvent::ShootEvent {
                         if matches!(hit, Hit::Block { .. }) {
                             shot_after_hit = true;
                         } else {
@@ -7692,7 +7678,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && let Some(m) = self.mobs.iter().find(|m| m.id == id)
         {
             let victim = self.mob_entity(m);
-            let direct = sunrise_client::advancements::EntityView {
+            let direct = sunrise_sim::advancements::EntityView {
                 kind: kind.into(),
                 position: [p.position.x, p.position.y, p.position.z],
                 ..Default::default()
@@ -7792,7 +7778,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// actual projectile predicate and mob_griefing). Other owner/kind paths
     /// retain their existing policy. A pot is cracked first (flags 260).
     pub(in crate::game) fn projectile_breaks_block(&mut self, p: &Projectile, pos: [i32; 3]) {
-        use sunrise_client::command::args::GameMode;
+        use sunrise_command::args::GameMode;
         let impact = matches!(
             p.kind,
             ProjectileKind::Arrow { .. }
@@ -7806,7 +7792,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 | ProjectileKind::WindCharge
                 | ProjectileKind::BreezeWindCharge
         );
-        use sunrise_client::arrows::OwnerLookup;
+        use sunrise_sim::arrows::OwnerLookup;
         let shooter_may_break = match p.owner {
             Some(Who::Player) => self.mode != GameMode::Adventure,
             Some(Who::Mob(_)) => {
@@ -7814,7 +7800,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self
                         .ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+                        .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
                     && p.arrow
                         .as_ref()
                         .and_then(|a| a.can_break.as_ref())
@@ -7830,7 +7816,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
         {
             return;
         }
@@ -7882,9 +7868,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let (events, item) = (std::mem::take(&mut a.events), a.pickup_item.clone());
         for event in events {
-            if event == sunrise_client::arrows::ArrowEvent::Drop {
+            if event == sunrise_sim::arrows::ArrowEvent::Drop {
                 self.spawn_at_location(arrow.position, f64::from(0.1f32), item.clone());
-            } else if event == sunrise_client::arrows::ArrowEvent::ShootEvent {
+            } else if event == sunrise_sim::arrows::ArrowEvent::ShootEvent {
                 self.projectile_shoot_event(arrow.owner, arrow.guest, arrow.position.components());
             } else {
                 self.server_arrow_event(arrow.position, event);
@@ -7896,7 +7882,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn finish_arrow_hit(&mut self, mut arrow: Projectile, outcome: EntityHit) {
         let keep = {
             let rain = self.arrow_rain();
-            sunrise_client::arrows::finish_entity_hit(&mut arrow, &self.arrow_scene(&rain), outcome)
+            sunrise_sim::arrows::finish_entity_hit(&mut arrow, &self.arrow_scene(&rain), outcome)
         };
         self.flush_arrow_events(&mut arrow);
         if keep {
@@ -7985,7 +7971,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // These living bodies can be assigned as owners, but the projectile's
                 // combat shortcut (`Who`) only represents mobs and players.
                 let Some(owner) = p.owner_uuid.and_then(|uuid| {
-                    self.target_by_uuid(sunrise_client::lan::playerdata::ints_uuid(uuid))
+                    self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid))
                 }) else {
                     return;
                 };
@@ -8073,7 +8059,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for stack in stacks {
             self.spawn_at_location(at, height, stack);
         }
-        let ctx = self.who_context(Some(sunrise_client::mobs::Who::Player), None);
+        let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Player), None);
         self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
         self.damage_held_tool();
         true
@@ -8093,10 +8079,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let parent = &self.mobs[index];
         if !parent.alive()
             || !stack.item.ends_with("_spawn_egg")
-            || sunrise_client::block_entity_item::item_entity_data(&stack, self.res.items())
+            || sunrise_sim::block_entity_item::item_entity_data(&stack, self.res.items())
                 .is_none_or(|data| data.kind != parent.kind.id)
             || self.ui.difficulty == 0 && !parent.kind.allowed_in_peaceful()
-            || !sunrise_client::mobs::species::can_be_a_baby(parent.species())
+            || !sunrise_sim::mobs::species::can_be_a_baby(parent.species())
             // WanderingTrader.getBreedOffspring returns null: no offspring, the
             // click carries on to trading.
             || parent.species() == Species::WanderingTrader
@@ -8136,7 +8122,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         if let Some(child) = self.mobs.iter_mut().find(|m| m.id == id) {
-            sunrise_client::mobs::finalize::spawn_egg_offspring(child, species, variant, color);
+            sunrise_sim::mobs::finalize::spawn_egg_offspring(child, species, variant, color);
         }
         // `Mob.checkAndHandleImportantInteractions` then calls
         // `onOffspringSpawnedFromEgg`: `Fox`'s makes the baby trust the player
@@ -8144,7 +8130,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if species == Species::Fox {
             let spawner = self.acting_player_uuid();
             if let Some(child) = self.mobs.iter_mut().find(|m| m.id == id) {
-                sunrise_client::mobs::fox::add_trusted_entity(child, spawner);
+                sunrise_sim::mobs::fox::add_trusted_entity(child, spawner);
             }
         }
         self.trigger_item_entity("minecraft:player_interacted_with_entity", &stack, &target);
@@ -8172,7 +8158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn apply_spawn_egg_entity_data(
         &mut self,
         id: u32,
-        data: &sunrise_client::block_entity_item::ItemEntityData<'_>,
+        data: &sunrise_sim::block_entity_item::ItemEntityData<'_>,
     ) {
         use sunrise_core::nbt::Tag;
         // A type-only component has no custom fields to apply.
@@ -8187,7 +8173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         };
         if let Tag::Compound(mut tag) = self.mob_tree_nbt(i) {
-            sunrise_client::data_cmd::merge_compound(&mut tag, data.compound);
+            sunrise_sim::data_cmd::merge_compound(&mut tag, data.compound);
             // Nothing to report: the mob's own compound always loads back.
             let _ =
                 self.apply_entity_nbt(crate::game::commands::Target::Mob(id), Tag::Compound(tag));
@@ -8205,7 +8191,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
         entity.map_or(rule, |entity| self.entity_grief(entity, rule))
     }
     /// Whether a large fireball's blast lights fire (`LargeFireball.onHit`):
@@ -8246,9 +8232,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl sunrise_client::arrows::OwnerLookup for Game<'_, crate::game::server_side::ServerState> {
+impl sunrise_sim::arrows::OwnerLookup for Game<'_, crate::game::server_side::ServerState> {
     fn non_player_entity(&self, uuid: [i32; 4]) -> bool {
-        let found = self.target_by_uuid(sunrise_client::lan::playerdata::ints_uuid(uuid));
+        let found = self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid));
         !matches!(
             found,
             None | Some(

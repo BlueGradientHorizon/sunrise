@@ -26,7 +26,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             fire_ticks: 0,
             synced_fire: false,
             has_visual_fire: false,
-            random: sunrise_client::mobs::entity_random(id, Vec3::new(at[0], at[1], at[2])),
+            random: sunrise_sim::mobs::entity_random(id, Vec3::new(at[0], at[1], at[2])),
         });
     }
 }

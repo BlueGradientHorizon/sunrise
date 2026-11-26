@@ -3,7 +3,7 @@ use super::api_values::TryIntoApi;
 use super::*;
 use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
 use std::result::Result;
-use sunrise_client::recipe_book::{DisplayResources, placement_sync as sync};
+use sunrise_sim::recipe_book::{DisplayResources, placement_sync as sync};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     fn concretize_mod_book_slot(&self, slot: &mut Slot) -> Result<(), sync::Refusal> {

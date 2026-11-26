@@ -10,7 +10,7 @@ use mod_api::{
     ItemResource, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::cell::{Cell, RefCell};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 
 #[derive(Clone, Default)]
@@ -199,7 +199,7 @@ fn open_grindstone(game: &mut crate::game::ServerGame<'_>) -> i32 {
     // real block, as the other workstation fixtures do, so that check keeps it open.
     game.world.chunks.insert(
         (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
     );
     let state = game
         .pack
@@ -589,11 +589,11 @@ fn non_positive_take_xp_awards_no_orbs_and_fires_sound() {
 #[ignore = "daily"]
 fn an_outer_abort_undoes_an_accepted_grindstone_take() {
     use std::sync::{Arc, mpsc};
-    use sunrise_client::lan::PlayerSender;
     use sunrise_core::{
         geometry::Vec3,
         random::{LegacyRandom, RandomSource},
     };
+    use sunrise_sim::lan::PlayerSender;
 
     with_mod(|| {
         with_guests(|game| {

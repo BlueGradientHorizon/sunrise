@@ -1,8 +1,10 @@
 use super::Game;
 #[allow(unused_imports)]
-use sunrise_client::{arrows::Pickup, mesher::Vertex, mobs::anim::Poses};
+use sunrise_client::mesher::Vertex;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay::trident::{HALF, ThrownTrident};
+#[allow(unused_imports)]
+use sunrise_sim::{arrows::Pickup, mobs::anim::Poses};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// ThrownTridentRenderer.
@@ -86,7 +88,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if t.fire_ticks > 0 {
                 // The flames face the camera, turned round in the front view.
                 let fire_yaw = if self.side.camera_type
-                    == sunrise_client::camera::CameraType::ThirdPersonFront
+                    == sunrise_level::camera_math::CameraType::ThirdPersonFront
                 {
                     self.yaw + 180.0
                 } else {

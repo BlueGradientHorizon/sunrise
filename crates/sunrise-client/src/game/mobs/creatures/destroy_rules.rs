@@ -25,7 +25,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut may_destroy = None;
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let entity = mod_api::EntityRef::new(epoch, entity);
-        if let Err(error) = sunrise_client::crash::contain(|| {
+        if let Err(error) = sunrise_level::crash::contain(|| {
             self.native_can_entity_destroy(at, state, entity, &mut may_destroy);
         }) {
             log::warn!("can_entity_destroy callback failed: {error}");

@@ -3,7 +3,8 @@
 //! that carries its command and last output to clients, and the edit screen's
 //! `ServerboundSetCommandMinecartPacket` with `handleSetCommandMinecart`.
 use super::{Game, command_blocks::CommandBlockScreen, minecarts::CartKind};
-use sunrise_client::{command_block::Mode, text::Text};
+use sunrise_client_core::text::Text;
+use sunrise_level::command_block::Mode;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 impl Game<'_, crate::game::client_side::ClientState> {

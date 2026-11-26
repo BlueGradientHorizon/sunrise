@@ -5,10 +5,8 @@ use super::{
     commands::Target,
 };
 use mod_api::{EntityRef, ItemEntityRef, ItemStackView};
-use sunrise_client::{
-    items::ItemStack,
-    lan::playerdata::{ints_uuid, uuid_ints},
-};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::playerdata::{ints_uuid, uuid_ints};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Resolve the stable item identity, reusing the caller's known slot while it still matches.
@@ -159,8 +157,8 @@ pub(in crate::game) mod tests {
     use super::*;
     use crate::game::api_values::test_snapshot;
     use mod_api::WorldEpoch;
-    use sunrise_client::{entities::ArmorStand, mobs::Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     #[test]
     #[ignore = "daily"]

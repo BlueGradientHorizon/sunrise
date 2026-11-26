@@ -3,11 +3,11 @@ use super::{BlockEntity, Game, GameLevel, Pos};
 use crate::game::native_level_signals::ReadLevel;
 use mod_api::{BlockEntityRef, BlockEntityTypeKey, HookId, LevelRef};
 use std::borrow::Cow;
-use sunrise_client::{
-    containers::ModBlockEntity, items::Items, save::block_entity_encode, world::World,
-};
 use sunrise_core::nbt::{Compound, JavaString, Limits, Tag};
+use sunrise_items::items::Items;
+use sunrise_level::{containers::ModBlockEntity, world::World};
 use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
+use sunrise_sim::save::block_entity_encode;
 use sunrise_world::registry::BlockRegistry;
 
 fn owns_slots(world: &World, registry: &BlockRegistry, block: &str) -> bool {
@@ -150,7 +150,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         entity: &BlockEntity,
         generation: Option<u64>,
         block: &str,
-        items: &sunrise_client::items::Items,
+        items: &sunrise_items::items::Items,
     ) -> Tag {
         block_entity_encode::encode_with(pos, entity, block, Default::default(), items, |row| {
             self.capture_block_entity_payload_at(pos, generation, block, row, items)
@@ -163,7 +163,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         pos: Pos,
         entity: &BlockEntity,
         block: &str,
-        items: &sunrise_client::items::Items,
+        items: &sunrise_items::items::Items,
     ) -> Tag {
         block_entity_encode::encode_with(pos, entity, block, Default::default(), items, |row| {
             self.capture_block_entity_payload(pos, block, row, items)

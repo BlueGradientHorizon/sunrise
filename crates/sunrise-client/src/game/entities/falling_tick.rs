@@ -1,8 +1,8 @@
 //! `falling_tick`: a falling block's parts hear each tick it ends still in the air, once the
 //! ordered pass that ticked it is over (the falling block is lent out during its own tick).
 use super::Game;
-use sunrise_client::join_seq::JoinSeq;
 use sunrise_core::position::BlockPos;
+use sunrise_sim::join_seq::JoinSeq;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {

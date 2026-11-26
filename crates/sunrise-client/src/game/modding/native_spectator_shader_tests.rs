@@ -59,9 +59,9 @@ fn add_entity(game: &mut crate::game::ClientGame<'_>, id: i32, kind: &str) {
 #[test]
 #[ignore = "daily"]
 fn a_mods_entity_type_puts_its_chain_on_while_spectated() {
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_sim::motion::PlayerMotion;
 
     let mods: mod_api::Mods = vec![ModEntry::new("vision", Box::new(Vision))].into();
     mod_platform::testing::with_mods(mods, || {

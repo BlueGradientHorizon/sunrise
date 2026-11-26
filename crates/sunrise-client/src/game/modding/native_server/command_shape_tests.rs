@@ -5,15 +5,13 @@ use crate::game::{
     in_own_process, lan_actions::GuestCommand, native_guest_turn_tests::with_guests,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
-    lan::{Out, PlayerSender},
-    text,
-};
+use sunrise_client_core::text;
 use sunrise_protocol::{
     buf::Reader,
     ids::play::clientbound::COMMANDS,
     packets::play::{Clientbound, Commands},
 };
+use sunrise_sim::lan::{Out, PlayerSender};
 
 /// What the executors received, in order: the usage's first word and its argument.
 type Calls = Arc<Mutex<Vec<(String, Option<mod_api::CommandArgumentValue>)>>>;

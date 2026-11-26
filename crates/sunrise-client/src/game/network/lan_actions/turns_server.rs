@@ -24,7 +24,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 host.hub.send_to(
                     conn,
                     &C::SystemChat(play::SystemChat {
-                        content: sunrise_client::lan::data::component_nbt(&line.component()),
+                        content: sunrise_sim::lan::data::component_nbt(&line.component()),
                         overlay: false,
                     }),
                 );
@@ -493,7 +493,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // What the guest shot is theirs (Projectile.setOwner).
         for i in projectiles..self.creatures.projectiles.len() {
             self.creatures.projectiles.update(i, |p| {
-                if p.owner == Some(sunrise_client::mobs::Who::Player) && p.guest.is_none() {
+                if p.owner == Some(sunrise_sim::mobs::Who::Player) && p.guest.is_none() {
                     p.guest = Some(conn);
                 }
             });
@@ -504,19 +504,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 break;
             }
             let item = match &self.creatures.projectiles[projectile].kind {
-                sunrise_client::projectiles::ProjectileKind::Snowball => {
+                sunrise_sim::projectiles::ProjectileKind::Snowball => {
                     Some("minecraft:snowball".to_owned())
                 }
-                sunrise_client::projectiles::ProjectileKind::Egg => {
-                    Some("minecraft:egg".to_owned())
-                }
-                sunrise_client::projectiles::ProjectileKind::EnderPearl => {
+                sunrise_sim::projectiles::ProjectileKind::Egg => Some("minecraft:egg".to_owned()),
+                sunrise_sim::projectiles::ProjectileKind::EnderPearl => {
                     Some("minecraft:ender_pearl".to_owned())
                 }
-                sunrise_client::projectiles::ProjectileKind::Trident => {
+                sunrise_sim::projectiles::ProjectileKind::Trident => {
                     Some("minecraft:trident".to_owned())
                 }
-                sunrise_client::projectiles::ProjectileKind::Potion(stack, _) => {
+                sunrise_sim::projectiles::ProjectileKind::Potion(stack, _) => {
                     Some(stack.item.to_string())
                 }
                 _ => None,
@@ -841,7 +839,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         for event in turn_events {
             match event {
-                MotionEvent::Health(sunrise_client::health::HealthEvent::DamageBroadcast {
+                MotionEvent::Health(sunrise_sim::health::HealthEvent::DamageBroadcast {
                     source,
                 }) => self.guest_damage_broadcast(conn, source),
                 MotionEvent::HurtSound(sound) => self.guest_hurt_sound(conn, sound),
@@ -961,7 +959,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn with_own_record<R>(
         &mut self,
         gi: usize,
-        f: impl FnOnce(&mut LanHost, &sunrise_client::items::Items) -> Option<R>,
+        f: impl FnOnce(&mut LanHost, &sunrise_items::items::Items) -> Option<R>,
     ) -> Option<R> {
         let host = self.lan.as_ref()?;
         let conn = host.hub.guests[gi].conn;
@@ -1018,8 +1016,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let dimension = (game.serving.is_some() || game.options.dedicated.is_some())
                     .then_some(game.dim.id());
-                let result =
-                    sunrise_client::block_contact::in_level(game.tick, dimension, || f(game));
+                let result = sunrise_sim::block_contact::in_level(game.tick, dimension, || f(game));
                 game.drain_entity_inside();
                 result
             }));

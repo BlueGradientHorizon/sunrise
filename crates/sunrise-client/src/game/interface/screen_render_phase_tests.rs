@@ -9,12 +9,11 @@ use std::sync::{
     atomic::{AtomicU8, Ordering},
 };
 use sunrise_client::{
-    chunk::Chunk,
-    containers::BlockEntity,
     gfx::entity_pixel_test::render_hud,
     hud::{HudBatch, rgba},
-    items::ItemStack,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
 const SIZE: [u32; 2] = [320, 240];
 const POS: (i32, i32, i32) = (0, 0, 0);

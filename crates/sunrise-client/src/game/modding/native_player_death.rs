@@ -44,10 +44,10 @@ pub(in crate::game) mod tests {
     }
 
     /// A placed guest record.
-    pub(in crate::game) fn new_guest(conn: u32, uuid: u128) -> sunrise_client::lan::guest::Guest {
+    pub(in crate::game) fn new_guest(conn: u32, uuid: u128) -> sunrise_sim::lan::guest::Guest {
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::lan::{Joined, PlayerSender, guest::Guest};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
         let (tx, _rx) = mpsc::channel();
         let mut guest = Guest::new(
@@ -73,7 +73,7 @@ pub(in crate::game) mod tests {
 
     /// Opens the game to a LAN host with one placed guest (UUID 123, conn 1).
     pub(in crate::game) fn add_guest(game: &mut crate::game::ServerGame<'_>) -> PlayerRef {
-        use sunrise_client::lan::{NetConfig, hub::HubConfig};
+        use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 
         let settings = super::super::lan::LanSettings {
             port: 0,
@@ -216,7 +216,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_death_location_survives_a_playerdata_save_and_load() {
-        use sunrise_client::lan::playerdata;
+        use sunrise_sim::lan::playerdata;
 
         with_game(|game| {
             let player = add_guest(game);

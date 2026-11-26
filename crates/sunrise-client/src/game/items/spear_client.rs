@@ -1,6 +1,6 @@
 use super::Game;
 use crate::game::spear::OWN;
-use sunrise_client::spear::Kinetic;
+use sunrise_sim::spear_sim::Kinetic;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// A sound at the player's feet.
@@ -34,12 +34,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .find(|m| m.id == id as u32 && m.extra.using_item > 0);
             let item = mob.and_then(|m| {
                 if m.extra.using_off_hand {
-                    sunrise_client::mobs::finalize::item(m, sunrise_client::mobs::finalize::OFFHAND)
+                    sunrise_sim::mobs::finalize::item(m, sunrise_sim::mobs::finalize::OFFHAND)
                 } else {
-                    sunrise_client::mobs::finalize::item(
-                        m,
-                        sunrise_client::mobs::finalize::MAINHAND,
-                    )
+                    sunrise_sim::mobs::finalize::item(m, sunrise_sim::mobs::finalize::MAINHAND)
                 }
             });
             (item, mob.map(|m| m.position))

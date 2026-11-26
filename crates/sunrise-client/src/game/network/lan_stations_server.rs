@@ -1,6 +1,6 @@
 use super::{Game, stations::Kind as StationKind};
 use crate::game::server_side::lan_stations::GuestStation;
-use sunrise_client::containers::BlockEntity;
+use sunrise_level::containers::BlockEntity;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `LecternMenu.stillValid` (`Container.stillValidBlockEntity`): the block
@@ -8,7 +8,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// range and its buffer.
     pub(in crate::game) fn lan_lectern_valid(
         &self,
-        g: &sunrise_client::lan::guest::Guest,
+        g: &sunrise_sim::lan::guest::Guest,
         key: (i32, i32, i32),
     ) -> bool {
         matches!(
@@ -33,7 +33,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// guest is within `isWithinBlockInteractionRange(pos, 4)`.
     pub(in crate::game) fn lan_station_valid(
         &self,
-        g: &sunrise_client::lan::guest::Guest,
+        g: &sunrise_sim::lan::guest::Guest,
         gs: &GuestStation,
     ) -> bool {
         let [x, y, z] = gs.pos;

@@ -4,11 +4,13 @@ use super::Game;
 use sunrise_client::{
     hud::HudBatch,
     hud_layout, keybinds,
-    scoreboard::{comp_text, team_color_rgb},
     spectator_menu::{Member, Outcome, SpectatorMenu, Team},
-    tab_list::{SPECTATOR, TabPlayer},
+};
+use sunrise_client_core::{
+    scoreboard::{comp_text, team_color_rgb},
     text::Text,
 };
+use sunrise_level::profile_lookup::{SPECTATOR, TabPlayer};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 impl Game<'_, crate::game::client_side::ClientState> {

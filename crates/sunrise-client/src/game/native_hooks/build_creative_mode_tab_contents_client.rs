@@ -36,7 +36,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .search_items()
             .iter()
             .map(|stack| {
-                if sunrise_client::stations::names_itself(stack) {
+                if sunrise_sim::stations::names_itself(stack) {
                     Some(self.stack_hover_name_text(stack))
                 } else {
                     self.mod_item_name(stack)

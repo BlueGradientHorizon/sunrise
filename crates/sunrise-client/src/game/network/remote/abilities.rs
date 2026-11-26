@@ -1,6 +1,6 @@
 //! Client-side `LocalPlayer.abilities` and `PlayerInfo` game mode sync (`ClientPacketListener`).
 use super::*;
-use sunrise_client::lan::abilities::PlayerAbilities;
+use sunrise_sim::lan::abilities::PlayerAbilities;
 
 /// `Abilities.walkingSpeed` before the server sends one.
 pub(in crate::game) const WALKING_SPEED: f32 = 0.1;

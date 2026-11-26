@@ -1,6 +1,6 @@
 use super::Game;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_core::random::RandomSource;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity

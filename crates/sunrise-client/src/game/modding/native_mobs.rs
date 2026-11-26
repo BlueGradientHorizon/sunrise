@@ -70,7 +70,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let mut changes = Vec::new();
         for g in host.hub.guests.iter().filter(|g| host.hub.here(g)) {
-            let now: [Option<crate::items::ItemStack>; 6] = [
+            let now: [Option<sunrise_items::items::ItemStack>; 6] = [
                 g.inventory.get(g.selected).cloned().flatten(),
                 g.offhand.clone(),
                 g.armor[3].clone(),
@@ -191,7 +191,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             pos,
             true,
             super::creatures::SpawnSite::Finalizing(
-                sunrise_client::mobs::spawn_rules::Reason::Command,
+                sunrise_sim::mobs::spawn_rules::Reason::Command,
             ),
         )?;
         // A jockey's other mob comes after it: this one is found by its id.
@@ -252,11 +252,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.kill_target(Target::Mob(id));
         true
     }
-    fn native_mob_of(&self, m: &sunrise_client::mobs::Mob) -> NativeMob {
+    fn native_mob_of(&self, m: &sunrise_sim::mobs::Mob) -> NativeMob {
         NativeMob {
             id: m.id,
             dimension: self.dim.id().to_owned(),
-            kind: sunrise_client::command::args::normalize(&m.kind.id),
+            kind: sunrise_command::args::normalize(&m.kind.id),
             pos: [m.position.x, m.position.y, m.position.z],
             yaw: m.yaw,
             health: m.health,

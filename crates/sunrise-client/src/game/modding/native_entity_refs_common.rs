@@ -113,7 +113,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn native_level_view_world(
         &self,
         level: LevelRef,
-    ) -> Option<&sunrise_client::world::World> {
+    ) -> Option<&sunrise_level::world::World> {
         self.side_level_view_world(level)
     }
 
@@ -192,8 +192,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         fluids: mod_api::ClipFluid,
     ) -> Option<mod_api::ClipHit> {
         use mod_api::{BlockFace, ClipBlock, ClipFluid, ClipHit};
-        use sunrise_client::collisions::SceneCollisions;
         use sunrise_core::geometry::Direction;
+        use sunrise_level::collisions::SceneCollisions;
         use sunrise_world::{
             collision_context::CollisionContext,
             world_ray::{RayBlockMode, RayFluidMode, clip_world},
@@ -334,7 +334,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &self,
         living: mod_api::LivingRef,
         slot: mod_api::EquipmentSlot,
-    ) -> Option<sunrise_client::mobs::finalize::EquipmentRead<'_>> {
+    ) -> Option<sunrise_sim::mobs::finalize::EquipmentRead<'_>> {
         self.side_living_equipment_stack(living, slot)
     }
 }

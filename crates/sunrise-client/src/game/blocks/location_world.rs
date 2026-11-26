@@ -5,13 +5,13 @@
 //! game's view cannot be used).
 use super::{advancements::TagSources, end::EndState, structures::structures_reaching_in};
 use std::collections::{BTreeMap, HashMap};
-use sunrise_client::{
-    advancements::World,
-    biome::Biomes,
+use sunrise_core::nbt::Tag;
+use sunrise_items::{
     blocks::{BlockFacts, Fluid},
     items::Items,
 };
-use sunrise_core::nbt::Tag;
+use sunrise_level::biome::Biomes;
+use sunrise_sim::advancements::World;
 use sunrise_world::{block_collision::BlockCollisionRegistry, registry::BlockRegistry};
 
 /// What a location predicate reads of the game beyond the level's own fields.
@@ -24,7 +24,7 @@ pub(in crate::game) struct LocationRefs<'w> {
 
 /// One block behaviour's level, read for a location predicate.
 pub(in crate::game) struct LevelLocation<'a> {
-    pub(in crate::game) world: &'a sunrise_client::world::World,
+    pub(in crate::game) world: &'a sunrise_level::world::World,
     pub(in crate::game) registry: &'a BlockRegistry,
     pub(in crate::game) facts: &'a BlockFacts,
     pub(in crate::game) biomes: &'a Biomes,
@@ -36,7 +36,7 @@ pub(in crate::game) struct LevelLocation<'a> {
     pub(in crate::game) refs: LocationRefs<'a>,
 }
 
-impl sunrise_client::beehive::SmokeLevel for LevelLocation<'_> {
+impl sunrise_sim::beehive::SmokeLevel for LevelLocation<'_> {
     fn is_lit_campfire(&self, at: [i32; 3]) -> bool {
         let state = self.world.block(at[0], at[1], at[2]);
         self.items
@@ -51,7 +51,7 @@ impl sunrise_client::beehive::SmokeLevel for LevelLocation<'_> {
                 == Some("true")
     }
     fn collision_boxes(&self, at: [i32; 3]) -> Vec<sunrise_core::geometry::Aabb> {
-        sunrise_client::mobs::living::collision_boxes_in(
+        sunrise_sim::mobs::living::collision_boxes_in(
             self.world,
             self.collision,
             at[0],
@@ -116,7 +116,7 @@ impl World for LevelLocation<'_> {
         i32::from((l >> 4).max(l & 15))
     }
     fn smokey(&self, p: [i32; 3]) -> bool {
-        sunrise_client::beehive::smokey(self, p)
+        sunrise_sim::beehive::smokey(self, p)
     }
     /// `BlockEntity.saveWithFullMetadata` of the stored block entity, as
     /// `Game::block_entity_nbt` reads it, without what the game keeps in its

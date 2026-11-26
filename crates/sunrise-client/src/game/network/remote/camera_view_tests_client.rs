@@ -13,7 +13,8 @@ use crate::game::remote::camera_view_tests::set_light;
 use crate::game::remote::camera_view_tests::update;
 use crate::game::remote::camera_view_tests::view;
 use crate::game::remote::camera_view_tests::with_spectator;
-use sunrise_client::{camera::CameraType, gfx::pack_uniforms::ViewEntity, options_file::V};
+use sunrise_client::{gfx::pack_uniforms::ViewEntity, options_file::V};
+use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// An entity that isn't living has no effects to read and looks nowhere, and a living one with

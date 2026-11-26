@@ -5,13 +5,13 @@
 //! measures the same on vanilla 26.3).
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::{
-    chunk::Chunk,
-    items::ItemStack,
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
 };
-use sunrise_protocol::packets::configuration::ClientInformation;
 
 const GUEST: &str = "H038Guest";
 const ELDER: &str = "00000038-0000-0000-0000-000000000001";
@@ -121,7 +121,10 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
         game.side.chat_capture = Some(Vec::new());
         let ok = game.run_command(&command);
         let said = game.side.chat_capture.take().unwrap_or_default();
-        let said: Vec<_> = said.iter().map(sunrise_client::text::Text::plain).collect();
+        let said: Vec<_> = said
+            .iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect();
         assert!(ok, "{command}: {said:?}");
     };
     setup(format!(
@@ -140,7 +143,9 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<Stri
     let said = game.side.chat_capture.take().unwrap_or_default();
     (
         ok,
-        said.iter().map(sunrise_client::text::Text::plain).collect(),
+        said.iter()
+            .map(sunrise_client_core::text::Text::plain)
+            .collect(),
     )
 }
 

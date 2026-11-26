@@ -335,7 +335,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             return;
         }
-        if let Err(error) = sunrise_client::spans::time("world_entry", || self.resume_world_entry())
+        if let Err(error) = sunrise_level::spans::time("world_entry", || self.resume_world_entry())
         {
             self.error = Some(error);
             event_loop.exit();
@@ -367,12 +367,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             event_loop.exit();
             return;
         }
-        sunrise_client::spans::time("server_packs", || self.tick_server_packs());
-        sunrise_client::spans::time("control", || self.poll_control(event_loop));
+        sunrise_level::spans::time("server_packs", || self.tick_server_packs());
+        sunrise_level::spans::time("control", || self.poll_control(event_loop));
         if self.side.pending_save.0.is_some() {
             return;
         }
-        sunrise_client::spans::time("pads", || self.poll_pads(event_loop));
+        sunrise_level::spans::time("pads", || self.poll_pads(event_loop));
         self.settle_after_run(event_loop);
         self.pause_if_inactive();
         if let Some(limit) = self.options.time_limit()

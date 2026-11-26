@@ -2,9 +2,9 @@
 //! id and checks what the click was decided on; a change spends the click and nothing moves.
 use crate::game::InteractTarget;
 use crate::game::hook_meddler_tests::with_meddler;
-use sunrise_client::entities::ArmorStand;
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ArmorStand;
 
 const STAND: i32 = 21;
 

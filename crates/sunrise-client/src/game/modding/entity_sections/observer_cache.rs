@@ -2,9 +2,9 @@
 #[allow(unused_imports)]
 use super::{EntitySections, LiveSectionObserver, Scope};
 #[allow(unused_imports)]
-use crate::mobs::living::section_writes::Observer;
-#[allow(unused_imports)]
 use std::{cell::RefCell, rc::Rc};
+#[allow(unused_imports)]
+use sunrise_sim::mobs::living::section_writes::Observer;
 
 pub(in crate::game) type SharedSections = Rc<RefCell<EntitySections>>;
 pub(in crate::game) type SharedObserver = Rc<RefCell<LiveSectionObserver>>;

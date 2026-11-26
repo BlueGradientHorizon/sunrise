@@ -258,10 +258,10 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
     // The settings save to options.txt in the player folder and sunrise-mods.txt in the game
     // folder (the working directory): both are this child process's temporary folder.
     std::env::set_current_dir(&dir).unwrap();
-    sunrise_client::logging::set_player_dir(dir.clone());
+    sunrise_level::logging::set_player_dir(dir.clone());
     // The saved mod list, as the next start reads it: mod `keys`'s binding of `id`.
     let saved = |id: &str| {
-        sunrise_client::mod_list::ModList::load(&dir).binding("keys", id, ("default", 99))
+        sunrise_mod_package::mod_list::ModList::load(&dir).binding("keys", id, ("default", 99))
     };
     let mods: Mods = vec![ModEntry::new("keys", Box::new(Keys))].into();
     mod_platform::testing::with_mods(mods.clone(), || {

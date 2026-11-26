@@ -16,7 +16,7 @@ use std::{
     path::Path,
     time::{Duration, Instant},
 };
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn run_net_harness(&mut self, report: &Path) -> Result<()> {

@@ -1,12 +1,12 @@
 use crate::game::native_entity_refs::tests::with_client_game;
 use crate::game::remote::RemoteDimensionEntry;
-use sunrise_client::camera::CameraType;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn run_local_player_and_camera_entity_draw_like_the_real_client() {
     let path = std::env::var("SUNRISE_CAMERA_DRAW_WITNESS")

@@ -9,11 +9,11 @@ use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 #[allow(unused_imports)]
 use {
-    sunrise_client::collisions::SceneCollisions, sunrise_client::items::ItemStack,
-    sunrise_client::mobs::Damage, sunrise_client::mobs::Species, sunrise_client::mobs::Who,
-    sunrise_client::projectiles::Hit as ProjectileHit,
-    sunrise_client::projectiles::ProjectileWorld, sunrise_client::random_source,
-    sunrise_client::text::Text, sunrise_items::firework::FireworkExplosion,
+    sunrise_client_core::text::Text, sunrise_items::firework::FireworkExplosion,
+    sunrise_items::items::ItemStack, sunrise_level::collisions::SceneCollisions,
+    sunrise_level::random_source, sunrise_sim::mobs::Damage, sunrise_sim::mobs::Species,
+    sunrise_sim::mobs::Who, sunrise_sim::projectiles::Hit as ProjectileHit,
+    sunrise_sim::projectiles::ProjectileWorld,
 };
 
 #[path = "fireworks/impact_server.rs"]
@@ -46,7 +46,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // entering it after the first tick splashes, currents push it; lava
         // halves the fall.
         let before = r.velocity;
-        let (water, lava, _) = sunrise_client::entities::update_entity_fluids(
+        let (water, lava, _) = sunrise_sim::entities::update_entity_fluids(
             r.bounds(),
             r.position,
             r.position.y + f64::from(0.2125_f32),
@@ -116,7 +116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let id = self.take_entity_id();
         self.persist
             .uuids
-            .insert(id, sunrise_client::save::insecure_uuid(own));
+            .insert(id, sunrise_sim::save::insecure_uuid(own));
         let (velocity, lifetime) = rocket_draws(own, flight);
         Rocket {
             size_answer: None,
@@ -212,7 +212,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Dragon,
                 Stand(u32),
             }
-            let mut candidates: Vec<(sunrise_client::projectiles::TargetOrder, SplashTarget)> =
+            let mut candidates: Vec<(sunrise_sim::projectiles::TargetOrder, SplashTarget)> =
                 Vec::new();
             if !(r.attached && boosted.is_none())
                 && !self.spectator()
@@ -221,7 +221,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             {
                 let pos = self.player.as_ref().map_or(Vec3::ZERO, |pl| pl.position);
                 candidates.push((
-                    sunrise_client::projectiles::TargetOrder::entity(pos, 0),
+                    sunrise_sim::projectiles::TargetOrder::entity(pos, 0),
                     SplashTarget::Host,
                 ));
             }
@@ -234,10 +234,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     {
                         let pos = Vec3::new(g.position[0], g.position[1], g.position[2]);
                         candidates.push((
-                            sunrise_client::projectiles::TargetOrder::entity(
-                                pos,
-                                g.entity_id as u64,
-                            ),
+                            sunrise_sim::projectiles::TargetOrder::entity(pos, g.entity_id as u64),
                             SplashTarget::Guest(g.conn),
                         ));
                     }
@@ -246,7 +243,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             for m in self.mobs.iter() {
                 if !m.removed && m.bounds().intersects(reach) {
                     candidates.push((
-                        sunrise_client::projectiles::TargetOrder::entity(m.position, m.join.get()),
+                        sunrise_sim::projectiles::TargetOrder::entity(m.position, m.join.get()),
                         SplashTarget::Mob(m.id),
                     ));
                 }
@@ -255,14 +252,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && d.body_bounds().intersects(reach)
             {
                 candidates.push((
-                    sunrise_client::projectiles::TargetOrder::entity(d.position, u64::from(d.id)),
+                    sunrise_sim::projectiles::TargetOrder::entity(d.position, u64::from(d.id)),
                     SplashTarget::Dragon,
                 ));
             }
             for a in self.armor_stands.iter() {
                 if a.bounds().intersects(reach) {
                     candidates.push((
-                        sunrise_client::projectiles::TargetOrder::entity(a.position, a.join.get()),
+                        sunrise_sim::projectiles::TargetOrder::entity(a.position, a.join.get()),
                         SplashTarget::Stand(a.id),
                     ));
                 }
@@ -484,7 +481,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) {
         let mut attack = self.attack_of_who(attacker);
         attack.projectile = Some(rocket_id as i32);
-        attack.projectile_kind = sunrise_client::health::DirectEntity::Projectile;
+        attack.projectile_kind = sunrise_sim::health::DirectEntity::Projectile;
         attack.projectile_type = Some("minecraft:firework_rocket");
         for &(id, amount) in hits {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
@@ -605,26 +602,26 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (registry, collision) = (self.pack.assets.registry, self.collision);
         let mut tops = Vec::new();
         let rocket = Rocket::bounds_at;
-        let effects = sunrise_client::falling_block::Effects {
+        let effects = sunrise_sim::falling_block::Effects {
             bounds: rocket,
             from,
             to: r.position,
             original: recorded.then_some(wanted),
         };
-        let stuck = sunrise_client::falling_block::apply_effects_from_blocks_of(
+        let stuck = sunrise_sim::falling_block::apply_effects_from_blocks_of(
             effects,
             &mut r.velocity,
             &mut r.fall_distance,
             &mut tops,
             |p| {
-                use sunrise_client::falling_block::Inside;
+                use sunrise_sim::falling_block::Inside;
                 match &*facts.get(world.block(p.x, p.y, p.z)).name {
                     "minecraft:cobweb" => Inside::Cobweb,
                     "minecraft:powder_snow" => Inside::PowderSnow,
-                    _ => sunrise_client::motion::bubble_column_at(
-                        world, registry, facts, collision, p,
-                    )
-                    .map_or(Inside::Nothing, Inside::BubbleColumn),
+                    _ => {
+                        sunrise_sim::motion::bubble_column_at(world, registry, facts, collision, p)
+                            .map_or(Inside::Nothing, Inside::BubbleColumn)
+                    }
                 }
             },
         );
@@ -651,7 +648,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut random = sunrise_core::random::LegacyRandom::new(seed);
         let mut splashes = Vec::new();
         let mut push = |s| splashes.push(s);
-        sunrise_client::entities::water_splash_effect(
+        sunrise_sim::entities::water_splash_effect(
             r.position,
             velocity,
             0.25,
@@ -674,7 +671,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         motion: Vec3,
         owner: Option<Who>,
     ) -> ProjectileHit {
-        use sunrise_client::projectiles::{NearestHit, compute_margin};
+        use sunrise_sim::projectiles::{NearestHit, compute_margin};
         let from = r.position;
         let to = from.add_vector(motion);
         let query = super::creatures::TargetQuery {
@@ -761,12 +758,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ProjectileHit::None => false,
             };
         let terminal = explodes_on_hit || r.life + 1 > r.lifetime;
-        let _save_lease = terminal.then(sunrise_client::join_seq::visibility::PassLease::enter);
+        let _save_lease = terminal.then(sunrise_sim::join_seq::visibility::PassLease::enter);
         if terminal {
             let Some(mut owner) = self.rockets.extract(join) else {
                 return false;
             };
-            sunrise_client::join_seq::store_back(&mut owner, r);
+            sunrise_sim::join_seq::store_back(&mut owner, r);
             r = owner;
         }
         if !canceled {
@@ -888,8 +885,8 @@ impl Rocket {
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = sunrise_core::geometry::trig::atan2_degrees;
         self.rotation = [
-            sunrise_client::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
-            sunrise_client::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
+            sunrise_sim::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
+            sunrise_sim::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
         ];
     }
 }

@@ -4,8 +4,9 @@ use mod_api::{
     BlockKey, BlockUpdateFlags, HookId, LevelRef, LevelWriteError, PlacementStateError, PlayerRef,
     PlayerWorldRefusal as Refusal,
 };
-use sunrise_client::{containers::BlockEntity, items::ItemStack};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
 use sunrise_world::{
     level::{PlacementContext, classes::Class},
     registry::BlockStateId,
@@ -229,7 +230,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
         placer: Option<PlayerRef>,
         stack: Option<&ItemStack>,
-    ) -> crate::Result<()> {
+    ) -> sunrise_client_core::Result<()> {
         let [x, y, z] = pos;
         let key = (x, y, z);
         let placed = self.world.block(x, y, z);

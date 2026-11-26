@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::join_seq::JoinSeq;
 use sunrise_mod_runtime::attachments::{AttachmentLifetime, Attachments, index::AttachmentIndex};
+use sunrise_sim::join_seq::JoinSeq;
 
 fn identity<'a>(
     game: &'a mut crate::game::ServerGame<'_>,
@@ -155,7 +155,7 @@ fn data_edits_keep_hit_cooldown_separate_from_saved_immunity() {
         let id = game
             .mobs
             .iter()
-            .find(|m| m.species() == sunrise_client::mobs::Species::Cow)
+            .find(|m| m.species() == sunrise_sim::mobs::Species::Cow)
             .unwrap()
             .id;
         let health = |game: &crate::game::ServerGame<'_>| {

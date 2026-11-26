@@ -4,7 +4,7 @@ use sunrise_core::geometry::Vec3;
 #[ignore = "daily"]
 fn warning_dispatch_uses_neutral_at_tick_four() {
     use crate::game::{Options, Progress, Settings, load_resources};
-    use sunrise_client::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -136,7 +136,7 @@ fn residency_spawner_load_expiry_and_spawn_order() {
 #[test]
 #[ignore = "daily"]
 fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.ominous_spawners.clear();
         for _ in 0..2 {

@@ -1,10 +1,10 @@
 //! Cached server data and the preload/reload boundaries that own its resolved registries.
 use super::Game;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{
+use sunrise_items::items::Items;
+use sunrise_sim::{
     advancements::Tree,
     crafting::ResolvedSources,
-    items::Items,
     lan::data::{FrozenDamage, PackRegistryDefinitions, SyncData, WorldTags},
 };
 use sunrise_world::item_defaults::ItemData;
@@ -587,7 +587,7 @@ mod initial_source_tests {
         assert!(!sources.is_complete());
         let none = sunrise_world::loot::PackOverlay::NONE;
         let error =
-            sunrise_client::crafting::Recipes::from_resolved(root.path(), &items, &none, &sources)
+            sunrise_sim::crafting::Recipes::from_resolved(root.path(), &items, &none, &sources)
                 .err()
                 .unwrap()
                 .to_string();

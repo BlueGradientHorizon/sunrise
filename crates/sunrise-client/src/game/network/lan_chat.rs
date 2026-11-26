@@ -3,15 +3,13 @@
 //! handleSignedChatCommand), and the message commands whose text they sign
 //! (SayCommand, EmoteCommands, MsgCommand), relayed by the hub as chat.
 use super::{Game, commands::Target};
-use sunrise_client::{
-    command::{Arg, ParseResults},
-    lan::{
-        data::component_nbt,
-        hub::{HostEvent, chat::ChatMessage},
-    },
-    text::{self, Text},
-};
+use sunrise_client_core::text::{self, Text};
+use sunrise_command::{Arg, ParseResults};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::lan::{
+    data::component_nbt,
+    hub::{HostEvent, chat::ChatMessage},
+};
 
 /// The signing context of a command: each message argument as the chain
 /// let it through, by argument name (CommandSigningContext.SignedArguments).
@@ -186,7 +184,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         message: &Text,
         captured_for: Option<u32>,
     ) -> Option<bool> {
-        use sunrise_client::lan::data::component_nbt;
+        use sunrise_sim::lan::data::component_nbt;
 
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {

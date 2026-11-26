@@ -10,7 +10,7 @@ fn hanging_center((lo, hi): ([f64; 3], [f64; 3])) -> [f64; 3] {
 }
 
 fn knot_position(block: [i32; 3]) -> [f64; 3] {
-    let p = sunrise_client::mobs::leash::knot_state(block).position;
+    let p = sunrise_sim::mobs::leash::knot_state(block).position;
     [p.x, p.y, p.z]
 }
 
@@ -122,7 +122,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_entity_is_taken(&self, id: u32) -> bool {
         matches!(
             self.server_resident_entity(id),
-            sunrise_client::join_seq::residency::table::EntityLookup::Taken
+            sunrise_sim::join_seq::residency::table::EntityLookup::Taken
         )
     }
 
@@ -150,8 +150,9 @@ pub(in crate::game) mod tests {
     use crate::game::creatures::SpawnSite;
     use crate::game::dragon::dragon_part_id;
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_client::{items::ItemStack, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]

@@ -24,7 +24,7 @@ fn a_beacon_update_tag_keeps_the_beam_the_client_walked() {
         ),
         ("Levels", Tag::Int(4)),
     ]);
-    let (_, mut new) = sunrise_client::save::decode_block_entity(&tag).unwrap();
+    let (_, mut new) = sunrise_sim::save::decode_block_entity(&tag).unwrap();
     keep_client_state(Some(&old), &mut new);
     let BlockEntity::Beacon(b) = new else {
         panic!("not a beacon");

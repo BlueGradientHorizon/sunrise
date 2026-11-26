@@ -14,9 +14,9 @@ use super::{
 use mod_api::{PanelStyle, Stack as BrowserStack};
 use sunrise_client::{
     hud::{HudBatch, rgba},
-    items::ItemStack,
     ui::{EditBox, utf16_prefix},
 };
+use sunrise_items::items::ItemStack;
 
 /// One slot of the panel, in GUI pixels.
 const SLOT: f32 = 18.0;
@@ -990,7 +990,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     u32::MAX,
                 );
             }
-            let label = sunrise_client::lang::get("options.title");
+            let label = sunrise_client_core::lang::get("options.title");
             sunrise_client::widgets::record(&label, rect, true);
             if hovered && self.carried.is_none() {
                 settings_label = Some(label);
@@ -1399,7 +1399,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// A mod's item as a stack: an item the game has, its components read as
 /// `/give` reads them (ones it can't read are left out).
 pub(in crate::game::client_side) fn browser_stack(
-    items: &sunrise_client::items::Items,
+    items: &sunrise_items::items::Items,
     s: &BrowserStack,
 ) -> Option<ItemStack> {
     let item = mod_api::__private::item_key_id(s.item)?;
@@ -1407,8 +1407,8 @@ pub(in crate::game::client_side) fn browser_stack(
     let (damage, extra) = if s.components.is_empty() {
         (0, None)
     } else {
-        sunrise_client::item_data::command_components(&s.components).map_or((0, None), |tag| {
-            sunrise_client::item_data::decode_components(Some(&tag))
+        sunrise_items::item_data::command_components(&s.components).map_or((0, None), |tag| {
+            sunrise_items::item_data::decode_components(Some(&tag))
         })
     };
     Some(ItemStack {
@@ -1575,7 +1575,7 @@ mod tests {
             owner: Owner::Native(owner.into()),
             index,
             sent: stack("minecraft:stone"),
-            stack: sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+            stack: sunrise_items::items::ItemStack::new("minecraft:stone", 1),
             from: (100.0, 50.0),
             dragging: false,
             menu: MENU,
@@ -1806,7 +1806,7 @@ mod tests {
     #[test]
     fn the_dragged_item_draws_over_the_settings_label() {
         keys();
-        let stone = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+        let stone = sunrise_items::items::ItemStack::new("minecraft:stone", 1);
         let label = || Some("Options".to_owned());
         let rest = || Some(BrowserTooltip::Text("Stone".into()));
         assert!(matches!(
@@ -1840,7 +1840,7 @@ mod tests {
         panel.held.as_mut().unwrap().moved((0.0, 0.0));
         assert_eq!(
             panel.dragged(&jei, MENU),
-            Some(&sunrise_client::items::ItemStack::new("minecraft:stone", 1))
+            Some(&sunrise_items::items::ItemStack::new("minecraft:stone", 1))
         );
         assert!(
             panel

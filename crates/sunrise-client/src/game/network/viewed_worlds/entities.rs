@@ -8,7 +8,7 @@
 //! attributes, its entity data keyed by an index byte and its equipment by a slot byte. Past a
 //! cap the connection closes with a fixed reason.
 use super::routing::RouteError;
-use sunrise_client::fast_hash::FxHashMap;
+use sunrise_level::fast_hash::FxHashMap;
 use sunrise_protocol::{
     buf::unpack_degrees,
     entity_data::Value,

@@ -3,10 +3,10 @@
 use crate::game::{item_draw::BlockItemDraw, native_entity_refs::tests::with_client_game};
 use std::sync::Arc;
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     chunk::{Chunk, Light},
     containers::BlockEntity,
-    items::ItemStack,
 };
 
 fn stack(item: &serde_json::Value) -> ItemStack {
@@ -58,7 +58,7 @@ fn place(game: &mut crate::game::ClientGame<'_>, case: &serde_json::Value) {
         let chunk = Arc::make_mut(column);
         let section = chunk.section_index(key.1).unwrap();
         let mut light = Box::new([packed; 4096]);
-        light[sunrise_client::chunk::index(key.0, key.1, key.2)] = (packed & 0xf0) | emission;
+        light[sunrise_level::chunk::index(key.0, key.1, key.2)] = (packed & 0xf0) | emission;
         Arc::make_mut(&mut chunk.sections[section]).light = Light::packed(light);
     }
     let slots = |n: usize| {
@@ -70,17 +70,17 @@ fn place(game: &mut crate::game::ClientGame<'_>, case: &serde_json::Value) {
     };
     let entity = match case["kind"].as_str().unwrap() {
         "campfire" => {
-            BlockEntity::Campfire(Box::new(sunrise_client::chunk::block_entity::Campfire {
+            BlockEntity::Campfire(Box::new(sunrise_level::chunk::block_entity::Campfire {
                 items: slots(4).try_into().unwrap(),
                 ..Default::default()
             }))
         }
-        "shelf" => BlockEntity::Shelf(Box::new(sunrise_client::chunk::block_entity::Shelf {
+        "shelf" => BlockEntity::Shelf(Box::new(sunrise_level::chunk::block_entity::Shelf {
             items: slots(3).try_into().unwrap(),
             align_to_bottom: case["align"].as_bool().unwrap(),
         })),
         "brushable" => {
-            BlockEntity::Brushable(Box::new(sunrise_client::chunk::block_entity::Brushable {
+            BlockEntity::Brushable(Box::new(sunrise_level::chunk::block_entity::Brushable {
                 item: Some(stack(&case["item"])),
                 hit_direction: Some(int(&case["hit"])),
                 ..Default::default()
@@ -88,7 +88,7 @@ fn place(game: &mut crate::game::ClientGame<'_>, case: &serde_json::Value) {
         }
         _ => {
             let spin = &case["spin"];
-            BlockEntity::Vault(Box::new(sunrise_client::vault::Vault {
+            BlockEntity::Vault(Box::new(sunrise_level::vault::Vault {
                 display_item: case.get("item").map(stack),
                 o_spin: spin[0].as_f64().unwrap() as f32,
                 spin: spin[1].as_f64().unwrap() as f32,

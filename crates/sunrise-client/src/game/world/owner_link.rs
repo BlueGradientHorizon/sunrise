@@ -162,7 +162,7 @@ pub(in crate::game) enum ControlRequest {
     },
     /// `effect` / `effect clear` station control command.
     StationEffect {
-        effect: Option<sunrise_client::effects::EffectInstance>,
+        effect: Option<sunrise_level::effects::EffectInstance>,
         reply: Reply<Result<(), String>>,
     },
 }
@@ -311,7 +311,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         super::dragon::SPECIAL,
                         amount,
                         true,
-                        sunrise_client::mobs::DamageKind::PlayerAttack,
+                        sunrise_sim::mobs::DamageKind::PlayerAttack,
                         None,
                     );
                 });
@@ -349,7 +349,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     /// The command tree shows the pregen commands only while they are on.
     fn set_pregen_commands(&mut self, enabled: bool) {
-        use sunrise_client::command::vanilla;
+        use sunrise_command::vanilla;
         if self.ui.dispatcher.0.find("pregen").is_some() != enabled {
             vanilla::set_sunrise_commands(enabled);
             self.ui.dispatcher =

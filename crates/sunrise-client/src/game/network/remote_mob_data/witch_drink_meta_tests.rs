@@ -6,11 +6,11 @@
 use super::super::lan;
 use super::pet_pose_meta_tests::meta_hub;
 use super::tests::fixture_mob;
-use sunrise_client::mobs::Mob;
 use sunrise_protocol::entity_data::Value;
+use sunrise_sim::mobs::Mob;
 
 /// What the host sends for `m` at `index`, if anything.
-fn sent_at(m: &Mob, hub: &sunrise_client::lan::hub::Hub, index: u8) -> Option<Value> {
+fn sent_at(m: &Mob, hub: &sunrise_sim::lan::hub::Hub, index: u8) -> Option<Value> {
     let (mut meta, mut defaults) = (Vec::new(), Vec::new());
     lan::mob_meta(m, hub, None, 0, &mut meta, &mut defaults);
     meta.into_iter()

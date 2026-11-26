@@ -5,7 +5,7 @@ use super::Game;
 use mod_api::{
     ChunkArea, ChunkAreaMode, ChunkAreaRefusal, ChunkCap, ChunkPos, LevelRef, PlayerRef,
 };
-use sunrise_client::lan::viewed_levels::areas as engine;
+use sunrise_sim::lan::viewed_levels::areas as engine;
 
 fn mode(mode: ChunkAreaMode) -> engine::ChunkAreaMode {
     match mode {
@@ -120,7 +120,7 @@ mod tests {
         sync::mpsc::Receiver,
         time::{Duration, Instant},
     };
-    use sunrise_client::lan::{Out, viewed_levels::areas as engine};
+    use sunrise_sim::lan::{Out, viewed_levels::areas as engine};
 
     fn in_mod(id: &'static str) -> ModGuard {
         mod_platform::content::crash::enter_native_mod(ModCall {

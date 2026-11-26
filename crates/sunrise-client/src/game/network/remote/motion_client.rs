@@ -37,7 +37,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let id = self.mobs[i].id as i32;
         let handler = self.remote.as_mut().and_then(|r| r.stepped.get_mut(&id))?;
         let m = &mut self.mobs[i];
-        let mut scene = sunrise_client::collisions::SceneCollisions {
+        let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
             subject: None,
@@ -69,7 +69,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let handler = r.stepped.entry(m.id as i32).or_insert_with(|| {
-            let interval = sunrise_client::lan::tracking::settings(&m.kind.id).1;
+            let interval = sunrise_sim::lan::tracking::settings(&m.kind.id).1;
             SteppedInterpolation::new(interval as i32)
         });
         let entity = mob_pos_rot(m);
@@ -241,10 +241,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .entity_type_tags;
                 if let Some(m) = mob {
                     // Shulker uses NO_OP interpolation: setPos immediately, keeping old block.
-                    if m.species() == sunrise_client::mobs::Species::Shulker {
+                    if m.species() == sunrise_sim::mobs::Species::Shulker {
                         r.stepped.remove(&id);
                         if path.is_some() {
-                            sunrise_client::mobs::shulker::client_set_pos(
+                            sunrise_sim::mobs::shulker::client_set_pos(
                                 m,
                                 position[0],
                                 position[1],
@@ -271,7 +271,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         pitch: m.head_pitch,
                     };
                     let handler = r.stepped.entry(id).or_insert_with(|| {
-                        let interval = sunrise_client::lan::tracking::settings(&m.kind.id).1;
+                        let interval = sunrise_sim::lan::tracking::settings(&m.kind.id).1;
                         SteppedInterpolation::new(interval as i32)
                     });
                     if let Some(at) =
@@ -308,7 +308,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     };
                     let handler = r.stepped.entry(id).or_insert_with(|| {
                         let interval =
-                            sunrise_client::lan::tracking::settings("minecraft:armor_stand").1;
+                            sunrise_sim::lan::tracking::settings("minecraft:armor_stand").1;
                         SteppedInterpolation::new(interval as i32)
                     });
                     if let Some(at) =

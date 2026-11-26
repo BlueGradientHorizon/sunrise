@@ -63,7 +63,7 @@ fn removal_exposes_default_and_honours_the_parts_answer() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             let state = game.pack.assets.registry.default_state(BLOCK).unwrap();
             let air = game.res.facts().air;
             let pos = BlockPos::new(2, 64, 2);

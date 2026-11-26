@@ -35,7 +35,10 @@ mod tests {
         // slotChanged with an item: editable, and it shows the item's name.
         let mut station = Station::new_kind(Kind::Anvil, [0; 3]);
         let mut ui = StationUi::new();
-        station.inputs[0] = Some(crate::items::ItemStack::new("minecraft:diamond_sword", 1));
+        station.inputs[0] = Some(sunrise_items::items::ItemStack::new(
+            "minecraft:diamond_sword",
+            1,
+        ));
         input_changed(&mut station, &mut ui, "Diamond Sword".into());
         assert!(ui.rename.editable);
         assert_eq!(ui.rename.value, "Diamond Sword");

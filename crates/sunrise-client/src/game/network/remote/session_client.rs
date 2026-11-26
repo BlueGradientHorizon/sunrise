@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::remote::level_format::{LevelEnvironments, pack_environment, same_stacks};
 pub(in crate::game::client_side) use crate::game::remote::session::RemoteOpening;
-use sunrise_client::environment::Environment;
+use sunrise_level::environment::Environment;
 use sunrise_protocol::packets::configuration::Transfer;
 
 #[cfg(feature = "client")]
@@ -214,7 +214,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         ) {
             self.mode
         } else {
-            sunrise_client::command::args::GameMode::Survival
+            sunrise_command::args::GameMode::Survival
         };
         let mode = crate::game::game_mode::mode_from_id(spawn.game_type);
         let previous = spawn
@@ -245,7 +245,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
         if new_logical_player {
             self.side.drop_spam_throttler = Default::default();
-            r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
+            r.abilities = sunrise_sim::lan::abilities::PlayerAbilities::default();
             r.own_player_info = std::cell::OnceCell::new();
             // The new LocalPlayer, admitted now, counts its ticks from 0.
             r.own_tick_count = 0;
@@ -457,7 +457,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         streaming.radius = self.side.settings.render_distance;
         self.side.streaming = streaming;
         self.reset_client_world(0);
-        let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
+        let group_count = sunrise_level::chunk_map::ConnectionGroupCount::default();
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
@@ -514,7 +514,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
-            particle_packet_random: sunrise_client::random_source::create(),
+            particle_packet_random: sunrise_level::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
             quiet_commands: false,
@@ -569,7 +569,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             was_living_flags: 0,
             last_recorded_pose: None,
             carried: std::cell::Cell::new(None),
-            abilities: sunrise_client::lan::abilities::PlayerAbilities::default(),
+            abilities: sunrise_sim::lan::abilities::PlayerAbilities::default(),
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
@@ -680,8 +680,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             debug_query: Default::default(),
             synced_attributes: HashMap::new(),
         });
-        self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
-        self.clock = sunrise_client::clock::FixedStep::client();
+        self.set_local_mode_with_previous(sunrise_command::args::GameMode::Survival, None);
+        self.clock = sunrise_sim::clock::FixedStep::client();
         self.adv = Default::default();
         self.stats = Default::default();
         Ok(())
@@ -733,7 +733,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         streaming.radius = self.side.settings.render_distance;
         self.side.streaming = streaming;
         self.reset_client_world(0);
-        let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
+        let group_count = sunrise_level::chunk_map::ConnectionGroupCount::default();
         self.world
             .chunks
             .track_connection_groups(group_count.clone());
@@ -795,7 +795,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),
-            particle_packet_random: sunrise_client::random_source::create(),
+            particle_packet_random: sunrise_level::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
             quiet_commands: false,
@@ -853,7 +853,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             was_shared_flags: 0,
             was_living_flags: 0,
             last_recorded_pose: None,
-            abilities: sunrise_client::lan::abilities::PlayerAbilities::default(),
+            abilities: sunrise_sim::lan::abilities::PlayerAbilities::default(),
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
@@ -964,9 +964,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             debug_query: Default::default(),
             synced_attributes: HashMap::new(),
         });
-        self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
+        self.set_local_mode_with_previous(sunrise_command::args::GameMode::Survival, None);
         // The level's TickRateManager follows the server's ticking packets.
-        self.clock = sunrise_client::clock::FixedStep::client();
+        self.clock = sunrise_sim::clock::FixedStep::client();
         // The player's advancements and statistics are the server's.
         self.adv = Default::default();
         self.stats = Default::default();
@@ -1084,7 +1084,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             r.respawn_velocity = None;
         }
         let retained_max_health = self.player.as_mut().map(|player| {
-            let _ = player.set_pose(sunrise_client::pose::Pose::Standing);
+            let _ = player.set_pose(sunrise_sim::pose::Pose::Standing);
             player.velocity = Vec3::ZERO;
             player.pitch = 0.0;
             let max_health = player

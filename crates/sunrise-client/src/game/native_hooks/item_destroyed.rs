@@ -142,7 +142,7 @@ mod item_destroyed_tests {
             .begin_open(mod_api::Authority::IntegratedServer);
         game.build_registries();
         game.set_allow_commands(true);
-        game.world = sunrise_client::world::World::new(game.res.facts().air, 1);
+        game.world = sunrise_level::world::World::new(game.res.facts().air, 1);
         crate::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
             game,
             ChunkPos::new(0, 0),
@@ -580,7 +580,7 @@ mod item_destroyed_tests {
                 let make_bundle = |game: &crate::game::ServerGame<'_>| {
                     let mut bundle = ItemStack::new("minecraft:bundle", 1);
                     let mut contents =
-                        sunrise_client::bundle::Contents::of(game.items(), &bundle).unwrap();
+                        sunrise_items::bundle::Contents::of(game.items(), &bundle).unwrap();
                     let mut iron = ItemStack::new("minecraft:iron_ingot", 4);
                     assert_eq!(contents.try_insert(game.items(), &mut iron, true), 4);
                     contents.store(&mut bundle);
@@ -676,7 +676,7 @@ mod item_destroyed_tests {
                 setup_server_world(game);
                 let mut bundle = ItemStack::new("minecraft:bundle", 1);
                 let mut contents =
-                    sunrise_client::bundle::Contents::of(game.items(), &bundle).unwrap();
+                    sunrise_items::bundle::Contents::of(game.items(), &bundle).unwrap();
                 let mut iron = ItemStack::new("minecraft:iron_ingot", 4);
                 assert_eq!(contents.try_insert(game.items(), &mut iron, true), 4);
                 contents.store(&mut bundle);

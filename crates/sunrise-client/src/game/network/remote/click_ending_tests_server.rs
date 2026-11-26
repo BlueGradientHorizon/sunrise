@@ -13,13 +13,13 @@ fn an_end_crystal_click_on_a_block_ends_there() {
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play;
         use {
-            sunrise_client::chunk::Chunk, sunrise_client::motion::PlayerMotion,
-            sunrise_sim::first_person_sim::Hand,
+            sunrise_level::chunk::Chunk, sunrise_sim::first_person_sim::Hand,
+            sunrise_sim::motion::PlayerMotion,
         };
         let (mut peer, _writer) = connect_menu_test(game);
         peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
             .unwrap();
-        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+        game.set_local_mode(sunrise_command::args::GameMode::Survival);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
         game.world
             .chunks
@@ -66,7 +66,7 @@ fn an_end_crystal_click_on_a_block_ends_there() {
         assert_eq!(click(game, 0), (false, vec!["use_item_on"]));
         // On cooldown the block use itself passes.
         game.cooldowns
-            .add(sunrise_client::cooldowns::group(&crystal, None), 20);
+            .add(sunrise_items::cooldowns::group(&crystal, None), 20);
         aim(game, 2);
         assert!(!game.remote_use_block(Hand::Main, mod_api::InteractionAttempt::Press, None));
     });
@@ -83,7 +83,7 @@ fn flint_and_steel_use_on_ends_the_click() {
         Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
     use sunrise_core::geometry::Vec3;
-    use {sunrise_client::motion::PlayerMotion, sunrise_sim::first_person_sim::Hand};
+    use {sunrise_sim::first_person_sim::Hand, sunrise_sim::motion::PlayerMotion};
 
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")

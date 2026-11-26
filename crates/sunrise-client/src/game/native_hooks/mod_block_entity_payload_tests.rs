@@ -3,9 +3,9 @@
 fn replacing_mod_block_entity_payload_keeps_its_type_and_saved_identity() {
     use super::super::native_entity_refs::tests::with_game;
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
-    use sunrise_client::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
-    use sunrise_client::save::{block_entity_encode, decode_block_entity};
+    use sunrise_level::chunk::Chunk;
+    use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
+    use sunrise_sim::save::{block_entity_encode, decode_block_entity};
 
     with_game(|game| {
         game.world

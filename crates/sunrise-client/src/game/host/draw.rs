@@ -72,7 +72,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         argb: u32,
         shadow: bool,
     ) -> Result<f32, TextFormError> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
+        let text: sunrise_client_core::text::Text = text.try_into_engine(&())?;
         let [a, r, g, b] = argb.to_be_bytes();
         if a == 0 {
             return Ok(0.0);
@@ -131,7 +131,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
     ) -> Result<(), mod_api::text::TextFormError> {
         let lines: Vec<_> = lines
             .iter()
-            .map(sunrise_client_lib::api_text::to_engine)
+            .map(sunrise_sim::api_text::to_engine)
             .collect::<Result<_, _>>()?;
         self.game.native_gui_tooltip(&mut *self.surface, &lines, at);
         Ok(())
@@ -146,7 +146,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         align: TextAlign,
         scale: f32,
     ) -> Result<TextLines, TextLinesRefusal> {
-        let local = sunrise_client_lib::api_text::to_local_engine(text);
+        let local = sunrise_sim::api_text::to_local_engine(text);
         label_layout_with(
             &self.game.side.gui.atlas.font,
             local.engine(),
@@ -217,7 +217,7 @@ pub(in crate::game) const MAX_GLYPHS: usize = 8192;
 #[cfg(test)]
 pub(in crate::game) fn label_layout(
     font: &crate::font::Font,
-    text: &crate::text::Text,
+    text: &sunrise_client_core::text::Text,
     max_width: f32,
     align: TextAlign,
     scale: f32,
@@ -228,11 +228,11 @@ pub(in crate::game) fn label_layout(
 }
 pub(in crate::game) fn label_layout_with(
     font: &crate::font::Font,
-    text: &crate::text::Text,
+    text: &sunrise_client_core::text::Text,
     max_width: f32,
     align: TextAlign,
     scale: f32,
-    mut to_api: impl FnMut(&crate::text::Text) -> Result<Text, TextLinesRefusal>,
+    mut to_api: impl FnMut(&sunrise_client_core::text::Text) -> Result<Text, TextLinesRefusal>,
 ) -> Result<TextLines, TextLinesRefusal> {
     // No position and no size to answer: a scale of zero or less, or one that is not a number,
     // refuses rather than answering every line at an undefined place.
@@ -319,15 +319,15 @@ pub(in crate::game) mod tests {
             r#"{{"providers":[{{"type":"space","advances":{{{}}}}}]}}"#,
             advances.join(",")
         );
-        let source = crate::resource_source::ResourceSource::indexed(BTreeMap::from([(
+        let source = sunrise_assets::resource_source::ResourceSource::indexed(BTreeMap::from([(
             "assets/minecraft/font/default.json".into(),
-            crate::resource_source::Resource::bytes(json.into_bytes()),
+            sunrise_assets::resource_source::Resource::bytes(json.into_bytes()),
         )]));
         crate::font::Font::metrics(&source)
     }
 
     /// A line's component as the game draws it.
-    fn engine(text: &mod_api::Text) -> crate::text::Text {
+    fn engine(text: &mod_api::Text) -> sunrise_client_core::text::Text {
         text.try_into_engine(&()).unwrap()
     }
 
@@ -344,7 +344,7 @@ pub(in crate::game) mod tests {
     fn layout(text: &str, max_width: f32, align: TextAlign, scale: f32) -> TextLines {
         label_layout(
             &fake_font(6.0),
-            &crate::text::Text::literal(text),
+            &sunrise_client_core::text::Text::literal(text),
             max_width,
             align,
             scale,
@@ -361,7 +361,7 @@ pub(in crate::game) mod tests {
     ) -> Result<TextLines, TextLinesRefusal> {
         label_layout(
             &fake_font(6.0),
-            &crate::text::Text::literal(text),
+            &sunrise_client_core::text::Text::literal(text),
             max_width,
             align,
             scale,
@@ -464,7 +464,7 @@ pub(in crate::game) mod tests {
         // line width, so it starts at 13, not at the exact 12.5 an unrounded centre would give.
         let lines = label_layout(
             &fake_font(5.0),
-            &crate::text::Text::literal("AAA"),
+            &sunrise_client_core::text::Text::literal("AAA"),
             40.0,
             TextAlign::Centre,
             1.0,
@@ -487,7 +487,7 @@ pub(in crate::game) mod tests {
     fn styles_survive_wrapping() {
         let mut text = mod_api::Text::literal("AAAA BBBB");
         text.style.bold = Some(true);
-        let text: crate::text::Text = text.try_into_engine(&()).unwrap();
+        let text: sunrise_client_core::text::Text = text.try_into_engine(&()).unwrap();
         let lines = label_layout(&fake_font(6.0), &text, 30.0, TextAlign::Left, 1.0).unwrap();
         assert_eq!(plain(&lines), ["AAAA", "BBBB"]);
         for line in &lines.lines {
@@ -503,7 +503,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn laid_out_objects_keep_their_sprites_profiles_and_fallbacks_on_redraw() {
         use mod_api::text::{TextContent, TextObject, TextProfile};
-        use sunrise_client::text::InlineObject;
+        use sunrise_client_core::text::InlineObject;
 
         let atlas = Text::new(TextContent::Object(TextObject::Atlas {
             atlas: "minecraft:gui".into(),
@@ -520,7 +520,7 @@ pub(in crate::game) mod tests {
         head.style.shadow_color = Some(0xFF00_0011);
         let input = atlas.append(head);
         let font = fake_font(6.0);
-        let local = sunrise_client_lib::api_text::to_local_engine(&input);
+        let local = sunrise_sim::api_text::to_local_engine(&input);
         let lines = label_layout_with(&font, local.engine(), 150.0, TextAlign::Left, 1.0, |line| {
             Ok(local.text_to_api(line))
         })
@@ -548,7 +548,7 @@ pub(in crate::game) mod tests {
         let mut plain = Text::literal("B");
         plain.metadata = Tag::compound([("__sunrise_local_style_id", Tag::Int(0))]);
         let input = Text::literal("").append(styled).append(plain);
-        let local = sunrise_client_lib::api_text::to_local_engine(&input);
+        let local = sunrise_sim::api_text::to_local_engine(&input);
         let lines = label_layout_with(
             &fake_font(6.0),
             local.engine(),
@@ -593,7 +593,7 @@ pub(in crate::game) mod tests {
         let mut child = Text::literal("A");
         child.style.metadata = Tag::compound([("override", Tag::Int(2))]);
         root.children.push(child);
-        let local = sunrise_client_lib::api_text::to_local_engine(&root);
+        let local = sunrise_sim::api_text::to_local_engine(&root);
         let lines = label_layout_with(
             &fake_font(6.0),
             local.engine(),
@@ -682,7 +682,7 @@ pub(in crate::game) mod tests {
         // A 20-pixel character in a 6-pixel box: neither fits, and neither is dropped.
         let lines = label_layout(
             &fake_font(20.0),
-            &crate::text::Text::literal("AB"),
+            &sunrise_client_core::text::Text::literal("AB"),
             6.0,
             TextAlign::Left,
             1.0,
@@ -761,8 +761,10 @@ pub(in crate::game) mod tests {
             "the prepared resources are not at {}",
             root.display()
         );
-        crate::hud::HudAtlas::build(&crate::resource_source::ResourceSource::directory(root))
-            .expect("the prepared resources' font and atlas")
+        crate::hud::HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        ))
+        .expect("the prepared resources' font and atlas")
     }
 
     /// A label of 400 characters in a 120-pixel box, with the game's own font: every line fits,
@@ -806,7 +808,7 @@ pub(in crate::game) mod tests {
             font.width("i"),
             font.width("m")
         );
-        let text = crate::text::Text::literal("mmmm ".repeat(80));
+        let text = sunrise_client_core::text::Text::literal("mmmm ".repeat(80));
         let lines = label_layout(font, &text, 120.0, TextAlign::Centre, 1.0).unwrap();
         // The text needs this many 120-pixel lines even with no space wasted.
         let floor = (font.width_text(&text) / 120.0).ceil() as usize;
@@ -843,7 +845,7 @@ pub(in crate::game) mod tests {
         );
         // At scale 2 the same two-line word fits its box at twice every answer: a line's width,
         // the second line's place and the block's height.
-        let word = crate::text::Text::literal("mmmm\nmmmm");
+        let word = sunrise_client_core::text::Text::literal("mmmm\nmmmm");
         let plain_size = label_layout(font, &word, 200.0, TextAlign::Left, 1.0).unwrap();
         let doubled = label_layout(font, &word, 200.0, TextAlign::Left, 2.0).unwrap();
         assert_eq!(doubled.lines[1].width, plain_size.lines[1].width * 2.0);
@@ -891,7 +893,7 @@ pub(in crate::game) mod tests {
             parent.children.push(deep);
             deep = parent;
         }
-        let local = sunrise_client_lib::api_text::to_local_engine(&deep);
+        let local = sunrise_sim::api_text::to_local_engine(&deep);
         let lines = label_layout_with(
             &fake_font(6.0),
             local.engine(),
@@ -915,14 +917,14 @@ pub(in crate::game) mod tests {
     fn engine_tooltip_font_measures_and_splits_deep_local_text() {
         let default_json = r#"{"providers":[{"type":"space","advances":{" ":2,"a":3}}]}"#;
         let alt_json = r#"{"providers":[{"type":"space","advances":{" ":4,"a":8}}]}"#;
-        let source = crate::resource_source::ResourceSource::indexed(BTreeMap::from([
+        let source = sunrise_assets::resource_source::ResourceSource::indexed(BTreeMap::from([
             (
                 "assets/minecraft/font/default.json".into(),
-                crate::resource_source::Resource::bytes(default_json.as_bytes().to_vec()),
+                sunrise_assets::resource_source::Resource::bytes(default_json.as_bytes().to_vec()),
             ),
             (
                 "assets/minecraft/font/alt.json".into(),
-                crate::resource_source::Resource::bytes(alt_json.as_bytes().to_vec()),
+                sunrise_assets::resource_source::Resource::bytes(alt_json.as_bytes().to_vec()),
             ),
         ]));
         let font = crate::font::Font::metrics(&source);

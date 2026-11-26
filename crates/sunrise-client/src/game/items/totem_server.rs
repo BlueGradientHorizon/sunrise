@@ -3,14 +3,15 @@ use super::render_tick::player_tracking_body;
 use crate::game::client_side::totem::Body;
 use crate::game::client_side::totem::TOTEM;
 use crate::game::client_side::totem::TOTEM_EVENT;
-use sunrise_client::{health::HealthEvent, items::ItemStack, motion::MotionEvent};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{health::HealthEvent, motion::MotionEvent};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The `death_effects` of the stack's `minecraft:death_protection`.
     pub(in crate::game) fn death_effects(
         &self,
         s: &ItemStack,
-    ) -> Vec<sunrise_client::items::ConsumeEffect> {
+    ) -> Vec<sunrise_items::items::ConsumeEffect> {
         s.death_protection(self.items().get(&s.item))
             .unwrap_or_default()
             .to_vec()
@@ -172,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 m.extra.hand_protection = None;
                 continue;
             }
-            m.extra.hand_protection = Some(sunrise_client::mobs::HandProtection {
+            m.extra.hand_protection = Some(sunrise_sim::mobs::HandProtection {
                 main: of(m.extra.main_hand_id(), m.extra.main_hand_stack()),
                 off: of(
                     m.extra.off_hand_id(),

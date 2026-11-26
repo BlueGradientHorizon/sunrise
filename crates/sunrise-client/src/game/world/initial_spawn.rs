@@ -3,20 +3,20 @@
 //! getOrigin, then PlayerSpawnFinder.findSpawn picks a free column around
 //! the world spawn within the respawn radius.
 use super::Game;
-use sunrise_client::{
-    Result,
-    collisions::{SceneCollisions, no_collision_or_liquid},
-    random_source,
-    world_spawn::{
-        PlayerSpawnFinder, SpawnCandidate, SpawnLevel, level_respawn_pos, spawn_pos_in_chunk,
-    },
-};
+use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
 pub(in crate::game) use sunrise_gameplay::initial_spawn::{Columns, bottom_center};
+use sunrise_level::{
+    collisions::{SceneCollisions, no_collision_or_liquid},
+    random_source,
+};
+use sunrise_sim::world_spawn::{
+    PlayerSpawnFinder, SpawnCandidate, SpawnLevel, level_respawn_pos, spawn_pos_in_chunk,
+};
 use sunrise_world::{
     collision_context::CollisionContext, heightmap::HeightmapType, level::flags::UPDATE_CLIENTS,
     registry::BlockStateId,
@@ -37,7 +37,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// ChunkGenerator.getOrigin and getSpawnHeight of the overworld.
     pub(in crate::game::server_side) fn spawn_origin(&self) -> Result<((i32, i32), i32)> {
         if let Some(flat) = self.level.generator.as_ref().and_then(|g| {
-            sunrise_client::flatgen::FlatTerrain::from_settings(
+            sunrise_sim::flatgen::FlatTerrain::from_settings(
                 g.settings(),
                 self.pack.assets.registry,
                 world_biomes!(self),
@@ -109,7 +109,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         origin: [i32; 3],
     ) -> Result<()> {
-        use sunrise_client::containers::BlockEntity;
+        use sunrise_level::containers::BlockEntity;
         let (cx, cz) = (origin[0] >> 4, origin[2] >> 4);
         let registry = &self.pack.assets.registry;
         let (Some(chest), Some(torch)) = (
@@ -261,7 +261,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut radius = self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::RESPAWN_RADIUS)
+            .int_at(sunrise_client_core::gamerules::vanilla::RESPAWN_RADIUS)
             .max(0);
         let to_border = self
             .border

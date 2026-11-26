@@ -13,8 +13,9 @@ use std::sync::{
     Arc,
     atomic::{AtomicI32, Ordering},
 };
-use sunrise_client::{chunk::Chunk, projectiles::ProjectileKind};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::projectiles::ProjectileKind;
 
 /// The one position where [`Spot`] answers.
 const SPOT: [i32; 3] = [6, 80, 1];

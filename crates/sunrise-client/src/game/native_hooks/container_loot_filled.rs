@@ -4,7 +4,7 @@ use sunrise_world::loot::LootStack;
 
 // Admission preserves the list's counts through every listener. Only placement
 // trims them; reuse ordinary validation to obtain the effective maximum.
-fn trim_placement_stacks(drops: &mut [ItemStack], items: &sunrise_client::items::Items) {
+fn trim_placement_stacks(drops: &mut [ItemStack], items: &sunrise_items::items::Items) {
     for stack in drops {
         let Ok(value) = stack.try_into_api() else {
             continue;
@@ -76,7 +76,7 @@ impl GameLevel<'_> {
             });
         let mut stacks: Vec<_> = drops
             .iter()
-            .map(sunrise_client::structure_blocks::loot_item_with_components)
+            .map(sunrise_sim::structure_blocks::loot_item_with_components)
             .collect();
         let original = stacks.clone();
         self.native_container_loot_filled(&context, &mut stacks);
@@ -100,7 +100,7 @@ impl GameLevel<'_> {
                     };
                     loot.count = stack.count as i32;
                     if let Some(sunrise_core::nbt::Tag::Compound(patch)) =
-                        sunrise_client::item_data::component_snapshot(&stack)
+                        sunrise_items::item_data::component_snapshot(&stack)
                     {
                         loot.components = patch
                             .into_iter()

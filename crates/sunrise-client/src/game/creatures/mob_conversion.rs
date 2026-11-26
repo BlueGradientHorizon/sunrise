@@ -1,7 +1,7 @@
 //! `MobEvent::Convert`: `Mob.convertTo` with `ConversionType.SINGLE` and the
 //! `ConversionParams.AfterConversion` step the converting mob asked for.
 use super::*;
-use sunrise_client::mobs::conversion;
+use sunrise_sim::mobs::conversion;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// A mob turned into `kind` in its place (`conversion::single`). The

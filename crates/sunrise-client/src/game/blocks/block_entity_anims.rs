@@ -4,12 +4,6 @@
 //! `BlockEntity.triggerEvent`). The renderer reads the resulting state through
 //! [`Game::block_anim`] and [`Game::chest_lid`].
 use super::Game;
-use sunrise_client::{
-    collisions::{SceneCollisions, no_collision_empty},
-    containers::BlockEntity,
-    effects::EffectInstance,
-    mobs::{Damage, DamageKind},
-};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -19,6 +13,12 @@ use sunrise_level::{
     block_entity_ticks::{BellEntity, ConduitServer, Ticker, closer_to_center_than},
     shulker_box::{Shulker, ShulkerStatus},
 };
+use sunrise_level::{
+    collisions::{SceneCollisions, no_collision_empty},
+    containers::BlockEntity,
+    effects::EffectInstance,
+};
+use sunrise_sim::mobs::{Damage, DamageKind};
 
 /// The handle of the local player among a bell's gathered entities.
 pub(in crate::game) const PLAYER: u64 = u64::MAX;
@@ -206,7 +206,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && nearby.contains(&u64::from(m.id))
                 && closer_to_center_than(pos, [m.position.x, m.position.y, m.position.z], 32.0)
             {
-                sunrise_client::mobs::villager_brain::heard_bell(m, now);
+                sunrise_sim::mobs::villager_brain::heard_bell(m, now);
             }
         }
     }
@@ -214,7 +214,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_tick_bell(
         &mut self,
         pos: [i32; 3],
-        tags: &sunrise_client::items::EntityTypeTags,
+        tags: &sunrise_items::items::EntityTypeTags,
     ) {
         let player = self.player_view().map(|p| BellEntity {
             position: [p.position.x, p.position.y, p.position.z],
@@ -232,7 +232,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 alive: m.alive() && !m.removed,
                 raider: tags.has_bit(
                     m.kind.flags.entity_tag_slot,
-                    sunrise_client::items::EntityTypeTags::RAIDERS,
+                    sunrise_items::items::EntityTypeTags::RAIDERS,
                 ),
             })
         };
@@ -409,7 +409,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Level.isWaterAt: the fluid at the position is water.
             let is_water = |p: [i32; 3]| {
                 facts.get(world.block(p[0], p[1], p[2])).fluid
-                    == sunrise_client::blocks::Fluid::Water
+                    == sunrise_items::blocks::Fluid::Water
             };
             let is_frame = |p: [i32; 3]| {
                 registry
@@ -495,7 +495,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// client asks the chunks and weather it was sent, single player the side's read-only
     /// `Level.isRainingAt`.
     pub(in crate::game) fn rain_falls_on(&self, at: Vec3, top: f64) -> bool {
-        use sunrise_client::motion::SideLevel;
+        use sunrise_sim::motion::SideLevel;
         let (p, up) = rain_positions(at, top);
         if !self.is_logical_server() {
             return self.raining_at(p) || self.raining_at(up);
@@ -566,7 +566,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         m.damage(
             crate::game::entity::damage_level_of!(
                 self,
-                &sunrise_client::health::NO_ATTACK,
+                &sunrise_sim::health::NO_ATTACK,
                 no_push,
                 None
             ),
@@ -777,7 +777,7 @@ pub(in crate::game) mod tests {
         game.options.dedicated = Some(Vec::new());
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         game.side.streaming.forced.insert((0, 0));
         game.build_registries();
@@ -836,7 +836,7 @@ pub(in crate::game) mod conduit_target_tests {
     //! then spits a nautilus particle at the mob.
     use crate::game::{Options, Progress, Settings, execution_role, load_resources};
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
     pub(in crate::game) const CONDUIT: [i32; 3] = [8, 100, 8];
 
@@ -957,7 +957,7 @@ pub(in crate::game) mod gateway_age_tests {
         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
         game.world.block_entities.insert(
             pos,
-            BlockEntity::EndGateway(sunrise_client::containers::EndGateway::default()),
+            BlockEntity::EndGateway(sunrise_level::containers::EndGateway::default()),
         );
         game.world.modified.clear();
 

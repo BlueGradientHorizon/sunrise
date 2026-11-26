@@ -7,11 +7,12 @@ use crate::game::native_hooks::placement_context_tests::VetoTrace;
 use crate::game::{GuestUse, Hit};
 use mod_api::PlacementSource;
 use std::sync::{Arc, Mutex};
-use sunrise_client::{items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]
@@ -33,7 +34,7 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                     game.options.dedicated = Some(Vec::new());
                     game.world
                         .chunks
-                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                     game.block_ticks
                         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
                         .unwrap();
@@ -173,7 +174,7 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                     game.options.dedicated = Some(Vec::new());
                     game.world
                         .chunks
-                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                     game.block_ticks
                         .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
                         .unwrap();
@@ -239,7 +240,7 @@ fn state_for_placement_distinguishes_player_and_dispenser_sources() {
                     remote.profile = 42;
                     game.world
                         .chunks
-                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                     let stone = game
                         .pack
                         .assets
@@ -318,7 +319,7 @@ fn substituted_placement_uses_the_held_item_preclear_and_selected_placed_by() {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.block_ticks
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
                 .unwrap();

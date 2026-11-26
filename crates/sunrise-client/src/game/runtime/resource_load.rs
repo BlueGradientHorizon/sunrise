@@ -160,7 +160,7 @@ impl From<mod_api::__private::reload::ReloadStageError> for CoreLoadError {
 pub(in crate::game) struct GameplayTables {
     pub(in crate::game) behaviour_json: serde_json::Value,
     pub(in crate::game) facts: BlockFacts,
-    pub(in crate::game) gameplay_projection: Vec<sunrise_client::blocks::GameplayProjection>,
+    pub(in crate::game) gameplay_projection: Vec<sunrise_items::blocks::GameplayProjection>,
     pub(in crate::game) light: LightTables,
     pub(in crate::game) motion: MotionResources,
 }
@@ -173,7 +173,7 @@ pub(in crate::game) struct GameplayTables {
 /// models), which [`load_resources_for_mods`] rolls back from.
 pub(in crate::game) fn load_core(
     resources: &sunrise_assets::resource_source::ResourceRoot,
-    additional_data: &[Arc<sunrise_client::datapack::DataPack>],
+    additional_data: &[Arc<sunrise_level::datapack::DataPack>],
     conditions: &sunrise_world::conditions::LoadConditions,
     load_role: mods::LoadRole,
     parallel: bool,
@@ -603,7 +603,7 @@ pub(in crate::game) fn with_mod_attribute_additions(
 /// what the live map answers. A type with no mob type (the player) builds
 /// its map from the catalog alone.
 pub(in crate::game) fn take_modified_attribute_rows(
-    types: &mut HashMap<String, sunrise_client::mobs::MobType>,
+    types: &mut HashMap<String, sunrise_sim::mobs::MobType>,
     catalog: &sunrise_world::attributes::entity::Catalog,
     modifications: &[mod_api::__private::EntityAttributeModification],
 ) {
@@ -623,7 +623,7 @@ pub(in crate::game) fn take_modified_attribute_rows(
 #[cfg(test)]
 pub(in crate::game) fn load_resources(
     roots: impl Into<packs::PackRoots>,
-    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
     settings: &Settings,
@@ -653,7 +653,7 @@ pub(in crate::game) fn load_resources(
 #[cfg(test)]
 pub(in crate::game) fn load_resources_skip_lang(
     roots: impl Into<packs::PackRoots>,
-    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
     settings: &Settings,
@@ -682,7 +682,7 @@ pub(in crate::game) fn load_resources_skip_lang(
 #[cfg(test)]
 pub(in crate::game) fn load_resources_uncached(
     roots: impl Into<packs::PackRoots>,
-    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
     settings: &Settings,
@@ -736,7 +736,7 @@ pub(in crate::game) struct StartupLoadContext<'a> {
 /// A launch without an interactive title owns its settings on the loading thread.
 pub(in crate::game) fn load_resources_sync(
     roots: packs::PackRoots,
-    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     context: StartupLoadContext<'_>,
     settings: &mut Settings,
     role: impl Into<mods::LoadRole>,
@@ -773,7 +773,7 @@ pub(in crate::game) fn load_resources_sync(
 #[allow(clippy::too_many_arguments)]
 pub(in crate::game) fn load_resources_for_mods(
     roots: packs::PackRoots,
-    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
     settings: &Settings,
@@ -1006,7 +1006,7 @@ pub(in crate::game) fn load_resources_for_mods(
     // launch world's data preload, which may already have started, reads no mod records; its
     // open, which checks them, waits for these resources.
     {
-        use sunrise_client::save::level_mods;
+        use sunrise_sim::save::level_mods;
         let registry = assets.registry;
         let names = (0..registry.len() as u32)
             .filter_map(|id| registry.state(sunrise_world::registry::BlockStateId(id)))
@@ -1071,7 +1071,7 @@ pub(in crate::game) fn load_resources_for_mods(
     log::info!("load pack tables: {:.2}s", started.elapsed().as_secs_f32());
     progress.set(4);
     if !menu {
-        use sunrise_client::lang::{self, Language};
+        use sunrise_client_core::lang::{self, Language};
         // An integrated server shares the client's loaded resources and
         // language; it doesn't run this loader in production.
         lang::set(if role.is_dedicated_server() {
@@ -1082,7 +1082,7 @@ pub(in crate::game) fn load_resources_for_mods(
     }
     progress.set(5);
     let suffocation =
-        sunrise_client::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation)?;
+        sunrise_sim::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation)?;
     let resources = Resources {
         core: WorldCore {
             item_data,
@@ -1092,7 +1092,7 @@ pub(in crate::game) fn load_resources_for_mods(
             collision,
             motion,
             suffocation,
-            spawn_registries: sunrise_client::mobs::finalize::SpawnRegistries::load(&root),
+            spawn_registries: sunrise_sim::mobs::finalize::SpawnRegistries::load(&root),
             threads,
         },
         rest: std::sync::OnceLock::new(),

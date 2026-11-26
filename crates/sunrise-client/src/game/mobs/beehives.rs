@@ -2,16 +2,16 @@
 //! their server tick, bees going in, and the bees let out, angry, when a
 //! player breaks the hive or fire reaches it.
 use super::{Game, item_abilities::ability};
-use sunrise_client::{
-    Result,
-    beehive::{self, Beehive, BeehiveExt, Release},
-    containers::BlockEntity,
-    items::ItemStack,
-    mobs::{Who, bee},
-};
+use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
+};
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{
+    beehive::{self, Beehive, BeehiveExt, Release},
+    mobs::{Who, bee},
 };
 #[allow(unused_imports)]
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};
@@ -57,7 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .mobs
             .iter()
             .find(|mob| mob.id == id)
-            .is_some_and(|mob| sunrise_client::mobs::ai::brain_target(mob).is_some());
+            .is_some_and(|mob| sunrise_sim::mobs::ai::brain_target(mob).is_some());
         let mut chosen = target;
         let mut player_id = (target == Some(Who::Player))
             .then(|| self.player_entity_id_by_connection(player))
@@ -113,7 +113,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
             return false;
         };
-        if !is_brain || !sunrise_client::mobs::ai::set_brain_target(mob, chosen, player_id) {
+        if !is_brain || !sunrise_sim::mobs::ai::set_brain_target(mob, chosen, player_id) {
             mob.set_target(chosen);
         }
         true
@@ -416,7 +416,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut bees: Vec<usize> = (0..self.mobs.len())
             .filter(|&i| {
                 let m = &self.mobs[i];
-                m.species() == sunrise_client::mobs::Species::Bee
+                m.species() == sunrise_sim::mobs::Species::Bee
                     && !m.removed
                     && m.bounds().intersects(area)
             })
@@ -447,7 +447,7 @@ pub(in crate::game) mod honey_overflow_tests {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let registry = &game.pack.assets.registry;
             let hive = registry.default_state("minecraft:beehive").unwrap();
@@ -456,7 +456,7 @@ pub(in crate::game) mod honey_overflow_tests {
             let full = registry.id(&full).unwrap();
             game.world.set(8, 64, 10, full).unwrap();
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
                     .unwrap(),
             );
             // Facing south (+z), towards the hive.
@@ -490,8 +490,8 @@ pub(in crate::game) mod honey_overflow_tests {
 #[cfg(test)]
 pub(in crate::game) mod stay_tests {
     use super::*;
-    use sunrise_client::beehive::Occupant;
     use sunrise_core::nbt::Compound;
+    use sunrise_sim::beehive::Occupant;
 
     /// `BeehiveBlockEntity.tickOccupants`: every bee whose time is up asks
     /// `releaseOccupant`, which keeps it in at night (`BEES_STAY_IN_HIVE`)
@@ -504,7 +504,7 @@ pub(in crate::game) mod stay_tests {
             game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             let state = game
                 .pack
@@ -548,13 +548,13 @@ pub(in crate::game) mod stay_tests {
 #[cfg(test)]
 pub(in crate::game) mod changed_tests {
     use crate::game::game_tests::tests::server_game;
-    use sunrise_client::{
-        beehive::{Beehive, Occupant},
-        containers::BlockEntity,
-        mobs::Mob,
-    };
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
+    use sunrise_level::containers::BlockEntity;
+    use sunrise_sim::{
+        beehive::{Beehive, Occupant},
+        mobs::Mob,
+    };
 
     fn hive_at(game: &mut crate::game::ServerGame<'_>, key: (i32, i32, i32), hive: Beehive) {
         let state = game

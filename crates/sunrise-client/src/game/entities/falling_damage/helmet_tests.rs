@@ -1,6 +1,7 @@
 use crate::game::{FallingBlock, Options, Progress, Settings, load_resources};
-use sunrise_client::{falling_block::bounds, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{falling_block::bounds, motion::PlayerMotion};
 
 #[test]
 #[ignore = "daily"]

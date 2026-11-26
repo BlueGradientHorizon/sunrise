@@ -16,21 +16,25 @@ pub(in crate::game) mod camera_tests;
 use super::{Game, remote::Remote};
 #[cfg(test)]
 use std::collections::HashMap;
-#[cfg(test)]
-use sunrise_client::motion::PlayerMotion;
 use sunrise_client::{
-    camera::{AvatarBob, CameraEntity, FovPlayer, HurtBob, LivingCamera, UseItem},
-    effects::PlayerEffects,
-    entities::{ArmorStand, ItemFrame, Painting},
-    mobs::{
-        Mob, Species,
-        finalize::{self, Attr},
-        render, villager,
-    },
+    camera::{AvatarBob, HurtBob},
+    mobs::render,
 };
 use sunrise_items::{
     equipment::{MAINHAND, OFFHAND},
     items::ItemStack,
+};
+use sunrise_level::camera_math::{CameraEntity, FovPlayer, LivingCamera, UseItem};
+use sunrise_level::effects::PlayerEffects;
+#[cfg(test)]
+use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::{
+    entities::{ArmorStand, ItemFrame, Painting},
+    mobs::{
+        Mob, Species,
+        finalize::{self, Attr},
+        villager,
+    },
 };
 use sunrise_world::collision_context::EntityContextKind;
 
@@ -1016,7 +1020,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .uuids
                 .get(&uid)
                 .copied()
-                .map(sunrise_client::lan::playerdata::ints_uuid)
+                .map(sunrise_sim::lan::playerdata::ints_uuid)
         });
         let mount = self.living_vehicle_for(remote, uid);
         let has_player_passenger = self.entity_has_player_passenger(remote, uid);
@@ -1106,7 +1110,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 && remote
                     .remote_player_info_game_mode(id)
                     .map_or(m.extra.spectator, |mode| {
-                        mode == sunrise_client::tab_list::SPECTATOR
+                        mode == sunrise_level::profile_lookup::SPECTATOR
                     });
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
@@ -1572,8 +1576,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(test)]
 mod tests {
     use super::{camera_after_packet, entity_post_effect, stand_camera_entity};
-    use sunrise_client::entities::ArmorStand;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::entities::ArmorStand;
 
     /// A server's camera on an armor stand looks out of the stand's eyes
     /// (EntityType.ARMOR_STAND `eyeHeight(1.7775F)`, `BABY_DIMENSIONS`

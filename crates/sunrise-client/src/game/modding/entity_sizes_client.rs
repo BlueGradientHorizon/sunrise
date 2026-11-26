@@ -1,8 +1,8 @@
 use super::Game;
 use crate::game::entity_sizes_common::synced_pose;
 use mod_api::Pose;
-use sunrise_client::pose::SizeAnswer;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_sim::pose::SizeAnswer;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// What the client copy `id`'s size refresh computes now: its pose and vanilla size, with
@@ -253,7 +253,7 @@ pub(in crate::game) mod tests {
             // picks the cart.
             game.side.title.0 = None;
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
+                sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::new(5.5, 69.5, 8.5),
                 )

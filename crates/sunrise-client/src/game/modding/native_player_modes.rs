@@ -7,7 +7,7 @@ use super::Game;
 use super::native_entity_refs::block_face_direction;
 use super::native_server::PlayerRead;
 use mod_api::{BlockFace, GameMode, PlayerRef};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The player's permission level, 0 to 4 (`Player.permissions()`,
@@ -118,8 +118,9 @@ mod tests {
     use mod_api::__private::game::*;
     use mod_api::BlockFace;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
 
     fn set_mode(game: &mut crate::game::ServerGame<'_>, uuid: u128, mode: i32) {
         game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
@@ -194,7 +195,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn one_player_may_harm_another_by_the_pvp_rule_and_their_teams() {
-        use sunrise_client::gamerules::Value;
+        use sunrise_client_core::gamerules::Value;
         with_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
             assert_eq!(a.can_harm(&*game, b), Some(true), "no teams, pvp on");

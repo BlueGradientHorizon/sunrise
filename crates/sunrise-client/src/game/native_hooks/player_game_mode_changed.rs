@@ -87,13 +87,13 @@ mod player_game_mode_changed_tests {
             .unwrap()
             .hub
             .update_guest(13, |g| {
-                g.sender = sunrise_client::lan::PlayerSender::new(tx, Default::default())
+                g.sender = sunrise_sim::lan::PlayerSender::new(tx, Default::default())
             })
             .unwrap();
         move || {
             let mut modes = Vec::new();
             while let Ok(out) = rx.try_recv() {
-                let sunrise_client::lan::Out::Packet(body) = out else {
+                let sunrise_sim::lan::Out::Packet(body) = out else {
                     continue;
                 };
                 let mut reader = sunrise_protocol::buf::Reader::new(&body);

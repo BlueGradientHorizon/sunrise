@@ -1,9 +1,9 @@
 use crate::game::server_side::combat::bee_sting_tests::spawn;
 use crate::game::server_side::combat::bee_sting_tests::sting;
-use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Who, bee};
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{Who, bee};
+use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::food::Difficulty;
 
 /// A sting that lands sets the flag, calms the bee, plays the sound at its

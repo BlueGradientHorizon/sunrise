@@ -2,9 +2,9 @@
 use super::Game;
 use std::io;
 use std::ops::ControlFlow;
-use sunrise_client::collisions::SceneCollisions;
 use sunrise_core::geometry::{Aabb, Vec3, VoxelShape};
 use sunrise_core::position::{BlockPos, ChunkPos};
+use sunrise_level::collisions::SceneCollisions;
 use sunrise_world::block_collision_scan::{
     BlockCollisionScan, BlockCollisionWorld, CollisionBlock,
 };
@@ -97,7 +97,7 @@ struct ScanColumns<'w, 'r> {
 
 impl<'w> BlockCollisionWorld for ScanColumns<'w, '_> {
     type Error = io::Error;
-    type Chunk = &'w sunrise_client::chunk::Chunk;
+    type Chunk = &'w sunrise_level::chunk::Chunk;
     fn collision_chunk(&mut self, p: ChunkPos) -> io::Result<Option<Self::Chunk>> {
         match self.scene.collision_chunk(p)? {
             None if self.refuse_missing => Err(io::Error::other(

@@ -15,7 +15,7 @@ use sunrise_world::{
 thread_local! {
     /// The parts of the level being ticked, kept between ticks so their answers' storage and the
     /// names they share are not built again each tick.
-    static PARTS: RefCell<Option<Rc<sunrise_client::collision_parts::ModParts>>> =
+    static PARTS: RefCell<Option<Rc<sunrise_sim::collision_parts::ModParts>>> =
         const { RefCell::new(None) };
     /// The blocks whose `collision_shape` parts faulted, for the session: in memory, never
     /// saved, and a new load of the mod set starts empty.
@@ -44,9 +44,9 @@ pub(crate) fn collision_shape(
         return;
     }
     let mut boxes = None;
-    let ran = sunrise_client::crash::contain(|| {
+    let ran = sunrise_level::crash::contain(|| {
         mod_api::dispatch_collision_shape(
-            &sunrise_client_render::api_context::LoopReader(context).context(),
+            &sunrise_level::api_context::LoopReader(context).context(),
             pos,
             api_state,
             query,
@@ -104,7 +104,7 @@ fn enter_parts(context: &Arc<LoopContext>) -> Option<InParts> {
     mod_api::__private::has_scoped_hook(mod_api::HookId::CollisionShape).then(|| {
         let parts = PARTS.with_borrow_mut(|slot| {
             let parts = slot.get_or_insert_with(|| {
-                Rc::new(sunrise_client::collision_parts::ModParts::new(Arc::clone(
+                Rc::new(sunrise_sim::collision_parts::ModParts::new(Arc::clone(
                     context,
                 )))
             });
@@ -321,8 +321,8 @@ mod tests {
     /// for entity 7 only, as a per-player barrier does.
     #[test]
     fn a_registered_part_gives_a_moving_entity_its_shape() {
-        use sunrise_client::{chunk::Chunk, collisions::SceneCollisions, world::World};
         use sunrise_core::geometry::{Aabb, Vec3};
+        use sunrise_level::{chunk::Chunk, collisions::SceneCollisions, world::World};
         use sunrise_world::{
             collision_context::{CollisionContext, CollisionEntity, EntityContextKind},
             entity_obstruction::EntityIdentity,
@@ -395,7 +395,7 @@ mod tests {
                     binding: &binding,
                     subject: None,
                 };
-                let mut gate = sunrise_client::move_gate::armed(
+                let mut gate = sunrise_sim::move_gate::armed(
                     &context,
                     id as u32,
                     "minecraft:player",
@@ -412,7 +412,7 @@ mod tests {
                     },
                     false,
                 );
-                sunrise_client::move_gate::scene_resolve_with_context(
+                sunrise_sim::move_gate::scene_resolve_with_context(
                     &mut gate, &mut scene, body, delta, 0.6, true, player,
                 )
                 .unwrap()

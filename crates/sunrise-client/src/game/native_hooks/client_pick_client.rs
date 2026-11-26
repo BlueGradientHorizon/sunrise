@@ -58,7 +58,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         Some(match target {
             Target::Player | Target::Guest(_) => crate::game::native_living_body::PLAYER,
             Target::Mob(id) => crate::game::native_living_body::body_kind_name(
-                sunrise_client::health::LivingBody::Mob(self.mobs.iter().find(|m| m.id == id)?),
+                sunrise_sim::health::LivingBody::Mob(self.mobs.iter().find(|m| m.id == id)?),
             ),
             Target::Item(_) => "minecraft:item",
             Target::Orb(_) => "minecraft:experience_orb",
@@ -257,7 +257,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn client_target_rotation(&self, target: crate::game::commands::Target) -> [f32; 2] {
         use crate::game::commands::Target;
         use crate::game::entity::Entity;
-        use sunrise_client::entity_nbt::loaded_rotation;
+        use sunrise_sim::entity_nbt::loaded_rotation;
         let saved_rotation = |id| self.persist.raw.get(&id).map_or([0.0; 2], loaded_rotation);
         let tracked_rotation = |id: u32| {
             self.remote
@@ -298,7 +298,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .item_frames
                 .iter()
                 .find(|a| a.id == id)
-                .map_or([0.0; 2], crate::entities::ItemFrame::entity_rotation),
+                .map_or([0.0; 2], sunrise_sim::entities::ItemFrame::entity_rotation),
             Target::Painting(id) => self
                 .paintings
                 .iter()
@@ -368,7 +368,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .iter()
                 .find(|a| a.id == id)
                 .and_then(|a| a.raw.as_deref())
-                .map_or([0.0; 2], sunrise_client::entity_nbt::rotation),
+                .map_or([0.0; 2], sunrise_sim::entity_nbt::rotation),
             Target::Hook(id) => tracked_rotation(id),
             Target::Other(id) => self
                 .side
@@ -450,7 +450,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .uuids
                         .get(&subject.id())
                         .copied()
-                        .map(sunrise_client::lan::playerdata::ints_uuid)
+                        .map(sunrise_sim::lan::playerdata::ints_uuid)
                 })
         });
         Some(ResidentClientPickEntity {
@@ -473,7 +473,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .mobs
                     .iter()
                     .find(|m| m.id == uid)
-                    .map(|m| sunrise_client::command::args::normalize(&m.kind.id)),
+                    .map(|m| sunrise_command::args::normalize(&m.kind.id)),
                 Target::Boat(uid) => self
                     .boats
                     .iter()

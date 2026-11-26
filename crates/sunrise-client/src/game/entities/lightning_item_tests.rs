@@ -1,8 +1,8 @@
 #![cfg(test)]
 use crate::game::lightning::Bolt;
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 
 #[test]
 #[ignore = "daily"]

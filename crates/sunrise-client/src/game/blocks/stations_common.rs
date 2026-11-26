@@ -1,9 +1,7 @@
 //! Role-neutral workstation state (`Kind`, `Station`) and common `Game` station accessors.
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    stations::{AnvilResult, EnchantOffers},
-};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::stations::{AnvilResult, EnchantOffers};
 
 /// Slot ids of the open station: inputs from 600, the result at 650.
 pub(in crate::game) const INPUT: usize = 600;
@@ -85,7 +83,7 @@ pub(in crate::game) struct Station {
     /// Anvil rename box text (`AnvilMenu.itemName`).
     pub(in crate::game) name: String,
     /// Stonecutter: the menu's recipe list (sunrise_client::menu) and `selectedRecipeIndex`.
-    pub(in crate::game) stone: sunrise_client::menu::Stonecutter,
+    pub(in crate::game) stone: sunrise_sim::menu::Stonecutter,
     pub(in crate::game) selected: Option<usize>,
     #[allow(dead_code)]
     pub(in crate::game) last_sound: u64,
@@ -129,7 +127,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             Some(input)
                 if input.custom_name().is_none()
                     && s.name
-                        == sunrise_client::lang::returned_to_server(|| {
+                        == sunrise_client_core::lang::returned_to_server(|| {
                             self.stack_hover_name_text(input).plain()
                         }) =>
             {

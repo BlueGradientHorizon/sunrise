@@ -3,9 +3,9 @@
 //! sends none.
 use super::SpeedByType;
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::mobs::{Mob, StoredEffect};
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::{AttributeModifier, AttributeSnapshot};
+use sunrise_sim::mobs::{Mob, StoredEffect};
 
 #[test]
 #[ignore = "daily"]
@@ -62,7 +62,7 @@ fn a_babys_modifier_comes_before_a_given_effects_in_the_packet() {
             .unwrap()
             .clone();
         let mut baby = Mob::new(12, zombie, Vec3::ZERO, 0.0);
-        sunrise_client::mobs::finalize::set_baby(&mut baby, true);
+        sunrise_sim::mobs::finalize::set_baby(&mut baby, true);
         baby.add_effect("minecraft:speed", -1, 1);
         let speed = game
             .motion

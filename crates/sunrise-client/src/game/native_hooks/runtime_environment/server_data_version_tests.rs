@@ -3,10 +3,10 @@ use crate::game::execution_role::ExecutionRole;
 use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 use mod_api::{ClientHost, Host, ServerHost};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::save::{LevelShape, SaveDir};
 use sunrise_core::nbt::{Limits, Tag};
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::save::{LevelShape, SaveDir};
 use sunrise_world::region::RegionFile;
 
 #[test]

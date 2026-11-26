@@ -1,6 +1,6 @@
 use super::super::{Kind, Station};
 use std::sync::Arc;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::connection::Pipe;
 
 /// A client on a server whose data pack adds `fixture:drill`, which the

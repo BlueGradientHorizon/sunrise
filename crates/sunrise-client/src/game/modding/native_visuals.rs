@@ -174,11 +174,11 @@ mod tests {
                     .registry
                     .default_state("minecraft:stone")
                     .unwrap();
-                let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+                let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
                 chunk.lit = true;
                 game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
                 game.world.set(1, 64, 1, stone).unwrap();
-                let mut player = sunrise_client::motion::PlayerMotion::new(
+                let mut player = sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
                     sunrise_core::geometry::Vec3::ZERO,
                 )

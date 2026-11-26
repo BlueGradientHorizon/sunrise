@@ -10,7 +10,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for text in std::mem::take(&mut self.adv.announced) {
             if let Some(host) = self.lan.as_mut() {
                 host.hub
-                    .system_message(sunrise_client::lan::data::component_nbt(&text.component()));
+                    .system_message(sunrise_sim::lan::data::component_nbt(&text.component()));
             }
         }
     }
@@ -32,26 +32,26 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
+            .int_at(sunrise_client_core::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
             > 100
         {
             return;
         }
         let needed = self.sleepers_needed(active);
         let text = if sleeping >= needed {
-            sunrise_client::text::Text::translate("sleep.skipping_night", &[])
+            sunrise_client_core::text::Text::translate("sleep.skipping_night", &[])
         } else {
-            sunrise_client::text::Text::translate(
+            sunrise_client_core::text::Text::translate(
                 "sleep.players_sleeping",
                 &[
-                    sunrise_client::text::Text::literal(sleeping.to_string()),
-                    sunrise_client::text::Text::literal(needed.to_string()),
+                    sunrise_client_core::text::Text::literal(sleeping.to_string()),
+                    sunrise_client_core::text::Text::literal(needed.to_string()),
                 ],
             )
         };
         if let Some(host) = self.lan.as_ref() {
             host.hub
-                .overlay_message(sunrise_client::lan::data::component_nbt(&text.component()));
+                .overlay_message(sunrise_sim::lan::data::component_nbt(&text.component()));
         }
     }
     /// `SleepStatus.areEnoughSleeping` and `areEnoughDeepSleeping` over the
@@ -67,7 +67,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// a spectator, and, when a native mod ignored them, only once in bed.
     pub(in crate::game) fn guest_counts_for_sleep(
         &self,
-        g: &sunrise_client::lan::guest::Guest,
+        g: &sunrise_sim::lan::guest::Guest,
     ) -> bool {
         g.placed
             && g.participates_in_player_simulation()
@@ -189,7 +189,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let percent = i64::from(
             self.ui
                 .rules
-                .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
+                .int_at(sunrise_client_core::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
                 .max(0),
         );
         ((active * percent + 99) / 100).max(1)

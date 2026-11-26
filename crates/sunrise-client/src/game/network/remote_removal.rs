@@ -10,9 +10,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientboundRemoveEntitiesPacket`: a packet's ids go together, the big
     /// entity lists filtered once (#13007), each id's own cleanup in order.
     pub(in crate::game::client_side) fn remove_entities(&mut self, ids: &[i32]) {
-        let removed: sunrise_client::fast_hash::FxHashSet<u32> =
+        let removed: sunrise_level::fast_hash::FxHashSet<u32> =
             ids.iter().map(|&id| id as u32).collect();
-        let mut vehicles = sunrise_client::fast_hash::FxHashSet::default();
+        let mut vehicles = sunrise_level::fast_hash::FxHashSet::default();
         let mut include = |id| {
             if removed.contains(&id) {
                 vehicles.insert(id);
@@ -365,9 +365,9 @@ mod tests {
             }
         }
         for id in [49, 50] {
-            game.dropped.push(sunrise_client::entities::ItemEntity::new(
+            game.dropped.push(sunrise_sim::entities::ItemEntity::new(
                 id,
-                sunrise_client::items::ItemStack::new("minecraft:sand", 1),
+                sunrise_items::items::ItemStack::new("minecraft:sand", 1),
                 sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
                 sunrise_core::geometry::Vec3::ZERO,
                 0.0,

@@ -1,7 +1,8 @@
 //! `/random` (RandomCommand) and `/teammsg` (TeamMsgCommand).
 use super::{Arg, Context, Game, R, err};
-use sunrise_client::{clock::SprintReport, text::Text};
+use sunrise_client_core::text::Text;
 use sunrise_core::java_number::format_fixed;
+use sunrise_sim::clock::SprintReport;
 
 pub(in crate::game) fn millis(nanos: u64) -> String {
     format_fixed(f64::from(nanos as f32 / 1_000_000.0), 1)

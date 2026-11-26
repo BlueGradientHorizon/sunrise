@@ -6,8 +6,8 @@ use crate::game::server_side::leads::pack_light;
 use crate::game::server_side::leads::rope_hold_angles;
 use crate::game::server_side::leads::rot_y;
 use sunrise_client::actions::Action;
-use sunrise_client::{
-    mesher::Vertex,
+use sunrise_client::mesher::Vertex;
+use sunrise_sim::{
     mobs::leash::{self, Holder},
     pose::Pose,
 };
@@ -42,10 +42,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // EntityRenderer.extractRenderState: a leashed mob or boat (an
         // `AbstractBoat` is `Leashable` too) with where it hangs.
         let body_of = |previous: f32, current: f32| {
-            f64::from(
-                previous + sunrise_client::mobs::living::wrap(current - previous) * alpha as f32,
-            )
-            .to_radians()
+            f64::from(previous + sunrise_sim::mobs::living::wrap(current - previous) * alpha as f32)
+                .to_radians()
         };
         let mut ropes: Vec<Rope> = Vec::new();
         for m in &self.mobs {
@@ -244,7 +242,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 glam::DVec3::new(state.position.x, state.position.y, state.position.z) - camera;
             let base = glam::Mat4::from_translation(at.as_vec3())
                 * glam::Mat4::from_scale(glam::Vec3::new(-1.0, -1.0, 1.0));
-            let poses = sunrise_client::mobs::anim::Poses::new(model);
+            let poses = sunrise_sim::mobs::anim::Poses::new(model);
             let light = pack_light(self.world.light(p[0], p[1], p[2]));
             sunrise_client::mobs::render::draw(
                 model,
@@ -261,7 +259,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `Player.getRopeHoldPosition` (and `LocalPlayer`'s in first person).
     pub(in crate::game::client_side) fn player_rope_hold(
         &self,
-        p: &sunrise_client::motion::PlayerMotion,
+        p: &sunrise_sim::motion::PlayerMotion,
         alpha: f64,
     ) -> glam::DVec3 {
         // Player.getRopeHoldPosition: `0.22 * (RIGHT ? -1 : 1)`.

@@ -3,7 +3,7 @@ use super::super::native_entity_refs::tests::with_game;
 use super::super::native_item_places::tests::{guest, open_to_lan};
 use mod_api::{Host, HostSide, PlayerRef};
 use std::sync::{Arc, Mutex};
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 #[derive(Debug, PartialEq)]
 pub(in crate::game) struct Snapshot {
@@ -103,8 +103,8 @@ fn guest_ticks_before_player_loaded_and_after_its_timeout() {
             g.food = 10;
             g.saturation = 5.0;
             g.effects
-                .add(sunrise_client::effects::EffectInstance::new("speed", 10, 0));
-            let mut motion = sunrise_client::motion::PlayerMotion::new(
+                .add(sunrise_level::effects::EffectInstance::new("speed", 10, 0));
+            let mut motion = sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
                 sunrise_core::geometry::Vec3::ZERO,
             )
@@ -294,7 +294,7 @@ pub(in crate::game) fn tags_over_steve(mods: mod_api::Mods) -> Vec<String> {
             remote.level_players.insert(66, 789);
             remote.level_player_names.insert(66, "Steve".into());
             let kind = remote.player_type.as_ref().unwrap().clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            game.mobs.push(sunrise_sim::mobs::Mob::new(
                 66,
                 kind,
                 sunrise_core::geometry::Vec3::new(0.0, 64.0, 2.0),

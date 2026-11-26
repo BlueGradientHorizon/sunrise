@@ -7,8 +7,8 @@ use sunrise_core::{
 };
 use sunrise_sim::spear_sim::hits_in_reach;
 use {
-    sunrise_client::collisions::SceneCollisions, sunrise_client::items::ItemStack,
-    sunrise_client::mobs::Damage, sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_level::collisions::SceneCollisions,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::mobs::Damage,
     sunrise_sim::spear_sim::Kinetic, sunrise_sim::spear_sim::REACH,
 };
 
@@ -47,9 +47,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.award_custom_stat("damage_dealt", (actual * 10.0).round() as i32);
         if actual > 2.0 {
             // The players a server serves are sent them too (the window of the server thread).
-            self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+            self.server_send_particles(sunrise_sim::lan::server_effects::ServerQueuedParticle {
                 dimension: self.dim.id(),
-                particle: crate::lan::server_effects::ServerParticle::simple(
+                particle: sunrise_sim::lan::server_effects::ServerParticle::simple(
                     sunrise_level::particle_options::ParticleType::DamageIndicator,
                 ),
                 at: [feet[0], feet[1] + height * 0.5, feet[2]],
@@ -301,7 +301,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self.mobs[index].extra.mount.is_some()
             && !self.items().entity_type_tags.has_bit(
                 self.mobs[index].kind.flags.entity_tag_slot,
-                sunrise_client::items::EntityTypeTags::CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE,
+                sunrise_items::items::EntityTypeTags::CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE,
             );
         if dismounted {
             self.dismount_mob(id);

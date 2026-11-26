@@ -159,7 +159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// sounds needing a new pairing queued, with their later removals held.
     pub(in crate::game) fn lan_prepare_captured_sounds(
         &mut self,
-        entities: &[sunrise_client::lan::entity::EntityState],
+        entities: &[sunrise_sim::lan::entity::EntityState],
     ) {
         if !self.side.audio_capture_active {
             return;

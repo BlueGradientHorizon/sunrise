@@ -1,6 +1,6 @@
 //! Client-side held-item block-break reset check (`MultiPlayerGameMode.sameDestroyTarget`).
 use crate::game::Game;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.sameDestroyTarget`'s item half for `began`.

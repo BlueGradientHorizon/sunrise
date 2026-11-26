@@ -4,13 +4,12 @@
 //! the block sound, attacker knockback (`blockedByItem`) and axes disabling
 //! the shield (`Player.blockUsingItem`, `BlocksAttacks.disable`).
 use super::Game;
-use sunrise_client::health::Attack;
-#[allow(unused_imports)]
-use sunrise_client::{
-    health::{BlockOutcome, Blocking, HurtSource},
-    items::ItemStack,
-};
 use sunrise_core::random::RandomSource;
+#[allow(unused_imports)]
+use sunrise_items::items::ItemStack;
+use sunrise_sim::health::Attack;
+#[allow(unused_imports)]
+use sunrise_sim::health::{BlockOutcome, Blocking, HurtSource};
 use sunrise_world::blocking_rules::{BlockingRules, DamageReduction, ItemDamageFunction};
 
 /// `Inventory.SLOT_OFFHAND`: the `using` slot of an off-hand item.
@@ -19,7 +18,7 @@ pub(in crate::game) use super::held_items::OFFHAND_SLOT;
 /// `LivingEntity.getItemBlockingWith`'s delay: an item that blocks attacks blocks once it has been
 /// used for `BlocksAttacks.blockDelayTicks` (`Math.round(seconds * 20)`) ticks.
 pub(in crate::game) fn block_delay_passed(
-    component: &sunrise_client::items::BlocksAttacks,
+    component: &sunrise_items::items::BlocksAttacks,
     ticks: u32,
 ) -> bool {
     ticks as i32 >= (component.delay_seconds * 20.0).round() as i32
@@ -31,7 +30,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn arrow_hits_player(
         &mut self,
         amount: f32,
-        p: &sunrise_client::projectiles::Projectile,
+        p: &sunrise_sim::projectiles::Projectile,
     ) -> bool {
         self.side.combat.0.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
         self.mob_hits_player(
@@ -199,7 +198,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (mx, mz) = (m.position.x, m.position.z);
         // LivingEntity.getSecondsToDisableBlocking: the held weapon's value;
         // Warden overrides it with a flat 5 seconds.
-        let disable = if m.species() == sunrise_client::mobs::Species::Warden {
+        let disable = if m.species() == sunrise_sim::mobs::Species::Warden {
             5.0
         } else {
             m.extra
@@ -209,14 +208,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         // Ravager.blockedByItem: stunned half the time (the defender pushed
         // apart), else the defender flung away; no roar in progress.
-        if m.species() == sunrise_client::mobs::Species::Ravager {
+        if m.species() == sunrise_sim::mobs::Species::Ravager {
             let mut events = Vec::new();
             let roaring = m.extra.anim_ticks != 0;
             let stunned = self
                 .mobs
                 .iter_mut()
                 .find(|m| m.id == id)
-                .is_some_and(|m| sunrise_client::mobs::ravager::blocked(m, &mut events));
+                .is_some_and(|m| sunrise_sim::mobs::ravager::blocked(m, &mut events));
             if !roaring && let Some(p) = self.player.as_mut() {
                 let (xd, zd) = (p.position.x - mx, p.position.z - mz);
                 let push = if stunned {
@@ -250,7 +249,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// is where the attacker stands (x, z) and its seconds of disabling.
     fn blocked_by_attacker(
         &mut self,
-        component: &sunrise_client::items::BlocksAttacks,
+        component: &sunrise_items::items::BlocksAttacks,
         ([mx, mz], disable): ([f64; 2], f32),
         fully: bool,
         at: Option<[f64; 3]>,
@@ -300,7 +299,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .items()
                         .get(&stack.item)
                         .and_then(|i| i.use_cooldown.clone());
-                    let group = sunrise_client::cooldowns::group(stack, default.as_ref());
+                    let group = sunrise_items::cooldowns::group(stack, default.as_ref());
                     self.add_cooldown(group, ticks as i32);
                 }
             }
@@ -318,8 +317,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 mod durability_tests {
     use super::*;
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]
@@ -349,7 +348,7 @@ mod durability_tests {
                     direct: 0,
                     position: None,
                 },
-                &sunrise_client::health::NO_ATTACK,
+                &sunrise_sim::health::NO_ATTACK,
             );
             assert!(game.offhand.is_none());
             assert!(game.using.is_none());
@@ -386,7 +385,7 @@ mod durability_tests {
                         direct: 0,
                         position: None,
                     },
-                    &sunrise_client::health::NO_ATTACK,
+                    &sunrise_sim::health::NO_ATTACK,
                 );
                 game.offhand.as_ref().unwrap().damage
             };
@@ -403,7 +402,7 @@ mod durability_tests {
 mod blocked_hit_use_tests {
     use super::*;
     use crate::game::game_tests::tests::server_game;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// `BlocksAttacks.hurtBlockingItem`: a hit taken while using a shield
     /// counts it as used, even when the shield blocks none of the damage.
@@ -437,7 +436,7 @@ mod blocked_hit_use_tests {
             outcome,
             (None, false),
             source,
-            &sunrise_client::health::NO_ATTACK,
+            &sunrise_sim::health::NO_ATTACK,
         );
         assert_eq!(
             game.stats.get("used", "minecraft:shield"),
@@ -454,7 +453,7 @@ mod blocked_hit_use_tests {
             outcome,
             (None, false),
             source,
-            &sunrise_client::health::NO_ATTACK,
+            &sunrise_sim::health::NO_ATTACK,
         );
         assert_eq!(game.stats.get("used", "minecraft:shield"), 2);
     }

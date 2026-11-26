@@ -3,7 +3,7 @@ use super::*;
 use crate::game::native_book_displays::Resources;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result;
-use sunrise_client::recipe_book::{DisplayResources, ModBookIndex, placement_sync as sync};
+use sunrise_sim::recipe_book::{DisplayResources, ModBookIndex, placement_sync as sync};
 struct RemoteResources<'a, 'w, S: crate::game::Side> {
     inner: Resources<'a, 'w, S>,
     recipes: BTreeMap<String, String>,
@@ -34,7 +34,7 @@ impl<S: crate::game::Side> DisplayResources for RemoteResources<'_, '_, S> {
     fn menu_layout(
         &self,
         id: &str,
-    ) -> Option<sunrise_client::recipe_book::menu_layout::MenuLayoutMetadata> {
+    ) -> Option<sunrise_sim::recipe_book::menu_layout::MenuLayoutMetadata> {
         self.inner.menu_layout(id)
     }
     fn recipe_type(&self, id: &str) -> bool {

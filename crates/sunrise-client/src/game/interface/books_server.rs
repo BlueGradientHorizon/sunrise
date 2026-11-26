@@ -4,9 +4,9 @@ use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::level::flags as level_flags;
 use {
-    sunrise_client::containers::BlockEntity, sunrise_client::containers::Lectern,
-    sunrise_client::items::ItemStack, sunrise_client::menu::Kind, sunrise_client::menu::Menu,
-    sunrise_client::mobs::Who, sunrise_sim::first_person_sim::Hand,
+    sunrise_items::items::ItemStack, sunrise_level::containers::BlockEntity,
+    sunrise_level::containers::Lectern, sunrise_sim::first_person_sim::Hand,
+    sunrise_sim::menu::Kind, sunrise_sim::menu::Menu, sunrise_sim::mobs::Who,
 };
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -326,10 +326,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod lectern_book_removal_tests {
     use super::super::game_tests::tests::server_game;
-    use sunrise_client::{
-        containers::{BlockEntity, Lectern},
-        items::ItemStack,
-    };
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::{BlockEntity, Lectern};
 
     /// `LecternBlock.resetBookState`: removing a book clears `has_book` and posts `block_change`.
     #[test]
@@ -385,7 +383,8 @@ pub(in crate::game) mod lectern_book_removal_tests {
 #[cfg(test)]
 pub(in crate::game) mod lectern_books_tag_tests {
     use super::super::game_tests::tests::server_game;
-    use sunrise_client::{containers::BlockEntity, items::ItemStack};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::BlockEntity;
 
     /// `LecternBlock.useItemOn` checks `ItemTags.LECTERN_BOOKS`; a world's
     /// data pack adds its own book to that tag, and the lectern takes it.

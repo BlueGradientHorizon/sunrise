@@ -37,7 +37,7 @@ pub(in crate::game) fn hurt_server_args<'a>(
 pub(in crate::game) fn capture_hit(
     hurting: Hurting<'_>,
     attack: &Attack,
-) -> Option<sunrise_client::health::AcceptedHit> {
+) -> Option<sunrise_sim::health::AcceptedHit> {
     let death = mod_api::__private::listened(mod_api::HookId::LivingDeath);
     let loot = mod_api::__private::listened(mod_api::HookId::LootDrops);
     if !death && !loot {
@@ -51,7 +51,7 @@ pub(in crate::game) fn capture_hit(
     if !dying && !(loot && source.direct != 0 && attack.projectile == Some(source.direct)) {
         return None;
     }
-    Some(sunrise_client::health::AcceptedHit::capture(
+    Some(sunrise_sim::health::AcceptedHit::capture(
         source, attack, committed,
     ))
 }

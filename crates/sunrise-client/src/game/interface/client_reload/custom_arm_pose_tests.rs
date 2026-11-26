@@ -1,13 +1,14 @@
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{ArmPose, ClientHost, CustomArmPose, Hooks, ModEntry};
 use std::{collections::HashMap, sync::OnceLock};
-use sunrise_client::mobs::{
+use sunrise_core::geometry::Vec3;
+use sunrise_items::equipment::MAINHAND;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{
     Mob,
     anim::{self, Poses},
 };
-use sunrise_client::{items::ItemStack, motion::PlayerMotion};
-use sunrise_core::geometry::Vec3;
-use sunrise_items::equipment::MAINHAND;
+use sunrise_sim::motion::PlayerMotion;
 
 struct Skillet(OnceLock<CustomArmPose>);
 #[mod_api::__subscriptions]

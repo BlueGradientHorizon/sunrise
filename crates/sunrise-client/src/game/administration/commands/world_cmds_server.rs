@@ -5,14 +5,14 @@ use crate::game::commands::world_cmds::num;
 use crate::game::commands::world_cmds::take_new_reinforcements;
 use crate::game::commands::world_cmds::text_error;
 use crate::game::minecarts::CartHit;
-use sunrise_client::{
-    mobs::{Damage, Who},
-    scoreboard_cmd::Tracker,
-    text::Text,
-};
+use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::{
+    mobs::{Damage, Who},
+    scoreboard_cmd::Tracker,
+};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerRecipeBook.addRecipes/removeRecipes for the player in place: how
@@ -38,8 +38,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         count
     }
     pub(in crate::game::server_side) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
-        use crate::lan::server_effects::{ServerParticle, ServerQueuedParticle};
         use sunrise_level::particle_options::ParticleType;
+        use sunrise_sim::lan::server_effects::{ServerParticle, ServerQueuedParticle};
         let (name, particle) = match ctx.get("name") {
             Some(Arg::Particle(opts)) => {
                 use crate::game::api_values::TryIntoEngine;
@@ -63,7 +63,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let ty = ParticleType::from_name(name)
                     .ok_or_else(|| err("particle.notFound", &[&name]))?;
-                let opts = match sunrise_client::command::snbt::parse_fully(options_text) {
+                let opts = match sunrise_command::snbt::parse_fully(options_text) {
                     Ok(Tag::Compound(c)) if !options_text.is_empty() => Some(c),
                     _ => None,
                 };
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         } else {
                             format!("minecraft:{id}")
                         };
-                        Some(ServerParticle::item(sunrise_client::items::ItemStack::new(
+                        Some(ServerParticle::item(sunrise_items::items::ItemStack::new(
                             &id, 1,
                         )))
                     }
@@ -123,8 +123,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             }
                             _ => String::new(),
                         };
-                        let mut reader = sunrise_client::command::Reader::new(&text);
-                        let block = sunrise_client::command::args::ArgType::BlockState
+                        let mut reader = sunrise_command::Reader::new(&text);
+                        let block = sunrise_command::args::ArgType::BlockState
                             .parse(&mut reader, &self.ui.registries);
                         match block {
                             Ok(Arg::Block(b)) => {
@@ -704,7 +704,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             None => 0,
         };
-        let source = sunrise_client::health::HurtSource {
+        let source = sunrise_sim::health::HurtSource {
             damage_type,
             causing: entity_id(causing),
             direct: entity_id(direct),
@@ -712,7 +712,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
-                sunrise_client::health::Hurting::Entity(id as i32, &entity_kind, source),
+                sunrise_sim::health::Hurting::Entity(id as i32, &entity_kind, source),
                 vanilla,
             )
         {
@@ -971,8 +971,8 @@ pub(in crate::game) mod attribute_missing_tests;
 #[cfg(test)]
 pub(in crate::game) mod allay_owner_damage_tests {
     use crate::game::native_entity_refs::tests::with_game_at;
-    use sunrise_client::mobs::{Damage, Mob};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::{Damage, Mob};
 
     #[test]
     #[ignore = "daily"]
@@ -989,13 +989,13 @@ pub(in crate::game) mod allay_owner_damage_tests {
             let actual = [101, 102, 103, 104];
             let other = [10, 20, 30, 40];
             let mut player =
-                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player.entity_id = 7;
             game.player = Some(player);
             game.level.player_uuid = Some(actual);
             assert_eq!(game.attack_of(7).player_uuid, Some(actual));
             game.side.lan_acting = Some(12);
-            game.side.lan_acting_uuid = Some(sunrise_client::lan::playerdata::ints_uuid(other));
+            game.side.lan_acting_uuid = Some(sunrise_sim::lan::playerdata::ints_uuid(other));
             assert_eq!(
                 game.attack_of(7).player_uuid,
                 Some(other),
@@ -1048,8 +1048,8 @@ pub(in crate::game) mod registered_damage_tests;
 pub(in crate::game) mod datapack_damage_tests {
     use crate::game::commands::world_cmds::datapack_damage_tests::with_pack;
     use crate::game::{commands::Target, native_entity_refs::tests::with_game};
-    use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
 
     pub(in crate::game) fn pig(game: &mut crate::game::ServerGame<'_>, id: u32, at: Vec3) {
         game.side.next_entity = game.side.next_entity.max(id);
@@ -1110,10 +1110,10 @@ pub(in crate::game) mod vehicle_damage_command_tests {
 
     pub(in crate::game::server_side) fn attribute_guests(
         game: &mut crate::game::ServerGame<'_>,
-    ) -> Vec<std::sync::mpsc::Receiver<sunrise_client::lan::Out>> {
+    ) -> Vec<std::sync::mpsc::Receiver<sunrise_sim::lan::Out>> {
         use std::sync::{atomic::AtomicI32, mpsc};
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         game.side.world_root = game.options.game_dir.as_ref().unwrap().join("h082-world");
         std::fs::create_dir_all(&game.side.world_root).unwrap();
         game.lan_host(
@@ -1188,8 +1188,8 @@ pub(in crate::game) mod vehicle_damage_command_tests {
     #[ignore = "daily"]
     fn direct_guest_attributes_adopt_the_target_and_restore_the_issuer() {
         use crate::game::commands::Target;
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
@@ -1316,8 +1316,8 @@ pub(in crate::game) mod vehicle_damage_command_tests {
     #[test]
     #[ignore = "daily"]
     fn existing_attribute_operations_keep_their_exact_success_messages() {
-        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);

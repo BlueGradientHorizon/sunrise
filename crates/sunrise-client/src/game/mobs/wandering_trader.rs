@@ -2,8 +2,8 @@
 //! when it runs out a trader may appear near the player (or the nearest
 //! bell), bringing two llamas on leads, and wanders off after two days.
 use super::{Dim, Game, creatures::Creatures};
-use sunrise_client::save::{read_dat, write_dat};
 use sunrise_gameplay::wandering_trader::{TraderLevel, roll};
+use sunrise_sim::save::{read_dat, write_dat};
 
 pub(in crate::game) use sunrise_gameplay::wandering_trader::Spawner;
 
@@ -44,7 +44,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_WANDERING_TRADERS)
+                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_WANDERING_TRADERS)
         {
             return;
         }

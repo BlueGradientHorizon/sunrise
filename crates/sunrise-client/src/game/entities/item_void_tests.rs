@@ -5,10 +5,10 @@ use super::Dim;
 use crate::game::game_tests::tests::server_game;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
-use sunrise_client::items::ItemStack;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]

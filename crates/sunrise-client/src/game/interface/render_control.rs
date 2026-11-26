@@ -2,7 +2,7 @@
 //! updates (`setblock`, `fill`) to build test scenes.
 use super::Game;
 use serde_json::{Value, json};
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 use sunrise_core::random::RandomSource;
 use sunrise_world::registry::BlockStateId;
 
@@ -55,7 +55,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Ok(Some(json!({ "ok": true, "blocks": count })))
             }
             "particle" => {
-                use sunrise_client::particles::{ParticleOptions, ParticleType};
+                use sunrise_level::particle_options::{ParticleOptions, ParticleType};
                 let ty = ParticleType::from_name(words.get(1).ok_or("missing particle")?)
                     .ok_or("unknown particle type")?;
                 let num = |i: usize, default: f64| -> Result<f64> {
@@ -72,9 +72,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     | ParticleType::BlockMarker => {
                         ParticleOptions::block(ty, "block/stone".into(), 0x808080)
                     }
-                    ParticleType::Item => self.item_particle(
-                        &sunrise_client::items::ItemStack::new("minecraft:apple", 1),
-                    ),
+                    ParticleType::Item => self
+                        .item_particle(&sunrise_items::items::ItemStack::new("minecraft:apple", 1)),
                     ParticleType::ItemSlime
                     | ParticleType::ItemSnowball
                     | ParticleType::ItemCobweb => {
@@ -105,7 +104,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let state = self.world.block(key.0, key.1, key.2);
                 let entity = self
                     .new_block_entity_for_state(state)
-                    .filter(|e| matches!(e, sunrise_client::containers::BlockEntity::Sign(_)))
+                    .filter(|e| matches!(e, sunrise_level::containers::BlockEntity::Sign(_)))
                     .ok_or("no sign there")?;
                 self.world.block_entities.get_or_insert_with(key, || entity);
                 self.open_sign_editor(key, words.get(4) != Some(&"back"));

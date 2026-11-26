@@ -6,9 +6,9 @@
 //! `super.aiStep()`) takes the place travel moved the mob to.
 use super::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
 use std::sync::Arc;
-use sunrise_client::mobs::Species;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_sim::mobs::Species;
 
 /// A frozen serving level with a stone floor at y 99 and water from y 100 to 102 around the
 /// origin; the mob `summon` adds there, walking, set up by `setup`. One tick later: where the
@@ -16,7 +16,7 @@ use sunrise_core::position::ChunkPos;
 fn converted_place(
     summon: &str,
     into: Species,
-    setup: impl FnOnce(&mut sunrise_client::mobs::Mob),
+    setup: impl FnOnce(&mut sunrise_sim::mobs::Mob),
 ) -> (Vec3, Vec3) {
     let mut outcome = None;
     mod_platform::testing::with_mods(Vec::new().into(), || {
@@ -26,7 +26,7 @@ fn converted_place(
             game.set_allow_commands(true);
             game.world
                 .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();

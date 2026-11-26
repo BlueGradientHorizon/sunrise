@@ -1,8 +1,8 @@
 //! `Bee.doHurtTarget`: the stinger, the calm-down and the sting sound follow
 //! only a hit that landed. A creative player, a raised shield and an
 //! invulnerable mob refuse it, and the bee keeps its stinger.
-use sunrise_client::mobs::{Mob, Who, ai::do_hurt_target, goals::Cx};
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{Mob, Who, ai::do_hurt_target, goals::Cx};
 
 pub(in crate::game) fn spawn(
     game: &mut crate::game::ServerGame<'_>,
@@ -19,7 +19,7 @@ pub(in crate::game) fn spawn(
 pub(in crate::game) fn sting(game: &mut crate::game::ServerGame<'_>, bee_id: u32, who: Who) {
     let mut mobs = game.mobs.lift();
     let i = mobs.iter().position(|m| m.id == bee_id).unwrap();
-    let mut test_level = sunrise_client::health::TestLevel::new(0);
+    let mut test_level = sunrise_sim::health::TestLevel::new(0);
     let mut events = Vec::new();
     {
         let w = game.mob_world_base(&[]);
@@ -31,6 +31,6 @@ pub(in crate::game) fn sting(game: &mut crate::game::ServerGame<'_>, bee_id: u32
         do_hurt_target(&mut mobs[i], who, &mut cx);
     }
     game.mobs
-        .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
+        .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
     game.handle_mob_events(events).unwrap();
 }

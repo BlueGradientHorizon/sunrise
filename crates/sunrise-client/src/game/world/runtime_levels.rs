@@ -12,8 +12,8 @@ use mod_api::{LevelRef, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
-use sunrise_client::chunk::{ExtraLevel, LevelShape};
 use sunrise_core::LevelKey;
+use sunrise_level::chunk::{ExtraLevel, LevelShape};
 use sunrise_world::{
     dimension_type::DimensionFacts,
     worldgen::{
@@ -501,7 +501,7 @@ pub(in crate::game::server_side) fn erase_level_files(
     references: bool,
 ) -> std::io::Result<()> {
     let dimensions = root.join("dimensions");
-    let folder = sunrise_client::save::dimension_dir(root, id);
+    let folder = sunrise_sim::save::dimension_dir(root, id);
     // Never the folder of anything but a level: `dimension_dir` gives one under `dimensions/`.
     if folder == dimensions || !folder.starts_with(&dimensions) {
         return Err(std::io::Error::other("not a level folder"));
@@ -710,10 +710,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let below = format!("{id}/");
         self.side.levels.0.runtime.any_below(id)
             || Dim::all().iter().any(|dim| dim.id().starts_with(&below))
-            || folder_holds_levels(&sunrise_client::save::dimension_dir(
-                &self.side.world_root,
-                id,
-            ))
+            || folder_holds_levels(&sunrise_sim::save::dimension_dir(&self.side.world_root, id))
     }
 
     /// Whether the structure references file of `id` is also the file of a level that exists. A
@@ -722,7 +719,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         sharing_references_file(id).iter().any(|other| {
             self.side.levels.0.runtime.knows(other)
                 || Dim::exists(other)
-                || !std::fs::symlink_metadata(sunrise_client::save::dimension_dir(
+                || !std::fs::symlink_metadata(sunrise_sim::save::dimension_dir(
                     &self.side.world_root,
                     other,
                 ))
@@ -791,7 +788,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    fn apply_runtime_open(&mut self, id: &str) -> sunrise_client::Result<()> {
+    fn apply_runtime_open(&mut self, id: &str) -> sunrise_client_core::Result<()> {
         if self.side.levels.0.runtime.is_erasing(id) {
             return Err("the files of an earlier delete are not all removed".into());
         }
@@ -837,7 +834,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Ok(())
     }
 
-    fn apply_runtime_unload(&mut self, id: &str) -> sunrise_client::Result<()> {
+    fn apply_runtime_unload(&mut self, id: &str) -> sunrise_client_core::Result<()> {
         let dim = Dim::extra(id).ok_or("the level is not open")?;
         if self.level_has_players(dim) {
             return Err("a player came in".into());
@@ -883,7 +880,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    fn close_to_delete(&mut self, owner: &'static str, id: &str) -> sunrise_client::Result<()> {
+    fn close_to_delete(
+        &mut self,
+        owner: &'static str,
+        id: &str,
+    ) -> sunrise_client_core::Result<()> {
         // The request passed this when it was made; the folder is derived from nothing less.
         Self::owned_level_id(owner, id).map_err(|error| format!("{error:?}"))?;
         if !self.side.levels.0.runtime.holds(id) && Dim::exists(id) {

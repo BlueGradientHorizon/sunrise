@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_client::mobs::spawner::SpawnerTypeFacts;
+use sunrise_sim::mobs::spawner::SpawnerTypeFacts;
 
 #[cfg(feature = "client")]
 pub(in crate::game) type LoadedWorldRest = (WorldRest, Option<ClientResources>);
@@ -13,7 +13,7 @@ pub(in crate::game) fn load_world_rest(
     spawner_types: HashMap<String, SpawnerTypeFacts>,
     assets: &Assets,
     behaviour_json: &serde_json::Value,
-    gameplay_projection: &[sunrise_client::blocks::GameplayProjection],
+    gameplay_projection: &[sunrise_items::blocks::GameplayProjection],
     entity_models: Option<&sunrise_client::mobs::EntityModelDocument>,
     item_defaults: &sunrise_world::item_defaults::ItemDefaults,
     visibility: sunrise_world::block_render::FaceVisibility,
@@ -30,11 +30,11 @@ pub(in crate::game) fn load_world_rest(
     let registry = assets.registry;
     #[cfg(feature = "client")]
     let builtin = draws.then(|| super::remote::builtin_registries(root).unwrap_or_default());
-    let content = sunrise_client::datapack::DataPack::from_source(
+    let content = sunrise_level::datapack::DataPack::from_source(
         "sunrise-content".into(),
         resource_root.data_changes().clone(),
     );
-    let store = sunrise_client::datapack::DataStore::load(&[&content]);
+    let store = sunrise_level::datapack::DataStore::load(&[&content]);
     let files = store.files.into_iter().collect::<Vec<_>>();
     let overlay = &sunrise_world::loot::PackOverlay {
         conditions,
@@ -54,7 +54,7 @@ pub(in crate::game) fn load_world_rest(
         progress.set(7);
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
-        let _recipe_files = sunrise_client::json_folder::read(&root.join("data/minecraft/recipe"));
+        let _recipe_files = sunrise_world::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = startup::time("rest.recipe_sources", || {
             lan::sync::initial_sources(root, &resources.core.item_data, &items, overlay)
         })?;
@@ -62,7 +62,7 @@ pub(in crate::game) fn load_world_rest(
             Recipes::from_resolved(root, &items, overlay, &sources)
         })?;
         let stations = startup::time("rest.stations", || {
-            sunrise_client::stations::StationData::from_sources(
+            sunrise_sim::stations::StationData::from_sources(
                 root,
                 &items,
                 overlay,
@@ -142,7 +142,7 @@ pub(in crate::game) fn load_world_rest(
                 (k, Arc::new(v))
             })
             .collect();
-        let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts.states.len())?;
+        let mut mob_data = sunrise_sim::mobs::MobData::load(resource_root, facts.states.len())?;
         // NeoForge keys placements by EntityType, not by the subset backed by MobTypes.
         // Use exactly the registry the spawners will consult, with facts already validated.
         mob_data
@@ -166,7 +166,7 @@ pub(in crate::game) fn load_world_rest(
         } else {
             None
         };
-        sunrise_client::mobs::trial_spawner::load_registry(root);
+        sunrise_sim::mobs::trial_spawner::load_registry(root);
         #[cfg(feature = "client")]
         {
             Ok((mob_types, mob_data, client_mobs))
@@ -178,7 +178,7 @@ pub(in crate::game) fn load_world_rest(
     };
     let load_transformers = || -> Result<_> {
         let _step = startup::step("rest.transformers_models");
-        let transformers = sunrise_client::block_transform::Transformers::load(root, registry)?;
+        let transformers = sunrise_sim::block_transform::Transformers::load(root, registry)?;
         #[cfg(feature = "client")]
         let models = draws.then(|| {
             let player_type = match entity_models {
@@ -351,7 +351,7 @@ pub(in crate::game) fn load_world_rest(
         end_environment,
         behaviours: Arc::new(behaviours?),
         mob_types,
-        living_type_keys: sunrise_client::health::LivingTypeKeys::resolve(),
+        living_type_keys: sunrise_sim::health::LivingTypeKeys::resolve(),
         mob_data,
         spawner_types,
     };

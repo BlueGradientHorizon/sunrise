@@ -134,9 +134,9 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
             .unwrap()
             .hub
             .update_guest(13, |g| {
-                let dirt = Some(sunrise_client::items::ItemStack::new("minecraft:dirt", 64));
+                let dirt = Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 64));
                 g.inventory.iter_mut().for_each(|s| *s = dirt.clone());
-                g.inventory[5] = Some(sunrise_client::items::ItemStack {
+                g.inventory[5] = Some(sunrise_items::items::ItemStack {
                     count: 60,
                     ..engine.clone()
                 });
@@ -153,7 +153,7 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
         assert_eq!(dropped.pickup_delay, 0, "no pickup delay");
         assert_eq!(
             dropped.target,
-            Some(sunrise_client::lan::playerdata::uuid_ints(13)),
+            Some(sunrise_sim::lan::playerdata::uuid_ints(13)),
             "only its player picks it up"
         );
         game.lan
@@ -169,7 +169,7 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
         let fake = game.dropped.last().unwrap();
         assert_eq!(
             fake.stack,
-            sunrise_client::items::ItemStack { count: 1, ..engine }
+            sunrise_items::items::ItemStack { count: 1, ..engine }
         );
         assert_eq!((fake.pickup_delay, fake.age), (32767, 5999));
     });

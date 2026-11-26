@@ -1,6 +1,6 @@
 //! Server-side sheep dyeing (`DyeItem.interactLivingEntity`).
 use super::Game;
-use {sunrise_client::mobs::sheep_dye, sunrise_sim::first_person_sim::Hand};
+use {sunrise_sim::first_person_sim::Hand, sunrise_sim::mobs::sheep_dye};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `DyeItem.interactLivingEntity` on the server: applies wool dye, broadcasts the

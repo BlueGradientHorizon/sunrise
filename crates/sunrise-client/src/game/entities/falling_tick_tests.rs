@@ -6,8 +6,8 @@ use mod_api::{
 };
 use mod_platform::__private::part_tests::{falling_tick_game_thread, falling_ticks_heard};
 use std::sync::{Arc, Mutex};
-use sunrise_client::chunk::Chunk;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]

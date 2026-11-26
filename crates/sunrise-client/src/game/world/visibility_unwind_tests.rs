@@ -5,11 +5,11 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{
-    chunk::Chunk,
+use sunrise_level::chunk::Chunk;
+use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
+use sunrise_sim::{
     motion::PlayerMotion,
     save::{LevelShape, SaveDir},
-    server::user_lists::{BanList, IpBanList, OpList, WhiteList},
 };
 
 pub(in crate::game::server_side) fn with_save_game(
@@ -39,7 +39,7 @@ pub(in crate::game::server_side) fn with_save_game(
         })));
         game.build_registries();
         game.ui.dispatcher = chat_common::SessionDispatcher(Arc::new(
-            sunrise_client::command::vanilla::build_for(false, true),
+            sunrise_command::vanilla::build_for(false, true),
         ));
         game.world
             .chunks
@@ -53,7 +53,7 @@ pub(in crate::game::server_side) fn with_save_game(
 
 #[derive(Default)]
 struct PanicPickup {
-    visibility: sunrise_client::join_seq::visibility::Visibility,
+    visibility: sunrise_sim::join_seq::visibility::Visibility,
     calls: Arc<AtomicUsize>,
 }
 #[mod_api::sunrise_mod]
@@ -86,7 +86,7 @@ fn visibility_unwind_save() {
     let root = PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
         .join(format!("visibility-unwind-{}-{nonce}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
-    let visibility = sunrise_client::join_seq::visibility::Visibility::default();
+    let visibility = sunrise_sim::join_seq::visibility::Visibility::default();
     let calls = Arc::new(AtomicUsize::new(0));
     with_save_game(&root, |game| {
         game.dropped.bind_visibility(&visibility);

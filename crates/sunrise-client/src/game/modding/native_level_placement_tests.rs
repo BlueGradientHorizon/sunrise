@@ -9,7 +9,7 @@ fn loaded(game: &mut crate::game::ServerGame<'_>) {
     game.options.dedicated = Some(Vec::new());
     game.world.chunks.insert(
         (0, 0),
-        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
     );
 }
 
@@ -50,7 +50,8 @@ fn a_block_placed_without_a_player_runs_set_placed_by() {
 #[ignore = "daily"]
 fn a_post_write_placement_reads_the_stack_without_loading_its_data() {
     use crate::game::api_values::TryIntoApi;
-    use sunrise_client::{block_entity_item::BLOCK_ENTITY_DATA, items::ItemStack};
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::block_entity_item::BLOCK_ENTITY_DATA;
 
     with_game(|game| {
         loaded(game);
@@ -65,7 +66,7 @@ fn a_post_write_placement_reads_the_stack_without_loading_its_data() {
         assert_eq!(game.world.block(pos[0], pos[1], pos[2]), jukebox);
 
         let mut stack = ItemStack::new("minecraft:jukebox", 1);
-        let data = sunrise_client::command::snbt::parse_fully(
+        let data = sunrise_command::snbt::parse_fully(
             r#"{id:"minecraft:jukebox",RecordItem:{id:"minecraft:music_disc_cat",count:1}}"#,
         )
         .unwrap();
@@ -115,7 +116,7 @@ fn a_code_placement_notifies_only_the_blocks_part_with_its_stack() {
     use crate::game::api_values::TryIntoApi;
     use mod_api::{EntityRef, HostTransaction, LevelRef, ServerHost, SetPlacedByEvent};
     use std::sync::{Arc, Mutex};
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     #[derive(Debug, PartialEq)]
     struct Notice {
@@ -209,7 +210,7 @@ fn a_code_placement_notifies_only_the_blocks_part_with_its_stack() {
 #[test]
 #[ignore = "daily"]
 fn a_command_block_placement_callback_saves_updated_entity_data() {
-    use sunrise_client::containers::BlockEntity;
+    use sunrise_level::containers::BlockEntity;
 
     with_game(|game| {
         loaded(game);
@@ -228,7 +229,7 @@ fn a_command_block_placement_callback_saves_updated_entity_data() {
         let feedback = game
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+            .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         entity.track_output = !feedback;
         game.world.modified.clear();
         assert_eq!(level.set_placed_by(game, pos, None), Ok(true));

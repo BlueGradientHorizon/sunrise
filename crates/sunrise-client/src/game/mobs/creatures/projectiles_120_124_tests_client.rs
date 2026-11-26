@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use sunrise_client::mobs::Who;
+use sunrise_sim::mobs::Who;
 
 pub(in crate::game) fn step_recording(
     game: &mut crate::game::ServerGame<'_>,

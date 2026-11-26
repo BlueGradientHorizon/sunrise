@@ -8,9 +8,9 @@ use super::*;
 use crate::game::*;
 use std::path::PathBuf;
 use std::time::Instant;
-use sunrise_client::effects::EffectInstance;
-use sunrise_client::motion::PlayerMotion;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_level::effects::EffectInstance;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::motion::PlayerMotion;
 
 /// The particle type an effect shows, or a panic naming the effect.
 fn ty(effect: &str, ambient: bool) -> ParticleType {
@@ -113,7 +113,7 @@ fn with_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
 #[ignore = "daily"]
 fn an_oozing_player_swirls_slime_ball_crumbs() {
     with_game(|g| {
-        let oozing = sunrise_client::brewing::effect("oozing").unwrap().id;
+        let oozing = sunrise_level::brewing::effect("oozing").unwrap().id;
         g.potions.effects.add(EffectInstance::new(oozing, 400, 0));
         g.player = Some(PlayerMotion::new(g.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
         // `ParticleEngine.add` records what the level is asked for instead of

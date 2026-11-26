@@ -1,11 +1,11 @@
 //! Placement transport state belongs to the actual connection and open menu.
 use super::*;
 use std::collections::{BTreeMap, HashMap};
-use sunrise_client::recipe_book::{
+use sunrise_protocol::packets::{configuration::CustomPayload, play::Clientbound as C};
+use sunrise_sim::recipe_book::{
     ModBookIndex, placement_sync as sync, settings_codec,
     settings_sync::{CHANNEL, Message},
 };
-use sunrise_protocol::packets::{configuration::CustomPayload, play::Clientbound as C};
 
 // no wire: live connection authority and validated engine presentation caches.
 #[derive(Default)]

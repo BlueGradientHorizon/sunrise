@@ -149,7 +149,7 @@ mod tests {
             let metadata = WorkerResources::get(registry).unwrap().metadata;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let state = index.to_api(stone).unwrap();
-            let data = sunrise_client::vanillagen::shared_data(&root, registry).unwrap();
+            let data = sunrise_sim::vanillagen::shared_data(&root, registry).unwrap();
             assert!(std::ptr::eq(data.registry(), registry));
             first = Some((registry, index, metadata, stone, state, data));
         });
@@ -166,12 +166,12 @@ mod tests {
             assert!(std::ptr::eq(old_metadata, metadata));
             // Repeated queries within a lifetime share the retained index and generator data.
             assert!(Arc::ptr_eq(&index, &prepare(registry).unwrap()));
-            let data = sunrise_client::vanillagen::shared_data(&root, registry).unwrap();
+            let data = sunrise_sim::vanillagen::shared_data(&root, registry).unwrap();
             assert!(!Arc::ptr_eq(&old_data, &data));
             assert!(std::ptr::eq(data.registry(), registry));
             assert!(Arc::ptr_eq(
                 &data,
-                &sunrise_client::vanillagen::shared_data(&root, registry).unwrap()
+                &sunrise_sim::vanillagen::shared_data(&root, registry).unwrap()
             ));
             assert!(std::ptr::eq(old_data.registry(), old_registry));
             // A worker with no owning-thread TLS still reads the original immutable snapshot.

@@ -1,5 +1,6 @@
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::{brewing::BrewingStand, containers::BlockEntity, items::ItemStack};
+use sunrise_items::items::ItemStack;
+use sunrise_level::{brewing::BrewingStand, containers::BlockEntity};
 
 /// `BrewingStandBlockEntity.serverTick` sets changed when a brew starts
 /// (the fuel is taken and the timer begins); the block state only carries

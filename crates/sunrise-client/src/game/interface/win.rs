@@ -5,10 +5,10 @@
 use super::{Game, Screen};
 use std::time::Instant;
 use sunrise_client::{
-    Result,
     hud::{EndPortalFill, HudBatch},
     win_screen::{Key, WinScreen},
 };
+use sunrise_client_core::Result;
 use winit::keyboard::KeyCode;
 
 /// What closing the screen does (`WinScreen.onFinished`).

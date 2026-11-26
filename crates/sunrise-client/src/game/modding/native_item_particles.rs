@@ -1,6 +1,7 @@
 //! Reuse the game's stack model resolution for mod particle requests.
 use super::Game;
-use sunrise_client::{items::ItemStack, particles::ParticleOptions};
+use sunrise_items::items::ItemStack;
+use sunrise_level::particle_options::ParticleOptions;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn item_particle_options(

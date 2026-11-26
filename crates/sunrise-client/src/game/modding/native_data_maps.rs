@@ -55,7 +55,7 @@ pub(crate) trait MapRegistries {
 pub(crate) struct WorldRegistries<'a> {
     ids: BTreeMap<&'a str, &'a [String]>,
     datapack: Option<&'a mod_api::DatapackRegistrySet>,
-    items: &'a sunrise_client::items::Items,
+    items: &'a sunrise_items::items::Items,
     root: &'a std::path::Path,
     overlay: &'a sunrise_world::loot::PackOverlay<'a>,
     id_sets: RefCell<HashMap<String, HashSet<String>>>,
@@ -66,7 +66,7 @@ impl<'a> WorldRegistries<'a> {
     pub(in crate::game::server_side) fn new(
         ids: impl IntoIterator<Item = (&'a str, &'a [String])>,
         datapack: Option<&'a mod_api::DatapackRegistrySet>,
-        items: &'a sunrise_client::items::Items,
+        items: &'a sunrise_items::items::Items,
         root: &'a std::path::Path,
         overlay: &'a sunrise_world::loot::PackOverlay<'a>,
     ) -> Self {
@@ -134,13 +134,13 @@ impl MapRegistries for WorldRegistries<'_> {
         match registry {
             "minecraft:item" => members(&self.items.item_tags),
             "minecraft:block" => members(&self.items.block_tags),
-            sunrise_client::items::EntityTypeTags::REGISTRY => {
+            sunrise_items::items::EntityTypeTags::REGISTRY => {
                 members(self.items.entity_type_tags.members())
             }
             _ => {
                 let mut loaded = self.tags.borrow_mut();
                 let tags = loaded.entry(registry.to_owned()).or_insert_with(|| {
-                    sunrise_client::items::load_tags(self.root, &folder(registry), self.overlay)
+                    sunrise_items::items::load_tags(self.root, &folder(registry), self.overlay)
                         .unwrap_or_else(|e| {
                             log::warn!("Sunrise: the {registry} tags data maps read: {e}");
                             HashMap::new()
@@ -162,8 +162,7 @@ pub(in crate::game) type MergedDataMaps = LoadedMaps<Value>;
 pub(crate) struct DataMaps {
     pub(in crate::game) biome_keys: std::sync::Arc<mod_api::__private::BiomeKeys>,
     maps: BTreeMap<String, HashMap<String, Vec<(String, Tag)>>>,
-    pub(in crate::game) mob_maps:
-        std::sync::Arc<sunrise_client::neoforge_mob_maps::NeoForgeMobMaps>,
+    pub(in crate::game) mob_maps: std::sync::Arc<sunrise_sim::neoforge_mob_maps::NeoForgeMobMaps>,
 }
 
 /// `minecraft:` for an id written without a namespace.
@@ -673,7 +672,7 @@ mod tests {
             "example:spell",
             &["example:fire"],
         );
-        let items = sunrise_client::items::Items::empty();
+        let items = sunrise_items::items::Items::empty();
         let registries = WorldRegistries::new(
             [],
             Some(&set),

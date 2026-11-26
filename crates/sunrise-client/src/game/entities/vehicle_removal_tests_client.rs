@@ -54,9 +54,15 @@ fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
     with_removal_test_hooks(Reenter(events.clone()), |game| {
         push_pig(game, 71);
         push_pig(game, 72);
-        game.mob_object_mut(71).unwrap().extra.effects.push(
-            sunrise_client::mobs::StoredEffect::new("minecraft:wind_charged", 600, 0),
-        );
+        game.mob_object_mut(71)
+            .unwrap()
+            .extra
+            .effects
+            .push(sunrise_sim::mobs::StoredEffect::new(
+                "minecraft:wind_charged",
+                600,
+                0,
+            ));
         game.native_joins_flush(false, 0);
         assert!(game.try_mount_mob(72, 71));
 

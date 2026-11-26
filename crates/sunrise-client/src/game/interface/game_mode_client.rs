@@ -1,6 +1,6 @@
 use super::{Game, Screen};
 use crate::game::server_side::game_mode::inventory_after_infinite_materials;
-use sunrise_client::command::args::GameMode;
+use sunrise_command::args::GameMode;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.

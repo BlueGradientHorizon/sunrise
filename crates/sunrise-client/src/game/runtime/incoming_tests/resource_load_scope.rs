@@ -65,7 +65,7 @@ fn loader_workers_keep_owning_mod_sets_and_share_only_matching_numeric_payloads(
                                     ),
                                     stone
                                 );
-                                sunrise_client::assets::Assets::load(root).unwrap().registry
+                                sunrise_level::assets::Assets::load(root).unwrap().registry
                             })
                             .join()
                             .unwrap()

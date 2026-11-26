@@ -4,12 +4,10 @@
 //! flames, the connection particles towards the player, the ambient sound).
 //! Every draw comes from the client level's random.
 use super::Game;
-use sunrise_client::{
-    containers::BlockEntity,
-    mobs::trial_spawner::TrialState,
-    particles::{ParticleOptions, ParticleType as T},
-};
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType as T};
+use sunrise_sim::mobs::trial_spawner::TrialState;
 
 type Pos = (i32, i32, i32);
 
@@ -180,7 +178,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .assets
             .registry
             .state(self.world.block(key.0, key.1, key.2))?;
-        if sunrise_client::block_entity_types::factory_block(&block.name)
+        if sunrise_client_core::block_entity_types::factory_block(&block.name)
             != "minecraft:trial_spawner"
         {
             return None;
@@ -262,7 +260,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(block) = self.pack.assets.registry.state(state) else {
             return;
         };
-        if sunrise_client::block_entity_types::factory_block(&block.name) != "minecraft:vault" {
+        if sunrise_client_core::block_entity_types::factory_block(&block.name) != "minecraft:vault"
+        {
             return;
         }
         let ominous = block.properties.get("ominous").is_some_and(|v| v == "true");
@@ -313,7 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let me = self
             .remote
             .as_ref()
-            .map(|r| sunrise_client::lan::playerdata::uuid_ints(r.profile))
+            .map(|r| sunrise_sim::lan::playerdata::uuid_ints(r.profile))
             .or(self.level.player_uuid)
             .unwrap_or_default();
         let range = vault.connected_particles_range;
@@ -327,7 +326,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             } else if let Some(remote) = self.remote.as_ref()
                 && let Some(&id) = remote
                     .level_uuids
-                    .get(&sunrise_client::lan::playerdata::ints_uuid(*uuid))
+                    .get(&sunrise_sim::lan::playerdata::ints_uuid(*uuid))
                 && let Some(m) = self.mobs.iter().find(|m| m.id == id as u32 && !m.removed)
             {
                 players.push(([m.position.x, m.position.y, m.position.z], m.height()));

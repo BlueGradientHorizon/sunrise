@@ -10,10 +10,10 @@ use super::{Game, Lerp, Remote};
 use crate::game::general::general_type_catalog;
 use indexmap::IndexMap;
 use std::collections::HashMap;
-use sunrise_client::join_seq::JoinSeq;
 use sunrise_core::geometry::{Aabb, Vec3};
 #[allow(unused_imports)]
 use sunrise_protocol::general_entity::{self, Message};
+use sunrise_sim::join_seq::JoinSeq;
 
 /// One general row the server shows the window.
 #[derive(Clone, Debug, PartialEq)]
@@ -542,11 +542,12 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn atomic_pairing_bundle_spawns_general_row_with_synced_attachments() {
         use super::super::tests::{connect_play_test, offer_test_payloads, spawn_menu_test};
-        use sunrise_client::{net::Event, raw_payloads};
+        use sunrise_client::net::Event;
         use sunrise_protocol::{
             attachment_sync,
             packets::{Empty, configuration::CustomPayload},
         };
+        use sunrise_sim::raw_payloads;
         mod_platform::__private::initialize().unwrap();
         let _phase = mod_platform::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];

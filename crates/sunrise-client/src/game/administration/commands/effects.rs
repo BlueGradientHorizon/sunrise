@@ -1,12 +1,12 @@
 //! `/effect` (EffectCommands) and `/enchant` (EnchantCommand).
 use super::{Arg, Context, Game, R, Target, err, texts};
 use mod_api::EquipmentSlot;
-use sunrise_client::{
+use sunrise_client_core::text::{self, Style, Text};
+use sunrise_items::equipment::MAINHAND;
+use sunrise_level::{
     brewing::{self, namespaced},
     effects::EffectInstance,
-    text::{self, Style, Text},
 };
-use sunrise_items::equipment::MAINHAND;
 
 /// `CommandResponseTracker` over targets: elements with a non-zero result.
 #[derive(Default)]
@@ -173,7 +173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mobs
                 .iter()
                 .find(|m| m.id == id)
-                .and_then(|m| sunrise_client::mobs::finalize::item_stack(m, MAINHAND)),
+                .and_then(|m| sunrise_sim::mobs::finalize::item_stack(m, MAINHAND)),
             _ => self
                 .equipment_stack_for(t, EquipmentSlot::MainHand)
                 .map(|stack| stack.project().into_owned()),

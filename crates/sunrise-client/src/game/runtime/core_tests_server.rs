@@ -9,15 +9,15 @@ fn eager_saves_wait_for_an_open_world_and_for_light() {
     let dir = std::env::temp_dir().join(format!("sunrise-eager-game-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    game.side.save.0 = Arc::new(sunrise_client::save::SaveDir::new(
+    game.side.save.0 = Arc::new(sunrise_sim::save::SaveDir::new(
         dir.clone(),
-        sunrise_client::save::LevelShape::OVERWORLD,
+        sunrise_sim::save::LevelShape::OVERWORLD,
         Some(Default::default()),
     ));
     Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
     game.world
         .chunks
-        .insert((1, 0), Arc::new(sunrise_client::chunk::Chunk::empty(1, 0)));
+        .insert((1, 0), Arc::new(sunrise_level::chunk::Chunk::empty(1, 0)));
     game.world.modified.extend([(0, 0), (1, 0)]);
     game.save_chunks_eagerly(); // no world open: nothing to save into
     assert!(game.world.modified.contains(&(0, 0)));
@@ -37,12 +37,12 @@ fn eager_saves_wait_for_an_open_world_and_for_light() {
 #[ignore = "daily"]
 fn fence_ties_without_a_lead_only_on_main_hand() {
     use mod_api::BlockUpdateFlags;
-    use sunrise_client::mobs::leash::Holder;
+    use sunrise_sim::mobs::leash::Holder;
     super::native_entity_refs::tests::with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let level = game.level("minecraft:overworld").unwrap();
         let fence = game
             .pack
@@ -61,7 +61,7 @@ fn fence_ties_without_a_lead_only_on_main_hand() {
             inside: false,
         };
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let mut mob = sunrise_client::mobs::Mob::new(
+        let mut mob = sunrise_sim::mobs::Mob::new(
             12,
             kind,
             sunrise_core::geometry::Vec3::new(1.0, 64.0, 1.0),
@@ -121,7 +121,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
         let stone_key = mod_platform::__private::part_tests::block_key("stone");
         let name = stone_key.id(game).expect("stone is registered").to_owned();
         let dir = std::env::temp_dir().join(format!("sunrise-key-tags-{}", std::process::id()));
-        game.side.session_lock.0 = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
+        game.side.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(&dir).unwrap());
         assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(false));
         assert_eq!(
             game.block_in_tag(stone_key, "base_stone_overworld"),
@@ -141,16 +141,16 @@ fn reload_resolves_parts_against_reloaded_tags() {
         let previous = std::sync::Arc::new(mod_api::DatapackRegistrySet::from_candidate(
             mod_api::DatapackCandidate::build(&[], &[]).unwrap(),
         ));
-        sunrise_client::datapack_net::serve(Some(previous.clone()));
+        sunrise_sim::datapack_net::serve(Some(previous.clone()));
         let prepared = game.prepare_world_reload(&stack, &root).unwrap();
         // Preparation must not publish to joining clients.
         assert!(std::sync::Arc::ptr_eq(
             &previous,
-            &sunrise_client::datapack_net::served().unwrap(),
+            &sunrise_sim::datapack_net::served().unwrap(),
         ));
         game.install_world_tables(prepared);
         // A successful empty publication clears the previous world's served registries too.
-        assert!(sunrise_client::datapack_net::served().is_none());
+        assert!(sunrise_sim::datapack_net::served().is_none());
         game.run_native_advancement_grants();
         assert_eq!(stone_key.id(game), Some(name.as_str()));
         assert_eq!(
@@ -214,7 +214,7 @@ fn right_click_block_controls_cauldron_use() {
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let level = game.level("minecraft:overworld").unwrap();
         let empty = game
             .pack
@@ -280,13 +280,13 @@ fn right_click_block_controls_cauldron_use() {
             Ok(true)
         );
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let mut mob = sunrise_client::mobs::Mob::new(
+        let mut mob = sunrise_sim::mobs::Mob::new(
             12,
             kind,
             sunrise_core::geometry::Vec3::new(1.0, 64.0, 1.0),
             0.0,
         );
-        mob.extra.leash = Some(sunrise_client::mobs::leash::Holder::Player);
+        mob.extra.leash = Some(sunrise_sim::mobs::leash::Holder::Player);
         game.mobs.push(mob);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:lead", 1));
         game.side.guest_use = Some(GuestUse::on_block(Hand::Main));
@@ -297,7 +297,7 @@ fn right_click_block_controls_cauldron_use() {
         assert_eq!(calls.load(Ordering::SeqCst), before + 1);
         assert_eq!(
             game.mobs.last().unwrap().extra.leash,
-            Some(sunrise_client::mobs::leash::Holder::Player)
+            Some(sunrise_sim::mobs::leash::Holder::Player)
         );
 
         // A spectator's packet reaches the event, even when canceled.

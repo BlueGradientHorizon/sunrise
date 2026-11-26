@@ -15,8 +15,9 @@ pub(in crate::game) mod tests {
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
-    use sunrise_client::{chunk::Chunk, items::ItemStack};
     use sunrise_core::{position::BlockPos, ticks::TickPriority};
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::chunk::Chunk;
     use sunrise_world::{
         level::{BlockMapValue, BlockMaps, Landing, LevelAccess},
         registry::BlockStateId,
@@ -340,7 +341,7 @@ pub(in crate::game) mod tests {
                 game.side
                     .tickets
                     .0
-                    .update(Some(sunrise_client::ticket_levels::Sources {
+                    .update(Some(sunrise_sim::ticket_levels::Sources {
                         forced: vec![(0, 0)],
                         ..Default::default()
                     }));
@@ -534,7 +535,7 @@ pub(in crate::game) mod tests {
                 game.side
                     .tickets
                     .0
-                    .update(Some(sunrise_client::ticket_levels::Sources {
+                    .update(Some(sunrise_sim::ticket_levels::Sources {
                         forced: vec![(0, 0)],
                         ..Default::default()
                     }));

@@ -5,8 +5,8 @@ use crate::game::commands::knot_identity_tests::step;
 use crate::game::commands::knot_identity_tests::summon_pig;
 use crate::game::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
 #[test]
 #[ignore = "daily"]

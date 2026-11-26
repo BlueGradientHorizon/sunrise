@@ -1,6 +1,8 @@
 use super::Game;
-use sunrise_client::{block_entity_item, containers::BlockEntity, items::ItemStack, save};
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::{block_entity_item, save};
 
 impl Game<'_, crate::game::client_side::ClientState> {
     /// Client arm of [`Game::side_encode_live_block_entity`].

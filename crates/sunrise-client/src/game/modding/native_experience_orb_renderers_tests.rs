@@ -11,9 +11,9 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::entities::ExperienceOrb;
 use sunrise_client::mesher::Vertex;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::entities::ExperienceOrb;
 
 /// One stone quad a block wide, `height` blocks above the entity.
 fn raised_quad(draw: &mut dyn BlockEntityDrawContext, height: f32) {

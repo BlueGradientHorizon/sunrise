@@ -1,10 +1,10 @@
 use crate::game::server_side::beehives::GameHive;
-use sunrise_client::{
+use sunrise_core::nbt::Tag;
+use sunrise_core::random::LegacyRandom;
+use sunrise_sim::{
     beehive::HiveHost,
     mobs::{Mob, bee},
 };
-use sunrise_core::nbt::Tag;
-use sunrise_core::random::LegacyRandom;
 
 impl HiveHost for GameHive<'_, '_> {
     fn random(&mut self) -> &mut LegacyRandom {
@@ -32,10 +32,10 @@ impl HiveHost for GameHive<'_, '_> {
         }
     }
     fn load(&mut self, tag: &Tag) -> Option<Mob> {
-        let kind = sunrise_client::entity_nbt::kind(tag)?;
+        let kind = sunrise_sim::entity_nbt::kind(tag)?;
         if !self.game.items().entity_type_tags.has_flag(
             &kind,
-            sunrise_client::items::EntityTypeTags::BEEHIVE_INHABITORS,
+            sunrise_items::items::EntityTypeTags::BEEHIVE_INHABITORS,
         ) {
             return None;
         }

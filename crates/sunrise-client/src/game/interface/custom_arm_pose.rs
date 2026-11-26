@@ -16,7 +16,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let selected =
-            sunrise_client::mobs::anim::humanoid_arm_poses(mob, *poses, mob.anim.attack_anim);
+            sunrise_sim::mobs::anim::humanoid_arm_poses(mob, *poses, mob.anim.attack_anim);
         let humanoid = mod_api::HumanoidRenderState {
             main_arm_pose: selected[0].try_into_api().unwrap(),
             off_arm_pose: selected[1].try_into_api().unwrap(),

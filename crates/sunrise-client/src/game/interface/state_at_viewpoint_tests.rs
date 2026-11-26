@@ -2,7 +2,8 @@
 //! camera's fluid follows the answer.
 use crate::game::native_entity_refs::tests::with_client_game;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, fog::FogType};
+use sunrise_client::fog::FogType;
+use sunrise_level::chunk::Chunk;
 
 #[test]
 #[ignore = "daily"]

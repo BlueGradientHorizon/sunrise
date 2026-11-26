@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Transfer the entity-owned state that is stored outside `Mob`.
     pub(in crate::game) fn transfer_conversion_identity(&mut self, from: u32, to: u32) {
         use crate::game::commands::Target;
-        use sunrise_client::save::uuid_text;
+        use sunrise_sim::save::uuid_text;
 
         let tags = self.tags_of(Target::Mob(from));
         if !tags.is_empty() {
@@ -51,9 +51,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 mod tests {
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{AttachmentType, Holder};
-    use sunrise_client::mobs::{Mob, conversion::Params};
     use sunrise_core::{geometry::Vec3, nbt::Tag};
     use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError};
+    use sunrise_sim::mobs::{Mob, conversion::Params};
 
     static MARK: AttachmentType<i32> = AttachmentType {
         namespace: "conversion_test",

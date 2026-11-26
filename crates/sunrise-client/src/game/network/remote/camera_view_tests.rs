@@ -3,15 +3,14 @@
 //! other living entities' effects for it (`ClientPacketListener.handleUpdateMobEffect`).
 use crate::game::native_entity_refs::tests::with_client_game;
 use std::sync::Arc;
-use sunrise_client::{
-    chunk::Chunk, gfx::pack_uniforms::ViewEntity, level_loading::Reason, motion::PlayerMotion,
-    options_file::V,
-};
+use sunrise_client::{gfx::pack_uniforms::ViewEntity, level_loading::Reason, options_file::V};
 use sunrise_core::geometry::Vec3;
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 /// The local player's entity id.
 pub(in crate::game) const OWN: i32 = 7;
@@ -250,8 +249,8 @@ pub(in crate::game) fn set_light(
     for (i, v) in all.iter_mut().enumerate() {
         *v = section.light(i);
     }
-    all[sunrise_client::chunk::index(at.x, at.y, at.z)] = light;
-    section.light = sunrise_client::chunk::Light::from_slice(&all);
+    all[sunrise_level::chunk::index(at.x, at.y, at.z)] = light;
+    section.light = sunrise_level::chunk::Light::from_slice(&all);
 }
 
 pub(in crate::game) fn ride(
@@ -474,7 +473,7 @@ fn a_driven_mounts_effects_count_down_in_its_own_tick() {
         ride(game, HORSE, vec![OWN]);
         assert_eq!(game.driven_mount().map(|m| m.id), Some(HORSE as u32));
         update(game, HORSE, "minecraft:speed", 100, 0);
-        assert!(game.remote_ride(sunrise_client::sprint::Keys::default()));
+        assert!(game.remote_ride(sunrise_sim::sprint::Keys::default()));
         assert_eq!(kept(game, HORSE), Some(vec![("speed", 99)]));
         game.tick_remote_entities(true);
         assert_eq!(kept(game, HORSE), Some(vec![("speed", 99)]));

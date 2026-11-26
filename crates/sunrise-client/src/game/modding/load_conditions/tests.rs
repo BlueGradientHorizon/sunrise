@@ -123,7 +123,7 @@ fn malformed_known_recipe_stops_dedicated_world_startup() {
                         Some(1),
                         true,
                         None,
-                        Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                        Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
                     )
                     .unwrap();
                     request.save_root = scratch.path().join("refused-startup");
@@ -170,7 +170,7 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                     Some(1),
                     true,
                     None,
-                    Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                    Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
                 )
                 .unwrap();
                 request.save_root = scratch.path().join("save");
@@ -247,7 +247,7 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                     .map(|(id, _)| id.clone())
                     .collect();
                 let old_generation = game.recipes().by_type["minecraft:crafting"].clone();
-                let grid = [Some(sunrise_client::items::ItemStack::new(
+                let grid = [Some(sunrise_items::items::ItemStack::new(
                     "minecraft:flint",
                     1,
                 ))];

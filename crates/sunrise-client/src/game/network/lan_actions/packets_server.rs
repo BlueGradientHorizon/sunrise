@@ -13,19 +13,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let message = sunrise_client::text::Text::translate(
+        let message = sunrise_client_core::text::Text::translate(
             if too_high {
                 "build.tooHigh"
             } else {
                 "build.tooLow"
             },
-            &[sunrise_client::text::Text::literal(limit.to_string())],
+            &[sunrise_client_core::text::Text::literal(limit.to_string())],
         )
-        .with_color(sunrise_client::text::RED);
+        .with_color(sunrise_client_core::text::RED);
         host.hub.send_to(
             conn,
             &C::SystemChat(play::SystemChat {
-                content: sunrise_client::lan::data::component_nbt(&message.component()),
+                content: sunrise_sim::lan::data::component_nbt(&message.component()),
                 overlay: true,
             }),
         );
@@ -135,7 +135,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let guest = &host.hub.guests[gi];
         let (conn, from) = (guest.conn, Dim::from_id(&guest.dimension));
-        let uuid = sunrise_client::lan::playerdata::uuid_ints(uuid);
+        let uuid = sunrise_sim::lan::playerdata::uuid_ints(uuid);
         let Some((dim, target)) = Dim::all().into_iter().find_map(|dim| {
             self.level_target_by_uuid(dim, uuid)
                 .map(|target| (dim, target))
@@ -314,7 +314,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // it doesn't show. Prepare the repair even if menu validation closes the window.
         const OFFHAND_BUTTON: i8 = crate::game::shield::OFFHAND_SLOT as i8;
         let swap = if let S::ContainerClick(click) = &packet
-            && click.input == sunrise_client::lan::menu::input::SWAP
+            && click.input == sunrise_sim::lan::menu::input::SWAP
             && matches!(click.button, 0..=8 | OFFHAND_BUTTON)
         {
             use super::super::lan_menus::ClickReply;
@@ -1044,20 +1044,20 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.guest_quiet_commands(conn, &p.data)
             }
             S::CustomPayload(p)
-                if p.channel == sunrise_client::recipe_book::settings_sync::CHANNEL =>
+                if p.channel == sunrise_sim::recipe_book::settings_sync::CHANNEL =>
             {
                 self.guest_book_settings(conn, &p.data)
             }
-            S::CustomPayload(p) if p.channel == sunrise_client::lan::recipes::TRANSFER_CHANNEL => {
+            S::CustomPayload(p) if p.channel == sunrise_sim::lan::recipes::TRANSFER_CHANNEL => {
                 self.guest_recipe_transfer(conn, &p.data);
             }
-            S::CustomPayload(p) if p.channel == sunrise_client::lan::recipes::CHECK_CHANNEL => {
+            S::CustomPayload(p) if p.channel == sunrise_sim::lan::recipes::CHECK_CHANNEL => {
                 self.guest_recipe_check(conn, &p.data);
             }
-            S::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
+            S::CustomPayload(p) if p.channel == sunrise_sim::perf_net::CHANNEL => {
                 self.guest_perf(conn, &p.data)
             }
-            S::CustomPayload(p) if p.channel == sunrise_client::lod_net::CHANNEL => {
+            S::CustomPayload(p) if p.channel == sunrise_sim::lod_net::CHANNEL => {
                 self.guest_far_terrain(conn, &p.data)
             }
             S::ChatCommandSigned(p) => self.guest_signed_command(conn, p),
@@ -1159,12 +1159,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             };
                             self.game_rule_changed(&rule.name, value, Some(&actor));
                         }
-                        let message = sunrise_client::text::Text::tr(
+                        let message = sunrise_client_core::text::Text::tr(
                             "commands.gamerule.set",
                             &[&entry.name, &entry.value],
                         );
-                        let content =
-                            sunrise_client::lan::data::component_nbt(&message.component());
+                        let content = sunrise_sim::lan::data::component_nbt(&message.component());
                         let Some(host) = self.lan.as_ref() else {
                             return;
                         };
@@ -1187,7 +1186,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             S::ChangeGameMode(p) if permission >= 2 => {
                 if let Some(mode) = usize::try_from(p.mode)
                     .ok()
-                    .and_then(|index| sunrise_client::command::args::GameMode::ALL.get(index))
+                    .and_then(|index| sunrise_command::args::GameMode::ALL.get(index))
                 {
                     let lines = self.as_guest(conn, |g| {
                         g.side.chat_capture = Some(Vec::new());
@@ -1197,7 +1196,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .take()
                             .unwrap_or_default()
                             .iter()
-                            .map(|t| sunrise_client::lan::data::component_nbt(&t.component()))
+                            .map(|t| sunrise_sim::lan::data::component_nbt(&t.component()))
                             .collect::<Vec<_>>()
                     });
                     for content in lines.unwrap_or_default() {
@@ -1218,9 +1217,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             S::ChangeGameMode(p) => {
                 if let Some(mode) = usize::try_from(p.mode)
                     .ok()
-                    .and_then(|index| sunrise_client::command::args::GameMode::ALL.get(index))
+                    .and_then(|index| sunrise_command::args::GameMode::ALL.get(index))
                 {
-                    let name = sunrise_client::text::Text::translate(
+                    let name = sunrise_client_core::text::Text::translate(
                         &format!("gameMode.{}", mode.name()),
                         &[],
                     );
@@ -1378,18 +1377,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let message = sunrise_client::text::Text::translate(
+        let message = sunrise_client_core::text::Text::translate(
             "build.spawn_protection",
-            &[sunrise_client::text::Text::literal(format!(
+            &[sunrise_client_core::text::Text::literal(format!(
                 "{}, {}, {}",
                 pos[0], pos[1], pos[2]
             ))],
         )
-        .with_color(sunrise_client::text::RED);
+        .with_color(sunrise_client_core::text::RED);
         host.hub.send_to(
             conn,
             &C::SystemChat(play::SystemChat {
-                content: sunrise_client::lan::data::component_nbt(&message.component()),
+                content: sunrise_sim::lan::data::component_nbt(&message.component()),
                 overlay: true,
             }),
         );
@@ -1414,10 +1413,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(info) = self.items().get(&stack.item).cloned() else {
             return false;
         };
-        (info.block.is_some() || sunrise_client::items::bucket_contents(&stack.item).is_some())
+        (info.block.is_some() || sunrise_items::items::bucket_contents(&stack.item).is_some())
             && !self
                 .cooldowns
-                .is_on_cooldown(&sunrise_client::cooldowns::group(
+                .is_on_cooldown(&sunrise_items::cooldowns::group(
                     &stack,
                     info.use_cooldown.as_ref(),
                 ))

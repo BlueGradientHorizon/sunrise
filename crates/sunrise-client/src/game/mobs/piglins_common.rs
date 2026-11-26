@@ -1,6 +1,7 @@
 //! Role-neutral piglin item queries shared by server AI and client interaction prediction.
 use super::Game;
-use sunrise_client::{items::ItemStack, mobs::piglin::BARTERING_ITEM};
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::piglin::BARTERING_ITEM;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn piglin_loved(&self, item: &str) -> bool {

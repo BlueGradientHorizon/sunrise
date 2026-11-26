@@ -1,7 +1,8 @@
 //! `/tellraw` (TellRawCommand) and `/title` (TitleCommand).
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client::{lan::data::component_nbt, text::Text};
+use sunrise_client_core::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::lan::data::component_nbt;
 
 /// `EntitySelector.COMPILABLE_CODEC` (`CompilableString.CommandParserHelper.apply`):
 /// the `selector` of a selector component and the `entity` of an nbt
@@ -11,7 +12,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 /// that falls back to a plain name, so it never fails.)
 pub(in crate::game) fn invalid_selector(
     v: &serde_json::Value,
-    reg: &sunrise_client::command::Registries,
+    reg: &sunrise_command::Registries,
 ) -> Option<String> {
     match v {
         serde_json::Value::Array(a) => a.iter().find_map(|x| invalid_selector(x, reg)),
@@ -36,10 +37,10 @@ pub(in crate::game) fn invalid_selector(
 /// `getMessage` on failure.
 pub(in crate::game) fn compile_selector(
     source: &str,
-    reg: &sunrise_client::command::Registries,
+    reg: &sunrise_command::Registries,
 ) -> Option<String> {
-    let mut reader = sunrise_client::command::Reader::new(source);
-    match sunrise_client::command::selector::parse(&mut reader, reg, true) {
+    let mut reader = sunrise_command::Reader::new(source);
+    match sunrise_command::selector::parse(&mut reader, reg, true) {
         Err(e) => Some(match e.context() {
             Some(context) => format!(
                 "{} at position {}: {context}",
@@ -52,7 +53,7 @@ pub(in crate::game) fn compile_selector(
             let parsed = &source[..reader.cursor];
             let leftovers = &source[reader.cursor..];
             Some(
-                sunrise_client::text::Text::tr(
+                sunrise_client_core::text::Text::tr(
                     "command.trailing_data",
                     &[&format!("{parsed}[{leftovers}]")],
                 )
@@ -112,8 +113,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             resolved.push((o, t));
         }
         let mut resolve = |raw: &str| -> Text {
-            let mut reader = sunrise_client::command::Reader::new(raw);
-            let entities = sunrise_client::command::args::ArgType::Entity {
+            let mut reader = sunrise_command::Reader::new(raw);
+            let entities = sunrise_command::args::ArgType::Entity {
                 single: false,
                 players: false,
             };
@@ -130,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             out
         };
-        Ok(sunrise_client::component::to_text_with(
+        Ok(sunrise_client_core::component::to_text_with(
             &value,
             &mut resolve,
             &mut |o| {
@@ -155,8 +156,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
         // findTargetName: a selector that matches one entity is that entity,
         // one that matches none is just the name.
-        let mut reader = sunrise_client::command::Reader::new(name);
-        let ty = sunrise_client::command::args::ArgType::Entity {
+        let mut reader = sunrise_command::Reader::new(name);
+        let ty = sunrise_command::args::ArgType::Entity {
             single: false,
             players: false,
         };
@@ -184,7 +185,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // numberFormatOrDefault(StyledFormat.NO_STYLE).
         let format = (score.number_format.clone())
             .or_else(|| objective.number_format.clone())
-            .unwrap_or(sunrise_client::scoreboard::NumberFormat::Styled(
+            .unwrap_or(sunrise_client_core::scoreboard::NumberFormat::Styled(
                 serde_json::json!({}),
             ));
         Ok(format.format(score.value))
@@ -198,8 +199,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let path = o.get("nbt").and_then(|v| v.as_str()).unwrap_or("");
         let mut sources: Vec<Tag> = Vec::new();
         if let Some(sel) = o.get("entity").and_then(|v| v.as_str()) {
-            let mut reader = sunrise_client::command::Reader::new(sel);
-            let ty = sunrise_client::command::args::ArgType::Entity {
+            let mut reader = sunrise_command::Reader::new(sel);
+            let ty = sunrise_command::args::ArgType::Entity {
                 single: false,
                 players: false,
             };
@@ -228,7 +229,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 sources.push(tag);
             }
         }
-        let Ok(compiled) = sunrise_client::nbt_path::NbtPath::parse(path) else {
+        let Ok(compiled) = sunrise_client_core::nbt_path::NbtPath::parse(path) else {
             return Text::empty();
         };
         let plain = o.get("plain").and_then(|v| v.as_bool()) == Some(true);
@@ -242,13 +243,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 first = false;
                 let piece = if interpret {
-                    sunrise_client::scoreboard::comp_text(&sunrise_client::scoreboard::tag_to_json(
-                        &tag,
-                    ))
+                    sunrise_client_core::scoreboard::comp_text(
+                        &sunrise_client_core::scoreboard::tag_to_json(&tag),
+                    )
                 } else if plain {
-                    Text::literal(sunrise_client::snbt::pretty(&tag).plain())
+                    Text::literal(sunrise_client_core::snbt::pretty(&tag).plain())
                 } else {
-                    sunrise_client::snbt::pretty(&tag)
+                    sunrise_client_core::snbt::pretty(&tag)
                 };
                 out.push(piece);
             }
@@ -332,7 +333,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::invalid_selector;
-    use sunrise_client::command::Registries;
+    use sunrise_command::Registries;
 
     fn check(json: &str) -> Option<String> {
         invalid_selector(&serde_json::from_str(json).unwrap(), &Registries::default())

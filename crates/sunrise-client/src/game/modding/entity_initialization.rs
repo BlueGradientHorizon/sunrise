@@ -91,7 +91,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 pub(in crate::game) struct TransferredEntityState {
     pub(in crate::game) attachments: Option<sunrise_mod_runtime::attachments::Attachments>,
     pub(in crate::game) initialized: bool,
-    pub(in crate::game) accepted_hit: Option<std::sync::Arc<sunrise_client::health::AcceptedHit>>,
+    pub(in crate::game) accepted_hit: Option<std::sync::Arc<sunrise_sim::health::AcceptedHit>>,
     pub(in crate::game) died: bool,
     pub(in crate::game) transient: bool,
     /// The source id whose attachment map a transaction open at the take kept: the
@@ -105,7 +105,7 @@ pub(in crate::game) struct TransferredEntityState {
 
 impl TransferredEntityState {
     /// Move the single accepted-hit owner onto a reconstructed living body.
-    pub(in crate::game) fn restore_mob(&mut self, mob: &mut sunrise_client::mobs::Mob) {
+    pub(in crate::game) fn restore_mob(&mut self, mob: &mut sunrise_sim::mobs::Mob) {
         if mob.health > 0.0 {
             self.died = false;
         }

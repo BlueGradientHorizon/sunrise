@@ -2,8 +2,8 @@ use super::*;
 use mod_api::{AddPackFindersEvent, Hooks, Identifier, ModEntry};
 use mod_platform::testing::with_mods;
 use std::{fs, io::Write, path::PathBuf};
-use sunrise_client::datapack::{DataStore, FunctionLine};
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
+use sunrise_level::datapack::{DataStore, FunctionLine};
 
 const ASSET_PACK: &str = "assets/packmod/resourcepacks/optional";
 const DATA_PACK: &str = "data/packmod/datapacks/optional";
@@ -337,7 +337,7 @@ fn contributed_packs_are_discoverable_and_only_selected_resources_apply() {
             let world = fixture.root.join("world");
             fs::create_dir(&world).unwrap();
             let repository = data_repository(&world, &fixture.root, &data);
-            assert!(sunrise_client::datapack::enabled_ids(&world, &repository, &[]).is_empty());
+            assert!(sunrise_level::datapack::enabled_ids(&world, &repository, &[]).is_empty());
             fs::write(
                 world.join("datapacks.json"),
                 serde_json::json!({
@@ -511,7 +511,7 @@ fn required_packs_keep_their_priority_and_cannot_be_cleared() {
         let world = fixture.root.join("world");
         let repository = data_repository(&world, &fixture.root, &data);
         assert!(
-            sunrise_client::datapack::enabled_ids(&world, &repository, &[])
+            sunrise_level::datapack::enabled_ids(&world, &repository, &[])
                 .contains(&fixture.data_id())
         );
     });
@@ -523,7 +523,7 @@ fn contributed_experiments_supply_the_chosen_world_flags() {
     fixture.add_feature_flag();
     with_finder_config(true, false, || {
         let data = data_packs(&fixture.sources());
-        let features = sunrise_client::datapack::feature_repository(&fixture.root, &data);
+        let features = sunrise_level::datapack::feature_repository(&fixture.root, &data);
         assert_eq!(features.len(), 1);
         assert_eq!(features[0].id, fixture.data_id());
         let mut options = sunrise_sim::world_options::WorldOptions::default();
@@ -613,8 +613,9 @@ fn registered_data_commands_respect_flags_required_packs_and_default_priority() 
 fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
     // Reload publishes a language just as the other game fixtures do. Keep this
     // fixture's publications visible locally, not at the mercy of their reloads.
-    let _language =
-        sunrise_client::lang::isolate_publication(sunrise_client::lang::Language::of("en_us", []));
+    let _language = sunrise_client_core::lang::isolate_publication(
+        sunrise_client_core::lang::Language::of("en_us", []),
+    );
     let mut fixture = Fixture::new(true);
     let mut ran = false;
     with_finder(|| {
@@ -639,11 +640,11 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
             .unwrap();
             game.apply_staged_pack(staged).unwrap();
             assert_eq!(
-                sunrise_client::lang::get("packmod.optional.title"),
+                sunrise_client_core::lang::get("packmod.optional.title"),
                 "Optional example"
             );
             assert_eq!(
-                sunrise_client::lang::get("packmod.optional"),
+                sunrise_client_core::lang::get("packmod.optional"),
                 "packmod.optional"
             );
             game.refresh_pack_lists();
@@ -675,7 +676,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                 .unwrap();
                 assert_eq!(staged.language.get("packmod.optional"), Some(expected));
                 game.apply_staged_pack(staged).unwrap();
-                assert_eq!(sunrise_client::lang::get("packmod.optional"), expected);
+                assert_eq!(sunrise_client_core::lang::get("packmod.optional"), expected);
                 assert!(
                     !game
                         .options
@@ -749,7 +750,7 @@ fn hidden_optional_data_pack_is_command_selectable_and_loads_its_function() {
                 .iter()
                 .any(|p| p.id == "mod/packmod:data/packmod/datapacks/optional")
         );
-        assert!(sunrise_client::datapack::enabled_ids(&world, &repository, &[]).is_empty());
+        assert!(sunrise_level::datapack::enabled_ids(&world, &repository, &[]).is_empty());
         fs::write(
             world.join("datapacks.json"),
             r#"{"enabled":["mod/packmod:data/packmod/datapacks/optional"],"disabled":[]}"#,

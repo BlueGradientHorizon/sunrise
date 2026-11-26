@@ -1,11 +1,9 @@
 //! Copper golem constants and role-neutral item/shearing queries.
 use super::Game;
-use sunrise_client::{
-    items::ItemStack,
-    mobs::{
-        Mob,
-        transport_items::{held, set_held},
-    },
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::{
+    Mob,
+    transport_items::{held, set_held},
 };
 
 /// `ContainerOpenersCounter.CHECK_TICK_DELAY`.

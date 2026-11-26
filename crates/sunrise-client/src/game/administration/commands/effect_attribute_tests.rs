@@ -6,7 +6,7 @@
 //! `minecraft:effect.absorption` 4.0 per level, both `add_value`, and
 //! `minecraft:effect.waypoint_transmit_range_hide` -1.0, `add_multiplied_total`.
 use std::sync::Arc;
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 pub(in crate::game) fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     crate::game::native_entity_refs::tests::with_game(|game| {
@@ -93,7 +93,7 @@ fn attribute_reads_the_modifier_a_given_effect_stored_and_none_for_a_loaded_one(
 #[test]
 #[ignore = "daily"]
 fn modifier_value_get_finds_a_mods_transient_modifier() {
-    use sunrise_client::mobs::finalize::{self, Attr, Op};
+    use sunrise_sim::mobs::finalize::{self, Attr, Op};
     with_game(|game| {
         assert!(game.run_command(
             r#"summon minecraft:zombie 2.5 64 2.5 {NoAI:1b,Tags:["t"],UUID:[I;1988,0,0,5]}"#

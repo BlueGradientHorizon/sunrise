@@ -3,8 +3,9 @@
 //! crops a growing plant's head with shears (`ShearsItem.useOn`).
 use super::{Game, native_hooks::BonemealAsk};
 use std::sync::Arc;
-use sunrise_client::{items::ItemStack, vanillagen};
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::vanillagen;
 use sunrise_world::worldgen::live::LiveFeatures;
 
 #[cfg(feature = "client")]
@@ -121,8 +122,8 @@ pub(in crate::game) mod tests {
     use super::{Arc, build_live_features, install_live_features};
     use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
     use std::sync::{Mutex, MutexGuard, PoisonError};
-    use sunrise_client::items::ItemStack;
     use sunrise_core::{geometry::Direction, position::BlockPos};
+    use sunrise_items::items::ItemStack;
 
     /// What each `bonemeal` listener heard: the player, the target check
     /// and the source. The test that reads it runs in a process of its own,
@@ -171,7 +172,7 @@ pub(in crate::game) mod tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world.chunks.insert(
                     (0, 0),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 let registry = game.pack.assets.registry;
                 let farmland = registry.default_state("minecraft:farmland").unwrap();
@@ -284,9 +285,7 @@ pub(in crate::game) mod tests {
     fn a_data_packs_feature_is_in_the_live_registry() {
         use sunrise_world::worldgen::overrides::WorldgenOverrides;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let registry = sunrise_client::assets::Assets::load(&root)
-            .unwrap()
-            .registry;
+        let registry = sunrise_level::assets::Assets::load(&root).unwrap().registry;
         let source = sunrise_assets::resource_source::ResourceSource::directory(root.clone());
         let mut overrides = WorldgenOverrides::default();
         let file = "data/mymod/worldgen/feature/tree.json";

@@ -7,9 +7,9 @@
 use super::remote_camera::CameraFogEffects;
 use sunrise_client::camera::CameraFluid;
 use sunrise_client::gfx::pack_uniforms::{PackInputs, PlayerStatus, ViewEntity};
-use sunrise_client::mod_list::ModList;
 use sunrise_client::shader_options::ShaderOptions;
-use sunrise_client::text::Text;
+use sunrise_client_core::text::Text;
+use sunrise_mod_package::mod_list::ModList;
 use sunrise_shader_api::Api;
 use sunrise_shaders::{BlockIds, Macros, Pack, Properties, dimension_folder_named, load_post};
 
@@ -312,7 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         camera: glam::DVec3,
         eye: glam::DVec3,
         partial: f32,
-        sky: &sunrise_client::environment::Sky,
+        sky: &sunrise_level::environment::Sky,
     ) -> PackInputs {
         // A `shaders/` pack lights the faces itself unless `oldLighting=true`: sections mesh
         // without the game's face shading (the pack loaded or dropped below shows next frame).
@@ -424,7 +424,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let started = std::time::Instant::now();
             // A pack is not the game's own code: one that makes the shader compiler (or our
             // translation of it) panic is turned off instead of crashing every world load (#3525).
-            let loaded = sunrise_client::crash::contain(|| {
+            let loaded = sunrise_level::crash::contain(|| {
                 match Pack::open(&path).map(|p| p.with_chosen(chosen_shader_options(name))) {
                     Ok(pack) => {
                         let mut macros = Macros::standard();
@@ -693,11 +693,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             spectator,
             riding,
             feet_in_water: p.fluids.was_touching_water,
-            swimming: p.pose == sunrise_client::pose::Pose::Swimming,
+            swimming: p.pose == sunrise_sim::pose::Pose::Swimming,
             burning: p.is_on_fire() && !spectator,
             hurt: p.health.hurt_animation_time > 0,
             invisible,
-            sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
+            sneaking: p.pose == sunrise_sim::pose::Pose::Crouching,
             sprinting: p.sprinting,
             // `LivingEntity.isAlive`: the window's player is never removed while it is the
             // camera.
@@ -983,7 +983,7 @@ pub(in crate::game::client_side) fn rendered_item_id(
 /// (`StateFacts::item`) takes the state's id in `ids`, or 0. A block named as its item wins over
 /// another block giving that item.
 pub(in crate::game::client_side) fn block_item_ids(
-    facts: &sunrise_client::blocks::BlockFacts,
+    facts: &sunrise_items::blocks::BlockFacts,
     registry: &sunrise_world::registry::BlockRegistry,
     ids: &BlockIds,
 ) -> HashMap<String, i32> {
@@ -1313,7 +1313,7 @@ pub(in crate::game) mod rendered_item_tests {
 #[cfg(test)]
 pub(in crate::game) mod native_pack_tests {
     use super::{active_pack, pack_draws_flat, pack_reads_vertices, picked_pack_shape};
-    use sunrise_client::mod_list::{Installed, ModList, NativePage};
+    use sunrise_mod_package::mod_list::{Installed, ModList, NativePage};
 
     #[test]
     fn unknown_pack_is_optimistic_but_refusal_owner_and_presence_override_it() {
@@ -1454,7 +1454,7 @@ pub(in crate::game) mod native_pack_tests {
 #[test]
 #[ignore = "daily"]
 fn projectile_body_uses_its_own_shader_entity_id() {
-    use sunrise_client::projectiles::{Projectile, ProjectileKind};
+    use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
     super::native_entity_refs::tests::with_client_game(|game| {
         game.side.pack_ids = Some(PackIds::with_entity_ids([
@@ -1594,8 +1594,9 @@ pub(in crate::game) mod toggle_tests {
 pub(in crate::game) mod player_status_tests {
     use super::Game;
     use std::sync::Arc;
-    use sunrise_client::{chunk::Chunk, effects::EffectInstance, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::{chunk::Chunk, effects::EffectInstance};
+    use sunrise_sim::motion::PlayerMotion;
 
     /// The window's player standing at (0.5, 64, 0.5) on the empty chunks around it
     /// (`EntityFluidInteraction.update` needs the chunks around the box loaded as well).

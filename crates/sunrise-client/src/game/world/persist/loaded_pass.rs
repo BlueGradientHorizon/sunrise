@@ -4,7 +4,7 @@ use super::*;
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Spawn the entities of chunks that finished loading.
     pub(in crate::game) fn spawn_loaded_entities(&mut self) {
-        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
         let loaded = std::mem::take(&mut self.world.loaded_entities);
         for (key, tags) in loaded {
             let count = tags.len();
@@ -29,7 +29,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             key,
             tag,
             transferred,
-            sunrise_client::world::EntityLoadReason::Ordinary,
+            sunrise_level::world::EntityLoadReason::Ordinary,
         );
     }
 
@@ -38,7 +38,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         key: ChunkKey,
         mut tag: Tag,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
-        reason: sunrise_client::world::EntityLoadReason,
+        reason: sunrise_level::world::EntityLoadReason,
     ) {
         let player_uuid = self.level.player_uuid;
         // A world older builds named by the offline profile names the player that
@@ -47,8 +47,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some((old, new)) = self.side.owner_migration {
             entity_nbt::migrate_player_uuid(
                 &mut tag,
-                sunrise_client::lan::playerdata::uuid_ints(old),
-                sunrise_client::lan::playerdata::uuid_ints(new),
+                sunrise_sim::lan::playerdata::uuid_ints(old),
+                sunrise_sim::lan::playerdata::uuid_ints(new),
             );
         }
         // PersistentEntitySectionManager.addEntity's `loaded`.
@@ -118,7 +118,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Ok(())
         } else if kind == "minecraft:tnt"
             && !is_mob
-            && reason == sunrise_client::world::EntityLoadReason::TeleportedTnt
+            && reason == sunrise_level::world::EntityLoadReason::TeleportedTnt
         {
             self.load_tnt_with_portal(tag, uuid, transferred, true);
             Ok(())

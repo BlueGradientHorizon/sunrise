@@ -76,14 +76,14 @@ impl PlainTexts {
     pub(in crate::game) fn with<R>(
         &self,
         text: &str,
-        draw: impl FnOnce(&sunrise_client::text::Text) -> R,
+        draw: impl FnOnce(&sunrise_client_core::text::Text) -> R,
     ) -> R {
         let mut texts = self.0.borrow_mut();
         if !texts.contains_key(text) {
             if texts.len() >= Self::MAX {
                 texts.clear();
             }
-            texts.insert(text.into(), sunrise_client::text::Text::literal(text));
+            texts.insert(text.into(), sunrise_client_core::text::Text::literal(text));
         }
         draw(&texts[text])
     }
@@ -120,7 +120,7 @@ impl ClientResources {
     pub(in crate::game) fn spin_attack(&self) -> &Option<sunrise_client::mobs::Part> {
         &self.spin_attack
     }
-    pub(in crate::game) fn player_type(&self) -> &Option<Arc<sunrise_client::mobs::MobType>> {
+    pub(in crate::game) fn player_type(&self) -> &Option<Arc<sunrise_sim::mobs::MobType>> {
         &self.player_type
     }
     pub(in crate::game) fn client_mob_models(
@@ -365,7 +365,7 @@ pub(in crate::game) fn read_colors(
 ) -> sunrise_client::pack_palette::PackColors {
     let colors = sunrise_client::pack_palette::read(root.source());
     sunrise_client::pack_palette::set(&colors);
-    sunrise_client::brewing::set_pack_colors(colors.effects.clone());
+    sunrise_level::brewing::set_pack_colors(colors.effects.clone());
     colors
 }
 

@@ -38,8 +38,8 @@ fn lifecycle_source_stays_hookable() {
 #[test]
 fn the_damage_hook_names_the_source() {
     use super::{Attack, HurtSource, Hurting, hurt_server_args, mob_source};
-    use sunrise_client::health::NO_ATTACK;
-    use sunrise_client::mobs::{Damage, DamageKind as K, Who};
+    use sunrise_sim::health::NO_ATTACK;
+    use sunrise_sim::mobs::{Damage, DamageKind as K, Who};
     let source = |kind, attacker| {
         let s = mob_source(
             &Damage {
@@ -61,7 +61,7 @@ fn the_damage_hook_names_the_source() {
     };
     let zombie = Some(Who::Mob(3));
     // A registered type of a datapack reaches the hook under its own id.
-    let scorch = K::Named(sunrise_client::mobs::NamedDamage::new("demo:scorch", 0));
+    let scorch = K::Named(sunrise_sim::mobs::NamedDamage::new("demo:scorch", 0));
     assert_eq!(source(scorch, None), ("demo:scorch", 0, 0));
     assert_eq!(source(scorch, zombie), ("demo:scorch", 3, 0));
     assert_eq!(source(K::MobAttack, zombie), ("minecraft:mob_attack", 3, 3));

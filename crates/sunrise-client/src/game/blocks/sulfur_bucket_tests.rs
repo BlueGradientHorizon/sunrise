@@ -4,8 +4,9 @@
 //! (tools/test_sulfur_bucket_parity.py measures the same on vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_client::{chunk::Chunk, mobs::Mob};
 use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Mob;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
@@ -128,7 +129,7 @@ fn no_pickup_without_an_empty_bucket_or_of_a_baby_or_primed_cube() {
     }
     fn primed(m: &mut Mob) {
         m.extra.set_body(Some("minecraft:tnt".into()));
-        assert!(sunrise_client::mobs::sulfur_cube::prime(m, false));
+        assert!(sunrise_sim::mobs::sulfur_cube::prime(m, false));
     }
     let cases: [(&str, fn(&mut Mob), &str); 3] = [
         ("water bucket", plain, "minecraft:water_bucket"),

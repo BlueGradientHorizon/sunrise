@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{AttachmentQueries, AttachmentQueriesMut, AttachmentType};
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 static VALUE: AttachmentType<u32> = AttachmentType {
     namespace: "query_test",

@@ -100,7 +100,7 @@ fn published_tcp_attributes_players_and_orders_actions() {
             game.side.settings.render_distance = 2;
             game.side.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {
-                world_type: sunrise_client::save::WorldPreset::Flat,
+                world_type: sunrise_sim::save::WorldPreset::Flat,
                 ..Default::default()
             };
             game.open_integrated(
@@ -255,8 +255,7 @@ pub(super) fn connect_peer(port: u16, name: &str) -> Connection {
     c.send(&login::Serverbound::LoginAcknowledged(Empty).encode())
         .unwrap();
     let local =
-        sunrise_client::raw_payloads::Local::capture(sunrise_client::raw_payloads::Side::Client)
-            .unwrap();
+        sunrise_sim::raw_payloads::Local::capture(sunrise_sim::raw_payloads::Side::Client).unwrap();
     c.send(
         &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
             channel: sunrise_protocol::payload_negotiation::CHANNEL.into(),

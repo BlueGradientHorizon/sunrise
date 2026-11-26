@@ -59,7 +59,7 @@ impl GoalCx<'_, '_> {
         let live = self.w.live_mobs?;
         let host = self.w.goal_host?;
         let mut seats = host.player_passenger_seats(entity.id());
-        let mut add_mob = |mob: &crate::mobs::Mob| {
+        let mut add_mob = |mob: &sunrise_sim::mobs::Mob| {
             if mob.extra.mount == Some(entity.id()) && !mob.removed && mob.alive() {
                 seats.push((mob.extra.vehicle_order, mob.id));
             }
@@ -109,7 +109,7 @@ impl GoalCx<'_, '_> {
         if let Some(rider) = self.entity_mob(first) {
             let tagged = self.w.entity_tag_bit(
                 &rider.kind,
-                sunrise_client::items::EntityTypeTags::NON_CONTROLLING_RIDER,
+                sunrise_items::items::EntityTypeTags::NON_CONTROLLING_RIDER,
             );
             return (!vehicle.no_ai && !tagged).then(|| LivingRef::new(first));
         }

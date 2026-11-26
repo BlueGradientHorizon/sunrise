@@ -7,7 +7,7 @@
 //! a broken bed, or leaving the game.
 use super::native_hooks::SleepProblem;
 use super::{Dim, Game};
-use sunrise_client::Result;
+use sunrise_client_core::Result;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `BedRule.canSleep` of the current dimension's bed rule.

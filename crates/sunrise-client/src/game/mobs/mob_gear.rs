@@ -6,7 +6,8 @@ use super::Game;
 #[cfg(test)]
 #[path = "tests/drowned_spawn_tests.rs"]
 mod drowned_spawn_tests;
-use sunrise_client::{
+use sunrise_core::random::RandomSource;
+use sunrise_sim::{
     mobs::{
         drops::{self, SLOTS},
         finalize::equip_stack,
@@ -15,7 +16,6 @@ use sunrise_client::{
     },
     raid::{self, RaiderType},
 };
-use sunrise_core::random::RandomSource;
 use {sunrise_core::nbt::Tag, sunrise_world::loot::EntityLootParams};
 
 /// `EnchantmentsByCostWithDifficulty` of `mob_spawn_equipment`.
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .mobs
             .iter()
             .find(|m| m.id == id)
-            .and_then(|m| sunrise_client::mobs::finalize::item_stack(m, slot))
+            .and_then(|m| sunrise_sim::mobs::finalize::item_stack(m, slot))
         else {
             return;
         };
@@ -100,7 +100,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let pool = e.tag("minecraft:on_mob_spawn_equipment");
         let picked = e.select(world_items!(self), random, &stack, cost, pool);
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-            let slot = sunrise_client::mobs::finalize::gear_slot(slot);
+            let slot = sunrise_sim::mobs::finalize::gear_slot(slot);
             for (enchantment, level) in picked {
                 gear::upgrade(m, slot, &enchantment, level);
             }
@@ -129,18 +129,18 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     0
                 };
                 if level > 0 {
-                    sunrise_client::mobs::finalize::set_item(
+                    sunrise_sim::mobs::finalize::set_item(
                         m,
-                        sunrise_client::mobs::finalize::MAINHAND,
+                        sunrise_sim::mobs::finalize::MAINHAND,
                         "minecraft:crossbow",
                     );
                     gear::upgrade(m, MAIN, "minecraft:quick_charge", level);
                 }
             }
             RaiderType::Vindicator => {
-                sunrise_client::mobs::finalize::set_item(
+                sunrise_sim::mobs::finalize::set_item(
                     m,
-                    sunrise_client::mobs::finalize::MAINHAND,
+                    sunrise_sim::mobs::finalize::MAINHAND,
                     "minecraft:iron_axe",
                 );
                 if enchant {

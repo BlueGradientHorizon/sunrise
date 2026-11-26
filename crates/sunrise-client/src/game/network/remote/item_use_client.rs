@@ -1,6 +1,6 @@
 use super::super::Game;
-use sunrise_client::first_person::Hand;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::first_person_sim::Hand;
 
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -47,7 +47,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 "minecraft:item.flintandsteel.use"
             };
             let pitch =
-                sunrise_client::items::fire_starter_pitch(is_fire_charge, &mut self.world.random);
+                sunrise_items::items::fire_starter_pitch(is_fire_charge, &mut self.world.random);
             self.side.audio.0.play(sound, Some(at), 1.0, pitch);
             if is_fire_charge && !self.creative {
                 self.with_hand(hand, Game::consume_held);
@@ -63,9 +63,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let pos = sunrise_core::position::BlockPos::new(target[0], target[1], target[2]);
             let state = self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, pos));
             self.predict_blocks(&[(pos, state)], seq);
-            let sound = sunrise_client::items::fire_starter_sound(is_fire_charge);
+            let sound = sunrise_items::items::fire_starter_sound(is_fire_charge);
             let pitch =
-                sunrise_client::items::fire_starter_pitch(is_fire_charge, &mut self.world.random);
+                sunrise_items::items::fire_starter_pitch(is_fire_charge, &mut self.world.random);
             let target_at = [
                 f64::from(target[0]) + 0.5,
                 f64::from(target[1]) + 0.5,
@@ -87,8 +87,8 @@ pub(in crate::game) mod tests {
     use crate::game::{
         Audio, Hit, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
-    use sunrise_client::first_person::Hand;
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::first_person_sim::Hand;
 
     #[test]
     #[ignore = "daily"]
@@ -149,7 +149,7 @@ pub(in crate::game) mod tests {
             .default_state("minecraft:tnt")
             .unwrap();
         let pos = [0, 64, 0];
-        let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+        let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         chunk.set(0, 64, 0, tnt_state.0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
         game.creative = false;

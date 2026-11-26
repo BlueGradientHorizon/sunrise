@@ -5,7 +5,6 @@ use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::creatures::NativeSound;
 use super::native_level_signals::ReadLevel;
 use super::transactions::After;
-use crate::lan::server_effects::ServerQueuedParticle;
 use mod_api::{
     AttachmentBatch, AttachmentStore, BlockEntityRef, BlockKey, BlockPos, BlockSide, BlockState,
     BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStack, LevelHost,
@@ -13,6 +12,7 @@ use mod_api::{
     ParticleOptions, PlayerRef, RandomDraw, Tags,
 };
 use sunrise_core::{random::RandomSource, ticks::TickPriority};
+use sunrise_sim::lan::server_effects::ServerQueuedParticle;
 use sunrise_world::{
     fluid::FluidKind,
     level::{FluidWrite, LevelAccess as _, flags, states::BlockId},

@@ -1,7 +1,7 @@
 //! `Game` as the `MobLevel` mob families run on: each service forwards to the game's own method.
 use super::Game;
-use sunrise_client::entities::ItemEntity;
 use sunrise_gameplay::mob_level::{MobLevel, MobParts};
+use sunrise_sim::entities::ItemEntity;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Notify tracking clients of a server-side mob item pickup without client particle bookkeeping.
@@ -32,14 +32,14 @@ impl MobLevel for Game<'_, crate::game::server_side::ServerState> {
     fn mob_griefing(&self) -> bool {
         self.ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
     }
     fn entity_grief(&self, entity: u32, rule: bool) -> bool {
         Game::entity_grief(self, entity, rule)
     }
     fn spawn_item_own(
         &mut self,
-        stack: sunrise_client::items::ItemStack,
+        stack: sunrise_items::items::ItemStack,
         position: [f64; 3],
         pickup_delay: u32,
     ) -> [f64; 3] {

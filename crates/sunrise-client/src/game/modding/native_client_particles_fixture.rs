@@ -6,12 +6,13 @@ use std::{
     path::Path,
 };
 use sunrise_client::{
-    Result,
     hud::Rect,
-    motion::PlayerMotion,
-    particles::{ParticleEngine, ParticleLevel, ParticleOptions, ParticleType},
+    particles::{ParticleEngine, ParticleLevel},
 };
+use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::motion::PlayerMotion;
 
 fn add(
     game: &mut Game<'_, crate::game::client_side::ClientState>,

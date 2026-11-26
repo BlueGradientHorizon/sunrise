@@ -7,14 +7,15 @@
 use super::Game;
 use crate::game::published_loops::{Attributed, LoopFlow, LoopMod};
 #[allow(unused_imports)]
-use sunrise_client::{
-    Result,
-    block_entities::{Pos, Ticking},
-    containers::{BlockEntity, HOPPER_SLOTS},
-};
+use sunrise_client_core::Result;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay::block_entity_ticks::{block_ticking_at, ticker_name};
 use sunrise_level::block_entity_ticks::Ticker;
+#[allow(unused_imports)]
+use sunrise_level::{
+    block_entities::{Pos, Ticking},
+    containers::{BlockEntity, HOPPER_SLOTS},
+};
 
 /// What `block_entities.tick` is visiting: the kinds its dispatch ticks, read once per entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,7 +175,7 @@ impl OwnBlockEntities {
     /// table, or an empty one.
     #[cold]
     pub(in crate::game) fn resolve(ids: &[&str]) -> Option<Box<[bool]>> {
-        let types = sunrise_client::block_entity_types::current()?;
+        let types = sunrise_client_core::block_entity_types::current()?;
         if types.numeric_id_bound() == 0 {
             return None;
         }
@@ -530,7 +531,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 #[cfg(test)]
 pub(in crate::game) mod jukebox_stop_tests {
 
-    use sunrise_client::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// A windowless game from the prepared resources with a resident chunk and
     /// a jukebox at (0, 64, 0), recording its game events; `None` without the
@@ -567,7 +568,7 @@ pub(in crate::game) mod jukebox_stop_tests {
         .unwrap();
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let jukebox = game
             .pack
@@ -638,7 +639,7 @@ pub(in crate::game) mod jukebox_stop_tests {
             for _ in 0..40_000 {
                 let playing = matches!(
                     game.world.block_entities.get(&(0, 64, 0)),
-                    Some(sunrise_client::containers::BlockEntity::Jukebox(j)) if j.playing
+                    Some(sunrise_level::containers::BlockEntity::Jukebox(j)) if j.playing
                 );
                 if !playing {
                     break;
@@ -832,7 +833,7 @@ pub(in crate::game) mod add_blocks_tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 let registry = game.pack.assets.registry;
                 let state = registry.default_state(BLOCK).unwrap();
                 let level = game.level(game.dim.id()).unwrap();
@@ -868,16 +869,16 @@ pub(in crate::game) mod add_blocks_tests {
                     panic!("must create vanilla vault")
                 };
                 assert_eq!(vault.state_updating_resumes_at, 120);
-                let tag = sunrise_client::save::block_entity_encode::encode(
+                let tag = sunrise_sim::save::block_entity_encode::encode(
                     (1, 64, 1),
                     entity,
                     BLOCK,
                     &Default::default(),
                 );
                 let (_, restored) =
-                    sunrise_client::save::decode_block_entity_for_block(&tag, BLOCK).unwrap();
+                    sunrise_sim::save::decode_block_entity_for_block(&tag, BLOCK).unwrap();
                 assert_eq!(
-                    sunrise_client::save::block_entity_encode::encode(
+                    sunrise_sim::save::block_entity_encode::encode(
                         (1, 64, 1),
                         &restored,
                         BLOCK,
@@ -890,7 +891,7 @@ pub(in crate::game) mod add_blocks_tests {
                 };
                 assert_eq!(restored.state_updating_resumes_at, 120);
                 assert!(matches!(
-                    sunrise_client::save::decode_block_entity_for_block(&tag, DECLARED),
+                    sunrise_sim::save::decode_block_entity_for_block(&tag, DECLARED),
                     Some((_, BlockEntity::Vault(_)))
                 ));
                 let own_state = registry.default_state(DECLARED).unwrap();
@@ -902,16 +903,19 @@ pub(in crate::game) mod add_blocks_tests {
                     matches!(game.world.block_entities.get(&(3, 64, 1)), Some(BlockEntity::Mod(entity)) if entity.id() == "add_blocks_test:own")
                 );
                 assert_eq!(
-                    sunrise_client::block_entity_types::valid(BLOCK, "minecraft:vault"),
+                    sunrise_client_core::block_entity_types::valid(BLOCK, "minecraft:vault"),
                     Some(true)
                 );
                 assert_eq!(
-                    sunrise_client::block_entity_types::valid(BLOCK, "add_blocks_test:extra"),
+                    sunrise_client_core::block_entity_types::valid(BLOCK, "add_blocks_test:extra"),
                     Some(true)
                 );
-                assert_eq!(sunrise_client::block_entity_types::type_for(BLOCK), None);
                 assert_eq!(
-                    sunrise_client::block_entity_types::factory_block(BLOCK),
+                    sunrise_client_core::block_entity_types::type_for(BLOCK),
+                    None
+                );
+                assert_eq!(
+                    sunrise_client_core::block_entity_types::factory_block(BLOCK),
                     "minecraft:vault"
                 );
             },
@@ -926,10 +930,8 @@ pub(in crate::game) mod furnace_changed_tests {
         collections::HashMap,
         sync::{Arc, Mutex},
     };
-    use sunrise_client::{
-        containers::{BlockEntity, Furnace, FurnaceKind},
-        items::ItemStack,
-    };
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::{BlockEntity, Furnace, FurnaceKind};
 
     type Burn = ([i32; 3], String);
     struct Burns(Arc<Mutex<Vec<Burn>>>);
@@ -1098,7 +1100,7 @@ pub(in crate::game) mod furnace_changed_tests {
                 .unwrap();
             game.world.set(pos.0, pos.1, pos.2, state).unwrap();
             let fuel = |duration| {
-                sunrise_client::item_data::parse_stack(&format!(
+                sunrise_items::item_data::parse_stack(&format!(
                 r#"{{id:"minecraft:coal",count:2,components:{{"minecraft:cooking_fuel":{{burn_time:{duration},speed_multiplier:1.0f}}}}}}"#,
             )).unwrap()
             };
@@ -1156,7 +1158,7 @@ pub(in crate::game) mod furnace_changed_tests {
     #[ignore = "daily"]
     fn a_world_pack_supplies_and_replaces_furnace_providers() {
         use crate::game::world_loading::WorldRequest;
-        use sunrise_client::item_data::parse_stack;
+        use sunrise_items::item_data::parse_stack;
 
         if run_fresh_cases(
             "game::server_side::block_entity_ticks::furnace_changed_tests::a_world_pack_supplies_and_replaces_furnace_providers",
@@ -1209,7 +1211,7 @@ pub(in crate::game) mod furnace_changed_tests {
             Some(1),
             true,
             None,
-            Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+            Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
         )
         .unwrap();
         request.save_root = root.to_owned();
@@ -1224,7 +1226,7 @@ pub(in crate::game) mod furnace_changed_tests {
         );
         game.world
             .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         let state = game
             .pack
             .assets
@@ -1339,10 +1341,10 @@ pub(in crate::game) mod slot_mutation_tests {
 
     use crate::game::game_tests::tests::server_game;
     use crate::game::published_loops::LoopFlow;
-    use sunrise_client::block_entities::Pos;
-    use sunrise_client::containers::BlockEntity;
-    use sunrise_client::items::ItemStack;
     use sunrise_core::geometry::Vec3;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::block_entities::Pos;
+    use sunrise_level::containers::BlockEntity;
 
     const A: Pos = (1, 64, 1);
     const B: Pos = (3, 64, 1);
@@ -1391,8 +1393,7 @@ pub(in crate::game) mod slot_mutation_tests {
         let mut game_resources = None;
         let mut game = server_game(&mut game_resources);
         game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5))
-                .unwrap(),
+            sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
         );
         game.update_chunk_tickets();
         assert!(game.block_ticking_area()(A.0, A.2));
@@ -1584,9 +1585,9 @@ pub(in crate::game) mod own_block_entity_tests {
     use crate::game::published_loops::LoopFlow;
     use mod_api::*;
     use std::sync::{Arc, OnceLock};
-    use sunrise_client::block_entities::Pos;
-    use sunrise_client::containers::{BlockEntity, ModBlockEntity};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::block_entities::Pos;
+    use sunrise_level::containers::{BlockEntity, ModBlockEntity};
 
     const A: &str = "own_a:machine";
     const B: &str = "own_b:machine";
@@ -1700,13 +1701,10 @@ pub(in crate::game) mod own_block_entity_tests {
                 game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
-                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                 game.player = Some(
-                    sunrise_client::motion::PlayerMotion::new(
-                        game.motion,
-                        Vec3::new(8.5, 65.0, 8.5),
-                    )
-                    .unwrap(),
+                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5))
+                        .unwrap(),
                 );
                 game.update_chunk_tickets();
                 let level = game.level(game.dim.id()).unwrap();
@@ -1767,7 +1765,9 @@ pub(in crate::game) mod own_block_entity_tests {
         with_machines(mods, &placed, |game| {
             // Mod B's entity on mod A's block.
             let d = (9, 64, 1);
-            assert!(sunrise_client::block_entity_types::additional_valid(A, B));
+            assert!(sunrise_client_core::block_entity_types::additional_valid(
+                A, B
+            ));
             place_mod_entity(game, d, A, B);
             let mut slots = (
                 Count::new(&[A]),
@@ -1815,10 +1815,10 @@ pub(in crate::game) mod own_block_entity_tests {
                 Some(BlockEntity::DaylightDetector)
             ));
             let d = (5, 64, 1);
-            assert!(sunrise_client::block_entity_types::additional_valid(
+            assert!(sunrise_client_core::block_entity_types::additional_valid(
                 DETECTOR, B
             ));
-            assert!(!sunrise_client::block_entity_types::additional_valid(
+            assert!(!sunrise_client_core::block_entity_types::additional_valid(
                 DETECTOR, A
             ));
             place_mod_entity(game, d, DETECTOR, B);

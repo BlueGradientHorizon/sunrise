@@ -62,7 +62,7 @@ mod enumeration_tests {
                 // shapes through the shared parser and the real API conversion boundary.
                 let parse = |json| {
                     use crate::game::api_values::TryIntoApi;
-                    crate::crafting::Ingredient::parse(
+                    sunrise_sim::crafting::Ingredient::parse(
                         &serde_json::from_str(json).unwrap(),
                         game.items(),
                     )

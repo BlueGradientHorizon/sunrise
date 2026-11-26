@@ -8,10 +8,10 @@ use mod_api::{
     LivingDamagePostEvent, LivingDamagePreEvent, LivingIncomingDamageEvent, LivingView,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client::command::args::GameMode;
-use sunrise_client::mobs::{Damage, DamageKind, Who};
-use sunrise_client::motion::PlayerMotion;
+use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::{Damage, DamageKind, Who};
+use sunrise_sim::motion::PlayerMotion;
 
 /// The probe's attachment, set on the player and on some mobs before the hits.
 static MARK: AttachmentType<i32> = AttachmentType {
@@ -213,7 +213,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             let cow = summon_mob(game, "minecraft:cow", "{}");
             let zombie = summon_mob(game, "minecraft:zombie", "{}");
             game.inventory[game.selected] =
-                Some(sunrise_client::items::ItemStack::new("minecraft:stick", 5));
+                Some(sunrise_items::items::ItemStack::new("minecraft:stick", 5));
             for (id, amplifier) in [(7, 1), (zombie, 2)] {
                 let living = game.living(game.entity(id).unwrap()).unwrap();
                 let effect = ActiveEffect::new(speed(), 400, amplifier, false, true, true);

@@ -9,7 +9,7 @@
 use super::{Game, HashMap, StorageSettlement};
 use mod_api::{ItemPlace, ScratchSlot, TransactionContext, TransactionScopeError};
 use std::sync::Arc;
-use sunrise_client::items::{ItemStack, Items};
+use sunrise_items::items::{ItemStack, Items};
 
 /// One lent scratch item place: its fixed item (`Some` for a single slot, `None` for two
 /// sequential dispenser slots), what of it is held (`None` once emptied), and a two-slot loan's

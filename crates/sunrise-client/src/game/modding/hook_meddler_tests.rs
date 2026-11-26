@@ -91,13 +91,13 @@ pub(in crate::game) fn with_meddler(
                     guest_commands: false,
                     force_game_mode: false,
                 },
-                sunrise_client::lan::NetConfig {
+                sunrise_sim::lan::NetConfig {
                     listen: false,
                     announce: false,
                     lod_distance: 0,
-                    ..sunrise_client::lan::NetConfig::lan(0, String::new(), 2)
+                    ..sunrise_sim::lan::NetConfig::lan(0, String::new(), 2)
                 },
-                sunrise_client::lan::hub::HubConfig {
+                sunrise_sim::lan::hub::HubConfig {
                     default_game_mode: 0,
                     guest_commands: false,
                     force_game_mode: false,

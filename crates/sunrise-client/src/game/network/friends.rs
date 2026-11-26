@@ -9,7 +9,8 @@
 //! sunrise-official.
 use super::{Game, lan::LanSettings};
 use std::time::{Duration, Instant};
-use sunrise_client::{Result, hud::HudBatch, lang, text::Text};
+use sunrise_client::hud::HudBatch;
+use sunrise_client_core::{Result, lang, text::Text};
 use sunrise_friends::{Host, HostConfig, HostEvent, PathMode, host::DEFAULT_PORT, reach, stun};
 use sunrise_protocol::{GAME_VERSION, PROTOCOL_VERSION};
 
@@ -71,7 +72,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if opened_lan {
             // ShareToLanScreen's defaults, as the world options screen offers them.
             self.client_lan_open(LanSettings {
-                port: sunrise_client::lan::available_port(),
+                port: sunrise_sim::lan::available_port(),
                 guest_commands: false,
                 force_game_mode: true,
             })?;

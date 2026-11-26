@@ -31,11 +31,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         ]
                         .into_iter()
                         .any(mod_api::__private::has_scoped_hook)))
-                .then_some(self as &dyn sunrise_client::mobs::MobHooks),
+                .then_some(self as &dyn sunrise_sim::mobs::MobHooks),
                 goal_host: (self.native_authoritative()
                     && (mod_api::__private::has_entity_parts()
                         || mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)))
-                .then_some(self as &dyn sunrise_client::mobs::part_goals::GoalHost),
+                .then_some(self as &dyn sunrise_sim::mobs::part_goals::GoalHost),
                 asks_animal_tame: mod_api::__private::listened(mod_api::HookId::AnimalTame),
                 asks_living_destroy_block: mod_api::__private::listened(
                     mod_api::HookId::LivingDestroyBlock,

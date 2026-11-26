@@ -6,13 +6,13 @@ use super::{
     minecarts::{CartKind, Minecart},
 };
 use serde_json::Value;
-use sunrise_client::{
-    Result,
+use sunrise_client_core::Result;
+use sunrise_core::geometry::Vec3;
+use sunrise_items::item_data::parse_stack;
+use sunrise_sim::{
     entities::{ArmorStand, ItemFrame, Painting},
-    item_data::parse_stack,
     motion::PlayerMotion,
 };
-use sunrise_core::geometry::Vec3;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn fixture_special_attack(
@@ -49,9 +49,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         player.set_sprinting(op["sprint"].as_bool().unwrap_or(false))?;
         self.player = Some(player);
         self.mode = if creative {
-            sunrise_client::command::args::GameMode::Creative
+            sunrise_command::args::GameMode::Creative
         } else {
-            sunrise_client::command::args::GameMode::Survival
+            sunrise_command::args::GameMode::Survival
         };
         self.creative = creative;
         self.inventory.fill(None);
@@ -61,7 +61,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // actor's applied-effect cache must not suppress this actor's modifiers.
         self.potions = Default::default();
         if op["weakness"].as_bool().unwrap_or(false) {
-            self.add_player_effect(sunrise_client::effects::EffectInstance::new(
+            self.add_player_effect(sunrise_level::effects::EffectInstance::new(
                 "weakness", 200, 0,
             ));
         }
@@ -134,7 +134,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     facing: 2,
                     glow: false,
                     item: if kind == "filled_frame" {
-                        Some(sunrise_client::items::ItemStack::new("minecraft:stone", 1))
+                        Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1))
                     } else {
                         None
                     },

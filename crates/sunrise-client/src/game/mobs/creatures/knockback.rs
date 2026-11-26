@@ -2,8 +2,8 @@ use super::*;
 
 /// Apply the full entry's physical push.
 pub(in crate::game) fn apply_player_knockback(
-    p: &mut sunrise_client::motion::PlayerMotion,
-    level: &mut sunrise_client::health::DamageLevel<'_>,
+    p: &mut sunrise_sim::motion::PlayerMotion,
+    level: &mut sunrise_sim::health::DamageLevel<'_>,
     power: f64,
     (xd, zd): (f64, f64),
     source: HurtSource<'_>,
@@ -26,9 +26,9 @@ pub(in crate::game) fn apply_player_knockback(
 /// `random` is the player's own (`Entity.random`), which a short direction's retries draw from;
 /// the caller writes it back to the player.
 pub(in crate::game) fn player_knockback_velocity(
-    player: &sunrise_client::motion::PlayerMotion,
+    player: &sunrise_sim::motion::PlayerMotion,
     random: &mut sunrise_core::random::EntityRandom,
-    level: &mut sunrise_client::health::DamageLevel<'_>,
+    level: &mut sunrise_sim::health::DamageLevel<'_>,
     mut knock: Knock,
     source: HurtSource<'_>,
 ) -> Option<Vec3> {

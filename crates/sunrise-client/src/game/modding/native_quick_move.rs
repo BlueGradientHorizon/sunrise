@@ -6,14 +6,16 @@ use super::native_hooks::ResidentBlockEntityAccess;
 use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
 use super::{BlockStateId, Game, transactions::After};
 use mod_api::{BlockEntityRef, BlockEntityScope, BlockEntityTypeKey};
-use sunrise_client::{
+use sunrise_items::items::ItemStack;
+use sunrise_level::{
     block_entities::Pos,
     containers::{BlockEntity, ModCrafting, ModMenuType},
-    items::ItemStack,
+};
+use sunrise_protocol::packets::play;
+use sunrise_sim::{
     lan::menu::{ModCraft, Slots},
     menu::Menu,
 };
-use sunrise_protocol::packets::play;
 
 /// `ClickType.QUICK_MOVE`'s id in `ServerboundContainerClickPacket`.
 const QUICK_MOVE: i32 = 1;

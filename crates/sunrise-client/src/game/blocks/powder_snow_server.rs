@@ -1,7 +1,9 @@
 use super::Game;
 use crate::game::powder_snow::extinguish_pitch;
-use sunrise_client::{Result, items::ItemStack, mobs::Who};
+use sunrise_client_core::Result;
 use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Who;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Entity.playEntityOnFireExtinguishedSound

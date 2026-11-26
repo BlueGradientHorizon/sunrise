@@ -8,8 +8,8 @@ pub(in crate::game) mod tests {
     use crate::game::native_hooks::register_enchantment_damage_effects::tests::TestMod;
     use mod_api::ModEntry;
     use mod_platform::testing::with_mods;
-    use sunrise_client::{mobs::Mob, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     #[test]
     #[ignore = "daily"]
@@ -138,10 +138,10 @@ pub(in crate::game) mod tests {
                     let mixed_damage = damage_with(&[sharpness, force]);
                     assert!(mixed_damage > sharpness_damage && mixed_damage > force_damage);
                     assert_eq!(std::mem::take(&mut *reads.lock().unwrap()).len(), 2);
-                    let mut trident = sunrise_client::projectiles::Projectile::new(
-                        sunrise_client::projectiles::ProjectileKind::Trident,
+                    let mut trident = sunrise_sim::projectiles::Projectile::new(
+                        sunrise_sim::projectiles::ProjectileKind::Trident,
                         Vec3::ZERO,
-                        Some(sunrise_client::mobs::Who::Player),
+                        Some(sunrise_sim::mobs::Who::Player),
                     );
                     let mut weapon = ItemStack::new("minecraft:trident", 1);
                     weapon.damage = 11;
@@ -151,18 +151,18 @@ pub(in crate::game) mod tests {
                         game.shot_damage(
                             &mut trident,
                             Some("minecraft:iron_golem"),
-                            sunrise_client::mobs::Who::Mob(21)
+                            sunrise_sim::mobs::Who::Mob(21)
                         ),
                         22.0
                     );
-                    let mut arrow = sunrise_client::projectiles::Projectile::new(
-                        sunrise_client::projectiles::ProjectileKind::Arrow {
+                    let mut arrow = sunrise_sim::projectiles::Projectile::new(
+                        sunrise_sim::projectiles::ProjectileKind::Arrow {
                             base_damage: 2.0,
                             critical: false,
                             effect: None,
                         },
                         Vec3::ZERO,
-                        Some(sunrise_client::mobs::Who::Player),
+                        Some(sunrise_sim::mobs::Who::Player),
                     );
                     arrow.velocity = Vec3::new(3.0, 0.0, 0.0);
                     let mut bow = ItemStack::new("minecraft:bow", 1);
@@ -173,11 +173,11 @@ pub(in crate::game) mod tests {
                         game.shot_damage(
                             &mut arrow,
                             Some("minecraft:iron_golem"),
-                            sunrise_client::mobs::Who::Mob(21)
+                            sunrise_sim::mobs::Who::Mob(21)
                         ),
                         30.0
                     );
-                    if let sunrise_client::projectiles::ProjectileKind::Arrow { critical, .. } =
+                    if let sunrise_sim::projectiles::ProjectileKind::Arrow { critical, .. } =
                         &mut arrow.kind
                     {
                         *critical = true;
@@ -187,7 +187,7 @@ pub(in crate::game) mod tests {
                         game.shot_damage(
                             &mut arrow,
                             Some("minecraft:iron_golem"),
-                            sunrise_client::mobs::Who::Mob(21)
+                            sunrise_sim::mobs::Who::Mob(21)
                         ),
                         39.0
                     );

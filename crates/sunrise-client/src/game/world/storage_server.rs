@@ -1,11 +1,9 @@
 use super::Game;
-use sunrise_client::{
-    containers::{BlockEntity, is_chest_block},
-    text::Text,
-};
+use sunrise_client_core::text::Text;
 use sunrise_core::random::RandomSource;
 use sunrise_gameplay::chests::facing_step;
 use sunrise_gameplay::chests::is_shulker_box;
+use sunrise_level::containers::{BlockEntity, is_chest_block};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Closing it copies the items back and keeps the block entity, as vanilla's
@@ -80,7 +78,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             self.server_send_overlay_message(
                 Text::translate("container.spectatorCantOpen", &[])
-                    .with_color(sunrise_client::text::RED),
+                    .with_color(sunrise_client_core::text::RED),
             );
             return;
         }
@@ -120,7 +118,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         let range = self.reach() + 4.0;
         let near = self.container_parts().iter().all(|&((x, y, z), _)| {
-            sunrise_client::lan::guest::within_block_range(eye, range, [x, y, z])
+            sunrise_sim::lan::guest::within_block_range(eye, range, [x, y, z])
         });
         if !near {
             self.close_container_server();
@@ -140,7 +138,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let table = &*self.res.facts().get(state).name == "minecraft:crafting_table";
         let range = self.reach() + 4.0;
-        if !(table && sunrise_client::lan::guest::within_block_range(eye, range, pos)) {
+        if !(table && sunrise_sim::lan::guest::within_block_range(eye, range, pos)) {
             self.close_container_server();
         }
     }
@@ -160,7 +158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.world.carrier_fences.locks_cell(&[key.0, key.1, key.2]) {
             return true;
         }
-        let Some(default_key) = sunrise_client::containers::default_name_key(name) else {
+        let Some(default_key) = sunrise_level::containers::default_name_key(name) else {
             return false;
         };
         // `LockCode.canUnlock` reads `Player.getMainHandItem`, whichever
@@ -181,17 +179,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         }
         let title = match (halves[0], halves[1]) {
-            (Some(first), Some(second)) => sunrise_client::containers::double_chest_name(
+            (Some(first), Some(second)) => sunrise_level::containers::double_chest_name(
                 self.block_name_plain(first).as_deref(),
                 self.block_name_plain(second).as_deref(),
             ),
-            (Some(one), None) => sunrise_client::containers::display_name(
+            (Some(one), None) => sunrise_level::containers::display_name(
                 self.block_name_plain(one).as_deref(),
                 default_key,
             ),
-            _ => sunrise_client::containers::display_name(None, default_key),
+            _ => sunrise_level::containers::display_name(None, default_key),
         };
-        let title = sunrise_client::component::name_text(&title);
+        let title = sunrise_client_core::component::name_text(&title);
         self.server_send_overlay_message(Text::translate("container.isLocked", &[title]));
         let at = match (halves[0], halves[1]) {
             (Some(first), Some(second)) => [
@@ -261,7 +259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "minecraft:block.ender_chest.close"
             }
         } else if chest {
-            sunrise_client::mobs::transport_items::chest_hinge_sound(name, open)
+            sunrise_sim::mobs::transport_items::chest_hinge_sound(name, open)
         } else if name == "minecraft:barrel" {
             if open {
                 "minecraft:block.barrel.open"
@@ -361,8 +359,9 @@ pub(in crate::game) mod tests {
 #[cfg(test)]
 pub(in crate::game) mod reach_tests {
     use super::super::game_tests::tests::server_game;
-    use sunrise_client::{containers::BlockEntity, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_level::containers::BlockEntity;
+    use sunrise_sim::motion::PlayerMotion;
 
     /// `Container.stillValidBlockEntity` for a double chest (`CompoundContainer`
     /// asks both halves): breaking the half the player did not click ends the
@@ -414,8 +413,9 @@ pub(in crate::game) mod reach_tests {
 #[cfg(test)]
 pub(in crate::game) mod lock_tests {
     use super::super::game_tests::tests::server_game;
-    use sunrise_client::{containers::BlockEntity, items::ItemStack};
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::ItemStack;
+    use sunrise_level::containers::BlockEntity;
     use sunrise_protocol::packets::play::Clientbound;
 
     fn has_overlay(game: &crate::game::ServerGame<'_>) -> bool {

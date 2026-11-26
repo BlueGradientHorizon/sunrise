@@ -6,7 +6,7 @@
 //! goes off as before.
 use super::Game;
 use std::collections::HashSet;
-use sunrise_client::mobs::{DamageKind, NamedDamage};
+use sunrise_sim::mobs::{DamageKind, NamedDamage};
 
 /// What `SimpleExplosionDamageCalculator` gives a block of its immune set.
 const IMMUNE_RESISTANCE: f32 = 3_600_000.0;
@@ -50,7 +50,7 @@ pub(in crate::game) struct BlastCalculator {
     pub(in crate::game) immune: Option<HashSet<String>>,
 }
 
-pub(in crate::game) use crate::lan::server_effects::BlastEffects;
+pub(in crate::game) use sunrise_sim::lan::server_effects::BlastEffects;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The damage type the blast deals: the mod's, else `DamageSources.explosion`'s

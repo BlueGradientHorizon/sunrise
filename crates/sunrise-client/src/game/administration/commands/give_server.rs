@@ -1,6 +1,6 @@
 use super::{Game, Target};
 use crate::game::commands::give::GiveItem;
-use sunrise_client::items::ItemStack;
+use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `GiveCommand.giveItem`'s handing over of one stack to the acting player:
@@ -52,7 +52,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut random = super::super::spill::prepare_item_random(None);
         let delay = match kind {
             GiveItem::Overflow(owner) => {
-                random.state.target = owner.map(sunrise_client::lan::playerdata::ints_uuid);
+                random.state.target = owner.map(sunrise_sim::lan::playerdata::ints_uuid);
                 0
             }
             // ItemEntity.makeFakeItem: never pick up, one tick left before expiry.

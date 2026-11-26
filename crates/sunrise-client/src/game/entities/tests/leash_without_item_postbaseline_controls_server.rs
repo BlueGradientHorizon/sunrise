@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::game_tests::tests::server_game;
-use sunrise_client::motion::PlayerMotion;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_sim::motion::PlayerMotion;
 
 /// Added after baseline: an item-unconstrained interaction still dispatches
 /// on detach. This prevents suppressing the whole trigger to pass the lead test.

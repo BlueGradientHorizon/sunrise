@@ -20,12 +20,19 @@ use super::{
 use crate::game::api_values::TryIntoApi;
 use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
 use std::{collections::HashMap, sync::Arc, time::Instant};
-use sunrise_client::{
-    Result,
+use sunrise_client_core::{Result, text::Text};
+use sunrise_level::{
     effects::{
         EffectInstance, ModifiedEffectParticles, ShownEffect, effect_particle,
         visible_effect_particles,
     },
+    world::World,
+};
+use sunrise_protocol::{
+    entity_data::{Particles, Value, serializer},
+    packets::play::{self, Clientbound as C},
+};
+use sunrise_sim::{
     lan::{
         self, NetConfig,
         chunks::ChunkEncoder,
@@ -36,12 +43,6 @@ use sunrise_client::{
         playerdata,
     },
     mobs::{Mob, Species, Who, leash::Holder},
-    text::Text,
-    world::World,
-};
-use sunrise_protocol::{
-    entity_data::{Particles, Value, serializer},
-    packets::play::{self, Clientbound as C},
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
 
@@ -70,10 +71,10 @@ pub(in crate::game) struct LanHost {
     pub(in crate::game) mob_state: HashMap<super::Dim, HashMap<u32, (i32, bool, Option<i32>)>>,
     /// Each placed guest's pose as the mods last heard it
     /// (`native_entity_pose_change`), by connection.
-    pub poses: HashMap<u32, sunrise_client::pose::Pose>,
+    pub poses: HashMap<u32, sunrise_sim::pose::Pose>,
     /// The guest each mob sees as its player, when not the host (game/network/lan_mobs.rs).
     /// Looked up per mob each tick: a fast hasher (never iterated).
-    pub mob_players: sunrise_client::fast_hash::FxHashMap<u32, u32>,
+    pub mob_players: sunrise_level::fast_hash::FxHashMap<u32, u32>,
     /// An integrated server's owner (game/world/integrated.rs).
     pub owner: Option<Owner>,
     /// The players' locator bars, one waypoint manager per level by
@@ -90,7 +91,7 @@ pub(in crate::game) struct LanHost {
     pub quiet: std::collections::VecDeque<super::lan_quiet::QuietBatch>,
     /// Far terrain sampled for Sunrise clients (game/network/lan_far.rs); None when
     /// `sunrise-lod-distance` is 0.
-    pub far: Option<sunrise_client::lod_net::Service>,
+    pub far: Option<sunrise_sim::lod_net::Service>,
     /// Native mods' commands and the level each needs, once asked (game/modding/native_server.rs).
     /// The generation of the session's mod commands the hub was given.
     pub(in crate::game) native_commands_sent: Option<u64>,
@@ -167,7 +168,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 pub(in crate::game) struct Owner {
     pub uuid: u128,
     /// The world's player as loaded, until the owner joins.
-    pub saved: Option<Box<sunrise_client::save::Level>>,
+    pub saved: Option<Box<sunrise_sim::save::Level>>,
 }
 
 /// A stable UUID for an entity that has none.
@@ -183,8 +184,8 @@ pub(in crate::game) fn baby_index(species: Species) -> Option<u8> {
     use Species as S;
     match species {
         S::Piglin => Some(17),
-        s if sunrise_client::mobs::finalize::ageable(s)
-            || sunrise_client::mobs::doors::is_zombie(s)
+        s if sunrise_sim::mobs::finalize::ageable(s)
+            || sunrise_sim::mobs::doors::is_zombie(s)
             || s == S::Zoglin =>
         {
             Some(16)
@@ -233,7 +234,7 @@ pub(in crate::game::server_side) fn mob_variant_meta(
             };
             // Each registry's default (`define(DATA_VARIANT_ID, ... TEMPERATE)`)
             // stays out of the pairing data, as other default values do.
-            let name = sunrise_client::mobs::finalize::variant_name(m.species(), e.variant);
+            let name = sunrise_sim::mobs::finalize::variant_name(m.species(), e.variant);
             let name = name.trim_start_matches("minecraft:");
             if let Some(v) = id(registry, name)
                 && name != "temperate"
@@ -256,7 +257,7 @@ pub(in crate::game::server_side) fn mob_variant_meta(
         // Bee.DATA_FLAGS_ID (rolling 2, stung 4, nectar 8) and
         // DATA_ANGER_END_TIME: the texture shows the nectar and the anger.
         "minecraft:bee" => {
-            let bee = sunrise_client::mobs::bee::get(m);
+            let bee = sunrise_sim::mobs::bee::get(m);
             let flags = bee.map_or(0, |b| b.flags);
             if flags != 0 {
                 meta.push((18, serializer::BYTE, Value::Byte(flags as i8)));
@@ -359,12 +360,12 @@ pub(in crate::game) fn mob_meta(
     }
     // Entity.DATA_POSE: the pose the species keeps in its own fields (a
     // pose back at standing goes out by the entity's own default).
-    let pose = sunrise_client::mobs::sync::pose_id(m);
+    let pose = sunrise_sim::mobs::sync::pose_id(m);
     if pose != 0 {
         meta.push((6, serializer::POSE, Value::Id(i32::from(pose))));
     }
     // LivingEntity.DATA_SLEEPING_POS_ID: the bed a sleeping villager lies in.
-    if let Some(bed) = sunrise_client::mobs::villager::sleeping_pos(m) {
+    if let Some(bed) = sunrise_sim::mobs::villager::sleeping_pos(m) {
         meta.push((14, serializer::OPTIONAL_BLOCK_POS, Value::OptPos(Some(bed))));
     }
     if let Some(name) = &m.custom_name {
@@ -440,7 +441,7 @@ pub(in crate::game) fn mob_meta(
         }
         defaults.push((index, serializer::BOOLEAN, Value::Bool(false)));
         // AgeableMob.AGE_LOCKED, the entry after it (not Zombie's or Piglin's).
-        if index == 16 && sunrise_client::mobs::finalize::ageable(m.species()) {
+        if index == 16 && sunrise_sim::mobs::finalize::ageable(m.species()) {
             if m.extra.age_locked {
                 meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
             }
@@ -546,10 +547,10 @@ pub(in crate::game) fn mob_meta(
                 meta.push((18, serializer::BYTE, Value::Byte(flags)));
             }
             let (index, registry, name) = if kind == "minecraft:cat" {
-                let v = sunrise_client::mobs::tame::CAT_VARIANTS[(e.variant as usize).min(10)];
+                let v = sunrise_sim::mobs::tame::CAT_VARIANTS[(e.variant as usize).min(10)];
                 (20, "minecraft:cat_variant", v)
             } else {
-                let v = sunrise_client::mobs::tame::WOLF_VARIANTS[(e.variant as usize).min(8)].0;
+                let v = sunrise_sim::mobs::tame::WOLF_VARIANTS[(e.variant as usize).min(8)].0;
                 (23, "minecraft:wolf_variant", v)
             };
             let serializer = if index == 20 {
@@ -571,7 +572,7 @@ pub(in crate::game) fn mob_meta(
             }
             // Wolf.DATA_COLLAR_COLOR and Cat's, red by default.
             let collar = if kind == "minecraft:cat" { 23 } else { 21 };
-            let red = i32::from(sunrise_client::mobs::tame::RED);
+            let red = i32::from(sunrise_sim::mobs::tame::RED);
             if i32::from(e.color & 15) != red {
                 meta.push((collar, serializer::INT, Value::Int(i32::from(e.color & 15))));
             }
@@ -600,7 +601,7 @@ pub(in crate::game) fn mob_meta(
         | "minecraft:camel" => {
             // AbstractHorse.DATA_ID_FLAGS: tame 2, eating 16 (grazing), standing
             // 32 (rearing).
-            let grazes = sunrise_client::mobs::equine::grazes(m.species());
+            let grazes = sunrise_sim::mobs::equine::grazes(m.species());
             let flags = if e.tame { 2 } else { 0 }
                 | if grazes && e.flag { 16 } else { 0 }
                 | if grazes && e.counter > 0 { 32 } else { 0 };
@@ -633,30 +634,30 @@ pub(in crate::game) fn mob_meta(
         // set while `serverStillTimeout > 0` (`syncStayStillFlag`).
         "minecraft:happy_ghast" => {
             // HappyGhast.IS_LEASH_HOLDER (`setLeashHolder` in `tick`).
-            if sunrise_client::mobs::happy_ghast::is_leash_holder(m) {
+            if sunrise_sim::mobs::happy_ghast::is_leash_holder(m) {
                 meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
             }
             defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            if sunrise_client::mobs::happy_ghast::on_still_timeout(m) {
+            if sunrise_sim::mobs::happy_ghast::on_still_timeout(m) {
                 meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
             }
             defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
         }
         // Villager.DATA_VILLAGER_DATA and ZombieVillager's (after Zombie's three).
         "minecraft:villager" | "minecraft:zombie_villager" => {
-            use sunrise_client::mobs::villager::VILLAGER_TYPES;
+            use sunrise_sim::mobs::villager::VILLAGER_TYPES;
             if kind == "minecraft:villager" {
                 unhappy_counter(m, meta, defaults);
             } else {
                 // ZombieVillager.DATA_CONVERTING_ID: the cure's shaking.
-                if sunrise_client::mobs::zombie_villager::is_converting(m) {
+                if sunrise_sim::mobs::zombie_villager::is_converting(m) {
                     meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
                 }
                 defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
             }
             let villager_type = VILLAGER_TYPES[e.variant as usize % VILLAGER_TYPES.len()];
             let profession =
-                sunrise_client::mobs::villager::profession_id(e.profession.index().unwrap_or(0));
+                sunrise_sim::mobs::villager::profession_id(e.profession.index().unwrap_or(0));
             if let (Some(t), Some(p)) = (
                 id("minecraft:villager_type", villager_type),
                 id("minecraft:villager_profession", profession),
@@ -687,7 +688,7 @@ pub(in crate::game) fn mob_meta(
             if kind == "minecraft:sulfur_cube" {
                 // The synced MAX_FUSE, not the countdown: a late tracker gets the value the
                 // fuse was set from, and only a change of it reaches those already tracking.
-                let max = sunrise_client::mobs::sulfur_cube::max_fuse(m);
+                let max = sunrise_sim::mobs::sulfur_cube::max_fuse(m);
                 if max != -1 {
                     meta.push((19, serializer::INT, Value::Int(max)));
                 }
@@ -722,7 +723,7 @@ pub(in crate::game) fn mob_meta(
         // AgeableMob's two), MAIN_GENE_ID, HIDDEN_GENE_ID and DATA_ID_FLAGS;
         // the client animates the states from them.
         "minecraft:panda" => {
-            let (flags, counters) = sunrise_client::mobs::panda::get(m)
+            let (flags, counters) = sunrise_sim::mobs::panda::get(m)
                 .map_or((0, [0; 3]), |s| (s.flags, [s.unhappy, s.sneeze, s.eat]));
             for (index, value) in (18..).zip(counters) {
                 if value != 0 {
@@ -802,7 +803,7 @@ pub(in crate::game) fn mob_meta(
         // GlowSquid.DATA_DARK_TICKS_REMAINING (after AgeableMob's two): the
         // dimming a hit gave, counted down by the server and the client alike.
         "minecraft:glow_squid" => {
-            let ticks = sunrise_client::mobs::aquatic::dark_ticks(m);
+            let ticks = sunrise_sim::mobs::aquatic::dark_ticks(m);
             if ticks != 0 {
                 meta.push((18, serializer::INT, Value::Int(ticks)));
             }
@@ -831,7 +832,7 @@ pub(in crate::game) fn mob_meta(
                 meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
             }
             defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            let default = sunrise_client::mobs::MannequinDescription::Default.component();
+            let default = sunrise_sim::mobs::MannequinDescription::Default.component();
             let shown = e.description.component();
             if shown != default {
                 meta.push((19, serializer::OPTIONAL_COMPONENT, Value::OptText(shown)));
@@ -848,7 +849,7 @@ pub(in crate::game) fn mob_meta(
                 meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
             }
             defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-            if sunrise_client::mobs::creaking::tearing_down(m) {
+            if sunrise_sim::mobs::creaking::tearing_down(m) {
                 meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
             }
             defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
@@ -867,7 +868,7 @@ pub(in crate::game) fn mob_meta(
         }
         // Axolotl.DATA_PLAYING_DEAD (after DATA_VARIANT).
         "minecraft:axolotl" => {
-            if sunrise_client::mobs::axolotl::is_playing_dead(m) {
+            if sunrise_sim::mobs::axolotl::is_playing_dead(m) {
                 meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
             }
             defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
@@ -885,7 +886,7 @@ pub(in crate::game) fn mob_meta(
         }
         // Armadillo.ARMADILLO_STATE (after AgeableMob's two).
         "minecraft:armadillo" => {
-            let state = sunrise_client::mobs::armadillo::state(m);
+            let state = sunrise_sim::mobs::armadillo::state(m);
             if state != 0 {
                 meta.push((18, serializer::ARMADILLO_STATE, Value::Id(i32::from(state))));
             }
@@ -983,12 +984,12 @@ pub(in crate::game) fn mob_meta(
         _ => {}
     }
     // Camel.DASH and LAST_POSE_CHANGE_TICK (after AbstractHorse's flags).
-    if sunrise_client::mobs::camel::is_camel(m.species()) {
+    if sunrise_sim::mobs::camel::is_camel(m.species()) {
         if e.flag2 {
             meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
         }
         defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        let tick = sunrise_client::mobs::camel::synced_pose_tick(m, game_time);
+        let tick = sunrise_sim::mobs::camel::synced_pose_tick(m, game_time);
         if tick != 0 {
             meta.push((20, serializer::LONG, Value::Long(tick)));
         }
@@ -1018,7 +1019,7 @@ pub(in crate::game) fn mob_raider_meta(
     meta: &mut Vec<(u8, i32, Value)>,
     defaults: &mut Vec<(u8, i32, Value)>,
 ) {
-    use sunrise_client::mobs::raider;
+    use sunrise_sim::mobs::raider;
     if raider::is_raider(m.species()) {
         if raider::state(m).is_some_and(|state| state.celebrating) {
             meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
@@ -1263,12 +1264,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .save
                 .0
                 .tables
-                .get_or_init(|| Arc::new(sunrise_client::save::SaveTables::new(&self.pack.assets)))
+                .get_or_init(|| Arc::new(sunrise_sim::save::SaveTables::new(&self.pack.assets)))
                 .clone(),
         );
         self.lan_update_tag_sources(&mut encoder);
         let far = (net.lod_distance > 0)
-            .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
+            .then(|| sunrise_sim::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
         hub.dispatch_move_effects = true;
@@ -1407,7 +1408,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// anyone else into their own file.
     pub(in crate::game::server_side) fn save_guest(
         &mut self,
-        guest: &mut sunrise_client::lan::guest::Guest,
+        guest: &mut sunrise_sim::lan::guest::Guest,
     ) {
         if !guest.participates_in_player_simulation() {
             return;
@@ -1446,7 +1447,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// host's own player, in the level in place.
     pub(in crate::game::server_side) fn ridden_by_others(
         &self,
-        guests: &[sunrise_client::lan::guest::Guest],
+        guests: &[sunrise_sim::lan::guest::Guest],
         dim: &str,
         but: Option<u128>,
         host: bool,
@@ -1499,7 +1500,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// is not written, so nothing would hold it.
     pub(in crate::game::server_side) fn take_parent_vehicle(
         &mut self,
-        guest: &mut sunrise_client::lan::guest::Guest,
+        guest: &mut sunrise_sim::lan::guest::Guest,
     ) {
         // An interrupted player's file is not written, so the vehicle stays in the world.
         if self.side.crash_save.excludes(guest.conn) {
@@ -1616,7 +1617,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn write_arrival_records(
         &self,
         host: &LanHost,
-        guest: &sunrise_client::lan::guest::Guest,
+        guest: &sunrise_sim::lan::guest::Guest,
     ) -> std::result::Result<(), String> {
         if self.adv.tree.list.is_empty() {
             return Ok(());
@@ -1627,7 +1628,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let write = |dir: &str, json: &serde_json::Value| {
             let path = super::stats::player_json(&self.side.world_root, dir, uuid);
             let text = serde_json::to_string_pretty(json).map_err(|e| e.to_string())?;
-            sunrise_client::save::write_durable(&path, text.as_bytes())
+            sunrise_sim::save::write_durable(&path, text.as_bytes())
                 .map_err(|e| format!("{} is not saved: {e}", path.display()))
         };
         write(
@@ -1665,7 +1666,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         if let Some(json) = saved {
             let _ = host.hub.update_guest(conn, |g| {
-                let mut progress = sunrise_client::advancements::Progress::from_json(&json);
+                let mut progress = sunrise_sim::advancements::Progress::from_json(&json);
                 // PlayerAdvancements.applyFrom: advancements this server lacks are dropped.
                 progress
                     .criteria
@@ -1933,7 +1934,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
             if self
                 .persist_raw(d.id)
-                .and_then(|t| sunrise_client::save::number(t.get("Glowing")))
+                .and_then(|t| sunrise_sim::save::number(t.get("Glowing")))
                 .is_some_and(|b| b != 0)
             {
                 e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
@@ -2068,13 +2069,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // A slow tick's line says which event took it, and whose (`spans::note`): each event's
         // time is noted when the next one starts (an event's arm may `continue`), the last's
         // after the loop.
-        let timed = sunrise_client::spans::recording_here();
+        let timed = sunrise_level::spans::recording_here();
         let mut previous = None;
         // The arms below borrow the hub through `self.lan` (their helpers take no host:
         // the fork's borrow shape), so the host is put back for the match and taken out
         // again on the way through.
         self.lan = Some(host);
-        let mut timings = EventTimings::new(sunrise_client::spans::NOTE_MS);
+        let mut timings = EventTimings::new(sunrise_level::spans::NOTE_MS);
         for event in events {
             if timed && let Some(host) = self.lan.as_ref() {
                 note_event(host, previous.take(), &mut timings);
@@ -2157,10 +2158,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         let converted: std::result::Result<_, mod_api::text::TextFormError> =
                             (|| {
                                 Ok((
-                                    sunrise_client_lib::api_text::to_serialized_engine(&api_text)?,
+                                    sunrise_sim::api_text::to_serialized_engine(&api_text)?,
                                     replies
                                         .iter()
-                                        .map(sunrise_client_lib::api_text::to_serialized_engine)
+                                        .map(sunrise_sim::api_text::to_serialized_engine)
                                         .collect::<std::result::Result<Vec<_>, _>>()?,
                                 ))
                             })();
@@ -2182,7 +2183,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             host.hub.send_to(
                                 conn,
                                 &C::SystemChat(play::SystemChat {
-                                    content: sunrise_client::lan::data::component_nbt(
+                                    content: sunrise_sim::lan::data::component_nbt(
                                         &line.component(),
                                     ),
                                     overlay: false,
@@ -2199,7 +2200,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         // `withUnsignedContent`: clients show the mod's text,
                         // the signature still covers what was typed.
                         message.unsigned_content =
-                            Some(sunrise_client::lan::data::component_nbt(&text.component()));
+                            Some(sunrise_sim::lan::data::component_nbt(&text.component()));
                         line = format!("<{name}> {}", text.plain());
                     }
                     self.lan_broadcast_chat(&message, &bound, line, &name, &text.plain())?;
@@ -2261,7 +2262,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         if cancel {
                             let reason = match reason {
                                 Some(text) => {
-                                    sunrise_client::lan::data::component_nbt(&text.component())
+                                    sunrise_sim::lan::data::component_nbt(&text.component())
                                 }
                                 None => sunrise_protocol::text::translatable(
                                     "multiplayer.disconnect.generic",
@@ -2321,7 +2322,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         if g.held {
                             super::dedicated::log(
                                 "INFO",
-                                &sunrise_client::lan::arrivals::held_line(&g.name),
+                                &sunrise_sim::lan::arrivals::held_line(&g.name),
                             );
                         } else if let Some(old) = renamed {
                             let line = Text::translate(
@@ -2501,7 +2502,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if timed && let Some(host) = self.lan.as_ref() {
             note_event(host, previous, &mut timings);
             for burst in timings.bursts() {
-                sunrise_client::spans::note(burst.ms, || describe_burst(host, &burst));
+                sunrise_level::spans::note(burst.ms, || describe_burst(host, &burst));
             }
         }
         self.lan.take()
@@ -2568,15 +2569,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.movement_checks = (
                 self.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
+                    .bool_at(sunrise_client_core::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
                 self.ui
                     .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
+                    .bool_at(sunrise_client_core::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
             );
             Self::sync_hub_mod_flags(&mut host.hub);
             let pass = self.side.level_pass;
             let mut events = if pass.first {
-                sunrise_client::spans::time("lan_poll", || host.hub.poll(&mut ctx))
+                sunrise_level::spans::time("lan_poll", || host.hub.poll(&mut ctx))
             } else {
                 Vec::new()
             };
@@ -2587,7 +2588,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .map(|(conn, lease)| HostEvent::Joined(conn, Some(lease))),
                 );
             }
-            events.extend(sunrise_client::spans::time("lan_drain", || {
+            events.extend(sunrise_level::spans::time("lan_drain", || {
                 host.hub.drain_packets(&mut ctx)
             }));
             events
@@ -2598,7 +2599,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         host = back;
         if !host.quiet.is_empty() {
             self.lan = Some(host);
-            sunrise_client::spans::time("lan_quiet_commands", || self.run_quiet_commands());
+            sunrise_level::spans::time("lan_quiet_commands", || self.run_quiet_commands());
             host = self
                 .lan
                 .take()
@@ -2606,7 +2607,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if !host.hub.native_advancement_grants.is_empty() {
             self.lan = Some(host);
-            sunrise_client::spans::time("lan_advancement_grants", || {
+            sunrise_level::spans::time("lan_advancement_grants", || {
                 self.run_native_advancement_grants()
             });
             host = self
@@ -2616,7 +2617,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if !host.hub.native_menu_events.is_empty() {
             self.lan = Some(host);
-            sunrise_client::spans::time("lan_menu_events", || self.run_native_menu_events());
+            sunrise_level::spans::time("lan_menu_events", || self.run_native_menu_events());
             host = self
                 .lan
                 .take()
@@ -2633,7 +2634,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.answer_login_profile(request);
         }
         if let Some(requests) = configuration_requests {
-            sunrise_client::spans::time("lan_configuration_tasks", || {
+            sunrise_level::spans::time("lan_configuration_tasks", || {
                 self.tick_lan_configuration_tasks(requests)
             });
         }
@@ -2701,7 +2702,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let refusal = cancel.then(|| {
                 // The reason is checked once more where it becomes the packet's JSON.
                 let reason = reason.and_then(|text| {
-                    let json = sunrise_client::api_text::to_serialized_engine(&text)
+                    let json = sunrise_sim::api_text::to_serialized_engine(&text)
                         .map_err(|error| error.to_string())
                         .and_then(|text| {
                             lan::conn::login_disconnect_json(&text.component_view())
@@ -2872,7 +2873,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // level tick (e.g. a fixture) has no outer server pass.
         let defer_connections = self.side.level_pass.running.is_some();
         if !paused {
-            sunrise_client::spans::time("lan_guests", || self.tick_level_guests());
+            sunrise_level::spans::time("lan_guests", || self.tick_level_guests());
             if !defer_connections {
                 self.tick_guest_connections(false)
                     .expect("the current-level connection pass does not switch levels");
@@ -2937,7 +2938,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 } else {
                     None
                 };
-                sunrise_client::spans::time("lan_entity_states", || {
+                sunrise_level::spans::time("lan_entity_states", || {
                     self.lan_entities(&mut states, true, 0, kept.as_mut());
                     if let Some(kept) = kept {
                         kept.finish();
@@ -3036,10 +3037,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 host.hub.movement_checks = (
                     self.ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
+                        .bool_at(sunrise_client_core::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
                     self.ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
+                        .bool_at(sunrise_client_core::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
                 );
                 // IntegratedServer.getScaledTrackingDistance: the Entity Distance
                 // option scales what an integrated server or a LAN host tracks (a
@@ -3051,12 +3052,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 host.hub.set_immediate_respawn(
                     self.ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::IMMEDIATE_RESPAWN),
+                        .bool_at(sunrise_client_core::gamerules::vanilla::IMMEDIATE_RESPAWN),
                 );
                 host.hub.set_limited_crafting(
                     self.ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::LIMITED_CRAFTING),
+                        .bool_at(sunrise_client_core::gamerules::vanilla::LIMITED_CRAFTING),
                 );
                 // A server with several levels runs a pass for each
                 // (`tick_server`): the network is read once, before the first.
@@ -3067,7 +3068,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // Even paused worlds completed their ordered input segments at
                 // entry, before world sync/physics or any scheduled work.
                 let mut events = Vec::new();
-                events.extend(sunrise_client::spans::time("lan_tick_level", || {
+                events.extend(sunrise_level::spans::time("lan_tick_level", || {
                     if defer_connections {
                         host.hub.tick_level_before_connections(
                             &mut ctx,
@@ -3086,14 +3087,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if let Some(host) = self.lan.as_mut() {
                 host.hub.finish_tracking_pass();
                 if last {
-                    sunrise_client::spans::time("lan_end_tick", || host.hub.end_tick());
+                    sunrise_level::spans::time("lan_end_tick", || host.hub.end_tick());
                 }
             }
             self.wake_woken_guests();
             let Some(host) = self.lan.take() else {
                 return;
             };
-            let processed = sunrise_client::spans::time("lan_process_events", || {
+            let processed = sunrise_level::spans::time("lan_process_events", || {
                 self.lan_process_events(host, events, entities, spawn)
             });
             let Some(back) = processed else {
@@ -3187,7 +3188,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             self.side.tickets.0.add_spawn(
                 prepared.chunk(),
-                sunrise_client::ticket_levels::SpawnTicketKind::Player,
+                sunrise_sim::ticket_levels::SpawnTicketKind::Player,
             );
             self.spawn_loaded_entities();
             self.world.entities_pending.clear();
@@ -3402,7 +3403,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn player_equipment_broke(
         &mut self,
         slot: sunrise_core::equipment_slot::EquipmentSlot,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &sunrise_items::items::ItemStack,
     ) {
         use sunrise_core::equipment_slot::EquipmentSlot;
         self.award_stat("broken", &stack.item, 1);
@@ -3537,7 +3538,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && !dead
                 && let Some((source, _)) = m.last_damage
             {
-                use sunrise_client::mobs::Who;
+                use sunrise_sim::mobs::Who;
                 let kind = super::creatures::source_damage_type(source);
                 // The player a mob sees is the guest acting.
                 let cause = source.attacker.and_then(|who| match who {
@@ -3616,7 +3617,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         // The held players are sent the level, so their chunks are kept as the placed ones'.
         self.side.streaming.extra = host
             .hub
@@ -3873,7 +3874,6 @@ pub(in crate::game) mod tests {
             thread,
             time::{Duration, Instant},
         };
-        use sunrise_client::lan::{Lan, NetConfig, chunks::ChunkEncoder, data::SyncData};
         use sunrise_core::nbt::Tag;
         use sunrise_protocol::{
             PROTOCOL_VERSION,
@@ -3881,6 +3881,7 @@ pub(in crate::game) mod tests {
             crypto::offline_uuid,
             packets::{Empty, handshake, login, status},
         };
+        use sunrise_sim::lan::{Lan, NetConfig, chunks::ChunkEncoder, data::SyncData};
 
         const WAIT: Duration = Duration::from_secs(5);
         const ORIGINAL: &str = "entry.test\0suffix";
@@ -4150,11 +4151,7 @@ pub(in crate::game) mod tests {
                     ]
                 );
                 hello(&mut c, "LocalPeer");
-                assert_login(
-                    &mut c,
-                    "LocalPeer",
-                    sunrise_client::lan::conn::MEMORY_ADDRESS,
-                );
+                assert_login(&mut c, "LocalPeer", sunrise_sim::lan::conn::MEMORY_ADDRESS);
                 drop(c);
 
                 // A peer that leaves a whole Hello behind once its handshake was taken reaches
@@ -4321,7 +4318,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn a_burst_of_short_events_still_has_a_slow_tick_note() {
-        use sunrise_client::spans;
+        use sunrise_level::spans;
         // Thread-local recording avoids changing instrumentation on other test threads.
         spans::record_here(true);
         spans::take_notes();
@@ -4341,8 +4338,8 @@ pub(in crate::game) mod tests {
         spans::record_here(false);
         assert_eq!(notes, vec![(1000.0, "200 x UseItemOn".into())]);
     }
-    use sunrise_client::mobs::Mob;
     use sunrise_protocol::entity_data::{Value, serializer};
+    use sunrise_sim::mobs::Mob;
 
     fn sync_test_items(
         root: &std::path::Path,
@@ -4358,8 +4355,8 @@ pub(in crate::game) mod tests {
     fn guest_climbable_glide() {
         use crate::game::{Options, Progress, Settings, load_resources};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
-        use sunrise_client::motion::MotionWorld;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
+        use sunrise_sim::motion::MotionWorld;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -4391,20 +4388,20 @@ pub(in crate::game) mod tests {
         game.world =
             sunrise_client::assets::test_scene_world(&game.pack.assets, &render, 2).unwrap();
 
-        let sync = Arc::new(sunrise_client::lan::data::SyncData::empty());
+        let sync = Arc::new(sunrise_sim::lan::data::SyncData::empty());
         let net = NetConfig {
             listen: false,
             ..NetConfig::loopback(0, String::new(), 2)
         };
-        let lan = sunrise_client::lan::Lan::start_with(sync.clone(), net).unwrap();
-        let encoder = sunrise_client::lan::chunks::ChunkEncoder::new(
+        let lan = sunrise_sim::lan::Lan::start_with(sync.clone(), net).unwrap();
+        let encoder = sunrise_sim::lan::chunks::ChunkEncoder::new(
             [] as [(Arc<str>, bool); 0],
             &sunrise_protocol::registry::Builtin::default(),
             &[],
             &[],
             Default::default(),
         );
-        let config = sunrise_client::lan::hub::HubConfig {
+        let config = sunrise_sim::lan::hub::HubConfig {
             default_game_mode: 0,
             guest_commands: false,
             force_game_mode: false,
@@ -4419,13 +4416,8 @@ pub(in crate::game) mod tests {
             levels: Default::default(),
             level_seeds: Default::default(),
         };
-        let mut hub = sunrise_client::lan::hub::Hub::new(
-            lan,
-            sync,
-            encoder,
-            config,
-            game.loop_context.clone(),
-        );
+        let mut hub =
+            sunrise_sim::lan::hub::Hub::new(lan, sync, encoder, config, game.loop_context.clone());
         let (tx, _rx) = mpsc::channel();
         let mut guest = Guest::new(
             Joined {
@@ -4509,7 +4501,7 @@ pub(in crate::game) mod tests {
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
         let items =
-            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+            sunrise_items::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
                 .unwrap();
         let preloaded = Arc::new(
             SyncData::load(
@@ -4575,7 +4567,7 @@ pub(in crate::game) mod tests {
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
         let items = Arc::new(
-            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+            sunrise_items::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
                 .unwrap(),
         );
         let preloaded = Arc::new(
@@ -4659,7 +4651,7 @@ pub(in crate::game) mod tests {
             Arc::ptr_eq(&opened, &later),
             "a late helper or disabled pack cannot replace a frozen world"
         );
-        let packet = later.registry_packets(true, &sunrise_client::chunk::LevelShapes::VANILLA);
+        let packet = later.registry_packets(true, &sunrise_level::chunk::LevelShapes::VANILLA);
         let packet = packet
             .iter()
             .find(|p| p.registry == "minecraft:damage_type")
@@ -4687,7 +4679,7 @@ pub(in crate::game) mod tests {
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
         let items =
-            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+            sunrise_items::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
                 .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let preloaded = Arc::new(
@@ -4759,7 +4751,7 @@ pub(in crate::game) mod tests {
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
         let items =
-            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+            sunrise_items::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
                 .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let initial = vec![(
@@ -4767,7 +4759,7 @@ pub(in crate::game) mod tests {
             vec![br#"{"type":"minecraft:notice","title":"Before"}"#.to_vec()],
         )];
         let initial = PackOverlay::new(&initial);
-        let packed = sunrise_client::lan::data::SyncData::stage_registry_definitions(
+        let packed = sunrise_sim::lan::data::SyncData::stage_registry_definitions(
             &root,
             item_data.defaults(),
             &initial,
@@ -4816,7 +4808,7 @@ pub(in crate::game) mod tests {
         assert!(wire.id("minecraft:dialog", "demo:before").is_some());
         assert!(wire.id("minecraft:dialog", "demo:after").is_none());
         let fall = wire.id("minecraft:damage_type", "minecraft:fall").unwrap();
-        let packets = wire.registry_packets(false, &sunrise_client::chunk::LevelShapes::VANILLA);
+        let packets = wire.registry_packets(false, &sunrise_level::chunk::LevelShapes::VANILLA);
         let packet = packets
             .iter()
             .find(|p| p.registry == "minecraft:damage_type")
@@ -4920,7 +4912,7 @@ pub(in crate::game) mod tests {
             .expect("prepared test resources require registries.json");
         std::fs::copy(report, root.join("registries.json")).unwrap();
         let item_data = sync_test_items(&prepared);
-        let items = sunrise_client::items::Items::catalog(
+        let items = sunrise_items::items::Items::catalog(
             &prepared,
             &PackOverlay::NONE,
             item_data.defaults(),
@@ -4959,7 +4951,7 @@ pub(in crate::game) mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
-        let types = sunrise_client::mobs::MobTypes::load(&root).ok()?;
+        let types = sunrise_sim::mobs::MobTypes::load(&root).ok()?;
         let t = std::sync::Arc::new(types.types.get(kind)?.clone());
         Some(Mob::new(
             1,
@@ -5022,7 +5014,7 @@ pub(in crate::game) mod tests {
         let (meta, defaults) = meta_of(&pillager);
         assert!(defaults.contains(&(16, serializer::BOOLEAN, Value::Bool(false))));
         assert!(meta.iter().all(|e| e.0 != 16), "{meta:?}");
-        sunrise_client::mobs::raider::state_mut(&mut pillager).celebrating = true;
+        sunrise_sim::mobs::raider::state_mut(&mut pillager).celebrating = true;
         let (meta, _) = meta_of(&pillager);
         assert!(
             meta.contains(&(16, serializer::BOOLEAN, Value::Bool(true))),
@@ -5043,7 +5035,7 @@ pub(in crate::game) mod tests {
             (values, defaults)
         };
         enderman.extra.flag2 = true;
-        enderman.set_target(Some(sunrise_client::mobs::Who::Mob(2)));
+        enderman.set_target(Some(sunrise_sim::mobs::Who::Mob(2)));
         let (values, defaults) = metadata(&enderman);
         for index in [17, 18] {
             assert!(values.contains(&(index, serializer::BOOLEAN, Value::Bool(true))));
@@ -5159,7 +5151,7 @@ pub(in crate::game) mod tests {
         let expected = metadata(&mob);
         assert!(expected.is_some());
         mob.extra.profession =
-            sunrise_client::mobs::villager::ProfessionState::from_id("example:engineer");
+            sunrise_sim::mobs::villager::ProfessionState::from_id("example:engineer");
         assert_eq!(metadata(&mob), expected);
         assert_eq!(mob.extra.profession.id(), "example:engineer");
     }
@@ -5235,10 +5227,10 @@ pub(in crate::game) mod tests {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::{Flow, Hooks, ServerChatEvent, ServerHost};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::lan::hub::{HostEvent, HubConfig, chat::ChatMessage};
-        use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
-        use sunrise_client::text::Text;
+        use sunrise_client_core::text::Text;
         use sunrise_protocol::packets::{configuration::ClientInformation, play};
+        use sunrise_sim::lan::hub::{HostEvent, HubConfig, chat::ChatMessage};
+        use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
 
         struct Replier;
         #[mod_api::__subscriptions]
@@ -5327,7 +5319,8 @@ pub(in crate::game) mod tests {
                             match play::Clientbound::decode(id, reader.rest()) {
                                 Ok(play::Clientbound::SystemChat(chat)) => seen.push(format!(
                                     "system {}",
-                                    sunrise_client::component::name_text(&chat.content).plain()
+                                    sunrise_client_core::component::name_text(&chat.content)
+                                        .plain()
                                 )),
                                 Ok(play::Clientbound::PlayerChat(_)) => {
                                     seen.push("player".to_owned())
@@ -5353,7 +5346,7 @@ pub(in crate::game) mod tests {
                     };
                     let bound = play::ChatTypeBound {
                         chat_type: 0,
-                        name: sunrise_client::lan::data::component_nbt(
+                        name: sunrise_sim::lan::data::component_nbt(
                             &Text::literal("guest12").component(),
                         ),
                         target: None,
@@ -5384,8 +5377,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_guest_who_left_has_no_menu_owners() {
         use super::super::transactions::decision::{Admission, engine::Target};
-        use sunrise_client::lan::hub::HostEvent;
-        use sunrise_client::menu::{Kind, Menu};
+        use sunrise_sim::lan::hub::HostEvent;
+        use sunrise_sim::menu::{Kind, Menu};
         super::super::native_guest_turn_tests::with_guests(|game| {
             let host = game.lan.as_mut().unwrap();
             for conn in [12, 13] {
@@ -5428,11 +5421,11 @@ pub(in crate::game) mod tests {
             Arc, Mutex,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client::effects::EffectInstance;
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use sunrise_core::geometry::Vec3;
+        use sunrise_level::effects::EffectInstance;
         use sunrise_protocol::entity_data::{Particle, ParticleData};
         use sunrise_protocol::packets::configuration::ClientInformation;
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         use {
             sunrise_level::particle_options::ParticleOptions,
             sunrise_level::particle_options::ParticleType,
@@ -5597,7 +5590,7 @@ pub(in crate::game) mod tests {
                     ("trial_omen", 0),
                     ("regeneration", 0),
                 ]
-                .map(|(id, amplifier)| sunrise_client::mobs::StoredEffect::new(id, 600, amplifier)),
+                .map(|(id, amplifier)| sunrise_sim::mobs::StoredEffect::new(id, 600, amplifier)),
             );
             zombie.extra.hidden_effects.push("strength");
             game.mobs.push(zombie);
@@ -5792,9 +5785,7 @@ impl super::Dim {
     /// The level `level`'s world spawn is in (MinecraftServer.findRespawnDimension), the
     /// Overworld when the world has no such level. It borrows only the level data, so a
     /// `TickCtx` can name it beside the world it borrows mutably.
-    pub(in crate::game::server_side) fn of_world_spawn(
-        level: &sunrise_client::save::Level,
-    ) -> Self {
+    pub(in crate::game::server_side) fn of_world_spawn(level: &sunrise_sim::save::Level) -> Self {
         level
             .world_spawn_dimension
             .as_deref()
@@ -5809,8 +5800,8 @@ pub(in crate::game) mod player_packet_tests;
 pub(in crate::game) mod world_spawn_sync_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{Joined, Out, PlayerSender, guest::Guest};
     use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
     fn host(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
         host_for(game)
@@ -5927,7 +5918,7 @@ pub(in crate::game) mod world_spawn_sync_tests {
             for (x, z) in [(0, 0), (6, -2), (-1, 0)] {
                 game.world
                     .chunks
-                    .insert((x, z), Arc::new(sunrise_client::chunk::Chunk::empty(x, z)));
+                    .insert((x, z), Arc::new(sunrise_level::chunk::Chunk::empty(x, z)));
             }
             let rx = host(game);
             // Materializing the effective fallback does not change the packet data.
@@ -6111,7 +6102,7 @@ pub(in crate::game) mod world_spawn_join_tests {
                 g.yaw = 135.0;
                 g.pitch = -20.0;
             });
-            sunrise_client::lan::playerdata::save(
+            sunrise_sim::lan::playerdata::save(
                 &guests[0],
                 &game.side.world_root,
                 &Default::default(),
@@ -6131,10 +6122,8 @@ pub(in crate::game) mod mob_pickup_sync_tests {
 
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::{
-        items::ItemStack,
-        lan::{Joined, Out, PlayerSender, guest::Guest},
-    };
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
     /// A server with one placed guest beside the mob.
     fn guest_at(game: &mut crate::game::ServerGame<'_>, at: [f64; 3]) -> mpsc::Receiver<Out> {
@@ -6238,8 +6227,8 @@ pub(in crate::game) mod mob_swing_sync_tests {
     use super::*;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use {
-        sunrise_client::lan::Joined, sunrise_client::lan::Out, sunrise_client::lan::PlayerSender,
-        sunrise_client::lan::guest::Guest, sunrise_sim::first_person_sim::SwingAnimation,
+        sunrise_sim::first_person_sim::SwingAnimation, sunrise_sim::lan::Joined,
+        sunrise_sim::lan::Out, sunrise_sim::lan::PlayerSender, sunrise_sim::lan::guest::Guest,
     };
 
     /// A server with one placed guest beside the mobs.
@@ -6407,15 +6396,15 @@ pub(in crate::game) mod merchant_packet_tests {
             bind_local_player, run_fresh_cases, with_game,
         };
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::{
-            merchant::TradeFeedback,
-            mobs::{Damage, Mob},
-        };
         use sunrise_core::{
             geometry::Vec3,
             random::{LegacyRandom, RandomSource},
         };
         use sunrise_protocol::packets::play::Clientbound;
+        use sunrise_sim::{
+            merchant::TradeFeedback,
+            mobs::{Damage, Mob},
+        };
 
         const CHILD: &str = "SUNRISE_MERCHANT_HURT_PACKETS_CHILD";
         if run_fresh_cases(
@@ -6433,13 +6422,13 @@ pub(in crate::game) mod merchant_packet_tests {
         }
         let case = std::env::var(CHILD).unwrap();
         let buyer_first = case == "buyer-first";
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
+        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
 
         with_game(|game| {
             game.build_registries();
             game.set_allow_commands(true);
 
-            let mut sync = sunrise_client::lan::data::SyncData::empty();
+            let mut sync = sunrise_sim::lan::data::SyncData::empty();
             for (registry, names) in [
                 (
                     "minecraft:menu",
@@ -6478,15 +6467,15 @@ pub(in crate::game) mod merchant_packet_tests {
                 announce: false,
                 ..NetConfig::loopback(0, String::new(), 2)
             };
-            let lan = sunrise_client::lan::Lan::start_with(sync.clone(), net).unwrap();
-            let encoder = sunrise_client::lan::chunks::ChunkEncoder::new(
+            let lan = sunrise_sim::lan::Lan::start_with(sync.clone(), net).unwrap();
+            let encoder = sunrise_sim::lan::chunks::ChunkEncoder::new(
                 [] as [(Arc<str>, bool); 0],
                 &sunrise_protocol::registry::Builtin::default(),
                 &[],
                 &[],
                 Default::default(),
             );
-            let config = sunrise_client::lan::hub::HubConfig {
+            let config = sunrise_sim::lan::hub::HubConfig {
                 default_game_mode: 0,
                 guest_commands: false,
                 force_game_mode: false,
@@ -6501,7 +6490,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 levels: Default::default(),
                 level_seeds: Default::default(),
             };
-            let mut hub = sunrise_client::lan::hub::Hub::new(
+            let mut hub = sunrise_sim::lan::hub::Hub::new(
                 lan,
                 sync,
                 encoder,
@@ -6529,10 +6518,7 @@ pub(in crate::game) mod merchant_packet_tests {
             guest.placed = true;
             guest.dimension = "minecraft:overworld".into();
             guest.sent_chunks.insert((0, 0));
-            guest.inventory[0] = Some(sunrise_client::items::ItemStack::new(
-                "minecraft:emerald",
-                8,
-            ));
+            guest.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:emerald", 8));
             hub.guests.push(guest);
             game.lan = Some(super::LanHost {
                 hub,
@@ -6564,10 +6550,8 @@ pub(in crate::game) mod merchant_packet_tests {
             });
 
             use crate::game::trading::MerchantState;
-            use sunrise_client::{
-                items::ItemStack,
-                merchant::{ItemCost, MerchantOffer, Session},
-            };
+            use sunrise_items::items::ItemStack;
+            use sunrise_sim::merchant::{ItemCost, MerchantOffer, Session};
             let offer = MerchantOffer {
                 base_cost_a: ItemCost {
                     stack: ItemStack::new("minecraft:emerald", 4),
@@ -6591,13 +6575,13 @@ pub(in crate::game) mod merchant_packet_tests {
                 .get("minecraft:villager")
                 .unwrap()
                 .clone();
-            let mut mob = sunrise_client::mobs::Mob::new(
+            let mut mob = sunrise_sim::mobs::Mob::new(
                 77,
                 kind,
                 sunrise_core::geometry::Vec3::new(0.5, 4.0, 2.5),
                 0.0,
             );
-            mob.extra.trade = Some(Box::new(sunrise_client::merchant::Trader {
+            mob.extra.trade = Some(Box::new(sunrise_sim::merchant::Trader {
                 xp: 20,
                 offers: session.offers.clone(),
                 ..Default::default()
@@ -6611,11 +6595,11 @@ pub(in crate::game) mod merchant_packet_tests {
                     dragging: false,
                     focused: None,
                     mob: Some(77),
-                    name: Some(crate::text::Text::literal("Packet timing")),
+                    name: Some(sunrise_client_core::text::Text::literal("Packet timing")),
                 },
             );
             fn packets(
-                rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+                rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
             ) -> (
                 Vec<sunrise_protocol::packets::play::MerchantOffers>,
                 Vec<sunrise_protocol::packets::play::ContainerSetContent>,
@@ -6623,7 +6607,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 let mut offers = Vec::new();
                 let mut contents = Vec::new();
                 for out in rx.try_iter() {
-                    let sunrise_client::lan::Out::Packet(body) = out else {
+                    let sunrise_sim::lan::Out::Packet(body) = out else {
                         continue;
                     };
                     let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -6736,7 +6720,7 @@ pub(in crate::game) mod merchant_packet_tests {
             );
             assert!(!sequences.is_empty(), "prepared cleric trade sets exist");
             for id in sequences {
-                let random = sunrise_client::merchant::sequence_random(0, &id);
+                let random = sunrise_sim::merchant::sequence_random(0, &id);
                 session.sequences.insert(id, random);
             }
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -6751,7 +6735,9 @@ pub(in crate::game) mod merchant_packet_tests {
                     dragging: false,
                     focused: None,
                     mob: Some(77),
-                    name: Some(crate::text::Text::literal("Level-up packet timing")),
+                    name: Some(sunrise_client_core::text::Text::literal(
+                        "Level-up packet timing",
+                    )),
                 },
             );
             let opened = packets(&rx).0;
@@ -6803,11 +6789,8 @@ pub(in crate::game) mod merchant_packet_tests {
 
             let at = [0.5, 4.0, 0.5];
             game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    Vec3::new(at[0], at[1], at[2]),
-                )
-                .unwrap(),
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(at[0], at[1], at[2]))
+                    .unwrap(),
             );
             bind_local_player(game, 300, 3);
             game.mobs[0].ambient_timer = 0;
@@ -6822,7 +6805,7 @@ pub(in crate::game) mod merchant_packet_tests {
             let record = || {
                 let mut actual = Vec::new();
                 for out in rx.try_iter() {
-                    let sunrise_client::lan::Out::Packet(body) = out else {
+                    let sunrise_sim::lan::Out::Packet(body) = out else {
                         continue;
                     };
                     let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -6903,12 +6886,12 @@ pub(in crate::game) mod merchant_packet_tests {
                             game.as_guest(2, |game| {
                                 // A player-owned event (such as a cloud) can refresh prices
                                 // even when that player isn't the current actor.
-                                sunrise_client::mobs::villager::ext_mut(&mut game.mobs[0])
+                                sunrise_sim::mobs::villager::ext_mut(&mut game.mobs[0])
                                     .gossips
                                     .add(
                                         [0, 0, 0, 2],
-                                        sunrise_client::gossip::GossipType::MinorNegative,
-                                        sunrise_client::gossip::REPUTATION_CHANGE_PER_EVENT,
+                                        sunrise_sim::gossip::GossipType::MinorNegative,
+                                        sunrise_sim::gossip::REPUTATION_CHANGE_PER_EVENT,
                                     );
                                 game.lan_merchant_reputation(
                                     77,

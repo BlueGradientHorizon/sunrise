@@ -1,10 +1,11 @@
 //! First-access loot shared by blocks and chest vehicles.
 use super::Game;
-use sunrise_client::{containers::BlockEntity, save::PendingContainerLoot};
 use sunrise_core::{
     nbt::Tag,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_level::containers::BlockEntity;
+use sunrise_sim::save::PendingContainerLoot;
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum LootTarget {
@@ -17,7 +18,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         key: (i32, i32, i32),
         index: usize,
-    ) -> Option<sunrise_client::items::ItemStack> {
+    ) -> Option<sunrise_items::items::ItemStack> {
         self.unpack_loot(LootTarget::Block(key), None);
         self.world
             .block_entities
@@ -146,7 +147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             entity.on_fire = self
                 .player
                 .as_ref()
-                .is_some_and(sunrise_client::motion::PlayerMotion::is_on_fire);
+                .is_some_and(sunrise_sim::motion::PlayerMotion::is_on_fire);
         }
         let luck = if player.is_some() {
             self.player
@@ -255,7 +256,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
 /// Consume the sole block-owned marker before any callback or inventory mutation.
 pub(in crate::game) fn take_block_pending(
-    world: &mut sunrise_client::world::World,
+    world: &mut sunrise_level::world::World,
     key: (i32, i32, i32),
 ) -> Option<PendingContainerLoot> {
     if !world.block_entities.contains_key(&key)
@@ -276,10 +277,10 @@ pub(in crate::game) fn take_block_pending(
 /// Vanilla LootContext.Builder: explicit seed, named sequence, then level random.
 fn fill_with_random(
     pending: &PendingContainerLoot,
-    slots: &mut [Option<sunrise_client::items::ItemStack>],
+    slots: &mut [Option<sunrise_items::items::ItemStack>],
     loot: &sunrise_world::loot::LootData,
     level_random: &mut LegacyRandom,
-    sequences: &mut sunrise_client::random_sequences::RandomSequences,
+    sequences: &mut sunrise_items::random_sequences::RandomSequences,
     world_seed: i64,
     context: sunrise_world::loot::ContainerLootContext<'_>,
     mut hook: impl FnMut(&mut Vec<sunrise_world::loot::LootStack>),
@@ -310,7 +311,7 @@ fn fill_with_random(
 /// The single roll/placement implementation used by Game and its mutable level adapter.
 fn unpack_slots<R: RandomSource + Clone>(
     pending: &PendingContainerLoot,
-    slots: &mut [Option<sunrise_client::items::ItemStack>],
+    slots: &mut [Option<sunrise_items::items::ItemStack>],
     loot: &sunrise_world::loot::LootData,
     random: &mut R,
     context: sunrise_world::loot::ContainerLootContext<'_>,
@@ -331,7 +332,7 @@ fn unpack_slots<R: RandomSource + Clone>(
     loot.place_container_loot(items, &mut placed, free, random);
     for (slot, stack) in slots.iter_mut().zip(placed) {
         if let Some(stack) = stack {
-            *slot = Some(sunrise_client::structure_blocks::loot_item_with_components(
+            *slot = Some(sunrise_sim::structure_blocks::loot_item_with_components(
                 &stack,
             ));
         }

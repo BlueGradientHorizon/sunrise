@@ -3,14 +3,14 @@
 //! a cure (`ZombieVillager.mobInteract`), and the cured villager that
 //! remembers who saved it (`ZombieVillager.finishConversion`).
 use super::{Game, commands::Target};
-use sunrise_client::{
+use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{
     advancements as adv,
     gossip::GossipType,
-    items::ItemStack,
     lan::playerdata,
     mobs::{Mob, Species, drops, finalize, villager, zombie_villager},
 };
-use sunrise_core::random::RandomSource;
 use sunrise_world::food::Difficulty;
 
 /// The `Zombie` subclasses that convert the villagers they kill.
@@ -66,7 +66,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             at,
             old.persistent,
             super::creatures::SpawnSite::Finalizing(
-                sunrise_client::mobs::spawn_rules::Reason::Conversion,
+                sunrise_sim::mobs::spawn_rules::Reason::Conversion,
             ),
         ) else {
             return;
@@ -146,7 +146,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             at,
             old.persistent,
             super::creatures::SpawnSite::Finalizing(
-                sunrise_client::mobs::spawn_rules::Reason::Conversion,
+                sunrise_sim::mobs::spawn_rules::Reason::Conversion,
             ),
         ) else {
             return;
@@ -364,7 +364,7 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
-        let types = sunrise_client::mobs::MobTypes::load(&root).unwrap();
+        let types = sunrise_sim::mobs::MobTypes::load(&root).unwrap();
         let mob = |id, name: &str| {
             Mob::new(
                 id,
@@ -374,7 +374,7 @@ mod tests {
             )
         };
         let mut source = mob(1, "minecraft:villager");
-        let mut armor = sunrise_client::items::ItemStack::new("minecraft:wolf_armor", 1);
+        let mut armor = sunrise_items::items::ItemStack::new("minecraft:wolf_armor", 1);
         armor.damage = 7;
         armor.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("kept".into()));
         source.extra.set_body_stack(Some(armor));
@@ -416,8 +416,8 @@ mod tests {
     /// A villager-shaped mob of `species` with the registered `attributes`.
     fn test_mob(id: u32, species: Species, name: &str, attributes: &[(&str, f64)]) -> Mob {
         use std::sync::Arc;
-        use sunrise_client::mobs::{Anim, Brain, MobType};
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::mobs::{Anim, Brain, MobType};
         let kind = MobType {
             type_key: Default::default(),
             id: name.into(),
@@ -473,7 +473,7 @@ mod tests {
     /// attribute modifier (0.2F x 2 for Speed II), once.
     #[test]
     fn a_conversion_stores_the_copied_effects_modifiers() {
-        use sunrise_client::mobs::finalize::{Attr, modifier_amount, value};
+        use sunrise_sim::mobs::finalize::{Attr, modifier_amount, value};
         let speed = [("minecraft:movement_speed", 0.5)];
         let mut villager = test_mob(1, Species::Villager, "minecraft:villager", &speed);
         villager.add_effect("minecraft:speed", -1, 1);
@@ -511,7 +511,7 @@ mod tests {
     /// the icon flag it had.
     #[test]
     fn an_infected_villager_keeps_only_the_effects_a_zombie_villager_takes() {
-        use sunrise_client::mobs::finalize::{Attr, modifier_amount};
+        use sunrise_sim::mobs::finalize::{Attr, modifier_amount};
         let speed = [("minecraft:movement_speed", 0.5)];
         let mut villager = test_mob(1, Species::Villager, "minecraft:villager", &speed);
         villager.add_effect("minecraft:poison", 200, 0);
@@ -575,7 +575,7 @@ mod tests {
         assert!(cured.extra.passenger);
         // The cure keeps no equipment: picked-up gear drops, cursed gear goes
         // to the inventory, the rest vanishes.
-        use sunrise_client::mobs::finalize::{
+        use sunrise_sim::mobs::finalize::{
             FEET, HEAD, MAINHAND, item_stack, set_drop_chance, set_item, set_item_stack,
         };
         let mut gear = mob(4, Species::ZombieVillager, "minecraft:zombie_villager");

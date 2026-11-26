@@ -11,7 +11,7 @@ use mod_api::{
     FileToIdConverter, HookId, Identifier, ServerReloadContext, ServerReloadListener,
     ServerReloadResources,
 };
-use sunrise_client::datapack::DataStore;
+use sunrise_level::datapack::DataStore;
 
 pub(in crate::game) type PreparedReload = PreparedStep<Box<DataStore>>;
 
@@ -58,9 +58,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &self,
         stack: &PackStack,
     ) -> Result<PreparedServerReload, ReloadStageError> {
-        sunrise_client::mod_content::check_jars(
+        sunrise_sim::mod_content::check_jars(
             &self.options.resources,
-            &sunrise_client::logging::game_home().join("jars"),
+            &sunrise_level::logging::game_home().join("jars"),
         )
         .map_err(|error| {
             ReloadStageError::OriginalJars(

@@ -20,7 +20,7 @@ use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
-use sunrise_client::menu::{
+use sunrise_sim::menu::{
     StackedClick, StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume,
 };
 

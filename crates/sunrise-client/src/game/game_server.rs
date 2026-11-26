@@ -5,16 +5,16 @@ use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_world::level::{Behaviours, BucketContent, LevelEvent, PlayerEffect, Ticks};
 use {
-    sunrise_client::Result, sunrise_client::containers::BlockEntity,
-    sunrise_client::entities::Experience, sunrise_client::items::ItemStack,
-    sunrise_client::save::Level, sunrise_sim::first_person_sim::Hand,
+    sunrise_client_core::Result, sunrise_items::items::ItemStack,
+    sunrise_level::containers::BlockEntity, sunrise_sim::entities::Experience,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::save::Level,
 };
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The UUID of the player acting: the guest whose turn it is, else the host.
     pub(crate) fn acting_player_uuid(&mut self) -> [i32; 4] {
         match self.side.lan_acting_uuid {
-            Some(guest) => sunrise_client::lan::playerdata::uuid_ints(guest),
+            Some(guest) => sunrise_sim::lan::playerdata::uuid_ints(guest),
             None => self.level.ensure_player_uuid(),
         }
     }
@@ -48,10 +48,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .items()
             .get(&stack.item)
             .and_then(|i| i.use_cooldown.clone());
-        let Some(component) = sunrise_client::cooldowns::component(stack, default.as_ref()) else {
+        let Some(component) = sunrise_items::cooldowns::component(stack, default.as_ref()) else {
             return;
         };
-        let group = sunrise_client::cooldowns::group(stack, default.as_ref());
+        let group = sunrise_items::cooldowns::group(stack, default.as_ref());
         let mut cancel = false;
         if let (Some(player), Some(name)) =
             (self.side.lan_acting_uuid, self.side.lan_acting_name.clone())
@@ -125,7 +125,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.world.block_lock(key).cloned(),
             )),
             Some((entity, _)) => {
-                let saved = sunrise_client::save::block_entity_encode::encode(
+                let saved = sunrise_sim::save::block_entity_encode::encode(
                     key,
                     entity,
                     &facts.name,
@@ -228,7 +228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self
                         .ui
                         .rules
-                        .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
+                        .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
                 {
                     let at = [
                         f64::from(pos[0]) + 0.5,
@@ -351,7 +351,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.post_block_game_event(
                     "minecraft:container_close",
                     [key.0, key.1, key.2],
-                    Some(sunrise_client::mobs::Who::Player),
+                    Some(sunrise_sim::mobs::Who::Player),
                     None,
                 );
                 self.container_edge_sound(key, false);
@@ -400,7 +400,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // Saves and chunk readers share the same placeholder IDs.
         self.world_biomes = Some(biomes);
         self.world_biomes_base = self.world_biomes.clone();
-        sunrise_client::crash::set_detail(
+        sunrise_level::crash::set_detail(
             "World",
             format!("{} ({})", level.name, save_root.display()),
         );
@@ -415,7 +415,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         // A code-mod switch can have rebuilt the root since `Game::new`.
         self.side.structure_spawns =
-            sunrise_client::mobs::spawn_selection::StructureSpawns::load(&root);
+            sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&root);
         // Native tag reads use the lock to tell that the tag tables are ready.
         self.side.session_lock.0 = Some(session_lock);
         self.resolve_parts()?;
@@ -499,10 +499,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         book.recipes.retain(|r| index.contains(r));
         book.to_be_displayed.retain(|r| index.contains(r));
         self.enter_opened_dim(dim);
-        self.world_flat = sunrise_client::save::WorldGen::read(&save_root)
-            .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Flat);
-        self.side.world_debug = sunrise_client::save::WorldGen::read(&save_root)
-            .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Debug);
+        self.world_flat = sunrise_sim::save::WorldGen::read(&save_root)
+            .is_some_and(|w| w.preset == sunrise_sim::save::WorldPreset::Flat);
+        self.side.world_debug = sunrise_sim::save::WorldGen::read(&save_root)
+            .is_some_and(|w| w.preset == sunrise_sim::save::WorldPreset::Debug);
         self.block_ticks = Ticks::new(self.level.seed as i32);
         self.side.tick_chunks.clear();
         self.clear_entities();
@@ -561,15 +561,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         distance: f64,
     ) {
         let state = self.world.block(on.x, on.y, on.z);
-        if !sunrise_client::block_contact::fall_listens(state) {
+        if !sunrise_sim::block_contact::fall_listens(state) {
             return;
         }
-        let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
+        let mut lent = sunrise_sim::health::LentLevel::take(&mut self.world);
         // A native fall_on Part can unwind. Keep the persistent level carrier
         // outside the callback's temporary views, and return its progressed state
         // before propagating the original panic. This does not restore the item batch.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut level = sunrise_client::health::DamageLevel::lent(
+            let mut level = sunrise_sim::health::DamageLevel::lent(
                 &self.world,
                 self.pack.assets.registry,
                 &mut lent,
@@ -578,13 +578,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &self.damage_hooks,
             )
             .with_effects(crate::game::entity::hit_effects_of!(self, None));
-            let contact = sunrise_client::block_contact::Contact {
+            let contact = sunrise_sim::block_contact::Contact {
                 entity: id as i32,
                 kind: "minecraft:item",
                 state,
                 position: on,
             };
-            let _ = sunrise_client::block_contact::fall(&mut level, contact, distance, 0.0);
+            let _ = sunrise_sim::block_contact::fall(&mut level, contact, distance, 0.0);
         }));
         lent.give_back(&mut self.world);
         if let Err(payload) = result {
@@ -662,7 +662,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.armor[usize::from(103 - slot)] = Some(stack);
             } else if *slot == 150 {
                 self.offhand = Some(stack);
-            } else if let Some(equipment_slot) = sunrise_client::save::equipment_slot(*slot) {
+            } else if let Some(equipment_slot) = sunrise_sim::save::equipment_slot(*slot) {
                 self.equipment.set(equipment_slot, Some(stack));
             } else if let Some(cell) = inventory.get_mut(usize::from(*slot)) {
                 *cell = Some(stack);
@@ -695,7 +695,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.server_request_lectern(pos);
             return;
         }
-        if sunrise_client::command_block::Mode::of_block(&name).is_some() {
+        if sunrise_level::command_block::Mode::of_block(&name).is_some() {
             self.server_request_command_block(key);
             return;
         }
@@ -730,7 +730,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.post_block_game_event(
                     "minecraft:container_open",
                     [key.0, key.1, key.2],
-                    Some(sunrise_client::mobs::Who::Player),
+                    Some(sunrise_sim::mobs::Who::Player),
                     None,
                 );
                 self.container_edge_sound(key, true);
@@ -746,13 +746,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // ShulkerBoxBlock.canOpen: the lid has no room; nothing opens.
         } else if let Some(entity) = BlockEntity::for_block(&name) {
             self.world.block_entities.get_or_insert_with(key, || entity);
-            sunrise_client::spans::time("open_loot", || self.unpack_opened_loot(key, &name));
+            sunrise_level::spans::time("open_loot", || self.unpack_opened_loot(key, &name));
             let centre = [
                 f64::from(key.0) + 0.5,
                 f64::from(key.1) + 0.5,
                 f64::from(key.2) + 0.5,
             ];
-            sunrise_client::spans::time("open_maps", || {
+            sunrise_level::spans::time("open_maps", || {
                 self.resolve_container_maps(key, centre);
             });
             self.container = Some(key);
@@ -764,7 +764,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.post_block_game_event(
                     "minecraft:container_open",
                     [key.0, key.1, key.2],
-                    Some(sunrise_client::mobs::Who::Player),
+                    Some(sunrise_sim::mobs::Who::Player),
                     None,
                 );
             }
@@ -797,7 +797,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if self.open_station(pos, &name) {
             // Workstation menus: game/blocks/stations.rs.
         } else {
-            self.server_send_overlay_message(sunrise_client::text::Text::literal(format!(
+            self.server_send_overlay_message(sunrise_client_core::text::Text::literal(format!(
                 "{} is not available yet",
                 name.trim_start_matches("minecraft:").replace('_', " ")
             )));
@@ -819,7 +819,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let uuid = self
             .level
             .player_uuid
-            .map(sunrise_client::lan::playerdata::ints_uuid);
+            .map(sunrise_sim::lan::playerdata::ints_uuid);
         let mut followed: Vec<xp_orb_targeting::OrbCandidate> = player
             .map(|p| {
                 let feet = [p.position.x, p.position.y, p.position.z];
@@ -921,7 +921,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     state,
                     hurt_per_distance,
                 } => {
-                    let mut damage = sunrise_client::falling_block::Damage::falling(
+                    let mut damage = sunrise_sim::falling_block::Damage::falling(
                         &self.res.facts().get(state).name,
                     );
                     if let Some(per_distance) = hurt_per_distance {
@@ -1130,7 +1130,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
+            .bool_at(sunrise_client_core::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         let mut players: Vec<((i32, i32), bool)> = self.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
@@ -1153,7 +1153,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // must not take the headless fixtures' tick-everywhere case below.
         let any_player = !players.is_empty();
         let sources = (!self.options.execution_role.is_client() || any_player).then(|| {
-            sunrise_client::ticket_levels::Sources {
+            sunrise_sim::ticket_levels::Sources {
                 players: players
                     .into_iter()
                     .filter(|&(_, spectator)| game_mode::loads_chunks(rule, spectator))
@@ -1322,7 +1322,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         for (equipment_slot, s) in self.equipment.iter().enumerate() {
-            if let (Some(s), Some(slot)) = (s, sunrise_client::save::saved_slot(equipment_slot)) {
+            if let (Some(s), Some(slot)) = (s, sunrise_sim::save::saved_slot(equipment_slot)) {
                 level
                     .inventory
                     .push((slot, s.item.to_string(), s.count, s.damage));
@@ -1366,9 +1366,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "tell_sleeper called on Client role"
         );
         if overlay {
-            self.server_send_overlay_message(sunrise_client::text::Text::translate(key, &[]));
+            self.server_send_overlay_message(sunrise_client_core::text::Text::translate(key, &[]));
         } else {
-            self.server_system_message(sunrise_client::text::Text::translate(key, &[]));
+            self.server_system_message(sunrise_client_core::text::Text::translate(key, &[]));
         }
     }
     pub(in crate::game::server_side) fn tick_mining(&mut self) -> Result<()> {
@@ -1485,7 +1485,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ADVANCE_TIME)
+                .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_TIME)
             {
                 // SleepFinishedTimeEvent on the level's own clock (game/world/wake_time.rs): None
                 // when a mod canceled, so `native_time_skip` is not asked, or no time fits.
@@ -1501,7 +1501,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ADVANCE_WEATHER)
+                .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_WEATHER)
                 && self.weather_levels(1.0).0 > 0.2
             {
                 self.world.weather.raining = false;
@@ -1627,8 +1627,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self.mobs.iter().any(|m| {
                 // `Monster.class` entities that `isPreventingPlayerRest`: a
                 // zombified piglin only while it is angry.
-                sunrise_client::mobs::ai::is_monster(m.species())
-                    && (m.species() != sunrise_client::mobs::Species::ZombifiedPiglin
+                sunrise_sim::mobs::ai::is_monster(m.species())
+                    && (m.species() != sunrise_sim::mobs::Species::ZombifiedPiglin
                         || (m.extra.anger > 0 && m.ai.target.is_some()))
                     && m.alive()
                     && (m.position.x - position.x).abs() < 8.0
@@ -1677,7 +1677,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .int_at(sunrise_client::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
+            .int_at(sunrise_client_core::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
             > 100
         {
             self.tell_sleeper(
@@ -1764,7 +1764,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ]
         };
         // BucketItem has no useOn: a guest's UseItemOn leaves it to UseItem.
-        let bucket = sunrise_client::items::bucket_contents(&stack.item);
+        let bucket = sunrise_items::items::bucket_contents(&stack.item);
         if matches!(self.side.guest_use, Some(GuestUse::OnBlock { .. }))
             && (item == "bucket" || bucket.is_some())
         {
@@ -1809,7 +1809,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.post_block_game_event(
                 "minecraft:fluid_pickup",
                 hit.pos,
-                Some(sunrise_client::mobs::Who::Player),
+                Some(sunrise_sim::mobs::Who::Player),
                 None,
             );
             let filled = ItemStack::new(filled, 1);
@@ -1949,7 +1949,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 } else {
                     "minecraft:item.flintandsteel.use"
                 };
-                let pitch = sunrise_client::items::fire_starter_pitch(
+                let pitch = sunrise_items::items::fire_starter_pitch(
                     item == "fire_charge",
                     &mut self.world.random,
                 );
@@ -1982,8 +1982,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if !mod_api::__private::mods().is_empty() || !self.try_light_portal(target)? {
                     self.place_used_fire(target)?;
                 }
-                let sound = sunrise_client::items::fire_starter_sound(item == "fire_charge");
-                let pitch = sunrise_client::items::fire_starter_pitch(
+                let sound = sunrise_items::items::fire_starter_sound(item == "fire_charge");
+                let pitch = sunrise_items::items::fire_starter_pitch(
                     item == "fire_charge",
                     &mut self.world.random,
                 );
@@ -2134,7 +2134,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .map(|p| p.position)
                 .chain(self.tridents.iter().map(|t| t.position))
                 .map(|at| {
-                    let b = sunrise_client::arrows::arrow_bounds(at);
+                    let b = sunrise_sim::arrows::arrow_bounds(at);
                     (b.min_position().components(), b.max_position().components())
                 })
                 .collect();
@@ -2339,7 +2339,7 @@ pub(in crate::game) mod nested_orb_spawn_tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
             game.block_ticks
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
@@ -2361,10 +2361,10 @@ pub(in crate::game) mod nested_orb_spawn_tests {
                 expected
             );
             assert_eq!(game.orbs[2].age, 0);
-            game.side.ordered.announced = sunrise_client::join_seq::JoinSeq::MAX;
+            game.side.ordered.announced = sunrise_sim::join_seq::JoinSeq::MAX;
             game.side.tickets.0.update(None);
             game.begin_ordered_ticks();
-            game.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)
+            game.run_ordered_ticks(sunrise_sim::join_seq::JoinSeq::MAX, false)
                 .unwrap();
             let spawned = game.orbs.iter().find(|o| o.join == join).unwrap();
             assert_eq!(spawned.age, 1);

@@ -6,9 +6,9 @@
 /// serializer, and a boolean at 19 disconnected one (#13721).
 #[test]
 fn a_sulfur_cube_sends_its_fuse_at_19_and_from_bucket_at_20() {
-    use sunrise_client::mobs::Mob;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::entity_data::{Value, serializer};
+    use sunrise_sim::mobs::Mob;
     let root = std::env::temp_dir().join(format!("sunrise-sulfur-meta-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(
@@ -23,7 +23,7 @@ fn a_sulfur_cube_sends_its_fuse_at_19_and_from_bucket_at_20() {
         "entities": {},
     }))
     .unwrap();
-    let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
+    let types = sunrise_sim::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let _ = std::fs::remove_dir_all(&root);
     let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());
     let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
@@ -49,7 +49,7 @@ fn a_sulfur_cube_sends_its_fuse_at_19_and_from_bucket_at_20() {
 
     // A saved cube, out of a bucket and primed with 40 ticks to go.
     let saved = Tag::compound([("from_bucket", Tag::Byte(1)), ("fuse", Tag::Int(40))]);
-    sunrise_client::mobs::sulfur_cube::from_nbt(&mut cube, &saved);
+    sunrise_sim::mobs::sulfur_cube::from_nbt(&mut cube, &saved);
     let (meta, _) = meta_of(&cube);
     assert!(
         meta.contains(&(19, serializer::INT, Value::Int(40))),
@@ -69,9 +69,9 @@ fn a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle() {
 }
 
 pub(in crate::game::server_side) fn run_a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle() {
-    use sunrise_client::mobs::{Mob, sulfur_cube};
     use sunrise_core::nbt::{Tag, parse_snbt};
     use sunrise_protocol::entity_data::Value;
+    use sunrise_sim::mobs::{Mob, sulfur_cube};
     let dir = std::env::var_os("SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR").unwrap_or_else(|| {
         panic!(
             "SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR is unset; run tools/test_sulfur_cube_fuse_parity.py"
@@ -99,9 +99,9 @@ pub(in crate::game::server_side) fn run_a_loaded_sulfur_cube_fuse_matches_the_pi
         "entities": {},
     }))
     .unwrap();
-    let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
+    let types = sunrise_sim::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let _ = std::fs::remove_dir_all(&root);
-    let types: std::collections::HashMap<String, std::sync::Arc<sunrise_client::mobs::MobType>> =
+    let types: std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>> =
         types
             .types
             .iter()
@@ -141,7 +141,7 @@ pub(in crate::game::server_side) fn run_a_loaded_sulfur_cube_fuse_matches_the_pi
             snbt += &format!(",Invulnerable:{invulnerable}");
         }
         let tag = parse_snbt(&(snbt + "}")).unwrap().0;
-        sunrise_client::entity_nbt::mob_from_nbt(&tag, &types, 1, None).unwrap()
+        sunrise_sim::entity_nbt::mob_from_nbt(&tag, &types, 1, None).unwrap()
     };
     let mut rows = vec![format!("# minecraft {}", sunrise_core::VANILLA_VERSION)];
     for line in witness.lines().filter(|line| !line.starts_with('#')) {
@@ -161,7 +161,7 @@ pub(in crate::game::server_side) fn run_a_loaded_sulfur_cube_fuse_matches_the_pi
             cube.invulnerable_flag,
             sulfur_cube::primed(&cube),
         );
-        let tag = sunrise_client::entity_nbt::mob_to_nbt(
+        let tag = sunrise_sim::entity_nbt::mob_to_nbt(
             &cube,
             [1, 2, 3, 4],
             None,

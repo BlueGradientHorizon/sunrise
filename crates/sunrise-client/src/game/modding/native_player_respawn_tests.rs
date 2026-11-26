@@ -94,8 +94,8 @@ fn a_player_who_won_the_game_is_respawned_alive_as_the_button_does() {
 #[test]
 #[ignore = "daily"]
 fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
-    use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
     with_guests(|game| {
         let b = game.players().server_players()[1];
         // Alive.

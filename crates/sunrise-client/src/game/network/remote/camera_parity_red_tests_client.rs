@@ -12,11 +12,13 @@ use crate::game::{
 };
 use std::sync::Arc;
 use sunrise_client::{
-    camera::CameraType, debug_entries::Status, debug_overlay::Displayer, effects::EffectInstance,
-    environment::Sky, items::ItemStack, level_loading::Reason, motion::PlayerMotion,
+    debug_entries::Status, debug_overlay::Displayer, level_loading::Reason,
     options_file::V as OptV, screen_effects::Blend,
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_level::camera_math::CameraType;
+use sunrise_level::{effects::EffectInstance, environment::Sky};
 use sunrise_protocol::{
     buf::pack_degrees,
     connection::Pipe,
@@ -24,6 +26,7 @@ use sunrise_protocol::{
     item::Stack as WireStack,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 pub(in crate::game) fn run_any_tracked_entity_resolves_as_camera_26_3() {
     let witness = parity_witness();
@@ -133,7 +136,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         game.side.avatar.bob = 0.08;
         game.side.avatar.bob_o = 0.04;
         game.side.settings.view_bobbing = true;
-        game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
+        game.set_local_mode(sunrise_command::args::GameMode::Spectator);
         let profile = game.remote.as_ref().unwrap().profile;
         game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
             actions: 0x01 | 0x04 | 0x08,
@@ -529,8 +532,8 @@ pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_specta
 
 pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3()
  {
-    use sunrise_client::camera::CameraType;
     use sunrise_core::nbt::Tag;
+    use sunrise_level::camera_math::CameraType;
 
     let witness = parity_witness();
     let cases = witness["camera_visibility_all_kinds"]["cases"]
@@ -1324,7 +1327,8 @@ pub(in crate::game) fn run_interaction_camera_eye_rotation_move_and_teleport_26_
 }
 
 pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26_3() {
-    use sunrise_client::particles::{ParticleLevel, ParticleOptions, ParticleType};
+    use sunrise_client::particles::ParticleLevel;
+    use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
     let witness = parity_witness();
     let w = &witness["particle_camera_before_first_frame"];
@@ -1677,14 +1681,14 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
 
         // Finding 3: SetCamera(creeper) while already in third person installs post effect.
         add_entity(game, 403, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
-        game.side.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
+        game.side.camera_type = sunrise_level::camera_math::CameraType::ThirdPersonBack;
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 403 }))
             .unwrap();
         assert_eq!(
             game.side.spectated_post_effect,
             rf["third_person_post_effect"]["third_person_creeper_post_effect"].as_str()
         );
-        game.side.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+        game.side.camera_type = sunrise_level::camera_math::CameraType::FirstPerson;
 
         // Finding 4: should_render_block_outline_for_hit with spectator/interactable and remote player.
         let craft_state = game

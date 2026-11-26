@@ -6,16 +6,13 @@ use super::{
     Game,
     stations::{Kind, Station},
 };
-use sunrise_client::mobs::{
+use sunrise_client::widgets::Cursor;
+use sunrise_client_core::text::Text;
+use sunrise_items::{items::ItemStack, random_sequences::RandomSequences};
+use sunrise_sim::merchant::{self, MerchantOffer, TradeContext, TradeFeedback};
+use sunrise_sim::mobs::{
     Mob, Species,
     villager::{self, VILLAGER_TYPES},
-};
-use sunrise_client::{
-    items::ItemStack,
-    merchant::{self, MerchantOffer, TradeContext, TradeFeedback},
-    random_sequences::RandomSequences,
-    text::Text,
-    widgets::Cursor,
 };
 
 /// The merchant screen is 100 px wider than the 176-px menus it shares an origin with.
@@ -92,7 +89,7 @@ pub(in crate::game) type MadeMaps = Vec<(i32, [i32; 3], u8, String)>;
 
 #[derive(Clone)]
 pub(in crate::game) struct GameMaps<'a> {
-    pub(in crate::game) terrain: Option<std::sync::Arc<sunrise_client::vanillagen::VanillaTerrain>>,
+    pub(in crate::game) terrain: Option<std::sync::Arc<sunrise_sim::vanillagen::VanillaTerrain>>,
     /// Structure tag -> its structures.
     pub(in crate::game) structure_tag: &'a dyn Fn(&str) -> Vec<String>,
     /// Maps made, for the caller to register: (map id, centre x, z, scale, target).
@@ -181,7 +178,7 @@ pub(in crate::game::server_side) fn random_sequences_file(
 pub(in crate::game::server_side) fn read_random_sequences(
     world_root: &std::path::Path,
 ) -> RandomSequences {
-    sunrise_client::save::read_dat(&random_sequences_file(world_root))
+    sunrise_sim::save::read_dat(&random_sequences_file(world_root))
         .and_then(|t| t.get("data").cloned())
         .map(|d| RandomSequences::from_nbt(&d))
         .unwrap_or_else(RandomSequences::new_dirty)
@@ -203,7 +200,7 @@ pub(in crate::game::server_side) fn write_random_sequences(
             sunrise_core::nbt::Tag::Int(sunrise_world::DATA_VERSION),
         ),
     ]);
-    if let Err(e) = sunrise_client::save::write_dat(&random_sequences_file(world_root), tag) {
+    if let Err(e) = sunrise_sim::save::write_dat(&random_sequences_file(world_root), tag) {
         log::warn!("the villager random sequences were not written: {e}");
     }
 }
@@ -308,7 +305,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         index: usize,
         item: &str,
-    ) -> sunrise_client::Result<bool> {
+    ) -> sunrise_client_core::Result<bool> {
         let m = &self.mobs[index];
         let species = m.species();
         if !matches!(species, Species::Villager | Species::WanderingTrader)
@@ -642,7 +639,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn record_merchant_trade(
         &mut self,
         mob: Option<u32>,
-        result: &sunrise_client::items::ItemStack,
+        result: &sunrise_items::items::ItemStack,
     ) {
         self.award_custom_stat("traded_with_villager", 1);
         if let Some(id) = mob {

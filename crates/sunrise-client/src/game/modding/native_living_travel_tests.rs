@@ -80,7 +80,7 @@ fn decided_with(
     let mode_calls = Arc::new(Mutex::new(0usize));
     let counted = Arc::clone(&mode_calls);
     mod_platform::testing::with_mods(mods, || {
-        let runs = sunrise_client::travel_gate::decide(
+        let runs = sunrise_sim::travel_gate::decide(
             context,
             7,
             "minecraft:zombie",
@@ -144,7 +144,7 @@ fn cancel_skips_the_invocation() {
     let mut input = Vec3::new(0.216, 0.0, 0.0);
     let mut velocity = Vec3::new(1.0, -0.078_4, 0.0);
     mod_platform::testing::with_mods(mods, || {
-        let runs = sunrise_client::travel_gate::decide(
+        let runs = sunrise_sim::travel_gate::decide(
             &server_context(),
             7,
             "minecraft:zombie",
@@ -211,7 +211,7 @@ fn a_panicking_listener_keeps_the_resolved_travel_and_is_disabled() {
     mod_platform::testing::with_mods(mods, || {
         let mut input = Vec3::new(0.216, 0.0, 0.0);
         let mut velocity = Vec3::new(1.0, -0.078_4, 0.0);
-        let runs = sunrise_client::travel_gate::decide(
+        let runs = sunrise_sim::travel_gate::decide(
             &server_context(),
             7,
             "minecraft:zombie",
@@ -226,7 +226,7 @@ fn a_panicking_listener_keeps_the_resolved_travel_and_is_disabled() {
         );
         // The poison skips this hook of the mod: this travel hears nobody.
         let mut input = Vec3::new(2.0, 0.0, 0.0);
-        let runs = sunrise_client::travel_gate::decide(
+        let runs = sunrise_sim::travel_gate::decide(
             &server_context(),
             7,
             "minecraft:zombie",
@@ -270,7 +270,7 @@ fn a_panic_after_a_replacement_keeps_the_accepted_values() {
     mod_platform::testing::with_mods(mods, || {
         let mut input = Vec3::new(0.216, 0.0, 0.0);
         let mut velocity = Vec3::new(1.0, -0.078_4, 0.0);
-        let runs = sunrise_client::travel_gate::decide(
+        let runs = sunrise_sim::travel_gate::decide(
             &server_context(),
             7,
             "minecraft:zombie",
@@ -311,7 +311,7 @@ fn without_listeners_the_mode_is_never_built() {
     mod_platform::testing::with_mods(
         Vec::<mod_api::ModEntry>::new().into_iter().collect(),
         || {
-            let runs = sunrise_client::travel_gate::decide(
+            let runs = sunrise_sim::travel_gate::decide(
                 &server_context(),
                 7,
                 "minecraft:zombie",
@@ -368,7 +368,7 @@ fn a_poisoned_travel_listener_keeps_its_move_hook() {
         let context = server_context();
         let mut input = Vec3::new(0.216, 0.0, 0.0);
         let mut velocity = Vec3::new(1.0, 0.0, 0.0);
-        let runs = sunrise_client::travel_gate::decide(
+        let runs = sunrise_sim::travel_gate::decide(
             &context,
             7,
             "minecraft:zombie",
@@ -379,7 +379,7 @@ fn a_poisoned_travel_listener_keeps_its_move_hook() {
         assert!(runs);
         // The other hook of the same mod still runs, on the same session.
         let mut gate = sunrise_world::move_gate::MoveGate::new();
-        sunrise_client::move_gate::arm(
+        sunrise_sim::move_gate::arm(
             &mut gate,
             &context,
             7,
@@ -430,7 +430,7 @@ fn a_refused_pair_keeps_the_preceding_valid_pair_and_is_never_heard() {
     mod_platform::testing::with_mods(mods, || {
         let mut input = Vec3::new(0.216, 0.0, 0.0);
         let mut velocity = Vec3::new(1.0, -0.078_4, 0.0);
-        let runs = sunrise_client::travel_gate::decide(
+        let runs = sunrise_sim::travel_gate::decide(
             &server_context(),
             7,
             "minecraft:zombie",

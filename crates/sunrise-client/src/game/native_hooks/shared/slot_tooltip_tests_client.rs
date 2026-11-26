@@ -40,7 +40,7 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(pipe, "tips").unwrap();
-                    sunrise_client::containers::with_mod_menu_types(
+                    sunrise_level::containers::with_mod_menu_types(
                         [(
                             MENU.into(),
                             "tips".into(),

@@ -7,7 +7,7 @@ use mod_api::{
     ConfigurationConnection, ConfigurationTaskError, PayloadBytes, PayloadId,
 };
 use std::{io, sync::Arc};
-use sunrise_client::{
+use sunrise_sim::{
     lan::{
         Lan, NetConfig,
         configuration_tasks::{
@@ -390,11 +390,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 }
 
 /// `ServerChunkCache.addTicketAndLoadWithRadius`: every chunk, including the corners, is FULL.
-fn spawn_area_full(
-    world: &sunrise_client::world::World,
-    (cx, cz): (i32, i32),
-    radius: i32,
-) -> bool {
+fn spawn_area_full(world: &sunrise_level::world::World, (cx, cz): (i32, i32), radius: i32) -> bool {
     (-radius..=radius).all(|z| {
         (-radius..=radius).all(|x| {
             world
@@ -408,7 +404,7 @@ fn spawn_area_full(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::{chunk::Chunk, world::World};
+    use sunrise_level::{chunk::Chunk, world::World};
     use sunrise_world::registry::BlockStateId;
 
     #[test]

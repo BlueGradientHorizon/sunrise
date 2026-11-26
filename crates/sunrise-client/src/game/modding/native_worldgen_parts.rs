@@ -4,7 +4,7 @@
 //! registry that index was built from.
 use super::api_values::block_state::Index;
 use std::sync::{Arc, PoisonError, RwLock};
-use sunrise_client_render::api_context::WorldgenReader;
+use sunrise_level::api_context::WorldgenReader;
 use sunrise_world::registry::BlockRegistry;
 
 /// The published index and the registry it converts against.

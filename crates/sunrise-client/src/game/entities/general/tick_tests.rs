@@ -1036,7 +1036,7 @@ fn spawn_entity_returns_its_own_row_when_a_join_spawns_another() {
     with_counter(|game, _| {
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let level = game.level(game.dim.id()).unwrap();
         SPAWN_HEARD.lock().unwrap().clear();
@@ -1082,7 +1082,7 @@ fn spawn_entity_inserts_a_general_row_with_its_owner() {
     with_counter(|game, _| {
         game.world.chunks.insert(
             (0, 0),
-            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
         );
         let level = game.level(game.dim.id()).unwrap();
         let reason = mod_api::SpawnReason::Command;
@@ -1099,8 +1099,7 @@ fn spawn_entity_inserts_a_general_row_with_its_owner() {
             .level_spawn_entity(level, "mymod:robot", [2.5, 65.5, 2.5], &spawn)
             .unwrap();
         assert_eq!(game.creatures.projectiles.len(), projectiles);
-        let owner_uuid =
-            sunrise_client::lan::playerdata::uuid_ints(game.entity_uuid(turret).unwrap());
+        let owner_uuid = sunrise_sim::lan::playerdata::uuid_ints(game.entity_uuid(turret).unwrap());
         let rows = &game.resident_entities.general.rows;
         assert_eq!(rows.len(), 1);
         let row = &rows[0];

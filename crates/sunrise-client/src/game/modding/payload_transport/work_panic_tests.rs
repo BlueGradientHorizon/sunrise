@@ -7,14 +7,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use sunrise_client::{
-    chunk::Chunk,
-    lan::PlayerSender,
-    raw_payloads::{Classified, Endpoint, Incoming, Side, Transport},
-};
+use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     packets::{configuration as cfg, play},
     payload_negotiation::Phase,
+};
+use sunrise_sim::{
+    lan::PlayerSender,
+    raw_payloads::{Classified, Endpoint, Incoming, Side, Transport},
 };
 
 const CHANNEL: &str = "work_probe:message";

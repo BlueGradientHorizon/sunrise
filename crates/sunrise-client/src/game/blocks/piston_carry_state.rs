@@ -1,15 +1,15 @@
 //! Position-owned state follows the payload; observers are invalidated at the owning boundary.
 use super::Game;
-use sunrise_client::{
+use sunrise_core::nbt::{Compound, Tag};
+use sunrise_level::{
     block_entities::Pos,
     chunk::PendingContainerLoot,
     world::{BlockEntityExtras, World},
 };
-use sunrise_core::nbt::{Compound, Tag};
 
 /// Mutable position-owned server data borrowed by the level adapter.
 pub(in crate::game) struct PositionState<'a> {
-    pub(in crate::game) gateways: &'a mut sunrise_client::fast_hash::FxHashMap<
+    pub(in crate::game) gateways: &'a mut sunrise_level::fast_hash::FxHashMap<
         [i32; 3],
         sunrise_level::block_entity_ticks::EndGateway,
     >,
@@ -45,7 +45,7 @@ pub(in crate::game) fn take_position_data(world: &mut World, from: Pos) -> Compo
                 .cloned()
         })
         .or_else(|| match world.block_entities.get(&from) {
-            Some(sunrise_client::containers::BlockEntity::Mod(e)) => {
+            Some(sunrise_level::containers::BlockEntity::Mod(e)) => {
                 e.nbt.get(&"CustomName".into()).cloned()
             }
             _ => None,
@@ -114,7 +114,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .map(|c| &c.entity)
                         .or_else(|| self.world.block_entities.get(&to))
                         .is_some_and(|e| {
-                            matches!(e, sunrise_client::containers::BlockEntity::Jukebox(_))
+                            matches!(e, sunrise_level::containers::BlockEntity::Jukebox(_))
                         })
                     {
                         self.jukebox_removed([from.0, from.1, from.2]);
@@ -134,8 +134,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 .simulation_iter()
                                 .filter(move |g| {
                                     g.menu.as_ref().is_some_and(|m| match m.slots {
-                                        sunrise_client::lan::menu::Slots::Block(at) => at == from,
-                                        sunrise_client::lan::menu::Slots::Double(a, b) => {
+                                        sunrise_sim::lan::menu::Slots::Block(at) => at == from,
+                                        sunrise_sim::lan::menu::Slots::Double(a, b) => {
                                             a == from || b == from
                                         }
                                         _ => m.pos == Some(from),

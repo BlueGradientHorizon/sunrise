@@ -18,7 +18,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, AtomicUsize, Ordering},
 };
-use sunrise_client::chunk::Chunk;
+use sunrise_level::chunk::Chunk;
 
 pub(in crate::game) const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
 
@@ -140,8 +140,8 @@ fn sulfur_cube_splits_two_babies_unless_primed_and_size_one_asks_nobody() {
             // Primed: no children, nobody asked.
             game.mobs.clear();
             let mut dying = cube(game, "minecraft:sulfur_cube", 4, 0);
-            dying.extra.sulfur_fuse = sunrise_client::mobs::sulfur_cube::Fuse::set(40);
-            assert!(sunrise_client::mobs::sulfur_cube::primed(&dying));
+            dying.extra.sulfur_fuse = sunrise_sim::mobs::sulfur_cube::Fuse::set(40);
+            assert!(sunrise_sim::mobs::sulfur_cube::primed(&dying));
             game.split_dead_cube(dying);
             assert!(game.mobs.is_empty());
             assert_eq!(*calls.lock().unwrap(), 1);
@@ -385,8 +385,8 @@ impl Hooks for NetherBiomeOnJoin {
 #[test]
 #[ignore = "daily"]
 fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
-    use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    use sunrise_sim::lan::{Out, PlayerSender};
 
     if run_fresh_cases(
         "game::creatures::pending_birth_tests::a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level",

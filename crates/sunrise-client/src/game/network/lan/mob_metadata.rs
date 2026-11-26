@@ -1,6 +1,6 @@
 //! Species-specific entity tracker metadata.
-use sunrise_client::mobs::Extra;
 use sunrise_protocol::entity_data::{Value, serializer};
+use sunrise_sim::mobs::Extra;
 
 /// Enderman carried block, creepy and stared-at data, including reset defaults.
 pub(in crate::game::server_side) fn enderman(
