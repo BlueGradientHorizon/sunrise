@@ -434,6 +434,18 @@ fn main() {
     );
     assert!(Command::new(dedicated).status().unwrap().success());
 
+    let client_source = GameplayPackage::Client
+        .domain()
+        .package_path(root)
+        .join("src/lib.rs");
+    let source = fs::read_to_string(&client_source).unwrap();
+    let gated = source.replacen(
+        "pub mod game {",
+        "#[cfg(feature = \"client\")] pub mod game {",
+        1,
+    );
+    assert_ne!(source, gated);
+    fs::write(client_source, gated).unwrap();
     put(root, "crates/sunrise-mod-api-gen/source-layout", "split\n");
     let configs = [
         "unix\ntarget_os=\"linux\"".into(),

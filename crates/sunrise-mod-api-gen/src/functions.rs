@@ -28,6 +28,9 @@ pub struct FunctionIndex {
     pub functions: BTreeMap<String, Function>,
     /// The functions it can't, by [`key`], with the refusal a row naming one gets.
     pub refused: BTreeMap<String, Refused>,
+    /// Alternate spellings with the same resolved nominal owner as a published target.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub aliases: BTreeMap<String, String>,
     /// Per-slot owner, trait, and installer evidence for every staged trait-method slot.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub trait_slots: BTreeMap<String, crate::replace::TraitSlotEvidence>,
@@ -137,6 +140,12 @@ pub(crate) fn sha256(bytes: &[u8]) -> String {
 }
 
 impl FunctionIndex {
+    /// The published key, including a source-proven alternate spelling when present.
+    pub fn target_key(&self, target: &str) -> String {
+        let key = key(target);
+        self.aliases.get(&key).cloned().unwrap_or(key)
+    }
+
     /// Whether `target` can be copied out of the source at `root`: listed as replaceable, and its
     /// span there is the indexed text. Otherwise its refusal, `(code, why)`.
     ///
@@ -156,7 +165,7 @@ impl FunctionIndex {
         target: &str,
         layout: SourceLayout,
     ) -> Result<(), (&'static str, String)> {
-        let key = key(target);
+        let key = self.target_key(target);
         let krate = key.split("::").next().unwrap_or_default();
         if !self.crates.contains_key(krate) {
             return Err((
@@ -235,6 +244,14 @@ impl FunctionIndex {
                 function.module
             ));
         }
+        for (alias, target) in &self.aliases {
+            if self.functions.contains_key(alias)
+                || self.refused.contains_key(alias)
+                || !(self.functions.contains_key(target) || self.refused.contains_key(target))
+            {
+                return Err(format!("{FILE}: invalid alias `{alias}` for `{target}`"));
+            }
+        }
         Ok(self)
     }
 
@@ -245,7 +262,7 @@ impl FunctionIndex {
         source: &mut Source,
         target: &str,
     ) -> Result<Found, (&'static str, String)> {
-        let key = key(target);
+        let key = self.target_key(target);
         let stale = |why: String| ("E_MIXIN_SOURCE", why);
         let function = self
             .functions
@@ -498,6 +515,7 @@ fn index_of_with_context(
         };
         collect(&module, &items, &file, &mut candidates);
     }
+    let mut aliases = Vec::new();
     for (key, mut found) in candidates {
         let krate = key.split("::").next().unwrap_or_default();
         if only.is_some_and(|only| !only.contains(&key))
@@ -518,6 +536,12 @@ fn index_of_with_context(
         let mut candidate = found.pop().expect("one");
         match replaceable_with_binding(&candidate.found, &mut source, generic.contains(&key)) {
             Ok(trait_binding) => {
+                if layout.is_split()
+                    && let Some(owner) = candidate.found.owner.as_ref()
+                    && let Some((alias, name)) = nominal_alias(&key, &candidate.found.module, owner)
+                {
+                    aliases.push((alias, key.clone(), candidate.found.module.clone(), name));
+                }
                 candidate.function.trait_binding = trait_binding;
                 index.functions.insert(key, candidate.function);
             }
@@ -533,7 +557,42 @@ fn index_of_with_context(
         }
     }
     let (owners, workspace) = source.into_resolve_context()?;
+    for (alias, key, module, name) in aliases {
+        let krate = module.split("::").next().unwrap_or_default();
+        if !index.functions.contains_key(&alias)
+            && !index.refused.contains_key(&alias)
+            && owners.get(krate).is_some_and(|types| {
+                crate::replace_resolve::is_game_nominal(&module, &name, types, &workspace)
+            })
+        {
+            index.aliases.insert(alias, key);
+        }
+    }
     Ok((index, owners, workspace))
+}
+
+fn nominal_alias(key: &str, module: &str, owner: &syn::ItemImpl) -> Option<(String, String)> {
+    let package = crate::GameplayPackage::from_library(module.split("::").next()?)?;
+    let name = package.game_type();
+    let bare = name;
+    let qualified = format!("crate::game::{name}");
+    let actual = plain(&quote::ToTokens::to_token_stream(&owner.self_ty).to_string());
+    let alternate = if actual == bare {
+        qualified.as_str()
+    } else if actual == qualified {
+        bare
+    } else {
+        return None;
+    };
+    let method = key.rsplit_once("::")?.1;
+    let alias = match &owner.trait_ {
+        Some((_, path, _)) => {
+            let trait_name = &path.segments.last()?.ident;
+            format!("{module}::<{alternate} as {trait_name}>::{method}")
+        }
+        None => format!("{module}::{alternate}::{method}"),
+    };
+    Some((alias, name.to_owned()))
 }
 
 /// A function found in a file, before its verdict.
@@ -674,3 +733,41 @@ fn collect(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn game_nominal_alias_requires_the_real_owner() {
+    let module = "sunrise_gameplay::game::fixture";
+    let mut types = crate::replace::OwnerTypes::default();
+    let workspace = crate::replace::WorkspaceTraits::default();
+    let parse = |source| syn::parse_file(source).unwrap().items;
+    types.declare(
+        "sunrise_gameplay::game",
+        &parse("pub struct ServerGame<'a>(&'a ());"),
+    );
+    types.declare(module, &parse("use crate::game::ServerGame;"));
+    assert!(crate::replace_resolve::is_game_nominal(
+        module,
+        "ServerGame",
+        &types,
+        &workspace
+    ));
+    let source = "impl crate::game::ServerGame<'_> { fn move_to(&self) {} }";
+    let [syn::Item::Impl(owner)] = &parse(source)[..] else {
+        panic!("expected an impl")
+    };
+    let published = format!("{module}::crate::game::ServerGame::move_to");
+    let (alias, _) = nominal_alias(&published, module, owner).unwrap();
+    let mut index = FunctionIndex::default();
+    index.aliases.insert(alias.clone(), published.clone());
+    assert_eq!(index.target_key(&alias), published);
+    assert_eq!(index.target_key(&published), published);
+    let foreign = "sunrise_gameplay::game::unrelated";
+    types.declare(foreign, &parse("pub struct ServerGame;"));
+    assert!(!crate::replace_resolve::is_game_nominal(
+        foreign,
+        "ServerGame",
+        &types,
+        &workspace
+    ));
+}

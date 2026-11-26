@@ -63,36 +63,45 @@ pub struct SourceLayout {
 
 pub(crate) const MARKER: &str = "crates/sunrise-mod-api-gen/source-layout";
 
-pub(crate) const LEGACY_DOMAIN: GameDomain = GameDomain {
+pub(crate) const ENTRY_DOMAIN: GameDomain = GameDomain {
     package: "sunrise-client",
     key: "sunrise_client",
 };
 
-pub const LEGACY_LAYOUT: SourceLayout = SourceLayout {
-    runtime: LEGACY_DOMAIN,
-    domains: &[LEGACY_DOMAIN],
+#[cfg(test)]
+pub(crate) const LEGACY_LAYOUT: SourceLayout = SourceLayout {
+    runtime: ENTRY_DOMAIN,
+    domains: &[ENTRY_DOMAIN],
     entry: Some("src/entry.rs"),
 };
 
 impl Default for SourceLayout {
     fn default() -> Self {
-        LEGACY_LAYOUT
+        #[cfg(test)]
+        let layout = LEGACY_LAYOUT;
+        #[cfg(not(test))]
+        let layout = crate::GAMEPLAY_LAYOUT;
+        layout
     }
 }
 
 impl SourceLayout {
-    /// Select the layout declared by a source tree; historical trees without a marker are legacy.
+    /// Read the source tree’s split layout marker. Older trees require their own generator.
     pub fn read(root: &Path) -> Result<Self, String> {
         let path = root.join(MARKER);
         match fs::read_to_string(&path) {
             Ok(text) => match text.trim() {
+                #[cfg(test)]
                 "legacy" => Ok(LEGACY_LAYOUT),
+                #[cfg(not(test))]
+                "legacy" => Err("legacy source requires the generator from its revision".into()),
                 "split" => Ok(crate::gameplay::GAMEPLAY_LAYOUT),
                 other => Err(format!(
                     "{}: unknown source layout {other:?}",
                     path.display()
                 )),
             },
+            #[cfg(test)]
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(LEGACY_LAYOUT),
             Err(error) => Err(format!("{}: {error}", path.display())),
         }

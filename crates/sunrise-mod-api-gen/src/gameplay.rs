@@ -24,9 +24,9 @@ const CLIENT: GameDomain = GameDomain {
     key: "sunrise_client_gameplay",
 };
 pub const GAMEPLAY_LAYOUT: SourceLayout = SourceLayout {
-    runtime: crate::source::LEGACY_DOMAIN,
+    runtime: crate::source::ENTRY_DOMAIN,
     domains: &[COMMON, SERVER, CLIENT],
-    entry: crate::source::LEGACY_LAYOUT.entry,
+    entry: Some("src/entry.rs"),
 };
 
 impl GameplayPackage {

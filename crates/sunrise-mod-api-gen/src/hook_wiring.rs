@@ -293,17 +293,20 @@ fn check_gameplay_target(
         require_calls(&bodies, None, &[&format!("mod_api::dispatch_{name}")])?;
     } else {
         let fire = format!("fire_{name}");
-        require_calls(
-            &bodies,
-            Some(&fire),
-            &[
-                &format!("Self::{fire}"),
-                &format!("FireHooks::{fire}"),
-                &format!("crate::game::native_hooks::fire::{fire}"),
-                &format!("super::fire::{fire}"),
-                &format!("fire::{fire}"),
-            ],
-        )?;
+        let mut paths = vec![
+            format!("Self::{fire}"),
+            format!("FireHooks::{fire}"),
+            format!("crate::game::native_hooks::fire::{fire}"),
+            format!("super::fire::{fire}"),
+            format!("fire::{fire}"),
+        ];
+        if matches!(binding.kind, BindingKind::Shared) {
+            paths.push(format!(
+                "crate::game::native_hooks::fire::FireHooks::{fire}"
+            ));
+        }
+        let paths: Vec<_> = paths.iter().map(String::as_str).collect();
+        require_calls(&bodies, Some(&fire), &paths)?;
     }
     Ok(true)
 }
@@ -609,13 +612,13 @@ fn check_slot(
     target: Target<'_>,
 ) -> Result<(), String> {
     let scope = routes.module(package, module)?;
-    let installers = routes.functions(scope, installer);
+    let installers = routes.installers(scope, installer);
     let missing = || format!("{module}::{installer} does not install {slots}::{name}");
     if installers.is_empty() {
         return Err(missing());
     }
-    for body in &installers {
-        let installed = routes.check_bindings(scope, body, install, |routes, scope, call, imports| {
+    for (scope, body) in &installers {
+        let installed = routes.check_bindings(*scope, body, install, |routes, scope, call, imports| {
             let Some(Expr::Struct(table)) = call.args.first().map(calls::ungroup) else {
                 return Err(format!(
                     "{module}::{installer}: cannot inspect the {slots} binding passed to {install}"
@@ -737,6 +740,34 @@ mod tests {
         "#,
         );
         super::check(root, &[hook]).unwrap();
+    }
+
+    #[test]
+    fn split_shared_wiring_names_the_defining_fire_trait() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fixture(root, "sunrise-gameplay-common/Cargo.toml", "");
+        let mut hook = Hook::sample(
+            "sunrise_gameplay_common::game::native_hooks::GameHooks::native_check",
+            Side::Both,
+        );
+        hook.name = "check".into();
+        hook.receiver = crate::catalog::Receiver::Read;
+        hook.host = Some(crate::HostAccess::Read);
+        hook.dispatch = DispatchStyle::Flat;
+        for (owner, works) in [("FireHooks", true), ("OtherHooks", false)] {
+            fixture(
+                root,
+                "sunrise-gameplay-common/src/lib.rs",
+                &format!(
+                    "mod game {{ mod native_hooks {{ trait GameHooks {{ fn native_check(&self) {{ crate::game::native_hooks::fire::{owner}::fire_check(self); }} }} }} }}"
+                ),
+            );
+            assert_eq!(
+                super::check(root, std::slice::from_ref(&hook)).is_ok(),
+                works
+            );
+        }
     }
 
     #[test]
@@ -1216,6 +1247,31 @@ mod tests {
                 result.unwrap();
             }
         }
+        fixture(
+            root,
+            "sunrise-client/src/entry.rs",
+            r"
+            use crate::game::install_client_hooks;
+            fn start() {
+                install_client_hooks();
+                sunrise_world::native_load_hooks::install(sunrise_world::native_load_hooks::NativeLoadHooks {
+                    loot_table_load: || mod_api::dispatch_loot_table_load(),
+                });
+            }
+            ",
+        );
+        fixture(
+            root,
+            "sunrise-client/src/game.rs",
+            r"
+            pub(crate) fn install_client_hooks() {
+                sunrise_client_lib::native_client_hooks::install(sunrise_client_lib::native_client_hooks::NativeClientHooks {
+                    living_heal: || mod_api::dispatch_living_heal(),
+                });
+            }
+            ",
+        );
+        check(root, &hooks).unwrap();
     }
 
     #[test]

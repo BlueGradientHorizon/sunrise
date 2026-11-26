@@ -5,28 +5,36 @@ mod exports;
 mod game_modules;
 mod gameplay;
 pub use gameplay::{GAMEPLAY_LAYOUT, GameplayAudit, GameplayPackage, RoutingIssue, audit_gameplay};
-pub use source::{LEGACY_LAYOUT, SourceLayout};
+#[cfg(test)]
+pub(crate) use source::LEGACY_LAYOUT;
+pub use source::SourceLayout;
 mod hook_wiring;
 #[doc(hidden)]
 pub use dispatch_fixtures::layout as dispatch_fixture_layout;
 pub use game_modules::materialize_generated_host;
+mod hook_fill;
 mod host;
+#[cfg(test)]
 mod layout;
 mod parts;
 pub use catalog::DECLARATIONS;
 use catalog::{Catalog, Contract, DrawContext, Hook, HostAccess, PartKind, PhaseContext, Side};
 use heck::ToSnakeCase;
 pub use hook_wiring::{check_gameplay_hook_wiring, check_hook_wiring};
-pub use layout::native_hook_layout;
 use quote::ToTokens;
+#[cfg(test)]
+use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
     path::Path,
     process::Command,
 };
-use syn::{FnArg, ImplItem, Item, Pat, Type, visit_mut::VisitMut};
+#[cfg(test)]
+use syn::ImplItem;
+use syn::{FnArg, Item, Pat, Type, visit_mut::VisitMut};
 
+#[cfg(test)]
 fn impl_functions(item: syn::ItemImpl) -> impl Iterator<Item = syn::ItemFn> {
     item.items.into_iter().filter_map(|item| match item {
         ImplItem::Fn(method) => Some(syn::ItemFn {
@@ -359,6 +367,7 @@ struct Fill {
 
 /// `source` with each fill's placeholder statement replaced by its call,
 /// formatted as `cargo fmt` would.
+#[cfg(test)]
 fn filled_hooks(source: &str, fills: &[Fill]) -> Result<Vec<u8>, String> {
     let mut source = source.to_owned();
     for Fill { native, call } in fills {
@@ -416,8 +425,6 @@ const ENTITY_PART_DOCS: &str = "/// An entity type's part: code attached through
 pub enum Target {
     /// Engine vocabulary: hook and host traits, values, and dispatch.
     Vocab,
-    /// The game: the host traits' implementation on `Game`.
-    Client,
     GameplayCommon,
     GameplayServer,
     GameplayClient,
@@ -426,13 +433,38 @@ pub enum Target {
 /// Fill new hooks' placeholders in `game/native_hooks/`. This explicit authoring command
 /// reads game bodies; build scripts and API generation never do.
 pub fn fill_hooks(root: &Path) -> Result<(), String> {
+    let layout = SourceLayout::read(root)?;
+    if !layout.is_split() {
+        return Err("hook authoring requires a split gameplay source tree".into());
+    }
+    hook_fill::fill(root, layout)
+}
+
+#[cfg(test)]
+/// The hand-written sources, in deterministic order; `fire.rs` includes generated dispatch.
+fn native_hook_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let dir = root.join("crates/sunrise-client/src/game/native_hooks");
+    let mut paths = fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .map(|entry| entry.map(|entry| entry.path()).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    paths.retain(|path| {
+        path.extension().is_some_and(|ext| ext == "rs")
+            && path.file_name().is_some_and(|name| name != "fire.rs")
+    });
+    paths.sort();
+    Ok(paths)
+}
+
+#[cfg(test)]
+fn fill_fixture_hooks(root: &Path) -> Result<(), String> {
     let fills: BTreeMap<_, _> = game_hook_sources(root)?
         .fills
         .into_iter()
         .map(|fill| (fill.native.clone(), fill))
         .collect();
     let mut outputs = Vec::new();
-    for path in sunrise_game_discovery::native_hook_files(root)? {
+    for path in native_hook_files(root)? {
         let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
         let file = syn::parse_file(&source).map_err(|e| e.to_string())?;
         let mut local = Vec::new();
@@ -459,6 +491,7 @@ pub fn fill_hooks(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn game_hook_sources(root: &Path) -> Result<dispatch::HookSources, String> {
     let catalog = Catalog::load(root)?;
     dispatch::emit(
@@ -471,6 +504,7 @@ fn game_hook_sources(root: &Path) -> Result<dispatch::HookSources, String> {
     )
 }
 
+#[cfg(test)]
 fn game_fire_source(root: &Path) -> Result<String, String> {
     Ok(dispatch::render_fire(&game_hook_sources(root)?.fire))
 }
@@ -1024,7 +1058,7 @@ mod tests {
         let unfinished = shipped.replace(call, "let _ = (player, item);");
         std::fs::write(&hooks, &unfinished).unwrap();
         assert!(
-            super::fill_hooks(&root)
+            super::fill_fixture_hooks(&root)
                 .unwrap_err()
                 .starts_with("missing dispatch_item_picked_up call in native_item_picked_up: ")
         );
@@ -1058,7 +1092,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            super::fill_hooks(&root)
+            super::fill_fixture_hooks(&root)
                 .unwrap_err()
                 .contains("item_picked_up: needs a #[hook(...)] attribute")
         );
@@ -1073,7 +1107,7 @@ mod tests {
         let decoy = hooks.with_file_name("decoy.rs");
         let decoy_source = "impl Game<'_> { /// mentions fn native_item_picked_up(\n fn unrelated(&self) { let _ = self; } }\n";
         std::fs::write(&decoy, decoy_source).unwrap();
-        super::fill_hooks(&root).unwrap();
+        super::fill_fixture_hooks(&root).unwrap();
         super::hook_wiring::check(&root, std::slice::from_ref(&pickup)).unwrap();
         // The generator writes LF; a Windows checkout (core.autocrlf) has CRLF.
         let lf = |s: &str| s.replace("\r\n", "\n");

@@ -57,6 +57,11 @@ pub(super) fn check(root: &Path, routing: &Routing, build: &Build) -> Result<(),
         for call in calls {
             let mut pending = vec![build.clone()];
             while let Some(build) = pending.pop() {
+                if package == GameplayPackage::Client
+                    && build.evaluate("feature = \"client\"") == Some(false)
+                {
+                    continue;
+                }
                 let mut index = sources.binding_index(&build, true);
                 let result = resolve_callee(&mut index, package, &call, &impls, &build);
                 if let Some(builds) = build.split() {

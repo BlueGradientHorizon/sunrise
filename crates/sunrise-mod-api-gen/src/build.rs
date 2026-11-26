@@ -1,5 +1,5 @@
 //! Cargo-facing generation: the mod API's and the game's generated files.
-use super::{Catalog, Target, game_fire_source, host, sources};
+use super::{Catalog, Target, host, sources};
 use std::{fs, path::Path};
 mod vocab_boundary;
 
@@ -67,20 +67,7 @@ fn generate_with_vocab(
     } else {
         std::collections::BTreeSet::new()
     };
-    if matches!(&target, Target::Client) {
-        crate::rerun_if_staged(root);
-    }
     let outputs = match target {
-        Target::Client => vec![
-            (HOST_OUTPUT, game_host_generated(root)?),
-            ("mod_api_fire_generated.rs", game_fire_source(root)?),
-            // The mob tick's goal read view (#1077), included beside the
-            // engine's `GoalCx` in `mobs/part_goals.rs`.
-            (
-                "mod_api_goal_view_generated.rs",
-                host::generate_goal_view(root)?,
-            ),
-        ],
         Target::GameplayCommon | Target::GameplayServer | Target::GameplayClient => unreachable!(),
         Target::Vocab => {
             let generated = match catalog {
@@ -142,7 +129,7 @@ fn gameplay_package(target: &Target) -> Option<super::GameplayPackage> {
         Target::GameplayCommon => Some(Common),
         Target::GameplayServer => Some(Server),
         Target::GameplayClient => Some(Client),
-        Target::Client | Target::Vocab => None,
+        Target::Vocab => None,
     }
 }
 
@@ -152,7 +139,7 @@ fn generated_source(
     name: &str,
     code: String,
 ) -> Result<String, String> {
-    if (matches!(target, Target::Client) || gameplay_package(target).is_some())
+    if gameplay_package(target).is_some()
         && matches!(
             name,
             "mod_api_fire_generated.rs" | "mod_api_goal_view_generated.rs"
@@ -180,7 +167,7 @@ mod generated_visibility_tests {
             "mod_api_goal_view_generated.rs",
         ] {
             assert_eq!(
-                generated_source(&root, &Target::Client, name, input.into()).unwrap(),
+                generated_source(&root, &Target::GameplayClient, name, input.into()).unwrap(),
                 input
             );
         }
@@ -190,7 +177,7 @@ mod generated_visibility_tests {
             "mod_api_goal_view_generated.rs",
         ] {
             assert_eq!(
-                generated_source(&root, &Target::Client, name, input.into()).unwrap(),
+                generated_source(&root, &Target::GameplayClient, name, input.into()).unwrap(),
                 "impl Game<'_> { pub fn fire(&mut self) {} }"
             );
             assert_eq!(

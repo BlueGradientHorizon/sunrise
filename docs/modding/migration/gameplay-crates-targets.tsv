@@ -2763,13 +2763,13 @@ sunrise_client::game::server_side::ahead::ahead	sunrise_gameplay::game::server_s
 sunrise_client::game::server_side::ahead::move_alone	sunrise_gameplay::game::server_side::ahead::move_alone	moved	
 sunrise_client::game::server_side::ahead::reach	sunrise_gameplay::game::server_side::ahead::reach	moved	
 sunrise_client::game::server_side::ahead::started	sunrise_gameplay::game::server_side::ahead::started	moved	
-sunrise_client::game::server_side::allays::<Game as AllayLevel>::dimension_id		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::allays::<Game as AllayLevel>::guest_player		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::allays::<Game as AllayLevel>::host_player		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::allays::<Game as AllayLevel>::level_player_uuid		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::allays::<Game as AllayLevel>::play_mob_bound_sound		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::allays::<Game as AllayLevel>::spawn_item		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::allays::<Game as AllayLevel>::trigger_block		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::allays::<Game as AllayLevel>::dimension_id		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::allays::<Game as AllayLevel>::guest_player		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::allays::<Game as AllayLevel>::host_player		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::allays::<Game as AllayLevel>::level_player_uuid		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::allays::<Game as AllayLevel>::play_mob_bound_sound		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::allays::<Game as AllayLevel>::spawn_item		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::allays::<Game as AllayLevel>::trigger_block		removed	trait resolution has no installer; target a concrete caller
 sunrise_client::game::server_side::allays::Game::interact_allay	sunrise_gameplay::game::server_side::allays::crate::game::ServerGame::interact_allay	moved	body changed
 sunrise_client::game::server_side::allays::Game::play_allay_sound	sunrise_gameplay::game::server_side::allays::crate::game::ServerGame::play_allay_sound	moved	
 sunrise_client::game::server_side::allays::Game::tick_allays	sunrise_gameplay::game::server_side::allays::crate::game::ServerGame::tick_allays	moved	
@@ -3746,16 +3746,16 @@ sunrise_client::game::server_side::creaking::Game::spawning_monsters	sunrise_gam
 sunrise_client::game::server_side::creaking::Game::tick_creaking_heart	sunrise_gameplay::game::server_side::creaking::crate::game::ServerGame::tick_creaking_heart	moved	body changed
 sunrise_client::game::server_side::creaking::Host::slot	sunrise_gameplay::game::server_side::creaking::Host::slot	moved	
 sunrise_client::game::server_side::creatures_client_server::Game::interact_armadillo	sunrise_gameplay::game::server_side::creatures_client_server::ServerGame::interact_armadillo	moved	body changed
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::adjacent_block_path_type		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::block_path_type		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::can_entity_destroy		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::can_grief		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::enderman_anger_suppressed		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::grief_hooked		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::living_change_target		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::living_visibility		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::living_visibility_mob		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::creatures_server::<Game as OwnerLookup>::non_player_entity		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::adjacent_block_path_type	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::adjacent_block_path_type	moved	body changed
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::block_path_type	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::block_path_type	moved	body changed
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::can_entity_destroy	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::can_entity_destroy	moved	
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::can_grief	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::can_grief	moved	
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::enderman_anger_suppressed	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::enderman_anger_suppressed	moved	body changed
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::grief_hooked	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::grief_hooked	moved	body changed
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::living_change_target	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::living_change_target	moved	
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::living_visibility	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::living_visibility	moved	
+sunrise_client::game::server_side::creatures_server::<Game as MobHooks>::living_visibility_mob	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as MobHooks>::living_visibility_mob	moved	
+sunrise_client::game::server_side::creatures_server::<Game as OwnerLookup>::non_player_entity	sunrise_gameplay::game::server_side::creatures_server::<ServerGame as OwnerLookup>::non_player_entity	moved	
 sunrise_client::game::server_side::creatures_server::Game::add_projectile	sunrise_gameplay::game::server_side::creatures_server::crate::game::ServerGame::add_projectile	moved	body changed
 sunrise_client::game::server_side::creatures_server::Game::amethyst_projectile_hit	sunrise_gameplay::game::server_side::creatures_server::crate::game::ServerGame::amethyst_projectile_hit	moved	body changed
 sunrise_client::game::server_side::creatures_server::Game::apply_projectile_hit	sunrise_gameplay::game::server_side::creatures_server::crate::game::ServerGame::apply_projectile_hit	moved	body changed
@@ -3960,16 +3960,16 @@ sunrise_client::game::server_side::cushions::Game::take_removed_cushion	sunrise_
 sunrise_client::game::server_side::cushions::Game::tick_cushion_riding	sunrise_gameplay::game::server_side::cushions::crate::game::ServerGame::tick_cushion_riding	moved	body changed
 sunrise_client::game::server_side::cushions::Game::tick_cushions	sunrise_gameplay::game::server_side::cushions::crate::game::ServerGame::tick_cushions	moved	body changed
 sunrise_client::game::server_side::cushions::overlaps	sunrise_gameplay::game::server_side::cushions::overlaps	moved	
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::is_spawn_position_ok		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::overworld		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::parts		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::players		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::rule		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::spawn_event_mob		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::spawn_mob		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::structure_tag		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::structures_at		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::village_centers		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::is_spawn_position_ok		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::overworld		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::parts		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::players		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::rule		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::spawn_event_mob		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::spawn_mob		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::structure_tag		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::structures_at		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::custom_spawner_level::<Game as CustomSpawnerLevel>::village_centers		removed	trait resolution has no installer; target a concrete caller
 sunrise_client::game::server_side::custom_spawners::Game::has_custom_spawner	sunrise_gameplay::game::server_side::custom_spawners::ServerGame::has_custom_spawner	moved	
 sunrise_client::game::server_side::custom_spawners::Game::level_spawners	sunrise_gameplay::game::server_side::custom_spawners::ServerGame::level_spawners	moved	body changed
 sunrise_client::game::server_side::custom_spawners::Game::tick_custom_spawners	sunrise_gameplay::game::server_side::custom_spawners::ServerGame::tick_custom_spawners	moved	body changed
@@ -5950,22 +5950,22 @@ sunrise_client::game::server_side::minecarts_server::section_steps::tick_riding	
 sunrise_client::game::server_side::mob_gear::Game::apply_raid_buffs	sunrise_gameplay::game::server_side::mob_gear::ServerGame::apply_raid_buffs	moved	body changed
 sunrise_client::game::server_side::mob_gear::Game::enchant_item	sunrise_gameplay::game::server_side::mob_gear::ServerGame::enchant_item	moved	body changed
 sunrise_client::game::server_side::mob_gear::Game::equip_from_table	sunrise_gameplay::game::server_side::mob_gear::ServerGame::equip_from_table	moved	body changed
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::discard_item		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::entity_grief		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::just_spawned_item		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::mob_griefing		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::mob_uuid		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::on_item_pickup		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::parts		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::play_sound		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::spawn_item_own		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_level::<Game as MobLevel>::take		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::discard_item		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::entity_grief		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::just_spawned_item		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::mob_griefing		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::mob_uuid		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::on_item_pickup		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::parts		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::play_sound		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::spawn_item_own		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_level::<Game as MobLevel>::take		removed	trait resolution has no installer; target a concrete caller
 sunrise_client::game::server_side::mob_level::Game::server_mob_take_item	sunrise_gameplay::game::server_side::mob_level::crate::game::ServerGame::server_mob_take_item	moved	body changed
-sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::can_equip		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::equippable_in_slot		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::grief_hooked		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::mob_equip_event		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::stack_facts		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::can_equip		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::equippable_in_slot		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::grief_hooked		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::mob_equip_event		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::mob_looting::<Game as LootingLevel>::stack_facts		removed	trait resolution has no installer; target a concrete caller
 sunrise_client::game::server_side::mob_looting::Game::attributes	sunrise_gameplay::game::server_side::mob_looting::crate::game::ServerGame::attributes	moved	
 sunrise_client::game::server_side::mob_looting::Game::mob_item_pickup_trigger	sunrise_gameplay::game::server_side::mob_looting::crate::game::ServerGame::mob_item_pickup_trigger	moved	body changed
 sunrise_client::game::server_side::mob_looting::Game::stack_facts	sunrise_gameplay::game::server_side::mob_looting::crate::game::ServerGame::stack_facts	moved	
@@ -6158,11 +6158,11 @@ sunrise_client::game::server_side::native_command_reads::advancement_in	sunrise_
 sunrise_client::game::server_side::native_command_reads::advancement_info	sunrise_gameplay::game::server_side::native_command_reads::advancement_info	moved	
 sunrise_client::game::server_side::native_components_server::Game::item_resource_enchant_randomly	sunrise_gameplay::game::server_side::native_components_server::ServerGame::item_resource_enchant_randomly	moved	body changed
 sunrise_client::game::server_side::native_components_server::Game::server_item_combat_actor	sunrise_gameplay::game::server_side::native_components_server::ServerGame::server_item_combat_actor	moved	body changed
-sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::list		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::read		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::remove		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::stat		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::write		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::list	sunrise_gameplay::game::server_side::native_config_files::<ServerGame as ConfigFiles>::list	moved	
+sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::read	sunrise_gameplay::game::server_side::native_config_files::<ServerGame as ConfigFiles>::read	moved	
+sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::remove	sunrise_gameplay::game::server_side::native_config_files::<ServerGame as ConfigFiles>::remove	moved	
+sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::stat	sunrise_gameplay::game::server_side::native_config_files::<ServerGame as ConfigFiles>::stat	moved	
+sunrise_client::game::server_side::native_config_files::<Game as ConfigFiles>::write	sunrise_gameplay::game::server_side::native_config_files::<ServerGame as ConfigFiles>::write	moved	
 sunrise_client::game::server_side::native_config_files::Game::world_data_files	sunrise_gameplay::game::server_side::native_config_files::crate::game::ServerGame::world_data_files	moved	
 sunrise_client::game::server_side::native_config_files::world_root	sunrise_gameplay::game::server_side::native_config_files::world_root	moved	body changed
 sunrise_client::game::server_side::native_console::Game::dispatch_console_lines	sunrise_gameplay::game::server_side::native_console::ServerGame::dispatch_console_lines	moved	
@@ -6473,30 +6473,30 @@ sunrise_client::game::server_side::native_fishing_hook_refs::Game::fishing_hook_
 sunrise_client::game::server_side::native_fishing_hook_refs::Game::fishing_hook_player_owner	sunrise_gameplay::game::server_side::native_fishing_hook_refs::crate::game::ServerGame::fishing_hook_player_owner	moved	body changed
 sunrise_client::game::server_side::native_game_event_context::Game::post_contextual_game_event	sunrise_gameplay::game::server_side::native_game_event_context::crate::game::ServerGame::post_contextual_game_event	moved	
 sunrise_client::game::server_side::native_give_stack_server::Game::player_give_stack	sunrise_gameplay::game::server_side::native_give_stack_server::ServerGame::player_give_stack	moved	body changed
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::entities_team_damage_allowed		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::epoch		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::living_last_hurt_record		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_is_live		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_offers_lent		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_trade_state_lent		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_trading_player_lent		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_added_to_level		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_attacker_elsewhere		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_can_use_portal		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_dismount_location		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_in_other_level		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_invulnerable_to_damage		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_is_climbing		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_name		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_on_block		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_player_controls		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_player_credit		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_portal_cooldown		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_tags		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_target		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::player_passenger_seats		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::run_behavior		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::run_goal		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::entities_team_damage_allowed	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::entities_team_damage_allowed	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::epoch	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::epoch	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::living_last_hurt_record	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::living_last_hurt_record	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_is_live	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::merchant_is_live	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_offers_lent	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::merchant_offers_lent	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_trade_state_lent	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::merchant_trade_state_lent	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::merchant_trading_player_lent	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::merchant_trading_player_lent	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_added_to_level	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_added_to_level	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_attacker_elsewhere	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_attacker_elsewhere	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_can_use_portal	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_can_use_portal	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_dismount_location	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_dismount_location	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_in_other_level	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_in_other_level	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_invulnerable_to_damage	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_invulnerable_to_damage	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_is_climbing	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_is_climbing	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_name	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_name	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_on_block	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_on_block	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_player_controls	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_player_controls	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_player_credit	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_player_credit	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_portal_cooldown	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_portal_cooldown	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_tags	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_tags	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::mob_target	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::mob_target	moved	body changed
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::player_passenger_seats	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::player_passenger_seats	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::run_behavior	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::run_behavior	moved	
+sunrise_client::game::server_side::native_goal_ticks::<Game as GoalHost>::run_goal	sunrise_gameplay::game::server_side::native_goal_ticks::<ServerGame as GoalHost>::run_goal	moved	
 sunrise_client::game::server_side::native_goal_ticks::<GoalCx as BehaviorCxBackend>::attack_target	sunrise_gameplay::game::server_side::native_goal_ticks::<GoalCx as BehaviorCxBackend>::attack_target	moved	
 sunrise_client::game::server_side::native_goal_ticks::<GoalCx as BehaviorCxBackend>::host	sunrise_gameplay::game::server_side::native_goal_ticks::<GoalCx as BehaviorCxBackend>::host	moved	
 sunrise_client::game::server_side::native_goal_ticks::<GoalCx as BehaviorCxBackend>::look_target	sunrise_gameplay::game::server_side::native_goal_ticks::<GoalCx as BehaviorCxBackend>::look_target	moved	
@@ -8164,8 +8164,8 @@ sunrise_client::game::server_side::perf_remote::Game::serve_perf_asked	sunrise_g
 sunrise_client::game::server_side::perf_remote::Game::take_perf_asked	sunrise_gameplay::game::server_side::perf_remote::ServerGame::take_perf_asked	moved	body changed
 sunrise_client::game::server_side::perf_remote::payload	sunrise_gameplay::game::server_side::perf_remote::payload	moved	
 sunrise_client::game::server_side::perf_remote::window	sunrise_gameplay::game::server_side::perf_remote::window	moved	
-sunrise_client::game::server_side::persist::<Game as WhoLookup>::mob_uuid		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::persist::<Game as WhoLookup>::who_by_uuid		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::persist::<Game as WhoLookup>::mob_uuid	sunrise_gameplay::game::server_side::persist::<ServerGame as WhoLookup>::mob_uuid	moved	body changed
+sunrise_client::game::server_side::persist::<Game as WhoLookup>::who_by_uuid	sunrise_gameplay::game::server_side::persist::<ServerGame as WhoLookup>::who_by_uuid	moved	body changed
 sunrise_client::game::server_side::persist::Game::attach_save_data	sunrise_gameplay::game::server_side::persist::crate::game::ServerGame::attach_save_data	moved	body changed
 sunrise_client::game::server_side::persist::Game::bullet_target	sunrise_gameplay::game::server_side::persist::crate::game::ServerGame::bullet_target	moved	
 sunrise_client::game::server_side::persist::Game::claim_owner	sunrise_gameplay::game::server_side::persist::crate::game::ServerGame::claim_owner	moved	body changed
@@ -8466,8 +8466,8 @@ sunrise_client::game::server_side::potent_sulfur::Game::server_nausea_effect_tic
 sunrise_client::game::server_side::potent_sulfur::Game::server_waiting_countdown_ticker	sunrise_gameplay::game::server_side::potent_sulfur::ServerGame::server_waiting_countdown_ticker	moved	body changed
 sunrise_client::game::server_side::potent_sulfur::Game::tick_potent_sulfur	sunrise_gameplay::game::server_side::potent_sulfur::ServerGame::tick_potent_sulfur	moved	body changed
 sunrise_client::game::server_side::potent_sulfur::apply_nausea_effect_to_mob	sunrise_gameplay::game::server_side::potent_sulfur::apply_nausea_effect_to_mob	moved	
-sunrise_client::game::server_side::potions_server::<Game as ModEffectTicks>::effect_expired		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::potions_server::<Game as ModEffectTicks>::tick_mod_effect		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::potions_server::<Game as ModEffectTicks>::effect_expired	sunrise_gameplay::game::server_side::potions_server::<ServerGame as ModEffectTicks>::effect_expired	moved	
+sunrise_client::game::server_side::potions_server::<Game as ModEffectTicks>::tick_mod_effect	sunrise_gameplay::game::server_side::potions_server::<ServerGame as ModEffectTicks>::tick_mod_effect	moved	body changed
 sunrise_client::game::server_side::potions_server::Game::add_player_effect	sunrise_gameplay::game::server_side::potions_server::crate::game::ServerGame::add_player_effect	moved	body changed
 sunrise_client::game::server_side::potions_server::Game::apply_effect_action	sunrise_gameplay::game::server_side::potions_server::crate::game::ServerGame::apply_effect_action	moved	body changed
 sunrise_client::game::server_side::potions_server::Game::apply_indirect_effect_action	sunrise_gameplay::game::server_side::potions_server::crate::game::ServerGame::apply_indirect_effect_action	moved	
@@ -8535,11 +8535,11 @@ sunrise_client::game::server_side::projectile_spawned::float_provider	sunrise_ga
 sunrise_client::game::server_side::projectile_spawned::level_sound	sunrise_gameplay::game::server_side::projectile_spawned::level_sound	moved	
 sunrise_client::game::server_side::projectile_spawned::spawned_effect	sunrise_gameplay::game::server_side::projectile_spawned::spawned_effect	moved	
 sunrise_client::game::server_side::pumpkin::Game::use_pumpkin	sunrise_gameplay::game::server_side::pumpkin::crate::game::ServerGame::use_pumpkin	moved	body changed
-sunrise_client::game::server_side::raids::<Game as SiegeLevel>::biome_tag		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::raids::<Game as SiegeLevel>::check_zombie_spawn_rules		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::raids::<Game as SiegeLevel>::sky_darken		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::raids::<Game as SiegeLevel>::surface_height		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::raids::<Game as SiegeLevel>::village_siege_cancelled		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::raids::<Game as SiegeLevel>::biome_tag		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::raids::<Game as SiegeLevel>::check_zombie_spawn_rules		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::raids::<Game as SiegeLevel>::sky_darken		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::raids::<Game as SiegeLevel>::surface_height		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::raids::<Game as SiegeLevel>::village_siege_cancelled		removed	trait resolution has no installer; target a concrete caller
 sunrise_client::game::server_side::raids::<Lvl as RaidLevel>::difficulty	sunrise_gameplay::game::server_side::raids::<Lvl as RaidLevel>::difficulty	moved	
 sunrise_client::game::server_side::raids::<Lvl as RaidLevel>::has_chunk_at	sunrise_gameplay::game::server_side::raids::<Lvl as RaidLevel>::has_chunk_at	moved	
 sunrise_client::game::server_side::raids::<Lvl as RaidLevel>::has_chunks_at	sunrise_gameplay::game::server_side::raids::<Lvl as RaidLevel>::has_chunks_at	moved	
@@ -9372,8 +9372,8 @@ sunrise_client::game::server_side::wake_time::Game::clock_marker	sunrise_gamepla
 sunrise_client::game::server_side::wake_time::Game::level_clock_marker_time	sunrise_gameplay::game::server_side::wake_time::crate::game::ServerGame::level_clock_marker_time	moved	body changed
 sunrise_client::game::server_side::wake_time::Game::sleep_finished_move	sunrise_gameplay::game::server_side::wake_time::crate::game::ServerGame::sleep_finished_move	moved	body changed
 sunrise_client::game::server_side::wake_time::vanilla_morning	sunrise_gameplay::game::server_side::wake_time::vanilla_morning	moved	
-sunrise_client::game::server_side::wandering_trader::<Game as TraderLevel>::chunk_biome_has		removed	qualified trait owner has no installer; target a concrete caller
-sunrise_client::game::server_side::wandering_trader::<Game as TraderLevel>::motion_top		removed	qualified trait owner has no installer; target a concrete caller
+sunrise_client::game::server_side::wandering_trader::<Game as TraderLevel>::chunk_biome_has		removed	trait resolution has no installer; target a concrete caller
+sunrise_client::game::server_side::wandering_trader::<Game as TraderLevel>::motion_top		removed	trait resolution has no installer; target a concrete caller
 sunrise_client::game::server_side::wandering_trader::Game::load_trader_data	sunrise_gameplay::game::server_side::wandering_trader::crate::game::ServerGame::load_trader_data	moved	body changed
 sunrise_client::game::server_side::wandering_trader::Game::save_wandering_trader	sunrise_gameplay::game::server_side::wandering_trader::crate::game::ServerGame::save_wandering_trader	moved	body changed
 sunrise_client::game::server_side::wandering_trader::Game::tick_wandering_trader	sunrise_gameplay::game::server_side::wandering_trader::crate::game::ServerGame::tick_wandering_trader	moved	body changed
@@ -9703,6 +9703,8 @@ sunrise_client::game::write_level_for_role	sunrise_gameplay_common::game::write_
 	sunrise_gameplay::game::host::services::<ServerGame as RuntimeLevels>::is_open	new	
 	sunrise_gameplay::game::host::services::<ServerGame as RuntimeLevels>::open	new	
 	sunrise_gameplay::game::host::services::<ServerGame as RuntimeLevels>::unload	new	
+	sunrise_gameplay::game::native_hooks::<ServerGame as PackDiscoveryContext>::client_text	new	
+	sunrise_gameplay::game::native_hooks::<ServerGame as PackDiscoveryContext>::live_host	new	
 	sunrise_gameplay::game::server_side::advancements::crate::game::ServerGame::looking_at_entity	new	
 	sunrise_gameplay::game::server_side::armor_stands::crate::game::ServerGame::armor_stand_death_drops	new	
 	sunrise_gameplay::game::server_side::block_ticks::crate::game::ServerGame::tick_blocks_with_scratch	new	
@@ -9913,6 +9915,7 @@ sunrise_client::game::write_level_for_role	sunrise_gameplay_common::game::write_
 	sunrise_gameplay_common::game::game_mode_common::crate::game::CommonGame::has_miss_time	new	
 	sunrise_gameplay_common::game::game_mode_common::crate::game::CommonGame::mode_id	new	
 	sunrise_gameplay_common::game::game_mode_common::crate::game::CommonGame::spectator	new	
+	sunrise_gameplay_common::game::general::GeneralTypeCatalog::is_empty	new	
 	sunrise_gameplay_common::game::general::GeneralTypeCatalog::piston_push_reaction	new	
 	sunrise_gameplay_common::game::general::crate::game::CommonGame::general_object	new	
 	sunrise_gameplay_common::game::general::crate::game::CommonGame::general_row	new	
@@ -9965,6 +9968,7 @@ sunrise_client::game::write_level_for_role	sunrise_gameplay_common::game::write_
 	sunrise_gameplay_common::game::load_conditions::crate::game::CommonGame::protect_condition_root	new	
 	sunrise_gameplay_common::game::load_conditions::crate::game::CommonGame::registered_load_conditions	new	
 	sunrise_gameplay_common::game::load_conditions::crate::game::CommonGame::stage_condition_inventory	new	
+	sunrise_gameplay_common::game::machine_containers::View::is_empty	new	
 	sunrise_gameplay_common::game::minecarts::crate::game::CommonGame::open_cart_kind	new	
 	sunrise_gameplay_common::game::minecarts::crate::game::CommonGame::release_vehicle_container	new	
 	sunrise_gameplay_common::game::minecarts::crate::game::CommonGame::seat_cart_mobs	new	
@@ -10013,7 +10017,6 @@ sunrise_client::game::write_level_for_role	sunrise_gameplay_common::game::write_
 	sunrise_gameplay_common::game::native_components::crate::game::CommonGame::item_default_component	new	
 	sunrise_gameplay_common::game::native_components::crate::game::CommonGame::mod_item_name	new	
 	sunrise_gameplay_common::game::native_custom_stats::crate::game::CommonGame::sync_stat_registries	new	
-	sunrise_gameplay_common::game::native_datafix::crate::game::CommonGame::upgrade_nbt	new	
 	sunrise_gameplay_common::game::native_effect_category::crate::game::CommonGame::effect_category	new	
 	sunrise_gameplay_common::game::native_entity_motion_values::crate::game::CommonGame::native_walk_entity	new	
 	sunrise_gameplay_common::game::native_entity_refs_common::crate::game::CommonGame::dimension_key_id	new	
@@ -10038,6 +10041,7 @@ sunrise_client::game::write_level_for_role	sunrise_gameplay_common::game::write_
 	sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::crate::game::CommonGame::creative_tab_remove	new	
 	sunrise_gameplay_common::game::native_hooks::camera_read::crate::game::CommonGame::block_collision	new	
 	sunrise_gameplay_common::game::native_hooks::can_start_swimming::crate::game::CommonGame::has_swim_eligibility_listener	new	
+	sunrise_gameplay_common::game::native_hooks::client_callbacks::install_client_hooks	new	
 	sunrise_gameplay_common::game::native_hooks::client_pause_read::crate::game::CommonGame::is_paused	new	
 	sunrise_gameplay_common::game::native_hooks::client_text::crate::game::CommonGame::text_string	new	
 	sunrise_gameplay_common::game::native_hooks::client_visual_text::crate::game::CommonGame::text_visual_order	new	

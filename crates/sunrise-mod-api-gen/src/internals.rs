@@ -1,5 +1,5 @@
 //! The staged internals view (#589). Source copies only: the working tree keeps its visibility.
-use crate::source::{LEGACY_DOMAIN, SourceLayout};
+use crate::source::{ENTRY_DOMAIN, SourceLayout};
 use proc_macro2::Span;
 use quote::{ToTokens, quote};
 use sha2::{Digest, Sha256};
@@ -1828,7 +1828,7 @@ pub(crate) fn widen_generated(path: &Path, text: String) -> Result<String, Strin
         edits: BTreeMap::new(),
         annotations: BTreeMap::new(),
     });
-    pass.items(0, &format!("{}::game", LEGACY_DOMAIN.key), &parsed.items);
+    pass.items(0, &format!("{}::game", ENTRY_DOMAIN.key), &parsed.items);
     Ok(pass.sources.remove(0).rendered())
 }
 
@@ -2077,7 +2077,7 @@ mod tests {
         );
         fixture.put("crates/sunrise-client/src/game/runtime.rs", "fn live() {}");
         for every_build in [false, true] {
-            let files = LEGACY_DOMAIN.files(&fixture.0, every_build).unwrap();
+            let files = ENTRY_DOMAIN.files(&fixture.0, every_build).unwrap();
             assert!(
                 !files
                     .iter()
@@ -2128,7 +2128,7 @@ mod tests {
             module,
         );
         fn modules(root: &Path) -> BTreeSet<String> {
-            LEGACY_DOMAIN
+            ENTRY_DOMAIN
                 .files(root, true)
                 .unwrap()
                 .into_iter()
@@ -2180,7 +2180,7 @@ mod tests {
         let moved = fixture.0.with_extension("relocated");
         fs::rename(&fixture.0, &moved).unwrap();
         fixture.0 = moved;
-        let files = LEGACY_DOMAIN.files(&fixture.0, true).unwrap();
+        let files = ENTRY_DOMAIN.files(&fixture.0, true).unwrap();
         assert!(files.iter().all(|file| file.path.starts_with(&fixture.0)));
         let modules: BTreeSet<_> = files.iter().map(|file| file.module.as_str()).collect();
         assert!(modules.contains("sunrise_client::game::feature"));

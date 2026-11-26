@@ -1739,11 +1739,6 @@ pub(super) fn generate(root: &Path) -> Result<String, String> {
     Ok(host)
 }
 
-pub(super) fn generate_goal_view(root: &Path) -> Result<String, String> {
-    let areas = load(root)?;
-    goal_view_for(&areas, false)
-}
-
 pub(crate) fn generate_gameplay_goal_view(areas: &[Area]) -> Result<String, String> {
     goal_view_for(areas, true)
 }

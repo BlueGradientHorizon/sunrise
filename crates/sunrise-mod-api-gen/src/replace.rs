@@ -800,6 +800,7 @@ pub(crate) fn stage_with_context(
         });
     }
     let mut staged = Staged::default();
+    let mut runtime_slots = Vec::new();
     for krate in &crates {
         let mut count = 0;
         let mut cells = 0;
@@ -881,6 +882,15 @@ pub(crate) fn stage_with_context(
         if count == 0 {
             continue;
         }
+        if layout.is_split() {
+            let package = krate
+                .package
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            let client = client_slot_package(package);
+            runtime_slots.push((krate.name.as_str(), client));
+        }
         let root_text = match texts.remove(krate.lib.as_path()) {
             Some(text) => text,
             None => fs::read_to_string(&krate.lib)
@@ -919,13 +929,66 @@ pub(crate) fn stage_with_context(
             "{origin}: {path}: no free function or inherent method every build compiles that can be replaced"
         ));
     }
+    if !runtime_slots.is_empty() {
+        let shell = layout.runtime.library(root)?;
+        let mut text = fs::read_to_string(&shell).map_err(|error| error.to_string())?;
+        text.push_str(&runtime_slot_anchor(&runtime_slots));
+        fs::write(&shell, text).map_err(|error| error.to_string())?;
+        if root.join("crates/sunrise-mod-host/Cargo.toml").is_file() {
+            let (_, host) = source::crate_root(root, "sunrise_mod_host")?;
+            let mut text = fs::read_to_string(&host).map_err(|error| error.to_string())?;
+            text.push_str("\n#[doc(hidden)] pub use sunrise_client::__FNR_RUNTIME_SLOTS;\n");
+            fs::write(&host, text).map_err(|error| error.to_string())?;
+        }
+    }
     let below: Vec<&Path> = crates
         .iter()
         .filter(|krate| krate.marked_only)
         .map(|krate| krate.package.as_path())
         .collect();
-    link_dependencies(root, &game, &below)?;
+    link_dependencies(root, &game, &below, layout.is_split())?;
     Ok(staged)
+}
+
+fn client_slot_package(name: &str) -> bool {
+    matches!(
+        name,
+        "sunrise-client-gameplay"
+            | "sunrise-client-lib"
+            | "sunrise-client-render"
+            | "sunrise-mod-render"
+    )
+}
+
+fn runtime_slot_anchor(slots: &[(&str, bool)]) -> String {
+    let entries = slots
+        .iter()
+        .map(|(name, client)| {
+            let gate = if *client {
+                "#[cfg(feature = \"client\")] "
+            } else {
+                ""
+            };
+            format!("{gate}&::{name}::__REPLACE,")
+        })
+        .collect::<String>();
+    format!(
+        "\n#[doc(hidden)]\n#[used]\npub static __FNR_RUNTIME_SLOTS: &[&[::std::sync::atomic::AtomicPtr<()>]] = &[{entries}];\n"
+    )
+}
+
+#[cfg(test)]
+#[test]
+fn the_split_sdk_anchor_only_names_client_slots_in_client_builds() {
+    let code = runtime_slot_anchor(&[
+        ("sunrise_gameplay_common", false),
+        ("sunrise_gameplay", false),
+        ("sunrise_client_gameplay", true),
+        ("sunrise_sim", false),
+    ]);
+    syn::parse_file(&code).unwrap();
+    assert!(code.contains("&::sunrise_gameplay_common::__REPLACE,&::sunrise_gameplay::__REPLACE,"));
+    assert!(code.contains("#[cfg(feature = \"client\")] &::sunrise_client_gameplay::__REPLACE,&::sunrise_sim::__REPLACE,"));
 }
 
 /// `path` with its `..` and `.` resolved, as written: the staged copy has no links to follow.
@@ -980,7 +1043,12 @@ fn built_on(package: &Path, game: &Path) -> Result<bool, String> {
 
 /// Give the staged game crate a path dependency on each crate with replacement slots, in its manifest and its
 /// lock entry: its source manifest needn't name a crate it reaches only through slots.
-fn link_dependencies(root: &Path, game: &Path, linked: &[&Path]) -> Result<(), String> {
+fn link_dependencies(
+    root: &Path,
+    game: &Path,
+    linked: &[&Path],
+    split: bool,
+) -> Result<(), String> {
     if linked.is_empty() {
         return Ok(());
     }
@@ -997,6 +1065,7 @@ fn link_dependencies(root: &Path, game: &Path, linked: &[&Path]) -> Result<(), S
         .as_table_mut()
         .ok_or("[dependencies] is not a table")?;
     let mut added = Vec::new();
+    let mut client = Vec::new();
     for package in linked {
         let name = manifest(package)?
             .get("package")
@@ -1017,17 +1086,25 @@ fn link_dependencies(root: &Path, game: &Path, linked: &[&Path]) -> Result<(), S
             .ok_or_else(|| format!("{}: no folder name", package.display()))?
             .to_string_lossy()
             .into_owned();
-        dependencies.insert(
-            name.clone(),
-            toml::Value::Table(toml::Table::from_iter([(
-                "path".to_owned(),
-                format!("../{folder}").into(),
-            )])),
-        );
+        let mut dependency = toml::toml! { path = (format!("../{folder}")) };
+        if split && client_slot_package(&name) {
+            dependency.insert("optional".into(), true.into());
+            client.push(toml::Value::String(format!("dep:{name}")));
+        }
+        dependencies.insert(name.clone(), dependency.into());
         added.push(name);
     }
     if added.is_empty() {
         return Ok(());
+    }
+    if !client.is_empty() {
+        cargo
+            .get_mut("features")
+            .and_then(toml::Value::as_table_mut)
+            .and_then(|features| features.get_mut("client"))
+            .and_then(toml::Value::as_array_mut)
+            .ok_or("the split shell has no client feature")?
+            .extend(client);
     }
     let lock_path = root.join("Cargo.lock");
     // A Windows checkout has CRLF line endings; Cargo reads either, and the entries match on LF.

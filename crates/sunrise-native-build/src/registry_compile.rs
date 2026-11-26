@@ -326,8 +326,9 @@ pub(super) fn stage_and_cargo(
     let patch =
         super::patch::prepare(rust, game, &out.join("fnr"), projects, &sdk, options.mixins)?;
     if let Some(patch) = &patch {
-        let game_features = sdk.legacy_game_features()?;
         for name in &patch.names {
+            let owner = &patch.owners[name];
+            let game_features = sdk.patch_features(owner)?;
             let dir = patch.dir.join(name);
             let mut manifest = toml::toml! { [package] name = (name.clone()) version = "0.0.0" edition = "2024" [lib] path = "src/lib.rs" };
             let mut dependencies = toml::Table::new();
@@ -351,8 +352,7 @@ pub(super) fn stage_and_cargo(
                 .collect();
             manifest.insert("features".into(), features.into());
             fs::write(dir.join("Cargo.toml"), manifest.to_string()).map_err(|e| e.to_string())?;
-            let externs: BTreeMap<_, _> =
-                super::patch::sdk_externs(game, &sdk)?.into_iter().collect();
+            let externs = super::patch::sdk_externs(game, &sdk, owner)?;
             for (krate, path) in &externs {
                 prebuilt::refuse_closure_rlib("sunrise_patch", krate, path)?;
             }

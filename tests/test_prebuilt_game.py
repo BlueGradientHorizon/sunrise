@@ -854,7 +854,7 @@ class PrebuiltContentsTests(unittest.TestCase):
         desktop = prebuilt_game.runtime_role_facts(metadata, "host", artifacts + [host_artifact], target, "client")
         dedicated = prebuilt_game.runtime_role_facts(metadata, "host", artifacts[:-1], target, "server")
         self.assertEqual(desktop["libraries"]["common@0.1.0:fixture_common"], {
-            "package": "common", "library": "fixture_common", "features": ["feature-common"], "aliases": {},
+            "package": "common", "library": "fixture_common", "features": ["feature-common"], "aliases": {}, "artifacts": [],
         })
         self.assertEqual(desktop["libraries"]["host@0.1.0:fixture_host"]["aliases"], {
             "common_loan": "common@0.1.0:fixture_common", "sim": "server@0.1.0:fixture_server",

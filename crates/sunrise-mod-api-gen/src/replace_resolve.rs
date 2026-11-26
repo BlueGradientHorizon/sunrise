@@ -2527,6 +2527,19 @@ fn parse_relative_path(module: &str, prefix: &[String]) -> (Anchor, Vec<String>)
     }
 }
 
+pub(crate) fn is_game_nominal(
+    module: &str,
+    name: &str,
+    types: &OwnerTypes,
+    workspace: &WorkspaceTraits,
+) -> bool {
+    let krate = crate_of(module);
+    let mut resolver = Resolver::new(krate, types, workspace, ResolveMode::Owner, false);
+    resolver
+        .resolve_owner(module, name)
+        .is_ok_and(|owner| owner.module == format!("{krate}::game") && owner.item == name)
+}
+
 /// Resolves a trait `impl`'s trait and owner declarations or returns the named refusal reason.
 pub(crate) fn resolve_trait_impl(
     module: &str,

@@ -585,6 +585,7 @@ def runtime_role_facts(metadata: dict, root: str, artifacts: list[dict], target_
     nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
     libraries = {}
     compiled = {}
+    files: dict[str, set[str]] = {}
     for artifact in artifacts:
         package = artifact.get("package_id")
         if artifact["reason"] != "compiler-artifact" or package not in runtime:
@@ -598,6 +599,11 @@ def runtime_role_facts(metadata: dict, root: str, artifacts: list[dict], target_
         if package in compiled and compiled[package] != identity:
             raise ValueError(f"{side} SDK has conflicting runtime artifacts for {package}")
         compiled[package] = identity
+        files.setdefault(package, set()).update(
+            Path(filename).name for filename in artifact["filenames"]
+            if Path(filename).is_relative_to(target_dir)
+            and Path(filename).suffix in (".rmeta", ".so", ".dll", ".dylib")
+        )
     if not any(packages[package]["name"] == root for package in compiled):
         raise ValueError(f"{side} SDK is missing the {root} runtime library")
     identities = {
@@ -616,7 +622,7 @@ def runtime_role_facts(metadata: dict, root: str, artifacts: list[dict], target_
                     raise ValueError(f"{side} SDK has conflicting dependency alias {dep['name']} in {library}")
         libraries[identities[package]] = {
             "package": packages[package]["name"], "library": library, "features": features,
-            "aliases": dict(sorted(aliases.items())),
+            "aliases": dict(sorted(aliases.items())), "artifacts": sorted(files[package]),
         }
     return {"side": side, "libraries": dict(sorted(libraries.items()))}
 

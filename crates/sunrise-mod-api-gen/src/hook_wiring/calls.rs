@@ -212,9 +212,10 @@ impl<'b, 'ast, F: FnMut(&syn::Path, usize, &[&UseTree]) -> bool> Calls<'b, 'ast,
     }
 
     fn helper_runs(&mut self, path: &syn::Path, argument: usize) -> bool {
-        // The engine's collision adapter uses crash::contain, which runs the closure under
-        // catch_unwind. That standard-library edge has no function body in the source index.
-        if path_is(path, "sunrise_client::crash::contain") {
+        // The crash boundary invokes its closure through a standard-library body outside the index.
+        if path_is(path, "sunrise_client::crash::contain")
+            || path_is(path, "sunrise_level::crash::contain")
+        {
             return argument == 0;
         }
         if let Some(helper) = self.local_function(path) {
@@ -353,12 +354,16 @@ impl<'ast, F: FnMut(&syn::Path, usize, &[&UseTree]) -> bool> Visit<'ast> for Cal
                     if call.method == "hear"
                         && let Some(receiver) = function_path(&call.receiver)
                         && receiver.segments.len() == 5
+                        && receiver.segments.first().is_some_and(|root| {
+                            root.ident == "crate" || root.ident == "sunrise_gameplay_common"
+                        })
                         && receiver
                             .segments
                             .iter()
-                            .take(4)
+                            .skip(1)
+                            .take(3)
                             .map(|segment| &segment.ident)
-                            .zip(["crate", "game", "level_control_hooks", "LevelControl"])
+                            .zip(["game", "level_control_hooks", "LevelControl"])
                             .all(|(ident, segment)| ident == segment)
                         && let Some(closure) = call.args.first().and_then(|arg| self.closure(arg))
                     {
@@ -470,6 +475,20 @@ impl<'b, 'i, 's> Routes<'b, 'i, 's> {
         super::functions(self.index.modules[scope].items.iter(), name, self.build)
             .cloned()
             .collect()
+    }
+
+    pub(super) fn installers(&mut self, scope: usize, name: &str) -> Vec<(usize, Block)> {
+        let local = self.functions(scope, name);
+        if !local.is_empty() {
+            return local.into_iter().map(|body| (scope, body)).collect();
+        }
+        if let Ok(Found::Item(id)) = self.index.resolve_path(scope, &[name.to_owned()])
+            && let Item::Fn(installer) = self.index.item(id)
+            && self.build.enabled(&installer.attrs)
+        {
+            return vec![(id.module, (*installer.block).clone())];
+        }
+        Vec::new()
     }
 
     pub(super) fn has_slot(&self, scope: usize, table: &str, name: &str) -> bool {

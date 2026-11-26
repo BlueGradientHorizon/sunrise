@@ -1,6 +1,6 @@
 # Gameplay function target map
 
-`gameplay-crates-targets.tsv` maps the gameplay `functions.json` keys of the last build with one game crate to those of the first build with the three gameplay crates. Match the full old key, including its owner.
+`gameplay-crates-targets.tsv` maps the gameplay `functions.json` keys of the one-crate source at `ff4fa97a0dc` to the split source at `2efaebd6198`. Match the full old key, including its owner.
 `old_target` and `new_target` are the old and current published keys. An empty end means the function has no selectable key in that build. Installers with no selectable key on either end are outside this map.
 `status` is `moved` for a module change, `renamed` for a key change within the same module, `unchanged` for identical keys, `removed` for a lost target, or `new` for a newly selectable target.
 `note` flags a changed Rust body or gives the refusal reason and an alternative boundary. Use `loops.json` to check the published generic loop body, which lacks a standalone installer.

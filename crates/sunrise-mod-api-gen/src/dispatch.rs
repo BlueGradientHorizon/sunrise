@@ -1161,7 +1161,18 @@ pub(super) fn emit<'a>(
                 dispatch: dispatch_call,
                 after,
             });
-            let receiver = if is_game_assoc {
+            let receiver = if let Some(binding) = binding.as_ref() {
+                match binding.kind {
+                    BindingKind::Shared => {
+                        forwarded.insert(0, "self".into());
+                        "crate::game::native_hooks::fire::FireHooks::"
+                    }
+                    BindingKind::Free | BindingKind::Borrowed(_) => {
+                        "crate::game::native_hooks::fire::"
+                    }
+                    _ => "self.",
+                }
+            } else if is_game_assoc {
                 "super::fire::"
             } else if hook.receiver == Receiver::Associated {
                 "Self::"
