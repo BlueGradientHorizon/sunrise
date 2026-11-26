@@ -291,16 +291,19 @@ class Bot:
                 self.send(4 if old else 5, data)
             elif pid == disconnect:
                 raise RuntimeError(f'disconnected during configuration: {data!r}')
-            elif not old and pid == 14 and self.known_packs(data):  # select_known_packs, clientbound, 1.20.5 on
+            elif not old and self.known_packs(data):
                 self.send(7, varint(0))  # claim no packs: the server sends full registries
 
     @staticmethod
     def known_packs(data):
-        pos, count = parse_varint(data, 0)
-        if count < 1:
+        try:
+            pos, count = parse_varint(data, 0)
+            if count < 1:
+                return False
+            pos, n = parse_varint(data, pos)
+            return data[pos:pos + n] == b'minecraft'
+        except IndexError:
             return False
-        pos, n = parse_varint(data, pos)
-        return data[pos:pos + n] == b'minecraft'
 
     def idle(self):
         self.sock.settimeout(1.0)
