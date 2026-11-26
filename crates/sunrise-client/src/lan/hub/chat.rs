@@ -2,7 +2,6 @@
 //! handle it: chat sessions validated against the services' keys, signed
 //! messages checked link by link, the acknowledged window, and messages
 //! relayed with each connection's numbering and signature cache.
-use super::*;
 use super::{HostEvent, Hub, string};
 use crate::lan::data::{ChatType, RegistryRef};
 use crate::text::Text;
@@ -552,45 +551,6 @@ pub(super) fn yellow_names(key: &str, names: Vec<Tag>) -> Tag {
     ])
 }
 
-#[cfg(test)]
-mod decorate_tests {
-    use super::*;
-
-    /// A decorated message keeps the body its sender signed and only adds the
-    /// line clients show; an undecorated one is shown as signed.
-    #[test]
-    fn decorating_keeps_the_signed_body() {
-        let seen = [[7u8; secure_chat::SIGNATURE_BYTES]];
-        let body = Body {
-            content: "hello",
-            timestamp: 1_000,
-            salt: 42,
-            last_seen: &seen,
-        };
-        let signed = Unpacked::Signed {
-            index: 3,
-            signature: [9u8; secure_chat::SIGNATURE_BYTES],
-        };
-        let mut message = ChatMessage::new(1, signed, &body, 2_000);
-        let before = message.clone();
-        message.decorate(None);
-        assert_eq!(message, before);
-        let line = Text::literal("[VIP] hello");
-        message.decorate(Some(line.clone()));
-        assert_eq!(
-            message.unsigned_content,
-            Some(crate::lan::data::component_nbt(&line.component()))
-        );
-        assert_eq!(
-            ChatMessage {
-                unsigned_content: None,
-                ..message
-            },
-            before
-        );
-    }
-}
-
 impl Hub {
     /// PlayerList.broadcastSystemMessage.
     pub fn system_message(&self, content: Tag) {
@@ -728,6 +688,45 @@ impl Hub {
                 host: host.to_owned(),
                 port,
             }),
+        );
+    }
+}
+
+#[cfg(test)]
+mod decorate_tests {
+    use super::*;
+
+    /// A decorated message keeps the body its sender signed and only adds the
+    /// line clients show; an undecorated one is shown as signed.
+    #[test]
+    fn decorating_keeps_the_signed_body() {
+        let seen = [[7u8; secure_chat::SIGNATURE_BYTES]];
+        let body = Body {
+            content: "hello",
+            timestamp: 1_000,
+            salt: 42,
+            last_seen: &seen,
+        };
+        let signed = Unpacked::Signed {
+            index: 3,
+            signature: [9u8; secure_chat::SIGNATURE_BYTES],
+        };
+        let mut message = ChatMessage::new(1, signed, &body, 2_000);
+        let before = message.clone();
+        message.decorate(None);
+        assert_eq!(message, before);
+        let line = Text::literal("[VIP] hello");
+        message.decorate(Some(line.clone()));
+        assert_eq!(
+            message.unsigned_content,
+            Some(crate::lan::data::component_nbt(&line.component()))
+        );
+        assert_eq!(
+            ChatMessage {
+                unsigned_content: None,
+                ..message
+            },
+            before
         );
     }
 }
