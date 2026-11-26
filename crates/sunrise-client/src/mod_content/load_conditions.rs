@@ -40,8 +40,9 @@ pub(super) fn merge_tag(
             J::Obj(fields)
         }
     };
-    // Tags do not evaluate load conditions.
-    doc.remove("neoforge:conditions");
+    // Tags do not evaluate load conditions, NeoForge's or Fabric's.
+    doc.remove(sunrise_world::conditions::NEOFORGE_KEY);
+    doc.remove(sunrise_world::conditions::FABRIC_KEY);
     // The vanilla file's own `remove` entries apply right after its values,
     // before the mods' layers: they join `values` as removal objects.
     let vanilla_remove = match doc.get("remove") {
