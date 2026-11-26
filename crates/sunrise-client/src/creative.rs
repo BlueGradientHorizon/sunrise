@@ -231,6 +231,21 @@ struct Shown {
     language_generation: u64,
     items: Arc<[ItemStack]>,
 }
+/// The stacks an item tab's display slots show, from `Creative::display_window`.
+pub struct DisplayWindow {
+    items: Arc<[ItemStack]>,
+    first: usize,
+}
+
+impl DisplayWindow {
+    /// The stack display slot `slot` shows, None for an empty cell (a saved toolbar's empty
+    /// slot), one past the list's end, or a slot that is not a display slot.
+    pub fn stack(&self, slot: usize) -> Option<&ItemStack> {
+        let cell = Creative::display_cell(slot)?;
+        self.items.get(self.first + cell).filter(|s| s.count > 0)
+    }
+}
+
 /// Display names from the pinned en_us language file.
 #[derive(Default)]
 pub struct Names {
@@ -387,19 +402,34 @@ impl Creative {
 
     /// Visible slots of an item tab (game slot ids).
     pub fn tab_slots() -> impl Iterator<Item = usize> {
-        (Self::DISPLAY..Self::DISPLAY + 45).chain(0..9)
+        Self::display_slots().map(|(slot, _)| slot).chain(0..9)
+    }
+
+    /// An item tab's display slots, left to right then top to bottom: each one's game slot id
+    /// and position (ItemPickerMenu's `CustomCreativeSlot(CONTAINER, i * 9 + j, 9 + j * 18,
+    /// 18 + i * 18)`).
+    pub fn display_slots() -> impl Iterator<Item = (usize, (f32, f32))> {
+        (0..45).map(|cell| (Self::DISPLAY + cell, Self::display_position(cell)))
+    }
+
+    fn display_position(cell: usize) -> (f32, f32) {
+        (
+            9.0 + (cell % 9) as f32 * 18.0,
+            18.0 + (cell / 9) as f32 * 18.0,
+        )
     }
 
     /// ItemPickerMenu's slot positions.
     pub fn tab_slot_position(slot: usize) -> Option<(f32, f32)> {
         match slot {
             0..9 => Some((9.0 + slot as f32 * 18.0, 112.0)),
-            _ if (Self::DISPLAY..Self::DISPLAY + 45).contains(&slot) => {
-                let i = slot - Self::DISPLAY;
-                Some((9.0 + (i % 9) as f32 * 18.0, 18.0 + (i / 9) as f32 * 18.0))
-            }
-            _ => None,
+            _ => Self::display_cell(slot).map(Self::display_position),
         }
+    }
+
+    /// The grid cell of display slot `slot`, None for any other slot.
+    fn display_cell(slot: usize) -> Option<usize> {
+        slot.checked_sub(Self::DISPLAY).filter(|&cell| cell < 45)
     }
     /// The scrollbar track (insideScrollbar), relative to the screen origin.
     pub const SCROLL_X: f32 = 175.0;
@@ -990,13 +1020,12 @@ impl Creative {
         });
         items
     }
-    /// The stack in grid cell `index` (row-major from the tab's top), None
-    /// for an empty cell: a saved toolbar's empty slot, or past the end.
-    pub fn shown(&self, names: &Names, index: usize) -> Option<ItemStack> {
-        self.items(names)
-            .get(index)
-            .filter(|s| s.count > 0)
-            .cloned()
+    /// What the display slots show (`ItemPickerMenu.scrollTo`): the tab's list from its first
+    /// visible row, resolved once for any number of slots.
+    pub fn display_window(&self, names: &Names) -> DisplayWindow {
+        let items = self.items(names);
+        let first = self.first_row_of(items.len().div_ceil(9) as i32 - 5) * 9;
+        DisplayWindow { items, first }
     }
     /// `CreativeModeInventoryScreen.selectTab` for the HOTBAR tab: the nine
     /// saved rows of `HotbarManager` as the tab's items, an empty stack (count
@@ -1021,7 +1050,11 @@ impl Creative {
     }
     /// First visible grid row for the scroll position (getRowIndexForScroll).
     pub fn first_row(&self, names: &Names) -> usize {
-        ((self.scroll * self.hidden_rows(names) as f32 + 0.5) as i32).max(0) as usize
+        self.first_row_of(self.hidden_rows(names))
+    }
+    /// `first_row` with `hidden` rows beyond the five shown.
+    fn first_row_of(&self, hidden: i32) -> usize {
+        ((self.scroll * hidden as f32 + 0.5) as i32).max(0) as usize
     }
     /// CreativeModeInventoryScreen.canScroll: more than five rows, on a tab with a scrollbar.
     pub fn can_scroll(&self, names: &Names) -> bool {
@@ -2292,10 +2325,12 @@ mod tests {
             map: HashMap::new(),
             ..Default::default()
         };
-        assert_eq!(c.shown(&names, 0), Some(stack("diamond_sword", 1)));
-        assert_eq!(c.shown(&names, 1), None);
-        assert_eq!(c.shown(&names, 3), None);
-        let hint = c.shown(&names, 2).unwrap();
+        let shown = c.display_window(&names);
+        let cell = |i| shown.stack(Creative::DISPLAY + i).cloned();
+        assert_eq!(cell(0), Some(stack("diamond_sword", 1)));
+        assert_eq!(cell(1), None);
+        assert_eq!(cell(3), None);
+        let hint = cell(2).unwrap();
         assert!(slot_locked(&hint));
         assert!(!slot_locked(&stack("diamond_sword", 1)));
         // CustomCreativeSlot.mayPickup: the hint is never taken, and a carried
