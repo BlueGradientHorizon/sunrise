@@ -1,4 +1,4 @@
-// Inserted into hook_index.rs's boundary module. Production LevelHost read methods
+// Inserted into hook_index.rs's game module. Production LevelHost read methods
 // are extracted by syn and compiled unchanged, except their trait import's module path.
 use crate::BlockPos;
 struct World;

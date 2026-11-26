@@ -73,7 +73,7 @@ pub mod registry {
         }
     }
 }
-mod boundary {
+mod game {
     pub trait TryIntoApi {
         type Api;
         type Error;
@@ -183,5 +183,5 @@ mod boundary {
     }
 }
 fn main() {
-    boundary::run();
+    game::run();
 }
