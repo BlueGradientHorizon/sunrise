@@ -6,11 +6,9 @@
 //! validation and internal error scopes, so a refusal is an `Err` or a log line and never an
 //! uncaptured device error.
 
-use super::mod_pipelines::{
-    ResolvedSet1Entry, create_mod_samplers, sampler_address_idx, sampler_filter_idx,
-};
+use super::mod_pipelines::{ResolvedSet1Entry, create_mod_sampler, sampler_filtering};
 use crate::mod_compute::{BuiltCompute, ComputeSet, Refusal};
-use mod_api::{BindingKind, SamplerFilter};
+use mod_api::{BindingKind, Sampler};
 use wgpu::util::DeviceExt;
 
 /// One recorded dispatch of a compute node. Inline uniform and texel byte ranges in `entries`
@@ -49,7 +47,8 @@ struct CompiledCompute {
 pub struct ModCompute {
     generation: u64,
     pipelines: Vec<Option<CompiledCompute>>,
-    samplers: Option<[[wgpu::Sampler; 3]; 2]>,
+    /// The device sampler of each set-1 sampler descriptor the compiled pipelines declare.
+    samplers: std::collections::HashMap<Sampler, wgpu::Sampler>,
     /// The slots whose dispatches were refused at record time and logged, so a persistent
     /// refusal logs once, not every frame.
     warned: std::collections::HashSet<u32>,
@@ -223,8 +222,8 @@ fn compile(
                 });
                 next += 1;
             }
-            BindingKind::CombinedImageSampler { filter, .. } => {
-                let filterable = filter == SamplerFilter::Linear;
+            BindingKind::CombinedImageSampler { sampler } => {
+                let filterable = sampler_filtering(&sampler);
                 layout_entries.push(wgpu::BindGroupLayoutEntry {
                     binding: next,
                     visibility: compute,
@@ -391,9 +390,16 @@ impl ModCompute {
         let mut owned: Vec<(u32, &[u8], wgpu::BufferUsages)> = Vec::new();
         let mut buffers: Vec<(u32, wgpu::Buffer)> = Vec::new();
         let max_groups = device.limits().max_compute_workgroups_per_dimension;
-        let samplers = self
-            .samplers
-            .get_or_insert_with(|| create_mod_samplers(device));
+        for compiled in self.pipelines.iter().flatten() {
+            for (_, kind) in &compiled.bindings {
+                if let BindingKind::CombinedImageSampler { sampler } = kind {
+                    self.samplers
+                        .entry(*sampler)
+                        .or_insert_with(|| create_mod_sampler(device, sampler));
+                }
+            }
+        }
+        let samplers = &self.samplers;
         for dispatch in dispatches {
             let Some(Some(compiled)) = self.pipelines.get(dispatch.slot as usize) else {
                 continue;
@@ -466,18 +472,19 @@ impl ModCompute {
                     }
                     (
                         ResolvedSet1Entry::Texture { view, .. },
-                        BindingKind::CombinedImageSampler { filter, address },
+                        BindingKind::CombinedImageSampler { sampler },
                     ) => {
+                        let Some(sampler) = samplers.get(sampler) else {
+                            ok = false;
+                            break;
+                        };
                         entries.push(wgpu::BindGroupEntry {
                             binding: *binding,
                             resource: wgpu::BindingResource::TextureView(view),
                         });
                         entries.push(wgpu::BindGroupEntry {
                             binding: binding + 1,
-                            resource: wgpu::BindingResource::Sampler(
-                                &samplers[sampler_filter_idx(*filter)]
-                                    [sampler_address_idx(*address)],
-                            ),
+                            resource: wgpu::BindingResource::Sampler(sampler),
                         });
                     }
                     (
