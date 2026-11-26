@@ -424,7 +424,8 @@ def main(argv=None) -> int:
                     code, text = code or landed_code, text + landed_text
                 text += f"Base {sha}; fetch {fetched:.1f}s, total {time.monotonic() - started:.1f}s\n"
             else:
-                code, text = 0, f"No surface report: {why}.\n"
+                # CI passes without a base it can find; a base named with --base that cannot be read is an error.
+                code, text = (1 if args.base else 0), f"No surface report: {why}.\n"
     print(text, end="")
     if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary_path, "a") as out:
