@@ -1,0 +1,3 @@
+ids = ["method:ClientInputClientHost::clipboard_text", "method:ClientInputClientHost::set_clipboard_text"]
+why = "`clipboard_text` and `set_clipboard_text` work from any client callback (vanilla `KeyboardHandler`); the input-event restriction is removed."
+migrate = "Nothing to migrate: signatures are unchanged and calls that worked still work."

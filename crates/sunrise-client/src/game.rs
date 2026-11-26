@@ -4494,9 +4494,6 @@ struct Game<'a> {
     gamemode_switcher: Option<sunrise_client::game_mode_switcher::GameModeSwitcher>,
     /// The system clipboard (`KeyboardHandler.clipboardManager`).
     clipboard: sunrise_client::clipboard::SystemClipboard,
-    /// The game is handling a key, mouse or typed-text event, from the window or the
-    /// control socket: the only time a mod reaches the clipboard (`with_user_input`).
-    user_input: std::cell::Cell<bool>,
     /// Select All in the append-only text fields.
     text_selection: sunrise_client::clipboard::AppendSelection,
     /// The client loop consumes a mod's quit request outside the calling hook.
@@ -14998,7 +14995,6 @@ impl<'a> Game<'a> {
             previous_mode: None,
             gamemode_switcher: None,
             clipboard: Default::default(),
-            user_input: Default::default(),
             text_selection: Default::default(),
             client_quit: std::cell::Cell::new(saving::ClientQuit::Running),
             saved_for_exit: false,
