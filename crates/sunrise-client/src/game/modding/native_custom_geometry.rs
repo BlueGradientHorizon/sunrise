@@ -1094,7 +1094,7 @@ impl Game<'_> {
     }
 
     /// Submit quads drawn by a mod pipeline: shorthand over [`Self::native_world_draw_vertices`]
-    /// for pipelines using the default vertex format (`VertexFormat::position_tex_color`) and
+    /// for pipelines using the default `PositionTexColor` vertex format and
     /// [`mod_api::PrimitiveTopology::Quads`]. Non-finite quads are skipped individually without
     /// rejecting valid quads in the same slice.
     pub(super) fn native_world_draw_pipeline_quads(
@@ -1751,7 +1751,7 @@ impl Game<'_> {
         Ok(())
     }
     /// Shorthand for drawing [`PipelineQuad`]s into an offscreen frame-graph pass using the
-    /// default vertex format (`VertexFormat::position_tex_color`).
+    /// default `PositionTexColor` vertex format.
     pub(in crate::game) fn native_offscreen_draw_pipeline_quads(
         &self,
         pass: &mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
@@ -4542,7 +4542,7 @@ mod tests {
             host: &dyn ClientHost,
             event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
         ) {
-            // One quad of the default vertex format (`position_tex_color`): 24 bytes a vertex.
+            // One quad of the default `PositionTexColor` format: 24 bytes a vertex.
             let init = [mod_api::MeshBufferInit::from_bytes(24, &[0; 96])];
             let mesh = host
                 .create_mesh(&mod_api::MeshDescriptor::new(&init))
