@@ -86,6 +86,8 @@ pub mod tests {
                 "as_flowing",
                 named(Some("as_flowing_flow"), Some("as_flowing_flow")),
             ),
+            // The default flowing id, though `flowing` is unset.
+            ("dflt", named(Some("flowing_dflt"), None)),
         ] {
             assert_eq!(
                 registrar.declare_world_fluid(path, refused),

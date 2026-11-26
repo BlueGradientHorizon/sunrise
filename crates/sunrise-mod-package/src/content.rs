@@ -919,10 +919,13 @@ impl FluidLook {
                     "world: flowing is an id in the fluid's namespace, not the fluid's own".into(),
                 );
             }
+            // The resolved flowing id, the default `<ns>:flowing_<path>` included, as the code
+            // registrar compares against.
+            let flowing = self.flowing_id();
             if world
                 .block
                 .as_deref()
-                .is_some_and(|block| !own(block) || Some(block) == world.flowing.as_deref())
+                .is_some_and(|block| !own(block) || block == flowing)
             {
                 return Err(
                     "world: block is an id in the fluid's namespace, not its flowing form's".into(),
@@ -4916,6 +4919,8 @@ capabilities = ["registries"]
         for refused in [
             &br#"{"world":{"block":"other:essence_block"}}"#[..],
             br#"{"world":{"block":"ruby:essence_flowing","flowing":"ruby:essence_flowing"}}"#,
+            // The default flowing id, `ruby:flowing_essence`, though `flowing` is unset.
+            br#"{"world":{"block":"ruby:flowing_essence"}}"#,
         ] {
             let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/essence.json", refused)];
             let error = smod("world-fluid-refused", MANIFEST_TEXT, files).unwrap_err();
