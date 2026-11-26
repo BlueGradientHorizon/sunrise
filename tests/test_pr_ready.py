@@ -242,7 +242,8 @@ class PrReadyTests(unittest.TestCase):
                      "examples/probe/main.rs", "tests/lan_bot.rs"]:
             self.assertEqual(pr_ready.touched_crates({f"crates/sunrise-client/{path}"}, packages),
                              ["sunrise-client-lib"])
-        for path in ["src/lib.rs", "src/main.rs", "src/entry.rs", "src/game.rs", "src/game/items/combat.rs",
+        for path in ["src/lib.rs", "src/main.rs", "src/entry.rs", "src/game_facade.rs", "src/game.rs",
+                     "src/game/items/combat.rs", "src/cut_layout/game/items/combat.rs",
                      "tests/it/mod_api_hooks.rs", "Cargo.toml", "build.rs"]:
             self.assertEqual(pr_ready.touched_crates({f"crates/sunrise-client/{path}"}, packages),
                              ["sunrise-client"])
@@ -353,18 +354,24 @@ class PrReadyTests(unittest.TestCase):
 
     def test_mod_api_data_inputs_build_and_test_the_consuming_crates(self):
         packages = {**PACKAGES, "sunrise-client-render": "crates/sunrise-client-render",
-                    "sunrise-mod-api-gen": "crates/sunrise-mod-api-gen"}
+                    "sunrise-mod-api-gen": "crates/sunrise-mod-api-gen",
+                    "sunrise-gameplay-common": "crates/sunrise-gameplay-common",
+                    "sunrise-gameplay": "crates/sunrise-gameplay",
+                    "sunrise-client-gameplay": "crates/sunrise-client-gameplay"}
         for path in ("crates/sunrise-mod-vocab/src/hooks/player.rs",):
             with self.subTest(path=path), mock.patch.object(pr_ready, "affected_here", return_value=[]):
                 steps = pr_ready.plan(args(quick=True), "origin/main", {path}, packages,
-                                      LIBRARIES | {"sunrise-client-render", "sunrise-mod-api-gen"}, DEPENDENCIES)
+                                      LIBRARIES | {"sunrise-client-render", "sunrise-mod-api-gen",
+                                                   "sunrise-gameplay-common", "sunrise-gameplay",
+                                                   "sunrise-client-gameplay"}, DEPENDENCIES)
                 by_name = {step.name: step for step in steps}
                 self.assertIsNone(by_name["clippy"].skip)
                 self.assertIsNone(by_name["rustfmt"].skip)
                 self.assertEqual(by_name["rustfmt"].command, "python3 tools/ci/format_scan.py")
                 tests = next(step for step in steps if step.name.startswith("tests:"))
                 self.assertIsNone(tests.skip)
-                self.assertEqual(tests.command, "cargo test --locked -p sunrise-client -p sunrise-client-render "
+                self.assertEqual(tests.command, "cargo test --locked -p sunrise-client -p sunrise-client-gameplay "
+                                               "-p sunrise-client-render -p sunrise-gameplay -p sunrise-gameplay-common "
                                                "-p sunrise-mod-api-gen --tests")
 
     @unittest.skipUnless(os.name == "nt", "the Windows runner's own jobs")
@@ -459,8 +466,8 @@ class PrReadyTests(unittest.TestCase):
         self.assertEqual(pr_ready.dependent_crates(["core"], dependencies), ["build", "core", "dev", "optional"])
 
     def test_scope_warns_on_mixed_areas(self):
-        self.assertEqual(pr_ready.scope_warnings({"crates/sunrise-theme/src/lib.rs", "crates/sunrise-client/src/game.rs"}), [])
-        self.assertEqual(pr_ready.scope_warnings({"crates/sunrise-client/src/game.rs", ".github/workflows/ci.yml"}),
+        self.assertEqual(pr_ready.scope_warnings({"crates/sunrise-theme/src/lib.rs", "crates/sunrise-gameplay-common/src/game.rs"}), [])
+        self.assertEqual(pr_ready.scope_warnings({"crates/sunrise-gameplay-common/src/game.rs", ".github/workflows/ci.yml"}),
                          ["mixes CI, game"])
 
     def test_cargo_lock_changes_only_with_a_manifest(self):
@@ -471,7 +478,7 @@ class PrReadyTests(unittest.TestCase):
     def test_label_follows_what_players_get(self):
         self.assertEqual(pr_ready.suggested_label({"tools/pr_ready.py", "CONTRIBUTING.md"}), "`skip-release`")
         self.assertEqual(pr_ready.suggested_label({"crates/sunrise-world/examples/probe.rs"}), "`skip-release`")
-        self.assertIn("feature", pr_ready.suggested_label({"crates/sunrise-client/src/game.rs"}))
+        self.assertIn("feature", pr_ready.suggested_label({"crates/sunrise-gameplay-common/src/game.rs"}))
 
     def test_affected_harnesses_come_from_the_parity_runner(self):
         found = {"food": "tools/test_food_parity.py", "datafix#1": "tools/test_datafix_parity.py",
@@ -547,6 +554,9 @@ class PrReadyTests(unittest.TestCase):
         for path in ("tools/test_food_parity.py", "tools/parity.py", "tools/lab.py", "tools/parity_hosts.json",
                      "mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaFoodOracle.java",
                      "crates/sunrise-world/examples/food_probe.rs", "crates/sunrise-client/src/game/sculk_fixture.rs",
+                     "crates/sunrise-gameplay/src/game/blocks/sculk_fixture.rs",
+                     "crates/sunrise-gameplay-common/src/game/parity_fixture.rs",
+                     "crates/sunrise-client-gameplay/src/game/remote_harness.rs",
                      ".github/workflows/parity.yml"):
             with self.subTest(path=path):
                 self.assertTrue(pr_ready.runs_parity(code | {path}))

@@ -16,29 +16,29 @@ calls a [support module](5-support-modules.md) of the same mod, so the example k
 ```toml
 [[native.module]]
 id = "runtime"
-file = "crates/sunrise-client/src/game/world/autosave_server.rs"
+file = "crates/sunrise-gameplay/src/game/world/autosave_server.rs"
 name = "fnr_runtime"
 source = "src/runtime.rs"
 
 [[native.bridge]]
 id = "ticks"
 kind = "GET_MUT"
-target = "sunrise_client::game::server_side::ServerState"
+target = "sunrise_gameplay::game::server_side::ServerState"
 member = "ticks_until_autosave"
 
 [[native.mixin]]
 id = "head"
-target = "sunrise_client::game::server_side::autosave_server::Game<'_>::on_tick_rate_changed"
+target = "sunrise_gameplay::game::server_side::autosave_server::crate::game::ServerGame<'_>::on_tick_rate_changed"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
-bindings = [{ name = "game", ty = "&mut Game<'_, crate::game::server_side::ServerState>", value = "&mut *self" }]
+bindings = [{ name = "game", ty = "&mut crate::game::ServerGame<'_>", value = "&mut *self" }]
 ```
 
 `src/mixins/head.rs`:
 
 ```rust,ignore
-fn head(game: &mut Game<'_, crate::game::server_side::ServerState>) {
-    let ticks = game.side.__horizon_mixins_fnr_support_ticks();
+fn head(game: &mut crate::game::ServerGame<'_>) {
+    let ticks = game.server.__horizon_mixins_fnr_support_ticks();
     *ticks = crate::game::server_side::autosave_server::fnr_runtime::bumped(*ticks);
     fnr_support::note(&format!("module and bridge: ticks_until_autosave {}", *ticks));
 }
@@ -54,7 +54,7 @@ So use only letters, digits, `_` and `-` in a bridge id, and keep ids distinct a
 
 | `kind` | Method | `target` | `member` |
 | --- | --- | --- | --- |
-| `GET` | `fn(&self) -> &T` | The struct: `sunrise_client::game::Game` | The field's name, or its index in a tuple struct as a string (`"0"`) |
+| `GET` | `fn(&self) -> &T` | The struct: `sunrise_gameplay_common::game::CommonGame` | The field's name, or its index in a tuple struct as a string (`"0"`) |
 | `GET_MUT` | `fn(&mut self) -> &mut T` | The struct | The field |
 | `SET` | `fn(&mut self, value: T)` | The struct | The field |
 | `INVOKE` | The method's own signature, renamed | The method, written like a [mixin target](2-mixins.md#naming-the-target) | leave it out |
@@ -63,10 +63,10 @@ So use only letters, digits, `_` and `-` in a bridge id, and keep ids distinct a
 bridge is called as `value.__horizon_mixins_<mod>_<id>(…)`, or `Type::__horizon_mixins_<mod>_<id>(…)` for a
 function without `self`.
 
-Name a field bridge's struct by the module that declares it, without lifetimes (`sunrise_client::game::Game`).
-Types and methods in one-sided gameplay modules include `client_side` or `server_side` in their canonical path
-(see [Repinning native targets for game side modules](../../how-to/native-mods/16-repinning-side-module-targets.md)).
-Mixin helpers on game-crate functions can call the method. Your mod's own crate cannot, so
+Name a field bridge's struct by the module that declares it, without lifetimes (`sunrise_gameplay_common::game::CommonGame`, `sunrise_gameplay::game::ServerGame`, or `sunrise_client_gameplay::game::ClientGame`).
+Types and methods live in their gameplay crate (`sunrise_gameplay_common`, `sunrise_gameplay`, or `sunrise_client_gameplay`), under `server_side` or `client_side` where mounted there
+(see [Repinning native targets for gameplay crates](../../how-to/native-mods/16-repinning-side-module-targets.md)).
+Mixin helpers on functions in the same gameplay crate can call the method. Your mod's own crate cannot, so
 read the value in a helper and pass it to your crate.
 
 ## Fields
@@ -80,7 +80,7 @@ read the value in a helper and pass it to your crate.
 
 Limits:
 
-- The struct or method is in the game crate, `sunrise_client`.
+- The struct or method is in one of the three gameplay crates (`sunrise_gameplay_common`, `sunrise_gameplay`, or `sunrise_client_gameplay`).
 - A field bridge's struct may be generic over lifetimes, not types or consts.
 - An `INVOKE` target's type and method are not generic.
 - An `INVOKE` bridge qualifies associated items such as `Self::Error` through the target's trait when it

@@ -15,17 +15,17 @@ mixins = "MIXINS"
 [[native.mixin]]
 id = "ported_block_entity_tick"
 kind = "HEAD"
-target = "sunrise_client::game::server_side::native_hooks_server::block_entity_tick::Game<'_>::tick_mod_block_entity_loaded"
+target = "sunrise_gameplay::game::native_hooks::block_entity_tick::crate::game::ServerGame<'_>::tick_mod_block_entity_loaded"
 helper = "src/mixins/tick.rs"
 bindings = [
-  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "game", ty = "&mut crate::game::ServerGame<'_>", value = "&mut *self" },
   { name = "pos", ty = "(i32, i32, i32)", value = "pos" },
 ]
 
 [[native.mixin]]
 id = "knockback_0"
 kind = "MODIFY_VARIABLE"
-target = "sunrise_client::game::creatures::knockback::Game<'_>::knock_back_player"
+target = "sunrise_gameplay::game::server_side::creatures_server::knockback::crate::game::ServerGame<'_>::knock_back_player"
 variable = { name = "power", ordinal = 0, at = "LOAD", parameter = true }
 require = 1
 ordinal = 0
@@ -37,7 +37,7 @@ bindings = [{ name = "value", ty = "f64", value = "$value" }]
 [[native.mixin]]
 id = "sign_sprite"
 kind = "WRAP_OPERATION"
-target = "sunrise_client::game::client_side::sign_edit::Game<'_>::draw_sign_editor"
+target = "sunrise_client_gameplay::game::client_side::sign_edit::ClientGame<'_>::draw_sign_editor"
 selector = "editor_sprite"
 require = 2
 ordinal = 0
@@ -50,7 +50,7 @@ bindings = [
 [[native.mixin]]
 id = "native_server_started"
 kind = "HEAD"
-target = "sunrise_client::game::native_hooks::base::Game<'_>::native_server_started"
+target = "sunrise_gameplay::game::native_hooks::base::crate::game::ServerGame<'_>::native_server_started"
 helper = "src/mixins/server_started.rs"
 bindings = [{ name = "dedicated", ty = "bool", value = "dedicated" }]
 
@@ -60,5 +60,5 @@ bindings = [{ name = "dedicated", ty = "bool", value = "dedicated" }]
 [[native.mixin]]
 id = "trait_block_state"
 kind = "HEAD"
-target = "sunrise_client::game::level_access::<GameLevel<'_> as LevelAccess>::block_state"
+target = "sunrise_gameplay_common::game::level_access::<GameLevel<'_> as LevelAccess>::block_state"
 helper = "src/mixins/trait.rs"

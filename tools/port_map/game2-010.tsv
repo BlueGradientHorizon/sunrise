@@ -81,7 +81,7 @@ Level.isInValidBounds	port	crates/sunrise-world/src/level/update.rs::Sim::is_in_
 Level.isInWorldBoundsHorizontal	inline	crates/sunrise-world/src/level/update.rs::Sim::is_in_valid_bounds	the -30000000..30000000 test
 Level.isInValidBoundsHorizontal	inline	crates/sunrise-world/src/level/update.rs::Sim::is_in_valid_bounds	chunk validity folded into the block range
 Level.getChunk	missing		unsure: no getter for a full chunk object found; block reads go through World::block
-Level.getFluidState	port	crates/sunrise-client/src/game.rs::Column::state	gap: minor: the isInValidBounds check is not repeated here
+Level.getFluidState	port	crates/sunrise-gameplay-common/src/game.rs::Column::state	gap: minor: the isInValidBounds check is not repeated here
 Level.isDarkOutside	port	crates/sunrise-gameplay-common/src/game/blocks/level_access.rs::GameLevel::sky_darken	gap: minor: the sky darkness value; the fixed-time dimension check is not here
 Level.playSound	port	crates/sunrise-world/src/level/update.rs::Sim::sound
 Level.playSeededSound	missing		unsure: no seeded sound path found; Sim::sound takes no seed

@@ -49,11 +49,12 @@ struct ServerState {
     lan_cushion_breaks: Vec<(u32, [f64; 3])>,
     audio_capture_active: bool,
 }
-struct Game {
-    pack: Pack, headless: bool,
+struct CommonGame { pack: Pack }
+struct ServerGame {
+    common: CommonGame, headless: bool,
     server: ServerState,
 }
-impl Game {
+impl ServerGame {
     fn particle_sprite(&self, _: u32, _: [i32; 3]) -> Option<(String, u32)> {
         (!self.headless).then(|| ("block/blue_wool".into(), 0xffffff))
     }
@@ -63,8 +64,8 @@ fn main() {
     let cushion = Cushion { position: Vec3 { x: 1.5, y: 10.0, z: 2.5 } };
     for headless in [true, false] {
         for serving in [true, false] {
-            let mut game = Game {
-                pack: Pack { assets: Assets { registry: Registry } },
+            let mut game = ServerGame {
+                common: CommonGame { pack: Pack { assets: Assets { registry: Registry } } },
                 headless,
                 server: ServerState { audio_capture_active: serving, ..Default::default() },
             };

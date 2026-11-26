@@ -143,7 +143,10 @@ echo '{{}}' > "$3"
 """)
                 own_tool.chmod(0o755)
                 own = lambda: str(own_tool)  # noqa: E731
-            (work / "base").mkdir()
+            for side in ("base", "head"):
+                marker = work / side / surface_report.SOURCE_LAYOUT
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(surface_report.source_layout(surface_report.ROOT) + "\n")
             code, text = surface_report.report(str(tool), work / "base", work / "head", work, gate_on,
                                                with_internals=with_internals, own_base_tool=own)
             return code, text, (work / "calls").read_text()
@@ -223,6 +226,9 @@ echo '{{}}' > "$3"
             base, head = work / "old", work / "new"
             reset = head / surface_report.SCHEMA_RESET
             reset.parent.mkdir(parents=True)
+            marker = head / surface_report.SOURCE_LAYOUT
+            marker.parent.mkdir(parents=True)
+            marker.write_text(surface_report.source_layout(surface_report.ROOT) + "\n")
             audit = {
                 "checkpoint": "checked",
                 "plain": {"old": "old-hash", "new": "checkpoint-hash"},
@@ -309,9 +315,9 @@ echo '{{}}' > "$3"
 @unittest.skipUnless(os.environ.get("SUNRISE_STAGE_TOOL"), "set SUNRISE_STAGE_TOOL to test the real gate")
 class EngineCatalogGateTests(unittest.TestCase):
     ITEMS = [
-        {"id": "loop:entities.tick", "kind": "loop", "hash": "loop-1", "entry": "Game::tick_entities",
+        {"id": "loop:entities.tick", "kind": "loop", "hash": "loop-1", "entry": "ServerGame::tick_entities",
          "generic": "tick_entities_with", "slot": "TickSlot", "side": "server"},
-        {"id": "internal:fn:sunrise_client::game::Game::tick [feature = \"fixture\"]",
+        {"id": "internal:fn:sunrise_gameplay::game::ServerGame::tick [feature = \"fixture\"]",
          "kind": "internal", "hash": "internal-1", "signature": "fn tick(&self)",
          "signature_hash": "old-internal"},
     ]
@@ -475,7 +481,9 @@ class MainTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0, "", "")
 
         tree_tool = mock.Mock(return_value="base-stage")
-        with mock.patch.object(surface_report.subprocess, "run", side_effect=stage):
+        layout = surface_report.source_layout(surface_report.ROOT)
+        with mock.patch.object(surface_report.subprocess, "run", side_effect=stage), \
+             mock.patch.object(surface_report, "source_layout", return_value=layout):
             code, out, _ = self.run_main(argv=["--trees", "before", "after", *flags], tool="head-stage",
                                          tree_tool=tree_tool)
         return code, out, tree_tool, compared

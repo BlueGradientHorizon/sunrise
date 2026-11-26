@@ -11,7 +11,7 @@ from rust_items import rust_fn
 class ComputeFovHookTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_computed_fov_override_and_invalid_fallback(self):
-        actual = rust_fn("fov_degrees", owner="Game")
+        actual = rust_fn("fov_degrees", owner="sunrise-client-gameplay")
         fixture = r"""
 struct View;
 impl View {
@@ -29,8 +29,8 @@ struct StudioFreecam { active: bool, fov: f32 }
 struct Studio { freecam: StudioFreecam }
 impl Studio { fn flying(&self) -> bool { self.freecam.active } }
 struct ClientState { view: View, studio: Studio, settings: Settings }
-struct Game { side: ClientState, override_fov: Option<f32>, death_time: Option<i32> }
-impl Game {
+struct ClientGame { client: ClientState, override_fov: Option<f32>, death_time: Option<i32> }
+impl ClientGame {
     fn fov_effect_scale(&self) -> f32 { 1.0 }
     fn camera_death_time(&self) -> Option<i32> { self.death_time }
     fn camera_fluid(&self, camera: [f64; 3]) { assert_eq!(camera, [1.0, 2.0, 3.0]); }
@@ -50,8 +50,8 @@ fn unchanged_narrow_wide_and_invalid() {
     for (value, expected) in [(None, 35.0), (Some(15.0), 15.0), (Some(120.0), 120.0),
         (Some(1.0), 1.0), (Some(179.0), 179.0), (Some(0.0), 35.0), (Some(180.0), 35.0),
         (Some(-1.0), 35.0), (Some(f32::NAN), 35.0), (Some(f32::INFINITY), 35.0)] {
-        let game = Game {
-            side: ClientState {
+        let game = ClientGame {
+            client: ClientState {
                 view: View,
                 studio: Studio { freecam: StudioFreecam { active: false, fov: 70.0 } },
                 settings: Settings { fov: 70.0 },
@@ -62,8 +62,8 @@ fn unchanged_narrow_wide_and_invalid() {
 }
 #[test]
 fn camera_death_time_reaches_calculate_fov() {
-    let game = Game {
-        side: ClientState {
+    let game = ClientGame {
+        client: ClientState {
             view: View,
             studio: Studio { freecam: StudioFreecam { active: false, fov: 70.0 } },
             settings: Settings { fov: 70.0 },
@@ -73,8 +73,8 @@ fn camera_death_time_reaches_calculate_fov() {
 }
 #[test]
 fn studio_freecam_uses_its_fov() {
-    let game = Game {
-        side: ClientState {
+    let game = ClientGame {
+        client: ClientState {
             view: View,
             studio: Studio { freecam: StudioFreecam { active: true, fov: 42.0 } },
             settings: Settings { fov: 70.0 },

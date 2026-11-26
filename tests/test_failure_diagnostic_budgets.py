@@ -34,7 +34,7 @@ class Budgets(unittest.TestCase):
 
     def test_generated_absolute_location_uses_only_this_checkout_root(self):
         root = Path(ci.__file__).resolve().parents[2]
-        path = 'crates/sunrise-client/src/game/administration/commands/incoming_tests/knot_identity.rs'
+        path = 'crates/sunrise-client/src/cut_layout/game/administration/commands/incoming_tests/knot_identity.rs'
         location = f'{root / path}:176:1'
         log = self.render(f"test safe ... FAILED\nthread 'safe' panicked at {location}:\n"
                           "assertion failed: PRIVATE\n")
@@ -200,7 +200,7 @@ class Budgets(unittest.TestCase):
         ci.tracked_rust_paths.cache_clear()
         ci.source_lines.cache_clear()
         for location in ('crates/sunrise-sim/src/motion.rs:6115:9',
-                         'crates/sunrise-client-lib/../sunrise-client/src/motion.rs:6115:9'):
+                         'crates/sunrise-client-lib/../sunrise-sim/src/motion.rs:6115:9'):
             log = self.render("test motion::tests::resident_fluid_heights_are_measured_from_the_feet ... FAILED\n"
                               "thread 'motion::tests::resident_fluid_heights_are_measured_from_the_feet' panicked at "
                               f"{location}:\nassertion `left == right` failed\n left: 1\n right: 2\n")

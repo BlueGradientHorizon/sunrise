@@ -16,10 +16,10 @@
     "rationale": "Existing separately supplied input SUNRISE_PORTAL_REFERENCE in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE"
   },
   {
-    "package": "sunrise-gameplay-common",
+    "package": "sunrise-client-gameplay",
     "target": "lib",
-    "test": "game::entity_model_loading_tests::entity_model_document_benchmark",
-    "path": "crates/sunrise-gameplay-common/src/game/interface/entity_model_loading_tests.rs",
+    "test": "game::client_side::entity_model_loading_tests::entity_model_document_benchmark",
+    "path": "crates/sunrise-client-gameplay/src/game/interface/entity_model_loading_tests.rs",
     "reason": "opt-in benchmark; requires ENTITY_MODEL_BENCH_DOCUMENT",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; ENTITY_MODEL_BENCH_DOCUMENT supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
@@ -154,8 +154,8 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::server_side::native_recipes_server::tests::craft_cost",
-    "path": "crates/sunrise-client/src/game/modding/native_recipes.rs",
+    "test": "cut_layout::game::server_side::native_recipes_server::tests::craft_cost",
+    "path": "crates/sunrise-client/src/cut_layout/game/modding/native_recipes_server.rs",
     "reason": "a benchmark: run it in release with SUNRISE_TEST_RESOURCES",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: a benchmark: run it in release with SUNRISE_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
@@ -178,8 +178,8 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::server_side::potions_server::arrow_contents::actual_arrow_contents_match_pinned_methods",
-    "path": "crates/sunrise-client/src/game/items/potions.rs",
+    "test": "cut_layout::game::server_side::potions_server::arrow_contents::actual_arrow_contents_match_pinned_methods",
+    "path": "crates/sunrise-client/src/cut_layout/game/items/potions_server.rs",
     "reason": "explicit SUNRISE_TEST_RESOURCES and isolated potion oracle input/output",
     "rationale": "Existing separately supplied input SUNRISE_POTION_INPUT in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. explicit SUNRISE_TEST_RESOURCES and isolated potion oracle input/output"
   },
@@ -898,8 +898,8 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::client_side::remote_client::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag",
-    "path": "crates/sunrise-client/src/game/network/remote/client_camera_tests.rs",
+    "test": "cut_layout::game::client_side::remote_client::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag",
+    "path": "crates/sunrise-client/src/cut_layout/game/network/remote/client_camera_tests_client.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera name-tag witness into .local and runs this test against it through SUNRISE_NAME_TAG_CAMERA_WITNESS, so no recorded vanilla data is committed."
   },

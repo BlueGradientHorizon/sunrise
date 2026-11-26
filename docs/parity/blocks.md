@@ -4,7 +4,7 @@ Area: random and scheduled block ticks, growth, bone meal, TNT and
 explosions, hoppers, dispensers and droppers, comparators reading
 containers, weather-driven blocks. The library code lives in
 `crates/sunrise-world/src/level/`. The client glue lives in
-`crates/sunrise-client/src/game/` (`growth.rs`, `tnt.rs`, `explosion.rs`,
+`crates/sunrise-gameplay/src/game/` (`blocks/growth.rs`, `entities/tnt.rs`, `entities/explosion.rs`,
 `machines.rs`, `blockctl.rs`).
 
 ## Implemented (ported from the 26.3 sources)

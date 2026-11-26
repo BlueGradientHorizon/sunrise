@@ -60,7 +60,7 @@ DiodeBlock.getSignal	skip:data		the facing check and output per side come from t
 DiodeBlock.setPlacedBy	port	crates/sunrise-world/src/level/place.rs::Sim::set_placed_by	schedules the 1-tick update when the diode should turn on
 DiodeBlock.updateNeighborsInFront	port	crates/sunrise-world/src/level/redstone.rs::Sim::diode_update_neighbors_in_front	neighbour notify on the block behind the output
 DiodeBlock.shouldPrioritize	port	crates/sunrise-world/src/level/redstone.rs::Sim::diode_should_prioritize	checks for a diode facing back at it
-DispenserBlock.registerProjectileBehavior	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_item	egg, snowball and wind charge dispense as projectiles in dispense_item
+DispenserBlock.registerProjectileBehavior	inline	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_item	egg, snowball and wind charge dispense as projectiles in dispense_item
 DispenserBlock.neighborChanged	port	crates/sunrise-world/src/level/redstone.rs::Sim::dispenser_neighbor_changed	a signal at the block or above starts a 4-tick dispense and sets triggered
 DispenserBlock.rotate	skip:data		rotation results come from the exported BlockState rotate table (worldgen/structure.rs)
 DispenserBlock.createBlockStateDefinition	skip:data		facing and triggered properties come from the block state tables

@@ -60,12 +60,12 @@ struct Colors { shadows: bool }
 impl Colors { fn entity_shadows(&self) -> bool { self.shadows } }
 struct Pack { polytone_colors: Colors }
 struct ClientState { renderer: (Option<Renderer>,), settings: Settings, gui: Gui, client_pack: Pack }
-struct Game { dim: Dim, side: ClientState }
-impl Game {
+struct ClientGame { dim: Dim, client: ClientState }
+impl ClientGame {
     fn overworld_skybox(&self) -> bool { self.dim == Dim::Overworld }
     fn selected_blob(&self) -> Option<usize> { __GUARD__ shadow_sprite }
 }
-fn scene(kind: &str, dim: Dim, enabled: bool, sprite: bool) -> Game {
+fn scene(kind: &str, dim: Dim, enabled: bool, sprite: bool) -> ClientGame {
     let casters = |entities: bool, only_player: bool, blocks: bool, targets: bool| {
         Some((0, Some(post::PackPost {
             entities: Some(post::Entities {
@@ -84,9 +84,9 @@ fn scene(kind: &str, dim: Dim, enabled: bool, sprite: bool) -> Game {
         "pending" => Some((0, None)),
         _ => None,
     };
-    Game {
+    ClientGame {
         dim,
-        side: ClientState {
+        client: ClientState {
             renderer: ((kind != "no_renderer").then_some(Renderer {
                 pack_post,
                 native: (kind == "native").then_some(Native { shadow: Some(()) }),

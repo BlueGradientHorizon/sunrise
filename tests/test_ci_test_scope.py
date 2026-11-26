@@ -158,10 +158,15 @@ class RealWorkspaceTests(unittest.TestCase):
         cls.workspace = Workspace(cargo_metadata())
 
     def test_sunrise_client_lib_is_built_from_sunrise_clients_files(self):
-        chosen = self.workspace.scope(["crates/sunrise-client/src/game/x.rs"])
+        chosen = self.workspace.scope(["crates/sunrise-client/src/cut_layout/game/x.rs"])
         self.assertLessEqual({"sunrise-client", "sunrise-client-lib", "sunrise-game-data"}, chosen)
         self.assertNotIn("sunrise-release-sign", chosen)
         self.assertIn("sunrise-client-lib", self.workspace.scope(["crates/sunrise-client/tests/lan_bot.rs"]))
+        gameplay = self.workspace.scope(["crates/sunrise-gameplay-common/src/game.rs"])
+        self.assertLessEqual(
+            {"sunrise-gameplay-common", "sunrise-gameplay", "sunrise-client-gameplay", "sunrise-client"},
+            gameplay,
+        )
 
     def test_every_reader_names_a_package_and_a_path_in_the_tree(self):
         tracked = subprocess.check_output(["git", "ls-files"]).decode().split("\n")

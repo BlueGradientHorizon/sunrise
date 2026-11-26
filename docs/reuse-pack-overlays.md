@@ -41,9 +41,9 @@ Pack downloads were verified against publisher SHA-512 metadata. Exact versions,
 export CARGO_INCREMENTAL=0
 export SUNRISE_OVERLAY_BENCH_VANILLA=/path/to/prepared/26.3
 export SUNRISE_OVERLAY_BENCH_PACKS='["/path/to/Faithful.zip","/path/to/DefaultHD.zip","/path/to/FPBR.zip"]'
-cargo test -p sunrise-client --lib --profile fast packs::cache::tests::benchmark_real_resource_root -- --ignored --nocapture --test-threads=1
-cargo test -p sunrise-client --lib --profile fast packs:: -- --nocapture
-cargo clippy -p sunrise-client --lib --tests --profile fast -- -D warnings
+cargo test -p sunrise-client-render --lib --profile fast packs::cache::tests::benchmark_real_resource_root -- --ignored --nocapture --test-threads=1
+cargo test -p sunrise-client-render --lib --profile fast packs:: -- --nocapture
+cargo clippy -p sunrise-client-render --lib --tests --profile fast -- -D warnings
 cargo fmt --all -- --check
 ```
 

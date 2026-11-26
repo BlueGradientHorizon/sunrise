@@ -1,46 +1,36 @@
-# Repinning native targets for game side modules
+# Repinning native targets for gameplay crates
 
-One-sided gameplay modules and function-level side mirrors under `sunrise_client::game` are declared as children of `client_side` or `server_side` so each side's private state stays behind Rust's module boundary. While `game.rs` re-exports moved modules for Rust helper code, manifest target strings and SDK catalogs resolve against the declaring module and require the canonical path.
+Gameplay code lives in three crates so each side's private state stays behind Rust's crate boundary: `sunrise_gameplay_common` (shared gameplay), `sunrise_gameplay` (server gameplay), and `sunrise_client_gameplay` (client gameplay). Manifest target strings and SDK catalogs resolve against the declaring crate, module, and `impl` receiver type, and require the canonical path.
 
 ## Canonical paths
 
-[`tools/game_module_sides.tsv`](https://github.com/sunrise-org/sunrise/blob/main/tools/game_module_sides.tsv) lists the declaring module for each gameplay module, and [`tools/game_fn_sides.tsv`](https://github.com/sunrise-org/sunrise/blob/main/tools/game_fn_sides.tsv) lists functions moved into side mirror modules:
+Each gameplay crate mounts its modules from `src/lib.rs` through `pub mod game;`:
 
-- **Client and server modules (`side = client` or `server`):** insert `client_side` or `server_side` after `sunrise_client::game::`. The source file stays at its path under `crates/sunrise-client/src/game/`.
-  - `sunrise_client::game::client_side::<module>::…` (`client`)
-  - `sunrise_client::game::server_side::<module>::…` (`server`)
-- **Function-level mirror modules (`tools/game_fn_sides.tsv`):** one-sided functions moved out of `game.rs` or a shared (`side = game`) module live in a side mirror module under `client_side` or `server_side`:
-  - From `game.rs`: `sunrise_client::game::client_side::game_client::…` (`crates/sunrise-client/src/game/game_client.rs`) or `sunrise_client::game::server_side::game_server::…` (`crates/sunrise-client/src/game/game_server.rs`)
-  - From a shared module `<module>`: `sunrise_client::game::client_side::<module>_client::…` (`<stem>_client.rs` or `mod_client.rs`) or `sunrise_client::game::server_side::<module>_server::…` (`<stem>_server.rs` or `mod_server.rs`)
-- **Shared modules (`side = game`):** `sunrise_client::game::<module>::…`.
-- **State modules (`ClientState` and `ServerState`):** `sunrise_client::game::client_side::…` (`crates/sunrise-client/src/game/client_side.rs`) and `sunrise_client::game::server_side::…` (`crates/sunrise-client/src/game/server_side.rs`).
+- **Shared gameplay (`crates/sunrise-gameplay-common/src/game/`):** `sunrise_gameplay_common::game::<module>::…`, with game type `CommonGame<'_>` and shared extension traits bounded by `SideGame<'_>`.
+- **Server gameplay (`crates/sunrise-gameplay/src/game/`):** `sunrise_gameplay::game::server_side::<module>::…` (and `sunrise_gameplay::game::native_hooks::…` for server hook adapters), with game type `ServerGame<'_>` (`{ common, server }`) and state module `sunrise_gameplay::game::server_side` (`crates/sunrise-gameplay/src/game/server_side.rs`, `ServerState`).
+- **Client gameplay (`crates/sunrise-client-gameplay/src/game/`):** `sunrise_client_gameplay::game::client_side::<module>::…` (and `sunrise_client_gameplay::game::native_hooks::…` for client hook adapters), with game type `ClientGame<'_>` (`{ common, client }`) and state module `sunrise_client_gameplay::game::client_side` (`crates/sunrise-client-gameplay/src/game/client_side.rs`, `ClientState`).
+- **Split files:** modules that hold code for more than one crate split by file stem (`<stem>_common.rs`, `<stem>_server.rs`, `<stem>_client.rs`, or `mod_{common,server,client}.rs`). Follow the `mod` and `#[path]` declarations in that crate's `src/game.rs`, `server_side.rs`, or `client_side.rs` (a `pub use` re-export does not change the declaring module path).
+- **Inherent and trait receivers:** inherent methods use the exact receiver type spelled on the `impl` block (for example `ServerGame<'_>`, `crate::game::ServerGame<'_>`, `ClientGame<'_>`, or `CommonGame<'_>`). Trait implementations use `<Type as Trait>::method`.
 
 ## Declarations to update in `sunrise-mod.toml`
 
-- **[Mixins (`[[native.mixin]]`)](../../concepts/native-route/2-mixins.md#naming-the-target):** update `target` for methods, free functions, and trait methods declared in side modules, mirror modules, or state modules. The rename maps emit normalized SDK keys without lifetimes; for targets that spell lifetimes (`Game<'_>`) or trait-qualified paths (`<Type as Trait>::method`), apply the same `client_side` or `server_side` segment and mirror-module name after `sunrise_client::game::`.
-- **[Bridges (`[[native.bridge]]`)](../../concepts/native-route/4-bridges.md):** update `target` for field bridges on `ClientState` or `ServerState`, field bridges on types declared in side modules (for example `sunrise_client::game::client_side::native_panel::Panel`), and `INVOKE` bridges whose method is declared in a side or mirror module.
-- **[Support modules (`[[native.module]]`)](../../concepts/native-route/5-support-modules.md):** set `file` to `crates/sunrise-client/src/game/client_side.rs` or `crates/sunrise-client/src/game/server_side.rs` when mirroring a state module, and to the corresponding mirror file (`game_{client,server}.rs`, `<stem>_{client,server}.rs`, or `mod_{client,server}.rs`) when mirroring items moved into a function-side mirror; other side modules keep their source file paths.
-- **Explicit `[[internals]]` entries:** update canonical paths for items declared in side modules, mirror modules, or state modules. Confirm each key against the pinned build's `internals.json` (`.sunrise/cache/<build>/build-data/internals.json`), since an item's path follows the module holding its declaration or `impl`.
+- **[Mixins (`[[native.mixin]]`)](../../concepts/native-route/2-mixins.md#naming-the-target):** update `target` to the declaring crate, module, and receiver spelling in the target build's `functions.json` (`.sunrise/cache/<build>/build-data/functions.json`). Update helper parameter types and `bindings` `ty` strings to match the method's receiver (`&mut crate::game::ServerGame<'_>`, `&mut ServerGame<'_>`, `&mut ClientGame<'_>`, or `&mut CommonGame<'_>`), and read side state through `game.server` or `game.client` (and shared state through `game.common` or `Deref`).
+- **[Bridges (`[[native.bridge]]`)](../../concepts/native-route/4-bridges.md):** update `target` to the declaring crate and module for field bridges (`sunrise_gameplay::game::server_side::ServerState`, `sunrise_client_gameplay::game::client_side::ClientState`, `sunrise_gameplay_common::game::CommonGame`, `sunrise_gameplay::game::ServerGame`, `sunrise_client_gameplay::game::ClientGame`, or a struct in a side module) and `INVOKE` bridges.
+- **[Support modules (`[[native.module]]`)](../../concepts/native-route/5-support-modules.md):** set `file` to the source file in its owning crate (`crates/sunrise-gameplay-common/src/…`, `crates/sunrise-gameplay/src/…`, or `crates/sunrise-client-gameplay/src/…`).
+- **Explicit `[[internals]]` entries:** update canonical paths to the declaring crate and module. Confirm each key against the pinned build's `internals.json` (`.sunrise/cache/<build>/build-data/internals.json`), since an item's path follows the crate and module holding its declaration or `impl`.
 
 ## Steps to repin a native mod
 
 1. **Pin the target build:** run `cargo sunrise-mod pin <build>`. `pin` updates `[native] sunrise` and refreshes hashes for declarations that resolve on the target build, reporting unresolvable paths as `missing` with their old hashes untouched.
-2. **Generate the rename maps and update paths:** run the module-side and function-side rename scripts against the prior and target builds' `functions.json` catalogs (see `--help` on each script for options):
-
-```sh
-python3 tools/game_module_sides.py --renames <before-functions.json> <after-functions.json> --out moved-module-targets.tsv
-python3 tools/game_fn_sides.py --renames <before-functions.json> <after-functions.json> --out moved-fn-targets.tsv
-```
-
-Update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]`, and explicit `[[internals]]` entries in `sunrise-mod.toml`.
+2. **Locate moved targets and update declarations:** look up each unresolvable target in the pinned build's `functions.json` and `internals.json` under `.sunrise/cache/<build>/build-data/`, matching the crate (`sunrise_gameplay_common`, `sunrise_gameplay`, or `sunrise_client_gameplay`), declaring module, and `impl` receiver type. Update affected `[[native.mixin]]`, `[[native.bridge]]`, `[[native.module]]`, and explicit `[[internals]]` entries in `sunrise-mod.toml`, along with any helper signatures and `game.common` / `game.server` / `game.client` field accesses under `src/`.
 3. **Regenerate internal hashes:**
    - If your mod uses discovered internals, run `cargo sunrise-mod internals sync` to replace `internals` with compiler-discovered paths, kinds, and hashes for the pinned build.
    - If your mod declares explicit hashed `[[internals]]` entries without `internals sync`, refresh every rewritten entry's hash with `cargo sunrise-mod internals add <new-path>…` (pass `--kind <kind>` if a path is ambiguous), or re-run `cargo sunrise-mod pin <build>` after updating the paths (when the mod has no `[[native.module]]` rows).
 4. **Verify and rebuild:** run `cargo sunrise-mod check` to validate declarations and refreshed internal hashes, then run `cargo sunrise-mod build` to compile the package and regenerate `uses.json` with the target build's `made_for` id, internal hashes, and split function digests (see [Fitting another build](../../reference/sdk/04-fit.md); mods with `[[native.module]]` or `[[native.bridge]]` target one build only and pack no `uses.json`). Follow [`E_FINGERPRINT`](../../concepts/native-route/2-mixins.md#fields) for any fingerprinted mixin whose digest differs on the target build.
 
-## Side-private function visibility (`tools/game_side_calls.tsv`)
+## Crate boundaries and side separation
 
-Every inherent method, associated function, and free function declared in a `client_side` or `server_side` module (including function-level mirror modules, `#[path]`, and `include!` files) is visible at most inside its own side (`pub(in crate::game::client_side)` or `pub(in crate::game::server_side)`, or narrower), unless listed in [`tools/game_side_calls.tsv`](https://github.com/sunrise-org/sunrise/blob/main/tools/game_side_calls.tsv). Trait impls and item-generating macro invocations in side modules are recorded as their own row kinds so new ones are reviewed explicitly.
+`sunrise-gameplay` (server) and `sunrise-client-gameplay` (client) both depend on `sunrise-gameplay-common`, and neither side crate depends on the other. The entry crate `sunrise-client` wires them together (with `sunrise-client-gameplay` optional so dedicated server builds omit client code completely).
 
-- **How to see the error:** calling a side-private function from outside its side fails to compile with `rustc` privacy errors (`E0624` for methods, `E0603` for free functions). Introducing an unlisted wide function, an unrecorded trait impl or macro invocation, or a new row absent from the base branch fails `python3 tools/game_side_calls.py --check --against <base>` (run by `tools/pr_ready.py` and CI's `verify-static` job).
-- **How to remove a row:** after eliminating the remaining outside callers of a listed function, delete its row from `tools/game_side_calls.tsv`, run `python3 tools/game_side_calls.py --fix` to narrow its visibility to its own side, verify with `python3 tools/game_side_calls.py --check --against <base>`, and confirm compilation across `--all-targets` in default, `--no-default-features`, and `--features state-digest` builds (only the compiler can prove that no outside caller remains).
+- Because each gameplay crate compiles its own mirror when building function-replacement patches, a `[[native.module]]` or `[[native.bridge]]` belongs to the gameplay crate whose file or type it targets, and helpers see items in that crate (plus `sunrise_gameplay_common` from a server or client crate).
+- A client-only target in `sunrise_client_gameplay` exists only in desktop builds, not in dedicated server builds (`--no-default-features`).

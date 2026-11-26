@@ -12,21 +12,19 @@ class ItemAttackBoundary(unittest.TestCase):
         compiler = shutil.which("rustc")
         if compiler is None:
             self.skipTest("requires Rust to execute the production boundary fixture")
-        source = (
-            (ROOT / 'crates/sunrise-client/src/game/native_hooks/item_attack_server.rs').read_text()
-            + "\n"
-            + (ROOT / 'crates/sunrise-client/src/game/native_hooks/item_attack.rs').read_text()
-        )
-        left_start = source.index('    pub(in crate::game::server_side) fn native_left_click_entity_event')
-        left_end = source.index('\n}\n', left_start)
-        swing_start = source.index('    pub(in crate::game) fn native_entity_swing_event')
+        left_source = (ROOT / 'crates/sunrise-gameplay/src/game/native_hooks/item_attack_server.rs').read_text()
+        swing_source = (ROOT / 'crates/sunrise-gameplay-common/src/game/native_hooks/item_attack.rs').read_text()
+        left_start = left_source.index('    pub(crate) fn native_left_click_entity_event')
+        left_end = left_source.index('\n}\n', left_start)
+        swing_start = swing_source.index('     fn native_entity_swing_event')
+        swing_end = swing_source.index('\n}\n', swing_start)
         methods = (
-            source[left_start:left_end]
-            .replace('pub(in crate::game::server_side)', 'pub')
+            left_source[left_start:left_end].replace('pub(crate)', 'pub')
             + "\n"
-            + source[swing_start:].replace('pub(in crate::game)', 'pub')
+            + swing_source[swing_start:swing_end]
+            + "\n}\n"
         )
-        remote = (ROOT / 'crates/sunrise-client/src/game/network/swing_packet.rs').read_text()
+        remote = (ROOT / 'crates/sunrise-client-gameplay/src/game/network/swing_packet.rs').read_text()
         start = remote.index('        if ')
         packet = remote[start:remote.rfind('    }')].replace('sunrise_protocol::packets::play::Serverbound', 'S').replace('sunrise_protocol::packets::Empty', 'Empty')
         fixture = r'''
@@ -45,9 +43,11 @@ mod mod_api {
  pub fn item_listens(_: super::HookId, item: &str) -> bool { item == "subscribed" }
  }
 }
-struct Game { hand: Hand, offhand: Option<Stack>, player: Option<Player>, stack: Stack, calls: u32, packets: u32, canceled: bool }
+struct CommonGame { hand: Hand, stack: Stack }
+impl CommonGame { fn held(&self)->Option<&Stack> { Some(&self.stack) } }
+struct Game { common: CommonGame, offhand: Option<Stack>, player: Option<Player>, calls: u32, packets: u32, canceled: bool }
 impl Game {
- fn held(&self)->Option<&Stack> { Some(&self.stack) }
+ fn held(&self)->Option<&Stack> { self.common.held() }
  fn native_acting_id(&self)->u128 { 1 }
  fn native_on_left_click_entity(&mut self,_:u128,_:&Stack,_:i32,_:&str,c:&mut bool) { self.calls+=1; *c=self.canceled; }
  fn native_on_entity_swing(&mut self,_:&Stack,_:Option<i32>,_:Hand,c:&mut bool) { self.calls+=1; *c=self.canceled; }
@@ -60,7 +60,7 @@ impl Game {
  assert!(!g.native_left_click_entity_event(1,"pig"));
  assert!(!g.native_entity_swing_event(Hand::Main));
  assert_eq!(CLONES.get(),0); assert_eq!(g.calls,0);
- g.stack.item="subscribed".into();
+ g.common.stack.item="subscribed".into();
  g.native_left_click_entity_event(1,"pig"); g.native_entity_swing_event(Hand::Main);
  assert_eq!(CLONES.get(),2); assert_eq!(g.calls,2);
 }
@@ -68,7 +68,7 @@ impl Game {
  let mut g=game("subscribed",true); g.attack_packet(); assert_eq!(g.packets,0);
  g.canceled=false; g.attack_packet(); assert_eq!(g.packets,1);
 }
-fn game(item:&str,canceled:bool)->Game { Game { hand:Hand::Main, offhand:None,player:None,stack:Stack{item:item.into()}, calls:0,packets:0,canceled } }
+fn game(item:&str,canceled:bool)->Game { Game { common: CommonGame { hand:Hand::Main, stack:Stack{item:item.into()} }, offhand:None, player:None, calls:0, packets:0, canceled } }
 '''.replace('METHODS', methods).replace('PACKET', packet)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)

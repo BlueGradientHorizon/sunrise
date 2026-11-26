@@ -204,7 +204,7 @@ def make_cases(build):
                            new=stack('minecraft:gold_ore')))
 
     path = build / 'cases.txt'
-    hopper = lab.ROOT / 'crates/sunrise-client/src/game/blocks/machines/furnace_hopper.tsv'
+    hopper = lab.ROOT / 'crates/sunrise-client/src/cut_layout/game/blocks/machines/furnace_hopper.tsv'
     path.write_text(f'#resources {resources}\n#hopper {hopper}\n' + ''.join(c + '\n' for c in cases))
     return path, len(cases)
 
@@ -218,7 +218,7 @@ if __name__ == '__main__':
         sources=[lab.ROOT / 'crates/sunrise-level/src/chunk/block_entity.rs',
                  lab.ROOT / 'crates/sunrise-level/src/providers.rs',
                  lab.ROOT / 'crates/sunrise-level/src/providers/evaluation.rs',
-                 lab.ROOT / 'crates/sunrise-client/src/game/blocks/machines/furnace_hopper.tsv',
+                 lab.ROOT / 'crates/sunrise-client/src/cut_layout/game/blocks/machines/furnace_hopper.tsv',
                  lab.ROOT / 'crates/sunrise-items/src/item_data/cooking_fuel.rs',
                  lab.ROOT / 'crates/sunrise-items/src/properties/resolvable.rs',
                  lab.ROOT / 'crates/sunrise-sim/src/furnace.rs',

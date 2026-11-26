@@ -34,7 +34,7 @@ ClientCommonPacketListenerImpl.handleCustomPayload	port	crates/sunrise-client/sr
 ClientCommonPacketListenerImpl.handleResourcePackPush	port	crates/sunrise-client-gameplay/src/game/world/server_packs.rs::Game::handle_pack_push
 ClientCommonPacketListenerImpl.handleResourcePackPop	port	crates/sunrise-client-gameplay/src/game/world/server_packs.rs::Game::handle_pack_pop
 ClientCommonPacketListenerImpl.handlePostEffects	inline	crates/sunrise-client-gameplay/src/game/network/remote/mod_client.rs::Game::apply_packet
-ClientCommonPacketListenerImpl.preparePackPrompt	port	crates/sunrise-client/src/game/world/server_packs.rs::PackPrompt::texts	builds the server prompt line from the header and the server's prompt
+ClientCommonPacketListenerImpl.preparePackPrompt	port	crates/sunrise-client-gameplay/src/game/world/server_packs.rs::PackPrompt::texts	builds the server prompt line from the header and the server's prompt
 ClientCommonPacketListenerImpl.handleStoreCookie	port	crates/sunrise-client/src/net.rs::receive_play	stores the cookie for a later transfer or cookie request
 ClientCommonPacketListenerImpl.handleCustomReportDetails	skip:debug		extra lines for crash reports only
 ClientCommonPacketListenerImpl.showDialog	port	crates/sunrise-client-gameplay/src/game/interface/dialogs.rs::Game::show_play_dialog	shows a direct or registry dialog

@@ -25,7 +25,8 @@ else:
 
 ROOT = Path(__file__).resolve().parents[2]
 # Every `.rs` file under these folders, checked one file at a time (no child modules followed).
-TREES = ("crates/sunrise-mod-api/src", "crates/sunrise-mod-vocab/src", "crates/sunrise-client/src/game")
+TREES = ("crates/sunrise-mod-api/src", "crates/sunrise-mod-vocab/src",
+         "crates/sunrise-client/src/game", "crates/sunrise-client/src/cut_layout")
 GAMEPLAY_OWNERS = ("sunrise-gameplay-common", "sunrise-gameplay", "sunrise-client-gameplay")
 # Files no `mod` line reaches.
 DISCOVERED = ("crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*.rs",
