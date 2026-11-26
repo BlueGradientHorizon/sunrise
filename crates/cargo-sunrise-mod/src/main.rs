@@ -95,10 +95,6 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let command = args.first().map(String::as_str);
-    // `hooks` reads the pinned SDK's catalog and stays offline.
-    if command.is_some_and(|c| help::is_everyday(c) && c != "hooks") {
-        self_update::notice();
-    }
     let result = match command {
         Some("new") => new(&args[1..], &sdk_fetch::fetch_pinned).and_then(|code| match code {
             Some(dir) => fetched(&dir),
@@ -116,7 +112,11 @@ fn main() -> ExitCode {
             }) => sdk_cmds::check_mod(entry, Path::new("."), uses, &with, release),
             Ok(Check::File(file)) => check(file),
             Ok(Check::Fit { package, builds }) => {
-                return sdk_cmds::check_fit(entry, package, &builds);
+                let code = sdk_cmds::check_fit(entry, package, &builds);
+                if code != ExitCode::SUCCESS {
+                    return code;
+                }
+                Ok(())
             }
             Err((code, error)) => {
                 eprintln!("error: {error}");
@@ -171,7 +171,13 @@ fn main() -> ExitCode {
         Some(other) => Err(help::unknown(other)),
     };
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => {
+            // `hooks` reads the pinned SDK's catalog and does not check for tool updates.
+            if command.is_some_and(|c| help::is_everyday(c) && c != "hooks") {
+                self_update::notice();
+            }
+            ExitCode::SUCCESS
+        }
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE
