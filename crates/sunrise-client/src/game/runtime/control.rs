@@ -853,27 +853,7 @@ impl Game<'_> {
                 if action != "up" {
                     if self.screenshot_shortcut(physical, repeat) {
                         if action == "tap" {
-                            self.press_modifier_key(physical, false);
-                            let tap_menu = self.context_menu_key_active();
-                            if !tap_menu
-                                || !self
-                                    .screen_state
-                                    .context_menu_input
-                                    .holds_other_source(Source::Agent, physical)
-                            {
-                                self.physical_keys.remove(&physical);
-                            }
-                            if tap_menu
-                                && (self.context_menu_open()
-                                    || self.context_menu_owns_key(Source::Agent, physical))
-                            {
-                                self.debug_key_release_cleanup(physical);
-                            } else {
-                                self.debug_key(
-                                    physical,
-                                    sunrise_client::debug_keys::KeyAction::Release,
-                                );
-                            }
+                            self.finish_control_tap_release(physical);
                         }
                         return ok();
                     }
@@ -896,27 +876,7 @@ impl Game<'_> {
                 if action == "up" || action == "tap" {
                     if action == "tap" {
                         self.settle_title_mode();
-                        self.press_modifier_key(physical, false);
-                        let tap_menu = self.context_menu_key_active();
-                        if !tap_menu
-                            || !self
-                                .screen_state
-                                .context_menu_input
-                                .holds_other_source(Source::Agent, physical)
-                        {
-                            self.physical_keys.remove(&physical);
-                        }
-                        if tap_menu
-                            && (self.context_menu_open()
-                                || self.context_menu_owns_key(Source::Agent, physical))
-                        {
-                            self.debug_key_release_cleanup(physical);
-                        } else {
-                            self.debug_key(
-                                physical,
-                                sunrise_client::debug_keys::KeyAction::Release,
-                            );
-                        }
+                        self.finish_control_tap_release(physical);
                     }
                     if !self.dispatch_screen_key(
                         event_loop,
@@ -1479,6 +1439,28 @@ impl Game<'_> {
             return Err("no world open; use: open WORLD [SEED] [creative]".into());
         }
         Ok(())
+    }
+
+    /// Release modifier, physical-key and debug-key state for the up half of a socket `key … tap`.
+    #[inline(always)]
+    fn finish_control_tap_release(&mut self, physical: KeyCode) {
+        self.press_modifier_key(physical, false);
+        let tap_menu = self.context_menu_key_active();
+        if !tap_menu
+            || !self
+                .screen_state
+                .context_menu_input
+                .holds_other_source(Source::Agent, physical)
+        {
+            self.physical_keys.remove(&physical);
+        }
+        if tap_menu
+            && (self.context_menu_open() || self.context_menu_owns_key(Source::Agent, physical))
+        {
+            self.debug_key_release_cleanup(physical);
+        } else {
+            self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
+        }
     }
 
     /// Release any untagged keyboard-standin holds on non-toggle keys bound to `physical`.

@@ -1655,18 +1655,19 @@ impl Game<'_> {
             Vec::new()
         };
         if !self.context_menu_pad_active() {
-            self.pad_menu_frame_plain(event_loop, now, seconds, focus_mode, &targets);
+            self.pad_menu_frame_as::<false>(event_loop, now, seconds, focus_mode, &targets);
         } else {
-            self.pad_menu_frame_with_context_menu(event_loop, now, seconds, focus_mode, &targets);
+            self.pad_menu_frame_as::<true>(event_loop, now, seconds, focus_mode, &targets);
         }
         // Vanilla's keyboard focus leaves the mouse pointer alone.
         self.pad_show_os_pointer(self.pad.menu.pos.is_none() || self.pad.menu.keyboard);
     }
 
-    /// Closed-menu controller poll: origin/main's direct path with zero context-menu ownership
-    /// probes, rechecking only after callbacks that can open a context menu.
+    /// Controller menu poll body specialized on whether a context menu or menu-owned pad input is
+    /// active (`MENU == false` compiles without any context-menu probes, rechecking only after
+    /// callbacks that can open a menu).
     #[inline(always)]
-    fn pad_menu_frame_plain(
+    fn pad_menu_frame_as<const MENU: bool>(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         now: Instant,
@@ -1674,140 +1675,15 @@ impl Game<'_> {
         focus_mode: bool,
         targets: &[Target],
     ) {
-        let focusing = focus_mode && !targets.is_empty();
-        let resizing = self.pad_follow_resize(event_loop);
-        let restarting = self.pad_prompt_frame(targets);
-        if focusing && !resizing && !restarting && !self.key_focus_restart(event_loop, targets) {
-            self.pad_follow_focus(event_loop, targets);
-        }
-        let (move_deadzone, look_deadzone) = (
-            self.settings.controller.move_deadzone,
-            self.settings.controller.look_deadzone,
-        );
-        let state = self.pad.state;
-        if focusing || self.pad.menu.osk.is_some() {
-            // The stick steps like the D-pad.
-            let dir = gamepad::stick_direction_held(
-                gamepad::radial(state.left, move_deadzone),
-                STICK_STEP,
-                self.pad.menu.stick,
-            );
-            if dir != self.pad.menu.stick {
-                if let Some((b, ..)) = self.pad.menu.repeat
-                    && Some(b) == self.pad.menu.stick
-                {
-                    self.pad.menu.repeat = None;
-                }
-                self.pad.menu.stick = dir;
-                if let Some(button) = dir {
-                    if self.pad.menu.pos.is_none() && self.pad.menu.osk.is_none() {
-                        self.pad_take_pointer(event_loop);
-                    } else {
-                        self.pad.menu.repeats = 0;
-                        self.pad_step(event_loop, button);
-                        if self.screen_state.context_menu.is_some() {
-                            return;
-                        }
-                    }
-                    self.pad.menu.repeat = Some((button, now, false));
-                }
+        let context_menu = if MENU {
+            let open = self.context_menu_open();
+            if !open {
+                self.clear_context_menu_pad_state();
             }
+            open
         } else {
-            self.pad.menu.stick = None;
-            let tuning = &snap::TUNING;
-            let mut speed = seconds * self.settings.controller.pointer_speed;
-            if tuning.over_target_speed != 1.0 && self.pad_over_target() {
-                speed *= tuning.over_target_speed;
-            }
-            let (dx, dy) = gamepad::cursor_delta(state.left, move_deadzone, speed);
-            if dx != 0.0 || dy != 0.0 {
-                self.pad.menu.glide = None;
-                self.pad_take_pointer(event_loop);
-                let at = self.cursor;
-                self.pad.menu.gesture.get_or_insert(at);
-                self.pad_pointer_to(event_loop, (at.0 + dx, at.1 + dy));
-                self.pad.menu.moving = true;
-            } else if self.pad.menu.moving {
-                // Let go: the snapping engine picks where it settles.
-                self.pad.menu.moving = false;
-                let start = self.pad.menu.gesture.take().unwrap_or(self.cursor);
-                let centres: Vec<(f32, f32)> =
-                    self.pad_targets().iter().map(Target::center).collect();
-                if let Some(i) = snap::settle(start, self.cursor, &centres, tuning) {
-                    self.pad_glide_to(centres[i]);
-                }
-            } else if let Some((from, to, since)) = self.pad.menu.glide {
-                let elapsed = now.duration_since(since).as_secs_f32();
-                self.pad_pointer_to(event_loop, snap::glide(from, to, elapsed, tuning));
-                if elapsed >= tuning.glide_seconds {
-                    self.pad.menu.glide = None;
-                }
-            }
-            if !resizing {
-                self.pad_follow_targets();
-            }
-        }
-        // Nothing scrolls under the on-screen keyboard; its right stick picks a
-        // suggestion only for the native chat editor.
-        let suggests = self.pad.menu.osk.is_some() && self.pad_chat_owns_keyboard();
-        let scroll = if let Some(keyboard) = self.pad.menu.osk.as_mut() {
-            if let Some(out) = keyboard.stick(state.right[1], suggests) {
-                self.pad_osk_output(out);
-                if self.screen_state.context_menu.is_some() {
-                    return;
-                }
-            }
-            [0.0, 0.0]
-        } else {
-            gamepad::radial(state.right, look_deadzone)
+            false
         };
-        let wheel = &mut self.pad.menu.wheel;
-        wheel[0] += scroll[0] * self.settings.controller.scroll_speed * seconds;
-        wheel[1] += scroll[1] * self.settings.controller.scroll_speed * seconds;
-        if scroll == [0.0, 0.0] {
-            *wheel = [0.0, 0.0];
-        }
-        let lines = [wheel[0].trunc(), wheel[1].trunc()];
-        if lines != [0.0, 0.0] {
-            wheel[0] -= lines[0];
-            wheel[1] -= lines[1];
-            // Stick right scrolls right: the wheel's x runs the other way.
-            self.pad_stick_wheel(event_loop, focus_mode, targets, [-lines[0], lines[1]]);
-            if self.screen_state.context_menu.is_some() {
-                return;
-            }
-        }
-        if let Some((button, since, repeating)) = self.pad.menu.repeat {
-            let wait = if repeating {
-                self.settings.controller.repeat_interval
-            } else {
-                self.settings.controller.repeat_delay
-            };
-            if now.duration_since(since).as_secs_f32() >= wait {
-                self.pad.menu.repeat = Some((button, now, true));
-                self.pad.menu.repeats = self.pad.menu.repeats.saturating_add(1);
-                self.pad_step(event_loop, button);
-                if self.screen_state.context_menu.is_some() {
-                    return;
-                }
-            }
-        }
-        self.pad_auto_keyboard();
-    }
-
-    #[inline(always)]
-    fn pad_menu_frame_with_context_menu(
-        &mut self,
-        event_loop: &dyn EventLoopCtl,
-        now: Instant,
-        seconds: f32,
-        focus_mode: bool,
-        targets: &[Target],
-    ) {
-        let context_menu = self.context_menu_open();
-        if !context_menu {
-            self.clear_context_menu_pad_state();
-        }
         let focusing = focus_mode && !targets.is_empty();
         let resizing = self.pad_follow_resize(event_loop);
         let restarting = self.pad_prompt_frame(targets);
@@ -1825,7 +1701,7 @@ impl Game<'_> {
         );
         let state = self.pad.state;
         let stick_suppressed =
-            !context_menu && self.screen_state.context_menu_input.stick_owned() && {
+            MENU && !context_menu && self.screen_state.context_menu_input.stick_owned() && {
                 let left_radial = gamepad::radial(state.left, move_deadzone);
                 if left_radial == [0.0, 0.0] {
                     self.screen_state.context_menu_input.release_stick();
@@ -1851,7 +1727,7 @@ impl Game<'_> {
                     && Some(b) == self.pad.menu.stick
                 {
                     self.pad.menu.repeat = None;
-                    if context_menu {
+                    if MENU && context_menu {
                         self.screen_state.context_menu_input.take_pad_repeat_owned();
                     }
                 }
@@ -1862,13 +1738,16 @@ impl Game<'_> {
                     } else {
                         self.pad.menu.repeats = 0;
                         self.pad_step(event_loop, button);
+                        if !MENU && self.screen_state.context_menu.is_some() {
+                            return;
+                        }
                     }
-                    if context_menu {
+                    if MENU && context_menu {
                         self.screen_state.context_menu_input.own_pad_repeat();
                         self.screen_state.context_menu_input.own_stick();
                     }
                     self.pad.menu.repeat = Some((button, now, false));
-                } else if context_menu {
+                } else if MENU && context_menu {
                     self.screen_state.context_menu_input.release_stick();
                 }
             }
@@ -1910,7 +1789,7 @@ impl Game<'_> {
         // Nothing scrolls under the on-screen keyboard; its right stick picks a
         // suggestion only for the native chat editor. An open context menu takes
         // the right stick ahead of an already-open on-screen keyboard.
-        let scroll = if context_menu {
+        let scroll = if MENU && context_menu {
             let right = gamepad::radial(state.right, look_deadzone);
             if right != [0.0, 0.0] || (self.pad.menu.osk.is_some() && state.right[1].abs() >= 0.3) {
                 self.screen_state.context_menu_input.own_right_stick();
@@ -1923,7 +1802,7 @@ impl Game<'_> {
                 self.screen_state.context_menu_input.release_right_stick();
             }
             right
-        } else if self.screen_state.context_menu_input.right_stick_owned() {
+        } else if MENU && self.screen_state.context_menu_input.right_stick_owned() {
             if gamepad::radial(state.right, look_deadzone) == [0.0, 0.0]
                 && state.right[1].abs() < 0.3
             {
@@ -1935,6 +1814,9 @@ impl Game<'_> {
             if let Some(keyboard) = self.pad.menu.osk.as_mut() {
                 if let Some(out) = keyboard.stick(state.right[1], suggests) {
                     self.pad_osk_output(out);
+                    if !MENU && self.screen_state.context_menu.is_some() {
+                        return;
+                    }
                 }
                 [0.0, 0.0]
             } else {
@@ -1951,15 +1833,19 @@ impl Game<'_> {
         if lines != [0.0, 0.0] {
             wheel[0] -= lines[0];
             wheel[1] -= lines[1];
-            if context_menu {
+            if MENU && context_menu {
                 self.context_menu_wheel(lines[1]);
             } else {
                 // Stick right scrolls right: the wheel's x runs the other way.
                 self.pad_stick_wheel(event_loop, focus_mode, targets, [-lines[0], lines[1]]);
+                if !MENU && self.screen_state.context_menu.is_some() {
+                    return;
+                }
             }
         }
         if let Some((button, since, repeating)) = self.pad.menu.repeat {
-            if !context_menu
+            if MENU
+                && !context_menu
                 && (self.screen_state.context_menu_input.owns_pad(button)
                     || self.screen_state.context_menu_input.stick_owned())
             {
@@ -1974,6 +1860,9 @@ impl Game<'_> {
                     self.pad.menu.repeat = Some((button, now, true));
                     self.pad.menu.repeats = self.pad.menu.repeats.saturating_add(1);
                     self.pad_step(event_loop, button);
+                    if !MENU && self.screen_state.context_menu.is_some() {
+                        return;
+                    }
                 }
             }
         }
