@@ -238,6 +238,20 @@ impl Game<'_> {
                 .is_some_and(|h| with_entity!(self, h, e => e.on_ground())),
         )
     }
+    /// `Entity.horizontalCollision` of a general row's last move.
+    pub(super) fn entity_horizontal_collision(&self, entity: EntityRef) -> Option<bool> {
+        let Target::General(id) = self.native_entity_target(entity)? else {
+            return None;
+        };
+        Some(self.resident_entities.general.row(id)?.horizontal_collision)
+    }
+    /// `Entity.verticalCollision` of a general row's last move.
+    pub(super) fn entity_vertical_collision(&self, entity: EntityRef) -> Option<bool> {
+        let Target::General(id) = self.native_entity_target(entity)? else {
+            return None;
+        };
+        Some(self.resident_entities.general.row(id)?.vertical_collision)
+    }
     /// `Entity.setOnGround` on its live server body, with no movement or fall processing.
     pub(super) fn entity_set_on_ground(
         &mut self,
@@ -255,6 +269,17 @@ impl Game<'_> {
                 self.set_server_player_ground(target, entity.id(), on_ground)
             }
             Target::Hook(id) => self.set_fishing_hook_ground(id, on_ground),
+            // A general row keeps the flag itself, with no support block to refresh.
+            Target::General(id) => {
+                Ok(self
+                    .resident_entities
+                    .general
+                    .row_mut(id)
+                    .is_some_and(|row| {
+                        row.on_ground = on_ground;
+                        true
+                    }))
+            }
             _ => {
                 let Some(handle) = self.native_walk_entity(entity.id()) else {
                     return Ok(false);

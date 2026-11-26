@@ -678,6 +678,7 @@ impl Game<'_> {
                 let fall = self.vehicle_fall_reset(boat.fall_distance, body.position, moved);
                 self.boats.update(i, |boat| boat.fall_distance = fall);
             }
+            self.reset_general_fall(target, body.position, moved);
             self.apply_push(&mut gate, target, moved);
         }
         let Some(target) = self.resolve_push_target(selected) else {
@@ -1452,6 +1453,7 @@ impl Game<'_> {
             let moved = resolved.length_squared() > 1.0e-7
                 || limited.length_squared() - resolved.length_squared() < 1.0e-7;
             if moved {
+                self.reset_general_fall(target, from, resolved);
                 self.apply_push(&mut gate, target, resolved);
             }
             let after = if moved {
@@ -1570,6 +1572,9 @@ impl Game<'_> {
             }
             return self.resolve_push_target(selected);
         }
+        if let EntityHandle::General(i) = handle {
+            return self.finish_general_move(selected, target, i, (wanted, moved));
+        }
         // Stands retain support, but do not use nonliving restitution.
         if matches!(handle, EntityHandle::ArmorStand(_)) {
             return Some(target);
@@ -1648,7 +1653,7 @@ impl Game<'_> {
             EntityHandle::Trident(_) => "minecraft:trident",
             EntityHandle::ArmorStand(_) => super::armor_stands::TYPE_ID,
             EntityHandle::Mob(_) | EntityHandle::General(_) => {
-                return Some(MoveWho::Entity(handle));
+                unreachable!("a mob or a general row finished its move above")
             }
         };
         let response = with_entity!(self, handle, entity => {
@@ -1661,6 +1666,93 @@ impl Game<'_> {
             return None;
         };
         with_entity_mut!(self, handle, entity => *entity.velocity_mut() = velocity);
+        Some(MoveWho::Entity(handle))
+    }
+
+    /// `Entity.move`'s fall-reset ray for a general row about to be placed by `moved` from `from`:
+    /// a move of a block or more through powder snow, a water cauldron or water forgets the fall
+    /// (`ClipContext.Block.FALLDAMAGE_RESETTING`, `ClipContext.Fluid.WATER`), as items and mobs do.
+    /// It runs before the placement and the fall check, which then add to what is left.
+    fn reset_general_fall(&mut self, target: MoveWho, from: Vec3, moved: Vec3) {
+        let MoveWho::Entity(EntityHandle::General(i)) = target else {
+            return;
+        };
+        let row = &self.resident_entities.general.rows[i];
+        if row.no_physics || row.fall_distance == 0.0 || moved.length_squared() < 1.0 {
+            return;
+        }
+        let reset = &self.res.motion().fall_reset;
+        let hit = sunrise_client::entities::fall_reset_hit(
+            &self.world,
+            &self.res.motion().fluids,
+            |p| reset.contains(&*self.res.facts().get(self.world.block(p.x, p.y, p.z)).name),
+            from,
+            moved,
+        );
+        if hit {
+            self.resident_entities.general.rows[i].fall_distance = 0.0;
+        }
+    }
+
+    /// The rest of `Entity.move` for a general row after `GeneralRow::finish_move` (the flags and
+    /// the fall check), as every non-living body ends it (items and TNT restitute on either
+    /// side, so a general row does too): `restituteMovementAfterCollisions` (a blocked axis loses
+    /// its velocity, and a block with a bounce, such as slime or a bed, gives `Block.getBounceRestitution() * 0.8F` back with
+    /// `Block.bounceOn` and `GameEvent.BOUNCE`), then `getBlockSpeedFactor` on the horizontal
+    /// velocity (soul sand, honey). A `noPhysics` row's move ended at its `setPos`.
+    fn finish_general_move(
+        &mut self,
+        selected: PushTarget,
+        target: MoveWho,
+        i: usize,
+        (wanted, moved): (Vec3, Vec3),
+    ) -> Option<MoveWho> {
+        let row = &self.resident_entities.general.rows[i];
+        if row.no_physics {
+            return Some(target);
+        }
+        let (id, feet, velocity, fall) = (row.id, row.position, row.velocity, row.fall_distance);
+        let gravity = row.get_gravity();
+        let ground = sunrise_world::ground_support::GroundState::from_ground_flag(row.on_ground);
+        let kind = super::general::general_type_catalog().key(row.type_slot);
+        let differs = sunrise_world::entity_move::different;
+        let collided =
+            wanted.y != moved.y || differs(wanted.x, moved.x) || differs(wanted.z, moved.z);
+        let velocity = if collided {
+            let response = {
+                let side = game_side!(self);
+                let motion = self.body_motion(&side);
+                let effect = motion.legacy_contact(feet, &ground);
+                motion.restitute(
+                    (id, kind),
+                    sunrise_client::motion::BodyMove {
+                        wanted,
+                        moved,
+                        effect,
+                    },
+                    gravity,
+                    0.98_f32,
+                    velocity,
+                    fall,
+                )
+            };
+            self.finish_body_restitution((id, kind), feet, response)
+        } else {
+            velocity
+        };
+        let MoveWho::Entity(handle) = self.resolve_push_target(selected)? else {
+            return None;
+        };
+        let EntityHandle::General(i) = handle else {
+            return None;
+        };
+        let mut velocity = velocity;
+        {
+            let side = game_side!(self);
+            self.body_motion(&side)
+                .apply_block_speed(feet, &mut velocity);
+        }
+        self.resident_entities.general.rows[i].velocity = velocity;
         Some(MoveWho::Entity(handle))
     }
 
@@ -1684,6 +1776,12 @@ impl Game<'_> {
         if let EntityHandle::Mob(i) = handle {
             self.mobs[i].ground.horizontal_collision =
                 different(wanted.x, moved.x) || different(wanted.z, moved.z);
+            return;
+        }
+        // A general row's `Entity.move` end, for every cause: the flags, the fall check and
+        // the blocked axes; a `noPhysics` row never gets here.
+        if let EntityHandle::General(i) = handle {
+            self.resident_entities.general.rows[i].finish_move(wanted, moved);
             return;
         }
         let authoritative = match handle {
