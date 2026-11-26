@@ -36,6 +36,33 @@ impl Game<'_> {
         self.remote_menu_ops(&ops)
     }
 
+    /// `MenuRef::destroy_carried`: the creative screen's destroy slot
+    /// (`ItemPickerMenu.setCarried(EMPTY)`), which clears the client's own cursor and sends
+    /// nothing. Every refusal comes before the empty-cursor answer.
+    pub(super) fn menu_destroy_carried(
+        &mut self,
+        menu: MenuRef,
+    ) -> Result<bool, mod_api::CarriedDestroyError> {
+        use mod_api::CarriedDestroyError;
+        if self.is_logical_server()
+            || self.player.is_none()
+            || self.res.rest.get().is_none()
+            || !self.remote.as_ref().is_some_and(|r| r.logged_in)
+        {
+            return Err(CarriedDestroyError::Unavailable);
+        }
+        if self.native_client_menu_name(menu).is_none() {
+            return Err(CarriedDestroyError::Stale);
+        }
+        if !self.creative {
+            return Err(CarriedDestroyError::NotCreative);
+        }
+        if self.screen != super::Screen::Creative {
+            return Err(CarriedDestroyError::ServerOwnedMenu);
+        }
+        Ok(self.carried.take().is_some())
+    }
+
     /// Close the local player's open container screen as Escape does
     /// (`AbstractContainerScreen.onClose`, `LocalPlayer.closeContainer`): the
     /// server is told (`ContainerClose`) and the screen goes. Refuses stale
