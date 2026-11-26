@@ -507,37 +507,30 @@ fn is_supported_vertex_glsl_type(ty: &str) -> bool {
     )
 }
 
-/// Extract declared vertex `in` attributes `(name, glsl_type)` from vertex GLSL for standalone
-/// tooling (`cargo sunrise-mod check`) that validates `.vsh` files without running the mod's Rust
-/// registration code. The declarations are the ones the translator reads
-/// ([`sunrise_glsl::stage_inputs`]) in the text with its comments removed; its `#include`s are
-/// not followed, so an included file's inputs are not listed. Refuses an unsupported type, a name
-/// declared twice and more than 16 inputs.
-pub fn extract_vertex_inputs(vertex: &str) -> Result<Vec<(String, String)>, String> {
-    let paste_nothing = |_: &str| Ok(Some(String::new()));
-    let includes = Includes {
-        read: &paste_nothing,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
-    let expanded = sunrise_glsl::expand_includes(vertex, "", "", &includes, None)
-        .map_err(|e| e.to_string())?;
-    let decls = sunrise_glsl::stage_inputs(expanded.text());
+/// The vertex inputs `(name, glsl_type)` a vertex stage declares, from its expanded text
+/// ([`sunrise_glsl::stage_inputs`]: includes inlined, comments gone). Refuses an unsupported
+/// type, a name declared twice and more than 16 inputs, locating the refusal in `vertex_file`.
+fn declared_vertex_inputs(
+    vertex_file: &str,
+    vertex_expanded: &str,
+) -> Result<Vec<(String, String)>, Problem> {
+    let decls = sunrise_glsl::stage_inputs(vertex_expanded);
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(decls.len());
     for (name, ty) in decls {
+        let offset = name.as_ptr() as usize - vertex_expanded.as_ptr() as usize;
+        let refuse = |message: String| located(vertex_file, vertex_expanded, Some(offset), message);
         if !is_supported_vertex_glsl_type(ty) {
-            return Err(format!(
+            return Err(refuse(format!(
                 "unsupported vertex input type `{ty}` for `{name}`: expected float/vecN/int/ivecN/uint/uvecN"
-            ));
+            )));
         }
         if !seen.insert(name) {
-            return Err(format!("duplicate vertex input `{name}`"));
+            return Err(refuse(format!("duplicate vertex input `{name}`")));
         }
         out.push((name.to_owned(), ty.to_owned()));
         if out.len() > 16 {
-            return Err("vertex shader declares more than 16 vertex inputs".to_owned());
+            return Err(refuse("vertex shader declares more than 16 vertex inputs".to_owned()));
         }
     }
     Ok(out)
@@ -621,6 +614,10 @@ pub struct ProgramBindings {
     pub textured: bool,
     /// The mod's own bindings ([`extract_mod_bindings`]).
     pub bindings: Vec<(String, ModBindingKind)>,
+    /// The vertex stage's `in`s `(name, glsl_type)` in declaration order, the ones an included
+    /// file declares too, checked as the translator checks them: a supported type, each name
+    /// once, at most 16.
+    pub vertex_inputs: Vec<(String, String)>,
     /// What its `layout(push_constant)` block asks for, `0` without one.
     pub push_constant_size: u32,
 }
@@ -629,7 +626,8 @@ pub struct ProgramBindings {
 /// under `defines` and comments removed. A uniform block, sampler or buffer an included file
 /// declares is the program's too (#5905), and one named only in a comment is not, nor does a
 /// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
-/// refuses the program, as [`translate`] does, with the include's error.
+/// refuses the program, as [`translate`] does, with the include's error, and so does a vertex
+/// input of an unsupported type, a duplicate one or a 17th, in the vertex file.
 /// [`SPRITE_INCLUDE`] is always pasted: including it is itself asking for the sprite texture.
 pub fn extract_program_bindings(
     sources: &ProgramSources<'_>,
@@ -658,6 +656,7 @@ pub fn extract_program_bindings(
     Ok(ProgramBindings {
         textured,
         bindings,
+        vertex_inputs: declared_vertex_inputs(sources.vertex_file, &vertex)?,
         push_constant_size,
     })
 }
@@ -1830,6 +1829,34 @@ void main() {{
             vec![("Real".to_owned(), ModBindingKind::CombinedImageSampler)]
         );
         assert_eq!(push_constant_size, 0);
+    }
+
+    /// A vertex stage's `in`s are read from the text the translator reads, so those an included
+    /// file declares are the program's too, and a refused one is located in the vertex file.
+    #[test]
+    fn vertex_inputs_come_from_the_expanded_vertex_stage() {
+        let vsh = "#version 330\n#include <example:attributes.glsl>\nin vec2 UV0;\n\
+            void main() { gl_Position = vec4(Position, 1.0); }\n";
+        let fsh = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => Ok(Some(
+                "in vec3 Position;\nlayout(location = 3) in uvec4 Packed;\n".to_owned(),
+            )),
+            other => stub_include(other),
+        };
+        let program = extract_program_bindings(&sources(vsh, fsh), &[], &include).unwrap();
+        let expected = [("Position", "vec3"), ("Packed", "uvec4"), ("UV0", "vec2")]
+            .map(|(name, ty)| (name.to_owned(), ty.to_owned()));
+        assert_eq!(program.vertex_inputs, expected);
+
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => Ok(Some("in mat4 Matrix;\n".to_owned())),
+            other => stub_include(other),
+        };
+        let refused = extract_program_bindings(&sources(vsh, fsh), &[], &include)
+            .expect_err("an unsupported vertex input type is refused");
+        assert_eq!(refused.file, "assets/example/shaders/core/glow.vsh");
+        assert!(refused.message.contains("`mat4` for `Matrix`"), "{refused:?}");
     }
 
     /// A program whose include cannot be expanded is refused with the include's error, not read
