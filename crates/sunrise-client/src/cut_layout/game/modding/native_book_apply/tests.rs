@@ -1,5 +1,7 @@
 use sunrise_sim::menu::place::PostPlace;
 use sunrise_sim::menu::place::custom_plan::MenuPlacement;
+#[cfg(test)]
+use sunrise_sim::recipe_book::placement_sync as sync;
 use super::*;
 use sunrise_gameplay::game::server_side::native_book_backings::Backings;
 use sunrise_gameplay::game::server_side::native_book_grid::Session;
@@ -96,7 +98,7 @@ fn open_mod_menu(
             source: 0,
         },
     };
-    let mut server = super::super::native_book_placement::Server::new(1);
+    let mut server = sunrise_gameplay_common::game::native_book_placement::Server::new(1);
     server.peer.hello(1, sync::schema()).unwrap();
     server.peer.publish(catalog).unwrap();
     game.native_net.placement.servers.insert(12, server);

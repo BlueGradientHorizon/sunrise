@@ -3,7 +3,7 @@ use sunrise_core::geometry::Vec3;
 use {crate::game::server_side::commands::*};
 use sunrise_gameplay_common::game::BlockEntity;
 use sunrise_gameplay_common::game::commands_common::Target;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use sunrise_core::nbt::parse_snbt;
 
 #[test]

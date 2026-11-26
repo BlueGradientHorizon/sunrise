@@ -10,6 +10,8 @@ use super::super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

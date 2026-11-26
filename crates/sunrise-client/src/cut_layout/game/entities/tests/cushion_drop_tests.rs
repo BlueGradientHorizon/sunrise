@@ -43,7 +43,7 @@ fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -96,11 +96,11 @@ fn named_stack() -> ItemStack {
 }
 
 fn capture() {
-    super::super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 fn events() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    super::super::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap())
+    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap())
 }
 
 /// `CushionItem.useOn` builds the entity with `EntityType.createDefaultStackConfig`,

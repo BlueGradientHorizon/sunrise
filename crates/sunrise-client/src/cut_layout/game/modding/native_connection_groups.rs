@@ -14,7 +14,7 @@ mod tests {
     use sunrise_level::chunk::{Chunk, MIN_Y};
     use sunrise_protocol::{
         connection::Pipe,
-        connection_groups::{Cell, Entry, Section},
+        connection_groups::{self, Cell, Entry, Section},
         packets::{
             custom_payload::CustomPayload,
             play::{self, Clientbound as C},
@@ -1230,7 +1230,7 @@ mod tests {
             deliver_group_bundle(
                 game,
                 vec![
-                    crate::game::viewed_worlds::tests::layered(cx, 0, 9),
+                    crate::game::client_side::viewed_worlds::tests::layered(cx, 0, 9),
                     group_packet([(cx << 4) + local_x, 79, 2], Some(7)),
                 ],
             );

@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_world::carrier::codec;
 #[cfg(test)]
 pub(crate) mod tests {
 

@@ -258,7 +258,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
     fn a_panicking_listener_still_ends_the_lend() {
         let installed = || vec![mod_api::ModEntry::new("kept-goal", Box::new(KeptGoalMod))];
         mod_platform::testing::with_mods(installed().into(), || {
-            super::super::api_values::install_parts(&installed()).unwrap();
+            crate::game::api_values::install_parts(&installed()).unwrap();
             with_game(|game| {
                 let kind = game
                     .res
@@ -298,7 +298,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
                 );
                 assert!(!back.contains(&"ModGoal"), "no copied mod goal: {back:?}");
             });
-            super::super::api_values::install_parts(&[]).unwrap();
+            crate::game::api_values::install_parts(&[]).unwrap();
         });
     }
 }

@@ -62,7 +62,7 @@ mod landing_crossing_tests {
                     let mut multiplier = 1.0;
                     let mut writes = original.clone();
                     let mut level = sunrise_sim::health::TestLevel::new(0);
-                    HitLevel(level.level()).native_fall_on(super::super::fire::FallOnCall {
+                    HitLevel(level.level()).native_fall_on(sunrise_gameplay_common::game::native_hooks::fire::FallOnCall {
                         dimension: "minecraft:overworld",
                         entity: 1,
                         kind: "minecraft:player",

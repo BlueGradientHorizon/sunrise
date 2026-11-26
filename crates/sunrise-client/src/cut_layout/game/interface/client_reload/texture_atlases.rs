@@ -6,11 +6,11 @@ use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::te
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::tests::maps;
+use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::maps;
 
-use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::tests::player;
+use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::player;
 
-use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::tests::presets;
+use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::presets;
 
 use super::*;
 
@@ -26,7 +26,7 @@ use super::*;
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 game.texture_atlases_stitched();
                 let player = player(&maps());
                 assert_eq!(
@@ -46,7 +46,7 @@ use super::*;
                         Some([8, 8])
                     );
                 }
-                game.spawn_pack_reload(crate::game::packs::ReloadKind::Selection)
+                game.spawn_pack_reload(sunrise_client_gameplay::game::client_side::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
                 while game.side.pack_reload.0.is_some() {

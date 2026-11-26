@@ -169,7 +169,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
             Some(true)
         );
         let stone = game.block_state_default(stone_key).unwrap();
-        assert!(api_values::block_state::block_listens(
+        assert!(sunrise_gameplay_common::game::api_values::block_state::block_listens(
             mod_api::HookId::AnalogOutput,
             stone
         ));

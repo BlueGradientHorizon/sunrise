@@ -75,7 +75,7 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
             let chest = game.world.block_entities.remove(&POS).unwrap();
             snapshot = Some((chunk, chest));
         });
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             use mod_api::LevelHost;
             let (chunk, chest) = snapshot.take().unwrap();
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -289,7 +289,7 @@ fn hopper_pull_unpacks_source_once() {
         assert_eq!(count(g, (8, 63, 8), "minecraft:diamond"), 1);
         g.side.hoppers.insert(
             (8, 63, 8),
-            crate::game::machines::HopperState::with_cooldown(0),
+            sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
         g.hopper_try_move_items((8, 63, 8));
         assert_eq!(
@@ -310,7 +310,7 @@ fn hopper_push_unpacks_destination_once() {
         assert!(g.run_command("item replace block 7 64 8 container.0 with minecraft:cobblestone"));
         g.side.hoppers.insert(
             (7, 64, 8),
-            crate::game::machines::HopperState::with_cooldown(0),
+            sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
         g.hopper_try_move_items((7, 64, 8));
         assert_eq!(count(g, POS, "minecraft:diamond"), 1);
@@ -363,7 +363,7 @@ fn explosion_unpacks_before_contents_drop() {
             g.server_explode(
                 [8.5, 64.5, 8.5],
                 4.0,
-                crate::game::explosion::BlockInteraction::Destroy,
+                sunrise_gameplay::game::server_side::explosion::BlockInteraction::Destroy,
                 false,
             )
             .unwrap()
@@ -607,7 +607,7 @@ fn double_chest_hopper_pull_reads_only_needed_half() {
         assert_eq!(count(g, (8, 63, 8), "minecraft:emerald"), 1);
         g.side.hoppers.insert(
             (8, 63, 8),
-            crate::game::machines::HopperState::with_cooldown(0),
+            sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
         g.hopper_try_move_items((8, 63, 8));
         pending(g, POS);
@@ -615,7 +615,7 @@ fn double_chest_hopper_pull_reads_only_needed_half() {
         for _ in 0..2 {
             g.side.hoppers.insert(
                 (8, 63, 8),
-                crate::game::machines::HopperState::with_cooldown(0),
+                sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
             );
             g.hopper_try_move_items((8, 63, 8));
         }
@@ -637,7 +637,7 @@ fn double_chest_hopper_push_keeps_other_half_pending() {
         assert!(g.run_command("item replace block 7 64 8 container.0 with minecraft:cobblestone"));
         g.side.hoppers.insert(
             (7, 64, 8),
-            crate::game::machines::HopperState::with_cooldown(0),
+            sunrise_gameplay_common::hoppers::HopperState::with_cooldown(0),
         );
         g.hopper_try_move_items((7, 64, 8));
         pending(g, POS);
@@ -732,7 +732,7 @@ fn structure_capture_disk_round_trip_keeps_pending_loot() {
         assert!(g.place_template_entry(
             &entry,
             BlockPos::new(20, 64, 8),
-            crate::game::structure_blocks::load_settings(
+            sunrise_gameplay_common::structure_blocks::load_settings(
                 sunrise_world::worldgen::structure::Mirror::None,
                 sunrise_world::worldgen::structure::Rotation::None,
                 1.0,

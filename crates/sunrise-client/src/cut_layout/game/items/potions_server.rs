@@ -2,6 +2,7 @@
 
 #![cfg(test)]
 use sunrise_core::geometry::Aabb;
+use sunrise_level::brewing;
 use sunrise_core::geometry::Direction;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
@@ -141,7 +142,7 @@ pub(crate) mod tests {
                 }
             },
             ids: |game| game.breath_clouds.iter().map(|c| c.id).collect(),
-            target: super::super::commands::Target::Cloud,
+            target: sunrise_gameplay_common::game::commands_common::Target::Cloud,
             unloads_with_chunk: true,
             remote: None,
         }
@@ -183,7 +184,7 @@ pub(crate) mod tests {
                 vec!["minecraft:entity_effect".into()],
                 None,
             );
-            game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
+            game.side.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
             let (tag, _) = sunrise_core::nbt::parse_snbt(
                 r#"{Pos:[0d,80d,0d],Duration:200,WaitTime:0,Radius:3f,custom_particle:{type:"test:measured",measure:257,ignored:42}}"#,
             ).unwrap();

@@ -1162,7 +1162,7 @@ fn resolved_ui_resources_do_not_restore_a_filtered_panorama_face() {
         }
     }
     assert!(base.contains("assets/minecraft/textures/gui/title/background/panorama_1.png"));
-    let gui = crate::game::UiResources::load(&ResourceSource::indexed(files), &scratch.0).unwrap();
+    let gui = sunrise_client_gameplay::game::UiResources::load(&ResourceSource::indexed(files), &scratch.0).unwrap();
     assert_eq!(
         gui.panorama.texels().unwrap(),
         [96, 110, 111, 255].repeat(6)

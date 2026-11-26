@@ -387,7 +387,7 @@ use super::*;
                         .is_some_and(|seen| Arc::ptr_eq(&seen, &sync)),
                     "the cache must still hold the server's snapshot during shutdown"
                 );
-                assert!(super::super::lan::sync::cached_reload_sync().is_none());
+                assert!(sunrise_gameplay::game::server_side::lan::sync::cached_reload_sync().is_none());
             }
         });
     }
@@ -395,7 +395,7 @@ use super::*;
     #[ignore = "daily"]
     fn client_session_identifies_only_its_own_integrated_server() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            let _pipe = super::super::native_client_session::tests::logged_client(game);
+            let _pipe = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
             let (tasks, _waiting_server) = channel();
             game.side.integrated = Some(Integrated {
                 emergency_save: None,

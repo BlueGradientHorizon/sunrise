@@ -212,7 +212,7 @@ use sunrise_core::geometry::Vec3;
                     stack.damage = stack.damage.saturating_add(loss).min(max);
                     if stack.damage >= max {
                         game.armor[index] = None;
-                        game.player_equipment_broke(super::super::armor_slot(index), &stack);
+                        game.player_equipment_broke(sunrise_gameplay_common::game::armor_slot(index), &stack);
                         broken.push(index);
                     } else {
                         game.armor[index] = Some(stack);
@@ -432,7 +432,7 @@ use sunrise_core::geometry::Vec3;
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // The eight dragon parts must not overlap the player at ID 20.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -704,7 +704,7 @@ use sunrise_core::geometry::Vec3;
             game.mobs[0].ai.last_hurt_by = Some(Who::Player);
             game.side
                 .last_hurt_by_player
-                .insert(12, super::super::combat_common::PlayerCredit(123));
+                .insert(12, sunrise_gameplay_common::game::combat_common::PlayerCredit(123));
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(20));
             // The same record inside a guest's turn: the host's displaced
             // body is out of reach, so the attacker reads None.
@@ -1143,7 +1143,7 @@ use sunrise_core::geometry::Vec3;
                 Some(ItemStack::new("minecraft:air", 1))
             ));
             expect_slot(game, horse, EquipmentSlot::Body, None);
-            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the stand.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -1169,7 +1169,7 @@ use sunrise_core::geometry::Vec3;
                 .as_ref()
                 .unwrap()
                 .to_nbt([0; 4], None, &Default::default());
-            let loaded = super::super::dragon_common::Dragon::from_nbt(&saved, 0).unwrap();
+            let loaded = sunrise_gameplay_common::game::dragon_common::Dragon::from_nbt(&saved, 0).unwrap();
             assert_eq!(loaded.equipment, game.dragon.as_ref().unwrap().equipment);
             let stored = game.armor_stands.last().unwrap();
             let saved = sunrise_sim::entity_nbt::armor_stand_to_nbt(
@@ -1212,7 +1212,7 @@ use sunrise_core::geometry::Vec3;
                     "minecraft:wolf",
                     [2.5, 64.0, 2.5],
                     true,
-                    super::super::creatures::SpawnSite::Finalizing(
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                         sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 )
@@ -1812,7 +1812,7 @@ use sunrise_core::geometry::Vec3;
             let mut stand = sunrise_sim::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
             stand.id = 16;
             game.armor_stands.push(stand);
-            let mut dragon = super::super::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 17;
             game.dragon.replace(dragon);
             let stand = game.living(game.entity(16).unwrap()).unwrap();

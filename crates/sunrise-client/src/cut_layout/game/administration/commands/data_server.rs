@@ -216,7 +216,7 @@ pub(crate) mod modern_literal_tests {
 #[cfg(test)]
 pub(crate) mod falling_live_adoption_tests {
     use sunrise_gameplay_common::game::commands_common::Target;
-    use sunrise_gameplay::game::commands::data::falling_live_adoption_tests::with_game;
+    use crate::game::commands::data::falling_live_adoption_tests::with_game;
     use sunrise_core::nbt::Tag;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
 

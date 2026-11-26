@@ -13,6 +13,8 @@ use crate::settings::Settings;
 use sunrise_gameplay_common::game::launch_options::Options;
 use sunrise_gameplay_common::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

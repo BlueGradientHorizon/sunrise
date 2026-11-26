@@ -60,7 +60,7 @@ use sunrise_protocol::packets::{
                 let scratch = tempfile::tempdir().unwrap();
                 let registry = Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla());
                 let create = sunrise_sim::world_options::WorldOptions::default();
-                let mut request = crate::game::world_loading::WorldRequest::new(
+                let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                     "defaults",
                     Some("defaults"),
                     Some(1),
@@ -70,7 +70,7 @@ use sunrise_protocol::packets::{
                 )
                 .unwrap();
                 request.save_root = scratch.path().to_owned();
-                let loader = crate::game::world_loading::WorldLoader::start(
+                let loader = sunrise_gameplay::game::world_loading::WorldLoader::start(
                     request,
                     game.res.clone(),
                     game.pack.clone(),

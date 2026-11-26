@@ -38,14 +38,14 @@ fn game<'a>(
         &settings,
         std::time::Instant::now(),
         false,
-        execution_role::ExecutionRole::IntegratedServer,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
         &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

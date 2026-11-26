@@ -42,7 +42,7 @@ fn pick_recipe(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, index: 
 #[test]
 #[ignore = "daily"]
 fn the_stonecutter_list_returns_to_the_top_when_its_input_changes() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|g| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|g| {
         g.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),

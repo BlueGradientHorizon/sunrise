@@ -1,5 +1,7 @@
 //! Actual command execution with prepared resources. Canonical membership is
 //! installed only in a fresh process; no native mod bundle or trait hooks are used.
+#[cfg(test)]
+use sunrise_sim::save;
 use sunrise_core::nbt::Tag;
 use sunrise_core::nbt::parse_snbt;
 use super::*;

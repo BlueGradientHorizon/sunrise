@@ -181,7 +181,7 @@ fn mob_walking_into_a_cart_pushes_it_by_a_twentieth() {
     let (xa, za) =
         sunrise_gameplay_common::game::minecarts::cart_push_from(Vec3::new(0.13, 0.0, 0.0), Vec3::new(0.5, 0.0, 0.0)).unwrap();
     assert!((xa + 0.05).abs() < 1e-6 && za == 0.0, "{xa} {za}");
-    assert!(super::cart_push_from(Vec3::ZERO, Vec3::ZERO).is_none());
+    assert!(sunrise_gameplay_common::game::minecarts::cart_push_from(Vec3::ZERO, Vec3::ZERO).is_none());
 }
 /// Issue #6431: a blast too weak to push a cart past 40 damage still
 /// primes a TNT cart.

@@ -54,7 +54,7 @@ fn constructed_and_saved_mob_uuids_survive_repeated_reconstruction() {
             );
             for _ in 0..3 {
                 let tag = game.command_target_nbt(Target::Mob(id)).unwrap();
-                assert_eq!(entity_nbt::uuid(&tag), Some(uuid));
+                assert_eq!(sunrise_sim::entity_nbt::uuid(&tag), Some(uuid));
                 game.forget_entity(id);
                 game.mobs.retain(|mob| mob.id != id);
                 sunrise_level::random_source::set_thread_uniquifier(12345).unwrap();
@@ -296,7 +296,7 @@ fn rejected_passenger_does_not_destroy_its_resident_duplicates_scores() {
             removed.removed = true;
             game.persist
                 .off_level
-                .insert(root, super::OffLevel::Mob(removed));
+                .insert(root, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(removed));
             game.mobs.retain(|mob| mob.id != root);
             game.prune_entity_memory();
             assert!(game.score.board.score(&holder, "retained_uuid").is_none());
@@ -693,8 +693,8 @@ fn dimension_travel_admits_the_duplicate_child_before_the_copied_root() {
     with_game(|game, _| {
         game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         game.side.world_root = game.side.save.0.root.clone();
-        game.enter_level(super::super::Dim::Nether).unwrap();
-        assert_eq!(game.dim, super::super::Dim::Nether);
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Nether);
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -702,8 +702,8 @@ fn dimension_travel_admits_the_duplicate_child_before_the_copied_root() {
             .add_empty_chunk(ChunkPos::new(0, 0))
             .unwrap();
         assert!(game.run_command("forceload add 0 0"));
-        game.enter_level(super::super::Dim::Overworld).unwrap();
-        assert_eq!(game.dim, super::super::Dim::Overworld);
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+        assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Overworld);
         let baby = |tag: &str, n: i32, passengers: &str| {
             pig(tag, n, passengers).replace("NoAI:1b", "Age:-1000,NoAI:1b")
         };
@@ -718,19 +718,19 @@ fn dimension_travel_admits_the_duplicate_child_before_the_copied_root() {
         let root_id = mob_tagged(game, "h160_travel_root")[0];
         assert!(
             game.teleport_vehicle_across(
-                crate::game::commands::Target::Mob(root_id),
-                super::super::Dim::Nether,
+                Target::Mob(root_id),
+                sunrise_gameplay_common::game::Dim::Nether,
                 [4.5, 200.0, 4.5],
                 None,
                 false,
-                crate::game::vehicle_teleport::TeleportMotion::Stop,
+                sunrise_gameplay::game::server_side::vehicle_teleport::TeleportMotion::Stop,
             )
             .unwrap()
         );
         assert!(mob_tagged(game, "h160_travel_root").is_empty());
         assert!(mob_tagged(game, "h160_travel_rejected").is_empty());
         assert!(mob_tagged(game, "h160_travel_grandchild").is_empty());
-        game.enter_level(super::super::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
         assert!(mob_tagged(game, "h160_travel_root").is_empty());
         let child = mob_tagged(game, "h160_travel_rejected");
         let grandchild = mob_tagged(game, "h160_travel_grandchild");
@@ -906,10 +906,10 @@ fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
         game.side.world_root = game.side.save.0.root.clone();
         let ticking = sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
         ticking(game, ChunkPos::new(0, 0));
-        game.enter_level(super::super::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
         ticking(game, ChunkPos::new(0, 0));
         assert!(game.run_command("forceload add 0 0"));
-        game.enter_level(super::super::Dim::Overworld).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
         let baby = |tag: &str, n: i32, passengers: &str| {
             pig(tag, n, passengers).replace("NoAI:1b", "Age:-1000,NoAI:1b")
         };
@@ -935,11 +935,11 @@ fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
         assert!(
             game.teleport_vehicle_across(
                 source_root,
-                super::super::Dim::Nether,
+                sunrise_gameplay_common::game::Dim::Nether,
                 [1.5, 200.0, 1.5],
                 None,
                 false,
-                crate::game::vehicle_teleport::TeleportMotion::Stop,
+                sunrise_gameplay::game::server_side::vehicle_teleport::TeleportMotion::Stop,
             )
             .unwrap()
         );
@@ -948,7 +948,7 @@ fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
         assert!(mob_tagged(game, "root_travel_grandchild").is_empty());
         assert!(game.persist.off_level.is_empty());
 
-        game.enter_level(super::super::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
         assert!(!game.run_command("data get entity @e[tag=root_travel_root,limit=1]"));
         let rejected = mob_tagged(game, "root_travel_rejected");
         let grandchild = mob_tagged(game, "root_travel_grandchild");

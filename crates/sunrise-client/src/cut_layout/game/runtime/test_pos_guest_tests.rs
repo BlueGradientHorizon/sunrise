@@ -6,6 +6,8 @@ use sunrise_core::geometry::Vec3;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::{Options, Progress, Resources, load_resources};
 use sunrise_gameplay_common::game::Dim;
+#[cfg(test)]
+use sunrise_gameplay_common::game::{commands_common, execution_role};
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_level::chunk::Chunk;
@@ -178,14 +180,14 @@ fn test_pos_refuses_other_sources_and_restores_the_views() {
     assert!(run(&mut game, "test create minecraft:always_pass 10 10 10").0);
     game.player.as_mut().unwrap().position = Vec3::new(4.5, 101.0, 6.5);
     (game.yaw, game.pitch) = (0.0, 90.0);
-    let key = |r: commands::R<i32>| format!("{:?}", r.unwrap_err());
+    let key = |r: commands_common::R<i32>| format!("{:?}", r.unwrap_err());
     let requires = "permissions.requires.player";
     // An explicit source with no entity (the server's).
     let server = game.server_source();
     assert!(key(game.execute_line("test pos", server)).contains(requires));
     // A connected player that is not there.
     let mut missing = game.player_source();
-    missing.entity = Some(commands::Target::Guest(99));
+    missing.entity = Some(commands_common::Target::Guest(99));
     assert!(key(game.execute_line("test pos", missing)).contains(requires));
     // The guest looking up: its own view finds no test.
     game.side
@@ -196,7 +198,7 @@ fn test_pos_refuses_other_sources_and_restores_the_views() {
         .update_guest(2, |g| g.pitch = -90.0)
         .unwrap();
     let mut guest = game.player_source();
-    guest.entity = Some(commands::Target::Guest(2));
+    guest.entity = Some(commands_common::Target::Guest(2));
     assert!(
         key(game.execute_line("test pos", guest))
             .contains("commands.test.error.no_test_containing_pos")

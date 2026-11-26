@@ -2,6 +2,7 @@
 
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::riders;
 use sunrise_core::random::LegacyRandom;
 use sunrise_sim::mobs::Species;
 #[cfg(test)]
@@ -198,9 +199,9 @@ pub(crate) mod off_level_tests {
                     game.options.dedicated = Some(Vec::new());
                     let at = Vec3::new(10.0, 200.0, 20.0);
                     if cart {
-                        game.carts.push(super::super::minecarts::Minecart::new(
+                        game.carts.push(crate::game::minecarts::Minecart::new(
                             71,
-                            super::super::minecarts::CartKind::Rideable,
+                            crate::game::minecarts::CartKind::Rideable,
                             at,
                         ));
                     } else {
@@ -293,7 +294,7 @@ pub(crate) mod off_level_tests {
                         assert!(!rider.extra.passenger);
                         assert_eq!(
                             rider.extra.boarding_cooldown,
-                            super::super::boat_passengers::BOARDING_COOLDOWN
+                            sunrise_gameplay::game::server_side::boat_passengers::BOARDING_COOLDOWN
                         );
                         assert_eq!(rider.position.y, 200.0);
                         assert_eq!(game.mob_object(71).unwrap().extra.rider, None);
@@ -778,9 +779,9 @@ fn discard_during_dismount(cart: bool) {
                 game.options.dedicated = Some(Vec::new());
                 let at = Vec3::new(10.0, 200.0, 20.0);
                 if cart {
-                    game.carts.push(super::super::minecarts::Minecart::new(
+                    game.carts.push(crate::game::minecarts::Minecart::new(
                         71,
-                        super::super::minecarts::CartKind::Rideable,
+                        crate::game::minecarts::CartKind::Rideable,
                         at,
                     ));
                 } else {
@@ -847,9 +848,9 @@ fn with_vehicle_tree(
             game.side.world_root = game.options.game_dir.as_ref().unwrap().join("world");
             let at = Vec3::new(10.0, 200.0, 20.0);
             if cart {
-                game.carts.push(super::super::minecarts::Minecart::new(
+                game.carts.push(crate::game::minecarts::Minecart::new(
                     71,
-                    super::super::minecarts::CartKind::Rideable,
+                    crate::game::minecarts::CartKind::Rideable,
                     at,
                 ));
             } else {
@@ -1021,7 +1022,7 @@ fn with_vehicle_tree(
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
                     game.mobs.clear();
-                    super::super::native_player_death::tests::add_guest(game);
+                    crate::game::native_player_death::tests::add_guest(game);
                     game.side
                         .lan
                         .as_mut()
@@ -1063,7 +1064,7 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
-                    super::super::native_player_death::tests::add_guest(game);
+                    crate::game::native_player_death::tests::add_guest(game);
                     game.build_registries();
                     game.set_allow_commands(true);
                     game.persist.uuids.insert(72, [160, 0, 0, 72]);
@@ -1121,13 +1122,13 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, true, |game| {
-                    super::super::native_player_death::tests::add_guest(game);
-                    game.native_level_opened(super::super::Dim::Overworld);
+                    crate::game::native_player_death::tests::add_guest(game);
+                    game.native_level_opened(sunrise_gameplay_common::game::Dim::Overworld);
                     game.build_registries();
                     game.set_allow_commands(true);
                     if mode == 2 {
                         game.carts
-                            .update(0, |cart| cart.kind = super::super::minecarts::CartKind::Tnt);
+                            .update(0, |cart| cart.kind = crate::game::minecarts::CartKind::Tnt);
                     }
                     set_vehicle_test_attachment(game);
                     let vehicle = game.entity(71).unwrap();
@@ -1253,7 +1254,7 @@ fn with_vehicle_tree(
                         ))];
                         if cart {
                             game.carts.update(0, |vehicle| {
-                                vehicle.kind = super::super::minecarts::CartKind::Chest;
+                                vehicle.kind = crate::game::minecarts::CartKind::Chest;
                                 vehicle.items = items;
                             });
                         } else {
@@ -1270,9 +1271,9 @@ fn with_vehicle_tree(
                                 assert!(game.hurt_boat(0, 5.0, false));
                             }
                             1 => game.kill_target_in_level(if cart {
-                                super::super::commands::Target::Cart(71)
+                                sunrise_gameplay_common::game::commands_common::Target::Cart(71)
                             } else {
-                                super::super::commands::Target::Boat(71)
+                                sunrise_gameplay_common::game::commands_common::Target::Boat(71)
                             }),
                             _ => {
                                 assert!(game.entity(71).unwrap().discard(game));
@@ -1322,8 +1323,8 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
-                    super::super::native_player_death::tests::add_guest(game);
-                    game.native_level_opened(super::super::Dim::Overworld);
+                    crate::game::native_player_death::tests::add_guest(game);
+                    game.native_level_opened(sunrise_gameplay_common::game::Dim::Overworld);
                     game.build_registries();
                     game.set_allow_commands(true);
                     set_vehicle_test_attachment(game);
@@ -1352,7 +1353,7 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
-                    game.native_level_opened(super::super::Dim::Overworld);
+                    game.native_level_opened(sunrise_gameplay_common::game::Dim::Overworld);
                     game.build_registries();
                     game.set_allow_commands(true);
                     super::super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
@@ -1406,7 +1407,7 @@ fn with_vehicle_tree(
                         game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         game.carts
-                            .update(0, |cart| cart.kind = super::super::minecarts::CartKind::Tnt);
+                            .update(0, |cart| cart.kind = crate::game::minecarts::CartKind::Tnt);
                         game.arrow_hits_cart(0, 1.0, Vec3::ZERO, true, false, None, None);
                     }
                     assert_eq!(calls.load(Ordering::Relaxed), 1);
@@ -1556,9 +1557,9 @@ fn with_vehicle_tree(
                             assert!(game.entity(71).unwrap().discard(game));
                         } else {
                             game.kill_target_in_level(if cart {
-                                super::super::commands::Target::Cart(71)
+                                sunrise_gameplay_common::game::commands_common::Target::Cart(71)
                             } else {
-                                super::super::commands::Target::Boat(71)
+                                sunrise_gameplay_common::game::commands_common::Target::Boat(71)
                             });
                         }
                         game.native_removals_flush();
@@ -1605,15 +1606,15 @@ fn with_vehicle_tree(
                     let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
                     game.mobs.push(Mob::new(74, kind, Vec3::ZERO, 0.0));
                     match mode {
-                        0 => game.kill_target_in_level(super::super::commands::Target::Boat(71)),
+                        0 => game.kill_target_in_level(sunrise_gameplay_common::game::commands_common::Target::Boat(71)),
                         1 => {
                             assert!(game.hurt_boat(0, 5.0, false));
                         }
-                        2 => game.kill_target_in_level(super::super::commands::Target::Cart(71)),
+                        2 => game.kill_target_in_level(sunrise_gameplay_common::game::commands_common::Target::Cart(71)),
                         3 => game.hurt_cart(0, 5.0, false, false, CartHit::default()),
                         _ => {
                             game.carts.update(0, |cart| {
-                                cart.kind = super::super::minecarts::CartKind::Tnt
+                                cart.kind = crate::game::minecarts::CartKind::Tnt
                             });
                             game.arrow_hits_cart(0, 1.0, Vec3::ZERO, true, false, None, None);
                         }
@@ -1647,7 +1648,7 @@ fn live_cancels(cross_level: bool) {
             with_vehicle_tree(false, false, |game| {
                 if cross_level {
                     // The console service requires an active server hub.
-                    super::super::native_player_death::tests::add_guest(game);
+                    crate::game::native_player_death::tests::add_guest(game);
                     game.build_registries();
                     game.set_allow_commands(true);
                     assert!(game.run_command("worldborder set 1000"));
@@ -1662,7 +1663,7 @@ fn live_cancels(cross_level: bool) {
                         Vec3::new(2.0, 190.0, 3.0)
                     );
                     assert!(game.persist.mount_notifications.is_empty());
-                    assert_eq!(game.dim, super::super::Dim::Overworld);
+                    assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Overworld);
                 }
                 if cross_level {
                     assert_eq!(game.border.size(), 1000.0);
@@ -1670,14 +1671,14 @@ fn live_cancels(cross_level: bool) {
                         game.side
                             .levels
                             .0
-                            .parked_border(super::super::Dim::Nether)
+                            .parked_border(sunrise_gameplay_common::game::Dim::Nether)
                             .unwrap()
                             .size(),
                         38.0
                     );
-                    game.enter_level(super::super::Dim::Nether).unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
                     assert!(game.persist.mount_notifications.is_empty());
-                    game.enter_level(super::super::Dim::Overworld).unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
                     assert!(game.persist.mount_notifications.is_empty());
                 }
             });
@@ -1702,8 +1703,8 @@ fn live_cancels(cross_level: bool) {
             game.mob_object_mut(72).unwrap().extra.mount = Some(74);
             assert!(
                 !game.start_riding_target(
-                    super::super::commands::Target::Mob(74),
-                    super::super::commands::Target::Mob(73),
+                    sunrise_gameplay_common::game::commands_common::Target::Mob(74),
+                    sunrise_gameplay_common::game::commands_common::Target::Mob(73),
                     true
                 ),
                 "cycle through retained object must be rejected"
@@ -1749,8 +1750,8 @@ fn live_cancels(cross_level: bool) {
             with_vehicle_tree(false, false, |game| {
                 game.mob_object_mut(72).unwrap().extra.mount = None;
                 let ok = game.start_riding_target(
-                    super::super::commands::Target::Mob(72),
-                    super::super::commands::Target::Boat(71),
+                    sunrise_gameplay_common::game::commands_common::Target::Mob(72),
+                    sunrise_gameplay_common::game::commands_common::Target::Boat(71),
                     true,
                 );
                 assert!(!ok, "mount must refuse when callback removes vehicle");
@@ -1805,7 +1806,7 @@ use sunrise_gameplay::game::server_side::passengers::trap_horse_scatter;
         let mut game = super::super::game_tests::tests::server_game(&mut resources);
         // Mounting resolves epoch-scoped resident handles, just as in an open world.
         game.native_lifecycle
-            .begin_open(super::super::native_lifecycle::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::IntegratedServer);
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

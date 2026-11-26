@@ -66,7 +66,7 @@ fn an_interaction_key_reaches_a_mod_as_its_kind_and_can_be_cancelled() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![ModEntry::new("keys", Box::new(KeyProbe(log.clone())))].into();
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let hand = Hand::Main;
             assert_eq!(
                 game.native_interaction(InteractionKey::Attack, hand, InteractionAttempt::Held)
@@ -170,7 +170,7 @@ pub(crate) fn with_game_of(
     test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
 ) {
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.player = Some(
                 sunrise_sim::motion::PlayerMotion::new(
                     game.motion,
@@ -425,7 +425,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
     .into();
 
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             // 1) Refused when headless (`renderer.is_none()`).
             assert!(game.test_renderer().is_none());
             assert!(!game.mod_screen_open("mod_a"));
@@ -609,7 +609,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             //    reports each overlay's id in `opening`/`closing`, clears `screen_over_playing()`,
             //    and leaves `screen_hooks_open() == true`.
             game.set_screen(Screen::Playing);
-            game.open_book(crate::game::books::BookScreen::View {
+            game.open_book(sunrise_client_gameplay::game::books::BookScreen::View {
                 pages: Vec::new(),
                 page: 0,
                 lectern: None,

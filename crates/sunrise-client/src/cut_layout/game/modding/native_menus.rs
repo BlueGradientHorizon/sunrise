@@ -238,7 +238,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                         Ok(true)
                     );
                     if name == "minecraft:furnace" {
-                        let Some(super::super::BlockEntity::Furnace(furnace)) =
+                        let Some(sunrise_level::containers::BlockEntity::Furnace(furnace)) =
                             game.world.block_entities.get_mut(&(0, 64, 0))
                         else {
                             panic!("furnace block entity")
@@ -250,7 +250,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                     } else {
                         assert_eq!(
                             game.lan_open_container(1, (0, 64, 0)),
-                            super::super::lan_actions::MenuOpen::Opened
+                            sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened
                         );
                     }
                     // The same accessor works in any acting server turn, not only the notice.
@@ -371,7 +371,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             game.lan_open_mount(1, u32::MAX);
             assert_eq!(
                 game.lan_open_container(1, (0, 64, 0)),
-                super::super::lan_actions::MenuOpen::NoProvider
+                sunrise_gameplay_common::game::lan_actions::MenuOpen::NoProvider
             );
             assert!(events.lock().unwrap().is_empty());
             if case == "mount" {

@@ -8,6 +8,7 @@ use sunrise_gameplay_common::game::Dim;
 use super::*;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::execution_role;
 use sunrise_gameplay_common::game::Resources;
 use sunrise_gameplay_common::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
@@ -169,7 +170,7 @@ fn loot(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (Ve
     let _ = game.run_command("data merge block 8 100 8 {Items:[]}");
     let (_, said) = run(game, command);
     let items = (0..27)
-        .filter_map(|i| game.slot_get(&commands::items::Slot::Block([8, 100, 8], i)))
+        .filter_map(|i| game.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block([8, 100, 8], i)))
         .map(|s| s.item.to_string())
         .collect();
     (items, said)
@@ -208,7 +209,7 @@ fn loot_stacks(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str)
     let _ = game.run_command("data merge block 8 100 8 {Items:[]}");
     assert!(game.run_command(command));
     (0..27)
-        .filter_map(|i| game.slot_get(&commands::items::Slot::Block([8, 100, 8], i)))
+        .filter_map(|i| game.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block([8, 100, 8], i)))
         .map(|s| (s.item.to_string(), s.count, s.data().is_some()))
         .collect()
 }
@@ -268,11 +269,11 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
     );
     // A connected player that is not there: the old rule (no player kill).
     let mut missing = first.player_source();
-    missing.entity = Some(commands::Target::Guest(99));
+    missing.entity = Some(sunrise_gameplay::game::commands::Target::Guest(99));
     let _ = first.run_command("data merge block 8 100 8 {Items:[]}");
     assert!(first.execute_line(&insert, missing).is_ok());
     let items: Vec<String> = (0..27)
-        .filter_map(|i| first.slot_get(&commands::items::Slot::Block([8, 100, 8], i)))
+        .filter_map(|i| first.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block([8, 100, 8], i)))
         .map(|s| s.item.to_string())
         .collect();
     assert!(

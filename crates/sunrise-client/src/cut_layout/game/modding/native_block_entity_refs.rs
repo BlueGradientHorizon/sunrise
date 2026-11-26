@@ -435,7 +435,7 @@ use sunrise_sim::lan::menu::Slots;
             return;
         }
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = super::super::mods::content_root(&base, &Default::default())
+        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
             .unwrap()
             .prepared()
             .to_path_buf();

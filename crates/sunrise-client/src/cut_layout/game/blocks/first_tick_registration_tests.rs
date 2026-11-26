@@ -35,7 +35,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -202,7 +202,7 @@ fn saved_block_and_fluid_ticks_unpack_when_the_chunk_starts_ticking() {
     game.server_update_world();
     game.update_chunk_tickets();
     assert!(
-        super::ticking_chunk(&game.world, key.0, key.1),
+        sunrise_gameplay_common::game::ticking_chunk(&game.world, key.0, key.1),
         "a ticking chunk"
     );
     assert!(

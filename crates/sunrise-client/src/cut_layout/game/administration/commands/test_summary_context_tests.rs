@@ -117,7 +117,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
         receivers.push(rx);
     }
     // Added actor/issuer separation: actual execute-as, with the issuer unchanged.
-    assert!(game.run_guest_command(crate::game::lan_actions::GuestCommand {
+    assert!(game.run_guest_command(sunrise_gameplay_common::game::lan_actions::GuestCommand {
         conn: 2, command: "execute as 00000000-0000-0000-0000-000000000063 store result score result context store success score success context run test run minecraft:always_pass".into(),
         permission: 2, integrated: false, quiet: false }));
     let context = game
@@ -148,7 +148,7 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
     let _ = chats(&receivers[0]);
     let _ = chats(&receivers[1]);
     assert!(
-        game.run_guest_command(crate::game::lan_actions::GuestCommand {
+        game.run_guest_command(sunrise_gameplay_common::game::lan_actions::GuestCommand {
             conn: 2,
             command: "test run minecraft:always_pass".into(),
             permission: 2,

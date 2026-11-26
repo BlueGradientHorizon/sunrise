@@ -106,7 +106,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             let mob = game.mobs[0].clone();
             game.mob_attributes(
                 &mob,
-                &mut crate::game::lan_attributes::SpeedByType::default(),
+                &mut sunrise_gameplay::game::server_side::lan_attributes::SpeedByType::default(),
                 &mut synced,
             );
             // Each attribute once.
@@ -192,7 +192,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             let m = game.mobs[0].clone();
             game.mob_attributes(
                 &m,
-                &mut crate::game::lan_attributes::SpeedByType::default(),
+                &mut sunrise_gameplay::game::server_side::lan_attributes::SpeedByType::default(),
                 &mut synced,
             );
             let armor_id = catalog.id("minecraft:armor").unwrap().registry_id();
@@ -263,7 +263,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             ));
             assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, None));
             assert_eq!(values(game), (8.0, 0.0));
-            let level = crate::game::server_side::entity_server::damage_level_of!(
+            let level = sunrise_gameplay::game::server_side::entity_server::damage_level_of!(
                 game,
                 &sunrise_sim::health::NO_ATTACK,
                 no_push,
@@ -614,7 +614,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             let zombie_mob = game.mobs[0].clone();
             game.mob_attributes(
                 &zombie_mob,
-                &mut crate::game::lan_attributes::SpeedByType::default(),
+                &mut sunrise_gameplay::game::server_side::lan_attributes::SpeedByType::default(),
                 &mut synced,
             );
             let registry = key.registry_id();

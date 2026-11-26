@@ -3,6 +3,8 @@
 //! `Animal.mobInteract` gives a tame nautilus at full health the 600-tick love
 //! and the species' eating sound, the zombie nautilus too: `ZombieNautilus`
 //! overrides neither `isFood` nor `mobInteract`.
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_gameplay_common::game::Options;

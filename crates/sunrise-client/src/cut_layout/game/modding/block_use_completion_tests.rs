@@ -346,7 +346,7 @@ fn resource_gated_map_on_banner_fires_once_and_toggles_the_real_marker() {
         );
         g.maps.data.insert(
             42,
-            super::maps::MapData::fresh(0.0, 0.0, 0, "minecraft:overworld"),
+            sunrise_gameplay_common::game::maps::MapData::fresh(0.0, 0.0, 0, "minecraft:overworld"),
         );
         let mut stack = ItemStack::new("minecraft:filled_map", 1);
         stack.data_mut().map_id = Some(42);

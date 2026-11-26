@@ -1098,7 +1098,7 @@ pub(in crate::game) mod wind_charge_burst_tests {
             assert!(!pig.alive(), "a point of damage kills 1 health");
             let hit = pig.combat.entries.last().expect("the hit").source;
             assert_eq!(
-                crate::game::creatures::source_damage_type(hit),
+                sunrise_sim::health::attack::source_damage_type(hit),
                 "minecraft:wind_charge"
             );
             let def = game

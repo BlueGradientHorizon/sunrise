@@ -9,6 +9,8 @@ use sunrise_gameplay_common::game::boats_common::Boat;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
+#[cfg(test)]
+use sunrise_protocol::packets::play;
 
 #[test]
 #[ignore = "daily"]

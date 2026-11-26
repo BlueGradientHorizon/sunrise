@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use winit::keyboard::KeyCode;
 use sunrise_gameplay_common::game::{Options, Progress, Screen, load_resources};
+use sunrise_gameplay_common::game::execution_role;
 use crate::audio::Audio;
 use crate::settings::Settings;
 #[cfg(test)]

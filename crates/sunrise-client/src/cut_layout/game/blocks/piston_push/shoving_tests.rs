@@ -1,3 +1,5 @@
+#[cfg(test)]
+use sunrise_world::moving_colliders;
 use sunrise_core::geometry::Vec3;
 use {crate::game::piston_push::carrying::shoving::*};
 use {sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client};

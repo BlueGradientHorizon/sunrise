@@ -180,7 +180,7 @@ pub(crate) mod tests {
                     game.inventory[game.selected] =
                         Some(sunrise_items::items::ItemStack::new("minecraft:shears", 1));
                     assert!(
-                        game.interact_mob(Some(super::super::InteractTarget {
+                        game.interact_mob(Some(sunrise_gameplay_common::game::InteractTarget {
                             id: id as i32,
                             location: [0.0; 3]
                         }))

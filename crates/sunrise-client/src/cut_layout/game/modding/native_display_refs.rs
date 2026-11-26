@@ -11,7 +11,7 @@ use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use crate::game::commands::OtherEntity;
+    use sunrise_gameplay_common::game::commands_common::OtherEntity;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;

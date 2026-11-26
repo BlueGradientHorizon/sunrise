@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_sim::mobs::spawn_selection;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
 use sunrise_gameplay_common::game::Dim;

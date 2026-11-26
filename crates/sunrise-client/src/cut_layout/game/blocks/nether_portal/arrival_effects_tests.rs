@@ -184,7 +184,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_portal_arrival_effects_tnt_pr
                 assert!(saved.get(key).is_none());
             }
             let id = game.tnts[0].id;
-            game.apply_entity_nbt(super::super::commands::Target::Tnt(id), saved.clone())
+            game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Tnt(id), saved.clone())
                 .unwrap();
             assert!(
                 game.tnts[0].used_portal,

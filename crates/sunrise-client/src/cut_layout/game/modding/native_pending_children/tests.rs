@@ -3,6 +3,8 @@ use std::rc::Rc;
 use sunrise_core::geometry::Vec3;
 use sunrise_mod_runtime::pending_children::PendingChildren;
 use sunrise_sim::mobs::Mob;
+#[cfg(test)]
+use sunrise_sim::mobs::finalize;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_unspawned_mob::Edits};
 use mod_api::UnspawnedMobEdits;
@@ -413,7 +415,7 @@ fn final_invalid_child_suppresses_the_entire_frozen_output() {
                         0 => child.mob.position.x = f64::NAN,
                         1 => child.mob.head_yaw = f32::INFINITY,
                         2 => child.mob.extra.age = 0,
-                        3 => child.dimension = super::super::Dim::Nether,
+                        3 => child.dimension = sunrise_gameplay_common::game::Dim::Nether,
                         _ => unreachable!(),
                     }
                     drop(borrowed);

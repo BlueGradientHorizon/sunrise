@@ -55,7 +55,7 @@ impl Heard {
             _: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::DispenseMethodEvent<'_>,
         ) -> Option<mod_api::Dispensed> {
-            let state = crate::game::api_values::TryIntoEngine::try_into_engine(&event.state, &())
+            let state = sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(&event.state, &())
                 .unwrap()
                 .0;
             self.0.record("block", event.pos, state);
@@ -487,7 +487,7 @@ impl Fits {
 #[test]
     #[ignore = "daily"]
     fn mod_dispenser_answers_preserve_fallback_and_own_consumption() {
-        use crate::game::api_values::{StackReadError, TryIntoApi};
+        use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi};
         super::super::native_entity_refs::tests::with_game(|game| {
             assert_eq!(
                 mod_dispensed((None, CLICK), game.items()),
@@ -730,7 +730,7 @@ impl Fits {
             Box::new(Probe(heard.clone())),
         )]
         .into();
-        super::super::api_values::install_parts(&mods).unwrap();
+        sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());

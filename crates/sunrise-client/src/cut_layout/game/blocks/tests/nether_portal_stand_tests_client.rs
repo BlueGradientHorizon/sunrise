@@ -4,7 +4,7 @@ use sunrise_gameplay_common::game::Screen;
 #[test]
 #[ignore = "daily"]
 fn the_portal_effect_keeps_the_screens_that_allow_it() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         // `Screen.isAllowedInPortal` is `isPauseScreen` for these: the pause menu,
         // the options over it and the chat stay open while the effect grows.
         for screen in [Screen::Paused, Screen::Options, Screen::Chat] {

@@ -1,6 +1,7 @@
 use mod_api::EntityRef;
 use mod_api::LivingRef;
 use mod_api::MobRef;
+use sunrise_sim::mobs;
 use sunrise_sim::mobs::Mob;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
@@ -199,7 +200,7 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
         for player in &players {
             assert_eq!(player.body_yaw(game), None);
         }
-        game.side.others.0.push(crate::game::commands::OtherEntity {
+        game.side.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
             size_answer: None,
             attachment_lifetime: Default::default(),
             knot_check: None,

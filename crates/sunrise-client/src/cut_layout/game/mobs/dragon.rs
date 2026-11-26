@@ -71,7 +71,7 @@ use super::*;
                     .spawn_mob_spawned(
                         "minecraft:ender_dragon",
                         at,
-                        super::super::creatures::SpawnSite::Finalizing(
+                        sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                             sunrise_sim::mobs::spawn_rules::Reason::SpawnItemUse,
                         ),
                     )

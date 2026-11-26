@@ -626,6 +626,7 @@ pub(crate) mod movement_predicate_tests {
     use serde_json::json;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::position::BlockPos;
+    use sunrise_sim::advancements as adv;
 
     #[test]
     #[ignore = "daily"]
@@ -700,7 +701,7 @@ pub(crate) mod movement_predicate_tests {
         assert_eq!(mob.fall_distance, 0.0);
         assert!(mob.no_ai && mob.no_gravity);
         assert!(mob.extra.mount.is_none());
-        let view = game.entity_view_of(super::super::commands::Target::Mob(id));
+        let view = game.entity_view_of(sunrise_gameplay_common::game::commands_common::Target::Mob(id));
         assert_eq!(view.kind, "minecraft:pig");
         let mut failures = Vec::new();
         for (name, p, want) in probes {

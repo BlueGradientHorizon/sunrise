@@ -9,6 +9,8 @@ use sunrise_core::nbt::parse_snbt;
 use sunrise_core::position::ChunkPos;
 use sunrise_sim::save::uuid_text;
 use sunrise_gameplay::game::server_side::persist::ChunkKey;
+#[cfg(test)]
+use sunrise_sim::entity_nbt;
 
 struct WitnessCase {
     kind: String,

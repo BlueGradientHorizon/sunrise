@@ -352,10 +352,10 @@ pub(crate) mod block_change_tests {
             .default_state("minecraft:jukebox")
             .unwrap();
         game.world.set(2, 4, 3, jukebox).unwrap();
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         game.set_has_record([2, 4, 3], true);
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
             assert!(
                 events.borrow().as_ref().unwrap().contains(&(
                     "minecraft:block_change",
@@ -367,12 +367,12 @@ pub(crate) mod block_change_tests {
             );
         });
         game.world.set(2, 4, 5, jukebox).unwrap();
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         game.set_has_record_notify([2, 4, 5], true, false);
         let with_record = game.world.block(2, 4, 5);
         assert_ne!(with_record, jukebox, "the state still turns has_record on");
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
             assert_eq!(events.borrow().as_ref().unwrap(), &[], "nothing posted");
         });
     }

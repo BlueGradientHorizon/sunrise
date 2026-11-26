@@ -23,14 +23,14 @@ mod tests {
 
     #[test]
     fn furnace_fuel_adds_with_java_int_arithmetic() {
-        assert_eq!(super::super::minecarts::furnace_fuel_after(0), Some(3600));
+        assert_eq!(sunrise_gameplay_common::game::minecarts::furnace_fuel_after(0), Some(3600));
         assert_eq!(
-            super::super::minecarts::furnace_fuel_after(28_400),
+            sunrise_gameplay_common::game::minecarts::furnace_fuel_after(28_400),
             Some(32_000)
         );
-        assert_eq!(super::super::minecarts::furnace_fuel_after(28_401), None);
+        assert_eq!(sunrise_gameplay_common::game::minecarts::furnace_fuel_after(28_401), None);
         assert_eq!(
-            super::super::minecarts::furnace_fuel_after(i32::MAX),
+            sunrise_gameplay_common::game::minecarts::furnace_fuel_after(i32::MAX),
             Some(i32::MIN + 3599)
         );
     }
@@ -75,7 +75,7 @@ mod tests {
             // Saved and loaded back as the same state and offset.
             let saved = game.carts[0].to_nbt([0; 4], None, game.res.items());
             let mut loaded = Minecart::from_nbt(&saved, 61, CartKind::Chest).unwrap();
-            super::super::minecarts::forget_unreadable_display(&mut loaded, |t| {
+            sunrise_gameplay_common::game::minecarts::forget_unreadable_display(&mut loaded, |t| {
                 game.state_from_nbt(t).is_some()
             });
             game.carts.push(loaded);

@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use crate::packs;
 use sunrise_client_gameplay::game::client_side::packs::{
     OVERLAY_HOLD, PackReload, ReloadKind, StageResult, reload_waits, startup_root,
 };
@@ -58,7 +59,7 @@ pub(crate) mod tests {
                 "id = \"reload_boundary\"\nname = \"Reload boundary\"\nversion = \"1\"\napi = \"0.2\"\ncapabilities = [\"registries\"]\n").unwrap();
         std::fs::write(fluids.join("oil.json"), br#"{"world":{}}"#).unwrap();
         let vanilla = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let mut sources = super::super::mods::ModsState {
+        let mut sources = sunrise_gameplay_common::game::mods::ModsState {
             dev: vec![dir.clone()],
             ..Default::default()
         };
@@ -72,10 +73,10 @@ pub(crate) mod tests {
             )]
             .into(),
             || {
-                let root = super::super::mods::content_root(&vanilla, &sources).unwrap();
+                let root = sunrise_gameplay_common::game::mods::content_root(&vanilla, &sources).unwrap();
                 super::super::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_path_buf(),
-                    super::super::execution_role::ExecutionRole::Client,
+                    sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
                     |game| {
                         game.ui.vanilla_root = vanilla;
                         game.mods = sources;
@@ -165,7 +166,7 @@ pub(crate) mod tests {
             archive.finish().unwrap();
             fs::remove_dir_all(&pack_dir).unwrap();
         }
-        let mut sources = super::super::mods::ModsState {
+        let mut sources = sunrise_gameplay_common::game::mods::ModsState {
             dev: vec![mod_dir],
             ..Default::default()
         };

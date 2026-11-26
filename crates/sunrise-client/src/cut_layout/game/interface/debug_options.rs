@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 use std::time::Instant;
 use sunrise_client::hud::HudBatch;
 use winit::keyboard::KeyCode;

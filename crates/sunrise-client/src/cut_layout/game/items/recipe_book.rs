@@ -14,6 +14,7 @@ pub(crate) mod screen_room_tests {
     use sunrise_client::recipe_book_screen::Screen as Layout;
     use sunrise_client::recipe_book_screen::Call;
     use sunrise_client::recipe_book_screen::Search;
+    use sunrise_client::recipe_book_screen as screen;
     use sunrise_gameplay_common::game::Screen;
     use sunrise_sim::recipe_book::BookType;
     #[test]
@@ -35,7 +36,7 @@ pub(crate) mod screen_room_tests {
         let mods: mod_api::Mods =
             vec![ModEntry::new("panel", Box::new(Panel(room.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 game.side.screen = Screen::Inventory;
                 game.container = None;
                 game.craft_size = 2;
@@ -45,7 +46,7 @@ pub(crate) mod screen_room_tests {
                 let (x, y) = game.book_origin(&batch);
                 assert_eq!((x, y), (110.0, 37.0));
                 assert_eq!(game.tab_pos(x, y, 0), (80.0, 40.0));
-                assert_eq!(crate::game::ClientGame::button_pos(x, y, 0), (121.0, 68.0));
+                assert_eq!(sunrise_client_gameplay::game::ClientGame::button_pos(x, y, 0), (121.0, 68.0));
                 assert_eq!(game.inventory_origin(&batch), (259.0, 37.0));
                 let search = Search::default();
                 let tabs = [screen::TabView {

@@ -130,7 +130,7 @@ use super::*;
         let mods = install_inside_mod("inside-push", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let (before, after, dead) = sweep_game_player(game);
                 assert!(!dead);
                 assert_eq!(
@@ -176,7 +176,7 @@ use super::*;
                 let mods = install_inside_mod("inside-kill", &part);
                 mod_platform::testing::with_mods(mods, || {
                     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                        let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                        let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                         let (before, after, dead) = sweep_game_player(game);
                         assert_eq!(
                             part.contacts.lock().unwrap().len(),
@@ -206,7 +206,7 @@ use super::*;
         let mods = install_inside_mod("inside-panic", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let (before, after, dead) = sweep_game_player(game);
                 assert!(!dead);
                 assert_eq!(
@@ -244,7 +244,7 @@ use super::*;
         // DamageLevel is never built. (A dummy binding here would race the
         // process-wide `block_contact::HOOKS` OnceLock — first setter wins —
         // against the other tests' real one.)
-        let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+        let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let (before, after, dead) = sweep_game_player(game);
             assert!(!dead);
@@ -275,7 +275,7 @@ use super::*;
         let mods = install_inside_mod("inside-order", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let (_, _, dead) = sweep_game_player(game);
                 assert!(!dead);
                 let effects: Vec<_> = game
@@ -315,7 +315,7 @@ use super::*;
         let mods = install_inside_mod("inside-once", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let stone = game
                     .pack
                     .assets
@@ -398,7 +398,7 @@ use super::*;
                     to: sunrise_core::geometry::Vec3::new(2.5, 100.0, 0.5),
                     original: None,
                 });
-            let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+            let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
             let velocity = game.player.as_ref().unwrap().velocity.x;
             sweep_game_player_runs(game, |w| {
                 w.server_stuck_in_blocks(sunrise_core::geometry::Vec3::new(0.5, 100.0, 0.5))?;
@@ -432,7 +432,7 @@ use super::*;
         let mods = install_inside_mod("inside-item", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let mut item = item_at_blocks(game);
                 let before = item.velocity.x;
                 sunrise_sim::block_contact::in_level(
@@ -468,7 +468,7 @@ use super::*;
         let mods = install_inside_mod("inside-item-panic", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let item = item_at_blocks(game);
                 game.dropped.push(item);
                 let rows = game.dropped.len();
@@ -508,7 +508,7 @@ use super::*;
     #[ignore = "daily"]
     fn an_item_without_a_part_is_left_alone() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-            let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+            let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
             let mut item = item_at_blocks(game);
             let before = (item.velocity.x, item.health, item.fire_ticks);
             sunrise_sim::block_contact::in_level(
@@ -535,7 +535,7 @@ use super::*;
         let mods = install_inside_mod("inside-shot", &part);
         mod_platform::testing::with_mods(mods, || {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
                 let stone = game
                     .pack
                     .assets
@@ -613,7 +613,7 @@ use super::*;
     #[ignore = "daily"]
     fn a_projectile_without_a_part_is_left_alone() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-            let _ = sunrise_sim::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+            let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
             let stone = game
                 .pack
                 .assets

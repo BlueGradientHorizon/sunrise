@@ -68,7 +68,7 @@ use sunrise_core::use_animation::UseAnimation;
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
                 mod_platform::testing::with_mods(mods, || {
                     #[cfg(feature = "client")]
-                    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                         check(game, game, "client");
                     });
                     with_game(|game| {
@@ -521,7 +521,7 @@ pub(crate) mod interact_vibration_tests {
                         .is_some()
                     );
                 });
-                let hit = super::super::Hit {
+                let hit = sunrise_gameplay_common::game::Hit {
                     pos: [0, 64, 0],
                     face: [0, 1, 0],
                     point: [0.5, 65.0, 0.5],
@@ -683,7 +683,7 @@ pub(crate) mod interact_vibration_tests {
             info.id = std::sync::Arc::from("ruby:rod");
             info.template = Some(std::sync::Arc::from("minecraft:fishing_rod"));
             assert!(
-                super::super::remote::item_has_use(&info),
+                sunrise_gameplay_common::game::remote::item_has_use(&info),
                 "remote use accepts content rods"
             );
             items.insert(info.id.clone(), info);

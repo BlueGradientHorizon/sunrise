@@ -3,6 +3,8 @@
 //! as `source` (and a projectile owner's as `projectile_owner`), so a sculk
 //! sensor's saved listener names its source, even one that is not loaded
 //! (tools/test_vibration_source_parity.py measures the same on vanilla 26.3).
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 use super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;

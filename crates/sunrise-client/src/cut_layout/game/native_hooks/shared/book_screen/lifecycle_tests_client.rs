@@ -1,17 +1,17 @@
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::BookMod;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::BoundBookMod;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::BoundLayoutEdit;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::KEY;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::MENU;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::REOPENED_MENU;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::ReopenedMod;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::STONE;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::ScreenTrace;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::geometry;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::receive;
-use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::with_bound_menu_type;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::BookMod;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::BoundBookMod;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::BoundLayoutEdit;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::KEY;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::MENU;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::REOPENED_MENU;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::ReopenedMod;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::STONE;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::ScreenTrace;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::geometry;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::receive;
+use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::with_bound_menu_type;
 use super::*;
 use sunrise_sim::recipe_book::{BookFlags, settings_sync::Message};
 use sunrise_gameplay_common::game::Screen;
@@ -32,7 +32,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_bound_menu_type(|| {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Bound").unwrap();
@@ -160,7 +160,7 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_bound_menu_type(|| {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
                 seed_native_menu(game, 1, "bound:menu");
                 let key = (i32::MIN, 0, 0);
@@ -220,7 +220,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
     use mod_api::prelude::ScreensClientHost;
     let mods: mod_api::Mods = Vec::<mod_api::ModEntry>::new().into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.side.settings.gui_scale = 1;
             game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
@@ -341,7 +341,7 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_bound_menu_type(|| {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 const CHEST: &str = "minecraft:generic_9x3";
                 assert!(mod_api::RecipeBookLayout::registered("bound:menu").is_some());
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -393,7 +393,7 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
 fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
     let mods: mod_api::Mods = Vec::<mod_api::ModEntry>::new().into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let generation = seed_native_menu(game, 1, MENU);
             game.side.settings.gui_scale = 1;
             game.side.recipe_ui.0.test_viewport = Some([1280, 720]);
@@ -479,12 +479,12 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
             assert!(!pad.contains(&[560.0, 295.0, 16.0, 16.0]));
 
             // Repeating the position, or the declared one, rebuilds nothing.
-            let builds = crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get());
+            let builds = sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get());
             assert!(game.set_screen_slot(MENU, 0, Some([48.0, 60.0])).is_ok());
             assert!(game.set_screen_slot(MENU, 1, Some([26.0, 18.0])).is_ok());
             game.build_screen();
             assert_eq!(
-                crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get()),
+                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get()),
                 builds
             );
             assert_eq!(
@@ -521,7 +521,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
             with_bound_menu_type(|| {
                 seed_native_menu(game, 7, "bound:menu");
@@ -587,7 +587,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
                 None,
             )],
             || {
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                     let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
                     let remote = game.side.remote.as_mut().unwrap();
                     Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
@@ -677,7 +677,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
 fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("geometry", Box::new(BookMod))].into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let key = KEY.get().unwrap().clone();
             // The lightweight Game fixture does not run the launcher/content
             // bootstrap that publishes the negotiated menu registry.
@@ -888,7 +888,7 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_bound_menu_type(|| {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Bound").unwrap();

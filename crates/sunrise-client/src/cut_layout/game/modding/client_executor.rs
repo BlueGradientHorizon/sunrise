@@ -17,6 +17,7 @@ mod tests {
     };
     use sunrise_client::net::Event;
     use sunrise_level::crash::ModCall;
+    use sunrise_level::crash;
 
     struct PanickingPayload;
     impl Drop for PanickingPayload {
@@ -151,7 +152,7 @@ mod tests {
             let (pending, pending_calls) = mpsc::channel();
             executor.execute(Box::new(move |_| pending.send(()).unwrap()));
 
-            game.title_action(sunrise_gameplay_common::game::Action::Quit).unwrap();
+            game.title_action(crate::title::Action::Quit).unwrap();
             assert_eq!(
                 pending_calls.try_recv(),
                 Err(mpsc::TryRecvError::Disconnected)

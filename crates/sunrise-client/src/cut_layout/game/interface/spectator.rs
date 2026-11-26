@@ -11,7 +11,7 @@ mod tests {
     use super::*;
     use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_client::spectator_menu::Item;
-    use sunrise_protocol::packets::{Empty, play::Clientbound as C};
+    use sunrise_protocol::packets::{Empty, play, play::Clientbound as C};
 
     #[test]
     #[ignore = "daily"]

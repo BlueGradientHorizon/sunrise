@@ -110,7 +110,7 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn slow_ticks_enter_the_ring_and_not_the_log() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         use sunrise_sim::server_perf::{ServerPerf, TickDetail, WorldCounts};
         log::set_logger(&LogCapture).expect("no other logger in this test run");
         log::set_max_level(log::LevelFilter::Info);
@@ -179,7 +179,7 @@ use super::*;
         home: &std::path::Path,
         world: &std::path::Path,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -216,7 +216,7 @@ use super::*;
         game.native_lifecycle_open_started();
         let folder = world.to_string_lossy().into_owned();
         game.load_world(
-            crate::game::world_loading::WorldRequest::new(
+            sunrise_gameplay::game::world_loading::WorldRequest::new(
                 &folder,
                 Some("h260"),
                 Some(260),

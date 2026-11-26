@@ -1,5 +1,7 @@
 //! Differential witness for tools/test_server_player_packets_parity.py. Packet bodies enter
 //! the server's ordinary inbox and run through the real Hub and Game dispatch.
+#[cfg(test)]
+use sunrise_protocol::packets::play;
 use sunrise_gameplay_common::game::lan_common::LanSettings;
 use std::sync::Arc;
 use sunrise_protocol::packets::play::Clientbound as C;
@@ -713,7 +715,7 @@ fn crystal_round_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &
         rows,
         "146/loaded_crystal",
         json!([
-            game.target_rotation(crate::game::commands::Target::Crystal(id))
+            game.target_rotation(sunrise_gameplay::game::commands::Target::Crystal(id))
                 .map(|angle| angle.to_bits() as i32),
             game.crystals.last().unwrap().invulnerable,
             game.crystals.last().unwrap().beam,
@@ -760,7 +762,7 @@ fn crystal_round_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &
         rows,
         "146/reloaded_crystal",
         json!([
-            game.target_rotation(crate::game::commands::Target::Crystal(c.id))
+            game.target_rotation(sunrise_gameplay::game::commands::Target::Crystal(c.id))
                 .map(|angle| angle.to_bits() as i32),
             c.invulnerable,
             c.beam,

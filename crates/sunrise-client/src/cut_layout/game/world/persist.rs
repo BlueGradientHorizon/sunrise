@@ -20,6 +20,7 @@ pub(crate) mod tests;
 #[cfg(test)]
 mod interaction_saved_defaults_tests {
     use super::*;
+    use sunrise_sim::entity_nbt;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
 
     #[test]

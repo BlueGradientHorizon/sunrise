@@ -590,7 +590,7 @@ fn removal_outputs(
         use std::sync::atomic::Ordering;
         use sunrise_level::chunk::Chunk;
         use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
-        let Some(root) = sunrise_gameplay::game::native_entity_refs::tests::declared_part_root(
+        let Some(root) = crate::game::native_entity_refs::tests::declared_part_root(
             "game::server_side::spill::tests::a_block_entity_removing_itself_in_its_tick_runs_resident_removal",
         ) else {
             return;

@@ -30,7 +30,7 @@ use std::sync::{
     fn portal_capture_preserves_rejected_objects_and_reverses_admission() {
         with_gate(|game, _, _| {
             game.options.execution_role =
-                super::super::execution_role::ExecutionRole::IntegratedServer;
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join("portal-tree"),
@@ -218,9 +218,9 @@ fn with_gate_mode(
                 Vec3::ZERO,
                 0.0,
             ));
-            game.carts.push(super::super::minecarts::Minecart::new(
+            game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
                 103,
-                super::super::minecarts::CartKind::Rideable,
+                sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
                 Vec3::ZERO,
             ));
             let mob = |name: &str, id| {

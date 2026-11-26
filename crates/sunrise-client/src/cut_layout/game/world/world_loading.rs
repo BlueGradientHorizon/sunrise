@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 use std::path::PathBuf;
 use std::time::Instant;
 use sunrise_gameplay::game::world_loading::WorldRequest;

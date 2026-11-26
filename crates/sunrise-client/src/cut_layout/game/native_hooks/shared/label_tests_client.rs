@@ -8,7 +8,7 @@ use sunrise_client_gameplay::game::native_hooks::{OpenNativeMenu, OpenNativeScre
 #[ignore = "daily"]
 fn inventory_label_default_follows_image_height_not_inventory_slots() {
     mod_platform::testing::with_mods(mod_api::Mods::default(), || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "labels").unwrap();
             let generation = seed_native_menu(game, 1, "test:menu");

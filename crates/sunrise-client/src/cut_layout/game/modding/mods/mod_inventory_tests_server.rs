@@ -112,7 +112,7 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     game.items().item_tags.clone()
                 };
                 let read = |game: &Game<'_, sunrise_gameplay::game::server_side::ServerState>| {
-                    crate::game::lan::sync::server_sources(
+                    sunrise_gameplay::game::server_side::lan::sync::server_sources(
                         &game.options.resources,
                         &game.res.core.item_data,
                         game.items(),

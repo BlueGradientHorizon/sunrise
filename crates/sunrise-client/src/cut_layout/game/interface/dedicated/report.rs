@@ -17,7 +17,7 @@ mod tests {
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &Path,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
+        use {sunrise_gameplay_common::game::{Options, Progress}, crate::settings::Settings, crate::game::load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -27,7 +27,7 @@ mod tests {
             &settings,
             Instant::now(),
             false,
-            super::super::super::execution_role::ExecutionRole::IntegratedServer,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
@@ -35,7 +35,7 @@ mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.to_path_buf();
         options.execution_role =
-            super::super::super::execution_role::ExecutionRole::IntegratedServer;
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let resources = &*resources.insert(loaded.resources);
         sunrise_gameplay::game::ServerGame::new(
             resources,
@@ -84,8 +84,8 @@ mod tests {
 
         let dir = std::env::temp_dir().join(format!("hz-privacy-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let mut perf = server_perf::ServerPerf::new(0.0, 250.0);
-        let sunrise = server_perf::sunrise_options(0);
+        let mut perf = sunrise_sim::server_perf::ServerPerf::new(0.0, 250.0);
+        let sunrise = sunrise_sim::server_perf::sunrise_options(0);
         let plan = Plan {
             seconds: 2,
             samples: true,
@@ -97,7 +97,7 @@ mod tests {
         let options = game.capture_options(&plan, ((10, 8), 20, 256), sunrise);
         perf.start_capture(0.0, &dir, options).unwrap();
         for i in 0..40 {
-            let detail = server_perf::TickDetail {
+            let detail = sunrise_sim::server_perf::TickDetail {
                 cpu_ms: None,
                 spans: vec![spans::Span {
                     name: "tick",

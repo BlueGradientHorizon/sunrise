@@ -10,7 +10,7 @@ use crate::game::remote::placement_prediction_tests::top_of;
 #[test]
 #[ignore = "daily"]
 fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let (mut peer, _writer) = super::tests::connect_menu_test(game);
         peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
             .unwrap();

@@ -3,6 +3,8 @@ use {crate::game::*, sunrise_gameplay_common::game::{Hand, HashMap, InteractTarg
 use mod_api::{Hooks, HostSide, PlayerDestroyItemEvent};
 use std::sync::{Arc, Mutex};
 use sunrise_protocol::connection::Pipe;
+#[cfg(test)]
+use sunrise_gameplay::game::shield;
 
 #[derive(Debug)]
 struct Notice {

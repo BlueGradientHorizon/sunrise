@@ -43,7 +43,7 @@ pub(crate) mod input_routing;
 pub(crate) fn attach_offscreen_window(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> (EventLoop<()>, winit::window::WindowId) {
-    let (event_loop, window) = sunrise_gameplay::game::native_entity_refs::tests::test_window([640, 480]);
+    let (event_loop, window) = sunrise_client_gameplay::game::native_entity_refs::tests::test_window([640, 480]);
     let id = window.id();
     game.options.offscreen = true;
     game.side.settings.gui_scale = 1;

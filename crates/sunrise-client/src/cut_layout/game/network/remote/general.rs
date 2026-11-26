@@ -42,7 +42,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
-            sunrise_gameplay::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+            crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(|game| {
                 let level = || play::SpawnInfo {
                     dimension_type: 0,
                     dimension: "minecraft:overworld".into(),
@@ -209,7 +209,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
-            sunrise_gameplay::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+            crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(|game| {
                 // An attachment sync for an unknown entity is ignored without storing anything.
                 game.remote_attachment_sync(attachment_message(5, false, Some(99)));
                 assert!(
@@ -325,7 +325,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
                 let (_reader, mut writer) = connect_play_test(game, |reader, writer| {
                     offer_test_payloads(reader, writer, &local.manifest);
@@ -361,7 +361,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
-            sunrise_gameplay::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+            crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(|game| {
                 // Path 1: no prior Holder::Entity entry -> empty initial snapshot.
                 game.handle_packet(spawn(21, "mymod:missile", [0.0, 70.0, 0.0]))
                     .unwrap();

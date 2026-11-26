@@ -11,7 +11,7 @@ use sunrise_gameplay_common::game::Screen;
 #[test]
 #[ignore = "daily"]
 fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         let saves = tempfile::tempdir().unwrap();
         game.side.title.0 = Some(game.new_title(saves.path().to_path_buf()));
         game.side.focused = true;
@@ -29,7 +29,7 @@ fn closing_options_opened_from_the_title_leaves_the_pointer_free() {
 #[test]
 #[ignore = "daily"]
 fn closing_title_options_into_a_world_entered_behind_them_grabs() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         game.side.title.0 = None;
         game.side.focused = true;
         game.open_options(true);
@@ -48,7 +48,7 @@ fn closing_title_options_into_a_world_entered_behind_them_grabs() {
 #[test]
 #[ignore = "daily"]
 fn closing_pause_menu_options_leaves_the_pointer_free() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
         game.side.title.0 = None;
         game.side.focused = true;
         game.open_options(false);

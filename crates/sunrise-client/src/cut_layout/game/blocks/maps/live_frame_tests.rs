@@ -2,7 +2,7 @@ use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::maps::{Framed, Key, map_id};
 use sunrise_items::items::ItemStack;
 use super::*;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::server_side::commands::Target, crate::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
 
 #[test]
 #[ignore = "daily"]

@@ -179,7 +179,7 @@ pub(crate) mod brewing_fuel_transfer_tests {
                         &stand,
                         4,
                         fuel,
-                        super::PlacementQuery::Offer(&mut super::PlacementAttempt::default()),
+                        sunrise_gameplay_common::game::machine_containers::PlacementQuery::Offer(&mut sunrise_gameplay_common::game::machine_containers::PlacementAttempt::default()),
                     ),
                     accepted
                 );
@@ -955,11 +955,11 @@ pub(crate) mod tests {
             .containers()
             .view(key, false)
             .expect("the shelf's view");
-        super::super::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
 
         game.view_changed(&view);
 
-        super::super::sculk::TEST_POSTED_EVENTS.with(|e| {
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
             assert!(
                 e.borrow().as_ref().unwrap().contains(&(
                     "minecraft:block_activate",

@@ -1,6 +1,5 @@
 
 
-#![cfg(test)]
 #[cfg(test)]
 pub(in crate::game) mod swing_echo_tests {
     use sunrise_gameplay_common::game::lan_actions::ItemStack;

@@ -48,7 +48,7 @@ fn a_cancelled_mapping_press_is_dropped_and_its_release_is_not() {
     )]
     .into();
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.side.title.0 = None;
             game.side.screen = Screen::Playing;
             assert!(game.key_mapping_canceled(Some("key.keyboard.space"), true));
@@ -73,7 +73,7 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     )]
     .into();
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.side.title.0 = None;
             game.side.screen = Screen::Playing;
             let space = KeyCode::Space;
@@ -92,7 +92,7 @@ fn a_cancelled_repeat_keeps_the_hold_and_a_cancelled_first_press_is_never_held()
     )]
     .into();
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.side.title.0 = None;
             game.side.screen = Screen::Playing;
             let space = KeyCode::Space;
@@ -298,7 +298,7 @@ fn client_gui_state_matches_screen_init_hook() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![ModEntry::new("observe", Box::new(Observe(seen.clone())))].into();
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.side.focused = false;
             assert!(!mod_api::prelude::ScreensClientHost::window_focused(game));
             game.side.focused = true;
@@ -364,7 +364,7 @@ fn client_gui_state_matches_screen_init_hook() {
 #[ignore = "daily"]
 fn no_mods_is_a_plain_assignment() {
     with_mods(Vec::new().into(), || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.set_screen(Screen::Inventory);
             assert_eq!(game.side.screen, Screen::Inventory);
         });
@@ -418,7 +418,7 @@ fn replacing_a_title_screen_opens_the_mods_screen_over_the_title() {
 fn replacing_opening_of_an_overlay_opens_the_mods_screen() {
     run(|game, log, answer| {
         *answer.lock().unwrap() = Some(ScreenOpening::ModScreen);
-        game.open_book(crate::game::books::BookScreen::View {
+        game.open_book(sunrise_client_gameplay::game::books::BookScreen::View {
             pages: Vec::new(),
             page: 0,
             lectern: None,
@@ -488,7 +488,7 @@ fn replacing_opening_opens_the_mods_screen_instead() {
 #[ignore = "daily"]
 fn the_creative_screen_excludes_its_two_tab_rows() {
     with_mods(Vec::new().into(), || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             game.side.screen = Screen::Creative;
             let batch = HudBatch::scratch([854, 480]);
             let image = game.container_image(&batch);

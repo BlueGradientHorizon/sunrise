@@ -9,6 +9,8 @@ use sunrise_level::chunk::Chunk;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_gameplay_common::game::{Options, load_resources};
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

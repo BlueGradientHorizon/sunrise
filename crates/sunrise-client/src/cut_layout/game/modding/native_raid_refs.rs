@@ -48,7 +48,7 @@ mod tests {
                 assert!(game.create_or_extend_raid([10, 70, 10], Some(2)).is_some());
                 let raid = level.raid_at(game, [10, 70, 10]).unwrap();
                 assert!(
-                    game.enter_command_level(super::super::Dim::Nether)
+                    game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                         .is_some()
                 );
                 game.read_raids();
@@ -224,7 +224,7 @@ mod tests {
             let started = raid.is_started(game);
 
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             game.read_raids();
@@ -271,7 +271,7 @@ mod tests {
             assert_eq!(raid.status(game), Some(RaidStatus::Stopped));
             assert!(!raid.is_active(game));
             assert!(other.is_active(game));
-            assert_eq!(game.dim, super::super::Dim::Nether);
+            assert_eq!(game.dim, sunrise_gameplay_common::game::Dim::Nether);
             assert_eq!(level.raid_at(game, [10, 70, 10]), None);
             assert_eq!(level.raid(game, raid.id()), Some(raid));
             assert!(
@@ -287,14 +287,14 @@ mod tests {
             );
 
             assert!(
-                game.enter_command_level(super::super::Dim::Overworld)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                     .is_some()
             );
             assert_eq!(raid.omen_level(game), Some(i32::MAX));
             assert_eq!(raid.status(game), Some(RaidStatus::Stopped));
             assert_eq!(raid.raiders(game), Some(vec![member]));
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             game.side.levels.0.clear();

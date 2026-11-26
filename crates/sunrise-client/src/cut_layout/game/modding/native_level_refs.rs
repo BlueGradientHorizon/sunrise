@@ -194,7 +194,7 @@ mod tests {
                         .is_none()
                 );
                 game.as_guest(12, |game| {
-                    let hit = super::super::Hit {
+                    let hit = sunrise_gameplay_common::game::Hit {
                         pos,
                         face: hit.face,
                         point: hit.point,
@@ -1398,7 +1398,7 @@ mod tests {
             assert!(!overlap.remove(game));
             drop(guard);
             // The client cannot query or mutate the server's in-memory marks.
-            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             let guard = in_mod("machines");
             assert!(!nether.has_water_ticket(game, [0, 64, 0]));
             assert!(

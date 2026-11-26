@@ -41,7 +41,7 @@ impl BlockEntityPart for Filter {
             Some(4) => return Some(event.slot == 1 && event.stack.count() == 2),
             Some(5) => {
                 let barrel = mod_api::__private::block_key("minecraft:barrel").unwrap();
-                let metadata = super::super::api_values::block_metadata_table().unwrap();
+                let metadata = sunrise_gameplay_common::game::api_values::block_metadata_table().unwrap();
                 return Some(
                     event.pos == mod_api::BlockPos::new(TARGET.0, TARGET.1, TARGET.2)
                         && event.state.block() == barrel
@@ -532,7 +532,7 @@ fn native_admission_allocates_only_when_preparing_subscribed_snapshots() {
             r#"{"defaults":{"minecraft:air":0},"states":[["a",true,false,"","minecraft:air"]]}"#;
         let registry =
             sunrise_world::registry::BlockRegistry::from_facts_json(facts.as_bytes()).unwrap();
-        super::super::api_values::resolve_block_definitions(&registry).unwrap();
+        sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry).unwrap();
         let world = World::new(registry.default_state("minecraft:air").unwrap(), 0);
         let mut stack = ItemStack::new("minecraft:stone", 2);
         stack

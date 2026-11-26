@@ -26,6 +26,8 @@ use sunrise_gameplay_common::game::client_side::startup_menu::tests::gui;
 use sunrise_gameplay_common::game::client_side::startup_menu::tests::saved_pack_options;
 
 use super::*;
+use sunrise_client_gameplay::game::packs;
+use sunrise_gameplay_common::game::mods;
 
 fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         Loading {

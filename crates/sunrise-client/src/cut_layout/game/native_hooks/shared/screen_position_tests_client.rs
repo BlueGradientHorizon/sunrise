@@ -104,7 +104,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         assert_eq!(game.mod_menu_at(pos), Some(MENU));
                         assert_eq!(
                             game.lan_open_container(1, pos),
-                            crate::game::lan_actions::MenuOpen::Opened
+                            sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened
                         );
                         let hub = &game.side.lan.as_ref().unwrap().hub;
                         let menu = hub.guest(1).unwrap().menu.as_ref().unwrap();
@@ -132,7 +132,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                     },
                 );
                 let (packets, builtin, state) = sent.unwrap();
-                sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+                sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_owned(),
                     ExecutionRole::Client,
                     |game| {
@@ -209,7 +209,7 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                 None,
             )],
             || {
-                sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+                sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_owned(),
                     sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
                     |game| {
@@ -425,7 +425,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                 ),
             ],
             || {
-                sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+                sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_owned(),
                     sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
                     |game| {
@@ -709,7 +709,7 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
-        sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
             root.prepared().to_owned(),
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
             |game| {

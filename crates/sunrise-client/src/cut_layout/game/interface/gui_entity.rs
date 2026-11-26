@@ -13,7 +13,7 @@ use sunrise_core::nbt::Compound;
 #[test]
     #[ignore = "daily"]
     fn a_screen_draws_a_mob_by_type_once_and_refuses_what_it_cant_draw() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let look = GuiEntityLook::At([50.0, 40.0]);
             let view = GuiEntityView::new([26.0, 8.0, 75.0, 78.0], 30.0, 0.0625, look);
             let mut batch = HudBatch::scratch([320, 240]);

@@ -717,8 +717,8 @@ fn cancelled_mob_creation_forgets_constructor_payload_and_identity() {
                     game.spawn_mob_spawned(
                         "cow",
                         [1.0, 70.0, 3.0],
-                        crate::game::creatures::SpawnSite::Finalizing(
-                            crate::game::creatures::SpawnReason::Command
+                        sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
+                            sunrise_gameplay_common::game::creatures::SpawnReason::Command
                         )
                     )
                     .is_none()

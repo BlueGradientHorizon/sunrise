@@ -327,7 +327,7 @@ pub(crate) mod tests {
             let overworld_menu = game.player_container_menu(player).unwrap();
             let overworld = game.level("minecraft:overworld").unwrap();
             assert!(
-                game.enter_command_level(super::super::Dim::Nether)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
                     .is_some()
             );
             game.world
@@ -370,7 +370,7 @@ pub(crate) mod tests {
                 })
             );
             assert!(
-                game.enter_command_level(super::super::Dim::Overworld)
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
                     .is_some()
             );
             assert_eq!(

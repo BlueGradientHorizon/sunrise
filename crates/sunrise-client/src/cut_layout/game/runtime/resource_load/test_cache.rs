@@ -6,6 +6,9 @@ use sunrise_level::assets::Assets;
 use sunrise_client_gameplay::game::client_side::resource_loader::Loaded;
 use sunrise_client_gameplay::game::client_side::resource_tables_client::{ClientPackResources, ClientResources, UiResources};
 use sunrise_client_gameplay::game::client_side::resource_load_client::{UiPublishArg, load_resources_for_mods};
+use sunrise_client_gameplay::game::client_side::{packs, shader_packs};
+use sunrise_client_gameplay::game::resource_tables;
+use sunrise_gameplay_common::game::{api_values, execution_role, mods};
 use {crate::game::resource_load::*, sunrise_gameplay_common::game::resource_load::{BlockRegistry, Path, Progress, ResourceRoot, launch_world, publish_entity_type_defaults, with_skip_facts_memo}};
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
@@ -433,7 +436,7 @@ fn hydrate_hit(
     let registry = crate::game::api_values::resolve_cached_block_definitions(cached.pack.assets.registry)?;
     let _ = sunrise_world::poi::extend(Vec::new());
     sunrise_gameplay::game::machines::cauldron_contents::install(
-        crate::game::machines::cauldron_contents::CauldronContents::vanilla(),
+        sunrise_gameplay::game::machines::cauldron_contents::CauldronContents::vanilla(),
     );
     #[cfg(feature = "client")]
     if let Some(client_pack) = &client_pack {

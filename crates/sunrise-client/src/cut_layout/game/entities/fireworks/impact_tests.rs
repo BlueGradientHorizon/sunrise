@@ -4,7 +4,7 @@ use sunrise_items::firework::FireworkExplosion;
 use sunrise_gameplay_common::game::fireworks::Rocket;
 use sunrise_sim::mobs::Who;
 use {crate::game::fireworks::impact::*};
-use {crate::game::native_projectiles::impact_probe::Action, crate::game::native_projectiles::impact_probe::point, crate::game::native_projectiles::impact_probe::with_probe};
+use {sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::point, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
 use sunrise_sim::mobs::Mob;
 
 pub(crate) fn launch(game: &mut sunrise_gameplay::game::ServerGame<'_>, lifetime: i32) {

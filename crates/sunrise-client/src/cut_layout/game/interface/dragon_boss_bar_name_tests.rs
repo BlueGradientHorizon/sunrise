@@ -35,7 +35,7 @@ fn end_game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -82,7 +82,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         guest.dimension = "minecraft:the_end".into();
         guest.position = [0.5, 128.0, 0.5];
     });
-    game.side.lan = Some(crate::game::lan::LanHost::for_test(hub));
+    game.side.lan = Some(sunrise_gameplay::game::lan::LanHost::for_test(hub));
     let mut overlay = sunrise_client::boss_overlay::BossOverlay::default();
     let drain = |rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
                  overlay: &mut sunrise_client::boss_overlay::BossOverlay| {

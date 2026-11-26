@@ -3,6 +3,7 @@
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::finalize;
 #[cfg(test)]
 mod tests {
     use super::*;

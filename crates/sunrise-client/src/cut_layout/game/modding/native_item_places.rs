@@ -480,7 +480,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             })
             .unwrap();
             assert!(game.side.pending_sounds.is_empty());
-            assert!(super::super::dispense_fixture::stop_recording().is_empty());
+            assert!(sunrise_gameplay::game::server_side::dispense_fixture::stop_recording().is_empty());
 
             let tracked = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 game.server.level_pass.packets_drained = true;
@@ -2021,7 +2021,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
 #[test]
     #[ignore = "daily"]
     fn a_kept_handler_reaches_nothing_once_its_cart_is_removed() {
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());

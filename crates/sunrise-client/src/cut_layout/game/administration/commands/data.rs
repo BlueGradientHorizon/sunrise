@@ -610,6 +610,7 @@ pub(crate) mod bell_command_identity_tests {
     use sunrise_level::chunk::Chunk;
     use sunrise_level::containers::BlockEntity;
     use sunrise_sim::motion::PlayerMotion;
+    use sunrise_sim::save;
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();

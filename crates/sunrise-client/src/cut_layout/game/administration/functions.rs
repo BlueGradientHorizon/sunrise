@@ -83,7 +83,7 @@ use super::*;
                 "setblock 0 64 0 first_open:missing_block\n",
             )
             .unwrap();
-            let request = crate::game::world_loading::WorldRequest::new(
+            let request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                 folder,
                 None,
                 Some(3042),
@@ -195,7 +195,7 @@ use super::*;
                             std::fs::write(functions.join(format!("{name}.mcfunction")), line)
                                 .unwrap();
                         }
-                        let mut request = crate::game::world_loading::WorldRequest::new(
+                        let mut request = sunrise_gameplay::game::world_loading::WorldRequest::new(
                             folder,
                             None,
                             Some(3042),
@@ -341,7 +341,7 @@ use super::*;
             assert_eq!(first_instance.priority().unwrap(), 1000);
             let live_stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
             assert_eq!(
-                crate::game::native_world_read_common::block_in_tag(
+                sunrise_gameplay_common::game::native_world_read_common::block_in_tag(
                     live_stone,
                     "reload_test:candidate"
                 ),
@@ -397,7 +397,7 @@ use super::*;
             assert_eq!(game.damage_tag_generation, old_generation);
             assert_eq!(game.side.fns.0.enabled, old_enabled);
             assert_eq!(
-                crate::game::native_world_read_common::block_in_tag(stone, "reload_test:candidate"),
+                sunrise_gameplay_common::game::native_world_read_common::block_in_tag(stone, "reload_test:candidate"),
                 old_tag
             );
             game.save_datapack_settings();
@@ -1431,7 +1431,7 @@ mod required_tag_tests {
                     game.entity_view_of(Target::Mob(id)).kind,
                     format!("minecraft:{kind}")
                 );
-                actors.push((id, save::uuid_text(uuid), kind));
+                actors.push((id, sunrise_sim::save::uuid_text(uuid), kind));
             }
             let clock = game.world.game_time;
             for (_, uuid, kind) in &actors {

@@ -95,7 +95,7 @@ use super::*;
         mod_platform::testing::with_mods(mods, || {
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = super::super::super::mods::content_root(&base, &Default::default())
+            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
                 .unwrap()
                 .prepared()
                 .to_path_buf();
@@ -131,7 +131,7 @@ use super::*;
                 // The refusals name both sides; the rest of the mod's contents still apply,
                 // and water and lava keep theirs.
                 let (contents, refusals) =
-                    super::super::super::mods::collect_cauldron_fluid_contents(
+                    sunrise_gameplay_common::game::mods::collect_cauldron_fluid_contents(
                         game.pack.assets.registry,
                     );
                 assert_eq!(refusals.len(), 3, "{refusals:?}");
@@ -331,7 +331,7 @@ use super::*;
         mod_platform::testing::with_mods(mods, || {
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = super::super::super::mods::content_root(&base, &Default::default())
+            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
                 .unwrap()
                 .prepared()
                 .to_path_buf();

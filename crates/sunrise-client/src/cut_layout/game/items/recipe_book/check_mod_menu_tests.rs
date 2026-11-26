@@ -19,7 +19,7 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
         None,
     )];
     sunrise_level::containers::with_mod_menu_types(menus, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "RecipeCheck").unwrap();
             game.side
@@ -61,7 +61,7 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
 #[test]
 #[ignore = "daily"]
 fn a_remote_crafting_table_has_the_crafting_book() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "RecipeCheck").unwrap();
         game.side.screen = Screen::Inventory;

@@ -135,7 +135,7 @@ use super::*;
             mount(&mut game, kind, 5, [2.5, 64.0, 2.5], 7);
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:chest", 1));
             game.start_audio_capture();
-            sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+            sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
                 .with(|events| *events.borrow_mut() = Some(Vec::new()));
             assert!(game.interact_mount(0, "minecraft:chest"), "{kind}");
             let sounds: Vec<_> = std::mem::take(&mut game.side.pending_sounds)
@@ -143,9 +143,9 @@ use super::*;
                 .map(|s| (s.event, s.position, s.volume, s.pitch))
                 .collect();
             game.stop_audio_capture();
-            let equip_events = sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+            let equip_events = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
                 .with(|events| events.borrow_mut().take().unwrap_or_default());
-            sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
+            sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
             assert!(game.mobs[0].extra.chested, "{kind} wears the chest");
             assert_eq!(sounds.len(), 1, "{kind}: {sounds:?}");
             assert_eq!(sounds[0].0, sound, "{kind} chest sound");

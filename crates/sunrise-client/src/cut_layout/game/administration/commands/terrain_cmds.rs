@@ -255,7 +255,7 @@ pub(crate) mod loot_position_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("setblock 4 200 4 chest"));
         let slot = |game: &mut sunrise_gameplay::game::ServerGame<'_>, i| {
-            game.slot_get(&crate::game::commands::items::Slot::Block([4, 200, 4], i))
+            game.slot_get(&sunrise_gameplay::game::server_side::commands::items::Slot::Block([4, 200, 4], i))
         };
         let reset = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
             assert!(game.run_command("item replace block 4 200 4 container.0 with diamond 3"));

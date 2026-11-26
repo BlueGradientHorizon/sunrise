@@ -24,6 +24,8 @@ use mod_api::ScoreHolder;
 
 use mod_api::DisplaySlot;
 
+use sunrise_game_data::scoreboard as sb;
+
 #[test]
     #[ignore = "daily"]
     fn objectives_are_written_synced_saved_and_stale_once_removed() {

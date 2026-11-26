@@ -9,6 +9,8 @@ use sunrise_gameplay_common::game::launch_options::Options;
 use sunrise_gameplay_common::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use std::sync::Arc;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 

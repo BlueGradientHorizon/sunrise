@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use std::fs;
 #[cfg(test)]
 pub(crate) mod tests {
 
@@ -91,7 +92,7 @@ use mod_api::ConfigFileError;
         assert!(!config.join("other").exists());
         // Outside the mod's hooks the service is no one's.
         assert_eq!(
-            crate::game::ClientGame::config_files().read(&path("proof-common.toml")),
+            sunrise_client_gameplay::game::ClientGame::config_files().read(&path("proof-common.toml")),
             Err(ConfigFileError::NoCallingMod)
         );
     }

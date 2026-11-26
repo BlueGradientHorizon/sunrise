@@ -28,7 +28,7 @@ pub(crate) use crate::game::client_side::native_hooks_client::customize_boss_eve
     fn a_client_mod_hides_and_spaces_boss_bars() {
         let (w, h) = (480, 270);
         let left = w / 2 - 91;
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             add_bars(game);
             assert_eq!(
                 backgrounds(&game.boss_bar_draws(w, h)),
@@ -46,7 +46,7 @@ pub(crate) use crate::game::client_side::native_hooks_client::customize_boss_eve
         )]
         .into();
         with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 add_bars(game);
                 assert_eq!(
                     backgrounds(&game.boss_bar_draws(w, h)),

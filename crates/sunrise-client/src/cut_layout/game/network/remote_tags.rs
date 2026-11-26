@@ -262,7 +262,7 @@ use sunrise_protocol::packets::{
                 let server_items =
                     sunrise_items::items::Items::catalog(root, &overlay, item_data.defaults())
                         .unwrap();
-                let sources = crate::game::lan::sync::server_sources(
+                let sources = sunrise_gameplay_common::game::lan_common::sync::server_sources(
                     root,
                     item_data,
                     &server_items,

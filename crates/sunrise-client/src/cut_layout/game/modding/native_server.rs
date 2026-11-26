@@ -499,9 +499,9 @@ use sunrise_gameplay::game::native_server::fake_action_tests::trader;
 
 use sunrise_gameplay::game::native_server::fake_action_tests::zombie;
 
-use sunrise_gameplay_common::game::items::interactions_common::PlayerAction;
-use sunrise_gameplay_common::game::modding::native_server::Acting;
-use super::{ActionOutcome, ActionRefused, FakeEffect};
+use mod_api::PlayerAction;
+use sunrise_gameplay_common::game::native_server::Acting;
+use mod_api::{ActionOutcome, ActionRefused, FakeEffect};
 
 use mod_api::{BlockHit, Hand, PlayerRef};
 

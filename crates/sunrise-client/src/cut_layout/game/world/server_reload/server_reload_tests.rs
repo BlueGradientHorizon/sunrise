@@ -1364,7 +1364,7 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
         });
         // A client holds no server data maps it may answer.
         #[cfg(feature = "client")]
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
             assert_eq!(
                 client.data_map_value("minecraft:item", "minecraft:coal", "probe:fuel"),
                 Err(DataMapError::Unavailable)

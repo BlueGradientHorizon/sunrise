@@ -19,6 +19,10 @@ use super::*;
 
 use mod_api::ServerHost;
 
+use sunrise_protocol::packets::play;
+
+use sunrise_sim::merchant;
+
 #[test]
     #[ignore = "daily"]
     fn changing_an_open_merchant_to_an_unknown_profession_closes_without_trading() {
@@ -59,7 +63,7 @@ use mod_api::ServerHost;
                 .unwrap()
                 .slots[0] = Some(wheat);
             let mut tag = game
-                .command_target_nbt(super::super::commands::Target::Mob(40))
+                .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40))
                 .unwrap();
             if let Tag::Compound(data) = &mut tag {
                 data.insert(
@@ -71,7 +75,7 @@ use mod_api::ServerHost;
                     ]),
                 );
             }
-            game.apply_entity_nbt(super::super::commands::Target::Mob(40), tag)
+            game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40), tag)
                 .unwrap();
             assert!(
                 game.side.lan.as_ref().unwrap().menus[&12]
@@ -115,7 +119,7 @@ use mod_api::ServerHost;
                 |_| None,
                 &Default::default(),
             );
-            game.apply_entity_nbt(super::super::commands::Target::Mob(40), tag)
+            game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40), tag)
                 .unwrap();
             assert_eq!(game.side.missing_professions.len(), 1);
             let second = spawn(game, 41, "minecraft:villager");
@@ -138,14 +142,14 @@ use mod_api::ServerHost;
                 );
             }
             game.apply_entity_nbt(
-                super::super::commands::Target::Mob(second.entity().id()),
+                sunrise_gameplay_common::game::commands_common::Target::Mob(second.entity().id()),
                 tag.clone(),
             )
             .unwrap();
             assert_eq!(game.side.missing_professions.len(), 1);
             game.side.missing_professions.clear();
             game.apply_entity_nbt(
-                super::super::commands::Target::Mob(second.entity().id()),
+                sunrise_gameplay_common::game::commands_common::Target::Mob(second.entity().id()),
                 tag,
             )
             .unwrap();
@@ -193,7 +197,7 @@ use mod_api::ServerHost;
                 .session;
             session.offers[0].uses = 3;
             session.xp = 17;
-            let target = super::super::commands::Target::Mob(40);
+            let target = sunrise_gameplay_common::game::commands_common::Target::Mob(40);
             let old = game.command_target_nbt(target).unwrap();
             let replacement = offer("minecraft:coal", "minecraft:diamond");
             let patch = Tag::compound([

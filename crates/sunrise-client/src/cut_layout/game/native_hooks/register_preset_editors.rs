@@ -473,7 +473,7 @@ pub(crate) mod tests {
             )]
             .into(),
             || {
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
                     let _window =
                         sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene(game);
                     use mod_api::__private::game::RegistrationContextNew;

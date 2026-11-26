@@ -1,6 +1,8 @@
 
 
 #![cfg(test)]
+use sunrise_protocol::packets::play;
+use sunrise_sim::mobs::equine;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::mobs::Mob;
@@ -41,7 +43,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_driven_vehicle_takes_the_servers_teleports_and_moves() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             use sunrise_items::items::ItemStack;
             use sunrise_protocol::packets::play::Clientbound as C;
             use sunrise_sim::motion::PlayerMotion;

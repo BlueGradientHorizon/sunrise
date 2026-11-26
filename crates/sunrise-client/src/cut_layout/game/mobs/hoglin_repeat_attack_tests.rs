@@ -9,7 +9,10 @@ use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use super::commands::Target;
+#[cfg(test)]
+use sunrise_gameplay_common::game::commands_common::Target;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 use super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
@@ -57,7 +60,7 @@ fn game<'a>(
     .unwrap();
     game.build_registries();
     game.native_lifecycle
-        .begin_open(super::native_lifecycle::Authority::IntegratedServer);
+        .begin_open(mod_api::Authority::IntegratedServer);
     game.set_allow_commands(true);
     for cx in 0..2 {
         game.world

@@ -477,7 +477,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn scaled_text_is_the_text_scaled_about_its_corner() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let at = [10.0, 20.0];
             let mut plain = crate::hud::HudBatch::scratch([320, 240]);
             GameDrawContext::new(game, &mut plain).text("Jump", at, 0xFFFF_FFFF, true);
@@ -560,7 +560,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn local_tooltip_draws_deep_text_but_refuses_unrepresentable_metadata() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let mut deep = mod_api::Text::literal("Tooltip");
             for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
                 deep = mod_api::Text::literal("").append(deep);

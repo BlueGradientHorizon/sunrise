@@ -7,7 +7,9 @@ use sunrise_game_data::text::Text;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::server_packs::Prompt;
+    use sunrise_client::multiplayer;
+    use sunrise_client::server_packs::{Prompt, action, download};
+    use sunrise_protocol::servers;
     use sunrise_client_gameplay::game::toast_manager::{SystemToastId, Toast};
     use sunrise_protocol::packets::configuration::ResourcePackPush;
     use {sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
@@ -235,7 +237,7 @@ mod tests {
                 mod_platform::testing::with_mods(
                     vec![ModEntry::new(OWNER, Box::new(HideHud))].into(),
                     || {
-                        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                             game.side.title.0 = None;
                             game.side.screen = sunrise_gameplay_common::game::Screen::Playing;
                             game.side.audio.0.backend_live_for_bench();

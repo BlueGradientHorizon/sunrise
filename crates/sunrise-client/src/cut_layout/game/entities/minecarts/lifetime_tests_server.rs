@@ -16,19 +16,19 @@ use sunrise_mod_runtime::attachments::{
 #[ignore = "daily"]
 fn a_bound_cart_survives_the_parked_level_swap() {
     bound_cart_case(CartKind::Rideable, |game| {
-        game.enter_level(super::super::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
         assert!(game.carts.is_empty());
         assert_eq!(
             game.side
                 .levels
                 .0
-                .parked_mut(super::super::Dim::Overworld)
+                .parked_mut(sunrise_gameplay_common::game::Dim::Overworld)
                 .unwrap()
                 .carts[0]
                 .id,
             71
         );
-        game.enter_level(super::super::Dim::Overworld).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
         assert_eq!(game.carts[0].id, 71);
     });
 }
@@ -369,7 +369,7 @@ fn terminal_vehicle_damage_and_native_removal_retire_residency() {
                         std::num::NonZeroU32::new(id).unwrap(),
                         |_| (),
                     ),
-                    crate::game::entity_residency::SlotAccess::Done(()),
+                    sunrise_gameplay::game::entity_residency::SlotAccess::Done(()),
                 ));
                 if mode == 0 {
                     if cart {
