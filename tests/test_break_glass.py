@@ -54,13 +54,16 @@ def history(folder, *changes):
     git("commit", "-q", "-m", "0.1.0")
     parent = git("rev-parse", "HEAD")
     for path, kind in changes:
-        target = repo / path
-        target.parent.mkdir(parents=True, exist_ok=True)
         if kind == "link":
-            target.symlink_to("a.md")
+            # The entry git stores for a symbolic link (mode 120000, its target as content), made without one on disk.
+            blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], input="a.md", cwd=repo, text=True,
+                                  capture_output=True, check=True).stdout.strip()
+            git("update-index", "--add", "--cacheinfo", f"120000,{blob},{path}")
         else:
+            target = repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("fix\n")
-        subprocess.run(["git", "add", "--", path], cwd=repo, check=True)
+            git("add", "--", path)
     git("commit", "-q", "--allow-empty", "-m", "cherry-pick")
     return parent, git("rev-parse", "HEAD")
 

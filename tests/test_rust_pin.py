@@ -85,6 +85,7 @@ class RustPinTests(unittest.TestCase):
 
 
 class RustupInstallTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "runs a Linux runner's workflow step")
     def test_a_missing_rustup_fails_at_once_without_retrying(self):
         with tempfile.TemporaryDirectory() as directory:
             # Only what the script needs besides rustup.
