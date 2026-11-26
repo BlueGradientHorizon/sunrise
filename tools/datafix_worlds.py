@@ -138,8 +138,10 @@ def java(version):
     if component in ('java-runtime-delta', 'java-runtime-epsilon'):
         return 'java'  # 1.20.5 on: the JDK that runs 26.3 runs them
     runtimes = LOCK[platform()]
+    if component not in {name for plat, names in LOCK.items() if plat != 'note' for name in names}:
+        raise ValueError(f'{version}: javaVersion component {component} is in no platform of research-lock.json java_runtimes')
     if component not in runtimes:
-        component = 'java-runtime-gamma'
+        component = 'java-runtime-gamma'  # research-lock.json java_runtimes note: a component this platform lacks falls back to gamma
     pin = runtimes[component]
     home = LOCAL / 'java' / f'{component}-{platform()}'
     stamp = home / '.complete'
