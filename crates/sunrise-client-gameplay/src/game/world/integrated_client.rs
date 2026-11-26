@@ -307,7 +307,7 @@ impl crate::game::ClientGame<'_> {
         let serve = self.client.serve_integrated;
         let profile_resolver = self.client.profile_resolver;
         let run_server = move |_: &()| {
-            let _finished = Finished(server_flags.clone());
+            let _finished = Finished::new(server_flags.clone());
             // MinecraftServer.spin's Thread.setPriority(8).
             sunrise_threads::favour_current();
             let result = serve(

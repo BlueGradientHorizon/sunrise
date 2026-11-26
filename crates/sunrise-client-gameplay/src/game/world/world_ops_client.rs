@@ -166,7 +166,7 @@ impl crate::game::ClientGame<'_> {
         let redstone_experiments = enabled_features
             .iter()
             .any(|feature| feature == "minecraft:redstone_experiments");
-        let other_entities = entity::entity_lists_of!(self, without_carts);
+        let other_entities = entity::entity_lists_of!(self.common, without_carts);
 
         let mut level = GameLevel {
             cake_probe: false,
@@ -205,7 +205,7 @@ impl crate::game::ClientGame<'_> {
             guest_boxes: Vec::new(),
             building_player_boxes: None,
             player_collision,
-            biomes: world_biomes!(self),
+            biomes: world_biomes!(self.common),
             biome_zoom: self.client.streaming.biome_zoom,
             seed: self.common.level.seed,
             behaviours: self.common.res.behaviours(),

@@ -109,7 +109,13 @@ impl Flags {
 }
 
 // Signal even if serve returns an error or unwinds; no game data is touched here.
-pub struct Finished(pub(in crate::game) Arc<Flags>);
+pub struct Finished(Arc<Flags>);
+impl Finished {
+    pub fn new(flags: Arc<Flags>) -> Self {
+        Self(flags)
+    }
+}
+
 impl Drop for Finished {
     fn drop(&mut self) {
         self.0.finished.store(true, Ordering::Release);

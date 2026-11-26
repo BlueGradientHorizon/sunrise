@@ -19,6 +19,7 @@ pub fn start_dedicated_game(
     prepared: Option<ServerCpuResources>,
     services: dedicated::Services,
     profile_resolver: ProfileResolverFactory,
+    keep_benchmark: fn(&std::path::Path, &sunrise_bench::Report),
 ) -> Result<()> {
     if let Some(d) = options.distance_override {
         settings.render_distance = d;
@@ -48,7 +49,7 @@ pub fn start_dedicated_game(
         let control = game
             .control
             .get_or_insert_with(sunrise_sim::control::Server::local);
-        sunrise_client::benchmark::start(
+        sunrise_sim::benchmark::start(
             control.sender(),
             sunrise_sim::benchmark::Setup {
                 scenario,
@@ -67,6 +68,7 @@ pub fn start_dedicated_game(
                 set: game.options.benchmark_set.clone(),
                 profile: game.options.benchmark_profile,
             },
+            keep_benchmark,
         );
     }
     let result = game.run_dedicated();

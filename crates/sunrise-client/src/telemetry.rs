@@ -11,6 +11,10 @@ use sunrise_telemetry::payload::{Crash, Display, Perf, Settings, System, Timings
 use sunrise_telemetry::scrub::Scrubber;
 use sunrise_telemetry::{Item, Payload, Source, outbox};
 
+#[path = "benchmark_retention.rs"]
+mod benchmark_retention;
+pub use benchmark_retention::{keep_benchmark, version};
+
 /// A session shorter than this says too little to keep.
 const MIN_SECONDS: f32 = 60.0;
 
@@ -69,11 +73,6 @@ pub fn system() -> System {
     system
 }
 
-/// The release (`v0.2.3`), or the client's crate version for a build from source.
-pub fn version() -> String {
-    crate::crash::release_tag().unwrap_or_else(|| format!("dev {}", env!("CARGO_PKG_VERSION")))
-}
-
 /// What a crash report becomes when it may leave: the error and stack, the thread, and the
 /// details in [`CRASH_DETAILS`], with the world's name and folder and the server's address
 /// scrubbed wherever they appear. No log lines.
@@ -130,20 +129,6 @@ pub fn crash_item(report: &crate::crash::Report) -> Item {
 pub fn keep_crash(home: &Path, report: &crate::crash::Report) {
     if let Err(e) = outbox::push(home, &crash_item(report)) {
         log::warn!("Sunrise: could not keep the crash report to send: {e}");
-    }
-}
-
-/// Keeps a benchmark report (`--benchmark`) for the launcher to send, if the player allows
-/// benchmark uploads: the report as docs/benchmark-report.md defines it, dated to the day.
-pub fn keep_benchmark(home: &Path, report: &sunrise_bench::Report) {
-    let Ok(data) = serde_json::to_value(report.for_upload()) else {
-        return;
-    };
-    if let Err(e) = outbox::push(
-        home,
-        &Item::new(Source::Game, version(), Payload::Benchmark(data)),
-    ) {
-        log::warn!("Sunrise: could not keep the benchmark report to send: {e}");
     }
 }
 

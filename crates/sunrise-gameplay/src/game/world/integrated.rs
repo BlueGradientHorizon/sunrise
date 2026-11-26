@@ -1094,7 +1094,7 @@ pub mod tests {
         let flags = Arc::new(Flags::default());
         let saving = flags.clone();
         let server = std::thread::spawn(move || {
-            let _finished = sunrise_gameplay_common::game::integrated_link::Finished(saving.clone());
+            let _finished = sunrise_gameplay_common::game::integrated_link::Finished::new(saving.clone());
             while !saving.stop.load(Ordering::Relaxed) {
                 std::thread::yield_now();
             }

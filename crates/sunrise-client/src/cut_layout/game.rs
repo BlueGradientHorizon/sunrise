@@ -1,4 +1,6 @@
 pub use crate::game_facade::*;
+#[path = "../benchmark_retention.rs"]
+mod benchmark_retention;
 use std::sync::Arc;
 use std::time::Instant;
 use sunrise_game_data::Result;
@@ -641,7 +643,7 @@ pub(crate) fn run_with(
     // for a server, a benchmark, a run that quits by itself, a harness's fixture or a run that
     // sunrise-ctl drives: those start in a source checkout and wrote the list there.
     if !options.offscreen && !synchronous_startup(&options) {
-        let version = sunrise_client::telemetry::version();
+        let version = benchmark_retention::version();
         let game_dir = sunrise_level::logging::player_dir();
         sunrise_hooks::engine::started(&sunrise_hooks::Started::new(&version, &game_dir));
     }
@@ -698,6 +700,7 @@ pub(crate) fn run_with(
             None,
             dedicated_services(),
             profile_resolver,
+            benchmark_retention::keep_benchmark,
         );
     }
     #[cfg(not(feature = "client"))]

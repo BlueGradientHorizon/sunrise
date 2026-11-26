@@ -1,7 +1,7 @@
 //! The radial menu in play (`sunrise-client-input/src/radial.rs` has its rules,
 //! `radial_overlay.rs` draws it): what opens and closes it, what the pad's presses do while it is
 //! open, and what a commit runs.
-use super::{Game, Result, UI_CLICK_VOLUME};
+use super::{Result, UI_CLICK_VOLUME};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use sunrise_client::gamepad::MenuJob;
