@@ -251,3 +251,78 @@ fn singleton_live_owner_is_not_reported_as_departed() {
         },
     );
 }
+
+/// Issue #5479: the dragon's killing blow reaches `LivingEntity.die` as any living entity's does
+/// (`EnderDragon.handleKillingBlow` only starts the dying flight), so `living_death` hears it with
+/// the blow, and `living_death_post` after it; a cancelled death hears no post.
+#[test]
+#[ignore = "daily"]
+fn the_dragons_killing_blow_fires_the_living_death_hooks() {
+    use mod_api::{Flow, Hooks, LivingDeathEvent, LivingDeathPostEvent, ModEntry, ServerHost};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    struct Deaths {
+        heard: Arc<Mutex<Vec<String>>>,
+        cancel: Arc<AtomicBool>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Deaths {
+        fn living_death(&self, _: &mut dyn ServerHost, event: &mut LivingDeathEvent<'_>) -> Flow {
+            self.heard
+                .lock()
+                .unwrap()
+                .push(format!("death {} {}", event.kind, event.source.damage_type));
+            if self.cancel.load(Ordering::SeqCst) {
+                Flow::Cancel
+            } else {
+                Flow::Continue
+            }
+        }
+        fn living_death_post(&self, _: &mut dyn ServerHost, event: &mut LivingDeathPostEvent<'_>) {
+            self.heard
+                .lock()
+                .unwrap()
+                .push(format!("post {} {}", event.damage_type, event.attacker));
+        }
+    }
+
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let mods = vec![ModEntry::new(
+        "dragon_deaths",
+        Box::new(Deaths {
+            heard: heard.clone(),
+            cancel: cancel.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            for cancelled in [false, true] {
+                cancel.store(cancelled, Ordering::SeqCst);
+                heard.lock().unwrap().clear();
+                game.dragon.discard();
+                game.spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
+                    .unwrap();
+                game.dragon.as_mut().unwrap().health = 1.0;
+                game.hurt_dragon(
+                    0,
+                    50.0,
+                    true,
+                    Some(FightWho::Host),
+                    DamageKind::PlayerAttack,
+                );
+                assert!(game.dragon.as_ref().unwrap().down(), "the blow kills");
+                let death = "death minecraft:ender_dragon minecraft:player_attack".to_owned();
+                let expected = if cancelled {
+                    vec![death]
+                } else {
+                    // A player's blow names no attacking mob.
+                    vec![death, "post minecraft:player_attack 0".to_owned()]
+                };
+                assert_eq!(*heard.lock().unwrap(), expected, "cancelled: {cancelled}");
+            }
+        });
+    });
+}
