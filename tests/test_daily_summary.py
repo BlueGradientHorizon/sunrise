@@ -486,8 +486,10 @@ class DailySummaryTests(unittest.TestCase):
 
     def test_every_sdk_check_is_a_step_of_the_sdk_build(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/prebuilt-game-build.yml").read_text()
+        # A cross-built macOS or Windows leg repeats the checks in `cross-check`; the `build` job keeps each once.
+        build = workflow.split("\n  build:\n", 1)[1].split("\n  cross-check:\n", 1)[0]
         for step in summary.SDK_CHECKS:
-            self.assertEqual(workflow.count(f"- name: {step}\n"), 1, step)
+            self.assertEqual(build.count(f"- name: {step}\n"), 1, step)
 
     def test_an_sdk_check_issue_closes_only_when_its_step_passed(self):
         title = "Daily: sdk API-source check (linux)"
@@ -1047,7 +1049,7 @@ class DailyWorkflowTests(unittest.TestCase):
                          "python tools/prebuilt_game.py pack prebuilt dist --stage-tool "
                          "target/prebuilt/tools/release/sunrise-stage${{ runner.os == 'Windows' && '.exe' || '' }}")
         self.assertEqual(steps["actions/upload-artifact@v4"]["with"]["name"], "sdk-leg-${{ matrix.name }}")
-        self.assertNotIn("env", build, "no hand-set archive name")
+        self.assertEqual(set(build.get("env", {})), {"CROSS", "SUNRISE_PREBUILT_TARGET"}, "no hand-set archive name")
 
         self.assertEqual(set(nightly.SDK_ASSETS) - set(nightly.SDK_ARCHIVES), {"sdk.json", "SHA256SUMS", "SHA256SUMS.sig"})
 

@@ -185,13 +185,13 @@ jobs:
       # (on windows-gnu through the first's import library); `start` then loads both.
       - name: Two starter mods and the game executable build against the archive alone
         # A cross-built macOS or Windows leg runs this in cross-check, on that platform.
-        if: ${{ env.CROSS != 'on' || !contains(fromJSON('["macos", "windows"]'), matrix.name) }}
+        if: env.CROSS != 'on' || matrix.name == 'linux' || matrix.name == 'linux-server'
         run: python tools/prebuilt_game.py smoke prebuilt
       # Runs what smoke built, installed as the launcher installs it, with no game data: it loads the game's
       # libraries and sets up the mods' runtime, and must stop cleanly at the missing prepared files. A crash
       # there (two allocators, #3877) fails this OS's leg, so its archive never publishes.
       - name: The game executable starts and loads the game's libraries
-        if: ${{ env.CROSS != 'on' || !contains(fromJSON('["macos", "windows"]'), matrix.name) }}
+        if: env.CROSS != 'on' || matrix.name == 'linux' || matrix.name == 'linux-server'
         timeout-minutes: 10
         run: python tools/prebuilt_game.py start prebuilt
       # Warns past 80% of Windows' 65,535 exported names per DLL and fails past 90%.
@@ -202,7 +202,7 @@ jobs:
       # (an emptied check folder without its mark: E_SCRATCH), and its builds made the cache larger for nothing.
       - name: Two mod libraries share the game's exact Rust state
         id: linkage
-        if: ${{ matrix.linkage && (env.CROSS != 'on' || !contains(fromJSON('["macos", "windows"]'), matrix.name)) }}
+        if: matrix.linkage && (env.CROSS != 'on' || matrix.name == 'linux')
         run: python tools/native_dylib_probe.py --sdk prebuilt --output "$RUNNER_TEMP/native-dylib-probe"
       # The archive is the SDK's api-source.tar.xz: sdk-publish.yml's index takes it from here rather than building
       # the same bytes again (same commit, same bytes: tools/sdk_api_source.py).
@@ -223,9 +223,13 @@ jobs:
       # A cross leg did not find that tool where `build` left it (run 45672482328): it runs the tool from source, as pack does
       # when given none (80 to 87 s).
       - name: Pack the SDK's assets
+        if: env.CROSS != 'on'
         run: >-
           python tools/prebuilt_game.py pack prebuilt dist
-          ${{ env.CROSS == 'on' && '' || format('--stage-tool target/prebuilt/tools/release/sunrise-stage{0}', runner.os == 'Windows' && '.exe' || '') }}
+          --stage-tool target/prebuilt/tools/release/sunrise-stage${{ runner.os == 'Windows' && '.exe' || '' }}
+      - name: Pack the cross-built SDK's assets
+        if: env.CROSS == 'on'
+        run: python tools/prebuilt_game.py pack prebuilt dist
       # Build a native mod library on macOS against the SDK just built, using the release's
       # own `cargo sunrise-mod native-build` tool.
       - name: A native mod builds through the shipped route
