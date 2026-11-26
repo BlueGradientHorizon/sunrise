@@ -1378,20 +1378,24 @@ impl Game<'_> {
         Some(sunrise_client::lan::playerdata::ints_uuid(owner))
     }
     /// The living entity as a player, with its UUID: the player in place (a guest's while it
-    /// acts) or a guest. None for any other living entity, a stale handle or on a client.
+    /// acts) or a guest. Resolved through [`Self::player`], so it names the same player
+    /// `host.player(uuid)` does, and only when that player is this entity. None for any other
+    /// living entity, a fake player acting, a stale handle or on a client.
     pub(super) fn living_player(&self, living: LivingRef) -> Option<mod_api::PlayerRef> {
         if !self.is_logical_server() {
             return None;
         }
         let uuid = match self.native_living_target(living)? {
-            Target::Player => match self.lan_acting_uuid {
-                Some(guest) => guest,
-                None => sunrise_client::lan::playerdata::ints_uuid(self.level.player_uuid?),
-            },
+            Target::Player => self.lan_acting_uuid.or_else(|| {
+                self.level
+                    .player_uuid
+                    .map(sunrise_client::lan::playerdata::ints_uuid)
+            })?,
             Target::Guest(conn) => self.command_guest(conn)?.uuid,
             _ => return None,
         };
-        Some(mod_api::__private::game::player_ref(living.entity(), uuid))
+        self.player(uuid)
+            .filter(|player| player.entity() == living.entity())
     }
     /// The mob a handle names, when it is a `TamableAnimal` or an `AbstractHorse`.
     fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {

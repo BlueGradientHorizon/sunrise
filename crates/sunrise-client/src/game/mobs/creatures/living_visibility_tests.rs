@@ -1,6 +1,9 @@
+use super::super::native_entity_refs::tests::bind_local_player;
 use super::super::native_entity_refs::tests::with_game;
 use super::super::native_item_places::tests::{guest, open_to_lan};
 use std::sync::{Arc, Mutex};
+use sunrise_client::motion::PlayerMotion;
+use sunrise_core::geometry::Vec3;
 
 /// Halves the player's visibility, and logs what it was asked.
 struct Halve(Arc<Mutex<Vec<(u32, Option<u32>, f64)>>>);
@@ -57,7 +60,8 @@ impl mod_api::Hooks for NamePlayer {
 }
 
 /// A `living_visibility` listener names the guest it is asked about by its
-/// UUID, under the hook's read-only host (#5944), and an entity that is no player as none.
+/// UUID, under the hook's read-only host (#5944), and an entity that is no player as none;
+/// then the host player, acting and in place, by its UUID.
 #[test]
 #[ignore = "daily"]
 fn a_mod_names_the_guest_whose_visibility_it_is_asked() {
@@ -82,6 +86,19 @@ fn a_mod_names_the_guest_whose_visibility_it_is_asked() {
                 .unwrap()
                 .living_visibility_mob(900, 901, 1.0);
             assert_eq!(*heard.lock().unwrap(), [Some(uuid), None]);
+            assert_eq!(uuid, 127, "guest 5's fixture UUID");
+            // The host player, first acting, then in place with no turn running.
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            bind_local_player(game, 20, 123);
+            let host = |game: &mut crate::game::Game<'_>| {
+                game.scaled_visibility(|epoch| mod_api::EntityRef::new(epoch, 20), 900, 1.0);
+                heard.lock().unwrap().pop().unwrap()
+            };
+            assert_eq!(host(game), Some(123), "the acting host player");
+            // In place, the host is found as `host.player` finds it: while the world is served.
+            (game.lan_acting_uuid, game.lan_acting_entity) = (None, None);
+            game.serving = Some(crate::game::integrated::Serving::fixture(0));
+            assert_eq!(host(game), Some(123), "the host player in place");
         });
     });
 }
