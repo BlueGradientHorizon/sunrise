@@ -376,6 +376,22 @@ pub trait ClientRenderClientBackend {
     /// Writes queued for it and not yet applied are dropped.
     #[manual_handle]
     fn storage_buffer_release(&self, buffer: StorageBufferRef) -> Result<(), BufferError>;
+    /// Record a copy of a storage buffer range into a staging buffer at this point of the
+    /// compute node being recorded; called through [`StorageBufferRef::request_readback`].
+    #[manual_handle]
+    fn storage_buffer_request_readback(
+        &self,
+        buffer: StorageBufferRef,
+        offset: u64,
+        len: u64,
+    ) -> Result<ReadbackTicket, BufferError>;
+    /// The bytes of a finished readback, none while it is in flight; called through
+    /// [`ReadbackTicket::poll_readback`].
+    #[manual_handle]
+    fn readback_poll(&self, ticket: ReadbackTicket) -> Result<Option<Vec<u8>>, BufferError>;
+    /// Drop a pending readback; called through [`ReadbackTicket::release`].
+    #[manual_handle]
+    fn readback_release(&self, ticket: ReadbackTicket) -> Result<(), BufferError>;
     /// Resize a mod-owned offscreen render target (no-op if unchanged); called through
     /// [`RenderTargetRef::resize`].
     #[manual_handle]
