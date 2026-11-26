@@ -100,6 +100,19 @@ def labels_of(runs_on, facts=None):
     return labels
 
 
+SWITCH = parsed_expression("vars.SELF_HOSTED_CI")
+
+
+def switch_facts(route, setting):
+    """The value of each comparison of SELF_HOSTED_CI with a literal in `route` when it is `setting`."""
+    facts = {}
+    for comparison in route.comparisons():
+        left, right = comparison.operands
+        if comparison.operator in ("==", "!=") and left == SWITCH and isinstance(right.value, str):
+            facts[comparison] = (right.value.lower() == setting) == (comparison.operator == "==")
+    return facts
+
+
 def routed():
     """(where, triggers, workflow, job, runs-on, pools) for every job that can run on our runners."""
     for path in sorted(WORKFLOWS.glob("*.y*ml")):
@@ -177,26 +190,68 @@ jobs:
         for where, _, _, _, value, pools in routed():
             with self.subTest(job=where):
                 count += 1
-                self.assertTrue(isinstance(value, str) and value.lstrip().startswith("${{"),
-                                "a fixed label cannot go back to GitHub")
-                route = parsed_expression(value)
-                comparisons = route.comparisons()
-                # dyna-ci.yml uses the changes job's routing output, or SELF_HOSTED_CI=all with the fork guard.
-                # The other workflows use SELF_HOSTED_CI != 'off'.
-                if where.startswith("dyna-ci.yml "):
-                    self.assertLessEqual({parsed_expression("needs.changes.outputs.self_hosted == 'true'"),
-                                          parsed_expression("vars.SELF_HOSTED_CI == 'all'"), TRUSTED}, comparisons)
-                else:
-                    self.assertIn(parsed_expression("vars.SELF_HOSTED_CI != 'off'"), comparisons)
-                # The final fallback is a GitHub-hosted Ubuntu runner, not another conditional route.
-                fallback = route
-                while fallback.operator == "||":
-                    fallback = fallback.operands[1]
-                self.assertTrue(all(value in ("ubuntu-latest", "ubuntu-24.04") for value in branch_values(fallback)))
-                if "checks" in pools:
-                    # The desktop paused: every checks job back to GitHub, the bots stay.
-                    self.assertIn(parsed_expression("vars.SELF_HOSTED_CI != 'light'"), comparisons)
+                self.assert_switch_routes_back(where, value, pools)
         self.assertGreaterEqual(count, 10)
+
+    def assert_switch_routes_back(self, where, value, pools):
+        """SELF_HOSTED_CI=off reaches neither pool and =light no checks runner, on every branch of `runs-on`."""
+        self.assertTrue(isinstance(value, str) and value.lstrip().startswith("${{"),
+                        f"{where}: a fixed label cannot go back to GitHub")
+        route = parsed_expression(value)
+        self.assertFalse(labels_of(value, switch_facts(route, "off")) & {*LIGHT, *CHECKS},
+                         f"{where}: our runners with SELF_HOSTED_CI=off")
+        if "checks" in pools:
+            # The desktop paused: every checks job back to GitHub, the bots stay.
+            self.assertFalse(labels_of(value, switch_facts(route, "light")) & set(CHECKS),
+                             f"{where}: a checks runner with SELF_HOSTED_CI=light")
+        # The final fallback is a GitHub-hosted Ubuntu runner, not another conditional route.
+        fallback = route
+        while fallback.operator == "||":
+            fallback = fallback.operands[1]
+        self.assertTrue(all(value in ("ubuntu-latest", "ubuntu-24.04") for value in branch_values(fallback)), where)
+
+    def test_a_route_around_the_switch_is_refused(self):
+        guarded = [
+            ("${{ vars.SELF_HOSTED_CI != 'off' && 'sunrise-light' || 'ubuntu-latest' }}", {"light"}),
+            ("${{ vars.SELF_HOSTED_CI != 'off' && vars.SELF_HOSTED_CI != 'light' && "
+             "fromJSON('[\"self-hosted\", \"sunrise-checks\"]') || 'ubuntu-latest' }}", {"checks"}),
+            ("${{ needs.x.outputs.trusted == 'true' && vars.SELF_HOSTED_CI == 'all' && "
+             "fromJSON('[\"self-hosted\", \"playsunrise-ci\"]') || 'ubuntu-24.04' }}", {"light"}),
+        ]
+        for value, pools in guarded:
+            with self.subTest(route=value):
+                self.assert_switch_routes_back("fixture", value, pools)
+        around = [
+            # The switch is compared, but another branch reaches the pool whatever it says.
+            ("${{ vars.SELF_HOSTED_CI != 'off' && 'sunrise-light' || inputs.fast && 'sunrise-light' || "
+             "'ubuntu-latest' }}", {"light"}, "SELF_HOSTED_CI=off"),
+            ("${{ (vars.SELF_HOSTED_CI != 'off' || inputs.force) && 'sunrise-light' || 'ubuntu-latest' }}",
+             {"light"}, "SELF_HOSTED_CI=off"),
+            ("${{ vars.SELF_HOSTED_CI != 'off' && (vars.SELF_HOSTED_CI != 'light' || inputs.force) && "
+             "fromJSON('[\"self-hosted\", \"sunrise-checks\"]') || 'ubuntu-latest' }}", {"checks"},
+             "SELF_HOSTED_CI=light"),
+        ]
+        for value, pools, message in around:
+            with self.subTest(route=value), self.assertRaisesRegex(AssertionError, message):
+                self.assert_switch_routes_back("fixture", value, pools)
+
+    def test_a_label_picked_from_a_constant_list_is_on_our_runners(self):
+        fixture = "on: pull_request\njobs:\n  verify:\n    runs-on: >-\n      ${{{{ {route} }}}}\n"
+        routes = [
+            "fromJSON('[\"ubuntu-latest\", \"sunrise-light\"]')[1]",
+            "fromJSON('{\"Pool\": [\"self-hosted\", \"sunrise-light\"]}').pool",
+            "fromJSON('[\"ubuntu-latest\", \"sunrise-light\"]')[inputs.slot]",
+        ]
+        with tempfile.TemporaryDirectory() as directory, patch(f"{__name__}.WORKFLOWS", Path(directory)):
+            path = Path(directory) / "fixture.yml"
+            for route in routes:
+                with self.subTest(route=route):
+                    path.write_text(fixture.format(route=route))
+                    self.assertEqual([pools for *_, pools in routed()], [{"light"}])
+                    with self.assertRaisesRegex(AssertionError, "a fork's pull request"):
+                        self.test_light_runners_take_main_code_only()
+            path.write_text(fixture.format(route="fromJSON('[\"ubuntu-latest\", \"sunrise-light\"]')[0]"))
+            self.assertEqual(list(routed()), [])
 
     def test_light_runners_take_main_code_only(self):
         for where, on, _, job, value, pools in routed():

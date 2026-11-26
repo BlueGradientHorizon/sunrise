@@ -142,7 +142,8 @@ def branch_values(expression, facts=None):
     """Possible results of short-circuit branches, without guessing dynamic values.
 
     Comparisons are unknown booleans unless the caller supplies a fact about one;
-    of the function calls, only fromJSON on a known string produces a known result.
+    of the function calls, only fromJSON on a known string produces a known result,
+    and indexing a known value gives the element its key can pick (null when absent).
     """
     op = expression.operator
     if op == "literal":
@@ -162,4 +163,28 @@ def branch_values(expression, facts=None):
         if len(decoded) == len(values):
             return decoded
         return decoded + [_UNKNOWN_FALSY, _UNKNOWN_TRUTHY]
+    if op == "index":
+        base, key = expression.operands
+        keys = branch_values(key, facts)
+        values = [item for value in branch_values(base, facts) for index in keys for item in _elements(value, index)]
+        known = [value for value in values if value is not _UNKNOWN]
+        return known if len(known) == len(values) else known + [_UNKNOWN_FALSY, _UNKNOWN_TRUTHY]
     return [_UNKNOWN_FALSY, _UNKNOWN_TRUTHY]
+
+
+_UNKNOWN = object()
+
+
+def _elements(value, key):
+    """What `value[key]` can be in Actions: a known list or object indexed by a dynamic key can give
+    any of its elements; a dynamic value gives _UNKNOWN."""
+    if value in (_UNKNOWN_FALSY, _UNKNOWN_TRUTHY):
+        return [_UNKNOWN]
+    if key in (_UNKNOWN_FALSY, _UNKNOWN_TRUTHY):
+        items = value if isinstance(value, list) else list(value.values()) if isinstance(value, dict) else []
+        return [*items, None]
+    if isinstance(value, list) and isinstance(key, (int, float)) and not isinstance(key, bool):
+        return [value[int(key)] if key == int(key) and 0 <= key < len(value) else None]
+    if isinstance(value, dict) and isinstance(key, str):
+        return [next((item for name, item in value.items() if name.lower() == key.lower()), None)]
+    return [None]
