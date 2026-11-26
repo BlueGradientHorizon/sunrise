@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -158,6 +159,36 @@ class PersistentTargetTests(unittest.TestCase):
                     snapshot = [i for i, run in enumerate(runs) if "tools/ci/source_mtimes.py" in run]
                     self.assertTrue(snapshot and snapshot[0] < builds[0],
                                     "restore the source snapshot before the first build step")
+
+
+@unittest.skipUnless(sys.platform == "linux" and shutil.which("bash"), "pack bench runs on Linux bash")
+class PackBenchTargetsTests(unittest.TestCase):
+    def test_the_dirty_base_bench_builds_in_its_own_target(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/pack-bench.yml").read_text())
+        steps = {step.get("name"): step for step in workflow["jobs"]["bench"]["steps"]}
+        # Stub the tools, but run the actual step scripts, including cd, cp and the output redirections.
+        stub = r'''
+git() { :; }
+cargo() { printf '%s\n' "$PWD" "$CARGO_TARGET_DIR" "$CARGO_BUILD_BUILD_DIR" "$CARGO_HOME"; }
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory).resolve()
+            head, base = folder / "head", folder / "base"
+            bench = Path("crates/sunrise-client-render/examples/pack_load_bench.rs")
+            for tree, contents in ((head, "head bench"), (base, "base bench")):
+                (tree / bench).parent.mkdir(parents=True)
+                (tree / bench).write_text(contents)
+            downloads = str(folder / "cargo-home")
+            env = {**os.environ, "GITHUB_WORKSPACE": str(head), "CARGO_HOME": downloads,
+                   "CARGO_TARGET_DIR": str(head / "target"), "CARGO_BUILD_BUILD_DIR": str(folder / "old-build"),
+                   "BASE": "main", "SCALE": "1"}
+            for name in ("Bench the branch", "Bench the base, with the branch's bench"):
+                subprocess.run(["bash", "-e", "-c", stub + steps[name]["run"]], cwd=head, env=env, check=True)
+            self.assertEqual((base / bench).read_text(), "head bench")
+            for tree in (head, base):
+                output = (head / f"{tree.name}.md").read_text().splitlines()
+                self.assertEqual(output, [str(tree), str(tree / "target"), str(tree / "target"), downloads])
+
 
 if __name__ == "__main__":
     unittest.main()
