@@ -10,7 +10,7 @@ pub trait Hooks {
     /// changing level. It only hears; the mob is already among the game's
     /// mobs. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_mob_spawned",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_mob_spawned",
         dispatch = "flat",
         side = "server",
         contract = "listen",

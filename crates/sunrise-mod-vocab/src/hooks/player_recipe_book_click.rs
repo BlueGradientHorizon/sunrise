@@ -6,7 +6,7 @@ pub trait Hooks {
     /// their crafting grid. `recipe` is the recipe id; `all` is the shift
     /// click form. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_recipe_book_click",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_recipe_book_click",
         dispatch = "flat",
         side = "server",
         contract = "listen",

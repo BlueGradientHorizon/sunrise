@@ -6,7 +6,7 @@ pub trait Hooks {
     /// Per-pixel alpha in the overlay marks full-bright material, without
     /// illuminating the surrounding block or changing gameplay light.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_emissive",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_emissive",
         receiver = "read",
         dispatch = "flat",
         side = "client",

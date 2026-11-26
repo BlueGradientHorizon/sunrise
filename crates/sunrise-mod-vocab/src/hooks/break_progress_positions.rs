@@ -13,7 +13,7 @@ pub trait Hooks {
     /// out-of-range positions are dropped; excess/invalid extras produce a
     /// debug log, never a panic. These limits constrain only the display, not
     /// block interaction. This hook changes neither break speed nor what breaks.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::break_progress_positions::ClientGame<'_>::native_break_progress_positions", 
         side = "client",
         contract = "collect",
         out = "positions",

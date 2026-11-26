@@ -10,7 +10,7 @@ pub trait Hooks {
     /// without a message) to refuse. The spawn point is set before it fires,
     /// as in vanilla, only when vanilla found no problem. After it,
     /// `player_bed_enter` still fires and may cancel. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::can_player_sleep::ServerGame<'_>::native_can_player_sleep", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

@@ -13,7 +13,7 @@ pub trait Hooks {
     /// A dispenser fluid transfer with no open transaction in its level publishes before
     /// overflow insertion or preparation. With a caller-owned transaction in that level,
     /// publication waits for the outermost commit. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::vanilla_game_event::ServerGame<'_>::native_vanilla_game_event", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

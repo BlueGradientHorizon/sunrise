@@ -22,7 +22,7 @@ pub trait Hooks {
     /// types: vanilla families tick their own paths (#6509 owns bringing
     /// them to one join-order walk), so a part attached to `minecraft:zombie`
     /// hears no tick from this hook. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::general_entity_tick::native_general_entity_tick", 
         receiver = "associated",
         dispatch = "api_carrier",
         side = "server",

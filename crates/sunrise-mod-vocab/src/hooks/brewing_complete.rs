@@ -5,7 +5,7 @@ pub trait Hooks {
     /// A brewing stand finished brewing at `pos`, after its bottle contents
     /// were changed. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_brewing_complete",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_brewing_complete",
         dispatch = "flat",
         side = "server",
         contract = "listen",

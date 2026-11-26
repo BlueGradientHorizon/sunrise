@@ -15,7 +15,7 @@ pub trait Hooks {
     /// Live state may have advanced beyond the saved snapshot; a process exit
     /// before completions are drained can prevent notification delivery.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_save_to_file",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_save_to_file",
         dispatch = "flat",
         side = "server",
         contract = "listen",

@@ -12,7 +12,7 @@ text = text[:start] + text[end:]
 text = text.replace("mod world;", "mod world;\nmod knockback;")
 path.write_text(text)
 (path.parent / "mobs/knockback.rs").write_text("use super::*;\n\nimpl Mob {\n" + block + "}\n")
-path = root / "crates/sunrise-client/src/game/mobs/creatures/mod.rs"
+path = root / "crates/sunrise-gameplay-common/src/game/mobs/creatures/mod.rs"
 text = path.read_text()
 start = text.index("    /// `LivingEntity.knockback` on the player")
 end = text.index("    /// A status effect from a mob", start)

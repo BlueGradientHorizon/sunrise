@@ -109,7 +109,7 @@ def main():
                ROOT / 'crates/sunrise-client/examples/probe/trident_probe.rs',
                ROOT / 'crates/sunrise-client/examples/probe/main.rs',
                ROOT / 'crates/sunrise-sim/src/arrows.rs',
-               ROOT / 'crates/sunrise-client/src/game/items/trident.rs']
+               ROOT / 'crates/sunrise-gameplay/src/game/items/trident.rs']
     tested = base.source_hashes(sources)
     cases = fixtures()
     (build / 'inputs.txt').write_text(''.join(json.dumps(row, separators=(',', ':')) + '\n'

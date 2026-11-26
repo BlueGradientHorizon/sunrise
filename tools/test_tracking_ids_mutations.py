@@ -17,8 +17,8 @@ def terminate(signum, _frame):
 signal.signal(signal.SIGTERM, terminate)
 if not os.environ.get('SUNRISE_TEST_RESOURCES'):
     raise SystemExit('Set SUNRISE_TEST_RESOURCES')
-lan = Path('crates/sunrise-client/src/game/network/lan_entities.rs')
-dragon = Path('crates/sunrise-client/src/game/mobs/dragon.rs')
+lan = Path('crates/sunrise-gameplay/src/game/network/lan_entities.rs')
+dragon = Path('crates/sunrise-gameplay/src/game/mobs/dragon.rs')
 originals = {p: p.read_text() for p in (lan, dragon)}
 subprocess.run(['git', 'diff', 'HEAD', '--exit-code', '--', str(lan), str(dragon)], check=True)
 logs = Path('target/tracking-id-proof')

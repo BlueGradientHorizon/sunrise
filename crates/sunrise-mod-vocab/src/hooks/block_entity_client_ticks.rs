@@ -9,7 +9,7 @@ pub trait Hooks {
     /// pass), if a part has a client tick.
     /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
     #[hook(
-        target = "sunrise_client::game::native_hooks::block_entity_client_tick::Game<'_>::native_block_entity_client_ticks",
+        target = "sunrise_client_gameplay::game::native_hooks::block_entity_client_tick::ClientGame<'_>::native_block_entity_client_ticks",
         receiver = "read",
         dispatch = "flat",
         side = "client",

@@ -24,7 +24,7 @@ pub trait Hooks {
         out = "new",
         scope = "block",
         key = "state",
-        target = "sunrise_client::game::native_hooks::base::GameLevel<'_>::native_update_shape",
+        target = "sunrise_gameplay_common::game::native_hooks::base::GameLevel<'_>::native_update_shape",
         neoforge = "none (vanilla BlockBehaviour.updateShape; NeoForge adds no event or extension for it)"
     )]
     fn update_shape(
@@ -42,7 +42,7 @@ pub trait Hooks {
     /// when the mod ran it. Client-side: a server never asks, not for
     /// command blocks, guests or the console.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_command",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_command",
         dispatch = "flat",
         side = "client",
         contract = "cancel",

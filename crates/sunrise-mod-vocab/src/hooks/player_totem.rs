@@ -14,7 +14,7 @@ pub trait Hooks {
     /// Once for each totem, on a server; the host of a LAN world's totem is
     /// not heard.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_totem",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_totem",
         dispatch = "flat",
         side = "server",
         contract = "listen",

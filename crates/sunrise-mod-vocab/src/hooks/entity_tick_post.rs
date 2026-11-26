@@ -10,7 +10,7 @@ pub trait Hooks {
     /// server and on a client (`host` says which side). Version 3 observes additional families
     /// without changing the event signature.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_post",
+        target = "sunrise_gameplay_common::game::native_hooks::base::GameHooks::native_entity_tick_post",
         dispatch = "flat",
         side = "both",
         version = 3,

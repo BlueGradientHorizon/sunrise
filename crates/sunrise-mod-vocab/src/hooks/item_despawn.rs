@@ -5,7 +5,7 @@ pub trait Hooks {
     /// A dropped item entity reached its 6000-tick lifetime and is about to be
     /// removed (Bukkit's `ItemDespawnEvent`).
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_item_despawn",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_item_despawn",
         dispatch = "flat",
         side = "server",
         contract = "listen",

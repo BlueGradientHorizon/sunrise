@@ -86,7 +86,7 @@ READERS = {
     "sunrise-perf": ["crates/sunrise-perf-format/tests/fixtures", "tests/fixtures/pacing_slow_frames.hzperf"],
     "sunrise-port-pack": ["docs/modpacks/atm10-mods.csv"],
     "sunrise-prepare": [
-        "crates/sunrise-client/src/game/runtime/launch_api.rs", "mods/sunrise/src/test/java", "research-lock.json",
+        "crates/sunrise-gameplay-common/src/game/runtime/launch_api.rs", "mods/sunrise/src/test/java", "research-lock.json",
     ],
     "sunrise-release-sign": [
         "tests/install_ps1_signature.ps1", "tools/ci/sign_native_build.sh", "tools/ci/sign_release.sh",
@@ -129,7 +129,7 @@ NOT_READS = {
         "crates/sunrise-mod-api", "crates/sunrise-mod-host", "crates/sunrise-mod-host/Cargo.toml", "crates/sunrise-official",
         "crates/sunrise-official/Cargo.toml",
         # The discovery tests' scratch game source (`discover_tests.rs`).
-        "crates/sunrise-client/src/entry.rs", "crates/sunrise-client/src/game.rs", "crates/sunrise-client/src/lib.rs",
+        "crates/sunrise-client/src/entry.rs", "crates/sunrise-gameplay-common/src/game.rs", "crates/sunrise-client/src/lib.rs",
         "crates/sunrise-mod-api-gen/internals.txt",
     },
 }

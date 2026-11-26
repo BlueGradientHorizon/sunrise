@@ -7,7 +7,7 @@ pub trait Hooks {
     /// face. Asked each time the enderman's goals check the stare: to get
     /// angry, to freeze while looked at and to teleport away up close. Set
     /// `cancel` and that stare doesn't count. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::enderman_anger::ServerGame<'_>::native_enderman_anger", 
         receiver = "read",
         dispatch = "flat",
         side = "server",

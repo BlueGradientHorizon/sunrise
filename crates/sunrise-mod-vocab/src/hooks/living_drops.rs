@@ -27,7 +27,7 @@ pub trait Hooks {
     /// `thrower`, `target` (the only player who may pick it up), `no_gravity`
     /// and starting `age` (`ItemDrop::UNLIMITED_LIFETIME` never despawns); a
     /// drop left as it was spawns as before. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::living_drops::ServerGame<'_>::native_living_drops", 
         dispatch = "api_carrier",
         side = "server",
         contract = "cancel",
@@ -59,7 +59,7 @@ pub trait Hooks {
     /// whatever the chance is, so the mob's random follows vanilla's order.
     /// `source` and `recently_hit` are as in `native_living_drops`.
     /// Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::living_drops::ServerGame<'_>::native_get_equipment_drop_chance", 
         dispatch = "api_carrier",
         side = "server",
         contract = "listen",

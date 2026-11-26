@@ -5,7 +5,7 @@ pub trait Hooks {
     /// sound through ClientHost and vanilla should stay silent.
     /// Otherwise vanilla plays the state's hit sound at (volume + 1) / 8 and pitch * 0.5.
     /// The position and face identify the current hit; sculk growth is outside this hook.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::play_hit_sound::ClientGame<'_>::native_play_hit_sound", 
         side = "client",
         contract = "cancel",
         out = "cancel",

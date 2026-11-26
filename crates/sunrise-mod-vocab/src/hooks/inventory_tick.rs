@@ -13,7 +13,7 @@ pub trait Hooks {
     /// `stack`'s item hear it. Server-side, for every living player of the world (the helpers
     /// read the acting one).
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_inventory_tick",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_inventory_tick",
         dispatch = "flat",
         side = "server",
         contract = "listen",

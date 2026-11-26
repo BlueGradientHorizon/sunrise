@@ -33,12 +33,12 @@ root = Path.cwd()
 artifacts = root / 'target' / 'stored-id-proof'
 artifacts.mkdir(parents=True, exist_ok=True)
 subprocess.run(['git', 'diff', 'HEAD', '--exit-code', '--',
-                'crates/sunrise-client/src/game/modding/native_entities.rs',
-                'crates/sunrise-client/src/game/blocks/nether_portal.rs',
-                'crates/sunrise-client/src/game/entities/entity.rs'], check=True)
-native = 'crates/sunrise-client/src/game/modding/native_entities.rs'
-portal = 'crates/sunrise-client/src/game/blocks/nether_portal.rs'
-entity = 'crates/sunrise-client/src/game/entities/entity.rs'
+                'crates/sunrise-gameplay/src/game/modding/native_entities.rs',
+                'crates/sunrise-gameplay/src/game/blocks/nether_portal.rs',
+                'crates/sunrise-gameplay/src/game/entities/entity.rs'], check=True)
+native = 'crates/sunrise-gameplay/src/game/modding/native_entities.rs'
+portal = 'crates/sunrise-gameplay/src/game/blocks/nether_portal.rs'
+entity = 'crates/sunrise-gameplay/src/game/entities/entity.rs'
 # Each case changes one actual expression; repeated expression positions are explicit.
 cases = [
     Mutation(

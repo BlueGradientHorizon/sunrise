@@ -853,7 +853,7 @@ def plan_generated_use_removals(
         target_side_by_path[f"crate::game::{SIDE_MOD_NAME[side]}::{mod_rel}::{name}"] = side
 
     game_dir = root / "crates/sunrise-client/src/game"
-    candidates = [root / "crates/sunrise-client/src/game.rs", *sorted(game_dir.rglob("*.rs"))]
+    candidates = [root / "crates/sunrise-gameplay-common/src/game.rs", *sorted(game_dir.rglob("*.rs"))]
     for p in candidates:
         if not p.is_file():
             continue

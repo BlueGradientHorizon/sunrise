@@ -10,7 +10,7 @@ pub trait Hooks {
     /// none when nothing is wrong. `may_continue` starts empty, meaning `problem.is_none()` (`mayContinueSleeping`);
     /// set it `Some(true)` to keep them asleep, `Some(false)` to wake them. The player's state is not swapped in
     /// on a guest tick.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::can_continue_sleeping::ServerGame<'_>::native_can_continue_sleeping", 
         dispatch = "flat",
         side = "server",
         contract = "replace",

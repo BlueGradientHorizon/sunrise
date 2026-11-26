@@ -130,7 +130,7 @@ FIXTURE_CUT_TAILS = frozenset(
     }
 )
 
-# Functions in `crates/sunrise-client/src/game.rs` inspected by `tools/game_field_owners.py`.
+# Functions in `crates/sunrise-gameplay-common/src/game.rs` inspected by `tools/game_field_owners.py`.
 PINNED_GAME_RS_FNS = frozenset(
     {
         "finish_construct",
@@ -420,7 +420,7 @@ def collect_role_guarded_calls(
     cli_by_file_fn: dict[tuple[str, str], set[str]] = defaultdict(set)
     game_dir = root / "crates/sunrise-client/src/game"
     files: list[Path] = sorted(game_dir.rglob("*.rs")) if game_dir.is_dir() else []
-    game_rs = root / "crates/sunrise-client/src/game.rs"
+    game_rs = root / "crates/sunrise-gameplay-common/src/game.rs"
     if game_rs.is_file():
         files.append(game_rs)
 
@@ -1312,7 +1312,7 @@ def index_source_functions(
             by_mod_name[(k.module, k.name)].append(rec)
             by_file[rel].append(rec)
 
-    game_rs = (root / "crates/sunrise-client/src/game.rs").resolve()
+    game_rs = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
     if game_rs.is_file():
         _index("game", "game", gfs.build_mod_tree("game", game_rs))
     for mname, (pside, entry, cfg) in regular_mods.items():
@@ -1456,7 +1456,7 @@ def _precheck_fn_move_constraints(
         if game_root_tree is not None:
             macro_trees.append(game_root_tree)
         else:
-            game_rs = (root / "crates/sunrise-client/src/game.rs").resolve()
+            game_rs = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
             if game_rs.is_file():
                 macro_trees.append(gfs.build_mod_tree("game", game_rs))
     sensitive_macros = gfs.collect_location_sensitive_macros(macro_trees)
@@ -2078,7 +2078,7 @@ def plan_safe_rehome(
 
     # Re-run fixed-point check taking whole-module moves into account, then emit single-fn moves!
     existing_fn_rows = gfs.load_fn_sides(root / "tools/game_fn_sides.tsv")
-    game_rs_path = (root / "crates/sunrise-client/src/game.rs").resolve()
+    game_rs_path = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
     game_root_tree = gfs.build_mod_tree("game", game_rs_path) if game_rs_path.is_file() else None
 
     # Group candidate single-fn moves by top_name.
@@ -2998,7 +2998,7 @@ def apply_rehome(
         fn_rows_by_top[top].append(r)
 
     # Precheck `game_fn_sides` constraints per top module
-    game_rs_path = (root / "crates/sunrise-client/src/game.rs").resolve()
+    game_rs_path = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
     game_root_tree = gfs.build_mod_tree("game", game_rs_path) if game_rs_path.is_file() else None
     valid_fn_moves_by_top: dict[str, list[RehomeRow]] = defaultdict(list)
     for top, rlist in sorted(fn_rows_by_top.items()):

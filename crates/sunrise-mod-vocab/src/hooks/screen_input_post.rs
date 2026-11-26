@@ -11,7 +11,7 @@ pub trait Hooks {
     /// Listeners share `result`: `TriState::Default` keeps that answer, `TriState::True` forces
     /// handled and `TriState::False` forces unhandled. The final answer controls double-click
     /// history and whether the press can reach gameplay mappings if no screen remains open.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_input_post::ClientGame<'_>::native_screen_mouse_button_pressed_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -40,7 +40,7 @@ pub trait Hooks {
     /// Listeners share `result`: `TriState::Default` keeps that answer, `TriState::True` forces
     /// handled and `TriState::False` forces unhandled. An unhandled release can reach gameplay
     /// mappings if no screen remains open.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_input_post::ClientGame<'_>::native_screen_mouse_button_released_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -59,7 +59,7 @@ pub trait Hooks {
         result: &mut TriState,
     );
     /// A held-button pointer movement that the receiving screen (and its mounted widgets) did not handle (`ScreenEvent.MouseDragged.Post`, vanilla's `Screen.mouseDragged` returning false): `button`, `delta` (GUI pixels, `screen.mouse` the new position) and `modifiers` as in `screen_mouse_dragged_pre`. Not cancellable. Fires on the receiving screen only when unhandled and when the matching Pre did not cancel it, on the window only, for real mouse input and not a pad's or keyboard focus's.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_input_post::ClientGame<'_>::native_screen_mouse_dragged_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -75,7 +75,7 @@ pub trait Hooks {
         modifiers: u32,
     );
     /// A mouse wheel scroll that the receiving screen (and its mounted widgets) did not handle (`ScreenEvent.MouseScrolled.Post`, vanilla's `Screen.mouseScrolled` returning false): `scroll` and `modifiers` as in `screen_mouse_scrolled_pre`. Not cancellable. Fires on the receiving screen only when unhandled and when the matching Pre did not cancel it, on the window only, for real mouse input and not a pad's or keyboard focus's.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_input_post::ClientGame<'_>::native_screen_mouse_scrolled_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -97,7 +97,7 @@ pub trait Hooks {
     /// and the control socket's `key ... down`, `key ... repeat`, and the press
     /// phase of `key ... tap`, on the receiving screen and only when the matching
     /// Pre did not cancel it. A controller does not synthesize this hook.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_input_post::ClientGame<'_>::native_screen_key_pressed_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -115,7 +115,7 @@ pub trait Hooks {
         canceled: &mut bool,
     );
     /// A key release that neither the receiving screen nor its mounted widgets took (`ScreenEvent.KeyReleased.Post`, vanilla's `Screen.keyReleased` returning false): `key` and `modifiers` as in `screen_key_released_pre`. Set `canceled` and the release counts as handled: the game's own key handling never sees it, so a held mapping stays down; cancel a release only when you cancelled the press it ends. Fires for window key releases and the control socket's `key ... up` and release phase of `key ... tap`, on the receiving screen and only when the matching Pre did not cancel it. A controller does not synthesize this hook.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_input_post::ClientGame<'_>::native_screen_key_released_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",
@@ -132,7 +132,7 @@ pub trait Hooks {
         canceled: &mut bool,
     );
     /// A typed character that neither the receiving screen nor its mounted widgets took (`ScreenEvent.CharacterTyped.Post`, vanilla's `Screen.charTyped` returning false), once per printable character that `screen_char_typed_pre` let through: `c` and `modifiers` as there. Not cancellable (matching NeoForge's `ScreenEvent.CharacterTyped.Post`, which is an unhandled post-dispatch notice). Window characters (including IME commits and text without a physical key) and the control socket's `type` fire it on the receiving screen when the matching Pre did not cancel. A held edit modifier makes a physical key a shortcut instead of text; a controller's keyboard does not synthesize this hook.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_input_post::ClientGame<'_>::native_screen_char_typed_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

@@ -14,7 +14,7 @@ mixins = "MIXINS"
 
 [[native.module]]
 id = "runtime"
-file = "crates/sunrise-client/src/game/world/autosave_server.rs"
+file = "crates/sunrise-gameplay/src/game/world/autosave_server.rs"
 name = "fnr_runtime"
 source = "src/runtime.rs"
 

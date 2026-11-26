@@ -11,7 +11,7 @@ pub trait Hooks {
     /// LAN guests; a remote client's own release path is not covered. Crossbows
     /// are not covered; `arrow_nock` is the bow's start.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_arrow_loose",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_arrow_loose",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

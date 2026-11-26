@@ -7,7 +7,7 @@ pub trait Hooks {
     /// a horse, donkey, mule or llama the player rides). Set `cancel` for the
     /// attempt to fail instead, as a failed roll does: smoke for a pet, and
     /// a horse bucks its rider off. Before `entity_tame`. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::animal_tame::ServerGame<'_>::native_animal_tame", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

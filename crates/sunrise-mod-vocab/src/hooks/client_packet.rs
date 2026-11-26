@@ -48,7 +48,7 @@ Control replies (keep-alives, chunk batch acknowledgements, configuration pongs 
 configuration packets, the phase-dependent answers (resource pack status and a dialog's custom
 click action), and far terrain requests do not fire it. With no listener the
 send path checks one flag and builds nothing."#]
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_packet::ClientGame<'_>::native_client_packet", 
         dispatch = "flat",
         side = "client",
         contract = "listen",

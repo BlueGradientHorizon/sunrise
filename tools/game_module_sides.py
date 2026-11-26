@@ -7,7 +7,7 @@ in sync:
   `ClientState`/`ServerState`, their field visibilities (`pub(in crate::game::<side>_side)`
   for `side`, `pub(in crate::game)` for `game`), the glob import `pub(in crate::game::<side>_side)
   use super::*;`, and the `mod` declarations for that side.
-- `crates/sunrise-client/src/game.rs` declares `client_side` and `server_side` (aliasing
+- `crates/sunrise-gameplay-common/src/game.rs` declares `client_side` and `server_side` (aliasing
   `client_state` / `server_state`), keeps `game`-side `mod` declarations in place, and
   re-exports moved modules so existing `super::` / `crate::game::` imports keep resolving.
 - Root-module `pub(super)` items in moved modules (and their root-level `include!`d files)
@@ -114,11 +114,11 @@ GAME_FIELD_MACROS: dict[str, tuple[tuple[str, str, bool], ...]] = {
     "transferred": (("server", "levels", True),),
 }
 LOCAL_ONLY_MACROS: dict[str, str] = {
-    "motion_phase": "crates/sunrise-client/src/game/blocks/piston_push.rs",
-    "blocked_damage": "crates/sunrise-client/src/game/entities/explosion.rs",
-    "section_scene": "crates/sunrise-client/src/game/interface/particle_culling.rs",
-    "server_ctx": "crates/sunrise-client/src/game/world/server_travel.rs",
-    "transferred": "crates/sunrise-client/src/game/world/server_travel.rs",
+    "motion_phase": "crates/sunrise-gameplay-common/src/game/blocks/piston_push.rs",
+    "blocked_damage": "crates/sunrise-gameplay/src/game/entities/explosion.rs",
+    "section_scene": "crates/sunrise-client-gameplay/src/game/interface/particle_culling.rs",
+    "server_ctx": "crates/sunrise-gameplay/src/game/world/server_travel.rs",
+    "transferred": "crates/sunrise-gameplay/src/game/world/server_travel.rs",
 }
 
 # Keywords that can precede `!` as logical negation rather than a macro call.
@@ -1380,7 +1380,7 @@ def scan_macro_name_uses_in_game(
 ) -> list[str]:
     """Verify every non-definition, non-import mention of `macro_name` in `game` is at root scope of a moved file."""
     bad: list[str] = []
-    game_rs = (root / "crates/sunrise-client/src/game.rs").resolve()
+    game_rs = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
     game_dir = (root / "crates/sunrise-client/src/game").resolve()
     candidates = [game_rs] if game_rs.is_file() else []
     if game_dir.is_dir():
@@ -1726,7 +1726,7 @@ def parse_struct_fields(text: str, struct_name: str, rel: str = "") -> list[tupl
 def check_game_side_containers(game_text: str, root: Path) -> list[str]:
     """Verify `game.rs` binds `client_side`/`server_side` unconditionally to their exact files and aliases."""
     src_root = (root / "crates/sunrise-client/src").resolve()
-    rel = "crates/sunrise-client/src/game.rs"
+    rel = "crates/sunrise-gameplay-common/src/game.rs"
     items, errors = scan_top_level_items(game_text, rel, src_root)
     problems = list(errors)
 
@@ -2045,7 +2045,7 @@ def check_state_impls_across_game(
 ) -> list[str]:
     """Reject any `impl` or type alias targeting `ClientState`/`ServerState` outside the two side files."""
     problems: list[str] = []
-    game_rs = (root / "crates/sunrise-client/src/game.rs").resolve()
+    game_rs = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
     game_dir = (root / "crates/sunrise-client/src/game").resolve()
     side_files = {(game_dir / SIDE_NEW_FILE["client"]).resolve(), (game_dir / SIDE_NEW_FILE["server"]).resolve()}
     candidates: list[Path] = []
@@ -2851,9 +2851,9 @@ def rewrite_game_rs(
     all_arms: dict[str, list[ModArm]],
     root: Path,
 ) -> tuple[str, list[str]]:
-    """Regenerate `crates/sunrise-client/src/game.rs` module declarations and re-exports."""
+    """Regenerate `crates/sunrise-gameplay-common/src/game.rs` module declarations and re-exports."""
     src_root = (root / "crates/sunrise-client/src").resolve()
-    game_rel = "crates/sunrise-client/src/game.rs"
+    game_rel = "crates/sunrise-gameplay-common/src/game.rs"
     items, errors = scan_top_level_items(game_text, game_rel, src_root)
     if errors:
         return game_text, errors
@@ -3338,7 +3338,7 @@ def collect_all_arms(
 def parse_game_reexports(text: str, root: Path) -> tuple[dict[str, list[ReexportDecl]], list[str]]:
     """Parse `use (client_side|server_side)::<mod>;` re-exports at top level of `game.rs`."""
     src_root = (root / "crates/sunrise-client/src").resolve()
-    items, errors = scan_top_level_items(text, "crates/sunrise-client/src/game.rs", src_root)
+    items, errors = scan_top_level_items(text, "crates/sunrise-gameplay-common/src/game.rs", src_root)
     reexports: dict[str, list[ReexportDecl]] = {}
     for item in items:
         if item.kind == "use_reexport" and item.reexport is not None:
@@ -3422,7 +3422,7 @@ def collect_moved_subtrees_and_includes(
             walk_moved_file(entry, side, 0, arm_has_path)
 
     # Scan all remaining `.rs` files in `game.rs` / `game/` for includes pointing at any moved root include.
-    game_rs = (root / "crates/sunrise-client/src/game.rs").resolve()
+    game_rs = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
     game_dir = (root / "crates/sunrise-client/src/game").resolve()
     other_files: list[Path] = []
     if game_rs.is_file():
@@ -3607,7 +3607,7 @@ def run_fix(
     *,
     fmt: bool,
 ) -> int:
-    game_rs = root / "crates/sunrise-client/src/game.rs"
+    game_rs = root / "crates/sunrise-gameplay-common/src/game.rs"
     game_dir = root / "crates/sunrise-client/src/game"
     mod_to_side = {m: s for m, (s, _, _) in table.items()}
     tok_cache: dict[Path, tuple[str, list[Token]]] = {}
@@ -3785,21 +3785,21 @@ def run_check(
                 continue
             if len(rlist) != 1 or rlist[0].side_mod != SIDE_MOD_NAME[want]:
                 problems.append(
-                    f"crates/sunrise-client/src/game.rs: moved module `{mod_name}` missing re-export from `{SIDE_MOD_NAME[want]}`"
+                    f"crates/sunrise-gameplay-common/src/game.rs: moved module `{mod_name}` missing re-export from `{SIDE_MOD_NAME[want]}`"
                 )
             else:
                 r = rlist[0]
                 if r.vis != expected_vis:
                     problems.append(
-                        f"crates/sunrise-client/src/game.rs:{r.line}: re-export of `{mod_name}` has visibility `{r.vis}`, expected `{expected_vis}`"
+                        f"crates/sunrise-gameplay-common/src/game.rs:{r.line}: re-export of `{mod_name}` has visibility `{r.vis}`, expected `{expected_vis}`"
                     )
                 actual_cfgs = [a.raw_text + "\n" for a in r.attrs if a.name in ("cfg", "cfg_attr")]
                 if actual_cfgs != expected_cfgs:
                     problems.append(
-                        f"crates/sunrise-client/src/game.rs:{r.line}: re-export of `{mod_name}` has cfg attributes {actual_cfgs!r}, expected {expected_cfgs!r}"
+                        f"crates/sunrise-gameplay-common/src/game.rs:{r.line}: re-export of `{mod_name}` has cfg attributes {actual_cfgs!r}, expected {expected_cfgs!r}"
                     )
         elif mod_name in reexports:
-            problems.append(f"crates/sunrise-client/src/game.rs: game-side module `{mod_name}` has stale re-export")
+            problems.append(f"crates/sunrise-gameplay-common/src/game.rs: game-side module `{mod_name}` has stale re-export")
 
     for side in ("client", "server"):
         smod = SIDE_MOD_NAME[side]

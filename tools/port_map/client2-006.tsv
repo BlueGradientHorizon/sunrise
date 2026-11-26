@@ -87,9 +87,9 @@ DustParticle.Provider.createParticle	port	crates/sunrise-client-render/src/parti
 DustParticleBase.randomizeColor	port	crates/sunrise-client-render/src/particles.rs::ParticleEngine::make	Dust and DustColorTransition arms: the randomize closure
 DustParticleBase.getQuadSize	port	crates/sunrise-client-render/src/particles.rs::Particle::quad_size	GrowIn size curve
 DustPlumeParticle.Provider.createParticle	port	crates/sunrise-client-render/src/particles.rs::ParticleEngine::make	DustPlume arm, base 1.0
-ElderGuardianParticleGroup.extractRenderState	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::elder_apparition_geometry	gap: minor: one apparition timer that a new curse resets, so two curses show one ghost
-ElderGuardianParticleGroup.ElderGuardianParticleRenderState.fromParticle	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::elder_apparition_geometry	fade, camera pose and offsets
-ElderGuardianParticleGroup.State.submit	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::elder_apparition_geometry	draws the guardian model
+ElderGuardianParticleGroup.extractRenderState	port	crates/sunrise-client-gameplay/src/game/mobs/mob_blocks.rs::Game::elder_apparition_geometry	gap: minor: one apparition timer that a new curse resets, so two curses show one ghost
+ElderGuardianParticleGroup.ElderGuardianParticleRenderState.fromParticle	port	crates/sunrise-client-gameplay/src/game/mobs/mob_blocks.rs::Game::elder_apparition_geometry	fade, camera pose and offsets
+ElderGuardianParticleGroup.State.submit	port	crates/sunrise-client-gameplay/src/game/mobs/mob_blocks.rs::Game::elder_apparition_geometry	draws the guardian model
 EmissiveRisingParticle.getLightCoords	port	crates/sunrise-client-render/src/particles.rs::Particle::light_coords	Block15 for sculk soul only (the SculkSoul arm)
 EmissiveRisingParticle.EmissiveProvider.createParticle	port	crates/sunrise-client-render/src/particles.rs::ParticleEngine::make	SculkSoul arm of the Soul arms
 EmissiveRisingParticle.Provider.createParticle	port	crates/sunrise-client-render/src/particles.rs::ParticleEngine::make	Soul arm

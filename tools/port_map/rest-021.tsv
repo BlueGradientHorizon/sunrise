@@ -15,7 +15,7 @@ ClassTreeIdRegistry.define	skip:java		synched entity data slot allocator by clas
 CommonLinks.extendRealms	skip:service		Realms upgrade link
 CompilableString.codec	skip:java		codec
 CompilableString.equals	skip:java		value equality on the source string
-CompilableString.CommandParserHelper.apply	inline	crates/sunrise-client/src/game/administration/commands/text_commands.rs::invalid_selector	a selector and an nbt component's entity are parsed when the component is decoded, and text after them is command.trailing_data, as the codec does through the selector
+CompilableString.CommandParserHelper.apply	inline	crates/sunrise-gameplay/src/game/administration/commands/text_commands.rs::invalid_selector	a selector and an nbt component's entity are parsed when the component is decoded, and text after them is command.trailing_data, as the codec does through the selector
 CrudeIncrementalIntIdentityHashBiMap.byId	skip:java		identity bimap over registry ids; Sunrise uses its own id tables
 CrudeIncrementalIntIdentityHashBiMap.contains	skip:java		identity bimap over registry ids; Sunrise uses its own id tables
 CrudeIncrementalIntIdentityHashBiMap.nextId	skip:java		identity bimap over registry ids; Sunrise uses its own id tables

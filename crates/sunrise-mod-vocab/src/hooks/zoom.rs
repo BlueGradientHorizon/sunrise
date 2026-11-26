@@ -5,7 +5,7 @@ pub trait Hooks {
     /// The zoom a native mod asks for, applied while playing (the spyglass's
     /// own view wins): set `zoom` when it is none yet.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_zoom",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_zoom",
         receiver = "read",
         dispatch = "flat",
         side = "client",

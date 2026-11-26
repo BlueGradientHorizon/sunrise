@@ -8,7 +8,7 @@ pub trait Hooks {
     /// canceled impact flies on from, so a game without such a mod pays
     /// nothing. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_hears_projectile_impacts",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_hears_projectile_impacts",
         receiver = "read",
         dispatch = "flat",
         side = "server",

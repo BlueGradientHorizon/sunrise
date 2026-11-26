@@ -6,7 +6,7 @@ pub trait Hooks {
     /// final size was applied. Server-side, including the single-player
     /// server.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_world_border_bounds_change_finish",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_world_border_bounds_change_finish",
         dispatch = "flat",
         side = "server",
         contract = "listen",

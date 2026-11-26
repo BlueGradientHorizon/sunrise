@@ -10,7 +10,7 @@ pub trait Hooks {
     /// `WorldCloseFinal` follows once the worlds are saved. A server whose loop
     /// fails still fires this before the final save attempt and `server_stopped`.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_server_stopping",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_server_stopping",
         dispatch = "flat",
         side = "server",
         contract = "listen",

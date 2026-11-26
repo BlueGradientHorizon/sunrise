@@ -17,7 +17,7 @@ pub trait Hooks {
     /// reported without writing or notifying the slot, and no other behaviour runs. To drop one
     /// normally, answer with `host.dispense_default`'s remainder and 1000.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_dispense_item",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_dispense_item",
         dispatch = "flat",
         side = "server",
         contract = "replace",

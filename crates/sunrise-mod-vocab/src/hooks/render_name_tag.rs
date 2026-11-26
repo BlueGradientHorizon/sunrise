@@ -2,7 +2,7 @@
 
 pub trait Hooks {
     /// Name tag visibility and optional replacement text.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_name_tag::ClientGame<'_>::native_render_name_tag", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

@@ -120,9 +120,9 @@ def main():
                lab.ROOT / 'crates/sunrise-core/src/jmath.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/fox.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/dolphin.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/mobs/dragon.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/network/remote/mod.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/network/remote/client_read_tests.rs',
+               lab.ROOT / 'crates/sunrise-gameplay/src/game/mobs/dragon.rs',
+               lab.ROOT / 'crates/sunrise-gameplay-common/src/game/network/remote/mod.rs',
+               lab.ROOT / 'crates/sunrise-client/src/cut_layout/game/network/remote/client_read_tests.rs',
                parity_data, block_update_oracle]
     hashes = base.source_hashes(sources)
     with tempfile.TemporaryDirectory(prefix='sunrise-mob-turn-') as scratch:

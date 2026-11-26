@@ -1,0 +1,303 @@
+//! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
+use super::{Dim, Game};
+use sunrise_gameplay_common::game::player_state::OriginalAttachmentSlot;
+use mod_api::{
+    ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore, AttachmentValue, Attachments,
+    Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
+};
+use std::sync::{Arc, Mutex};
+use sunrise_core::nbt::Compound;
+use sunrise_items::equipment::Equipment;
+use sunrise_items::items::ItemStack;
+
+struct RetainedOriginalAttachments {
+    slot: Arc<Mutex<OriginalAttachmentSlot>>,
+}
+
+impl RetainedOriginalAttachments {
+    fn new(map: Attachments) -> Self {
+        Self {
+            slot: Arc::new(Mutex::new(OriginalAttachmentSlot::new(map))),
+        }
+    }
+}
+
+impl AttachmentStore for RetainedOriginalAttachments {
+    fn validate_attachment(
+        &mut self,
+        namespace: &str,
+        name: &str,
+        sync: bool,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, sync)
+    }
+
+    fn holds(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<bool, AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        AttachmentStore::holds(&mut slot.map, holder, namespace, name)
+    }
+
+    fn decoded(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<Option<AttachmentValue>, AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        AttachmentStore::decoded(&mut slot.map, holder, namespace, name)
+    }
+
+    fn saved(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<Option<Compound>, AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        AttachmentStore::saved(&mut slot.map, holder, namespace, name)
+    }
+
+    fn store(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+        value: AttachmentValue,
+        form: AttachmentForm,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, form.policy.sync)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.journal_current();
+        AttachmentStore::store(&mut slot.map, holder, namespace, name, value, form)
+    }
+
+    fn discard(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+        sync: bool,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, sync)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.journal_current();
+        AttachmentStore::discard(&mut slot.map, holder, namespace, name, sync)
+    }
+
+    fn queue_sync(
+        &mut self,
+        holder: Holder,
+        namespace: &str,
+        name: &str,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, true)?;
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.journal_current();
+        AttachmentStore::queue_sync(&mut slot.map, holder, namespace, name)
+    }
+}
+
+/// Pre-copy state of the original `ServerPlayer`, lent directly to `player_clone`.
+pub(in crate::game) struct RetainedOriginalPlayer {
+    uuid: u128,
+    position: [f64; 3],
+    dimension: String,
+    level: Option<LevelRef>,
+    health: f32,
+    experience: PlayerExperience,
+    effects: Vec<ActiveEffect>,
+    inventory: Vec<Option<ItemStack>>,
+    armor: [Option<ItemStack>; 4],
+    offhand: Option<ItemStack>,
+    equipment: Equipment,
+    persistent_data: Option<Compound>,
+    attachments: RetainedOriginalAttachments,
+}
+
+impl OriginalPlayerAccess for RetainedOriginalPlayer {
+    fn uuid(&self) -> u128 {
+        self.uuid
+    }
+
+    fn position(&self) -> [f64; 3] {
+        self.position
+    }
+
+    fn dimension(&self) -> &str {
+        &self.dimension
+    }
+
+    fn level(&self) -> Option<LevelRef> {
+        self.level
+    }
+
+    fn health(&self) -> f32 {
+        self.health
+    }
+
+    fn experience(&self) -> PlayerExperience {
+        self.experience
+    }
+
+    fn effects(&self) -> &[ActiveEffect] {
+        &self.effects
+    }
+
+    fn with_inventory(&self, read: &mut dyn for<'a> FnMut(InventoryView<'a>)) {
+        sunrise_gameplay_common::game::native_server::lend_inventory_view(
+            &self.inventory,
+            &self.armor,
+            &self.offhand,
+            &self.equipment,
+            read,
+        );
+    }
+
+    fn persistent_data(&self) -> Option<&Compound> {
+        self.persistent_data.as_ref()
+    }
+
+    fn attachments(&mut self) -> &mut dyn AttachmentStore {
+        &mut self.attachments
+    }
+}
+
+impl crate::game::ServerGame<'_> {
+    /// Make the callback's player addressable without publishing it in a level's player list
+    /// or entity table. This also covers construction and the post-clone set-spawn event.
+    pub(in crate::game) fn with_cloning_player<R>(
+        &mut self,
+        conn: u32,
+        run: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        let guest = self.common.command_guest(conn)?;
+        let identity = (guest.uuid, conn, guest.entity_id as u32);
+        self.common.player_state.cloning_players.push(identity);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(self)));
+        self.common.player_state.cloning_players.pop();
+        match result {
+            Ok(result) => Some(result),
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
+    /// Common `ServerPlayer.restoreFrom` boundary for death respawn (`was_death = true`)
+    /// and End credits return (`was_death = false`).
+    ///
+    /// Expects old-player removal/menu-close work to have completed against the old state
+    /// and the destination level to be open (`self.enter_level`). Copies eligible
+    /// attachments into a fresh replacement map unconditionally, retains the old player
+    /// when `player_clone` is listened, assigns the replacement's destination dimension
+    /// without placing it, reinitializes the replacement `ServerPlayer`, and dispatches
+    /// `player_clone` with both holders journaled to `host.transaction`.
+    pub(in crate::game::server_side) fn restore_cloned_player(
+        &mut self,
+        conn: u32,
+        destination: Dim,
+        was_death: bool,
+        restore_replacement: impl FnOnce(&mut sunrise_sim::lan::guest::Guest),
+        after_clone: impl FnOnce(&mut Self),
+    ) -> bool {
+        let Some((i, uuid, name)) = self.server.lan.as_ref().and_then(|host| {
+            let i = host.hub.guests.iter().position(|g| g.conn == conn)?;
+            let g = &host.hub.guests[i];
+            Some((i, g.uuid, g.name.clone()))
+        }) else {
+            return false;
+        };
+        debug_assert!(
+            self.transactions.is_empty(),
+            "respawn must not replace an open journal's player"
+        );
+        let Some(map) = self
+            .server
+            .lan
+            .as_mut()
+            .and_then(|host| host.hub.guests.attachments_mut(conn))
+        else {
+            return false;
+        };
+        let previous = std::mem::take(&mut **map);
+        let replacement = previous.copy_for_clone(was_death);
+        let mut original = self.retain_original_player(conn, previous);
+        // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
+        self.keep_only_player_persisted(conn);
+        if let Some(host) = self.server.lan.as_mut() {
+            host.hub.guests.update(i, |g| {
+                g.dimension = destination.id().to_owned();
+                restore_replacement(g);
+            });
+            if let Some(map) = host.hub.guests.attachments_mut(conn) {
+                **map = replacement;
+            }
+        }
+        self.with_cloning_player(conn, |game| {
+            game.reinitialize_server_player(uuid, conn);
+            if let Some(original) = &mut original {
+                game.transactions
+                    .push_retained_original(Arc::clone(&original.attachments.slot));
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    game.native_player_clone(
+                        uuid,
+                        &name,
+                        was_death,
+                        mod_api::OriginalPlayer::new(original),
+                    );
+                }));
+                game.transactions.pop_retained_original();
+                if let Err(panic) = result {
+                    std::panic::resume_unwind(panic);
+                }
+            }
+            after_clone(game);
+        })
+        .is_some()
+    }
+
+    /// `ServerPlayer.restoreFrom`: retain the old player's state before replacing any data.
+    pub(in crate::game) fn retain_original_player(
+        &self,
+        conn: u32,
+        detached_attachments: Attachments,
+    ) -> Option<RetainedOriginalPlayer> {
+        if !mod_api::__private::listened(mod_api::HookId::PlayerClone) {
+            return None;
+        }
+        let guest = self.server.lan.as_ref()?.hub.guest(conn)?;
+        Some(RetainedOriginalPlayer {
+            uuid: guest.uuid,
+            position: guest.position,
+            dimension: guest.dimension.clone(),
+            level: self.common.level(&guest.dimension),
+            health: guest.health,
+            experience: PlayerExperience::from(mod_api::__private::built::PlayerExperience {
+                level: guest.xp_level,
+                progress: guest.xp_progress,
+                total: guest.xp_total,
+            }),
+            effects: guest
+                .effects
+                .list
+                .iter()
+                .map(sunrise_gameplay_common::game::native_living_body::active_effect)
+                .collect(),
+            inventory: guest.inventory.clone(),
+            armor: guest.armor.clone(),
+            offhand: guest.offhand.clone(),
+            equipment: guest.equipment.clone(),
+            persistent_data: super::native_player_persistent_data::persistent_data_compound(
+                guest.saved.as_ref(),
+            )
+            .cloned(),
+            attachments: RetainedOriginalAttachments::new(detached_attachments),
+        })
+    }
+}

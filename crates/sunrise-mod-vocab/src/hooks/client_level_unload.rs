@@ -8,7 +8,7 @@ pub trait Hooks {
     /// `client_level_load`. Not told when the game itself quits.
     /// Client-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_client_level_unload",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_client_level_unload",
         dispatch = "flat",
         side = "client",
         contract = "listen",

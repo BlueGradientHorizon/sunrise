@@ -7,7 +7,7 @@ pub trait Hooks {
     /// listener and the billboards facing the camera follow it; the player, where they aim, the
     /// first-person hand and which chunks load stay the player's. Values that aren't finite keep
     /// vanilla's. Not called on the title screen's panorama.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::camera_pose::ClientGame<'_>::native_camera_pose", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

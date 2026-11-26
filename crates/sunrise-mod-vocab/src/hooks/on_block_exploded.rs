@@ -3,7 +3,7 @@ pub trait Hooks {
     /// An explosion destroys this block, before removal and while its live block
     /// entity is readable. Writes are allowed; the engine still replaces the cell
     /// with air afterwards, including a replacement written by the part.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::on_block_exploded::ServerGame<'_>::native_on_block_exploded", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

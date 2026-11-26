@@ -24,7 +24,7 @@ def area(path):
     m = re.match(r"crates/sunrise-client/src/game/(\w+)/", path)
     if m:
         return f"game/{m.group(1)}"
-    if path == "crates/sunrise-client/src/game.rs":
+    if path == "crates/sunrise-gameplay-common/src/game.rs":
         return "game.rs"
     if path.startswith("crates/sunrise-client/"):
         return "client (non-game)"

@@ -14,9 +14,9 @@ RedstoneWireEvaluator.getWireSignal	port	crates/sunrise-world/src/level/redstone
 SavedDataType	skip:java		equals over the saved-data type record; Sunrise keys saved data by name
 WanderingTraderData.setSpawnChance	inline	crates/sunrise-gameplay/src/wandering_trader.rs::Spawner::due	field write of spawn_chance inside the countdown; no setter
 WanderingTraderData.setSpawnDelay	inline	crates/sunrise-gameplay/src/wandering_trader.rs::Spawner::due	field write of spawn_delay inside the countdown; no setter
-MapBanner.fromWorld	port	crates/sunrise-client/src/game/blocks/banners_server.rs::Game::map_banner_at	ticked in #3517; `MapBanner.fromWorld` is cited at crates/sunrise-client/src/game/blocks/banners.rs:19
-MapBanner.getDecoration	port	crates/sunrise-client/src/game/blocks/maps/data.rs::MapBanner::sprite	ticked in #3517; `MapBanner.getDecoration` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:50
-MapBanner.getId	inline	crates/sunrise-client/src/game/blocks/maps/data.rs::toggle_banner	a banner marker is filed under Key::Banner(pos): the id as an enum key, so the map keeps one marker per banner
+MapBanner.fromWorld	port	crates/sunrise-gameplay/src/game/blocks/banners_server.rs::Game::map_banner_at	ticked in #3517; `MapBanner.fromWorld` is cited at crates/sunrise-client/src/game/blocks/banners.rs:19
+MapBanner.getDecoration	port	crates/sunrise-gameplay-common/src/game/blocks/maps/data.rs::MapBanner::sprite	ticked in #3517; `MapBanner.getDecoration` is cited at crates/sunrise-client/src/game/blocks/maps/mod.rs:50
+MapBanner.getId	inline	crates/sunrise-gameplay-common/src/game/blocks/maps/data.rs::toggle_banner	a banner marker is filed under Key::Banner(pos): the id as an enum key, so the map keeps one marker per banner
 MapDecorationTypes	skip:data		registry of map decoration types; maps.rs keeps its own DECORATION_TYPES table
 MapId.addToTooltip	port	crates/sunrise-client/src/item_tooltip.rs::PlayerHeadName::map_id_lines	ticked in #3517; `MapId.addToTooltip` is cited at crates/sunrise-client/src/item_tooltip.rs:412
 MapIndex.getNextMapId	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::next_map_id
@@ -70,7 +70,7 @@ IntRangePredicate.Line.validate	skip:data		validation at datapack load
 LootContextArg.ArgCodecBuilder	skip:java		codec builders for context arguments
 LootContextArg.Getter.get	skip:java		codec getter for a context argument
 LootDataType	skip:data		validation of loot data at datapack load
-LootParams.addDynamicDrops	port	crates/sunrise-client/src/game/blocks/spill_common.rs::Pending::dynamic	gap: minor: decorated pot sherds only; shulker contents are attached by Pending::attach
+LootParams.addDynamicDrops	port	crates/sunrise-gameplay-common/src/game/blocks/spill_common.rs::Pending::dynamic	gap: minor: decorated pot sherds only; shulker contents are attached by Pending::attach
 LootParams.Builder	skip:java		builder for loot params
 Validatable	skip:data		validation at datapack load
 ValidationContext	skip:data		validation at datapack load

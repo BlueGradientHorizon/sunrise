@@ -81,7 +81,7 @@ names it) after `texture_atlas_stitched`. A sprite only the items atlas lists ha
 in. An entry whose type no mod registered fails its definition, as an unknown type fails it in vanilla, and
 the log names the type and the entry's place. A `Texture` the resources lack, and `Pixels` whose length
 isn't `width * height * 4` or whose side is over 32768 pixels, are logged and skipped one by one."#]
-    #[hook(
+    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_sprite_sources::native_register_sprite_sources", 
         receiver = "associated",
         dispatch = "flat",
         side = "client",

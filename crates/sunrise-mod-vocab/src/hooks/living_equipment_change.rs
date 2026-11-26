@@ -24,7 +24,7 @@ pub trait Hooks {
     /// host's own player, in single player or hosting a LAN world, isn't told
     /// here: `on_equip` hears it. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_living_equipment_change",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_living_equipment_change",
         dispatch = "flat",
         side = "server",
         contract = "listen",

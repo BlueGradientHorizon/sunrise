@@ -8,7 +8,7 @@ pub trait Hooks {
     /// is open. A mod may lower `limit`, as Dynamic FPS does for a window in the background:
     /// Sunrise keeps the lower of its own limit and the mod's, and ignores values below 1.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_framerate_limit",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_framerate_limit",
         receiver = "read",
         dispatch = "flat",
         side = "client",

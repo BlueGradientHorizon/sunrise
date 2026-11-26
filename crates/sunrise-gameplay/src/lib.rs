@@ -24,3 +24,6 @@ pub mod tick_profile;
 pub mod trident;
 pub mod village_siege;
 pub mod wandering_trader;
+
+extern crate self as sunrise_gameplay;
+pub mod game;

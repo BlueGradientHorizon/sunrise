@@ -24,3 +24,6 @@ pub mod tick_script;
 pub mod transient_blocks;
 pub mod tutorial;
 pub mod upload_pace;
+
+extern crate self as sunrise_client_gameplay;
+pub mod game;

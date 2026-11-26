@@ -20,7 +20,7 @@ pub trait Hooks {
     /// same frame (slots, book and effect panels move with the window). Not finite or below 0
     /// counts as 0. Beyond NeoForge: a mod there reads the container screen's `leftPos` but has no
     /// event to move it, so it draws in the space that's left.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_room::ClientGame<'_>::native_screen_room", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

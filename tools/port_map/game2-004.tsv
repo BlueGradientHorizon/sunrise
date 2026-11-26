@@ -1,5 +1,5 @@
 Evoker.EvokerWololoSpellGoal.canContinueToUse	port	crates/sunrise-sim/src/mobs/illager.rs::UseSpell::can_continue	wololo branch: sheep target still set and warm-up left
-Evoker.EvokerWololoSpellGoal.performSpellCasting	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::handle_mob_events	MobEvent::Wololo dyes the sheep red (color 14); the event is pushed from UseSpell::tick
+Evoker.EvokerWololoSpellGoal.performSpellCasting	port	crates/sunrise-gameplay-common/src/game/mobs/creatures/mod.rs::Game::handle_mob_events	MobEvent::Wololo dyes the sheep red (color 14); the event is pushed from UseSpell::tick
 Illusioner.registerGoals	port	crates/sunrise-sim/src/mobs/illusioner.rs::register	same goal list and priorities
 Illusioner.createAttributes	skip:data		attribute defaults (speed 0.5, follow 18, health 32) live in data tables
 Illusioner.performRangedAttack	port	crates/sunrise-sim/src/mobs/illusioner.rs::perform_ranged_attack	bow shot at speed 1.6 with the aim and uncertainty the skeleton uses
@@ -33,14 +33,14 @@ Piglin.createAttributes	skip:data		attribute defaults (health 16, speed 0.35, at
 Piglin.checkPiglinSpawnRules	port	crates/sunrise-sim/src/mobs/spawn_rules.rs::check_spawn_rules	not spawning on a nether wart block
 Piglin.finalizeSpawn	port	crates/sunrise-sim/src/mobs/finalize.rs::Ctx::piglin	baby chance or spawn weapon, hunt wait, then equipment and enchantments
 Piglin.populateDefaultEquipmentSlots	port	crates/sunrise-sim/src/mobs/finalize.rs::Ctx::populate	golden armour at 10 percent per adult slot
-Piglin.mobInteract	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::give_piglin	a gold ingot handed over starts admiring
+Piglin.mobInteract	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::give_piglin	a gold ingot handed over starts admiring
 Piglin.setBaby	port	crates/sunrise-sim/src/mobs/finalize.rs::set_baby	gap: minor: sets the baby age only; the speed modifier is not set in this fn
 Piglin.customServerAiStep	port	crates/sunrise-sim/src/mobs/ai.rs::custom_server_ai_step	brain_tick (forget_outdated_memories and the sensor in brain_start, then the goals), brain_step (the activity update), then zombification_tick, inside server_ai_step; the rest of the brain tick is the registered goal set (register_piglin)
 Piglin.finishConversion	port	crates/sunrise-sim/src/mobs/piglin.rs::zombification_tick	the conversion cancels an admiring and drops the admired item, then drops the piglin's carried inventory; gap: minor: the inventory drains before an admiring that expired this tick finishes (#4824)
 Piglin.hurtServer	inline	crates/sunrise-sim/src/mobs/piglin.rs::celebrate	gap: player: a hit by a player does not stop an admiring piglin or start its admiring-disabled wait; babies do not flee the attacker
-Piglin.canUseNonMeleeWeapon	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::piglin_wanted	gap: minor: checks the preferred-weapons tag only, not the usable-crossbow tag or the kinetic weapon component
+Piglin.canUseNonMeleeWeapon	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::piglin_wanted	gap: minor: checks the preferred-weapons tag only, not the usable-crossbow tag or the kinetic weapon component
 Piglin.holdInOffHand	port	crates/sunrise-sim/src/mobs/piglin.rs::hold_in_offhand	equips the item (drop chance 2.0 as setItemSlotAndDropWhenKilled) and makes the piglin persistent unless it is the barter item
-Piglin.wantsToPickUp	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::piglin_wants	gap: minor: does not check the admiring-disabled wait after a hit by a player
+Piglin.wantsToPickUp	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::piglin_wants	gap: minor: does not check the admiring-disabled wait after a hit by a player
 Piglin.startRiding	port	crates/sunrise-sim/src/mobs/riders.rs::start_riding	the boarding tests (not the vehicle it is on, not one it carries, the boarding cooldown, a free vehicle) plus the `Piglin` case: a baby piglin on a hoglin goes on top of the up-to-three piglins already there
 Piglin.getTopPassenger	port	crates/sunrise-sim/src/mobs/riders.rs::top_passenger	the top of the passenger chain, capped at four passengers on a hoglin
 Piglin.getAmbientSound	port	crates/sunrise-sim/src/mobs/piglin.rs::piglin_ambient	the sound of the activity: angry, retreat, admiring, celebrate, jealous, or the plain grunt
@@ -56,25 +56,25 @@ PiglinAi.createIdleLookBehaviors	inline	crates/sunrise-sim/src/mobs/piglin.rs::r
 PiglinAi.createIdleMovementBehaviors	inline	crates/sunrise-sim/src/mobs/piglin.rs::register_piglin	gap: minor: strolls only; no walking up to other piglins or to a look target
 PiglinAi.updateActivity	inline	crates/sunrise-sim/src/mobs/piglin.rs::register_piglin	gap: minor: the activity choice is the goal priority order; the aggressive and dancing flags are set elsewhere
 PiglinAi.isBabyRidingBaby	port	crates/sunrise-sim/src/mobs/piglin.rs::is_baby_riding_baby	a baby piglin on a baby piglin or a baby hoglin
-PiglinAi.pickUpItem	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::piglin_pickups	loved item admired, food eaten, else worn or stored
-PiglinAi.holdInOffhand	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::start_admiring	drops what the off hand held, whole, then holds the item through hold_in_offhand (Piglin.holdInOffHand), which sets persistence
-PiglinAi.removeOneItemFromItemEntity	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::piglin_pickups	takes one item from the stack (nuggets whole)
+PiglinAi.pickUpItem	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::piglin_pickups	loved item admired, food eaten, else worn or stored
+PiglinAi.holdInOffhand	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::start_admiring	drops what the off hand held, whole, then holds the item through hold_in_offhand (Piglin.holdInOffHand), which sets persistence
+PiglinAi.removeOneItemFromItemEntity	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::piglin_pickups	takes one item from the stack (nuggets whole)
 PiglinAi.cancelAdmiring	port	crates/sunrise-sim/src/mobs/piglin.rs::stop_admiring	the off hand is emptied and admiring is disabled for a while
-PiglinAi.throwItems	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::finish_admiring	gap: minor: only the barter path throws; the target choice is nearest player within 16, else a spot nearby
-PiglinAi.throwItemsTowardPos	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::piglin_throw	gap: minor: no off-hand swing animation
-PiglinAi.getBarterResponseItems	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::finish_admiring	rolls minecraft:gameplay/piglin_bartering for an adult; a baby gets the ingot back
+PiglinAi.throwItems	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::finish_admiring	gap: minor: only the barter path throws; the target choice is nearest player within 16, else a spot nearby
+PiglinAi.throwItemsTowardPos	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::piglin_throw	gap: minor: no off-hand swing animation
+PiglinAi.getBarterResponseItems	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::finish_admiring	rolls minecraft:gameplay/piglin_bartering for an adult; a baby gets the ingot back
 PiglinAi.wantsToStopRiding	port	crates/sunrise-sim/src/mobs/piglin.rs::wants_to_stop_riding	a ride target that is not a baby hoglin, or one that is too far or gone
 PiglinAi.isNearestValidAttackTarget	inline	crates/sunrise-sim/src/mobs/piglin.rs::brain_tick	gap: minor: only drops a mob target that is dead or unseen; vanilla also re-picks the nearest valid target
 PiglinAi.isNearZombified	inline	crates/sunrise-sim/src/mobs/piglin.rs::register_piglin	gap: minor: the 6-block avoid is an AvoidEntity goal; the attack target is not erased near a zombified piglin
 PiglinAi.findNearestValidAttackTarget	port	crates/sunrise-sim/src/mobs/piglin.rs::hostile_to_player	gap: minor: decides player targets only; angry-at, nemesis and universal anger are not chosen here
-PiglinAi.canAdmire	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::give_piglin	adult piglin takes a gold ingot from the hand
+PiglinAi.canAdmire	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::give_piglin	adult piglin takes a gold ingot from the hand
 PiglinAi.maybeRetaliate	inline	crates/sunrise-sim/src/mobs/goals.rs::HurtByTarget::start	gap: minor: the hurt mob becomes the target; the 600-tick anger timer and the too-far check are not kept
 PiglinAi.getSoundForActivity	port	crates/sunrise-sim/src/mobs/piglin.rs::piglin_sound	angry, retreat, admiring, celebrate, jealous and plain grunts, activity by activity
 PiglinAi.isNearAvoidTarget	inline	crates/sunrise-sim/src/mobs/piglin.rs::piglin_sound	the avoid target within 12 blocks picks the retreat grunt
 PiglinAi.babySometimesRideBabyHoglin	port	crates/sunrise-sim/src/mobs/piglin.rs::baby_sometimes_ride_baby_hoglin	the idle activity copies NEAREST_VISIBLE_BABY_HOGLIN into RIDE_TARGET for 10 to 30 seconds
 PiglinAi.broadcastAngerTarget	inline	crates/sunrise-sim/src/mobs/goals.rs::HurtByTarget::start	gap: minor: alerts same-kind mobs nearby; no closer-target check and no hoglin rule
 PiglinAi.broadcastUniversalAnger	missing		the rule reaches the mob world (`creatures.rs:788` sets `universal_anger`) and the wolf's target goal reads it (`tame.rs:81`, `NeutralMob.isAngryAt`), but nothing in `mobs/piglin.rs`: the piglin anger broadcast is `broadcast_anger` (`broadcastAngerTarget`) only, so no piglin is angered for a rule that is on
-PiglinAi.setAngerTarget	port	crates/sunrise-client/src/game/mobs/piglins.rs::Game::anger_piglins	gap: minor: only the player path (600-tick anger); a hoglin target does not set the hunt wait
+PiglinAi.setAngerTarget	port	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::anger_piglins	gap: minor: only the player path (600-tick anger); a hoglin target does not set the hunt wait
 PiglinAi.setAngerTargetToNearestTargetablePlayerIfFound	missing		part of `broadcastUniversalAnger`, which the piglin AI does not run; `tame.rs:81` is the one place the rule picks a player, for the wolf
 PiglinAi.setAngerTargetIfCloserThanCurrent	inline	crates/sunrise-sim/src/mobs/goals.rs::HurtByTarget::start	gap: minor: alerts nearby piglins but never keeps a closer target
 PiglinAi.getAvoidTarget	port	crates/sunrise-sim/src/mobs/piglin.rs::avoid_target	the avoid target while its memory is there
@@ -85,9 +85,9 @@ PiglinAi.wantsToStopFleeing	port	crates/sunrise-sim/src/mobs/piglin.rs::wants_to
 PiglinAi.hoglinsOutnumberPiglins	port	crates/sunrise-sim/src/mobs/piglin.rs::hoglins_outnumber_piglins	a piglin counts itself and sees more adult hoglins than adult piglins
 PiglinAi.setAvoidTargetAndDontHuntForAWhile	port	crates/sunrise-sim/src/mobs/piglin.rs::set_avoid_target_and_dont_hunt	the hunt is pushed back by 30 to 120 seconds
 PiglinAi.dontKillAnyMoreHoglinsForAWhile	port	crates/sunrise-sim/src/mobs/piglin.rs::HuntHoglin::start	gap: minor: sets only the hunting piglin's own wait; the wait from a hit on a hoglin is not set
-PiglinAi.getRandomNearbyPos	inline	crates/sunrise-client/src/game/mobs/piglins.rs::Game::finish_admiring	gap: minor: a random spot within 4 blocks, not a land position
+PiglinAi.getRandomNearbyPos	inline	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::finish_admiring	gap: minor: a random spot within 4 blocks, not a land position
 PiglinAi.isPlayerHoldingLovedItem	port	crates/sunrise-sim/src/mobs/piglin.rs::holds_loved	gold in either hand of the nearest player
-PiglinAi.isNotHoldingLovedItemInOffHand	inline	crates/sunrise-client/src/game/mobs/piglins.rs::Game::piglin_wants	the off hand holds no loved item test
+PiglinAi.isNotHoldingLovedItemInOffHand	inline	crates/sunrise-gameplay/src/game/mobs/piglins.rs::Game::piglin_wants	the off hand holds no loved item test
 PiglinAi.isZombified	inline	crates/sunrise-sim/src/mobs/piglin.rs::register_piglin	the zombified piglin and zoglin species list of the avoid goal
 PiglinAi.findNearbyAdultPiglins	inline	crates/sunrise-sim/src/mobs/piglin.rs::HuntHoglin::start	gap: minor: uses the follow range, not the sensor's nearest living entities list
 AbstractSkeleton.registerGoals	port	crates/sunrise-sim/src/mobs/undead.rs::register	restrict sun, flee sun, wolf avoid, stroll, look, targets
@@ -97,8 +97,8 @@ AbstractSkeleton.reassessWeaponGoal	port	crates/sunrise-sim/src/mobs/undead.rs::
 AbstractSkeleton.onEquipItem	inline	crates/sunrise-sim/src/mobs/undead.rs::SkeletonWeapon::can_use	gap: minor: the weapon is re-picked on the next goal check, not at the moment of equipping
 AbstractSkeleton.wantsToPickUp	port	crates/sunrise-sim/src/mobs/equip.rs::wants_to_pick_up	spears are refused; every other item follows the generic pickup
 Bogged.getArrow	port	crates/sunrise-sim/src/mobs/undead.rs::perform_ranged_attack	Bogged arrows carry poison for 100 ticks
-Bogged.shear	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	shear sound, sheared flag, shearing loot, game event
-Bogged.spawnShearedMushrooms	port	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	drops the shearing/bogged loot table at the mob's height
+Bogged.shear	port	crates/sunrise-gameplay/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	shear sound, sheared flag, shearing loot, game event
+Bogged.spawnShearedMushrooms	port	crates/sunrise-gameplay/src/game/mobs/creatures/mod_server.rs::Game::interact_shear_mob	drops the shearing/bogged loot table at the mob's height
 WitherSkeleton.registerGoals	port	crates/sunrise-sim/src/mobs/undead.rs::register	piglin and piglin brute target at priority 3, then the skeleton goals
 WitherSkeleton.canBeAffected	port	crates/sunrise-sim/src/mobs.rs::Mob::can_be_affected	the wither effect, over #minecraft:undead's poison and regeneration
 WitherSkeleton.canHoldItem	port	crates/sunrise-sim/src/mobs/equip.rs::wants_to_pick_up	the wither_skeleton_disliked_weapons tag is refused
@@ -131,8 +131,8 @@ WardenAi.initIdleActivity	inline	crates/sunrise-sim/src/mobs/warden_brain.rs::ac
 WardenAi.initInvestigateActivity	inline	crates/sunrise-sim/src/mobs/warden_brain.rs::activities	roar target and walk to the disturbance
 WardenAi.initSniffingActivity	inline	crates/sunrise-sim/src/mobs/warden_brain.rs::activities	roar target and sniffing
 WardenAi.isTarget	port	crates/sunrise-sim/src/mobs/warden.rs::brain_target	gap: minor: returns the attack target; the look-at filter is the caller's check
-WardenSpawnTracker.hasNearbyWarden	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_to_warn	a warden within 24 blocks on each axis stops the warning
-WardenSpawnTracker.getNearbyPlayers	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::try_to_warn	gap: minor: only the player who set off the shrieker is counted, not other players within 16 blocks
+WardenSpawnTracker.hasNearbyWarden	inline	crates/sunrise-gameplay/src/game/blocks/sculk_server.rs::Game::try_to_warn	a warden within 24 blocks on each axis stops the warning
+WardenSpawnTracker.getNearbyPlayers	inline	crates/sunrise-gameplay/src/game/blocks/sculk_server.rs::Game::try_to_warn	gap: minor: only the player who set off the shrieker is counted, not other players within 16 blocks
 WardenSpawnTracker.copyData	inline	crates/sunrise-level/src/sculk.rs::WardenSpawnTracker::try_warn	every tracker takes the highest one's level, cooldown and tick count
 Drowned.checkDrownedSpawnRules	port	crates/sunrise-sim/src/mobs/spawn_rules.rs::check_spawn_rules	water below, spawner or deep enough, dark enough, frequency roll
 Drowned.isPushedByFluid	port	crates/sunrise-sim/src/mobs/living.rs::Mob::pushed_by_fluid	`!isSwimming()`: a drowned swimming after its target is not carried by the current

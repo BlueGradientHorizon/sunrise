@@ -4,7 +4,7 @@
 pub trait Hooks {
     /// A guest's accepted movement made the server jump them from the ground. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_jump",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_jump",
         dispatch = "flat",
         side = "server",
         contract = "listen",

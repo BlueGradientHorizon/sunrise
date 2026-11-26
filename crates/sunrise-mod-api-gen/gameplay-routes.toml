@@ -1,0 +1,50 @@
+[host.client."ConfigHost::config_files"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_config_file_services"
+
+[host.client."ConfigHost::data_files"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_config_file_services"
+
+[host.client."DatafixHost::upgrade_nbt"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_datafix"
+
+[host.client."LevelsHost::is_loaded"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_config_file_services"
+
+[host.server."ConfigHost::config_files"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_config_file_services"
+
+[host.server."ConfigHost::data_files"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_config_file_services"
+
+[host.server."DatafixHost::upgrade_nbt"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_datafix"
+
+[host.server."LevelsHost::is_loaded"]
+borrow = "none"
+kind = "static"
+owner = "::sunrise_gameplay_common::game::native_config_file_services"
+
+[items.client]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::tables::GameItems<'_>"
+
+[items.server]
+borrow = "shared"
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::tables::GameItems<'_>"
+

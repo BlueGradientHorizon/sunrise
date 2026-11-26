@@ -7,7 +7,7 @@ pub trait Hooks {
     /// when a world opens.
     /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_block_entity_ticks",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_block_entity_ticks",
         receiver = "read",
         dispatch = "flat",
         side = "server",

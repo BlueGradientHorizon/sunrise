@@ -5,7 +5,7 @@ pub trait Hooks {
     /// A player bow or crossbow launched an arrow with `force`, after the
     /// projectile entered the level.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_shoot_bow",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_entity_shoot_bow",
         dispatch = "flat",
         side = "server",
         contract = "listen",

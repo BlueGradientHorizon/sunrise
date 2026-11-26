@@ -9,7 +9,7 @@ pub trait Hooks {
     /// Server-side, for every player of the world (the helpers read the
     /// acting one).
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_on_equip",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_on_equip",
         dispatch = "flat",
         side = "server",
         contract = "listen",

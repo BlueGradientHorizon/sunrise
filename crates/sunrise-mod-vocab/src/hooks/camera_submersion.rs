@@ -16,7 +16,7 @@ pub trait Hooks {
     /// point. The position can't be changed. Server and gameplay fluid checks do not read it.
     /// Client-side. Beyond NeoForge: there is no counterpart.
     /// Diverges from upstream: new hook.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::camera_submersion::ClientGame<'_>::native_camera_submersion", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

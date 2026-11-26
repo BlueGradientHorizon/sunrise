@@ -20,7 +20,7 @@ with_command_game
 with_client_game
 with_interaction_game
 
-# A test run again in a fresh child of its own test executable (crates/sunrise-client/src/game.rs and
+# A test run again in a fresh child of its own test executable (crates/sunrise-gameplay-common/src/game.rs and
 # game/modding/native_entity_refs.rs): a game's process-wide state, so the child is a game process.
 in_own_process
 run_fresh_cases

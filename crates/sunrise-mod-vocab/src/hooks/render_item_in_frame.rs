@@ -5,7 +5,7 @@ pub trait Hooks {
     #[notes = r#"## Item frame rendering
 
 `render_item_in_frame(entity_id, pos, stack, canceled)` runs before a visible item frame draws its item or map, including glow and invisible frames. Set `canceled` to hide the item without hiding the frame."#]
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_item_in_frame::ClientGame<'_>::native_render_item_in_frame", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

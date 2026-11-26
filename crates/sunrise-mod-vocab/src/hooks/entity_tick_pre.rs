@@ -24,7 +24,7 @@ pub trait Hooks {
     /// already-passed slot is not revisited.
     /// Version 3 expands the version 2 coverage without changing the event signature.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_pre",
+        target = "sunrise_gameplay_common::game::native_hooks::base::GameHooks::native_entity_tick_pre",
         dispatch = "flat",
         side = "both",
         version = 3,

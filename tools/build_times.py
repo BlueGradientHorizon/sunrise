@@ -59,7 +59,7 @@ PROFILES = ["dev", "fast"]
 EDIT_FILES = {
     "sunrise-world": "crates/sunrise-world/src/level/mod.rs",
     "sunrise-client-render": "crates/sunrise-client-render/src/gfx.rs",
-    "sunrise-client": "crates/sunrise-client/src/game.rs",
+    "sunrise-client": "crates/sunrise-gameplay-common/src/game.rs",
     "sunrise-items": "crates/sunrise-items/src/items.rs",
 }
 EDIT_MODES = ["middle", "top", "append", "touch"]

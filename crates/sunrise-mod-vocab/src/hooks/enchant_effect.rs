@@ -12,7 +12,7 @@ pub trait Hooks {
     /// A hit on a player, and an entry inside `minecraft:all_of`, aren't told
     /// yet. An unclaimed kind does nothing.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_enchant_effect",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_enchant_effect",
         dispatch = "flat",
         side = "server",
         contract = "listen",

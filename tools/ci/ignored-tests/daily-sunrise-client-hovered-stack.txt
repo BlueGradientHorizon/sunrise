@@ -1,2 +1,2 @@
-sunrise-client game::client_side::native_menu_refs::tests::creative_boxes_follow_the_selected_tab lib daily child-process
-sunrise-client game::client_side::native_menu_refs::tests::the_hovered_stack_keeps_its_components lib daily child-process
+sunrise-client-gameplay game::client_side::native_menu_refs::tests::creative_boxes_follow_the_selected_tab lib daily child-process
+sunrise-client-gameplay game::client_side::native_menu_refs::tests::the_hovered_stack_keeps_its_components lib daily child-process

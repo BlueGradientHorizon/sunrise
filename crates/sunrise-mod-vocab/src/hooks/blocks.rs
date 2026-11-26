@@ -22,7 +22,7 @@ beetroots mature at age 3, ordinary crops at 7; torchflower crops never reach th
 still crops. Pitcher crops are not `CropBlock`s and are not harvested by this behavior. Farming still
 requires a farmer at work and `mob_griefing` enabled."#]
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::native_blocks",
+        target = "sunrise_gameplay_common::game::native_hooks::base::native_blocks",
         receiver = "associated",
         dispatch = "flat",
         side = "both",

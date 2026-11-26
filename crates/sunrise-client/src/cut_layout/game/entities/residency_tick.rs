@@ -1,0 +1,39 @@
+
+
+#[cfg(test)]
+mod tests {
+    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use sunrise_core::geometry::Vec3;
+    use sunrise_sim::mobs::Mob;
+
+    #[test]
+    #[ignore = "daily"]
+    fn client_tick_drains_actual_bound_owner_events_without_a_lookup() {
+        with_client_game(|game| {
+            let (client, server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(client, "residency-client").unwrap();
+            game.side.remote.as_mut().unwrap().logged_in = true;
+            let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            let journal = game.resident_entities.table.borrow().producer();
+            for id in 800..820 {
+                game.mobs.push(Mob::new(id, kind.clone(), Vec3::ZERO, 0.0));
+            }
+            game.tick().unwrap();
+            let mut remaining = Vec::new();
+            journal.drain_into(&mut remaining);
+            assert!(
+                remaining.is_empty(),
+                "remote tick left owner events buffered"
+            );
+            game.mobs.clear();
+            let result = game.with_residency_tick(|_| Err("interrupted client tick".into()));
+            assert!(result.is_err());
+            journal.drain_into(&mut remaining);
+            assert!(
+                remaining.is_empty(),
+                "error return left owner events buffered"
+            );
+            server.shutdown();
+        });
+    }
+}

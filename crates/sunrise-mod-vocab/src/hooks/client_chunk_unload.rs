@@ -30,7 +30,7 @@ that is already gone is not told again. NeoForge tells only the forget packet
 (`ClientChunkCache.drop`); Sunrise tells every route that frees a column, so a
 listener never keeps state for a column the client no longer holds. `dimension`
 is the level the column belonged to: on a dimension change, the old one."##]
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_chunk_unload::ClientGame<'_>::native_client_chunk_unload", 
         dispatch = "flat",
         side = "client",
         version = 2,

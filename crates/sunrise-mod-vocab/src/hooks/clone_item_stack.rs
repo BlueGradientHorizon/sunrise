@@ -7,7 +7,7 @@ pub trait Hooks {
     /// `include_data` is true for a creative player picking with Ctrl. The request
     /// carries no client hit face. Leave `stack` unset to keep the game's item.
     /// Creative breaking, such as a beehive's `playerWillDestroy`, does not ask this query.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::clone_item_stack::ServerGame<'_>::native_clone_item_stack", 
         receiver = "read",
         dispatch = "flat",
         side = "server",

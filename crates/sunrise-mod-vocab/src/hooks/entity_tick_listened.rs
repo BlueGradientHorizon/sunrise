@@ -8,7 +8,7 @@ pub trait Hooks {
     /// each family each tick, on the server and on a client (`host` says which side). Contract
     /// version 2: version 1 was asked on the server only.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_listened",
+        target = "sunrise_gameplay_common::game::native_hooks::base::GameHooks::native_entity_tick_listened",
         dispatch = "flat",
         side = "both",
         version = 2,

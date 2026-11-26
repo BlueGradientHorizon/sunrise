@@ -12,7 +12,7 @@ pub trait Hooks {
     /// the filling one) without the player and the fluid. Not heard: a
     /// dispenser, a cauldron, and a fluid a block places itself.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_bucket_empty",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_bucket_empty",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

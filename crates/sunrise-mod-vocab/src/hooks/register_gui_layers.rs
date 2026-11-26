@@ -56,7 +56,7 @@ keeps a layer both above the mount hearts and below the player rows after the re
 
 The whole walk runs under F1: visibility checks belong to the original bodies, not to
 inserted layers, replacements or wrappers. A canceled `Hooks::render_gui_pre` skips the whole walk."#]
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::register_gui_layers::native_register_gui_layers", 
         receiver = "associated",
         dispatch = "flat",
         side = "client",

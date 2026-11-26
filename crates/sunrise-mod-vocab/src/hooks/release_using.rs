@@ -11,7 +11,7 @@ pub trait Hooks {
     /// vanilla's: change the world only where this `Game` runs the world,
     /// not on a server's client.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_release_using",
+        target = "sunrise_gameplay_common::game::native_hooks::base::GameHooks::native_release_using",
         dispatch = "flat",
         side = "both",
         contract = "listen",

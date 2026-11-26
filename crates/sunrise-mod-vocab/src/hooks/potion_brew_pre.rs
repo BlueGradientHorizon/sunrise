@@ -8,7 +8,7 @@ pub trait Hooks {
     /// uses no ingredient and plays no brew sound, and `potion_brew_post`
     /// fires with those slots; `brewing_complete` doesn't, as nothing was
     /// brewed. Uncancelled, changes to `stacks` are dropped. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::potion_brew_pre::ServerGame<'_>::native_potion_brew_pre", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

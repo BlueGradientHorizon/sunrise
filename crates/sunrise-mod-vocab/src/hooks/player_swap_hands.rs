@@ -12,7 +12,7 @@ pub trait Hooks {
     /// on a server: a LAN or dedicated server's players, the single-player
     /// owner and a LAN host. Not heard: the same swap made in an open inventory
     /// (hovering a slot and pressing the key, a menu click).
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::player_swap_hands::ServerGame<'_>::native_player_swap_hands", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

@@ -16,7 +16,7 @@ CompositeLootItemCondition	skip:java		codec only
 CompositeLootItemCondition.Builder	skip:java		builder (addTerm)
 ConditionUserBuilder	skip:java		builder interface for loot conditions
 DamageSourceCondition.test	port	crates/sunrise-world/src/loot.rs::Context::condition	damage_source_properties arm (mob death loot)
-EnchantmentActiveCheck.test	inline	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::tick_soul_speed	the soul speed modifiers switch on and off here; the ENCHANTMENT_ACTIVE flag itself is not read as a condition
+EnchantmentActiveCheck.test	inline	crates/sunrise-gameplay/src/game/items/enchant_effects.rs::Game::tick_soul_speed	the soul speed modifiers switch on and off here; the ENCHANTMENT_ACTIVE flag itself is not read as a condition
 EntityHasScoreCondition.hasScore	missing		named Game predicates support this/constant ranges in advancements::conditions; the separate global loot.rs::condition engine and score providers remain unsupported
 EntityHasScoreCondition.test	missing		same global-loot gap as hasScore; named Game this/constant ranges use the actual holder snapshot via Game::check_predicate
 EntityHasScoreCondition.validate	skip:data		datapack validation
@@ -83,7 +83,7 @@ ints/Average.getIntUnsafe	port	crates/sunrise-level/src/providers/evaluation.rs:
 ints/BinomialDistributionGenerator.getIntUnsafe	port	crates/sunrise-world/src/loot.rs::Context::int	binomial arm
 ints/BinomialDistributionGenerator.validate	skip:data		datapack validation
 ints/ContextIntProviders.bootstrap	skip:data		registry bootstrap
-ints/ContextIntProviders.compostable	port	crates/sunrise-client/src/game/blocks/composter.rs::Game::compostable	the item's compostable layer provider; evaluated when the composter takes it (Game::composter_add)
+ints/ContextIntProviders.compostable	port	crates/sunrise-gameplay/src/game/blocks/composter.rs::Game::compostable	the item's compostable layer provider; evaluated when the composter takes it (Game::composter_add)
 ints/ContextIntProviders.cooking	port	crates/sunrise-level/src/providers/evaluation.rs::Evaluation::cooking_fuel	fuel burn times (the cooking/time_* providers)
 ints/Difference.getIntUnsafe	port	crates/sunrise-level/src/providers/evaluation.rs::Op::apply	sub arm
 ints/EnvironmentAttributeValue	missing		no `environment_attribute` provider in the int reader (`loot.rs::int`)
@@ -104,13 +104,13 @@ ints/Sum.getIntUnsafe	port	crates/sunrise-level/src/providers/evaluation.rs::Op:
 ints/UniformGenerator.getIntUnsafe	port	crates/sunrise-world/src/loot.rs::Context::int	uniform arm: inclusive random int between min and max
 ints/WeightedListValue.getIntUnsafe	port	crates/sunrise-level/src/providers/evaluation.rs::Evaluation::weighted	picks one list entry by weight before visiting its value
 ScoreboardNameProviders	skip:data		registry bootstrap
-FunctionCallback.handle	port	crates/sunrise-client/src/game/administration/functions.rs::Game::run_function_by_id	runs the function by id when its time comes
-FunctionTagCallback.handle	inline	crates/sunrise-client/src/game/administration/functions.rs::Game::tick_functions	tag branch: runs every function in the tag
-TimerQueue.createComparator	inline	crates/sunrise-client/src/game/administration/functions.rs::Game::tick_functions	ordering by (time, seq) in the due-event search
-TimerQueue.pack	port	crates/sunrise-client/src/game/administration/functions.rs::Game::save_schedule	writes data/minecraft/scheduled_events.dat sorted by (time, seq)
-TimerQueue.remove	port	crates/sunrise-client/src/game/administration/functions.rs::Game::cmd_schedule	schedule clear arm
-TimerQueue.schedule	port	crates/sunrise-client/src/game/administration/functions.rs::Game::cmd_schedule	schedule function arm
-TimerQueue.tick	port	crates/sunrise-client/src/game/administration/functions.rs::Game::tick_functions	runs due events in (time, seq) order, then the tick tag
+FunctionCallback.handle	port	crates/sunrise-gameplay/src/game/administration/functions.rs::Game::run_function_by_id	runs the function by id when its time comes
+FunctionTagCallback.handle	inline	crates/sunrise-gameplay/src/game/administration/functions.rs::Game::tick_functions	tag branch: runs every function in the tag
+TimerQueue.createComparator	inline	crates/sunrise-gameplay/src/game/administration/functions.rs::Game::tick_functions	ordering by (time, seq) in the due-event search
+TimerQueue.pack	port	crates/sunrise-gameplay/src/game/administration/functions.rs::Game::save_schedule	writes data/minecraft/scheduled_events.dat sorted by (time, seq)
+TimerQueue.remove	port	crates/sunrise-gameplay/src/game/administration/functions.rs::Game::cmd_schedule	schedule clear arm
+TimerQueue.schedule	port	crates/sunrise-gameplay/src/game/administration/functions.rs::Game::cmd_schedule	schedule function arm
+TimerQueue.tick	port	crates/sunrise-gameplay/src/game/administration/functions.rs::Game::tick_functions	runs due events in (time, seq) order, then the tick tag
 TimerQueue.Event.Packed.codec	skip:java		codec
 TimerQueue.Packed.codec	skip:java		codec
 ContentValidationException.getMessage	skip:java		exception message getter
@@ -122,7 +122,7 @@ PathAllowList.ConfigEntry.parse	skip:server		server file allow-list
 BlockHitResult.hitBorder	missing		`BlockHit` (`sunrise-core/src/geometry/mod.rs`) carries the location, the direction, the block and `inside`, no world-border flag, so a projectile's border hit is not told apart from any other
 BlockHitResult.withDirection	skip:java		copy helper (Rust struct update)
 BlockHitResult.withPosition	skip:java		copy helper (Rust struct update)
-HitResult.distanceTo	port	crates/sunrise-client/src/game/items/fishing_common.rs::rebound	the bobber's block-hit bounce: the squared distance to the hook scales the normalised velocity (`FishingHook.onHitBlock`)
+HitResult.distanceTo	port	crates/sunrise-gameplay-common/src/game/items/fishing_common.rs::rebound	the bobber's block-hit bounce: the squared distance to the hook scales the normalised velocity (`FishingHook.onHitBlock`)
 Vec2.add	skip:other		2D vector maths; Sunrise has no Vec2 type and keeps 2D maths in its callers
 Vec2.distanceToSqr	skip:other		2D vector maths; Sunrise has no Vec2 type and keeps 2D maths in its callers
 Vec2.dot	skip:other		2D vector maths; Sunrise has no Vec2 type and keeps 2D maths in its callers

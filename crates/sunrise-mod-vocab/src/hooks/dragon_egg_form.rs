@@ -13,7 +13,7 @@ pub trait Hooks {
         neoforge = "none (NeoForge has no such event)",
         paper = "DragonEggFormEvent",
         cancellable = true,
-        target = "sunrise_client::game::native_hooks::base::GameLevel<'_>::native_dragon_egg_form"
+        target = "sunrise_gameplay_common::game::native_hooks::base::GameLevel<'_>::native_dragon_egg_form"
     )]
     fn dragon_egg_form(dimension: LevelDimension, pos: BlockPos, cancel: &mut bool);
 }

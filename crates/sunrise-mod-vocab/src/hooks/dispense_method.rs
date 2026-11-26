@@ -18,7 +18,7 @@ pub trait Hooks {
     /// reported without writing or notifying the slot, and no other behaviour runs. A disabled
     /// owner's subscribed method skips the slot write and dispense events unless an earlier
     /// enabled Part supplies a reply the engine accepts.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::dispense_method::ServerGame<'_>::native_dispense_method", 
         dispatch = "flat",
         side = "server",
         contract = "replace",

@@ -34,7 +34,7 @@ saved in `debug-profile.json` under the full ID. By default, reduced debug info 
 (matching vanilla's `DebugScreenEntry.isAllowed`); call `.with_reduced_debug_info(true)` on a
 `DebugEntry::text` or `DebugEntry::renderer` to keep it allowed under reduced debug info.
 Native text is appended after vanilla's entries in registration order."#]
-    #[hook(
+    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_debug_entries::native_register_debug_entries", 
         receiver = "associated",
         dispatch = "flat",
         side = "client",

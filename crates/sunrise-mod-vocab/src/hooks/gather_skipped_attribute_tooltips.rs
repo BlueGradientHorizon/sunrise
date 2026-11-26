@@ -12,7 +12,7 @@ pub trait Hooks {
     /// projectile). `advanced` (F3+H) and `creative` are the tooltip's `TooltipFlag`.
     /// Asked when lines are built for display, recipe book search or `ItemResource::tooltip`,
     /// except during reentrant line queries. Client-side, only while a mod listens.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::gather_skipped_attribute_tooltips::ClientGame<'_>::native_gather_skipped_attribute_tooltips", 
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

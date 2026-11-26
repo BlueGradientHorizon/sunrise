@@ -1,0 +1,61 @@
+use mod_api::{__private::TransactionFrame, Attachments};
+
+/// Per-player attachment state and active replacement player UUIDs during clone hooks.
+#[derive(Default)]
+pub(in crate::game) struct PlayerState {
+    pub(in crate::game) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
+    pub(in crate::game) cloning_players: Vec<(u128, u32, u32)>,
+}
+
+/// Retained original-player attachment storage tied to `Game::transactions` so mutations,
+/// default insertions, removals and decode caching roll back with an aborted transaction.
+pub struct OriginalAttachmentSlot {
+    pub(in crate::game) map: Attachments,
+    active_frames: Vec<TransactionFrame>,
+    journal: Vec<(TransactionFrame, Attachments)>,
+}
+
+impl OriginalAttachmentSlot {
+    pub(in crate::game) fn new(map: Attachments) -> Self {
+        Self {
+            map,
+            active_frames: Vec::new(),
+            journal: Vec::new(),
+        }
+    }
+
+    pub(in crate::game) fn open_frame(&mut self, token: TransactionFrame) {
+        self.active_frames.push(token);
+    }
+
+    pub(in crate::game) fn close_frame(&mut self, token: TransactionFrame, commit: bool) {
+        if let Some(pos) = self.active_frames.iter().rposition(|&t| t == token) {
+            self.active_frames.remove(pos);
+        }
+        let kept = self
+            .journal
+            .iter()
+            .rposition(|(t, _)| *t == token)
+            .map(|pos| self.journal.remove(pos).1);
+        let Some(kept) = kept else {
+            return;
+        };
+        if commit {
+            if let Some(&outer) = self.active_frames.last()
+                && !self.journal.iter().any(|(t, _)| *t == outer)
+            {
+                self.journal.push((outer, kept));
+            }
+        } else {
+            self.map = kept;
+        }
+    }
+
+    pub(in crate::game) fn journal_current(&mut self) {
+        if let Some(&token) = self.active_frames.last()
+            && !self.journal.iter().any(|(t, _)| *t == token)
+        {
+            self.journal.push((token, self.map.clone()));
+        }
+    }
+}

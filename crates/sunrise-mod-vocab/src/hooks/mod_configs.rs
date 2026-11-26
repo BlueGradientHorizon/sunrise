@@ -10,7 +10,7 @@ pub trait Hooks {
     /// time. Receives a [`ConfigContext`] with settings reads and the scoped
     /// `ConfigFiles` service. A file outside `config/`, or one already registered, is skipped.
     #[hook(
-        target = "sunrise_client::game::native_hooks::mod_configs::native_register_configs",
+        target = "sunrise_gameplay_common::game::native_hooks::mod_configs::native_register_configs",
         receiver = "associated",
         context = "config",
         dispatch = "flat",
@@ -29,7 +29,7 @@ pub trait Hooks {
     /// settings reads and the scoped `ConfigFiles` service. Client and Common
     /// load once on their owning side, Server once per world.
     #[hook(
-        target = "sunrise_client::game::native_hooks::mod_configs::native_config_loading",
+        target = "sunrise_gameplay_common::game::native_hooks::mod_configs::native_config_loading",
         receiver = "associated",
         context = "config",
         dispatch = "flat",
@@ -62,7 +62,7 @@ pub trait Hooks {
     /// game quits. Receives the stopping game's [`ServerHost`], before the
     /// final save and teardown. A panic disables only that mod’s unload callback,
     /// not other listeners or the rest of teardown. Live writes outside a journal stand.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::mod_configs::ServerGame<'_>::native_config_unloading", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

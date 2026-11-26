@@ -42,7 +42,7 @@ Vec3i.offsetCodec	skip:java		codec with a range check
 Vec3i.equals	skip:java		derived equality on BlockPos
 Vec3i.subtract	skip:other		trivial: offset by the negated vector; Sunrise has no integer subtract
 Vec3i.multiply	inline	crates/sunrise-world/src/worldgen/structure/features.rs::TemplateFeature::place	gap: minor: only the scalar form, unit normal times size/2 in the template pivot step
-Vec3i.cross	inline	crates/sunrise-client/src/game/mobs/golems.rs::Game::find_golem	gap: minor: the pattern's right axis is enumerated as X or Z, not computed; the redstone Orientation caller is not checked
+Vec3i.cross	inline	crates/sunrise-gameplay/src/game/mobs/golems.rs::Game::find_golem	gap: minor: the pattern's right axis is enumerated as X or Z, not computed; the redstone Orientation caller is not checked
 Vec3i.distToCenterSqr	inline	crates/sunrise-sim/src/mobs/doors.rs::closer_to_center	gap: minor: returns only the closer-than test, not the squared distance
 Vec3i.distToLowCornerSqr	inline	crates/sunrise-world/src/worldgen/end_spike.rs::EndSpikeFeature::place_spike	the spike radius test
 Vec3i.distChessboard	inline	crates/sunrise-world/src/level/sculk.rs::Sim::sculk_update_cursors	gap: minor: only the sculk cursor distance; GlobalPos.isWithinDistance is not covered
@@ -60,7 +60,7 @@ CauldronInteractions.fillPowderSnowInteraction	inline	crates/sunrise-sim/src/cau
 CauldronInteractions.shulkerBoxInteraction	inline	crates/sunrise-sim/src/cauldron.rs::interact	lowerFillLevel posts BLOCK_CHANGE only, no fluid event in vanilla
 CauldronInteractions.bannerInteraction	inline	crates/sunrise-sim/src/cauldron.rs::interact	lowerFillLevel posts BLOCK_CHANGE only, no fluid event in vanilla
 CauldronInteractions.dyedItemIteration	inline	crates/sunrise-sim/src/cauldron.rs::interact	lowerFillLevel posts BLOCK_CHANGE only, no fluid event in vanilla
-BlockTransformer.playerHasBlockingItemUseIntent	port	crates/sunrise-client/src/game.rs::Game::block_transform	gap: minor: checks the off-hand shield for any hand; vanilla checks the main hand only
+BlockTransformer.playerHasBlockingItemUseIntent	port	crates/sunrise-gameplay-common/src/game.rs::Game::block_transform	gap: minor: checks the off-hand shield for any hand; vanilla checks the main hand only
 BlockTransformer.BlockTransformData.builder	skip:java		builder
 BlockTransformer.BlockTransformData.Builder.build	skip:java		builder
 DataComponentExactPredicate.someOf	skip:data		builds an exact predicate from a stack; used for datagen-made predicates
@@ -78,7 +78,7 @@ DataComponentInitializers.Initializer.add	skip:data		item default component init
 DataComponentInitializers.SingleComponentInitializer.asInitializer	skip:data		item default component initializers; Sunrise reads item defaults from its tables
 DataComponentLookup.getOrCreateStorage	skip:java		cache
 DataComponentLookup.scanForComponents	skip:java		index build behind the lookup
-DataComponentLookup.findAll	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::dye_color_mix_in_recipes	DyeColor.findColorMixInRecipes looks the two dyes up through the recipe components; this builds the two-dye grid and asks the recipe manager for it
+DataComponentLookup.findAll	inline	crates/sunrise-gameplay-common/src/game/mobs/creatures/mod.rs::dye_color_mix_in_recipes	DyeColor.findColorMixInRecipes looks the two dyes up through the recipe components; this builds the two-dye grid and asks the recipe manager for it
 DataComponentLookup.ComponentStorage.findMatching	skip:other		how a spawn egg finds its entity type: the egg's id is the type's with _spawn_egg on the end (creatures.rs::Game::spawn_egg_allowed trims it), so no component is looked up
 DataComponentMap.makeCodecFromMap	skip:java		codec
 DataComponentMap.iterator	skip:java		iterator
@@ -123,21 +123,21 @@ JukeboxPlayablePredicate.matches	missing		ignored by `advancements.rs::item`; th
 PotionsPredicate.matches	port	crates/sunrise-sim/src/advancements.rs::potions
 WritableBookPredicate.matches	missing		ignored by `advancements.rs::item`; no shipped data uses one — only minecraft:enchantments, map_id and jukebox_playable appear as item predicates in the 1866 advancements and the 1447 loot tables
 WrittenBookPredicate.matches	missing		ignored by `advancements.rs::item`; no shipped data uses one — only minecraft:enchantments, map_id and jukebox_playable appear as item predicates in the 1866 advancements and the 1447 loot tables
-BoatDispenseItemBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_boat
-DefaultDispenseItemBehavior.dispense	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_default	the click and dispense events of dispense_default
-DefaultDispenseItemBehavior.addToInventoryOrDispense	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::consume_with_remainder
-EquipmentDispenseItemBehavior.execute	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_default_method	the equippable branch of dispense_default_method
-FlintAndSteelDispenseItemBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_flint_and_steel
-FlintAndSteelDispenseItemBehavior.tryIgniteExplosiveEntities	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_flint_and_steel	the sulfur cube priming branch
-MinecartDispenseItemBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_minecart
-MinecartDispenseItemBehavior.getRailShape	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_minecart	the slope test on the rail
-ProjectileDispenseBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile
-ProjectileDispenseBehavior.playSound	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_projectile	returns the level event that dispense_item posts
-ShearsDispenseItemBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_shears
-ShearsDispenseItemBehavior.tryShearBeehive	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::shear_beehive
-ShulkerBoxDispenseBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_shulker_box
-SpawnEggItemBehavior.execute	port	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_spawn_egg
-SulfurCubeBlockDispenseItemBehavior.execute	inline	crates/sunrise-client/src/game/blocks/dispenser.rs::Game::dispense_default_method	the swallow branch of dispense_default_method
+BoatDispenseItemBehavior.execute	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_boat
+DefaultDispenseItemBehavior.dispense	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_default	the click and dispense events of dispense_default
+DefaultDispenseItemBehavior.addToInventoryOrDispense	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::consume_with_remainder
+EquipmentDispenseItemBehavior.execute	inline	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_default_method	the equippable branch of dispense_default_method
+FlintAndSteelDispenseItemBehavior.execute	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_flint_and_steel
+FlintAndSteelDispenseItemBehavior.tryIgniteExplosiveEntities	inline	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_flint_and_steel	the sulfur cube priming branch
+MinecartDispenseItemBehavior.execute	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_minecart
+MinecartDispenseItemBehavior.getRailShape	inline	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_minecart	the slope test on the rail
+ProjectileDispenseBehavior.execute	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_projectile
+ProjectileDispenseBehavior.playSound	inline	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_projectile	returns the level event that dispense_item posts
+ShearsDispenseItemBehavior.execute	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_shears
+ShearsDispenseItemBehavior.tryShearBeehive	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::shear_beehive
+ShulkerBoxDispenseBehavior.execute	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_shulker_box
+SpawnEggItemBehavior.execute	port	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_spawn_egg
+SulfurCubeBlockDispenseItemBehavior.execute	inline	crates/sunrise-gameplay/src/game/blocks/dispenser.rs::Game::dispense_default_method	the swallow branch of dispense_default_method
 BlockParticleOption.codec	skip:java		codec; the field check is sunrise-command args.rs::particle_options
 BlockParticleOption.streamCodec	port	crates/sunrise-protocol/src/entity_data.rs::Particle::read	read side of the stream codec
 ColorParticleOption.codec	skip:java		codec; the field check is sunrise-command args.rs::particle_options

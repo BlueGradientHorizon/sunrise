@@ -6,7 +6,7 @@ pub trait Hooks {
     /// creative or spectator player walking), so `Player.causeFallDamage` returned early
     /// and nothing was hurt. Listen only. Once for each landing, after the fall's
     /// block reaction. The player's state is swapped in. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::player_flyable_fall::ServerGame<'_>::native_player_flyable_fall", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

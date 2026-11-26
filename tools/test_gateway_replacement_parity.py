@@ -36,9 +36,9 @@ def main():
     lock, jars, libraries = base.verify_artifacts()
     source = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaGatewayReplacementOracle.java'
     sources = [Path(__file__), source, source.parent / 'ParityData.java', lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/sunrise-client/src/game.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/blocks/block_entity_anims.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/blocks/spill.rs']
+               lab.ROOT / 'crates/sunrise-gameplay-common/src/game.rs',
+               lab.ROOT / 'crates/sunrise-gameplay/src/game/blocks/block_entity_anims.rs',
+               lab.ROOT / 'crates/sunrise-gameplay/src/game/blocks/spill.rs']
     hashes = base.source_hashes(sources)
 
     def run(command, label, **kwargs):

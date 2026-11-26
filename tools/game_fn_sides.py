@@ -179,7 +179,7 @@ def resolve_top_entry(
     regular_mods: dict[str, tuple[str, Path, tuple[str, ...]]],
 ) -> tuple[str, Path, tuple[str, ...]] | None:
     if top_name == "game":
-        game_rs = (root / "crates/sunrise-client/src/game.rs").resolve()
+        game_rs = (root / "crates/sunrise-gameplay-common/src/game.rs").resolve()
         return ("game", game_rs, ()) if game_rs.is_file() else None
     return regular_mods.get(top_name)
 
@@ -3052,7 +3052,7 @@ def run_fix(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str], *, 
     )
     check_orphan_mirror_files(root, regular_mods, all_regular_entries, existing_mirrors, errors)
 
-    game_rs_path = root / "crates/sunrise-client/src/game.rs"
+    game_rs_path = root / "crates/sunrise-gameplay-common/src/game.rs"
     game_root_tree = build_mod_tree("game", game_rs_path.resolve()) if game_rs_path.is_file() else None
 
     rows_by_top: dict[str, dict[FnKey, FnRow]] = defaultdict(dict)
@@ -3574,7 +3574,7 @@ def run_check(root: Path, rows: dict[FnKey, FnRow], mod_sides: dict[str, str]) -
     check_orphan_mirror_files(root, regular_mods, all_regular_entries, existing_mirrors, problems)
     expected_mirrors = mirror_modules_from_table(rows)
 
-    game_rs_path = root / "crates/sunrise-client/src/game.rs"
+    game_rs_path = root / "crates/sunrise-gameplay-common/src/game.rs"
     game_root_tree = build_mod_tree("game", game_rs_path.resolve()) if game_rs_path.is_file() else None
 
     for side in ("client", "server"):

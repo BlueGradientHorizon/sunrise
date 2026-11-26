@@ -58,7 +58,7 @@ block column, and returns 0xRRGGBB. The mesher asks it on its worker threads, on
 blocks blend over, so a resolver keeps no mutable state and gets no `Host`. Its colours are cached for one mesh of
 one section only: a resource or pack reload, a biome colour refresh and a block change all mesh the section again
 and ask the resolver again."#]
-    #[hook(
+    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_color_resolvers::native_register_color_resolvers", 
         receiver = "associated",
         dispatch = "flat",
         side = "client",

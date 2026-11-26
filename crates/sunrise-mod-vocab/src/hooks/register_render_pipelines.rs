@@ -69,7 +69,7 @@ pipelines draw. Pipeline quads share the view's 4,096 quads with `WorldDrawConte
 stage they draw after that stage's plain quads and lines, in the order submitted. Under a shader
 pack they follow the plain quads: a stage the pack draws itself is drawn with the next stage the
 game reaches."#]
-    #[hook(
+    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_render_pipelines::native_register_render_pipelines", 
         receiver = "associated",
         dispatch = "flat",
         side = "client",

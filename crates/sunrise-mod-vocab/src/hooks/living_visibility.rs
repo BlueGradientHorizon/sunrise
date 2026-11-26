@@ -12,7 +12,7 @@ pub trait Hooks {
     /// sensors, the happy ghast's tempt). A mob target comes in without the
     /// sneaking factor, which vanilla reads through `isDiscrete`.
     /// Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::living_visibility::ServerGame<'_>::native_living_visibility", 
         receiver = "read",
         dispatch = "flat",
         side = "server",

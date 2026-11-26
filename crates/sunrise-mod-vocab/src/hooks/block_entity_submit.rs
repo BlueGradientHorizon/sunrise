@@ -19,7 +19,7 @@ pub trait Hooks {
     /// by the scene, the draw is full bright, and `pos` is scene-local, not a
     /// position to look up in the client level.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_block_entity_submit",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_block_entity_submit",
         receiver = "read",
         dispatch = "flat",
         side = "client",

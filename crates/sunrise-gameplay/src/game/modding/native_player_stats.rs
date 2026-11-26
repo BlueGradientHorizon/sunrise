@@ -1,0 +1,240 @@
+//! A player's statistics and recipe book for native server mods, through a
+//! `PlayerRef` (docs/modding/src/how-to/native-mods.md): `ServerStatsCounter` and
+//! `ServerRecipeBook`. Reads return None for a stale handle or a player who
+//! isn't online here. Writes return false (or None) for those, for a dead
+//! player, and, inside another player's turn, for anyone but that player.
+use super::{
+    Game, lan_actions_server::CombatPlayer, native_server::PlayerRead, stats::Stats,
+    transactions::DeferredEffect,
+};
+use mod_api::{PlayerRef, StatType};
+use sunrise_gameplay_common::stats::StatValues;
+
+use super::native_namespaced_id::namespaced;
+
+impl crate::game::ServerGame<'_> {
+    /// The player's statistics, including the counter lent to a nested turn.
+    fn native_player_stats(&self, player: PlayerRef) -> Option<Option<&Stats>> {
+        match self.player_handle_read(player) {
+            Some(PlayerRead::Guest(g)) => {
+                Some(self.server.lan.as_ref()?.play.get(&g.conn).map(|p| &p.stats))
+            }
+            Some(PlayerRead::Acting { .. }) => Some(Some(&self.common.stats)),
+            None => {
+                let entity = player.entity();
+                if self.server.lan_displaced_players.0.is_empty()
+                    || self.common.native_lifecycle.epoch()? != entity.epoch()
+                {
+                    return None;
+                }
+                let CombatPlayer::Displaced(depth, _) = self.combat_player(entity.id())? else {
+                    return None;
+                };
+                let frame = &self.server.lan_displaced_players.0[depth];
+                (frame.uuid == Some(player.uuid())).then_some(Some(&frame.stats))
+            }
+        }
+    }
+
+    /// The value of statistic `stat_type` for `key` (`minecraft:stone`,
+    /// `minecraft:jump`...), as `ServerStatsCounter.getValue`: 0 when never
+    /// counted.
+    pub(in crate::game) fn player_stat(
+        &self,
+        player: PlayerRef,
+        stat_type: StatType,
+        key: &str,
+    ) -> Option<i32> {
+        let ty = stat_type.path();
+        let stats = self.native_player_stats(player)?;
+        Some(stats.map_or(0, |s| s.get(ty, &namespaced(key))))
+    }
+    /// `ServerStatsCounter.toJson` for this player's live counter.
+    pub(in crate::game) fn player_statistics(&self, player: PlayerRef) -> Option<String> {
+        if !self.common.is_logical_server() {
+            return None;
+        }
+        let json = self
+            .native_player_stats(player)?
+            .map_or_else(|| Stats::default().to_json(), Stats::to_json);
+        Some(json.to_string())
+    }
+
+    /// Decode with the server's registries before entering the player's turn. Inside a
+    /// transaction the replacement waits for the root commit, as the game's own deferred
+    /// statistics do, so counters and criterion scores never outlive an abort apart.
+    pub(in crate::game) fn player_set_statistics(
+        &mut self,
+        player: PlayerRef,
+        snapshot: &str,
+    ) -> bool {
+        if !self.common.is_logical_server() {
+            return false;
+        }
+        let Some(values) = Stats::decode_snapshot(snapshot, |registry, id| {
+            self.stat_registry_contains(registry, id)
+        }) else {
+            return false;
+        };
+        if self.common.transactions.last().is_some() {
+            if !self.native_player_writable(player) {
+                return false;
+            }
+            self.defer_effect(DeferredEffect::RestoreStatistics(player, Box::new(values)));
+            return true;
+        }
+        self.restore_player_statistics(player, values)
+    }
+    /// The replacement itself, in the player's turn.
+    pub(in crate::game) fn restore_player_statistics(
+        &mut self,
+        player: PlayerRef,
+        values: StatValues,
+    ) -> bool {
+        self.native_as_player_handle(player, |game| {
+            // A local counter loads lazily; guest turns already own their counter.
+            if game.side.lan_acting.is_none() {
+                game.load_stats();
+            }
+            game.stats.replace_values(values);
+        })
+    }
+    /// Whether `native_as_player_handle` would run for `player` now.
+    fn native_player_writable(&self, player: PlayerRef) -> bool {
+        match self.player_handle_read(player) {
+            None => false,
+            Some(PlayerRead::Acting { .. }) => true,
+            Some(PlayerRead::Guest(g)) => !g.dead,
+        }
+    }
+
+    /// `Player.awardStat(stat, amount)`: adds `amount`, as the game does
+    /// for its own counts, so `player_stat_award` hears it and may rewrite or cancel
+    /// it, and scoreboard criteria follow. False for a player it can't
+    /// reach.
+    pub(in crate::game) fn player_award_stat(
+        &mut self,
+        player: PlayerRef,
+        stat_type: StatType,
+        key: &str,
+        amount: i32,
+    ) -> bool {
+        let ty = stat_type.path();
+        let key = namespaced(key);
+        self.native_player_current(player)
+            && self.native_as_player_handle(player, |game| game.award_stat(ty, &key, amount))
+    }
+    /// `Player.resetStat`: sets the statistic back to 0, which scoreboard
+    /// criteria follow. False for a player it can't reach.
+    pub(in crate::game) fn player_reset_stat(
+        &mut self,
+        player: PlayerRef,
+        stat_type: StatType,
+        key: &str,
+    ) -> bool {
+        let ty = stat_type.path();
+        let key = namespaced(key);
+        self.native_player_current(player)
+            && self.native_as_player_handle(player, |game| game.stats.reset(ty, &key))
+    }
+
+    /// Whether the player's recipe book knows `recipe`
+    /// (`ServerRecipeBook.contains`).
+    pub(in crate::game) fn player_has_discovered_recipe(
+        &self,
+        player: PlayerRef,
+        recipe: &str,
+    ) -> Option<bool> {
+        if !self.native_player_current(player) {
+            return None;
+        }
+        let id = namespaced(recipe);
+        Some(match self.native_player_resting(player) {
+            Some(g) => g.recipe_book.recipes.contains(&id),
+            None => self.common.level.recipe_book.recipes.contains(&id),
+        })
+    }
+    /// `ServerPlayer.awardRecipes`, as `/recipe give` does: the recipes
+    /// unlock in the player's book, with their toasts and the
+    /// `player_recipe_discovered` hook, and the client hears of them.
+    /// Unknown ids are skipped. The number of recipe displays added, None
+    /// for a player it can't reach.
+    pub(in crate::game) fn player_award_recipes(
+        &mut self,
+        player: PlayerRef,
+        recipes: &[&str],
+    ) -> Option<i32> {
+        self.native_player_change_recipes(player, true, recipes)
+    }
+    /// `ServerPlayer.resetRecipes`, as `/recipe take` does. The number of
+    /// recipe displays taken out, None for a player it can't reach.
+    pub(in crate::game) fn player_reset_recipes(
+        &mut self,
+        player: PlayerRef,
+        recipes: &[&str],
+    ) -> Option<i32> {
+        self.native_player_change_recipes(player, false, recipes)
+    }
+    fn native_player_change_recipes(
+        &mut self,
+        player: PlayerRef,
+        give: bool,
+        recipes: &[&str],
+    ) -> Option<i32> {
+        if !self.native_player_current(player) {
+            return None;
+        }
+        // `awardRecipes` takes recipes the server has: an id no recipe has
+        // would otherwise go into the book.
+        let index = &self.stations().recipe_index;
+        let ids: Vec<String> = recipes
+            .iter()
+            .map(|r| namespaced(r))
+            .filter(|id| index.contains(id))
+            .collect();
+        let mut count = 0;
+        self.native_as_player_handle(player, |game| {
+            count = game.change_recipes(give, &ids);
+        })
+        .then_some(count)
+    }
+}
+
+impl crate::game::ServerGame<'_> {
+    /// Whether `player` still names the same player on this server.
+    pub(in crate::game) fn native_player_current(&self, player: PlayerRef) -> bool {
+        self.player_handle_read(player).is_some()
+    }
+
+    /// The guest record `player` reads from outside their turn, or None
+    /// when their state is in the game (they act, or they are the host).
+    pub(in crate::game) fn native_player_resting(
+        &self,
+        player: PlayerRef,
+    ) -> Option<&sunrise_sim::lan::guest::Guest> {
+        match self.player_handle_read(player)? {
+            PlayerRead::Guest(guest) => Some(guest),
+            PlayerRead::Acting { .. } => None,
+        }
+    }
+
+    /// Every recipe the player's recipe book knows (`ServerRecipeBook.recipes`), qualified ids in
+    /// order. None for a player it can't reach.
+    pub(in crate::game) fn player_discovered_recipes(
+        &self,
+        player: PlayerRef,
+    ) -> Option<Vec<String>> {
+        if !self.native_player_current(player) {
+            return None;
+        }
+        let book = match self.native_player_resting(player) {
+            Some(g) => &g.recipe_book.recipes,
+            None => &self.common.level.recipe_book.recipes,
+        };
+        Some(book.iter().cloned().collect())
+    }
+}
+
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

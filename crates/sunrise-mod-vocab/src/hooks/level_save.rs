@@ -5,7 +5,7 @@ pub trait Hooks {
     /// in `ServerLevel.save`), for autosave, `/save-all`, pause and shutdown.
     /// Individual record failures are reported and do not suppress this hook;
     /// a failed awaited storage flush does. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::level_save::ServerGame<'_>::native_level_save", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

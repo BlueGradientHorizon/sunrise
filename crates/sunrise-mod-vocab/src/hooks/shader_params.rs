@@ -9,7 +9,7 @@ pub trait Hooks {
     /// one that pack is for. Asked once a frame while a pack is on; a value
     /// that isn't finite reads as 0 (`native_shader_params_now`).
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_shader_params",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_shader_params",
         receiver = "read",
         dispatch = "flat",
         side = "client",

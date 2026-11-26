@@ -4,7 +4,7 @@ pub trait Hooks {
     /// A player is about to nock `bow` with `hand` (`BowItem.use`, NeoForge's
     /// `ArrowNockEvent`): `has_ammo` is whether `getProjectile` found ammunition
     /// or the player is in creative. Set `cancel` to fail the use.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::arrow_nock::ServerGame<'_>::native_arrow_nock", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

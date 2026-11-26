@@ -15,7 +15,7 @@ pub trait Hooks {
     /// `play_level_sound_at_entity`, never this hook. With no listener the sound is dropped after
     /// one check, with nothing decoded or allocated. Client-side. Diverges from upstream: new
     /// hook, a Sunrise addition with no NeoForge counterpart.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::viewed_level_sound::ClientGame<'_>::native_viewed_level_sound", 
         dispatch = "api_carrier",
         side = "client",
         contract = "listen",

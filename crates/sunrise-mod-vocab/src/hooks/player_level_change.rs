@@ -4,7 +4,7 @@
 pub trait Hooks {
     /// A server player's experience level changed, after the new level was applied.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_level_change",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_level_change",
         dispatch = "flat",
         side = "server",
         contract = "listen",

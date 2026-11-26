@@ -13,7 +13,7 @@ pub trait Hooks {
     /// while the shown stack differs from the held one by slot or by value;
     /// an unchanged hand and an empty hand aren't asked. Only the `ItemPart`s
     /// attached to `stack`'s item are asked. Client-side.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::should_cause_reequip_animation::ClientGame<'_>::native_should_cause_reequip_animation", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

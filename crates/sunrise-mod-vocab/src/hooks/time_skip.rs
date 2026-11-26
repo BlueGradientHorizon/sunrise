@@ -5,7 +5,7 @@ pub trait Hooks {
     /// The overworld clock is about to jump, from sleep or `/time`. Set
     /// `cancel` to keep `from`.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_time_skip",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_time_skip",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

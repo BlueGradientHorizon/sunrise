@@ -24,7 +24,7 @@ pub trait Hooks {
     /// Receives a [`ReloadContext`] for published data queries; world handles and
     /// transactions are not present on this context.
     #[hook(
-        target = "sunrise_client::game::native_hooks::tags_updated::native_tags_updated",
+        target = "sunrise_gameplay_common::game::native_hooks::tags_updated::native_tags_updated",
         receiver = "associated",
         context = "reload",
         dispatch = "flat",

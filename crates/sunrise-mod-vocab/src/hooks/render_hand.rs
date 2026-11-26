@@ -19,7 +19,7 @@ pub trait Hooks {
     /// see it as they see vanilla's hand. Unlike NeoForge, the pose stack is
     /// `draw`'s own: turning it moves what you draw, `render`'s pose moves
     /// the default geometry, and player render state is not exposed.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_hand::ClientGame<'_>::native_render_hand", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

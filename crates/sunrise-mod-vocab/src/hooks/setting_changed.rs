@@ -7,7 +7,7 @@ pub trait Hooks {
     /// `setting_bool` and its siblings. Only mod `mod_id` hears it: a mod is told of its own
     /// settings, never another's.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_setting_changed",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_setting_changed",
         dispatch = "flat",
         side = "client",
         contract = "listen",

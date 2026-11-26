@@ -9,7 +9,7 @@ pub trait Hooks {
     /// Silently skips `pos`, duplicate positions, missing or non-lendable containers,
     /// and positions after 64 accepted containers (`MAX_MENU_LINKS`). First accepted
     /// occurrence wins, preserving answer order.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::menu_links::ServerGame<'_>::native_menu_links", 
         dispatch = "flat",
         side = "server",
         contract = "collect",

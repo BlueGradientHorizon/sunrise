@@ -2,7 +2,7 @@
 
 pub trait Hooks {
     /// The `screen` that was open is being replaced (`ScreenEvent.Closing`), after `screen_opening` let it.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_closing::ClientGame<'_>::native_screen_closing", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

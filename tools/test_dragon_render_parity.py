@@ -45,7 +45,7 @@ def main():
     lab.write_json(report, dict(schema=1, minecraft=lock['minecraft']['version'], cases=8, vertices=vertices,
                                scope='Death-ray triangle positions, counts and RGBA gradients; no framebuffer comparison.',
                                sources_sha256=base.source_hashes([
-                                   oracle, __file__, lab.ROOT / 'crates/sunrise-client/src/game/mobs/dragon.rs',
+                                   oracle, __file__, lab.ROOT / 'crates/sunrise-gameplay/src/game/mobs/dragon.rs',
                                    lab.ROOT / 'crates/sunrise-client-render/src/gfx.rs',
                                    lab.ROOT / 'crates/sunrise-client-render/src/gfx/oit_features.rs',
                                    lab.ROOT / 'crates/sunrise-client-render/src/entity.wgsl'])))

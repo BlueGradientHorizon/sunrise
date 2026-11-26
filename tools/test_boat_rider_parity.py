@@ -32,12 +32,12 @@ except ImportError:
     from integration_env import run_game
 
 SOURCES = [
-    'crates/sunrise-client/src/game.rs',
-    'crates/sunrise-client/src/game/entities/boat_rider_fixture.rs',
-    'crates/sunrise-client/src/game/network/remote_vehicles.rs',
-    'crates/sunrise-client/src/game/entities/boats/mod.rs',
-    'crates/sunrise-client/src/game/network/remote_objects.rs',
-    'crates/sunrise-client/src/game/items/hand.rs',
+    'crates/sunrise-gameplay-common/src/game.rs',
+    'crates/sunrise-client-gameplay/src/game/entities/boat_rider_fixture.rs',
+    'crates/sunrise-client-gameplay/src/game/network/remote_vehicles.rs',
+    'crates/sunrise-gameplay/src/game/entities/boats/mod.rs',
+    'crates/sunrise-client-gameplay/src/game/network/remote_objects.rs',
+    'crates/sunrise-client-gameplay/src/game/items/hand.rs',
     'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaBoatRiderOracle.java',
     'mods/sunrise/src/test/java/dev/sunriselab/parity/ParityData.java',
     'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaVehicleContainerOracle.java',

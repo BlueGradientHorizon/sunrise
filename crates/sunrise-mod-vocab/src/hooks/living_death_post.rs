@@ -15,7 +15,7 @@ pub trait Hooks {
     /// ordinary living entity. The ender dragon uses a separate death
     /// sequence and fires neither living death hook. Armor stands, boats and other non-mob entities
     /// are not told.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::living_death_post::ServerGame<'_>::native_living_death_post", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

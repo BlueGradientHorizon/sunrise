@@ -13,7 +13,7 @@ pub trait Hooks {
     /// target that is no living entity (a dragon part) or when the hit does
     /// no damage. Fires on the Game that runs the attack.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_critical_hit",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_critical_hit",
         dispatch = "flat",
         side = "server",
         contract = "listen",

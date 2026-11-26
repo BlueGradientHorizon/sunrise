@@ -19,7 +19,7 @@ pub trait Hooks {
     /// such part none at all. On the paths of a player the player's state is
     /// swapped in, so `host.players().acting_player()` answers them. Once for
     /// each wear, on a server.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::damage_item::ServerGame<'_>::native_damage_item", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

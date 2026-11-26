@@ -15,7 +15,7 @@ pub trait Hooks {
     /// configuration payload handler.
     /// There is no task timeout: answering keep-alives can hold configuration
     /// indefinitely. A silent or disconnected connection still ends normally.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::register_configuration_tasks::ServerGame<'_>::native_register_configuration_tasks", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

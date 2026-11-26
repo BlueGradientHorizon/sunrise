@@ -161,19 +161,15 @@
       "reason": "The optional `index` feature validates shader packages in the registry index; the portable crates take sunrise-mod-package without it."
     },
     {
-      "edge": "sunrise-client -> sunrise-optifine",
+      "edge": "sunrise-client-gameplay -> sunrise-optifine",
       "reason": "OptiFine entity models and random textures are client-only behind the `client` feature; server-only builds omit them."
     },
     {
-      "edge": "sunrise-client -> sunrise-theme",
+      "edge": "sunrise-client-gameplay -> sunrise-theme",
       "reason": "UI theme tokens and fonts are client-only behind the `client` feature; server-only builds omit them."
     }
   ],
   "allowed": [
-    "sunrise-client -> sunrise-dualsense",
-    "sunrise-client -> sunrise-friends",
-    "sunrise-client -> sunrise-shader-api",
-    "sunrise-client -> sunrise-shaders",
     "sunrise-client-lib -> sunrise-dualsense",
     "sunrise-client-lib -> sunrise-mcp",
     "sunrise-client-lib -> sunrise-optifine",
@@ -188,7 +184,12 @@
     "sunrise-render-shaderpack -> sunrise-shaders",
     "sunrise-native-build -> sunrise-mod-package",
     "sunrise-mod-registry -> sunrise-mod-package",
-    "sunrise-client -> sunrise-telemetry"
+    "sunrise-client -> sunrise-telemetry",
+    "sunrise-client-gameplay -> sunrise-dualsense",
+    "sunrise-client-gameplay -> sunrise-friends",
+    "sunrise-client-gameplay -> sunrise-shader-api",
+    "sunrise-client-gameplay -> sunrise-shaders",
+    "sunrise-client-gameplay -> sunrise-telemetry"
   ],
   "_fork_baselines": {
     "sunrise-internals": "Existing fork mod/platform boundary; no engine ownership moved by this sync.",

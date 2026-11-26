@@ -5,7 +5,7 @@ pub trait Hooks {
     /// `player`'s melee blow killed the mob `entity` of `kind` (other deaths
     /// aren't told yet). It only hears, after the blow landed. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_mob_killed",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_mob_killed",
         dispatch = "flat",
         side = "server",
         contract = "listen",

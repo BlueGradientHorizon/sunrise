@@ -7,7 +7,7 @@ pub trait Hooks {
     /// new or not, changed or not, after `on_effect_added`.
     /// Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_mob_effect_added",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_mob_effect_added",
         dispatch = "flat",
         side = "server",
         contract = "listen",

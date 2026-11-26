@@ -13,7 +13,7 @@ pub trait Hooks {
     /// decides. The handle reads the whole stack on the ground; for the
     /// window's own player of a world it ticks itself, whose pickup pass
     /// lifts the items out of the level, it reads as unavailable. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::item_picked_up::ServerGame<'_>::native_item_picked_up", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

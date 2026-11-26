@@ -60,7 +60,7 @@ one state twice or a model id that doesn't read, or no state is picked. Returnin
 each time without disabling the provider; panicking disables that provider for the session and surfaces an
 error toast. A file several packs provide binds each pack's layer on its own, as vanilla does: a refused
 layer leaves the states to the layers below it."#]
-    #[hook(
+    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_block_state_models::native_register_block_state_models", 
         receiver = "associated",
         dispatch = "flat",
         side = "client",

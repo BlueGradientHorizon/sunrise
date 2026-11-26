@@ -9,7 +9,7 @@ pub trait Hooks {
     /// Not told when the world closes, which `world_lifecycle` tells.
     /// Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::on_chunk_unloaded::Game<'_>::native_chunk_unload",
+        target = "sunrise_gameplay::game::native_hooks::on_chunk_unloaded::ServerGame<'_>::native_chunk_unload",
         dispatch = "flat",
         side = "server",
         contract = "listen",

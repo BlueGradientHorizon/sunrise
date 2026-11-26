@@ -47,8 +47,8 @@ def main():
     tested_sources = base.source_hashes([
         Path(__file__), source,
         lab.ROOT / "mods/sunrise/src/test/java/dev/sunriselab/parity/ParityData.java",
-        lab.ROOT / "crates/sunrise-client/src/game/blocks/maps/mod.rs",
-        lab.ROOT / "crates/sunrise-client/src/game/blocks/maps/save_tests.rs",
+        lab.ROOT / "crates/sunrise-gameplay/src/game/blocks/maps/mod.rs",
+        lab.ROOT / "crates/sunrise-gameplay/src/game/blocks/maps/save_tests.rs",
         lab.ROOT / "crates/sunrise-client/Cargo.toml",
         lab.ROOT / "Cargo.toml", lab.ROOT / "Cargo.lock"])
     classes = out / "classes"

@@ -19,7 +19,7 @@ recipe copies remain recipe-owned. `Host::item_crafting_remainder` reads data on
 The resolver checks the prepared item subscription table before converting or
 cloning stack components. Invalid returned stacks are refused at `ItemBoundary`,
 retaining the initial data remainder; native panics retain normal Part attribution."#]
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::crafting_remainder::ServerGame<'_>::native_crafting_remainder", 
         receiver = "read",
         dispatch = "flat",
         side = "server",

@@ -1,12 +1,12 @@
-ListOperation.Insert.apply	port	crates/sunrise-client/src/game/administration/commands/items.rs::list_operation	gap: minor: an offset past the end is clamped and a result over 256 entries is cut; vanilla returns the original list
-ListOperation.ReplaceSection.apply	port	crates/sunrise-client/src/game/administration/commands/items.rs::list_operation	gap: minor: an offset past the end is clamped and a result over 256 entries is cut; vanilla returns the original list
+ListOperation.Insert.apply	port	crates/sunrise-gameplay/src/game/administration/commands/items.rs::list_operation	gap: minor: an offset past the end is clamped and a result over 256 entries is cut; vanilla returns the original list
+ListOperation.ReplaceSection.apply	port	crates/sunrise-gameplay/src/game/administration/commands/items.rs::list_operation	gap: minor: an offset past the end is clamped and a result over 256 entries is cut; vanilla returns the original list
 ListOperation.StandAlone.codec	skip:java		codec
 SetNameFunction.getReferencedContextParams	skip:other		loot table validation only: the context params a function reads; no runtime effect
 SetNameFunction.createResolver	missing		minor: a set_name with an entity target keeps its raw text; vanilla resolves selectors and scores against the entity (loot.rs:1230 notes no table uses it)
 SetNameFunction.setName	skip:data		datagen builder for loot tables; Sunrise reads the loot JSON
 SetNameFunction.Target.component	port	crates/sunrise-world/src/loot.rs::Context::run	target becomes the component id minecraft:custom_name or minecraft:item_name
 ContextFloatProvider.getFloat	port	crates/sunrise-level/src/providers/evaluation.rs::Evaluation::cooking_fuel	non-finite or arithmetic failure uses zero for an existing furnace speed provider
-ContextFloatProvider.getFloatOrThrow	port	crates/sunrise-client/src/game/administration/commands/compute.rs::Game::provider_float	the non-finite throw is in Game::cmd_compute (compute.rs:119)
+ContextFloatProvider.getFloatOrThrow	port	crates/sunrise-gameplay/src/game/administration/commands/compute.rs::Game::provider_float	the non-finite throw is in Game::cmd_compute (compute.rs:119)
 floats/Power.getFloatUnsafe	port	crates/sunrise-level/src/providers/evaluation.rs::Op::apply	the "pow" arm; 0 to the power of 0 gives NaN as in vanilla
 ResolvableFloat.Reference.get	port	crates/sunrise-level/src/providers/evaluation.rs::Evaluation::cooking_fuel	furnace speed uses its field default when the registry key is absent
 ContextIntProvider.floatToIntSafe	inline	crates/sunrise-level/src/providers/evaluation.rs::Op::apply	the "from_float" arm rejects non-finite values and out-of-range results
@@ -82,7 +82,7 @@ PlayerTeam.pack	port	crates/sunrise-game-data/src/scoreboard.rs::Scoreboard::pac
 PlayerTeam.setPlayerPrefix	port	crates/sunrise-sim/src/scoreboard_cmd.rs::team_modify	the team.modify prefix path; the null-to-empty rule is not repeated here
 PlayerTeam.setPlayerSuffix	port	crates/sunrise-sim/src/scoreboard_cmd.rs::team_modify	the team.modify suffix path
 PlayerTeam.packOptions	port	crates/sunrise-sim/src/lan/scoreboard.rs::View::of	the friendly fire and see-invisible flags as the team options byte
-PlayerTeam.unpackOptions	port	crates/sunrise-client/src/game/network/remote/sync_client.rs::Game::remote_team	the two option bits are read from the team packet
+PlayerTeam.unpackOptions	port	crates/sunrise-client-gameplay/src/game/network/remote/sync_client.rs::Game::remote_team	the two option bits are read from the team packet
 ScoreHolder.getFeedbackDisplayName	port	crates/sunrise-sim/src/scoreboard_cmd.rs::Holder::named	gap: minor: the hover with the scoreboard name is set where a holder is built from an entity, not here
 ScoreHolder.forNameOnly	port	crates/sunrise-sim/src/scoreboard_cmd.rs::Holder::named	gap: minor: "*" is not a wildcard holder; game/interface/scoreboard/mod.rs maps it to the player name
 Scoreboard.getOrCreatePlayerScore	port	crates/sunrise-game-data/src/scoreboard.rs::Scoreboard::score_mut	gap: minor: the read-only criteria check is in scoreboard_cmd.rs, not here

@@ -5,7 +5,7 @@ pub trait Hooks {
     /// `LivingConversionEvent.Post`): `converted` replaces `entity`. Fires
     /// after the finalized new mob joined the level and before the old mob
     /// is removed, for the conversions `living_conversion_pre` tells.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::living_conversion_post::ServerGame<'_>::native_living_conversion_post", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

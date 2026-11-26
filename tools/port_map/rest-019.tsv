@@ -29,7 +29,7 @@ Pack.readPackMetadata	inline	crates/sunrise-client-render/src/packs.rs::pack	gap
 Pack.equals	skip:java		identity by pack id; the selection model compares ids
 PackDetector.detectPackResources	inline	crates/sunrise-client-render/src/packs.rs::discover	gap: minor: no symlink validation; a folder without pack.mcmeta is dropped by pack()
 PackRepository.displayPackList	skip:debug		pack ids for the system report (MinecraftServer)
-PackRepository.reload	port	crates/sunrise-client/src/game/world/packs/mod.rs::Game::refresh_pack_lists	re-discovers the packs and resets the selection
+PackRepository.reload	port	crates/sunrise-client-gameplay/src/game/world/packs/mod.rs::Game::refresh_pack_lists	re-discovers the packs and resets the selection
 PackRepository.discoverAvailable	port	crates/sunrise-client-render/src/packs.rs::discover	scans the sources for packs
 PackRepository.isAbleToClearAnyPack	missing		vanilla compares the ordered selection with the selection rebuilt from an empty request; has_optional_pack only checks for an optional pack and does not detect reordering required packs
 PackRepository.addPack	inline	crates/sunrise-level/src/pack_meta.rs::SelectionModel::activate	gap: minor: vanilla appends by id with no position rules
@@ -65,20 +65,20 @@ MultiPackResourceManager.listResources	skip:other		same overlay folder listing
 MultiPackResourceManager.listResourceStacks	skip:other		same overlay folder listing
 MultiPackResourceManager.checkTrailingDirectoryPath	skip:java		argument check for the resource listing API, which Sunrise lacks
 ProfiledReloadInstance	skip:debug		reload timing log (profiler), which Sunrise does not keep
-ReloadableResourceManager.createReload	port	crates/sunrise-client/src/game/world/packs/mod.rs::Game::spawn_pack_reload	starts the reload worker; stage_pack builds the new overlay root and resources
+ReloadableResourceManager.createReload	port	crates/sunrise-client-gameplay/src/game/world/packs/mod.rs::Game::spawn_pack_reload	starts the reload worker; stage_pack builds the new overlay root and resources
 Resource	skip:other		lazy stream and sidecar metadata; Sunrise reads host files and each feature reads its own .png.mcmeta
 ResourceFilterSection.isNamespaceFiltered	inline	crates/sunrise-level/src/pack_meta.rs::Filter::blocks	gap: minor: no namespace-only test; blocks checks the namespace inside a file path
 ResourceFilterSection.isPathFiltered	port	crates/sunrise-level/src/pack_meta.rs::Filter::blocks	path test of a filter entry
-ResourceManagerReloadListener.reload	port	crates/sunrise-client/src/game/world/packs/mod.rs::Game::apply_staged_pack	the render-thread apply of a reload
+ResourceManagerReloadListener.reload	port	crates/sunrise-client-gameplay/src/game/world/packs/mod.rs::Game::apply_staged_pack	the render-thread apply of a reload
 ResourceMetadata.fromJsonStream	port	crates/sunrise-level/src/pack_meta.rs::read_meta	gap: minor: reads pack.mcmeta only; sections are read by key in pack()
 ResourceMetadata.of	skip:java		map-backed metadata constructor
 ResourceMetadata.getTypedSections	skip:java		typed view over sections; Sunrise reads sections by key
 ResourceProvider.getResourceOrThrow	skip:java		Option instead of a thrown FileNotFound
 SimpleJsonResourceReloadListener.prepare	port	crates/sunrise-level/src/datapack.rs::DataStore::load	functions and function tags are parsed, and the content tables' files (recipe, recipe_filter, loot_table, advancement, trade_set, villager_trade, dialog, data_maps, tags) are kept by id in `files` for those tables to merge over the resource root
-SimplePreparableReloadListener.reload	port	crates/sunrise-client/src/game/world/packs/mod.rs::stage_pack	gap: minor: the prepare half; apply_staged_pack does the apply
-SimpleReloadInstance.of	port	crates/sunrise-client/src/game/world/packs/mod.rs::PackReload::spawn	stage then apply, in one call: the worker stages, drive_pack_reload applies
-SimpleReloadInstance.startTasks	inline	crates/sunrise-client/src/game/world/packs/mod.rs::Game::reload_packs	defers while a world or rest loads; errors go to Options
-SimpleReloadInstance.prepareTasks	port	crates/sunrise-client/src/game/world/packs/mod.rs::stage_pack	gap: minor: one staging pass, no per-listener barrier chain
+SimplePreparableReloadListener.reload	port	crates/sunrise-client-gameplay/src/game/world/packs/mod.rs::stage_pack	gap: minor: the prepare half; apply_staged_pack does the apply
+SimpleReloadInstance.of	port	crates/sunrise-client-gameplay/src/game/world/packs/mod.rs::PackReload::spawn	stage then apply, in one call: the worker stages, drive_pack_reload applies
+SimpleReloadInstance.startTasks	inline	crates/sunrise-client-gameplay/src/game/world/packs/mod.rs::Game::reload_packs	defers while a world or rest loads; errors go to Options
+SimpleReloadInstance.prepareTasks	port	crates/sunrise-client-gameplay/src/game/world/packs/mod.rs::stage_pack	gap: minor: one staging pass, no per-listener barrier chain
 SimpleReloadInstance.getActualProgress	skip:ui		progress fraction of the reload screen
 SimpleReloadInstance.weightProgress	skip:ui		progress weights of the reload screen
 SimpleReloadInstance.create	skip:debug		chooses profiled or plain reload
@@ -98,10 +98,10 @@ CachedUserNameToIdResolver.lookupGameProfile	port	crates/sunrise-server-files/sr
 CachedUserNameToIdResolver.getTopMRUProfiles	inline	crates/sunrise-server-files/src/user_cache.rs::UserCache::to_json	the 1000 most recently used entries
 CachedUserNameToIdResolver.writeGameProfile	inline	crates/sunrise-server-files/src/user_cache.rs::UserCache::to_json	entry JSON with expiresOn
 CachedUserNameToIdResolver.readGameProfile	port	crates/sunrise-server-files/src/user_cache.rs::UserCache::parse	reads entries with their expiry dates
-IpBanList.isBanned	port	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Lists::can_login	the IP ban branch of the login check
-IpBanList.getIpFromAddress	inline	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Lists::can_login	gap: minor: the address comes from IpAddr, not a cut of the text
-IpBanList.add	port	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Game::console_command	ban-ip: adds, replies, kicks matching players; gap: minor: no JSON-RPC ipBanned notice
-IpBanList.remove	port	crates/sunrise-client/src/game/interface/dedicated/mod.rs::Game::console_command	pardon-ip: removes and replies; gap: minor: no JSON-RPC ipUnbanned notice
+IpBanList.isBanned	port	crates/sunrise-gameplay/src/game/interface/dedicated/mod.rs::Lists::can_login	the IP ban branch of the login check
+IpBanList.getIpFromAddress	inline	crates/sunrise-gameplay/src/game/interface/dedicated/mod.rs::Lists::can_login	gap: minor: the address comes from IpAddr, not a cut of the text
+IpBanList.add	port	crates/sunrise-gameplay/src/game/interface/dedicated/mod.rs::Game::console_command	ban-ip: adds, replies, kicks matching players; gap: minor: no JSON-RPC ipBanned notice
+IpBanList.remove	port	crates/sunrise-gameplay/src/game/interface/dedicated/mod.rs::Game::console_command	pardon-ip: removes and replies; gap: minor: no JSON-RPC ipUnbanned notice
 IpBanList.clear	skip:server		only the JSON-RPC ban API calls clear (MinecraftBanListServiceImpl); Sunrise has no JSON-RPC server
 IpBanListEntry.createIpInfo	port	crates/sunrise-server-files/src/user_lists.rs::BanEntry::from_json	reads the ip field of an entry
 IpBanListEntry.serialize	port	crates/sunrise-server-files/src/user_lists.rs::BanEntry::serialize	writes the ip field and the ban fields

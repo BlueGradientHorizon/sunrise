@@ -5,7 +5,7 @@ pub trait Hooks {
     /// A server player released a drawn bow with `arrow` selected, by the use-item
     /// key or a mod's `LivingRef::release_using_item`. The player's state is swapped in.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_ready_arrow",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_ready_arrow",
         dispatch = "flat",
         side = "server",
         contract = "listen",

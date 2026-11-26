@@ -8,7 +8,7 @@ pub trait Hooks {
     /// A normal stop with only individually reported record failures still fires
     /// `WorldCloseFinal`.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_world_lifecycle",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_world_lifecycle",
         dispatch = "flat",
         side = "server",
         contract = "listen",

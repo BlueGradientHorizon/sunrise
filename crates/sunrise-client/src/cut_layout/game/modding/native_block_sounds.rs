@@ -1,0 +1,194 @@
+
+
+#[cfg(test)]
+pub(in crate::game) mod tests {
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_block_sounds::playable;
+    use mod_api::BlockSoundCause::{Break, Dig, Fall, Place, Step};
+    use std::sync::Arc;
+    use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_sim::mobs::{Mob, MobEvent, equine};
+    use sunrise_world::level::LevelAccess;
+
+    #[test]
+    fn sound_answers_validate_levels_and_names_without_requiring_loaded_events() {
+        let stone = sunrise_items::blocks::Sounds {
+            volume: 1.0,
+            pitch: 1.0,
+            break_sound: "minecraft:block.stone.break".into(),
+            step: "minecraft:block.stone.step".into(),
+            place: "minecraft:block.stone.place".into(),
+            hit: "minecraft:block.stone.hit".into(),
+            fall: "minecraft:block.stone.fall".into(),
+        };
+        for value in [-1.0, f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
+            let mut sound = sunrise_sim::block_sounds::own(&stone);
+            sound.volume = value;
+            assert!(!playable(&sound));
+            sound.volume = 1.0;
+            sound.pitch = value;
+            assert!(!playable(&sound));
+        }
+        for value in [0.0, 1.0, 2.0, f32::MAX] {
+            let mut sound = sunrise_sim::block_sounds::own(&stone);
+            sound.volume = value;
+            sound.pitch = value;
+            assert!(playable(&sound));
+        }
+        for event in ["", "not_namespaced", "mod:bad path"] {
+            let mut sound = sunrise_sim::block_sounds::own(&stone);
+            sound.step = event.into();
+            assert!(!playable(&sound));
+        }
+        let mut sound = sunrise_sim::block_sounds::own(&stone);
+        sound.step = "unknown:unloaded_event".into();
+        assert!(playable(&sound));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_block_part_answers_the_sound_type_a_block_plays() {
+        // The fixture's parts: glass answers `mymod:block.x.*` at volume 2.0 and pitch 1.5 to
+        // every cause, white wool the same to a player only, red and blue wool a NaN volume and
+        // an event with no namespace, and a snow layer as glass but only when asked at y 64.
+        mod_platform::__private::part_tests::sound_type_game_thread();
+        // The client library asks the mods through the executable's callbacks.
+        crate::entry::install_client_hooks();
+        with_game(|game| {
+            let registry = game.pack.assets.registry;
+            let player = Some((7, "minecraft:player"));
+            let creeper = Some((8, "minecraft:creeper"));
+            let sniffer = Some((9, "minecraft:sniffer"));
+            let sound = |game: &sunrise_gameplay::game::ServerGame<'_>, block: &str, entity, cause| {
+                let state = registry.default_state(block).unwrap();
+                let sound = game.block_sound_type([5, 64, 5], state, entity, cause);
+                let event = match cause {
+                    Step => sound.step,
+                    Fall => sound.fall,
+                    Place => sound.place,
+                    Break => sound.break_sound,
+                    _ => sound.hit,
+                };
+                (event.to_string(), sound.volume, sound.pitch)
+            };
+            let stone = |event: &str| (format!("minecraft:block.stone.{event}"), 1.0, 1.0);
+            let wool = |event: &str| (format!("minecraft:block.wool.{event}"), 1.0, 1.0);
+            let answered = |event: &str| (format!("mymod:block.x.{event}"), 2.0, 1.5);
+            // No part: the state's own.
+            assert_eq!(sound(game, "minecraft:stone", creeper, Step), stone("step"));
+            // A part answering every cause and entity, with the mod's own events.
+            assert_eq!(
+                sound(game, "minecraft:glass", creeper, Step),
+                answered("step")
+            );
+            assert_eq!(
+                sound(game, "minecraft:glass", creeper, Fall),
+                answered("fall")
+            );
+            assert_eq!(
+                sound(game, "minecraft:glass", player, Place),
+                answered("place")
+            );
+            assert_eq!(
+                sound(game, "minecraft:glass", None, Break),
+                answered("break")
+            );
+            assert_eq!(
+                sound(game, "minecraft:glass", sniffer, Dig),
+                answered("hit")
+            );
+            // A part answering for a player only.
+            assert_eq!(
+                sound(game, "minecraft:white_wool", player, Step),
+                answered("step")
+            );
+            assert_eq!(
+                sound(game, "minecraft:white_wool", creeper, Step),
+                wool("step")
+            );
+            assert_eq!(
+                sound(game, "minecraft:white_wool", None, Break),
+                wool("break")
+            );
+            // Answers that can't be played are dropped whole for the state's own.
+            assert_eq!(
+                sound(game, "minecraft:red_wool", creeper, Step),
+                wool("step")
+            );
+            assert_eq!(
+                sound(game, "minecraft:blue_wool", creeper, Step),
+                wool("step")
+            );
+            // The server's placement (`BlockItem.place`) asks with the acting player, and with
+            // none when nothing places it (a dispenser).
+            let glass = registry.default_state("minecraft:glass").unwrap();
+            let white_wool = registry.default_state("minecraft:white_wool").unwrap();
+            let kind = game
+                .res
+                .mob_types()
+                .get("minecraft:creeper")
+                .unwrap()
+                .clone();
+            let creeper = Mob::new(8, kind, Vec3::ZERO, 0.0);
+            let step = sunrise_sim::mobs::entity_sounds::step(
+                &creeper,
+                &game.mob_world_base(&[]),
+                [5, 64, 5],
+                glass,
+            )
+            .unwrap();
+            assert!(matches!(&step.0, std::borrow::Cow::Owned(_)));
+            assert_eq!(step.0, "mymod:block.x.step");
+            assert_eq!(step.1, 0.3);
+            assert_eq!(step.2, 1.5);
+
+            let mut placed = Vec::new();
+            for acting in [Some(7), None] {
+                game.side.lan_acting_entity = acting;
+                placed.extend(game.with_level(|behaviours, level, _| {
+                    // None when the level's own sound type is kept.
+                    let place = |state| {
+                        let own = Arc::clone(&behaviours.data(state).sounds);
+                        let pos = BlockPos::new(5, 64, 5);
+                        let sounds = level.place_sound_type(pos, state, Arc::clone(&own));
+                        (!Arc::ptr_eq(&sounds, &own))
+                            .then(|| (sounds.place.to_string(), sounds.volume, sounds.pitch))
+                    };
+                    [place(glass), place(white_wool)]
+                }));
+            }
+            let placement = Some(answered("place"));
+            assert_eq!(
+                placed,
+                [placement.clone(), placement.clone(), placement, None]
+            );
+            // A horse stepping on stone under a snow layer plays the snow's answer, asked at the
+            // stone's position (`AbstractHorse.playStepSound`): volume 2.0 × 0.15, pitch 1.5.
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            let snow = registry.default_state("minecraft:snow").unwrap();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+            game.world.set(5, 64, 5, stone).unwrap();
+            game.world.set(5, 65, 5, snow).unwrap();
+            let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+            let mut horse = Mob::new(12, kind, Vec3::ZERO, 0.0);
+            let mut events = Vec::new();
+            equine::play_step(
+                &mut horse,
+                &game.mob_world_base(&[]),
+                [5, 64, 5],
+                stone,
+                &mut events,
+            );
+            assert!(
+                matches!(
+                    events.as_slice(),
+                    [MobEvent::Sound("entity.horse.step", _, volume, pitch)]
+                        if *volume == 2.0 * 0.15 && *pitch == 1.5
+                ),
+                "{events:?}"
+            );
+        });
+    }
+}

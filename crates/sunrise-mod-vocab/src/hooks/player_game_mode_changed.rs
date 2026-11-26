@@ -16,7 +16,7 @@ pub trait Hooks {
     /// command's message names the mode it asked for, as vanilla's does. For a change the game makes inside
     /// a player's turn their state is swapped in; for the hardcore respawn
     /// it is not.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::player_game_mode_changed::ServerGame<'_>::native_player_game_mode_changed", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

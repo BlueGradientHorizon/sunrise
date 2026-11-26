@@ -13,7 +13,7 @@ pub trait Hooks {
     /// back in the inventory. State swapped in, when the player has a body.
     /// Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_container_close",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_container_close",
         dispatch = "flat",
         side = "server",
         contract = "listen",

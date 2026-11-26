@@ -5,7 +5,7 @@ pub trait Hooks {
     /// The server completed a world save cycle. `wait` says chunk writes were
     /// flushed before returning.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_world_saved",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_world_saved",
         dispatch = "flat",
         side = "server",
         contract = "listen",

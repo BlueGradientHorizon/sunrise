@@ -5,7 +5,7 @@ pub trait Hooks {
     /// A server projectile was added to the level. `player` is set only for
     /// a player launch; other sources have an empty `name`.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_projectile_launch",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_projectile_launch",
         dispatch = "flat",
         side = "server",
         contract = "listen",

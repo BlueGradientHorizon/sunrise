@@ -47,7 +47,7 @@ and a label past the quads left
 (`DrawError::CapacityExceeded`) are refused whole: nothing is drawn. `see_through` can show a
 label through any wall, which vanilla does only for the names its own renderers choose; the call
 sends nothing and reads nothing the client does not already hold."#]
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::submit_custom_geometry::ClientGame<'_>::native_submit_custom_geometry", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

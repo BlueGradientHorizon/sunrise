@@ -9,7 +9,7 @@ pub trait Hooks {
     /// Post still fires in the HUD walk, not when that paint runs. Use `event.draw` to
     /// paint after the body, or `gui_render_post` for a foreground pass independent of any layer.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_gui_layer_post",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_gui_layer_post",
         receiver = "read",
         dispatch = "flat",
         side = "client",

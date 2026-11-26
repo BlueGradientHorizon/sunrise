@@ -17,7 +17,7 @@ pub trait Hooks {
     /// Client-side, only while a mod listens.
     /// A component deeper than 512 nodes refuses capture or the whole writeback;
     /// no event field is applied if any Text field fails conversion.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::add_attribute_tooltips::ClientGame<'_>::native_add_attribute_tooltips", 
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

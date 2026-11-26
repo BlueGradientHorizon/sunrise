@@ -15,7 +15,7 @@ pub trait Hooks {
     /// `Host`. Loot, trades and spawn gear (`EnchantmentHelper.enchantItem`) don't ask. The
     /// contract beyond the method's name and parameters is Sunrise's reading, not checked
     /// against NeoForge's.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::apply_enchantments::ServerGame<'_>::native_apply_enchantments", 
         receiver = "read",
         dispatch = "flat",
         side = "server",

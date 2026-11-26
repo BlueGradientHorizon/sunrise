@@ -9,7 +9,7 @@ pub trait Hooks {
     /// Sunrise scales the sum by Distortion Effects and bounds it
     /// (`native_shake_matrix`).
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_camera_shake",
+        target = "sunrise_client_gameplay::game::native_hooks::base::ClientGame<'_>::native_camera_shake",
         receiver = "read",
         dispatch = "flat",
         side = "client",

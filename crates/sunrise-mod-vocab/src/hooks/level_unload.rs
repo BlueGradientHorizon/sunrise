@@ -12,7 +12,7 @@ pub trait Hooks {
     /// its loop fails, before `WorldOpenFailed` or `WorldCloseFailed`. Once
     /// for each `level_load`. Don't read its blocks. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_level_unload",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_level_unload",
         dispatch = "flat",
         side = "server",
         contract = "listen",

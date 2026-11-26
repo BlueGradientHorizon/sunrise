@@ -6,7 +6,7 @@ pub trait Hooks {
     /// `result` starts empty, meaning `Default` (skylight and sea level check); `Allow` skips
     /// that check and `Deny` stops the attempt. `phantoms` starts with a randomly drawn
     /// group size; set it to override the count. Without mods the original draw order is kept.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::player_spawn_phantoms::ServerGame<'_>::native_player_spawn_phantoms", 
         dispatch = "flat",
         side = "server",
         contract = "replace",

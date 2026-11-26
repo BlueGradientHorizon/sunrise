@@ -19,7 +19,7 @@ pub trait Hooks {
     /// player's menus and after the data copy, before placement or bulk
     /// attachment publication. Old bulk tokens are stale. Not cancellable.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_clone",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_clone",
         dispatch = "flat",
         side = "server",
         version = 2,

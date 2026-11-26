@@ -55,7 +55,7 @@ def main():
                lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
                lab.ROOT / 'crates/sunrise-sim/src/arrows.rs',
                lab.ROOT / 'crates/sunrise-sim/src/arrows_client_tests.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/network/remote_projectiles.rs',
+               lab.ROOT / 'crates/sunrise-client-gameplay/src/game/network/remote_projectiles.rs',
                lab.ROOT / 'crates/sunrise-sim/src/motion/fluids.rs',
                lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaClientArrowOracle.java',
                lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaArrowOracle.java',

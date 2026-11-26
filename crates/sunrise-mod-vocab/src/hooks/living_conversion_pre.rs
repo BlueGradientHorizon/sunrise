@@ -9,7 +9,7 @@ pub trait Hooks {
     /// it is; a drowning zombie starts its timers again. Not told: a
     /// mooshroom a player shears, a zombie villager's cure, a villager turned
     /// by a zombie.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::living_conversion_pre::ServerGame<'_>::native_living_conversion_pre", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

@@ -8,7 +8,7 @@ pub trait Hooks {
     /// when this fires. It only hears. Server-side, for
     /// every player of the world, whether death messages are shown or not.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_died",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_player_died",
         dispatch = "flat",
         side = "server",
         contract = "listen",

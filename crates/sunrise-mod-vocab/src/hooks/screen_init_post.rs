@@ -5,7 +5,7 @@ pub trait Hooks {
     /// `Screen.init` / `Screen.rebuildWidgets`). Use `event.widgets` to list and remove children
     /// or mount buttons, text fields, and custom widgets. A layout-only resize keeps the existing
     /// children and focus and does not fire this hook. A panicking listener publishes no edits.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_init_post::ClientGame<'_>::native_screen_init_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

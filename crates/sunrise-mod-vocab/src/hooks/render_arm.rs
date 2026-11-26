@@ -11,7 +11,7 @@ pub trait Hooks {
     /// geometry with `native_draw_cube`, `native_draw_quad`, `native_draw_block`
     /// and `native_draw_item`. Set `canceled` to leave out vanilla's arm;
     /// what the mods drew stays. Client-side.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_arm::ClientGame<'_>::native_render_arm", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

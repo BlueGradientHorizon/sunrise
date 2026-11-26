@@ -8,7 +8,7 @@ pub trait Hooks {
     /// where text uses the client's active language. A failed startup still
     /// reaches `server_stopped`.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_server_starting",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_server_starting",
         dispatch = "flat",
         side = "server",
         contract = "listen",

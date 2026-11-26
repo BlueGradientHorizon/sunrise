@@ -7,7 +7,7 @@ pub trait Hooks {
     /// environment, `server.properties`). `actor` is present when a player
     /// caused the change. `level.game_rules(host)` of any of the server's
     /// levels reads every rule, the new value included. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::game_rule_changed::ServerGame<'_>::native_game_rule_changed", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

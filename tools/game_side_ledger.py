@@ -2330,9 +2330,9 @@ def verify_struct_fields(
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[tuple[str, str]], dict[int, tuple[str, str, str]]]:
     """Parse Game/ClientState/ServerState fields for `config_name` and verify MIR constructors."""
     features = CONFIG_SPECS.get(config_name, {}).get("features", frozenset())
-    game_rs = root / "crates/sunrise-client/src/game.rs"
-    client_rs = root / "crates/sunrise-client/src/game/client_side.rs"
-    server_rs = root / "crates/sunrise-client/src/game/server_side.rs"
+    game_rs = root / "crates/sunrise-gameplay-common/src/game.rs"
+    client_rs = root / "crates/sunrise-client-gameplay/src/game/client_side.rs"
+    server_rs = root / "crates/sunrise-gameplay/src/game/server_side.rs"
 
     g_fields = parse_struct_fields_cfg(game_rs, "Game", features, host_env) if game_rs.is_file() else []
     c_fields = parse_struct_fields_cfg(client_rs, "ClientState", features, host_env) if client_rs.is_file() else []
@@ -2814,7 +2814,7 @@ def analyze_mir_dump(
                         holder_sides[owner_ty].add((dty, ds))
     # Also check wrapped fields on `game::Game` whose inner type has a Drop terminator in MIR
     dropped_types_in_mir = {norm_full_type(dty) for b in bodies for dty, _ in b["drops"]}
-    game_rs = root / "crates/sunrise-client/src/game.rs"
+    game_rs = root / "crates/sunrise-gameplay-common/src/game.rs"
     if game_rs.is_file() and wrapped_by_gidx:
         g_fields, _, _, _ = verify_struct_fields(root, config_name, parsed["ctor_aggregates"], field_owners, host_env)
         for gidx, (fname, wside, wkind) in wrapped_by_gidx.items():
@@ -2969,7 +2969,7 @@ def scan_callback_params(
     module_sides: dict[str, str],
 ) -> dict[tuple[str, str, str], dict[str, Any]]:
     """Scan non-test Rust source under `game.rs` and `game/` for game-taking callback signatures."""
-    game_rs = root / "crates/sunrise-client/src/game.rs"
+    game_rs = root / "crates/sunrise-gameplay-common/src/game.rs"
     if not game_rs.is_file():
         return {}
 
@@ -3267,7 +3267,7 @@ def scan_uncovered_cfgs(root: Path, configs: tuple[str, ...]) -> list[tuple[str,
     """List every `#[cfg(...)]` / `#[cfg_attr(...)]` predicate in `game` source never active in `configs`."""
     host_env = current_host_cfg_env()
     files: list[Path] = []
-    game_rs = root / "crates/sunrise-client/src/game.rs"
+    game_rs = root / "crates/sunrise-gameplay-common/src/game.rs"
     if game_rs.is_file():
         files.append(game_rs)
     game_dir = root / "crates/sunrise-client/src/game"

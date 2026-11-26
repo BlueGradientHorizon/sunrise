@@ -8,6 +8,6 @@ pub trait Hooks {
     /// answered a particular `PlayerRef::send_ping`. This notice is not cancellable and
     /// does not affect keep-alive latency. Configuration and status traffic do not fire it.
     /// Each listener gets its own event.
-    #[hook(side = "server", contract = "listen", event_per_listener = true)]
+    #[hook(target = "sunrise_gameplay::game::native_hooks::player_pong::ServerGame<'_>::native_player_pong", side = "server", contract = "listen", event_per_listener = true)]
     fn player_pong(player: PlayerRef, name: &str, id: i32);
 }

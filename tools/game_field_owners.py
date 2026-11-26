@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TABLE = Path(__file__).resolve().with_name("game_field_owners.tsv")
 DEFAULT_PATHS = (
-    Path("crates/sunrise-client/src/game.rs"),
+    Path("crates/sunrise-gameplay-common/src/game.rs"),
     Path("crates/sunrise-client/src/game"),
 )
 
@@ -204,58 +204,58 @@ EXTERNAL_NON_GAME_CRATES: set[str] = {
 
 # Audited real-tree qualified macros allowed without loosening the general rule.
 KNOWN_GOOD_QUALIFIED_MACROS: dict[tuple[str, str], str] = {
-    ("crates/sunrise-client/src/game.rs", "log::info"): "external log::info! crate macro in game.rs",
-    ("crates/sunrise-client/src/game/network/lan_entities.rs", "log::error"): "external log::error! crate macro",
-    ("crates/sunrise-client/src/game/administration/commands/registered_damage_tests/creaking_borrowed.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/interface/pad_menu.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/interface/pad/mod.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/mobs/dragon.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/network/remote/status.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/runtime/agent/mod.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/runtime/control.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/runtime/resource_loader.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/runtime/station_control.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/blocks/nether_portal.rs", "super::entity_residency::assign_resident_id"): "repo assign_resident_id! macro in entity_residency.rs",
-    ("crates/sunrise-client/src/game/modding/native_entities.rs", "super::entity_residency::assign_resident_id"): "repo assign_resident_id! macro in entity_residency.rs",
-    ("crates/sunrise-client/src/game/mobs/dragon/residency.rs", "crate::game::entity_residency::assign_resident_ids"): "repo assign_resident_ids! macro in entity_residency.rs",
-    ("crates/sunrise-client/src/game/world/persist/lookup_order_tests.rs", "crate::game::entity_residency::assign_resident_ids"): "repo assign_resident_ids! macro in entity_residency.rs",
-    ("crates/sunrise-client/src/game/mobs/creatures/mod.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/interface/dedicated/report.rs", "super::super::levels::entity_count_view"): "repo entity_count_view! macro in levels.rs",
-    ("crates/sunrise-client/src/game/administration/commands/world_cmds.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/administration/commands/world_cmds.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/administration/functions.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/entities/armor_stands.rs", "super::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/entities/boats/mod.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/entities/explosion.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/entities/item_hurt.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/interface/pad/radial_play.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/interface/render_control.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/interface/wind.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/items/potions.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/items/special_attacks.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/mobs/creatures/death_weapon.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/mobs/creatures/projectile_targets.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/mobs/dragon.rs", "super::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/mobs/raids/mod.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/mobs/spawner_client_tick_tests.rs", "serde_json::json"): "external serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/mobs/wither.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/modding/native_entity_invulnerable.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
-    ("crates/sunrise-client/src/game/network/lan/player_packet_tests.rs", "serde_json::json"): "imported serde_json::json! crate macro",
-    ("crates/sunrise-client/src/game/runtime/repro.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-gameplay-common/src/game.rs", "log::info"): "external log::info! crate macro in game.rs",
+    ("crates/sunrise-gameplay/src/game/network/lan_entities.rs", "log::error"): "external log::error! crate macro",
+    ("crates/sunrise-client/src/cut_layout/game/administration/commands/registered_damage_tests/creaking_borrowed.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/interface/pad_menu.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/interface/pad/mod.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-gameplay/src/game/mobs/dragon.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-gameplay-common/src/game/network/remote/status.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/runtime/agent/mod.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/runtime/control.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/runtime/resource_loader.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/runtime/station_control.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-gameplay/src/game/blocks/nether_portal.rs", "super::entity_residency::assign_resident_id"): "repo assign_resident_id! macro in entity_residency.rs",
+    ("crates/sunrise-gameplay/src/game/modding/native_entities.rs", "super::entity_residency::assign_resident_id"): "repo assign_resident_id! macro in entity_residency.rs",
+    ("crates/sunrise-gameplay/src/game/mobs/dragon/residency.rs", "crate::game::entity_residency::assign_resident_ids"): "repo assign_resident_ids! macro in entity_residency.rs",
+    ("crates/sunrise-client/src/cut_layout/game/world/persist/lookup_order_tests.rs", "crate::game::entity_residency::assign_resident_ids"): "repo assign_resident_ids! macro in entity_residency.rs",
+    ("crates/sunrise-gameplay-common/src/game/mobs/creatures/mod.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/interface/dedicated/report.rs", "super::super::levels::entity_count_view"): "repo entity_count_view! macro in levels.rs",
+    ("crates/sunrise-gameplay/src/game/administration/commands/world_cmds.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/administration/commands/world_cmds.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-gameplay/src/game/administration/functions.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-gameplay/src/game/entities/armor_stands.rs", "super::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/entities/boats/mod.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/entities/explosion.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/entities/item_hurt.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client-gameplay/src/game/interface/pad/radial_play.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/interface/render_control.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-gameplay/src/game/interface/wind.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client-gameplay/src/game/items/potions.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/items/special_attacks.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay-common/src/game/mobs/creatures/death_weapon.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay-common/src/game/mobs/creatures/projectile_targets.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/mobs/dragon.rs", "super::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/mobs/raids/mod.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client/src/cut_layout/game/mobs/spawner_client_tick_tests.rs", "serde_json::json"): "external serde_json::json! crate macro",
+    ("crates/sunrise-gameplay/src/game/mobs/wither.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-gameplay/src/game/modding/native_entity_invulnerable.rs", "crate::game::entity::damage_level_of"): "repo damage_level_of! macro in entity.rs",
+    ("crates/sunrise-client/src/cut_layout/game/network/lan/player_packet_tests.rs", "serde_json::json"): "imported serde_json::json! crate macro",
+    ("crates/sunrise-client-gameplay/src/game/runtime/repro.rs", "serde_json::json"): "imported serde_json::json! crate macro",
 }
 
 # Audited file-local `macro_rules!` taking ordinary expressions as arguments.
 KNOWN_GOOD_LOCAL_EXPR_MACROS: set[tuple[str, str]] = {
-    ("crates/sunrise-client/src/game/entities/entity/taken_pass_tests.rs", "lookup"),
-    ("crates/sunrise-client/src/game/runtime/transactions/entities.rs", "apart"),
+    ("crates/sunrise-client/src/cut_layout/game/entities/entity/taken_pass_tests.rs", "lookup"),
+    ("crates/sunrise-gameplay-common/src/game/runtime/transactions/entities.rs", "apart"),
 }
 
 # Audited real-tree relative qualified calls resolving to indexed `crate::game::...` fns.
 KNOWN_GOOD_QUALIFIED_FNS: dict[tuple[str, str], tuple[str, ...]] = {
-    ("crates/sunrise-client/src/game/administration/commands/test_summary_context_tests.rs", "tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
-    ("crates/sunrise-client/src/game/administration/game_tests.rs", "tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
-    ("crates/sunrise-client/src/game/entities/boat_passengers.rs", "super::super::game_tests::tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
-    ("crates/sunrise-client/src/game/world/storage.rs", "super::super::game_tests::tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
+    ("crates/sunrise-client/src/cut_layout/game/administration/commands/test_summary_context_tests.rs", "tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
+    ("crates/sunrise-gameplay/src/game/administration/game_tests.rs", "tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
+    ("crates/sunrise-gameplay/src/game/entities/boat_passengers.rs", "super::super::game_tests::tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
+    ("crates/sunrise-client-gameplay/src/game/world/storage.rs", "super::super::game_tests::tests::server_game"): ("crate", "game", "game_tests", "tests", "server_game"),
 }
 
 # Repo-defined expression macros valid only inside `crates/sunrise-client/src/game*`.
@@ -311,7 +311,7 @@ def norm_ident(text: str) -> str:
 
 
 def is_in_game_tree(rel_posix: str) -> bool:
-    return rel_posix == "crates/sunrise-client/src/game.rs" or rel_posix.startswith("crates/sunrise-client/src/game/")
+    return rel_posix == "crates/sunrise-gameplay-common/src/game.rs" or rel_posix.startswith("crates/sunrise-client/src/game/")
 
 
 @dataclass(frozen=True)
@@ -1076,11 +1076,11 @@ def extract_generic_type_params(gen_toks: list[Token]) -> set[str]:
 
 
 def parse_game_rs_mod_map(root: Path) -> dict[str, tuple[str, ...]]:
-    mod_map: dict[str, tuple[str, ...]] = {"crates/sunrise-client/src/game.rs": ("crate", "game")}
+    mod_map: dict[str, tuple[str, ...]] = {"crates/sunrise-gameplay-common/src/game.rs": ("crate", "game")}
     sources = [
-        (root / "crates/sunrise-client/src/game.rs", "crates/sunrise-client/src"),
-        (root / "crates/sunrise-client/src/game/client_side.rs", "crates/sunrise-client/src/game"),
-        (root / "crates/sunrise-client/src/game/server_side.rs", "crates/sunrise-client/src/game"),
+        (root / "crates/sunrise-gameplay-common/src/game.rs", "crates/sunrise-client/src"),
+        (root / "crates/sunrise-client-gameplay/src/game/client_side.rs", "crates/sunrise-client/src/game"),
+        (root / "crates/sunrise-gameplay/src/game/server_side.rs", "crates/sunrise-client/src/game"),
     ]
     for mod_file, path_base in sources:
         if not mod_file.is_file():
@@ -1134,7 +1134,7 @@ def parse_game_rs_mod_map(root: Path) -> dict[str, tuple[str, ...]]:
 
 
 def file_canonical_mod_path(rel_posix: str, file_mod_map: dict[str, tuple[str, ...]]) -> tuple[str, ...]:
-    if rel_posix == "crates/sunrise-client/src/game.rs":
+    if rel_posix == "crates/sunrise-gameplay-common/src/game.rs":
         return ("crate", "game")
     if rel_posix in file_mod_map:
         return file_mod_map[rel_posix]
@@ -1182,7 +1182,7 @@ def is_sunrise_game_path_raw(
         return True
     if prefix == ["crate", "game"] and in_client_crate:
         return True
-    if prefix == ["self"] and rel_posix == "crates/sunrise-client/src/game.rs" and not local_game_defined:
+    if prefix == ["self"] and rel_posix == "crates/sunrise-gameplay-common/src/game.rs" and not local_game_defined:
         return True
     if in_game_tree and all(s == "super" for s in prefix):
         return True
@@ -1317,7 +1317,7 @@ def collect_enclosing_file_shadowed_roots(
     cur_full = (root / rel_path).resolve()
     ancestors: list[Path] = []
     if rel_posix.startswith("crates/sunrise-client/src/game/"):
-        ancestors.append((root / "crates/sunrise-client/src/game.rs").resolve())
+        ancestors.append((root / "crates/sunrise-gameplay-common/src/game.rs").resolve())
         ancestors.append((root / "crates/sunrise-client/src/lib.rs").resolve())
     p = cur_full.parent
     root_resolved = root.resolve()
@@ -1348,7 +1348,7 @@ def build_file_lexical_layout(
     layout.scope_decls[-1] = ScopeDecls()
     in_game = is_in_game_tree(rel_posix)
     in_client = rel_posix.startswith("crates/sunrise-client/src/")
-    is_game_rs = rel_posix.endswith("crates/sunrise-client/src/game.rs")
+    is_game_rs = rel_posix.endswith("crates/sunrise-gameplay-common/src/game.rs")
     cache = file_root_cache if file_root_cache is not None else {}
     layout.enclosing_file_shadowed_roots = collect_enclosing_file_shadowed_roots(rel_posix, root, cache)
 
@@ -1513,7 +1513,7 @@ def compute_lexical_state(
         gparams.update(gp)
     if extra_generics:
         gparams.update(extra_generics)
-    at_root = rel_posix.endswith("crates/sunrise-client/src/game.rs") and not in_inline_mod
+    at_root = rel_posix.endswith("crates/sunrise-gameplay-common/src/game.rs") and not in_inline_mod
     return LexicalState(
         enclosing_declares_game=declares_game,
         foreign_game_import=foreign_imp,
@@ -1632,7 +1632,7 @@ def classify_type_tokens(
         gparams = lex.generic_params if lex is not None else frozenset()
         foreign_imp = lex.foreign_game_import if lex is not None else ctx.foreign_game_imported
         sunrise_imp = lex.sunrise_game_import if lex is not None else ctx.sunrise_game_imported
-        at_game_root = lex.at_game_rs_root if lex is not None else ctx.rel_posix.endswith("crates/sunrise-client/src/game.rs")
+        at_game_root = lex.at_game_rs_root if lex is not None else ctx.rel_posix.endswith("crates/sunrise-gameplay-common/src/game.rs")
 
         if len(segs) == 1:
             if "Game" in gparams:
@@ -1843,7 +1843,7 @@ def is_pub_before_fn(tokens: list[Token], fn_idx: int) -> bool:
 
 
 def file_defines_local_mock_game(tokens: list[Token], rel_posix: str) -> bool:
-    is_game_rs = rel_posix.endswith("crates/sunrise-client/src/game.rs")
+    is_game_rs = rel_posix.endswith("crates/sunrise-gameplay-common/src/game.rs")
     n = len(tokens)
     for i in range(n - 1):
         if tokens[i][0] == "IDENT" and tokens[i + 1][0] == "IDENT" and norm_ident(tokens[i + 1][1]) == "Game":
@@ -4195,7 +4195,7 @@ def plan_game_struct_and_ctor_edits(
         i += 1
 
     if struct_body is None:
-        problems.append("crates/sunrise-client/src/game.rs: `struct Game` declaration not found")
+        problems.append("crates/sunrise-gameplay-common/src/game.rs: `struct Game` declaration not found")
         return edits, problems
 
     seen_struct_fields: set[str] = set()
@@ -4218,7 +4218,7 @@ def plan_game_struct_and_ctor_edits(
         actual_wrap, inner_ty = unwrap_wrapper_type(src, ty_toks)
         expected_wrap = wrappers.get(fname)
         if fname not in ("server", "client") and fname not in owners:
-            problems.append(f"crates/sunrise-client/src/game.rs: `Game::{fname}` missing from game_field_owners.tsv")
+            problems.append(f"crates/sunrise-gameplay-common/src/game.rs: `Game::{fname}` missing from game_field_owners.tsv")
             continue
         if actual_wrap != expected_wrap:
             ty_start, ty_end = ty_toks[0][2], ty_toks[-1][3]
@@ -4240,12 +4240,12 @@ def plan_game_struct_and_ctor_edits(
                 )
             )
             problems.append(
-                f"crates/sunrise-client/src/game.rs: `Game::{fname}` wrapper is `{actual_wrap or '-'}`, "
+                f"crates/sunrise-gameplay-common/src/game.rs: `Game::{fname}` wrapper is `{actual_wrap or '-'}`, "
                 f"expected `{expected_wrap or '-'}` per game_field_owners.tsv"
             )
 
     for missing in sorted(set(wrappers) - seen_struct_fields):
-        problems.append(f"crates/sunrise-client/src/game.rs: wrapped field `{missing}` missing from `struct Game`")
+        problems.append(f"crates/sunrise-gameplay-common/src/game.rs: wrapped field `{missing}` missing from `struct Game`")
 
     # 2. Locate `Game { ... }` and optional out-of-line wrapped init helpers inside `fn finish_construct`
     ctor_body: tuple[int, int] | None = None
@@ -4332,7 +4332,7 @@ def plan_game_struct_and_ctor_edits(
         i += 1
 
     if ctor_body is None:
-        problems.append("crates/sunrise-client/src/game.rs: `Game { ... }` literal in `finish_construct` not found")
+        problems.append("crates/sunrise-gameplay-common/src/game.rs: `Game { ... }` literal in `finish_construct` not found")
         return edits, problems
 
     helper_field_vars: dict[str, str] = {}
@@ -4342,7 +4342,7 @@ def plan_game_struct_and_ctor_edits(
         if sbody is None and lbody is None:
             continue
         if sbody is None or lbody is None:
-            problems.append(f"crates/sunrise-client/src/game.rs: `{sname}` struct and literal must both exist")
+            problems.append(f"crates/sunrise-gameplay-common/src/game.rs: `{sname}` struct and literal must both exist")
             continue
         struct_fnames: set[str] = set()
         for part in split_top_level(tokens[sbody[0] + 1 : sbody[1] - 1], ","):
@@ -4367,17 +4367,17 @@ def plan_game_struct_and_ctor_edits(
                 if allow_unwrapped:
                     if actual_wrap is not None:
                         problems.append(
-                            f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` has unexpected wrapper `{actual_wrap}`"
+                            f"crates/sunrise-gameplay-common/src/game.rs: `{sname}::{fname}` has unexpected wrapper `{actual_wrap}`"
                         )
                     continue
                 problems.append(
-                    f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` has wrapper `-`, "
+                    f"crates/sunrise-gameplay-common/src/game.rs: `{sname}::{fname}` has wrapper `-`, "
                     f"expected `{expected_prefixes}`"
                 )
                 continue
             if not any(expected_wrap.startswith(p) for p in expected_prefixes):
                 problems.append(
-                    f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` has wrapper `{expected_wrap}`, "
+                    f"crates/sunrise-gameplay-common/src/game.rs: `{sname}::{fname}` has wrapper `{expected_wrap}`, "
                     f"expected `{expected_prefixes}`"
                 )
                 continue
@@ -4399,7 +4399,7 @@ def plan_game_struct_and_ctor_edits(
                     )
                 )
                 problems.append(
-                    f"crates/sunrise-client/src/game.rs: `{sname}::{fname}` wrapper is `{actual_wrap or '-'}`, "
+                    f"crates/sunrise-gameplay-common/src/game.rs: `{sname}::{fname}` wrapper is `{actual_wrap or '-'}`, "
                     f"expected `{expected_wrap}`"
                 )
         lit_fnames: set[str] = set()
@@ -4443,12 +4443,12 @@ def plan_game_struct_and_ctor_edits(
                     )
                 )
                 problems.append(
-                    f"crates/sunrise-client/src/game.rs: `{sname}` literal `{fname}` uses wrapper "
+                    f"crates/sunrise-gameplay-common/src/game.rs: `{sname}` literal `{fname}` uses wrapper "
                     f"`{actual_wrap or '-'}`, expected `{expected_wrap}`"
                 )
         if struct_fnames != lit_fnames:
             problems.append(
-                f"crates/sunrise-client/src/game.rs: `{sname}` struct/literal field mismatch: "
+                f"crates/sunrise-gameplay-common/src/game.rs: `{sname}` struct/literal field mismatch: "
                 f"struct_only={sorted(struct_fnames - lit_fnames)}, lit_only={sorted(lit_fnames - struct_fnames)}"
             )
 
@@ -4479,12 +4479,12 @@ def plan_game_struct_and_ctor_edits(
                     rep_start, rep_end = expr_toks[0][2], expr_toks[-1][3]
                     old_expr = src[rep_start:rep_end]
                     problems.append(
-                        f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`, "
+                        f"crates/sunrise-gameplay-common/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`, "
                         f"refusing to rewrite initialiser `{old_expr}`"
                     )
             else:
                 problems.append(
-                    f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`"
+                    f"crates/sunrise-gameplay-common/src/game.rs: `finish_construct` `{fname}` must move `{expected_move}`"
                 )
             continue
         if k + 1 < len(part) and part[k + 1][1] == ":":
@@ -4519,13 +4519,13 @@ def plan_game_struct_and_ctor_edits(
                 )
             )
             problems.append(
-                f"crates/sunrise-client/src/game.rs: `finish_construct` `{fname}` uses wrapper "
+                f"crates/sunrise-gameplay-common/src/game.rs: `finish_construct` `{fname}` uses wrapper "
                 f"`{actual_wrap or '-'}`, expected `{expected_wrap or '-'}`"
             )
 
     for missing in sorted(set(wrappers) - seen_ctor_fields):
         problems.append(
-            f"crates/sunrise-client/src/game.rs: wrapped field `{missing}` missing from `Game::finish_construct`"
+            f"crates/sunrise-gameplay-common/src/game.rs: wrapped field `{missing}` missing from `Game::finish_construct`"
         )
 
     edits.sort(key=lambda e: (e.start, e.end))
@@ -4757,7 +4757,7 @@ def main(argv: list[str] | None = None) -> int:
     by_reason: dict[str, int] = {}
 
     # Stage wrapper definitions and all file edits in memory so any refusal leaves the tree untouched.
-    has_game_rs = any(rel == "crates/sunrise-client/src/game.rs" for _, rel in file_rels)
+    has_game_rs = any(rel == "crates/sunrise-gameplay-common/src/game.rs" for _, rel in file_rels)
     if wrappers and has_game_rs:
         for side, fname in (("client", "client_side.rs"), ("server", "server_side.rs")):
             side_path = root_resolved / "crates/sunrise-client/src/game" / fname
@@ -4783,7 +4783,7 @@ def main(argv: list[str] | None = None) -> int:
 
         struct_edits: list[Edit] = []
         struct_probs: list[str] = []
-        if wrappers and rel_posix == "crates/sunrise-client/src/game.rs":
+        if wrappers and rel_posix == "crates/sunrise-gameplay-common/src/game.rs":
             if args.fix:
                 src_after_access = apply_edits(src, edits) if edits else src
                 struct_edits, struct_probs = plan_game_struct_and_ctor_edits(src_after_access, owners, wrappers)

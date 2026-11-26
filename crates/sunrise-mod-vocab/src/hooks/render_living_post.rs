@@ -20,7 +20,7 @@ pub trait Hooks {
     /// `render_player_post` follows. In the ordered body pass, each entity's hooks finish
     /// before the next entity's submission begins, including any general entity renderer at its
     /// own level join slot.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_living_post::ClientGame<'_>::native_render_living_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

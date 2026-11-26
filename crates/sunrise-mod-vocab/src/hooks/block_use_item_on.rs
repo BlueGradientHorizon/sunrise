@@ -6,7 +6,7 @@ pub trait Hooks {
     /// template's behaviour; `TryWithEmptyHand` tries `useWithoutItem` on
     /// the main hand, and `Pass` goes on to the item's `useOn`.
     /// A disabled owner's subscribed interaction passes without running the block template.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::block_use_item_on::ServerGame<'_>::native_use_item_on", 
         dispatch = "flat",
         side = "server",
         contract = "replace",

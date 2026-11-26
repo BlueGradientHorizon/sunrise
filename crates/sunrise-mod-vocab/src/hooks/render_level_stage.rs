@@ -27,7 +27,7 @@ A route that does not draw a stage's part of the world in the world pass draws t
 geometry at the next stage it reaches instead, depth tested as usual: a shader pack that draws
 the sky, terrain, water or weather itself, and improved transparency for the translucent and
 weather stages. Nothing is dropped, and the order between stages is kept."#]
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_level_stage::ClientGame<'_>::native_render_level_stage", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

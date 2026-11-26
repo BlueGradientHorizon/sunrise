@@ -20,7 +20,7 @@ pub trait Hooks {
     /// every player there; a level with no player in it is not ticked and
     /// tells nothing until it is. NeoForge's `chunkHolder` is not given:
     /// Sunrise keeps no chunk holders. Server-side.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::chunk_ticket_level_updated::ServerGame<'_>::native_chunk_ticket_level_updated", 
         dispatch = "flat",
         side = "server",
         contract = "listen",

@@ -18,8 +18,8 @@ signal.signal(signal.SIGTERM, terminate)
 if not os.environ.get('SUNRISE_TEST_RESOURCES'):
     raise SystemExit('Set SUNRISE_TEST_RESOURCES')
 join = Path('crates/sunrise-sim/src/join_seq.rs')
-travel = Path('crates/sunrise-client/src/game/world/server_travel.rs')
-levels = Path('crates/sunrise-client/src/game/world/levels.rs')
+travel = Path('crates/sunrise-gameplay/src/game/world/server_travel.rs')
+levels = Path('crates/sunrise-gameplay/src/game/world/levels.rs')
 originals = {p: p.read_text() for p in (join, travel, levels)}
 logs = Path('target/transfer-lifetime-proof')
 logs.mkdir(parents=True, exist_ok=True)

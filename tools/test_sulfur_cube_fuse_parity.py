@@ -133,9 +133,9 @@ def main():
                lab.ROOT / 'crates/sunrise-sim/src/mobs.rs',
                lab.ROOT / 'crates/sunrise-sim/src/entity_nbt.rs',
                lab.ROOT / 'crates/sunrise-sim/src/mobs/sulfur_cube.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/network/lan/mod.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/network/lan/sulfur_cube_meta_tests.rs',
-               lab.ROOT / 'crates/sunrise-client/src/game/network/remote_mob_data.rs',
+               lab.ROOT / 'crates/sunrise-gameplay/src/game/network/lan/mod.rs',
+               lab.ROOT / 'crates/sunrise-gameplay/src/game/network/lan/sulfur_cube_meta_tests.rs',
+               lab.ROOT / 'crates/sunrise-client-gameplay/src/game/network/remote_mob_data.rs',
                lab.ROOT / 'crates/sunrise-world/src/nbt_path.rs']
     hashes = base.source_hashes(sources)
     witness_dir, server_out, client_out, _, _ = record_witness(build, lock, jars, libraries)

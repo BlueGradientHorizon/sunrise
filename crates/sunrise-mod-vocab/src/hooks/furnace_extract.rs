@@ -5,7 +5,7 @@ pub trait Hooks {
     /// A server player took an output from a furnace at `pos`; `item` is the output item id and
     /// `count` is how many were taken. The player's state is not swapped in.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_furnace_extract",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_furnace_extract",
         dispatch = "flat",
         side = "server",
         contract = "listen",

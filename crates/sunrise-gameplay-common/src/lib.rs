@@ -41,3 +41,6 @@ pub mod test_environments;
 pub mod test_instances;
 pub mod world_clock;
 pub mod worn_boots;
+
+extern crate self as sunrise_gameplay_common;
+pub mod game;

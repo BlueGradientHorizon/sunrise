@@ -28,8 +28,8 @@ def program(root):
     gfx = (root / "crates/sunrise-client-render/src/gfx/culling_control.rs").read_text()
     # The shader pack pipeline lives in its own crate: `shadow_casters` runs the frame.
     post = (root / "crates/sunrise-render-shaderpack/src/pack_post/execution.rs").read_text()
-    game_client = root / "crates/sunrise-client/src/game/game_client.rs"
-    game = (game_client if game_client.is_file() else root / "crates/sunrise-client/src/game.rs").read_text()
+    game_client = root / "crates/sunrise-client-gameplay/src/game/game_client.rs"
+    game = (game_client if game_client.is_file() else root / "crates/sunrise-gameplay-common/src/game.rs").read_text()
     geometry = game.index("fn entity_geometry(")
     start = game.index("let pack_shadows =", geometry)
     end = game.index("if let Some(sprite) = shadow_sprite", start)

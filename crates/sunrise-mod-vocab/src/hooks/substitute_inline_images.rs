@@ -14,7 +14,7 @@ pub trait Hooks {
     /// The source component, chat history and signatures, and sign editing are not changed.
     /// Cached layout can reuse answers while the text, resources, sprite geometry and enabled mods
     /// are unchanged. To animate a glyph, update the pixels of the same dynamic texture id.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::substitute_inline_images::ClientGame<'_>::native_substitute_inline_images", 
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

@@ -21,7 +21,7 @@ pub trait Hooks {
     /// Parts' lines therefore come first; this event sees the finished list
     /// including them, for any item, even one with no attached parts.
     /// Replacements are used in memory; they are not subject to serialized component limits.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::item_tooltip::ClientGame<'_>::native_item_tooltip", 
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

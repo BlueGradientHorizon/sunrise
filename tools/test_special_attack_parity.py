@@ -67,15 +67,15 @@ def main():
     args = parser.parse_args()
     lock, jars, libraries = base.verify_artifacts()
     source_paths = [lab.ROOT / path for path in (
-        'crates/sunrise-client/src/game.rs',
-        'crates/sunrise-client/src/game/entities/melee.rs',
-        'crates/sunrise-client/src/game/items/special_attacks.rs',
-        'crates/sunrise-client/src/game/entities/armor_stands.rs',
-        'crates/sunrise-client/src/game/entities/boats/mod.rs',
-        'crates/sunrise-client/src/game/entities/minecarts.rs',
-        'crates/sunrise-client/src/game/mobs/dragon.rs',
-        'crates/sunrise-client/src/game/items/special_attack_fixture.rs',
-        'crates/sunrise-client/src/game/interface/dispense_fixture.rs',
+        'crates/sunrise-gameplay-common/src/game.rs',
+        'crates/sunrise-gameplay/src/game/entities/melee.rs',
+        'crates/sunrise-gameplay/src/game/items/special_attacks.rs',
+        'crates/sunrise-gameplay/src/game/entities/armor_stands.rs',
+        'crates/sunrise-gameplay/src/game/entities/boats/mod.rs',
+        'crates/sunrise-gameplay-common/src/game/entities/minecarts.rs',
+        'crates/sunrise-gameplay/src/game/mobs/dragon.rs',
+        'crates/sunrise-gameplay/src/game/items/special_attack_fixture.rs',
+        'crates/sunrise-gameplay/src/game/interface/dispense_fixture.rs',
         'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaDispenserOracle.java',
         'tools/test_special_attack_parity.py')]
     source_hashes = base.source_hashes(source_paths)

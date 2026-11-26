@@ -28,7 +28,7 @@ pub trait Hooks {
     /// Server-side. Diverges
     /// from upstream: replaces `player_portal`, which covered only server
     /// players through portals.
-    #[hook(
+    #[hook(target = "sunrise_gameplay::game::native_hooks::entity_travel_to_dimension::ServerGame<'_>::native_entity_travel_to_dimension", 
         dispatch = "flat",
         side = "server",
         contract = "cancel",

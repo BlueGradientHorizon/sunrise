@@ -10,7 +10,7 @@ pub trait Hooks {
     /// level is installed; the session lock alone is not adoption). A failed
     /// save still reaches this hook, but does not emit `WorldCloseFinal`.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_server_stopped",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_server_stopped",
         dispatch = "flat",
         side = "server",
         contract = "listen",

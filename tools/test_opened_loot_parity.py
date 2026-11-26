@@ -34,7 +34,7 @@ def main():
     sources = [Path(__file__), lab.ROOT / 'tools/lab.py', lab.ROOT / 'tools/oracle_harness.py',
                lab.ROOT / 'tools/test_rust_parity.py', lab.ROOT / 'tools/integration_env.py',
                lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/sunrise-client/src/game/administration/commands/mod.rs',
+               lab.ROOT / 'crates/sunrise-gameplay/src/game/administration/commands/mod.rs',
                lab.ROOT / 'crates/sunrise-sim/src/save.rs',
                lab.ROOT / 'crates/sunrise-sim/src/save/column.rs',
                lab.ROOT / 'crates/sunrise-sim/src/save/block_entity_decode.rs',

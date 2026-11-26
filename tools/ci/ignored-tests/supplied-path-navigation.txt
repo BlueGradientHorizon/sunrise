@@ -7,4 +7,4 @@ sunrise-sim mobs::nav::supplied_path_tests::the_stuck_check_stops_a_supplied_pat
 sunrise-sim mobs::nav::supplied_path_tests::the_per_node_timeout_stops_a_supplied_path lib daily resources
 sunrise-sim mobs::nav::supplied_path_tests::an_extreme_walking_node_is_classified_and_followed lib daily resources
 sunrise-sim mobs::nav::supplied_path_tests::an_extreme_flying_node_is_classified_and_followed lib daily resources
-sunrise-client game::server_side::native_mob_navigation::tests::a_supplied_path_refusal_names_its_cause lib daily resources
+sunrise-client cut_layout::game::server_side::native_mob_navigation::tests::a_supplied_path_refusal_names_its_cause lib daily resources

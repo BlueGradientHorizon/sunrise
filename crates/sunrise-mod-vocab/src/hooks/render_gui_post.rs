@@ -7,7 +7,7 @@ pub trait Hooks {
     /// Use `ClientHost::debug_overlay_visible()` to avoid drawing over the debug overlay.
     /// Not heard when a mod canceled `render_gui_pre`. A panicking listener's
     /// drawing and corner placement are both discarded. Client-side.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_gui_post::ClientGame<'_>::native_render_gui_post", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

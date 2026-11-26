@@ -6,7 +6,7 @@ pub trait Hooks {
     /// are the requested final states. Set `cancel` to keep the previous
     /// weather parameters. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_weather_change",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_weather_change",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

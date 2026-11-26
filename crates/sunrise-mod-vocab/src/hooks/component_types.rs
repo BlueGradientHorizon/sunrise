@@ -7,7 +7,7 @@ pub trait Hooks {
     /// IDs are checked together at startup: invalid IDs, the `minecraft` namespace and
     /// duplicate IDs are refused before the component registry is frozen.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::native_component_types",
+        target = "sunrise_gameplay_common::game::native_hooks::base::native_component_types",
         receiver = "associated",
         dispatch = "flat",
         side = "both",

@@ -8,7 +8,7 @@ pub trait Hooks {
     /// that frame, held while paused or frozen; `partial_tick` is the advancing
     /// window clock. Outside a world both use the window clock. Neither is
     /// recomputed after listeners run. Client-side.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_frame_post::ClientGame<'_>::native_render_frame_post", 
         dispatch = "flat",
         side = "client",
         contract = "listen",

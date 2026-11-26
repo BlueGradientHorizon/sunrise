@@ -9,7 +9,7 @@ pub trait Hooks {
     /// reorder or remove lines, and an empty list draws nothing. `effect` is
     /// the effect the panel shows, `screen` the inventory. Asked each frame
     /// a rendered panel is hovered, only while a mod listens. Client-side.
-    #[hook(
+    #[hook(target = "sunrise_client_gameplay::game::native_hooks::gather_effect_screen_tooltips::ClientGame<'_>::native_gather_effect_screen_tooltips", 
         receiver = "read",
         dispatch = "flat",
         side = "client",

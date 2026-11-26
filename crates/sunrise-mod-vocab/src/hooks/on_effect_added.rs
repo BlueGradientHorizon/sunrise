@@ -49,7 +49,7 @@ pub trait Hooks {
     /// `MobEffect.onEffectAdded`: `LivingEntity.addEffect` gave `entity`
     /// the content mod's effect `effect`, which it didn't have. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_on_effect_added",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_on_effect_added",
         dispatch = "flat",
         side = "server",
         contract = "listen",

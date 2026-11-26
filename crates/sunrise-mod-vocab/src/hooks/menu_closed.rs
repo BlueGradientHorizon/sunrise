@@ -13,7 +13,7 @@ pub trait Hooks {
     /// be duplicated. The window is already detached; a listener can use the Host to return
     /// generic owned slots or update the opening item if the player is still available.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_menu_closed",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_menu_closed",
         dispatch = "flat",
         side = "server",
         contract = "listen",

@@ -30,7 +30,7 @@ under their registering mods' identities, after `submit_custom_geometry`. It pas
 `ClientHost`, `WorldRenderView` and the same `WorldDrawContext`, so
 [its limits and rules](#custom-world-geometry) apply and are shared. Output clears every view,
 and callbacks don't run on the title or connect screens."#]
-    #[hook(
+    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_debug_renderers::native_register_debug_renderers", 
         receiver = "associated",
         dispatch = "flat",
         side = "client",

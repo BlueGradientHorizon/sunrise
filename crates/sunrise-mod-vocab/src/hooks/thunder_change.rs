@@ -5,7 +5,7 @@ pub trait Hooks {
     /// The server changed its thunder state through `/weather`. Set `cancel`
     /// to keep the previous thunder state and timer. Server-side.
     #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_thunder_change",
+        target = "sunrise_gameplay::game::native_hooks::base::ServerGame<'_>::native_thunder_change",
         dispatch = "flat",
         side = "server",
         contract = "cancel",
