@@ -4963,6 +4963,38 @@ mod tests {
         }
     }
 
+    /// `LootPool.CODEC` reads a pool's `condition` and has no `conditions` field (#5378): the
+    /// list pre-26.3 data writes is ignored, so its pool rolls, while a pool's `condition` that
+    /// fails stops it.
+    #[test]
+    fn a_pools_old_conditions_list_is_ignored_and_its_condition_is_not() {
+        let mut items = Items::for_tests(HashMap::new());
+        let never = json!({"type":"minecraft:random_chance","chance":0.0});
+        let diamond = json!([{"type":"minecraft:item","name":"minecraft:diamond"}]);
+        items.loot = Arc::new(
+            [
+                (
+                    "test:old",
+                    json!({"pools":[{"rolls":1,"conditions":[never],"entries":diamond}]}),
+                ),
+                (
+                    "test:new",
+                    json!({"pools":[{"rolls":1,"condition":never,"entries":diamond}]}),
+                ),
+            ]
+            .map(|(id, t)| (id.to_owned(), t))
+            .into_iter()
+            .collect(),
+        );
+        let roll = |id: &str| {
+            items
+                .loot_table(id, false, None, &mut LegacyRandom::new(1))
+                .len()
+        };
+        assert_eq!(roll("test:old"), 1);
+        assert_eq!(roll("test:new"), 0);
+    }
+
     /// `NestedLootTable`: a `loot_table` entry, by id or inline, rolls that
     /// table in full and applies its own functions to each stack; a table
     /// never rolls inside itself.
@@ -5945,7 +5977,7 @@ mod tests {
             .sum();
         assert!(f64::from(looted) / f64::from(n) > f64::from(base) / f64::from(n) + 1.0);
         // Table bonus uses the chance for the tool's level.
-        let leaves = json!({"pools":[{"rolls":1,"conditions":[{"type":"minecraft:table_bonus","enchantment":"minecraft:fortune","chances":[0.0,0.0,0.0,1.0]}],"entries":[{"type":"minecraft:item","name":"minecraft:apple"}]}]});
+        let leaves = json!({"pools":[{"rolls":1,"condition":{"type":"minecraft:table_bonus","enchantment":"minecraft:fortune","chances":[0.0,0.0,0.0,1.0]},"entries":[{"type":"minecraft:item","name":"minecraft:apple"}]}]});
         assert_eq!(
             ctx(&items, Some(&pick), &props, "minecraft:oak_leaves")
                 .evaluate(&leaves, &mut random)
@@ -5990,7 +6022,7 @@ mod tests {
         let count = json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:bone","modifier":[{"type":"minecraft:enchanted_count_increase","count":2.0,"enchantment":"minecraft:looting"}]}]}]});
         let got = answered.evaluate(&count, &mut LegacyRandom::new(7));
         assert_eq!(got[0].count, 7);
-        let chance = json!({"pools":[{"rolls":1,"conditions":[{"type":"minecraft:random_chance_with_enchanted_bonus","enchantment":"minecraft:looting","unenchanted_chance":0.0,"enchanted_chance":1.0}],"entries":[{"type":"minecraft:item","name":"minecraft:bone"}]}]});
+        let chance = json!({"pools":[{"rolls":1,"condition":{"type":"minecraft:random_chance_with_enchanted_bonus","enchantment":"minecraft:looting","unenchanted_chance":0.0,"enchanted_chance":1.0},"entries":[{"type":"minecraft:item","name":"minecraft:bone"}]}]});
         assert_eq!(
             answered.evaluate(&chance, &mut LegacyRandom::new(7)).len(),
             1
@@ -6001,7 +6033,7 @@ mod tests {
         let mut sword = ItemStack::new("minecraft:iron_sword", 1);
         sword.enchant("minecraft:looting", 2);
         let same = |_: &mut LegacyRandom, _: &str, level: u32| level;
-        let table = json!({"pools":[{"rolls":1,"conditions":[{"type":"minecraft:random_chance_with_enchanted_bonus","enchantment":"minecraft:looting","unenchanted_chance":0.5,"enchanted_chance":0.5}],"entries":[{"type":"minecraft:item","name":"minecraft:bone","modifier":[{"type":"minecraft:enchanted_count_increase","count":{"type":"minecraft:uniform","min":0.0,"max":3.0},"enchantment":"minecraft:looting"}]}]}]});
+        let table = json!({"pools":[{"rolls":1,"condition":{"type":"minecraft:random_chance_with_enchanted_bonus","enchantment":"minecraft:looting","unenchanted_chance":0.5,"enchanted_chance":0.5},"entries":[{"type":"minecraft:item","name":"minecraft:bone","modifier":[{"type":"minecraft:enchanted_count_increase","count":{"type":"minecraft:uniform","min":0.0,"max":3.0},"enchantment":"minecraft:looting"}]}]}]});
         for seed in 0..16 {
             let (mut plain, mut asked) = (LegacyRandom::new(seed), LegacyRandom::new(seed));
             let expected = ctx(&items, Some(&sword), &props, "").evaluate(&table, &mut plain);
@@ -6052,7 +6084,7 @@ mod tests {
         let count = json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:bone","modifier":[{"type":"minecraft:enchanted_count_increase","count":2.0,"enchantment":"minecraft:looting"}]}]}]});
         let got = context.evaluate(&count, &mut LegacyRandom::new(7));
         assert_eq!(got[0].count, 1 + 2 * MAX_LOOT_LEVEL as u32);
-        let squared = json!({"pools":[{"rolls":1,"conditions":[{"type":"minecraft:random_chance_with_enchanted_bonus","enchantment":"minecraft:looting","unenchanted_chance":0.0,"enchanted_chance":{"type":"minecraft:levels_squared","added":0.0}}],"entries":[{"type":"minecraft:item","name":"minecraft:bone"}]}]});
+        let squared = json!({"pools":[{"rolls":1,"condition":{"type":"minecraft:random_chance_with_enchanted_bonus","enchantment":"minecraft:looting","unenchanted_chance":0.0,"enchanted_chance":{"type":"minecraft:levels_squared","added":0.0}},"entries":[{"type":"minecraft:item","name":"minecraft:bone"}]}]});
         assert_eq!(
             context.evaluate(&squared, &mut LegacyRandom::new(7)).len(),
             1
@@ -6098,7 +6130,7 @@ mod tests {
             entity_levels: Some(&levels),
             ..ctx(&items, None, &props, "")
         };
-        let table = json!({"pools":[{"rolls":1,"conditions":[{"type":"minecraft:table_bonus","enchantment":"minecraft:fortune","chances":[0.0,0.0,0.0,1.0]}],"entries":[{"type":"minecraft:item","name":"minecraft:bone"}]}]});
+        let table = json!({"pools":[{"rolls":1,"condition":{"type":"minecraft:table_bonus","enchantment":"minecraft:fortune","chances":[0.0,0.0,0.0,1.0]},"entries":[{"type":"minecraft:item","name":"minecraft:bone"}]}]});
         let mut random = LegacyRandom::new(7);
         assert!(context.evaluate(&table, &mut random).is_empty());
         assert_eq!(reads.get(), 0);
@@ -6137,7 +6169,7 @@ mod tests {
         assert_eq!(*reads.borrow(), [("minecraft:fortune".to_owned(), 1)]);
         assert_eq!(pick.enchantment_level("minecraft:fortune"), 1);
 
-        let chance = json!({"pools":[{"rolls":1,"conditions":[{"type":"minecraft:table_bonus","enchantment":"minecraft:fortune","chances":[0.0,0.0,0.0,1.0]}],"entries":[{"type":"minecraft:item","name":"minecraft:apple"}]}]});
+        let chance = json!({"pools":[{"rolls":1,"condition":{"type":"minecraft:table_bonus","enchantment":"minecraft:fortune","chances":[0.0,0.0,0.0,1.0]},"entries":[{"type":"minecraft:item","name":"minecraft:apple"}]}]});
         assert!(
             ctx(&items, None, &props, "minecraft:stone")
                 .evaluate(&chance, &mut LegacyRandom::new(7))
