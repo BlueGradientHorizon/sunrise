@@ -1082,6 +1082,10 @@ pub(in crate::game) struct ModStem {
 }
 
 impl ModStem {
+    /// The generator its stem names (`generator.type`): the mod's registered name.
+    pub(in crate::game) fn generator_type(&self) -> Option<&str> {
+        self.json["generator"]["type"].as_str()
+    }
     pub(super) fn bind(
         biomes: &BiomeSourceData,
         json: serde_json::Value,

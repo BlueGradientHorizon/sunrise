@@ -1,0 +1,2 @@
+# LevelRef::generator_type (#6032): the chunk generator a level's stem names, over the test resources.
+sunrise-client game::native_level_world::tests::a_level_names_the_chunk_generator_its_stem_names lib daily resources
