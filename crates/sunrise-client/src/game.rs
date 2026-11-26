@@ -11423,6 +11423,7 @@ impl Game<'_> {
         ) -> Result<bool>,
     ) -> Result<bool> {
         self.begin_frame_draws();
+        self.extract_arm_poses();
         let prepare = spans::guard("prepare");
         let mut pr = spans::laps();
         // The window's GPU holds the atlas: its copy in memory is kept
