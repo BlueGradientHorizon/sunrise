@@ -31,6 +31,70 @@ RUNNERS = {
 
 class NightlyRoutingTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node evaluates GitHub's JavaScript-style expressions")
+    def test_real_matrix_routes_both_trust_levels(self):
+        game = yaml.safe_load(GAME.read_text())["jobs"]
+        expressions = {name: game[name]["runs-on"][3:-2] for name in ("build", "linux-smoke")}
+        expressions["exporters"] = yaml.safe_load(EXPORTERS.read_text())["jobs"]["exporters"]["runs-on"][3:-2]
+        smoke = game["linux-smoke"]
+        smoke_if = smoke["if"][3:-2]
+        rows = game["build"]["strategy"]["matrix"]["include"]
+        self.assertEqual({row["name"] for row in rows}, RUNNERS.keys())
+        linux = next(row for row in rows if row["name"] == "linux")
+        download = next(step for step in smoke["steps"] if step.get("uses", "").startswith("actions/download-artifact@"))
+        self.assertEqual(download["with"]["name"], linux["asset"], "smoke must download the hosted producer's archive")
+        self.assertIn(f"/hosted-linux/{linux['dir']}", str(smoke["steps"]))
+        self.assertEqual(smoke["needs"], "legs")
+        script = """const fs = require('fs');
+const state = JSON.parse(fs.readFileSync(0, 'utf8'));
+// Actions returns an empty string for absent context properties, not undefined.
+const context = values => new Proxy(values, {get: (values, key) => values[key] ?? ''});
+const matrix = context(state.matrix), vars = context(state.vars), inputs = state.inputs, github = context(state.github);
+const expression = state.expression, fromJSON = JSON.parse, toJSON = JSON.stringify;
+const cancelled = () => false, needs = {legs: {result: 'success'}};
+console.log(JSON.stringify(eval(expression)));
+"""
+        def evaluate(expression, matrix, trusted, repository="sunrise-org/sunrise"):
+            result = subprocess.run(["node", "-e", script], input=json.dumps({"expression": expression, "matrix": matrix, "inputs": {"trusted": trusted}, "vars": variables, "github": {"repository": repository}}), text=True, capture_output=True, check=True)
+            return json.loads(result.stdout)
+        bookkeeping = next(expression for expression in re.findall(r"^\s*runs-on:\s*\$\{\{(.*?)\}\}\s*$",
+                                                                  NIGHTLY.read_text(), re.M)
+                           if "NIGHTLY_BOOKKEEPING_RUNNER" in expression)
+        for configured, disabled, trusted, dyna, blacksmith in itertools.product(
+            [False, True], [False, True], [False, True], [None, "false", "true"], [None, "off"]
+        ):
+            variables = {"SELF_HOSTED_CI": "off" if disabled else "all"}
+            if dyna is not None:
+                variables["DYNA_CI_SELF_HOSTED"] = dyna
+            if blacksmith:
+                variables["BLACKSMITH"] = blacksmith
+            override = configured and dyna == "true"
+            if configured:
+                variables.update({"NIGHTLY_LINUX_RUNNER": '"dyna-large"', "NIGHTLY_EXPORTERS_RUNNER": '"dyna-large"', "NIGHTLY_BOOKKEEPING_RUNNER": '"dyna-small"'})
+            with self.subTest(configured=configured, disabled=disabled, trusted=trusted, dyna=dyna, blacksmith=blacksmith):
+                # Exporters: Dyna's runner for an untrusted build when it is configured, else GitHub's.
+                self.assertEqual(evaluate(expressions["exporters"], {}, trusted), "dyna-large" if override and not trusted else "ubuntu-latest")
+                expected_bookkeeping = "dyna-small" if override else ("ubuntu-latest" if disabled else ["self-hosted", "linux", "sunrise-light"])
+                self.assertEqual(evaluate(bookkeeping, {}, trusted), expected_bookkeeping)
+                self.assertEqual(evaluate(smoke_if, {}, trusted), not trusted and override)
+                if not trusted and override:
+                    self.assertEqual(evaluate(expressions["linux-smoke"], {}, trusted), "dyna-large")
+                for row in rows:
+                    if row["name"] == "linux":
+                        self.assertEqual(row["os"], "ubuntu-22.04", "shipped Linux binaries keep the documented libc baseline")
+                    # Every leg on its Blacksmith machine, or with BLACKSMITH=off on GitHub's.
+                    expected = RUNNERS[row["name"]][blacksmith == "off"]
+                    with self.subTest(entry=row["name"]):
+                        self.assertEqual(evaluate(expressions["build"], row, trusted), expected)
+        for repository, trusted, row in itertools.product(["sunrise-org/sunrise", "horizon-rust/horizon"], [False, True], rows):
+            with self.subTest(repository=repository, trusted=trusted, entry=row["name"]):
+                if repository == "sunrise-org/sunrise":
+                    expected = 100 if row.get("mac") else 60
+                else:
+                    expected = 60 if row.get("mac") else 40
+                timeout = game["build"]["timeout-minutes"][3:-2]
+                self.assertEqual(evaluate(timeout, row, trusted, repository), expected)
+
+    @unittest.skipUnless(shutil.which("node"), "Node evaluates GitHub's JavaScript-style expressions")
     def test_only_a_dev_releases_legs_follow_the_owners_blacksmith_and_dyna_switches(self):
         script = """const state = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const context = values => new Proxy(values, {get: (values, key) => values[key] ?? ''});
