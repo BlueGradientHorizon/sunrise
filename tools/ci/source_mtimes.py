@@ -9,7 +9,9 @@ not safe: a newly merged change can have an older author or committer date.
 Every job that builds in a shared persistent target must run this first, or its
 artifacts outlive a snapshot that no longer describes them. The snapshot's name
 carries a version: renaming it discards every runner's old snapshot once, so
-targets left with another tree's artifacts are judged afresh.
+targets left with another tree's artifacts are judged afresh. Missing or damaged
+snapshots refresh all tracked mtimes. Replace a snapshot only after writing its
+new contents in full.
 """
 
 import argparse
@@ -37,7 +39,17 @@ def restore_tree_mtimes(repo: Path, tree: str, root: Path, snapshot: Path) -> tu
     entries = subprocess.check_output(
         ["git", "ls-tree", "-r", "-t", "-z", tree], cwd=repo,
     )
-    previous = json.loads(snapshot.read_text()) if snapshot.exists() else {}
+    try:
+        previous = json.loads(snapshot.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError, RecursionError):
+        previous = {}
+    # Treat a malformed record as a lost snapshot, not a partially trusted cache.
+    if not isinstance(previous, dict) or any(
+        not isinstance(record, list) or len(record) != 2
+        or not isinstance(record[0], str) or type(record[1]) is not int
+        for record in previous.values()
+    ):
+        previous = {}
     current = {}
     restored = 0
     for entry in entries.split(b"\0"):
@@ -64,7 +76,9 @@ def restore_tree_mtimes(repo: Path, tree: str, root: Path, snapshot: Path) -> tu
         os.utime(path, ns=(stat.st_atime_ns, mtime))
         current[name] = [identity, path.stat().st_mtime_ns]
     snapshot.parent.mkdir(parents=True, exist_ok=True)
-    snapshot.write_text(json.dumps(current, sort_keys=True) + "\n")
+    pending = snapshot.with_name(snapshot.name + ".pending")
+    pending.write_text(json.dumps(current, sort_keys=True) + "\n", encoding="utf-8")
+    pending.replace(snapshot)
     return restored, len(current)
 
 

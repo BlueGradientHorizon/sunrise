@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from tools.ci.source_mtimes import restore_and_snapshot
 from tests.test_ci_concurrency import ROOT
@@ -68,6 +69,47 @@ class SourceMtimesTests(unittest.TestCase):
         os.utime(source.parent, ns=(1, 1))
         restore_and_snapshot(self.root, self.snapshot)
         self.assertGreater(source.parent.stat().st_mtime_ns, before)
+
+    def test_missing_or_malformed_snapshot_refreshes_source_and_directory_mtimes(self):
+        restore_and_snapshot(self.root, self.snapshot)
+        malformed = json.loads(self.snapshot.read_text(encoding="utf-8"))
+        stale = 1_000_000_000
+        malformed["src"][1] = stale
+        malformed["src/value.txt"][1] = "not a timestamp"
+        for label, data in (("missing", None), ("truncated", b'{"src": ['),
+                            ("invalid UTF-8", b"\xff"), ("invalid root", b"[]"),
+                            ("invalid record", json.dumps(malformed).encode("utf-8"))):
+            with self.subTest(label=label):
+                if data is None:
+                    self.snapshot.unlink()
+                else:
+                    self.snapshot.write_bytes(data)
+                for name in ("src", "src/value.txt"):
+                    os.utime(self.root / name, ns=(stale, stale))
+                restore_and_snapshot(self.root, self.snapshot)
+                updated = json.loads(self.snapshot.read_text(encoding="utf-8"))
+                for name in ("src", "src/value.txt"):
+                    mtime = (self.root / name).stat().st_mtime_ns
+                    self.assertGreater(mtime, stale)
+                    self.assertEqual(updated[name][1], mtime)
+
+    def test_snapshot_read_errors_other_than_missing_or_malformed_propagate(self):
+        restore_and_snapshot(self.root, self.snapshot)
+        with mock.patch.object(Path, "read_text", side_effect=PermissionError("snapshot unreadable")):
+            with self.assertRaisesRegex(PermissionError, "snapshot unreadable"):
+                restore_and_snapshot(self.root, self.snapshot)
+
+    def test_failed_snapshot_publication_preserves_the_previous_snapshot(self):
+        restore_and_snapshot(self.root, self.snapshot)
+        previous = self.snapshot.read_bytes()
+        (self.root / "src/value.txt").write_text("changed\n")
+        self.commit()
+        with mock.patch.object(Path, "replace", side_effect=PermissionError("publication failed")):
+            with self.assertRaisesRegex(PermissionError, "publication failed"):
+                restore_and_snapshot(self.root, self.snapshot)
+        self.assertEqual(self.snapshot.read_bytes(), previous)
+        restore_and_snapshot(self.root, self.snapshot)
+        self.assertNotEqual(self.snapshot.read_bytes(), previous)
 
     @unittest.skipIf(os.name == "nt", "creating a symlink needs a privilege on Windows")
     def test_modified_checkout_is_refused_and_symlinks_are_not_followed(self):
