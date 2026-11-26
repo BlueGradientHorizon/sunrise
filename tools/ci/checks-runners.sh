@@ -8,7 +8,7 @@
 #
 # The token is made on a machine whose gh has admin on the repository, never printed or stored here:
 #   gh api -X POST repos/sunrise-org/sunrise/actions/runners/registration-token --jq .token |
-#     ssh ludovic@playsunrise 'bash ~/sunrise-install/checks-runners.sh install'   # git-slim.sh beside it
+#     ssh ludovic@playsunrise 'bash ~/sunrise-install/checks-runners.sh install'   # git-slim.sh and job-started.sh beside it
 #
 # Two kinds of runner, each a systemd user service in ~/.actions-runners/<name>:
 # - sunrise-ci-<n> (label playsunrise-ci, CI_RUNNERS of them, default 2): this repository's own verify and launcher
