@@ -223,10 +223,7 @@ def snapshot_complete(root, expected=None, *, strict_top=False):
             meta = world / 'datafix-source.json'
             if not meta.is_file() or meta.is_symlink():
                 return False
-            try:
-                info = json.loads(meta.read_text(encoding='utf-8'))
-            except (OSError, ValueError):
-                return False
+            info = json.loads(meta.read_text(encoding='utf-8'))
             if (not isinstance(info, dict) or not isinstance(info.get('version'), str)
                     or type(info.get('data_version')) is not int):
                 return False

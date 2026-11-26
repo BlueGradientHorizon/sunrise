@@ -230,15 +230,22 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
         self.assertFalse(datafix_seeds.snapshot_complete(snap, self.expected, strict_top=True))
         level.write_bytes(b'modern-119')
 
-        # Truncated metadata JSON is rejected.
+        # Metadata whose content is not the expected shape is rejected.
         meta = snap / 'worlds' / '1.19' / 'datafix-source.json'
-        meta.write_text('{bad', encoding='utf-8')
+        meta.write_text('[]', encoding='utf-8')
         self.assertFalse(datafix_seeds.snapshot_complete(snap, self.expected, strict_top=True))
         meta.write_text(json.dumps({'version': '1.19', 'data_version': 3105, 'problems': []}), encoding='utf-8')
 
         # Missing world is rejected.
         (snap / 'worlds-pre-1.17' / '1.12.2-flat' / 'level.dat').unlink()
         self.assertFalse(datafix_seeds.snapshot_complete(snap, self.expected, strict_top=True))
+
+    def test_unreadable_metadata_is_an_error_not_an_incomplete_snapshot(self):
+        snap = self.base / 'snap'
+        self.populate(snap)
+        (snap / 'worlds' / '1.19' / 'datafix-source.json').write_text('{bad', encoding='utf-8')
+        with self.assertRaises(ValueError):
+            datafix_seeds.snapshot_complete(snap, self.expected, strict_top=True)
 
     def test_recorded_required_case_failure_blocks_publication(self):
         keep = self.base / 'keep'
