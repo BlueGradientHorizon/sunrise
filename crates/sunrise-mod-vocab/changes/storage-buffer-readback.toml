@@ -1,7 +1,9 @@
 ids = [
     "type:ReadbackTicket",
-    "type:StorageBufferDescriptor",
-    "type:BufferError",
+    "type:StorageBufferDescriptor.copy_src",
+    "type:BufferError.NotInFrame",
+    "type:BufferError.NotReadable",
+    "handle:StorageBufferDescriptor::copy_src",
     "handle:StorageBufferRef::request_readback",
     "handle:ReadbackTicket::poll_readback",
     "handle:ReadbackTicket::release",
