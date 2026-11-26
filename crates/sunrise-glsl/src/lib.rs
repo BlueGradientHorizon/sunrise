@@ -987,8 +987,10 @@ pub const MAX_EXPANDED: usize = 1 << 20;
 /// macro expansion takes it as a count of tokens ([`run_directives`], [`Macros::checked`]): a
 /// token is at least a byte, so that bound is no looser than the bytes'. Each token the expansion
 /// holds is a small allocation of its own (its text and the macros hidden from it), so a stage
-/// that reaches the bound holds a few GiB at its peak (3.3 GiB measured).
-const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
+/// that reaches the bound holds a few GiB at its peak (3.3 GiB measured). A shader pack's files
+/// spend as many units each, in what their expansion holds (`sunrise-shaders`'
+/// `MAX_EXPANSION_WORK`, [`Macros::bound`]).
+pub const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
 
 /// Why a shader's includes refuse it ([`expand_includes`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
