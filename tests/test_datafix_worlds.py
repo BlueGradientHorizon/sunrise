@@ -44,5 +44,25 @@ class BotConfigurationTests(unittest.TestCase):
         self.assertEqual(sent, [(7, b'\x00'), (3, b'')])
 
 
+class ServerStopTests(unittest.TestCase):
+    def test_a_server_that_ignores_stop_is_killed_and_the_timeout_reaches_the_caller(self):
+        server = worlds.Server.__new__(worlds.Server)
+        server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE, text=True)
+        self.addCleanup(server.process.kill)
+        real_wait = server.process.wait
+        calls = []
+
+        def wait(timeout=None):
+            calls.append(timeout)
+            if timeout == 120:
+                raise subprocess.TimeoutExpired('server', 120)
+            return real_wait()
+        server.process.wait = wait
+        with self.assertRaises(subprocess.TimeoutExpired):
+            server.stop()
+        self.assertIsNotNone(server.process.poll())
+        self.assertEqual(calls, [120, None])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -232,8 +232,8 @@ class Server:
             self.process.stdin.write('stop\n')
             self.process.stdin.flush()
             self.process.wait(120)
-        except Exception:
-            self.process.kill()
+        finally:
+            self.process.kill()   # a no-op once it has exited; after a failed stop the error still reaches the caller
             self.process.wait()   # the world folder and port are reused only once the process is gone
 
 
