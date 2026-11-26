@@ -3074,5 +3074,9 @@ mod fishing_catch_tests;
 mod fishing_medium_tests;
 
 #[cfg(test)]
+#[path = "fishing_tests/fishing_find_tests.rs"]
+mod fishing_find_tests;
+
+#[cfg(test)]
 #[path = "fishing_tests/fishing_targets_tests.rs"]
 pub(in crate::game) mod fishing_targets_tests;
