@@ -9,7 +9,7 @@ import signal
 import subprocess
 import sys
 import tempfile
-from threading import Event, Semaphore, Thread
+import textwrap
 import unittest
 from unittest import mock
 
@@ -186,8 +186,6 @@ class DataLegTimingTests(unittest.TestCase):
                 self.assertEqual(row[f"memory_{field}_observed_max_bytes"], "unavailable")
 
     def test_complete_snapshots_keep_independent_maxima_cpu_deltas_and_coverage(self):
-        stop, sampled = Event(), Event()
-        wakeup = mock.Mock(wraps=stop)
         with tempfile.TemporaryDirectory() as directory:
             cgroup = Path(directory)
             cpu = cgroup / "cpu.stat"
@@ -198,26 +196,28 @@ class DataLegTimingTests(unittest.TestCase):
             stat.write_text("anon 60\n")
 
             def tick(_seconds):
-                if wakeup.wait.call_count == 1:
+                if pause.call_count == 1:
                     cpu.write_text("usage_usec 53\nuser_usec 15\nsystem_usec 2\n")
                     current.write_text("200\n")
                     stat.write_text("anon 50\nfile 120\nanon_thp 999\n")
-                elif wakeup.wait.call_count == 2:
+                elif pause.call_count == 2:
                     cpu.write_bytes(b"usage_usec 70\nuser_usec 11\nnr_periods 3\nnr_throttled 0\nthrottled_usec \xff\n")
                     current.write_text("150\n")
                     stat.write_text("anon 90\nfile 30\n")
                 else:
-                    sampled.set()
-                    stop.wait(timeout=5)
-                    return True
-                return False
+                    raise StopIteration
 
-            wakeup.wait.side_effect = tick
-            with mock.patch.object(cgroup_telemetry, "Event", return_value=wakeup), \
+            def publish(_mode, group, snapshot):
+                with self.assertRaises(StopIteration):
+                    cgroup_telemetry._sample_phase(Path(group), Path(snapshot))
+                return mock.Mock()
+
+            with mock.patch.object(cgroup_telemetry, "sleep", side_effect=tick) as pause, \
+                    mock.patch.object(cgroup_telemetry, "_start_observer", side_effect=publish), \
                     mock.patch.object(cgroup_telemetry, "monotonic_ns", side_effect=[0, 1_200_000_000, 2_500_000_000]), \
                     contextlib.redirect_stdout(io.StringIO()) as out:
                 with cgroup_telemetry.sample_command(cgroup, "sunrise-client#3of8", "test-command"):
-                    self.assertTrue(sampled.wait(timeout=5))
+                    pass
         self.assertEqual(out.getvalue().splitlines(), [
             "data-leg cgroup-phase batch=sunrise-client#3of8 phase=test-command scope=job_cgroup_during_command "
             "memory_sample_attempts=3 sample_interval_seconds=1 cpu_sample_span_ms=2500 memory_current_observed_max_bytes=200 "
@@ -225,96 +225,125 @@ class DataLegTimingTests(unittest.TestCase):
             "cpu_user_usec_delta=unavailable cpu_system_usec_delta=unavailable cpu_nr_periods_delta=1 "
             "cpu_nr_throttled_delta=0 cpu_throttled_usec_delta=unavailable"])
 
-    def test_stalled_phase_reads_do_not_delay_cargo_result_or_exception(self):
-        for raises in (False, True):
-            with self.subTest(raises=raises), tempfile.TemporaryDirectory() as directory:
-                entered, release = Semaphore(0), Event()
-                workers, stops, outcome, calls = [], [], [], []
-                cargo = fake_cargo(calls)
-                error = OSError("PRIVATE command error")
+    def test_snapshot_rejects_missing_unreadable_partial_and_malformed_publications(self):
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "latest"
+            self.assertEqual(cgroup_telemetry._read_snapshot(snapshot).attempts, 0)
+            snapshot.mkdir()  # open error on the read path
+            self.assertEqual(cgroup_telemetry._read_snapshot(snapshot).attempts, 0)
+            snapshot.rmdir()
+            for raw in (b"1 123", b"1 123\n", b"1 PRIVATE" + b" -" * 15 + b"\n", b"1" * 400 + b"\n"):
+                with self.subTest(raw=raw):
+                    snapshot.write_bytes(raw)
+                    self.assertEqual(cgroup_telemetry._read_snapshot(snapshot).attempts, 0)
 
-                def stalled_read(_path):
-                    entered.release()
-                    release.wait()
-                    return b"anon 123456789\nPRIVATE counter payload\n"
+    def test_observer_start_failure_preserves_the_command_exception(self):
+        error = OSError("original command error")
+        with mock.patch.object(cgroup_telemetry, "_start_observer", side_effect=OSError("PRIVATE spawn error")), \
+                contextlib.redirect_stdout(io.StringIO()) as out, self.assertRaises(OSError) as raised:
+            with cgroup_telemetry.sample_command(Path("."), "sunrise-client#3of8", "test-command"):
+                raise error
+        self.assertIs(raised.exception, error)
+        self.assertIn("memory_sample_attempts=0", out.getvalue())
+        self.assertNotIn("PRIVATE", out.getvalue())
 
-                def execute(command, **kwargs):
-                    self.assertTrue(entered.acquire(timeout=5), "each command should see an in-flight read")
-                    if raises and "--list" not in command:
-                        raise error
-                    return cargo(command, **kwargs)
+    @unittest.skipUnless(hasattr(os, "mkfifo") and hasattr(os, "killpg"), "needs a POSIX FIFO and process group")
+    def test_phase_wrapper_delivers_status_with_a_stalled_or_failed_observer(self):
+        writer_source = textwrap.dedent("""\
+            import os
+            from pathlib import Path
+            import runpy
+            import sys
+            import time
 
-                def run():
+            case, script, mode, group, snapshot = sys.argv[1:]
+            group, snapshot = Path(group), Path(snapshot)
+            print("PRIVATE observer stdout", flush=True)
+            print("PRIVATE observer stderr", file=sys.stderr, flush=True)
+
+            def block(_seconds):
+                with (group / "started").open("w") as signal:
+                    print(os.getpid(), file=signal)
+                # No writer ever opens this FIFO. Only the outer test kills us.
+                with (group / "hold").open("rb"):
+                    pass
+
+            time.sleep = block
+            if case == "write-error":
+                snapshot = snapshot / "missing-parent"  # force a real publication error
+            sys.argv = [script, mode, str(group), str(snapshot)]
+            runpy.run_path(script, run_name="__main__")
+            """)
+        wrapper_source = textwrap.dedent("""\
+            from pathlib import Path
+            import subprocess
+            import sys
+            from tools.ci import cgroup_telemetry
+
+            case, root, writer_source = sys.argv[1:]
+            root = Path(root)
+            real_popen, observer = subprocess.Popen, None
+
+            def popen(argv, **kwargs):
+                global observer
+                if argv[2:3] != ["--sample-phase"]:
+                    return real_popen(argv, **kwargs)
+                # Instrument only the observer entrypoint. Keep the actual launch descriptors.
+                observer = real_popen([sys.executable, "-c", writer_source, case, *argv[1:]], **kwargs)
+                if case == "blocked":
+                    # Model a kill request that does not make the observer reapable.
+                    observer.kill = lambda: (root / "stop-requested").touch()
+                return observer
+
+            subprocess.Popen = popen
+            with cgroup_telemetry.sample_command(root, "sunrise-client#3of8", "test-command"):
+                command = subprocess.run([sys.executable, "-c",
+                    "import sys; print('PRIVATE command output'); sys.exit(23)"], capture_output=True)
+                if case == "blocked":
+                    (root / "reader-pid").write_text((root / "started").read_text())
+                elif observer.wait(timeout=5) == 0:
+                    raise RuntimeError("fixture observer did not fail")
+            if case == "blocked" and observer.poll() is not None:
+                raise RuntimeError("fixture observer was not outstanding")
+            print(f"command status {command.returncode}", flush=True)
+            sys.exit(command.returncode)
+            """)
+        for case in ("blocked", "write-error"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                scratch = root / "scratch"
+                scratch.mkdir()
+                (root / "memory.stat").write_text("anon 123\nfile PRIVATE\nother 98765\n")
+                if case == "blocked":
+                    os.mkfifo(root / "started")
+                    os.mkfifo(root / "hold")
+                with subprocess.Popen([sys.executable, "-c", wrapper_source, case, directory, writer_source],
+                                      cwd=ROOT, env={**os.environ, "TMPDIR": str(scratch)}, text=True,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True) as wrapper:
                     try:
-                        outcome.append(ignored_tests.run_leg("sunrise-client", [], 1, 2))
-                    except BaseException as exc:
-                        outcome.append(exc)
-
-                def new_stop():
-                    stops.append(Event())
-                    return stops[-1]
-
-                def track_worker(**kwargs):
-                    workers.append(Thread(**kwargs))
-                    return workers[-1]
-
-                driver = Thread(target=run, daemon=True)
-                with mock.patch.dict(os.environ, {"SUNRISE_DATA_LEG_TIMING": "1"}), \
-                        mock.patch.object(ignored_tests, "CGROUP", Path(directory)), \
-                        mock.patch.object(subprocess, "run", side_effect=execute), \
-                        mock.patch.object(cgroup_telemetry, "_read", side_effect=stalled_read), \
-                        mock.patch.object(cgroup_telemetry, "Event", side_effect=new_stop), \
-                        mock.patch.object(cgroup_telemetry, "Thread", side_effect=track_worker), \
-                        contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
-                    driver.start()
-                    try:
-                        driver.join(timeout=5)
-                        self.assertFalse(driver.is_alive(), "driver waited on a blocked stat read")
-                        self.assertEqual(len(workers), 2)
-                        self.assertTrue(all(worker.daemon and worker.is_alive() for worker in workers))
-                        self.assertTrue(all(stop.is_set() for stop in stops))
-                        if raises:
-                            self.assertIs(outcome[0], error)
-                        else:
-                            self.assertEqual(list(outcome[0].values()), [True] * 4)
-                            self.assertIn("sunrise-client: cargo exit 0", out.getvalue())
-                            self.assertIn("test-command-end utc=", out.getvalue())
+                        stdout, stderr = wrapper.communicate(timeout=5)
+                        self.assertEqual(wrapper.returncode, 23, stderr)
+                        if case == "blocked":
+                            self.assertTrue((root / "stop-requested").is_file())
+                            # Still outstanding after the real wrapper exit and capture EOF.
+                            os.kill(int((root / "reader-pid").read_text()), 0)
+                        self.assertEqual(list(scratch.iterdir()), [])
                     finally:
-                        for stop in stops:
-                            stop.set()
-                        release.set()
-                        driver.join(timeout=5)
-                        for worker in workers:
-                            worker.join(timeout=5)
-                self.assertFalse(any(worker.is_alive() for worker in workers))
-                log = out.getvalue() + err.getvalue()
-                self.assertEqual(log.count("memory_sample_attempts=0"), 2)
-                self.assertEqual(log.count("cpu_usage_usec_delta=unavailable"), 2)
-                self.assertNotIn("123456789", log)
-                self.assertNotIn("PRIVATE", log)
-                self.assertNotIn(directory, log)
-
-    def test_interrupt_during_thread_start_still_stops_sampler(self):
-        stop, workers = Event(), []
-
-        class InterruptedStart(Thread):
-            def start(self):
-                workers.append(self)
-                super().start()
-                raise KeyboardInterrupt
-
-        with mock.patch.object(cgroup_telemetry, "Event", return_value=stop), \
-                mock.patch.object(cgroup_telemetry, "Thread", InterruptedStart), \
-                mock.patch.object(cgroup_telemetry, "_read", return_value=b""), contextlib.redirect_stdout(io.StringIO()):
-            try:
-                with self.assertRaises(KeyboardInterrupt):
-                    with cgroup_telemetry.sample_command(Path("."), "sunrise-client#3of8", "test-command"):
-                        self.fail("the start interruption did not propagate")
-                self.assertTrue(stop.is_set())
-            finally:
-                stop.set()
-                for worker in workers:
-                    worker.join(timeout=5)
+                        with contextlib.suppress(ProcessLookupError):
+                            os.killpg(wrapper.pid, signal.SIGKILL)
+                self.assertEqual(stderr, "")
+                phase, status = stdout.splitlines()
+                self.assertEqual(status, "command status 23")
+                self.assertTrue(phase.startswith("data-leg cgroup-phase batch=sunrise-client#3of8 "
+                                                 "phase=test-command scope=job_cgroup_during_command "))
+                self.assertIn(f"memory_sample_attempts={int(case == 'blocked')}", phase.split())
+                expected_anon = "123" if case == "blocked" else "unavailable"
+                self.assertIn(f"memory_anon_observed_max_bytes={expected_anon}", phase.split())
+                self.assertIn("memory_file_observed_max_bytes=unavailable", phase)
+                self.assertIn("cpu_usage_usec_delta=unavailable", phase)
+                self.assertNotIn("PRIVATE", stdout)
+                self.assertNotIn("98765", stdout)
+                self.assertNotIn(directory, stdout)
 
 
 if __name__ == "__main__":
