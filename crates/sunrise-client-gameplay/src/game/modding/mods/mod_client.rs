@@ -137,7 +137,7 @@ impl ClientGame<'_> {
 
 /// The native mods' standalone models (`native_standalone_models`), set once
 /// before the resources first load.
-pub(in crate::game) fn register_standalone_models(role: ExecutionRole) {
+pub fn register_standalone_models(role: ExecutionRole) {
     if let Some(registrations) = collect_standalone_models(role) {
         sunrise_client::models::register_standalone(registrations);
     }
@@ -197,7 +197,7 @@ pub fn register_layer_definitions(
 }
 
 /// Freeze the native mods' F3 text callbacks and renderer toggles at client startup.
-pub(in crate::game) fn register_debug_entries(role: ExecutionRole) {
+pub fn register_debug_entries(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
@@ -223,7 +223,7 @@ pub fn register_gui_layers(role: ExecutionRole) {
 }
 
 /// Install the native mods' client tooltip component factories once at client startup.
-pub(in crate::game) fn register_client_tooltip_component_factories(role: ExecutionRole) {
+pub fn register_client_tooltip_component_factories(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
@@ -254,7 +254,7 @@ pub(in crate::game) fn debug_renderers(
 /// The native mods' numeric item model properties
 /// (`native_register_range_select_item_model_property`), kept once at start, before
 /// resources load, so `range_dispatch` models on them read the mod's number.
-pub(in crate::game) fn register_range_select_item_model_properties(role: ExecutionRole) {
+pub fn register_range_select_item_model_properties(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
@@ -269,7 +269,7 @@ pub(in crate::game) fn register_range_select_item_model_properties(role: Executi
 /// The native mods' categorical item model properties
 /// (`native_register_select_item_model_property`), kept once at start, before resources
 /// load, so `select` models on them read the mod's value.
-pub(in crate::game) fn register_select_item_model_properties(role: ExecutionRole) {
+pub fn register_select_item_model_properties(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
@@ -294,7 +294,7 @@ pub(in crate::game) fn register_select_item_model_properties(role: ExecutionRole
 /// the models the mod picks; and special item model factories
 /// (`native_register_special_model_renderer`), so each special model node of a registered type
 /// bakes its own renderer.
-pub(in crate::game) fn register_resource_sources(role: ExecutionRole) {
+pub fn register_resource_sources(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
@@ -382,7 +382,7 @@ pub(in crate::game) fn register_special_model_renderers() {
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
 /// renderers.
-pub(in crate::game) fn register_client_presentations(
+pub fn register_client_presentations(
     role: ExecutionRole,
 ) -> sunrise_game_data::Result<()> {
     register_preset_editors(role);
@@ -450,7 +450,7 @@ pub(in crate::game) fn register_render_pipelines(
 
 /// The native mods' meshing registrations, kept once at start, before resources load: colour
 /// resolvers, then the block tint sources that read them, then section geometry renderers.
-pub(in crate::game) fn register_meshing(role: ExecutionRole) {
+pub fn register_meshing(role: ExecutionRole) {
     register_color_resolvers(role);
     register_block_tint_sources(role);
     add_section_geometry(role);
@@ -516,7 +516,7 @@ pub fn register_entity_renderers(role: ExecutionRole) {
 /// The native mods' particle providers (`native_register_particle_providers`) and render groups
 /// (`native_register_particle_groups`) are registered once at startup. Each particle engine
 /// constructs its groups once; sprite-set loads associate types with those groups and providers.
-pub(in crate::game) fn register_particles(role: ExecutionRole) -> sunrise_game_data::Result<()> {
+pub fn register_particles(role: ExecutionRole) -> sunrise_game_data::Result<()> {
     if !role.is_client() {
         return Ok(());
     }

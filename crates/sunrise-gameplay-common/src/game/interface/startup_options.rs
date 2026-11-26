@@ -4,7 +4,7 @@ use super::*;
 impl Options {
     /// The complete game-owned command-line boundary, before leases or native hooks.
     /// A bad command line is a [`launch_api::UsageError`] (exit code 2, no crash report).
-    pub(crate) fn validate(launch: LaunchArguments) -> Result<Option<Self>> {
+    pub fn validate(launch: LaunchArguments) -> Result<Option<Self>> {
         let Some(mut o) =
             Self::from_launch(launch).map_err(|e| launch_api::UsageError(e.to_string()))?
         else {

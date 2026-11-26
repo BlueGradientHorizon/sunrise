@@ -121,7 +121,7 @@ pub(in crate::game) fn valid_shape(settings: &DimensionSettings) -> bool {
     LevelHeight::of_json(&dimension_type(settings)).is_some()
 }
 
-pub(in crate::game) fn installed_dimensions() -> Vec<ModDimension> {
+pub fn installed_dimensions() -> Vec<ModDimension> {
     mod_api::__private::dimension_declarations()
         .into_iter()
         .map(|(id, settings)| {

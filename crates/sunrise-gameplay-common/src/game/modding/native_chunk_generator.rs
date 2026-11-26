@@ -91,7 +91,7 @@ pub(in crate::game) fn installed_chunk_generators() -> ModChunkGenerators {
 }
 
 /// Hand the chunk generators the mods registered to the engine, before any world opens.
-pub(in crate::game) fn install() {
+pub fn install() {
     if install_mod_chunk_generators(installed_chunk_generators()).is_err() {
         log::warn!("Mod chunk generators already installed; keeping the first table");
     }

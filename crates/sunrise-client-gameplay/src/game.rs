@@ -212,7 +212,7 @@ pub(in crate::game) use client_side::events;
 pub(in crate::game) use client_side::game_client::WindowKeyInput;
 #[allow(dead_code)]
 #[cfg(feature = "client")]
-pub(in crate::game) struct ClientGame<'a> {
+pub struct ClientGame<'a> {
     common: sunrise_gameplay_common::game::CommonGame<'a>,
     client: client_side::ClientState,
 }

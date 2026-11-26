@@ -50,7 +50,7 @@ pub(crate) struct ModProgress {
 static PROGRESS: OnceLock<Arc<ModProgress>> = OnceLock::new();
 
 /// Hand mods the startup screen, before they register.
-pub(crate) fn install(dedicated: bool) {
+pub fn install(dedicated: bool) {
     let progress = PROGRESS.get_or_init(|| Arc::new(ModProgress::new(dedicated)));
     if let Err(error) = mod_api::__private::game::install_startup_screen(progress.clone()) {
         log::warn!("Sunrise: {error}");

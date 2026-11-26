@@ -169,7 +169,7 @@ impl StartupAdmission {
     }
 
     /// Built native metadata for namespace and side authority, independent of the saved switch.
-    pub(in crate::game) fn native_packages(
+    pub fn native_packages(
         &self,
     ) -> impl Iterator<Item = &sunrise_mod_package::packages::AdjacentManifest> {
         self.native
@@ -178,7 +178,7 @@ impl StartupAdmission {
             .filter(|p| self.packages.contains_key(&p.manifest.id))
     }
 
-    pub(in crate::game) fn content_packages(&self) -> impl Iterator<Item = &SelectedPackage> {
+    pub fn content_packages(&self) -> impl Iterator<Item = &SelectedPackage> {
         self.selected
             .iter()
             .filter(|p| self.registration_visible(&p.package.manifest.id))
@@ -193,7 +193,7 @@ impl StartupAdmission {
 }
 
 /// The sources for the same admitted packages as `RegistrationContext::mods`.
-pub(in crate::game) fn sources(
+pub fn sources(
     admission: &StartupAdmission,
 ) -> BTreeMap<String, Arc<dyn mod_api::PackageFileSource>> {
     admission

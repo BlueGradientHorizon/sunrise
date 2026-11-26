@@ -23,7 +23,7 @@ thread_local! {
 /// part, or an answer over the shape bounds, keeps the block's normal shape, switches the
 /// block's `collision_shape` parts off for the session and is logged once, naming the mods and
 /// the block.
-pub(crate) fn collision_shape(
+pub fn collision_shape(
     context: &LoopContext,
     pos: BlockPos,
     state: BlockStateId,
@@ -57,7 +57,7 @@ pub(crate) fn collision_shape(
 }
 
 /// A part answered a shape the bounds refuse: the block keeps its normal shape.
-pub(crate) fn refused(state: BlockStateId, error: &str) {
+pub fn refused(state: BlockStateId, error: &str) {
     disable(
         state,
         &format!("answered a shape that was refused: {error}"),

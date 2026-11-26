@@ -6,7 +6,7 @@ use sunrise_hooks::{Activity, Client, Dimension, Play};
 
 /// At startup, for a game window (never a dedicated server's): the player's first activity, then
 /// `Hooks::client_started`.
-pub(in crate::game) fn client_started(options: &Options) {
+pub fn client_started(options: &Options) {
     if options.dedicated.is_some() {
         return;
     }

@@ -32,7 +32,7 @@ fn installed_biome_sources() -> ModBiomeSources {
 }
 
 /// Hand the biome sources the mods registered to the engine, before any world opens.
-pub(in crate::game) fn install() {
+pub fn install() {
     if install_mod_biome_sources(installed_biome_sources()).is_err() {
         log::warn!("Mod biome sources already installed; keeping the first table");
     }

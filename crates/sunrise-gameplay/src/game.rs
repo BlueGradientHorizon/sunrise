@@ -110,7 +110,7 @@ pub(in crate::game) use server_side::debug_stick;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::decided_action;
 #[allow(unused_imports)]
-pub(crate) use server_side::dedicated;
+pub use server_side::dedicated;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::deflect;
 #[cfg(test)]

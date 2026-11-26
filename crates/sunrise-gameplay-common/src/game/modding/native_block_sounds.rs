@@ -11,7 +11,7 @@ use sunrise_world::{
 };
 
 /// The game's side of `sunrise_client::block_sounds::native_sound_type`.
-pub(crate) fn sound_type(
+pub fn sound_type(
     context: &LoopContext,
     pos: BlockPos,
     state: BlockStateId,

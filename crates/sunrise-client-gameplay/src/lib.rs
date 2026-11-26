@@ -4,6 +4,8 @@
 extern crate sunrise_gameplay_common;
 extern crate sunrise_client_lib as sunrise_client;
 pub(crate) use sunrise_client::world_geometry;
+#[cfg(feature = "client")]
+pub use sunrise_theme as theme;
 pub mod agent_navigation;
 pub mod atlas_slots;
 pub mod closest_space;

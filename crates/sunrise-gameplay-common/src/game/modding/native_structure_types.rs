@@ -581,7 +581,7 @@ pub(super) mod book_example;
 pub(in crate::game) mod tests;
 
 /// Registered API declarations become engine adapters once, not once per chunk.
-pub(in crate::game) fn installed_structure_types()
+pub fn installed_structure_types()
 -> sunrise_world::worldgen::structure::mod_types::ModStructureTypes {
     mod_api::__private::structure_type_declarations()
         .into_iter()

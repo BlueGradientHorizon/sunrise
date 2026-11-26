@@ -137,7 +137,7 @@ pub fn start(
     if sunrise_world::native_load_hooks::install(
         sunrise_world::native_load_hooks::NativeLoadHooks {
             item_ability_default: sunrise_items::item_abilities::vanilla_can_perform,
-            loot_ability: crate::game::api_values::loot_values::dispatch_loot_ability,
+            loot_ability: sunrise_gameplay_common::game::api_values::loot_values::dispatch_loot_ability,
             loot_table_load: |context, id, table| {
                 if !mod_api::__private::listened(mod_api::HookId::LootTableLoad) {
                     return;
@@ -165,9 +165,9 @@ pub fn start(
     }
     if sunrise_world::native_worldgen_hooks::install(
         sunrise_world::native_worldgen_hooks::NativeWorldgenHooks {
-            alter_ground: crate::game::api_values::alter_ground,
+            alter_ground: sunrise_gameplay_common::game::native_ground::alter_ground,
             on_tree_grow: crate::game::native_tree_grow::on_tree_grow,
-            rotate: crate::game::native_rotate::rotate,
+            rotate: sunrise_gameplay_common::game::native_rotate::rotate,
             feature: crate::game::native_worldgen_parts::feature,
         },
     )
@@ -188,7 +188,7 @@ pub fn start(
         // A bad command line is the caller's mistake, not a crash: no report.
         let missing_mods = game::dedicated::is_missing_mods_refusal(error.as_ref());
         let usage = error.is::<game::UsageError>() || missing_mods;
-        if let Some(refusals) = error.downcast_ref::<game::mods::DeclarationFailures>() {
+        if let Some(refusals) = error.downcast_ref::<sunrise_gameplay_common::game::mods::DeclarationFailures>() {
             for line in refusals.lines() {
                 log::error!("Sunrise: {line}");
             }
@@ -220,9 +220,9 @@ pub fn start(
 }
 
 pub(crate) fn install_client_hooks() {
-    game::api_values::install_stack_hooks();
+    sunrise_gameplay_common::game::api_values::install_stack_hooks();
     if !crate::native_client_hooks::install(crate::native_client_hooks::NativeClientHooks {
-        menu_still_valid: game::api_values::menu_still_valid,
+        menu_still_valid: sunrise_gameplay_common::game::api_values::menu_still_valid,
         menu_still_valid_listens: |menu| {
             mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu)
         },
@@ -237,7 +237,7 @@ pub(crate) fn install_client_hooks() {
         living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
         has_mods: || !mod_api::__private::mods().is_empty(),
         player_name_format: |context, username, displayname| {
-            use game::api_values::TryIntoApi;
+            use sunrise_gameplay_common::game::TryIntoApi;
             if !mod_api::__private::listened(mod_api::HookId::PlayerNameFormat) {
                 return;
             }
@@ -255,7 +255,7 @@ pub(crate) fn install_client_hooks() {
             }
         },
         player_tab_list_name_format: |context, player, name, display_name| {
-            use game::api_values::TryIntoApi;
+            use sunrise_gameplay_common::game::TryIntoApi;
             if !mod_api::__private::listened(mod_api::HookId::PlayerTabListNameFormat) {
                 return;
             }
@@ -340,7 +340,7 @@ pub(crate) fn install_client_hooks() {
         },
         makes_open_trapdoor_above_climbable:
             crate::game::native_trapdoor_ladder::makes_open_trapdoor_above_climbable,
-        friction: crate::game::native_surface::friction,
+        friction: sunrise_gameplay_common::game::native_surface::friction,
         collision_shape: |context, pos, state, query, shape| {
             crate::game::native_collision_shape::collision_shape(context, pos, state, query, shape);
         },
@@ -370,7 +370,7 @@ pub(crate) fn install_client_hooks() {
             mod_api::dispatch_fluid_flow(&context, fluid, pos, flow);
         },
         sound_type: |context, pos, state, entity, cause, sound| {
-            crate::game::native_block_sounds::sound_type(context, pos, state, entity, cause, sound);
+            sunrise_gameplay_common::game::native_block_sounds::sound_type(context, pos, state, entity, cause, sound);
         },
         can_grindstone_repair: crate::game::native_item_menu_parts::can_grindstone_repair,
         is_combine_repairable: crate::game::native_item_menu_parts::is_combine_repairable,

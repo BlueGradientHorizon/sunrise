@@ -5,7 +5,7 @@
 use super::{execution_role::ExecutionRole, registration_capability_coverage as coverage};
 pub(in crate::game) mod menu_books;
 pub mod package_files;
-pub(in crate::game) mod runtime_files;
+pub mod runtime_files;
 pub mod standalone;
 #[allow(unused_imports)]
 use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
@@ -134,7 +134,7 @@ pub struct ModsState {
     /// the window and its server. A later data reload must not overlay an
     /// already generated root recursively.
     pub(in crate::game) content_base: Arc<std::sync::OnceLock<PathBuf>>,
-    pub(in crate::game) content_materializer: Option<ContentMaterializer>,
+    pub content_materializer: Option<ContentMaterializer>,
     /// `--dev-mod PATH`: content mods always on.
     pub dev: Vec<PathBuf>,
     pub native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
@@ -273,7 +273,7 @@ impl ModsState {
         )
     }
 
-    pub(in crate::game) fn select(
+    pub fn select(
         &mut self,
         game_dir: &std::path::Path,
         enabled: &std::collections::BTreeSet<String>,
@@ -317,7 +317,7 @@ impl ModsState {
         self.refused = Default::default();
     }
 
-    pub(in crate::game) fn admit_startup_packages(
+    pub fn admit_startup_packages(
         &mut self,
         jar_store: &Path,
     ) -> sunrise_game_data::Result<Arc<package_files::StartupAdmission>> {
@@ -445,7 +445,7 @@ pub(in crate::game) fn builtin_registries(
 /// Freeze native component IDs before reading content or opening a connection.
 /// With no mod registering any, nothing is installed, which every reader
 /// treats as no custom components, and `registries.json` isn't read.
-pub(in crate::game) fn register_components(
+pub fn register_components(
     root: &std::path::Path,
 ) -> sunrise_game_data::Result<()> {
     let mut names = Vec::new();
@@ -464,7 +464,7 @@ pub(in crate::game) fn register_components(
 }
 
 /// Finish every once-only content declaration on the registration thread.
-pub(in crate::game) fn freeze_declarations() {
+pub fn freeze_declarations() {
     let _ = native_declared();
 }
 
@@ -506,7 +506,7 @@ impl DeclarationFailures {
         })
     }
 
-    pub(crate) fn lines(&self) -> Vec<String> {
+    pub fn lines(&self) -> Vec<String> {
         use sunrise_game_data::text::Text;
         let render = || {
             self.messages()
@@ -648,7 +648,7 @@ pub fn collect_key_mappings<'declared>(
 
 /// The native mods' map decoration types (`native_map_decoration_types`), frozen once at start on
 /// every side.
-pub(in crate::game) fn register_map_decoration_types() {
+pub fn register_map_decoration_types() {
     let mut types = Vec::new();
     crate::game::native_hooks::native_map_decoration_types(&RegistrationContext::new(), &mut types);
     sunrise_sim::map_decoration_types::register(
@@ -753,7 +753,7 @@ impl std::error::Error for DisabledServingHost {}
 
 /// Validate namespace ownership and `served_by` rules before installing the
 /// frozen `PackageInfo` inventory that registration hooks read.
-pub(in crate::game) fn validate_startup_packages(
+pub fn validate_startup_packages(
     sources: &ModsState,
 ) -> sunrise_game_data::Result<()> {
     for selected in sources.selected.iter() {
@@ -2160,7 +2160,7 @@ pub static ENCHANTMENT_DAMAGE_EFFECTS: std::sync::OnceLock<
     Vec<std::sync::Arc<dyn mod_api::EnchantmentDamageEffect>>,
 > = std::sync::OnceLock::new();
 
-pub(in crate::game) fn register_enchantment_damage_effects() {
+pub fn register_enchantment_damage_effects() {
     let mut effects = mod_api::EnchantmentDamageRegistry::default();
     crate::game::native_hooks::native_register_enchantment_damage_effects(
         &mod_api::RegistrationContext::new(),

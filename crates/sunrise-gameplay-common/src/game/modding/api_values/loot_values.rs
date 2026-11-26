@@ -207,7 +207,7 @@ impl mod_api::prelude::DatafixHost for LootAbilityHost {
     }
 }
 
-pub(crate) fn dispatch_loot_ability(tool: &engine::LootStack, ability: &str, holds: &mut bool) {
+pub fn dispatch_loot_ability(tool: &engine::LootStack, ability: &str, holds: &mut bool) {
     if !mod_api::__private::item_listens(mod_api::HookId::CanPerformAction, &tool.item) {
         return;
     }

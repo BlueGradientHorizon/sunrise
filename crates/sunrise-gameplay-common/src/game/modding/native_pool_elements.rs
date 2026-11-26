@@ -321,7 +321,7 @@ pub(super) fn engine_placement(placement: &ElementPlacement) -> Option<ElementAt
 mod tests;
 
 /// Registered API declarations become engine adapters once.
-pub(in crate::game) fn installed_pool_element_types() -> ModPoolElementTypes {
+pub fn installed_pool_element_types() -> ModPoolElementTypes {
     mod_api::__private::pool_element_type_declarations()
         .into_iter()
         .map(|(id, inner)| {

@@ -302,26 +302,26 @@ pub(in crate::game) struct Loaded {
     pub(in crate::game) game_cpu: Option<GameCpuResources>,
     /// The one parsed `entity-models.json`, for the handoff `Game::new` does
     /// itself on the synchronous launch.
-    pub(in crate::game) entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
+    pub entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
     #[cfg(feature = "client")]
     pub(in crate::game) renderer_cpu: Option<sunrise_client::gfx::PreparedTextures>,
-    pub(in crate::game) root: PathBuf,
-    pub(in crate::game) pack_error: Option<String>,
-    pub(in crate::game) resources: Arc<Resources>,
+    pub root: PathBuf,
+    pub pack_error: Option<String>,
+    pub resources: Arc<Resources>,
     #[cfg(feature = "client")]
-    pub(in crate::game) client_res: Option<Arc<std::sync::OnceLock<ClientResources>>>,
-    pub(in crate::game) rest_loader: Option<WorldRestLoader>,
+    pub client_res: Option<Arc<std::sync::OnceLock<ClientResources>>>,
+    pub rest_loader: Option<WorldRestLoader>,
     /// The client reload listeners' prepared applies, staged by the loader
     /// thread; `start_game` runs them once the game exists.
     #[cfg(feature = "client")]
-    pub(in crate::game) client_applies: Vec<client_reload::PreparedClientReload>,
-    pub(in crate::game) pack: PackResources,
+    pub client_applies: Vec<client_reload::PreparedClientReload>,
+    pub pack: PackResources,
     #[cfg(feature = "client")]
-    pub(in crate::game) client_pack: Option<ClientPackResources>,
+    pub client_pack: Option<ClientPackResources>,
     /// The menu bundle, for the synchronous launch; the loading screen receives
     /// it earlier through its own channel.
     #[cfg(feature = "client")]
-    pub(in crate::game) gui: Option<UiResources>,
+    pub gui: Option<UiResources>,
 }
 
 /// What the background loader publishes: the menu bundle as soon as it is

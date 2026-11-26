@@ -16,7 +16,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 
 /// `Minecraft`'s constructor: `new GameNarrator`, then
 /// `narrator.checkStatus(options.narrator().get() != OFF)`.
-pub(in crate::game) fn start(settings: &Settings) {
+pub fn start(settings: &Settings) {
     sunrise_narrator::init();
     sync(settings);
     check_status(settings.narrator() != Status::Off);

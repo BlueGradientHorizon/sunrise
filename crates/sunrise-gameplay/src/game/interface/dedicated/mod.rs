@@ -573,7 +573,7 @@ const LEGACY_PRESET_NAMES: [(&str, sunrise_sim::save::WorldPreset); 2] = [
 ];
 
 /// A tick slower than this, in milliseconds, enters the slow ring (five ticks' worth, a stall players feel) unless `SUNRISE_SPIKES` names another.
-pub(in crate::game) const SLOW_TICK_MS: f32 = 250.0;
+pub const SLOW_TICK_MS: f32 = 250.0;
 /// `MinecraftServer.OVERLOADED_WARNING_INTERVAL_NANOS` plus 100 ticks: the
 /// "Can't keep up!" warning comes at most this often.
 const OVERLOAD_WARNING_INTERVAL: Duration = Duration::from_secs(15);

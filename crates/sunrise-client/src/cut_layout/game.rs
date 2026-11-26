@@ -8,27 +8,30 @@ use sunrise_world::level::Behaviours;
 use crate::settings::Settings;
 #[cfg(feature = "client")] use sunrise_client_lib::audio::Audio;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::api_values;
+use sunrise_gameplay_common::game::api_values::package_snapshot;
 use sunrise_gameplay_common::game::execution_role;
 use sunrise_gameplay_common::game::mods;
 use sunrise_gameplay_common::game::native_biome_source;
 use sunrise_gameplay_common::game::native_chunk_generator;
 use sunrise_gameplay_common::game::native_dimensions;
 use sunrise_gameplay_common::game::native_feature_types;
-use sunrise_gameplay_common::game::native_hooks;
+use sunrise_gameplay_common::game::native_hooks::bounce_restitution::install_block_contact_hooks;
 use sunrise_gameplay_common::game::native_pool_elements;
 use sunrise_gameplay_common::game::native_structure_types;
 use sunrise_gameplay_common::game::options_path;
-use sunrise_gameplay_common::game::pack_discovery;
+use sunrise_gameplay_common::game::pack_discovery::data_packs;
 use sunrise_gameplay_common::game::part_admission;
 use sunrise_gameplay_common::game::preflight_resources;
 use sunrise_gameplay_common::game::resource_load::synchronous_startup;
-use sunrise_gameplay::game::server_side::dedicated;
-use sunrise_gameplay::game::server_side;
-use sunrise_gameplay::game::server_side::loading_server::start_dedicated_game;
+#[cfg(feature = "client")]
+use sunrise_gameplay::game::server_side::integrated::{run_component_harness_on_server, serve};
+use sunrise_gameplay::game::server_side::{
+    loading_server::{configure_launch_spans, start_dedicated_game},
+    resource_load_server::load_resources_server,
+};
 #[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::resource_load_client::StartupLoadContext;
 #[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::activity;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side;
+#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::{mods_client, packs::startup_root};
 #[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::launch_options_client::is_client_start;
 #[cfg(feature = "client")] use sunrise_gameplay_common::game::resource_load::launch_world;
 #[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_sync;
@@ -465,7 +468,7 @@ pub(crate) fn run_with(
     {
         return Ok(());
     }
-    native_hooks::install_block_contact_hooks();
+    install_block_contact_hooks();
     // Before any worker starts: on Linux they go behind the server thread
     // and the render thread.
     sunrise_threads::put_helpers_behind();
@@ -490,7 +493,7 @@ pub(crate) fn run_with(
     {
         options.spikes = Some(dedicated::SLOW_TICK_MS);
     }
-    server_side::loading_server::configure_launch_spans(options.spikes.is_some());
+    configure_launch_spans(options.spikes.is_some());
     // A player who allows performance statistics also says what their slow frames spent their
     // time in: this thread, which draws the frames, times its steps (wall time only).
     if options.execution_role.is_client()
@@ -539,7 +542,7 @@ pub(crate) fn run_with(
     mods::validate_startup_packages(&options.mods)?;
     let jar_store = sunrise_level::logging::game_home().join("jars");
     let admission = options.mods.admit_startup_packages(&jar_store)?;
-    api_values::install_packages(admission.native_packages(), admission.content_packages())?;
+    package_snapshot::install_packages(admission.native_packages(), admission.content_packages())?;
     mods::install_registration_data(
         &vanilla_root,
         mods::runtime_files::sources(&options.mods),
@@ -586,36 +589,36 @@ pub(crate) fn run_with(
         mods::register_components(&vanilla_root)?;
         sunrise_sim::item_sync::install_consume_effect_codecs()?;
         #[cfg(feature = "client")]
-        client_side::mods_client::register_standalone_models(options.execution_role);
+        mods_client::register_standalone_models(options.execution_role);
         #[cfg(feature = "client")]
-        client_side::mods_client::register_layer_definitions(
+        mods_client::register_layer_definitions(
             options.execution_role,
             &vanilla_root,
         )?;
         #[cfg(feature = "client")]
-        client_side::mods_client::register_debug_entries(options.execution_role);
+        mods_client::register_debug_entries(options.execution_role);
         #[cfg(feature = "client")]
-        client_side::mods_client::register_gui_layers(options.execution_role);
+        mods_client::register_gui_layers(options.execution_role);
         #[cfg(feature = "client")]
-        client_side::mods_client::register_client_tooltip_component_factories(
+        mods_client::register_client_tooltip_component_factories(
             options.execution_role,
         );
         mods::register_map_decoration_types();
         #[cfg(feature = "client")]
-        client_side::mods_client::register_range_select_item_model_properties(
+        mods_client::register_range_select_item_model_properties(
             options.execution_role,
         );
         #[cfg(feature = "client")]
-        client_side::mods_client::register_select_item_model_properties(options.execution_role);
+        mods_client::register_select_item_model_properties(options.execution_role);
         #[cfg(feature = "client")]
-        client_side::mods_client::register_resource_sources(options.execution_role);
+        mods_client::register_resource_sources(options.execution_role);
         mods::register_enchantment_damage_effects();
         #[cfg(feature = "client")]
-        client_side::mods_client::register_client_presentations(options.execution_role)?;
+        mods_client::register_client_presentations(options.execution_role)?;
         #[cfg(feature = "client")]
-        client_side::mods_client::register_meshing(options.execution_role);
+        mods_client::register_meshing(options.execution_role);
         #[cfg(feature = "client")]
-        client_side::mods_client::register_particles(options.execution_role)?;
+        mods_client::register_particles(options.execution_role)?;
         mods::freeze_declarations();
     }
     // Minecraft.<init>: read the last start's flag, then mark this one as not
@@ -661,8 +664,8 @@ pub(crate) fn run_with(
             vanilla_root,
             None,
             started,
-            server_side::integrated::serve,
-            server_side::integrated::run_component_harness_on_server,
+            serve,
+            run_component_harness_on_server,
             session_verifier(),
             profile_resolver,
         );
@@ -679,9 +682,9 @@ pub(crate) fn run_with(
         };
         let prepared_root = root.prepared().to_path_buf();
         let settings = early_settings.sim_settings();
-        let (resources, pack) = server_side::resource_load_server::load_resources_server(
+        let (resources, pack) = load_resources_server(
             root,
-            pack_discovery::data_packs(&options.mods),
+            data_packs(&options.mods),
             &vanilla_root,
             &settings,
             early_settings.sunrise.worker_threads(),
@@ -715,7 +718,7 @@ pub(crate) fn run_with(
     }
     #[cfg(feature = "client")]
     {
-        let roots = packs::startup_root(
+        let roots = startup_root(
             &vanilla_root,
             &early_settings.resource_packs,
             &[],
@@ -723,7 +726,7 @@ pub(crate) fn run_with(
         )?;
         let mut loaded = load_resources_sync(
             roots,
-            pack_discovery::data_packs(&options.mods),
+            data_packs(&options.mods),
             StartupLoadContext {
                 vanilla_root: &vanilla_root,
                 launch_world: launch_world(&options),
@@ -758,19 +761,19 @@ pub(crate) fn run_with(
             std::mem::take(&mut loaded.client_applies),
             loaded.entity_models,
             None,
-            server_side::integrated::serve,
-            server_side::integrated::run_component_harness_on_server,
+            serve,
+            run_component_harness_on_server,
             session_verifier(),
             profile_resolver,
         )?;
         if let Some(mut game) = game {
             // Minecraft.onGameLoadFinished: a start that made it this far is clean.
             if is_client_start(&game.options) && game.options.headless {
-                game.side.settings.file.set(
+                game.client.settings.file.set(
                     "startedCleanly",
                     sunrise_client::options_file::V::Bool(true),
                 );
-                game.side.settings.save(&sunrise_gameplay_common::game::options_path());
+                game.client.settings.save(&sunrise_gameplay_common::game::options_path());
             }
             run_event_loop(game)?;
         }

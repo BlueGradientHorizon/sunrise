@@ -24,7 +24,7 @@ fn refuse_stack(hook: &str, item: &str, error: super::api_values::StackReadError
 
 /// Ask the parts of `stack`'s item whether the grindstone repairs it. With no part on the item,
 /// nothing is converted and `can_repair` keeps its answer.
-pub(crate) fn can_grindstone_repair(
+pub fn can_grindstone_repair(
     context: &LoopContext,
     stack: &ItemStack,
     can_repair: &mut bool,
@@ -60,7 +60,7 @@ pub fn is_combine_repairable(
 
 /// Ask the parts of `stack`'s item whether it may go inside an item that holds items. With no
 /// part on the item, nothing is converted and `fits` keeps its answer.
-pub(crate) fn can_fit_inside_container_items(
+pub fn can_fit_inside_container_items(
     context: &LoopContext,
     stack: &ItemStack,
     fits: &mut bool,
@@ -79,7 +79,7 @@ pub(crate) fn can_fit_inside_container_items(
 
 /// Ask the parts of `stack`'s item for its name (`Item.getName(ItemStack)`). With no part on the
 /// item, nothing is converted and `name` stays the default.
-pub(crate) fn item_name(
+pub fn item_name(
     context: &LoopContext,
     stack: &ItemStack,
     name: &mut Option<sunrise_game_data::text::Text>,

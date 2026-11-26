@@ -10,7 +10,7 @@ use sunrise_world::loot::{
     types::{Registry, RollRandom, Types},
 };
 
-pub(crate) fn capture() -> Types {
+pub fn capture() -> Types {
     let (functions, conditions) = mod_api::__private::loot_type_declarations();
     Types::new(Arc::new(Codecs {
         functions: functions.into_iter().collect(),

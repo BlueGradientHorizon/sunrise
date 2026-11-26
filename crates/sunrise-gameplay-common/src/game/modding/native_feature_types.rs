@@ -175,7 +175,7 @@ impl ModFeatureType for Adapter {
 mod tests;
 
 /// Registered API declarations become engine adapters once, not once per chunk.
-pub(in crate::game) fn installed_feature_types() -> ModFeatureTypes {
+pub fn installed_feature_types() -> ModFeatureTypes {
     mod_api::__private::feature_type_declarations()
         .into_iter()
         .map(|(id, schema, ty)| {

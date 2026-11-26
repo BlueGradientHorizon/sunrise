@@ -5,7 +5,7 @@ use super::api_values::{TryIntoApi, block_state};
 
 /// Ask the parts of `state`, the block at `pos` under the open trapdoor `trapdoor`, whether the
 /// trapdoor climbs. With no part on `state`, nothing is converted and `climbable` keeps its answer.
-pub(crate) fn makes_open_trapdoor_above_climbable(
+pub fn makes_open_trapdoor_above_climbable(
     context: &sunrise_world::native_load_context::LoopContext,
     state: sunrise_world::registry::BlockStateId,
     pos: sunrise_core::position::BlockPos,
