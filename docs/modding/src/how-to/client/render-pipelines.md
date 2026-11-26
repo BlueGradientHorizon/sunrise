@@ -404,13 +404,17 @@ fails, or the device cannot hold your bind groups after the pack's (the adapter'
 shaders draw. Your bind groups go after the pack's, which are left as the pack declared them; a
 vertex shader that uses push constants is left unbound.
 
-`PackBinding::depth_target(PackDepthTarget::Main)` makes the pipeline draw into the pack's main
-depth (`depthtex0`) with depth writes on (when the pipeline is depth-tested). The depth comes
-from your vertex stage's position output: a pipeline whose geometry is in another projection (far
-terrain) emits the depth the world's projection gives, so no copy of an auxiliary depth plane into
-the pack's depth is needed; the same works when the projections match. Under a pack the fragment
-stage is the pack's, so `gl_FragDepth` is not yours to write. `PackDepthTarget::new(id)` is the
-auxiliary plane as before.
+Use `.depth_write(true)` to request writes to the pack's main depth (`depthtex0`). If the slot
+only reads main depth by default, also set `PackBinding::depth_target(PackDepthTarget::Main)`
+to allow writes. The comparison is independent of writes: `DepthCompare::Always` with writes
+enabled stores depth without testing, and directional comparisons are flipped for the pack's
+standard-Z plane.
+
+The depth comes from your vertex stage's position output: a pipeline whose geometry is in
+another projection (far terrain) emits the depth the world's projection gives, so no copy of an
+auxiliary depth plane into the pack's depth is needed; the same works when the projections match.
+Under a pack the fragment stage is the pack's, so `gl_FragDepth` is not yours to write. Use
+`PackDepthTarget::new(id)` to select an auxiliary plane instead.
 
 A stencil test inside a pack pass is not part of this: the pack's main depth has no stencil plane.
 
