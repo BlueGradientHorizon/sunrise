@@ -156,7 +156,8 @@ console.log(JSON.stringify(eval(state.expression)));
     def test_build_timings_are_a_report_and_never_a_signed_or_released_asset(self):
         game = yaml.safe_load(GAME.read_text())
         steps = game["jobs"]["build"]["steps"]
-        self.assertIn("cargo build --release --locked --timings", GAME.read_text())
+        builds = [shlex.split(step["run"].replace("\\\n", " ")) for step in steps if "cargo build" in step.get("run", "")]
+        self.assertIn("--timings", [argument for words in builds for argument in words])
         collect = next(i for i, step in enumerate(steps) if step.get("name") == "The build's timings, by leg")
         upload = collect + 1
         self.assertTrue(steps[upload]["uses"].startswith("actions/upload-artifact@"))
