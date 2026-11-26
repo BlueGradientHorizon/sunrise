@@ -27,8 +27,14 @@ impl Game<'_> {
                 })
                 .collect()
         } else {
-            let empty = Language::default();
-            let lang = session.unwrap_or(&empty);
+            let empty;
+            let lang = match session {
+                Some(lang) => lang,
+                None => {
+                    empty = Language::default();
+                    &empty
+                }
+            };
             packet
                 .suggestions
                 .into_iter()
