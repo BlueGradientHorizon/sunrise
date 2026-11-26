@@ -2135,16 +2135,18 @@ pub struct Sampler {
     pub mag: SamplerFilter,
     /// The largest mip level of detail the sampler reads (`maxLod`): `Some(0.0)` reads only the
     /// base level. A value above `0.25` blends linearly between the two nearest levels, as
-    /// vanilla does. `None` is [`Sampler::new`]'s: no limit, and the single nearest level is
-    /// read. A value that is negative or not finite is refused with
+    /// vanilla does. `None` is [`Sampler::new`]'s: no limit, vanilla's absent `maxLod` (1000),
+    /// so it blends between levels too. A sampler that blends is a filtering one: to sample a
+    /// depth target, or an `R32Float` target where
+    /// [`RenderCapabilities::float32_filterable`] is false, set `Some(0.0)` with
+    /// [`SamplerFilter::Nearest`]. A value that is negative or not finite is refused with
     /// [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
     pub max_lod: Option<f32>,
 }
 
 impl Sampler {
     /// One `filter` for minification and magnification, one `address` mode for both axes, and
-    /// no `max_lod`: what `.sampler(name, filter, address)` was before samplers took a
-    /// descriptor.
+    /// no `max_lod`, which blends between mip levels as vanilla's sampler does.
     pub fn new(filter: SamplerFilter, address: SamplerAddress) -> Self {
         Self {
             address_u: address,
