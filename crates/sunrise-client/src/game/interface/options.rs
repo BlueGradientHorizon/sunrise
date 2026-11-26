@@ -731,9 +731,9 @@ impl Game<'_> {
         self.settings.save(&Self::options_path());
         self.apply_ui_settings();
     }
-    /// The Extras page's shader pack key: turns the picked pack off, or asks for the last
-    /// pick again. The same persistent pick the Shader Packs screen writes: turning off keeps
-    /// the last non-empty pick, resuming restores it, and the off state survives a restart.
+    /// The shader pack key (Sunrise Settings' Shaders page): turns the picked pack off, or asks
+    /// for the last pick again. The same persistent pick the Shaders page writes: turning off
+    /// keeps the last non-empty pick, resuming restores it, and the off state survives a restart.
     /// With `SUNRISE_SHADER_PACK` set the developer override wins and the key does nothing.
     /// Invalidation stays with the normal selection path: the next frame's `shader_pack_inputs`
     /// sees the changed pick and drops or loads the pack itself.
