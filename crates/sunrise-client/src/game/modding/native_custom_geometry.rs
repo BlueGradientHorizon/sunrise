@@ -4575,6 +4575,7 @@ mod tests {
 
             // The mod's sampler pipeline, registered and built from its GLSL as a resource load does.
             let mut pipelines = Vec::new();
+            use mod_api::__private::game::RegistrationContextNew;
             Game::native_register_render_pipelines(
                 &mod_api::RegistrationContext::new(),
                 &mut pipelines,
@@ -4658,7 +4659,7 @@ mod tests {
                     .map(|ranges| ranges.pipeline_draws.clone())
                     .collect();
                 // The mesh draw sampling the mod target's colour is in the stage batch.
-                assert_eq!(stage_draws, [0..1]);
+                assert_eq!(stage_draws, vec![0..1]);
                 let batch = driver.prepared_primitives();
                 assert_eq!(batch.pipelines.draws.len(), 1);
                 let recorded = &batch.pipelines.draws[0];
