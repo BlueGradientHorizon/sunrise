@@ -782,8 +782,13 @@ pub fn translate_compute(
     options: &ComputeOptions<'_>,
     include: &(dyn Fn(&str) -> Result<Option<String>, String> + Sync),
 ) -> Result<sunrise_glsl::ComputeTranslated, Vec<Problem>> {
-    guard::guarded(|| translate_compute_inner(sources, options, include))
-        .unwrap_or_else(|reason| Err(vec![problem(sources.file, Some(ShaderStage::Compute), reason)]))
+    guard::guarded(|| translate_compute_inner(sources, options, include)).unwrap_or_else(|reason| {
+        Err(vec![problem(
+            sources.file,
+            Some(ShaderStage::Compute),
+            reason,
+        )])
+    })
 }
 
 /// Check expanded source before translating the compute shader, keeping each refusal at its
@@ -1047,7 +1052,8 @@ fn map_glsl_errors(errors: Vec<sunrise_glsl::Error>, hint_textured: bool) -> Vec
     errors
         .into_iter()
         .map(|mut err| {
-            if hint_textured && matches!(err.unprovided.as_deref(), Some("Sampler0" | "SpriteRect")) {
+            if hint_textured && matches!(err.unprovided.as_deref(), Some("Sampler0" | "SpriteRect"))
+            {
                 err.message += " (requires RenderPipeline::textured)";
             }
             Problem {
@@ -2118,9 +2124,9 @@ void main() {{
     #[test]
     fn a_compute_translator_problem_keeps_its_position_and_stage() {
         let include = |id: &str| match id {
-            "example:shaders/include/pick.glsl" => {
-                Ok(Some("float pick() {\n    return missing_value;\n}\n".to_owned()))
-            }
+            "example:shaders/include/pick.glsl" => Ok(Some(
+                "float pick() {\n    return missing_value;\n}\n".to_owned(),
+            )),
             other => stub_include(other),
         };
         let sources = ComputeSources {
@@ -2141,7 +2147,8 @@ void main() {{
         assert_eq!(problems.len(), 1, "{problems:?}");
         let displayed = problems[0].to_string();
         assert!(
-            displayed.starts_with("assets/example/shaders/include/pick.glsl:2:12: compute shader: "),
+            displayed
+                .starts_with("assets/example/shaders/include/pick.glsl:2:12: compute shader: "),
             "{displayed}"
         );
     }

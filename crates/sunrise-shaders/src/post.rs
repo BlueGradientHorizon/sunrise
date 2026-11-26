@@ -2741,7 +2741,10 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
             notes.contains("composite6: uses a tessellation stage (unsupported); skipped"),
             "{notes}"
         );
-        assert!(notes.contains("composite5.fsh:2: fragment shader: "), "{notes}");
+        assert!(
+            notes.contains("composite5.fsh:2: fragment shader: "),
+            "{notes}"
+        );
         assert!(notes.contains("composite5: skipped"), "{notes}");
 
         let mut macros = Macros::standard();

@@ -173,7 +173,8 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
         let at = first[k];
         let here = number(k, offset);
         macros.define("__LINE__", format!("{here}u"));
-        let directive = directive(line).map(|(word, rest)| (byte_at(line.trim_start()), word, rest));
+        let directive =
+            directive(line).map(|(word, rest)| (byte_at(line.trim_start()), word, rest));
         let line_error = |message| {
             let (file, line) = code.lines.origin(at).map_or((code.file(), 0), |origin| {
                 (code.files[origin.file as usize].as_str(), origin.line)
@@ -293,7 +294,10 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
                 macros.stopped()
             });
             if let Some(stop) = stop {
-                let Stop::Arguments { byte: Some(byte), .. } = stop else {
+                let Stop::Arguments {
+                    byte: Some(byte), ..
+                } = stop
+                else {
                     return Err(error(stopped(stop)));
                 };
                 let message = stopped(stop);

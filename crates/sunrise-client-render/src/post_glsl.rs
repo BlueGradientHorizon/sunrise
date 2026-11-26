@@ -299,8 +299,8 @@ fn parse(
     code: &Expanded,
     limits: naga::front::glsl::InterfaceLimits,
 ) -> Result<(naga::Module, naga::valid::ModuleInfo, Expanded), Vec<Error>> {
-    let code = crate::core_shader::run_directives(code, &[])
-        .map_err(|e| vec![e.with_stage(stage)])?;
+    let code =
+        crate::core_shader::run_directives(code, &[]).map_err(|e| vec![e.with_stage(stage)])?;
     let module = Frontend::default()
         .parse(&sunrise_glsl::glsl_options(stage, limits), code.text())
         .map_err(|e| code.errors_in(stage, &e, |kind, _line| kind.to_string()))?;
