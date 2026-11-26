@@ -51,7 +51,7 @@ jobs:
       matrix:
         include:
           - name: linux
-            dyna: LINUX
+            dyna: DEV_ON_DYNA_LINUX
             os: ubuntu-22.04
             blacksmith: blacksmith-16vcpu-ubuntu-2204
             dir: sunrise-linux-x86_64
@@ -61,7 +61,7 @@ jobs:
             server_dir: sunrise-server-linux-x86_64
             server_asset: sunrise-server-linux-x86_64.tar.gz
           - name: windows
-            dyna: WINDOWS
+            dyna: DEV_ON_DYNA_WINDOWS
             os: windows-latest
             blacksmith: blacksmith-16vcpu-windows-2025
             dir: sunrise-windows-x64
@@ -72,7 +72,7 @@ jobs:
             # The C runtime linked in, so the game runs without the Visual C++ redistributable.
             rustflags: -C target-feature=+crt-static
           - name: macos
-            dyna: MACOS
+            dyna: DEV_ON_DYNA_MACOS
             mac: true
             os: macos-15
             blacksmith: blacksmith-12vcpu-macos-15
@@ -92,7 +92,7 @@ jobs:
     # every leg of a Dev release back on Blacksmith while BLACKSMITH stays off; BLACKSMITH_DEV_MACOS=on does so for
     # its macOS leg alone.
     runs-on: >-
-      ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && 'dyna-large' ||
+      ${{ inputs.dev && vars[matrix.dyna] == 'on' && 'dyna-large' ||
       (vars.BLACKSMITH != 'off' || (inputs.dev && (vars.BLACKSMITH_DEV == 'on' || (matrix.mac && vars.BLACKSMITH_DEV_MACOS == 'on'))))
       && matrix.blacksmith || matrix.os }}
     # The fork's cold client + headless builds need both feature variants; keep upstream's limits unchanged.
@@ -102,9 +102,9 @@ jobs:
     timeout-minutes: ${{ github.repository == 'sunrise-org/sunrise' && (matrix.mac && 100 || 60) || (matrix.mac && 60 || 40) }}
     env:
       # `on` when this Dev leg is cross-built on Dyna's runner, empty otherwise.
-      CROSS: ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && 'on' || '' }}
+      CROSS: ${{ inputs.dev && vars[matrix.dyna] == 'on' && 'on' || '' }}
       # The target cargo builds for: a cross leg's, or on a hosted runner macOS's alone (the others build for the host).
-      TARGET: ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && matrix.cross_target || matrix.target }}
+      TARGET: ${{ inputs.dev && vars[matrix.dyna] == 'on' && matrix.cross_target || matrix.target }}
       RUSTFLAGS: ${{ matrix.rustflags }}
       # The release's version, built in (sunrise_core::release): --version, user agents and crash reports
       # say it. No version-bump commits.
@@ -112,7 +112,7 @@ jobs:
       # A nightly's date and commit ("2026-10-28 0c02067"), which the game shows; empty for a release.
       SUNRISE_NIGHTLY: ${{ inputs.nightly }}
       # Where cargo puts the programs: target/release, or target/<target>/release for another target.
-      BIN: ${{ (inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && matrix.cross_target || matrix.target) && format('target/{0}/release', inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && matrix.cross_target || matrix.target) || 'target/release' }}
+      BIN: ${{ (inputs.dev && vars[matrix.dyna] == 'on' && matrix.cross_target || matrix.target) && format('target/{0}/release', inputs.dev && vars[matrix.dyna] == 'on' && matrix.cross_target || matrix.target) || 'target/release' }}
     defaults:
       run:
         shell: bash
@@ -419,14 +419,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: macos, dyna: MACOS, os: macos-15, dir: sunrise-macos-arm64, asset: sunrise-macos-arm64.zip}
-          - {name: windows, dyna: WINDOWS, os: windows-latest, dir: sunrise-windows-x64, asset: sunrise-windows-x64.zip, exe: .exe}
+          - {name: macos, dyna: DEV_ON_DYNA_MACOS, os: macos-15, dir: sunrise-macos-arm64, asset: sunrise-macos-arm64.zip}
+          - {name: windows, dyna: DEV_ON_DYNA_WINDOWS, os: windows-latest, dir: sunrise-windows-x64, asset: sunrise-windows-x64.zip, exe: .exe}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
       SUNRISE_VERSION: ${{ inputs.version }}
       # `on` when this leg was cross-built; a leg built on its own platform checked itself.
-      CROSS: ${{ vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && 'on' || '' }}
+      CROSS: ${{ vars[matrix.dyna] == 'on' && 'on' || '' }}
     defaults:
       run:
         shell: bash

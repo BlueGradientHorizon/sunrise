@@ -57,13 +57,13 @@ jobs:
           CROSS_MACOS: ${{ inputs.dev && vars.DEV_ON_DYNA_MACOS || '' }}
           # The launcher builds native mods with the windows-gnu toolchain and its own MinGW linker.
           ALL: >-
-            [{"name": "linux", "dyna": "LINUX", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
+            [{"name": "linux", "dyna": "DEV_ON_DYNA_LINUX", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
               "target": "x86_64-unknown-linux-gnu", "linkage": true},
-            {"name": "linux-server", "dyna": "LINUX", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
+            {"name": "linux-server", "dyna": "DEV_ON_DYNA_LINUX", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
               "target": "x86_64-unknown-linux-gnu", "server": true},
-            {"name": "windows", "dyna": "WINDOWS", "os": "windows-latest", "blacksmith": "blacksmith-16vcpu-windows-2025",
+            {"name": "windows", "dyna": "DEV_ON_DYNA_WINDOWS", "os": "windows-latest", "blacksmith": "blacksmith-16vcpu-windows-2025",
               "target": "x86_64-pc-windows-gnu", "linkage": true},
-            {"name": "macos", "dyna": "MACOS", "os": "macos-15", "blacksmith": "blacksmith-6vcpu-macos-15", "target": "aarch64-apple-darwin"}]
+            {"name": "macos", "dyna": "DEV_ON_DYNA_MACOS", "os": "macos-15", "blacksmith": "blacksmith-6vcpu-macos-15", "target": "aarch64-apple-darwin"}]
         run: |
           case "$LEGS" in
             all) pick='.' ;;
@@ -73,7 +73,7 @@ jobs:
           esac
           echo "matrix=$(jq -c "{include: $pick}" <<< "$ALL")" >> "$GITHUB_OUTPUT"
           echo "checks=$(jq -c --arg windows "$CROSS_WINDOWS" --arg macos "$CROSS_MACOS" \
-            "{include: $pick | map(select((.dyna == \"WINDOWS\" and \$windows == \"on\") or (.dyna == \"MACOS\" and \$macos == \"on\")))}" \
+            "{include: $pick | map(select((.dyna == \"DEV_ON_DYNA_WINDOWS\" and \$windows == \"on\") or (.dyna == \"DEV_ON_DYNA_MACOS\" and \$macos == \"on\")))}" \
             <<< "$ALL")" >> "$GITHUB_OUTPUT"
 
   build:
@@ -93,7 +93,7 @@ jobs:
     # Linux against glibc 2.35 with zig, the windows-gnu and macOS legs cross-compiled (tools/ci/cross/). `cross-check`
     # below runs what needs the leg's own platform, on GitHub's runner.
     runs-on: >-
-      ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && 'dyna-large' ||
+      ${{ inputs.dev && vars[matrix.dyna] == 'on' && 'dyna-large' ||
       (vars.BLACKSMITH != 'off' || (inputs.dev && (vars.BLACKSMITH_DEV == 'on' || (matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))))
       && matrix.blacksmith || matrix.os }}
     # Hosted macOS runner speed varies: 41 to 90+ minutes observed. Windows without its build cache (the first run after
@@ -101,9 +101,9 @@ jobs:
     timeout-minutes: ${{ (matrix.os == 'macos-15' && 120) || (matrix.os == 'windows-latest' && 180) || 90 }}
     env:
       # `on` when this Dev leg is cross-built on Dyna's runner, empty otherwise.
-      CROSS: ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && 'on' || '' }}
+      CROSS: ${{ inputs.dev && vars[matrix.dyna] == 'on' && 'on' || '' }}
       # tools/prebuilt_game.py builds for this target, not the computer's (a cross build); empty on a hosted runner.
-      SUNRISE_PREBUILT_TARGET: ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && matrix.target || '' }}
+      SUNRISE_PREBUILT_TARGET: ${{ inputs.dev && vars[matrix.dyna] == 'on' && matrix.target || '' }}
     defaults:
       run:
         shell: bash
