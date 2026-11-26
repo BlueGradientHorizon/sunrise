@@ -1213,8 +1213,8 @@ mod tests {
 
         use crate::mod_pipelines::Pipelines;
         use mod_api::{
-            Identifier, MeshDraw, PipelineBlend, RenderPipeline, SamplerAddress, SamplerFilter,
-            VertexAttributeFormat, VertexFormat, VertexStepMode, WorldDepth,
+            Identifier, MeshDraw, PipelineBlend, RenderPipeline, Sampler, SamplerAddress,
+            SamplerFilter, VertexAttributeFormat, VertexFormat, VertexStepMode, WorldDepth,
         };
 
         // Pass A pipeline: writes solid red into transient target.
@@ -1269,8 +1269,7 @@ mod tests {
         .vertex_binding(0, sample_fmt)
         .sampler(
             "SrcTex",
-            SamplerFilter::Nearest,
-            SamplerAddress::ClampToEdge,
+            Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge),
         );
 
         let set = Pipelines::build(&[p_write, p_sample], 1, |path| {

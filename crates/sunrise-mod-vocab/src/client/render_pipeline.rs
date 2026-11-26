@@ -480,16 +480,12 @@ impl RenderPipeline {
         self
     }
 
-    /// Append a combined 2D image sampler binding to this pipeline's set-1 [`BindGroupLayout`].
-    pub fn sampler(
-        mut self,
-        name: impl Into<String>,
-        filter: SamplerFilter,
-        address: SamplerAddress,
-    ) -> Self {
+    /// Append a combined 2D image sampler binding to this pipeline's set-1 [`BindGroupLayout`],
+    /// sampled as `sampler` describes ([`Sampler::new`] for one filter and one address mode).
+    pub fn sampler(mut self, name: impl Into<String>, sampler: Sampler) -> Self {
         self.bind_group_layout.entries.push(BindEntry {
             name: name.into(),
-            kind: BindingKind::CombinedImageSampler { filter, address },
+            kind: BindingKind::CombinedImageSampler { sampler },
         });
         self
     }
@@ -2116,6 +2112,72 @@ pub enum SamplerAddress {
     MirroredRepeat,
 }
 
+/// How a mod-declared [`BindingKind::CombinedImageSampler`] reads its texture: vanilla's
+/// `GpuDevice.createSampler(addressU, addressV, minFilter, magFilter, maxAnisotropy, maxLod)`
+/// without the anisotropy (it stays out until a mod needs it).
+///
+/// Like vanilla's, a sampler has no separate mipmap filter and no minimum level of detail. Vanilla's
+/// backends blend between mip levels linearly whenever `maxLod` allows more than the base level
+/// (`GlSampler`: `NEAREST` becomes `NEAREST_MIPMAP_LINEAR`, `LINEAR` becomes
+/// `LINEAR_MIPMAP_LINEAR`; Vulkan: the mipmap mode is linear when `maxLod > 0.25`), and so does
+/// this one. [`Sampler::new`] gives what mod samplers always did.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+// no wire: local client sampler descriptor.
+pub struct Sampler {
+    /// Addressing of the `u` texture coordinate.
+    pub address_u: SamplerAddress,
+    /// Addressing of the `v` texture coordinate.
+    pub address_v: SamplerAddress,
+    /// Filter when the texture is minified.
+    pub min: SamplerFilter,
+    /// Filter when the texture is magnified.
+    pub mag: SamplerFilter,
+    /// The largest mip level of detail the sampler reads (`maxLod`): `Some(0.0)` reads only the
+    /// base level. A value above `0.25` blends linearly between the two nearest levels, as
+    /// vanilla does. `None` is [`Sampler::new`]'s: no limit, and the single nearest level is
+    /// read. A value that is negative or not finite is refused with
+    /// [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
+    pub max_lod: Option<f32>,
+}
+
+impl Sampler {
+    /// One `filter` for minification and magnification, one `address` mode for both axes, and
+    /// no `max_lod`: what `.sampler(name, filter, address)` was before samplers took a
+    /// descriptor.
+    pub fn new(filter: SamplerFilter, address: SamplerAddress) -> Self {
+        Self {
+            address_u: address,
+            address_v: address,
+            min: filter,
+            mag: filter,
+            max_lod: None,
+        }
+    }
+}
+
+impl PartialEq for Sampler {
+    fn eq(&self, other: &Self) -> bool {
+        self.address_u == other.address_u
+            && self.address_v == other.address_v
+            && self.min == other.min
+            && self.mag == other.mag
+            && self.max_lod.map(f32::to_bits) == other.max_lod.map(f32::to_bits)
+    }
+}
+
+impl Eq for Sampler {}
+
+impl std::hash::Hash for Sampler {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.address_u.hash(state);
+        self.address_v.hash(state);
+        self.min.hash(state);
+        self.mag.hash(state);
+        self.max_lod.map(f32::to_bits).hash(state);
+    }
+}
+
 /// Integer texel format for a mod-declared [`BindingKind::TexelBuffer`]
 /// (`UniformType.TEXEL_BUFFER`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -2171,10 +2233,8 @@ pub enum BindingKind {
     /// A combined 2D image + sampler (`UniformType.COMBINED_IMAGE_SAMPLER`), bound via
     /// [`TextureSource`].
     CombinedImageSampler {
-        /// Minification/magnification filter mode.
-        filter: SamplerFilter,
-        /// UV addressing mode.
-        address: SamplerAddress,
+        /// Addressing, filtering and mip range.
+        sampler: Sampler,
     },
     /// An integer texel buffer (`UniformType.TEXEL_BUFFER`), backed by a read-only storage
     /// buffer and rewritten `texelFetch` calls.
@@ -2264,6 +2324,8 @@ pub enum BindGroupLayoutError {
     ZeroUniformSize(String),
     /// A `StorageBuffer` entry declared `min_size == 0`.
     ZeroStorageSize(String),
+    /// A `CombinedImageSampler` entry's [`Sampler::max_lod`] is negative or not finite.
+    BadMaxLod(String),
     /// `push_constant_size` exceeds [`MAX_PUSH_CONSTANT_SIZE`] (`RenderPipeline.java:406`).
     PushConstantTooLarge(u32),
     /// `push_constant_size` is not a multiple of 4 bytes.
@@ -2284,6 +2346,12 @@ impl std::fmt::Display for BindGroupLayoutError {
             }
             Self::ZeroStorageSize(name) => {
                 write!(f, "storage buffer `{name}` must have min_size > 0")
+            }
+            Self::BadMaxLod(name) => {
+                write!(
+                    f,
+                    "sampler `{name}` must have a finite max_lod of at least 0"
+                )
             }
             Self::PushConstantTooLarge(size) => write!(
                 f,
@@ -2329,7 +2397,7 @@ impl BindGroupLayout {
 
     /// Validate every entry name, uniqueness (`BindGroupLayout.ensureCompatible`), vanilla
     /// `BindGroupLayouts.java` reservations (plus `SpriteRect` when `textured` is true), and
-    /// positive uniform and storage `min_size`.
+    /// positive uniform and storage `min_size`, and a finite, non-negative sampler `max_lod`.
     pub fn validate(&self, textured: bool) -> Result<(), BindGroupLayoutError> {
         let mut seen = std::collections::BTreeSet::new();
         for entry in &self.entries {
@@ -2349,6 +2417,13 @@ impl BindGroupLayout {
             }
             if let BindingKind::StorageBuffer { min_size: 0, .. } = entry.kind {
                 return Err(BindGroupLayoutError::ZeroStorageSize(entry.name.clone()));
+            }
+            if let BindingKind::CombinedImageSampler { sampler } = entry.kind
+                && sampler
+                    .max_lod
+                    .is_some_and(|lod| !(lod >= 0.0 && lod.is_finite()))
+            {
+                return Err(BindGroupLayoutError::BadMaxLod(entry.name.clone()));
             }
         }
         Ok(())
@@ -2373,16 +2448,13 @@ impl BindGroupLayoutBuilder {
         self
     }
 
-    /// Add a combined 2D image sampler entry (`UniformType.COMBINED_IMAGE_SAMPLER`).
-    pub fn sampler(
-        mut self,
-        name: impl Into<String>,
-        filter: SamplerFilter,
-        address: SamplerAddress,
-    ) -> Self {
+    /// Add a combined 2D image sampler entry (`UniformType.COMBINED_IMAGE_SAMPLER`), sampled as
+    /// `sampler` describes (vanilla's `createSampler(addressU, addressV, minFilter, magFilter,
+    /// maxAnisotropy, maxLod)` without the anisotropy).
+    pub fn sampler(mut self, name: impl Into<String>, sampler: Sampler) -> Self {
         self.entries.push(BindEntry {
             name: name.into(),
-            kind: BindingKind::CombinedImageSampler { filter, address },
+            kind: BindingKind::CombinedImageSampler { sampler },
         });
         self
     }
@@ -5202,12 +5274,36 @@ mod tests {
     }
 
     #[test]
+    fn a_sampler_max_lod_must_be_finite_and_not_negative() {
+        let layout = |max_lod| {
+            let mut sampler = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
+            sampler.max_lod = max_lod;
+            BindGroupLayout::builder()
+                .sampler("ModTex", sampler)
+                .build()
+        };
+        for ok in [None, Some(0.0), Some(3.0), Some(1000.0)] {
+            assert!(layout(ok).is_ok(), "{ok:?}");
+        }
+        for bad in [-0.5, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert_eq!(
+                layout(Some(bad)),
+                Err(BindGroupLayoutError::BadMaxLod("ModTex".to_owned())),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
     fn bind_group_layout_validation_refuses_duplicates_reserved_zero_size_and_oversize_push_constants()
      {
         // Valid layout with uniform buffer, sampler, and texel buffer.
         let layout = BindGroupLayout::builder()
             .uniform_buffer("ModParams", 16)
-            .sampler("ModTex", SamplerFilter::Linear, SamplerAddress::Repeat)
+            .sampler(
+                "ModTex",
+                Sampler::new(SamplerFilter::Linear, SamplerAddress::Repeat),
+            )
             .texel_buffer("ModLut", TexelBufferFormat::R32Sint)
             .build()
             .expect("valid set-1 layout");
@@ -5219,8 +5315,7 @@ mod tests {
                 .uniform_buffer("ModParams", 16)
                 .sampler(
                     "ModParams",
-                    SamplerFilter::Nearest,
-                    SamplerAddress::ClampToEdge
+                    Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge)
                 )
                 .build(),
             Err(BindGroupLayoutError::DuplicateName("ModParams".to_owned()))
