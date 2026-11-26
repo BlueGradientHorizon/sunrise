@@ -566,6 +566,17 @@ impl<'a> BlockTables<'a> {
     ) -> Result<Option<&'static str>, mod_api::BlockStateError> {
         mod_api::BlockMetadata::property(super::api_values::block_metadata_table()?, state, name)
     }
+    pub(in crate::game) fn block_metadata_visit_properties(
+        &self,
+        state: BlockState,
+        visit: &mut dyn FnMut(&str, &str),
+    ) -> Result<(), mod_api::BlockStateError> {
+        mod_api::BlockMetadata::visit_properties(
+            super::api_values::block_metadata_table()?,
+            state,
+            visit,
+        )
+    }
     pub(in crate::game) fn block_metadata_with(
         &self,
         state: BlockState,
