@@ -204,6 +204,8 @@ pub fn build_with_conditions(
     let mut modifier_order = 0;
     let mut worldgen_files = BTreeMap::new();
     let mut worldgen_order = 0;
+    // Damage type definitions by file: a later layer's file wins, as in a pack stack.
+    let mut damage_type_files = BTreeMap::new();
     let mut namespaces: std::collections::BTreeSet<String> = mods
         .iter()
         .flat_map(|m| m.content.namespaces.iter().cloned())
@@ -256,6 +258,9 @@ pub fn build_with_conditions(
                         worldgen_order += 1;
                         continue;
                     }
+                    if is_damage_type_file(&file) {
+                        damage_type_files.insert(file, (&m.id, layer));
+                    }
                     continue;
                 }
                 let bytes = layer.data.read(&file).ok_or_else(|| {
@@ -278,6 +283,19 @@ pub fn build_with_conditions(
                 }
             }
         }
+    }
+    // RegistryDataLoader loads every pack's `damage_type` entries before TagLoader binds
+    // `tags/damage_type`, and the tag files merged below name the mods' types. The root
+    // holds their definitions too, so a loader that reads the root alone (the startup
+    // damage catalog, structure mobs' tables, the client sync preload) binds vanilla's
+    // damage tags against the same registry instead of failing every tag naming one (#6120).
+    // Conditions stay in the file: every reader evaluates them with its own inventory.
+    for (file, (owner, layer)) in &damage_type_files {
+        let bytes = layer
+            .data
+            .read(file)
+            .ok_or_else(|| format!("mod {owner}: {file}: unreadable"))?;
+        overlay.write(file, &bytes)?;
     }
     let mut winners: Vec<_> = modifier_files.into_values().collect();
     winners.sort_by_key(|(order, ..)| *order);
@@ -637,6 +655,14 @@ fn lock_roots(roots: &Path) -> Result<Option<fs::File>> {
             Ok(None)
         }
     }
+}
+
+/// `data/<ns>/damage_type/<path>.json`: an entry of `Registries.DAMAGE_TYPE`.
+fn is_damage_type_file(file: &str) -> bool {
+    file.strip_prefix("data/")
+        .and_then(|rest| rest.split_once('/'))
+        .and_then(|(_, rest)| rest.strip_prefix("damage_type/"))
+        .is_some_and(|path| path.ends_with(".json"))
 }
 
 /// Builds a root using the owning load's condition registrations.

@@ -478,3 +478,74 @@ fn content_mod_worldgen_bundles_and_additions_evaluate_load_conditions() {
         "unknown condition in content-mod worldgen must fail atomically"
     );
 }
+
+/// #6120: a mod's damage type named in vanilla's `minecraft:bypasses_armor` (Tinkers'
+/// Construct's `tconstruct:bleeding`) joins the root beside the merged tag file, so the
+/// root alone binds the tag with vanilla's types and the mod's, as `TagLoader` does
+/// against the full registry: the server's catalog and the synchronized registry's names.
+#[test]
+fn a_mod_damage_type_in_a_vanilla_damage_tag_keeps_the_tag_bound() {
+    use sunrise_world::{
+        damage_source::{Catalog, resource_files, resource_tags},
+        loot::PackOverlay,
+    };
+    let scratch = tempfile::tempdir().unwrap();
+    let base = resources(scratch.path());
+    for (file, text) in [
+        (
+            "data/minecraft/damage_type/starve.json",
+            r#"{"message_id":"starve","scaling":"when_caused_by_living_non_player","exhaustion":0.0}"#,
+        ),
+        (
+            "data/minecraft/damage_type/fall.json",
+            r#"{"message_id":"fall","scaling":"when_caused_by_living_non_player","exhaustion":0.0,"death_message_type":"fall_variants"}"#,
+        ),
+        (
+            "data/minecraft/tags/damage_type/bypasses_armor.json",
+            r#"{"values":["minecraft:starve","minecraft:fall"]}"#,
+        ),
+    ] {
+        let path = base.join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    let mods = mod_in(
+        scratch.path(),
+        &[
+            ("sunrise-mod.toml", manifest("testmod", "")),
+            (
+                "data/testmod/damage_type/bleeding.json",
+                r#"{"message_id":"testmod.bleed","scaling":"never","exhaustion":0.1}"#.into(),
+            ),
+            (
+                "data/minecraft/tags/damage_type/bypasses_armor.json",
+                r#"{"values":["testmod:bleeding"]}"#.into(),
+            ),
+        ],
+    );
+    let out = scratch.path().join("out");
+    let warnings = build_fixture(&base, Path::new(""), &mods, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let expected = ["minecraft:fall", "minecraft:starve", "testmod:bleeding"];
+
+    // The server's damage registry read from the root alone (startup, structure mobs).
+    let catalog = Catalog::default()
+        .with_packs(&out, &PackOverlay::NONE)
+        .unwrap();
+    assert!(catalog.id("testmod:bleeding").is_some());
+    let members: BTreeSet<_> = catalog.tag_members("minecraft:bypasses_armor").collect();
+    assert_eq!(members, BTreeSet::from(expected));
+
+    // The synchronized registry binds the tag against its own names (`lan/data.rs`).
+    let names: BTreeMap<String, i32> = resource_files(&out, "damage_type")
+        .unwrap()
+        .into_keys()
+        .zip(0..)
+        .collect();
+    let tags = resource_tags(&out, &PackOverlay::NONE, |id, _| names.get(id).copied()).unwrap();
+    let members: BTreeSet<_> = tags["minecraft:bypasses_armor"]
+        .iter()
+        .map(|id| names.iter().find(|(_, n)| *n == id).unwrap().0.as_str())
+        .collect();
+    assert_eq!(members, BTreeSet::from(expected));
+}
