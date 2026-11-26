@@ -340,6 +340,8 @@ class Bot:
                 break
 
     def leave(self):
+        if self.stop.is_set():
+            return
         self.stop.set()
         time.sleep(1.5)
         self.sock.close()

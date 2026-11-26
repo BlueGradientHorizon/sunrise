@@ -124,6 +124,20 @@ class KnownPacksTests(unittest.TestCase):
             self.configure(999, [])
 
 
+class BotLeaveTests(unittest.TestCase):
+    def test_second_leave_skips_the_wait_and_socket_close(self):
+        bot = worlds.Bot.__new__(worlds.Bot)
+        bot.stop = threading.Event()
+        bot.sock = mock.Mock()
+        sleep = mock.Mock()
+        with mock.patch.object(worlds, 'time', SimpleNamespace(sleep=sleep)):
+            bot.leave()
+            bot.leave()
+        self.assertTrue(bot.stop.is_set())
+        sleep.assert_called_once_with(1.5)
+        bot.sock.close.assert_called_once_with()
+
+
 class BotFailedJoinTests(unittest.TestCase):
     def join_against(self, packets, protocol):
         """Run Bot against a local server that sends `packets` (id, payload) once connected; returns the error and the bot's socket."""
