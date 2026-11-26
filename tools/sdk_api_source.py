@@ -14,8 +14,7 @@ that copies `generated/` into `OUT_DIR`. The generated files name source files b
 root is written as ROOT_TOKEN and the build script puts the API source's own root in its place. `build` runs on
 Linux and on Windows (fn-replace-windows.yml): the checkout's root is matched in its `/`-separated form, which is how
 the generated files name it on every host, and the build script writes the API source's root `/`-separated too.
-`Cargo.lock` pins
-the versions the game's lockfile has. Same commit, same bytes.
+`Cargo.lock` pins the versions the game's lockfile has. Same commit, same bytes.
 """
 
 import argparse
