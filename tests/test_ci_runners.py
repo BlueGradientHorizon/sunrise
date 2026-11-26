@@ -224,17 +224,9 @@ class OwnRunnerTests(unittest.TestCase):
     @needs_runner_shell
     @unittest.skipUnless(shutil.which("jq"), "the hook reads the event with jq")
     def test_the_light_runners_refuse_forks_themselves(self):
+        hook = ROOT / "tools/ci/job-started.sh"
         with tempfile.TemporaryDirectory() as folder:
             home = Path(folder)
-            python = home / ".local/bin/python3.13"
-            python.parent.mkdir(parents=True)
-            python.write_text("#!/bin/sh\n")
-            python.chmod(0o755)
-            # Sourced with an unknown command the script defines its functions, prints its usage and exits;
-            # the trap then writes the job-started hook the way `install` does, into this home.
-            subprocess.run(["bash", "-c", 'trap shared_files EXIT; source "$0" none', str(ROOT / "tools/ci/checks-runners.sh")],
-                           env={**os.environ, "HOME": str(home)}, capture_output=True, check=False)
-            hook = home / ".actions-runners/ci-shared/job-started.sh"
 
             def job(event, head=None):
                 path = home / "event.json"
