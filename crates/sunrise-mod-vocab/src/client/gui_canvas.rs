@@ -28,7 +28,7 @@ impl GuiSpriteRegion {
 /// One corner of a [`GuiCanvas::triangles`] triangle, as vanilla's `POSITION_COLOR` GUI vertex.
 // no wire: arguments to an in-process GUI draw
 // exhaustive: plain vertex built by struct literal
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct GuiVertex {
     /// `x, y` in the canvas's local GUI pixels, before its pose.
     pub pos: [f32; 2],
