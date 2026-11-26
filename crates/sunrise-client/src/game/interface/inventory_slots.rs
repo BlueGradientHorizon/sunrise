@@ -425,22 +425,20 @@ impl Game<'_> {
         }
         self.craft_recipe().map(|(_, result)| result)
     }
-    /// The recipe id and result of the crafting grid.
-    /// `RecipeCraftingHolder.awardUsedRecipes`: a crafted recipe becomes known
-    /// (special ones never do).
-    pub(super) fn award_crafted(&mut self, crafts: &[(String, Vec<Option<ItemStack>>)]) {
+    /// `RecipeCraftingHolder.awardUsedRecipes` for each take, in order: the `recipe_crafted`
+    /// trigger, then the recipe becomes known (`ServerPlayer.awardRecipes`; special ones never
+    /// do). The host's own clicks and a guest's (a single-player window's included) both land
+    /// here.
+    pub(in crate::game) fn award_crafted(&mut self, crafts: &[(String, Vec<Option<ItemStack>>)]) {
         for (recipe, ingredients) in crafts {
             // The whole id: the advancements' `recipe_crafted` criteria name
             // `minecraft:x`, and the crafting copy names the recipe bare.
             let recipe = sunrise_client::crafting::qualified(recipe);
             self.trigger_recipe_crafted(&recipe, ingredients);
+            self.award_recipes(std::slice::from_ref(&recipe));
         }
-        let recipes: Vec<String> = crafts
-            .iter()
-            .map(|(r, _)| sunrise_client::crafting::qualified(r))
-            .collect();
-        self.award_recipes(&recipes);
     }
+    /// The recipe id and result of the crafting grid.
     pub(super) fn craft_recipe(&self) -> Option<(String, ItemStack)> {
         let n = self.craft_size;
         let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.craft_grid[i].clone()).collect();

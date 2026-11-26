@@ -472,18 +472,12 @@ impl Game<'_> {
             });
         }
         if !crafted.is_empty() {
-            self.as_guest(conn, |g| {
-                for (recipe, ingredients) in &crafted {
-                    g.trigger_recipe_crafted(recipe, ingredients);
-                }
-            });
+            self.as_guest(conn, |g| g.award_crafted(&crafted));
         }
         if !item_crafted.is_empty() {
             self.as_guest(conn, |g| {
                 let player = g.native_acting_id();
                 for (recipe, stack, inputs) in &item_crafted {
-                    // ItemStack.onCraftedBy awards Stats.ITEM_CRAFTED.
-                    g.award_stat("crafted", &stack.item, stack.count as i32);
                     g.native_item_crafted(player, recipe, stack, inputs);
                 }
             });
@@ -3091,6 +3085,10 @@ mod stonecutter_stat_tests;
 #[cfg(test)]
 #[path = "lan_crafting/furnace_take_tests.rs"]
 mod furnace_take_tests;
+
+#[cfg(test)]
+#[path = "lan_crafting/recipe_award_tests.rs"]
+mod recipe_award_tests;
 
 #[cfg(test)]
 mod empty_ingredient_placement_tests {
