@@ -422,25 +422,19 @@ impl ModCompute {
         encoder: &mut wgpu::CommandEncoder,
         dispatches: impl IntoIterator<Item = &'a RecordedDispatch>,
     ) {
-        let ready: Vec<_> = dispatches
-            .into_iter()
-            .filter_map(|dispatch| match self.prepare_dispatch(device, dispatch) {
-                Ok(()) => Some(dispatch),
-                Err(error) => {
-                    if self.warned_variants.insert(dispatch.slot) {
-                        log::warn!(
-                            "Sunrise: compute pipeline slot {} refused in preparation: {error:?}",
-                            dispatch.slot
-                        );
-                    }
-                    None
-                }
-            })
-            .collect();
         let mut owned: Vec<(u32, &[u8], wgpu::BufferUsages)> = Vec::new();
         let mut buffers: Vec<(u32, wgpu::Buffer)> = Vec::new();
         let max_groups = device.limits().max_compute_workgroups_per_dimension;
-        for dispatch in ready {
+        for dispatch in dispatches {
+            if let Err(error) = self.prepare_dispatch(device, dispatch) {
+                if self.warned_variants.insert(dispatch.slot) {
+                    log::warn!(
+                        "Sunrise: compute pipeline slot {} refused in preparation: {error:?}",
+                        dispatch.slot
+                    );
+                }
+                continue;
+            }
             let compiled = self.pipelines[&(dispatch.slot, dispatch.layout_mask)]
                 .as_ref()
                 .expect("prepared compute variant");

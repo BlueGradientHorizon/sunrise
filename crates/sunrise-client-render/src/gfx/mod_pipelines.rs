@@ -2160,8 +2160,8 @@ impl ModPipelines {
         prepared
     }
 
-    /// Prepare the direct mod pipelines into a pack's `colortex0` + standard-Z depth. Linked
-    /// translated pack programs are distinct and checked at draw admission.
+    /// Prepare the uploaded batch's direct mod pipelines into a pack's `colortex0` + standard-Z
+    /// depth. Linked translated pack programs are distinct and checked at draw admission.
     pub fn ensure_pack_pipelines(
         &mut self,
         device: &wgpu::Device,
@@ -2173,89 +2173,94 @@ impl ModPipelines {
                 .retain(|(_, _, target), _| !matches!(target, VariantTarget::Pack(..)));
             self.pack_target = Some((format, rgb));
         }
-        self.ensure_pack_variants(device);
+        // The caches deduplicate these requests, including refusals. Copy only the key out
+        // of each batch entry so variant preparation can borrow the renderer mutably.
+        for i in 0..self.runs.len() {
+            let run = &self.runs[i];
+            self.ensure_pack_variant(device, (format, rgb), run.slot, 0, run.modifier_stack);
+        }
+        for i in 0..self.draws.len() {
+            let draw = &self.draws[i];
+            self.ensure_pack_variant(
+                device,
+                (format, rgb),
+                draw.slot,
+                draw.layout_mask,
+                draw.modifier_stack,
+            );
+        }
     }
 
-    fn ensure_pack_variants(&mut self, device: &wgpu::Device) {
-        let Some((format, rgb)) = self.pack_target else {
+    fn ensure_pack_variant(
+        &mut self,
+        device: &wgpu::Device,
+        (format, rgb): (wgpu::TextureFormat, bool),
+        slot: usize,
+        mask: u64,
+        variant: u32,
+    ) {
+        let key = (slot, mask, VariantTarget::Pack(format, rgb));
+        let idx = variant as usize;
+        match self.variants.get(&key) {
+            Some(Ok(pack)) => {
+                if variant == ModifierStacks::EMPTY
+                    || pack.variants.get(idx).is_some_and(Option::is_some)
+                {
+                    return;
+                }
+            }
+            Some(Err(_)) => return,
+            None => {
+                if let Err(error) = self.ensure_variant(device, key.clone()) {
+                    self.warn_prepare_error(slot, error);
+                    return;
+                }
+            }
+        }
+        let Some((modified, label)) = compiled_in(&self.pipelines, &self.variants, slot, mask)
+            .and_then(|world| world.variant_states.get(idx))
+            .and_then(Option::as_ref)
+        else {
             return;
         };
-        let target = VariantTarget::Pack(format, rgb);
-        let pending: HashSet<_> = self
-            .runs
-            .iter()
-            .map(|run| (run.slot, 0, run.modifier_stack))
-            .chain(
-                self.draws
-                    .iter()
-                    .map(|draw| (draw.slot, draw.layout_mask, draw.modifier_stack)),
-            )
-            .collect();
-        for (slot, mask, variant) in pending {
-            let key = (slot, mask, target.clone());
-            if let Err(error) = self.ensure_variant(device, key.clone()) {
-                self.warn_prepare_error(slot, error);
-                continue;
-            }
-            let idx = variant as usize;
-            let state = compiled_in(&self.pipelines, &self.variants, slot, mask)
-                .and_then(|world| world.variant_states.get(idx))
-                .and_then(Option::as_ref)
-                .cloned();
-            let Some((modified, label)) = state else {
-                continue;
-            };
-            let pack = self
-                .variants
-                .get_mut(&key)
-                .expect("prepared pack variant")
-                .as_mut()
-                .expect("prepared pack variant");
-            if pack.variants.len() <= idx {
-                pack.variants.resize_with(idx + 1, || None);
-            }
-            if pack.variants[idx].is_some() {
-                continue;
-            }
-            let source = &pack.source;
-            let result = if modified == source.recipe.state {
-                CachedVariant::Base
-            } else {
-                match Self::build_render_pipeline(
-                    device,
-                    &format!("{label}/pack"),
-                    &pack.pipeline_layout,
-                    &source.vertex_shader,
-                    source
-                        .pack_fragment_shader
-                        .as_ref()
-                        .unwrap_or(&source.fragment_shader),
-                    &source.vertex_layouts,
-                    modified,
-                    &source.recipe.color_targets,
-                    TargetState {
-                        color_formats: std::slice::from_ref(&format),
-                        depth_format: Some(wgpu::TextureFormat::Depth32Float),
-                        force_depth_attachment: false,
-                        standard_z: true,
-                        write_mask: if rgb {
-                            wgpu::ColorWrites::COLOR
-                        } else {
-                            wgpu::ColorWrites::ALL
-                        },
-                    },
-                ) {
-                    Ok(pipeline) => CachedVariant::Compiled(pipeline),
-                    Err(error) => {
-                        log::warn!(
-                            "Sunrise: pipeline modifier variant {label} refused for shader-pack target {format:?}: {error}"
-                        );
-                        CachedVariant::Refused
-                    }
+        let pack = self.variants[&key].as_ref().expect("prepared pack variant");
+        let source = &pack.source;
+        let result = if *modified == source.recipe.state {
+            CachedVariant::Base
+        } else {
+            match Self::build_render_pipeline(
+                device,
+                &format!("{label}/pack"),
+                &pack.pipeline_layout,
+                &source.vertex_shader,
+                source
+                    .pack_fragment_shader
+                    .as_ref()
+                    .unwrap_or(&source.fragment_shader),
+                &source.vertex_layouts,
+                *modified,
+                &source.recipe.color_targets,
+                self.target_state(&key.2),
+            ) {
+                Ok(pipeline) => CachedVariant::Compiled(pipeline),
+                Err(error) => {
+                    log::warn!(
+                        "Sunrise: pipeline modifier variant {label} refused for shader-pack target {format:?}: {error}"
+                    );
+                    CachedVariant::Refused
                 }
-            };
-            pack.variants[idx] = Some(result);
+            }
+        };
+        let pack = self
+            .variants
+            .get_mut(&key)
+            .expect("prepared pack variant")
+            .as_mut()
+            .expect("prepared pack variant");
+        if pack.variants.len() <= idx {
+            pack.variants.resize_with(idx + 1, || None);
         }
+        pack.variants[idx] = Some(result);
     }
 
     fn warn_prepare_error(&mut self, slot: usize, error: PipelineDrawError) {
@@ -2816,7 +2821,6 @@ impl ModPipelines {
                 set1_bind_group: None,
             });
         }
-        self.ensure_pack_variants(device);
         if self.runs.is_empty()
             && self.oit_runs.is_empty()
             && self.draws.is_empty()
@@ -6688,7 +6692,6 @@ void main() {
         let format = wgpu::TextureFormat::Rgba8Unorm;
         let mut primitives = WorldPrimitives::new(&device, (format, false));
         primitives.pipelines.build(&device, &set, None).unwrap();
-        primitives.prepare_pack_pass(&device, format, false, false);
         let texture = |format, usage| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: None,
@@ -6736,6 +6739,7 @@ void main() {
             &atlas.create_view(&Default::default()),
             None,
         ));
+        primitives.prepare_pack_pass(&device, format, false, false);
         let color_view = color.create_view(&Default::default());
         let depth_view = depth.create_view(&Default::default());
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -8234,7 +8238,7 @@ void main() {
         let view = crate::gfx::Renderer::depth(&device, &config);
         clear_depth_to_a_quarter(&device, &queue, &view);
         draw_sampling_depth(
-            (device, queue),
+            &(device, queue),
             view,
             crate::gfx::mod_uniforms::WORLD_DEPTH_VIEW_ID,
         );
@@ -8267,7 +8271,7 @@ void main() {
             .unwrap();
         clear_depth_to_a_quarter(&device, &queue, &attachment);
         let (view_id, view) = targets.resolve_depth(Some("test_mod"), rt).unwrap();
-        draw_sampling_depth((device, queue), view, view_id);
+        draw_sampling_depth(&(device, queue), view, view_id);
     }
 
     /// A depth texture bound through `TextureSource::TransientTargetDepth`: the depth view the
@@ -8290,7 +8294,7 @@ void main() {
         let attachment = transient.as_resolved().depth_view.unwrap();
         clear_depth_to_a_quarter(&device, &queue, &attachment);
         let (view_id, view) = transient.depth_view().unwrap();
-        draw_sampling_depth((device, queue), view, view_id);
+        draw_sampling_depth(&(device, queue), view, view_id);
     }
 
     /// A depth texture a test creates itself, with no engine path in between.
@@ -8318,7 +8322,7 @@ void main() {
         let view = depth.create_view(&Default::default());
         clear_depth_to_a_quarter(&device, &queue, &view);
         draw_sampling_depth(
-            (device, queue),
+            &(device, queue),
             view,
             crate::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | 2,
         );

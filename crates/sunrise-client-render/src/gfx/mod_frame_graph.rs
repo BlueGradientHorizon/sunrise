@@ -14,7 +14,7 @@ use super::mod_render_targets::{
 use super::world_primitives::WorldPrimitives;
 use mod_api::{
     FrameGraphError, FramePassDescriptor, FramePassId, FramePassRef, FrameTarget, OffscreenPass,
-    OitStage, RenderLevelStage, RenderTargetDepth, RenderTargetDescriptor, TransientTargetId,
+    OitStage, RenderLevelStage, RenderTargetDescriptor, TransientTargetId,
 };
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
@@ -1058,7 +1058,7 @@ fn resolve_dispatch_transients(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::RenderTargetRef;
+    use mod_api::{RenderTargetDepth, RenderTargetRef};
 
     fn rt(generation: u64, slot: u32) -> RenderTargetRef {
         mod_api::__private::built::render_target_ref(generation, slot)
