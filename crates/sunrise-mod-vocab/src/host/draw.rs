@@ -746,9 +746,11 @@ pub trait WorldDrawContext {
     /// [`WorldTextOptions::glowing`] and [`WorldTextOptions::outline`] as glowing sign text
     /// (`Font.drawInBatch8xOutline`). Depth-tested text draws with the world's name tags, far to
     /// near by `origin`, and see-through text over everything after them, whatever the stage.
+    /// Only the side the line reads from shows: seen from its -z side it draws nothing, as
+    /// vanilla's back-face culled text pipelines (and a pack's `core/text`) draw nothing.
     /// Returns the width drawn, in font pixels (`Font.width`, rounded up).
-    /// Refuses a non-finite `origin`, `pose` or `options.at` ([`DrawError::NonFinite`]); on
-    /// `Err` nothing is drawn. Only visible text and styles are used, not click, hover or
+    /// Refuses a non-finite `origin`, `pose` or `options.at`, or a finite one that overflows a
+    /// corner to infinity or NaN ([`DrawError::NonFinite`]); on `Err` nothing is drawn. Only visible text and styles are used, not click, hover or
     /// opaque metadata.
     fn text(
         &mut self,
