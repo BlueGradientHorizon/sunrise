@@ -491,7 +491,7 @@ macro_rules! direct_entity_edit {
     };
 }
 #[allow(unused_imports)]
-pub(crate) use direct_entity_edit;
+pub use direct_entity_edit;
 
 macro_rules! define_entity_handles {
     (() $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {

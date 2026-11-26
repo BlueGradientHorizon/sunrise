@@ -1,7 +1,7 @@
 use super::*;
 
 #[inline(always)]
-pub(in crate::game) fn native_add_server_reload_listeners(
+pub fn native_add_server_reload_listeners(
     context: &dyn mod_api::ReloadContext,
     register: impl FnMut(&mut dyn FnMut(&mut dyn mod_api::ServerReloadListeners) -> bool),
 ) {

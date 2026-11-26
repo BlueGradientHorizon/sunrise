@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use sunrise_client::hud::HudAtlas;
 use sunrise_game_data::text::{InlineObject, Text};
 
-pub(in crate::game) fn substitute(
+pub fn substitute(
     atlas: &HudAtlas,
     text: &Text,
     ask: impl Fn(&str, &mut Vec<Answered<InlineImageReplacement>>),

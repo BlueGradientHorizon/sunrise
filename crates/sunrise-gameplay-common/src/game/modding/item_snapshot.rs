@@ -32,7 +32,7 @@ impl Deref for ItemSnapshot {
 }
 
 impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn stack_boundary_items(&self) -> Option<ItemSnapshot> {
+    pub fn stack_boundary_items(&self) -> Option<ItemSnapshot> {
         Some(ItemSnapshot::capture(
             self.server_items.as_ref(),
             self.side_world_table_items(),

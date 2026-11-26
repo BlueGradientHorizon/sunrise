@@ -25,7 +25,7 @@ impl<'a> BlockTables<'a> {
         Self { res, pack }
     }
 
-    pub(in crate::game) fn of<__Side: crate::game::Side>(game: &'a Game<'_, __Side>) -> Self {
+    pub fn of<__Side: crate::game::Side>(game: &'a Game<'_, __Side>) -> Self {
         Self::new(&game.res, &game.pack)
     }
 
