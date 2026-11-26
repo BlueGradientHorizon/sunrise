@@ -62,7 +62,7 @@ fn player_pose(pose: Pose) -> &'static str {
 enum Body<'a> {
     Player(&'a PlayerMotion),
     Mob(&'a Mob),
-    Other(Target),
+    Other,
 }
 
 impl Game<'_> {
@@ -76,7 +76,7 @@ impl Game<'_> {
             Target::Player => Body::Player(self.player.as_ref()?),
             Target::Guest(conn) => Body::Player(self.command_guest(conn)?.motion.as_deref()?),
             Target::Mob(id) => Body::Mob(self.mobs.iter().find(|m| m.id == id)?),
-            t => Body::Other(t),
+            _ => Body::Other,
         })
     }
     /// `isSecondaryUseActive`: the local client's live semantic sneak state (not the
@@ -240,7 +240,7 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.fluids.in_water),
-            Body::Other(_) => None,
+            Body::Other => None,
         }
     }
     /// The player's swimming flag, distinct from its pose (which also covers crawling).
@@ -255,7 +255,7 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.is_in_lava()),
             Body::Mob(m) => Some(m.fluids.in_lava),
-            Body::Other(_) => None,
+            Body::Other => None,
         }
     }
     /// Visit the cached fluid contacts of the player or mob, highest first.
@@ -288,7 +288,7 @@ impl Game<'_> {
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
                 Body::Player(p) => eye_fluid(p.is_eye_in_fluid(WATER), p.is_eye_in_fluid(LAVA)),
                 Body::Mob(m) => eye_fluid(m.fluids.eye_in_water, m.fluids.eye_in_lava),
-                Body::Other(_) => return None,
+                Body::Other => return None,
             },
         )
     }
@@ -298,7 +298,7 @@ impl Game<'_> {
             Body::Player(p) if !self.is_logical_server() => Some(p.is_under_water()),
             Body::Player(p) => Some(p.fluids.was_eye_in_water && p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.was_eye_in_water && m.fluids.in_water),
-            Body::Other(_) => None,
+            Body::Other => None,
         }
     }
 
@@ -518,7 +518,7 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.air),
             Body::Mob(m) => Some(m.air),
-            Body::Other(_) => None,
+            Body::Other => None,
         }
     }
     /// Sets the entity's air (`Entity.setAirSupply`).
@@ -731,7 +731,7 @@ impl Game<'_> {
                     player_pose(m.extra.avatar_pose)
                 }
                 Body::Mob(m) => POSES.get(usize::from(sync::pose_id(m))).copied()?,
-                Body::Other(_) => POSES[0],
+                Body::Other => POSES[0],
             },
         )
     }
@@ -739,7 +739,7 @@ impl Game<'_> {
     pub(super) fn entity_is_sitting(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Mob(m) => m.sitting(),
-            Body::Player(_) | Body::Other(_) => None,
+            Body::Player(_) | Body::Other => None,
         }
     }
 }

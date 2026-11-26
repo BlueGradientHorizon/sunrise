@@ -163,7 +163,7 @@ impl Game<'_> {
                     let raw = spawner
                         .raw
                         .get_or_insert_with(|| Box::new(Tag::Compound(Compound::new())));
-                    edit(&mut **raw);
+                    edit(raw);
                 });
                 true
             }
