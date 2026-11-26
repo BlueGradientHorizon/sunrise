@@ -218,12 +218,9 @@ def daily_run(id, sha, branch="main", title=None, conclusion="success", event=DI
             "path": path, "repository": {"full_name": repository}, "html_url": f"https://github.com/{REPO}/actions/runs/{id}"}
 
 
-def green_job(sha, conclusion="success", run_id=None, attempt=1):
-    return {"name": f"green {sha}", "status": "completed", "conclusion": conclusion, "run_id": run_id, "run_attempt": attempt}
-
-
-def green_jobs(run, sha=None, conclusion="success"):
-    return [green_job(sha or run["head_sha"], conclusion, run["id"], run["run_attempt"])]
+def daily_jobs(run, sha):
+    return [{"name": f"{job} {sha}", "status": "completed", "conclusion": "success",
+             "run_id": run["id"], "run_attempt": run["run_attempt"]} for job in ("summary", "green")]
 
 
 class DailyEvidenceTests(unittest.TestCase):
@@ -233,95 +230,96 @@ class DailyEvidenceTests(unittest.TestCase):
         with mock.patch.object(train, "gh_json", side_effect=daily_runs(*runs)), mock.patch.object(train, "REPO", REPO):
             return train.daily_passed(self.SHA, this_run=this_run)
 
-    def test_only_a_real_runs_green_job_on_exactly_the_sha_counts(self):
+    def test_only_a_real_daily_run_counts(self):
         sha = self.SHA
-        run = daily_run(1, sha)
-        self.assertEqual(self.passed((run, green_jobs(run))), f"https://github.com/{REPO}/actions/runs/1")
-        run = daily_run(2, sha, branch=train.RELEASE_BRANCH)
-        self.assertTrue(self.passed((run, green_jobs(run))))
-        for run, jobs in (
-                (daily_run(4, sha, title=f"daily {sha} (dry run)"), None),
-                (daily_run(5, sha), "skipped"),
-                (daily_run(6, sha), "failure"),
-                (daily_run(7, sha), "other"),
-                (daily_run(8, sha), "summary"),
-                (daily_run(9, sha, conclusion="cancelled"), None),
-                (daily_run(10, sha, branch="Main"), None),
-                (daily_run(11, sha, branch="topic"), None),
-                (daily_run(12, sha, branch="nightly/26.3"), None),
-                (daily_run(13, sha, event="push"), None),
-                (daily_run(14, sha, path=".github/workflows/other.yml"), None),
-                (daily_run(15, sha, repository="someone/sunrise"), None)):
-            with self.subTest(run=run["id"]):
-                if jobs is None:
-                    jobs = green_jobs(run)
-                elif jobs == "other":
-                    jobs = green_jobs(run, "d" * 40)
-                elif jobs == "summary":
-                    jobs = [{**green_jobs(run)[0], "name": f"summary {sha}"}]
-                else:
-                    jobs = green_jobs(run, conclusion=jobs)
-                self.assertEqual(self.passed((run, jobs)), "")
+        for branch in ("main", train.RELEASE_BRANCH):
+            run = daily_run(1, sha, branch=branch)
+            self.assertEqual(self.passed((run, daily_jobs(run, sha))), run["html_url"])
+        for change in ({"title": f"daily {sha} (dry run)"}, {"branch": "Main"}, {"branch": "topic"},
+                       {"branch": "nightly/26.3"}, {"event": "push"}, {"path": ".github/workflows/other.yml"},
+                       {"repository": "someone/sunrise"}):
+            run = daily_run(2, sha, **change)
+            with self.subTest(change=change):
+                self.assertEqual(self.passed((run, daily_jobs(run, sha))), "")
 
-    def test_a_failed_run_is_refused_whatever_its_green_job_says(self):
-        for conclusion in ("failure", "timed_out", "action_required", "neutral", "skipped", "stale", None):
+    def test_a_failed_run_is_refused_whatever_its_jobs_say(self):
+        for conclusion in ("failure", "cancelled", "timed_out", "action_required", "neutral", "skipped", "stale", None):
             run = daily_run(1, self.SHA, conclusion=conclusion)
             with self.subTest(conclusion=conclusion):
-                self.assertEqual(self.passed((run, green_jobs(run))), "")
+                self.assertEqual(self.passed((run, daily_jobs(run, self.SHA))), "")
 
-    def test_the_head_sha_is_the_commit_and_a_title_never_stands_in_for_it(self):
-        sha = self.SHA
-        for title in (f"daily {sha}", "daily main", f"daily {sha[:9]}", "daily"):
-            run = daily_run(1, sha, head="e" * 40, title=title)
-            with self.subTest(title=title):
-                self.assertEqual(self.passed((run, green_jobs(run, sha))), "")
-        run = daily_run(2, sha, title="daily main")
-        self.assertTrue(self.passed((run, green_jobs(run))), "dispatched without a commit: the run's own head")
-        self.assertEqual(train.daily_passed("c" * 9), "", "a short or upper-case SHA names no commit")
-        self.assertEqual(train.daily_passed(sha.upper()), "")
+    def test_the_exact_jobs_name_the_tested_commit_even_when_the_workflow_head_moved(self):
+        sha, head = self.SHA, "e" * 40
+        for status, conclusion, this_run in (("completed", "success", ""), ("in_progress", None, "9/2")):
+            run = daily_run(9, sha, head=head, title=f"daily {sha[:9]}", status=status, conclusion=conclusion, attempt=2)
+            summary, green = daily_jobs(run, sha)
+            self.assertEqual(self.passed((run, [summary, green]), this_run=this_run), run["html_url"])
+            for case, jobs in (
+                    ("wrong summary", [summary | {"name": f"summary {head}"}, green]),
+                    ("missing summary", [green]),
+                    ("skipped summary", [summary | {"conclusion": "skipped"}, green]),
+                    ("failed summary", [summary | {"conclusion": "failure"}, green]),
+                    ("wrong green SHA", [summary, green | {"name": f"green {head}"}]),
+                    ("missing green", [summary]),
+                    ("skipped green", [summary, green | {"conclusion": "skipped"}]),
+                    ("failed green", [summary, green | {"conclusion": "failure"}]),
+                    ("break-glass summary", [summary | {"name": f"summary {sha} (break-glass legs)"}, green]),
+                    ("dry-run summary", [summary | {"name": f"summary {sha} (dry run)"}, green]),
+                    ("stale attempt", [summary | {"run_attempt": 1}, green | {"run_attempt": 1}])):
+                with self.subTest(status=status, case=case):
+                    self.assertEqual(self.passed((run, jobs), this_run=this_run), "")
+            titled = run | {"display_title": f"daily {sha}"}
+            for jobs in ([], [green]):
+                self.assertEqual(self.passed((titled, jobs), this_run=this_run), "", "the title cannot replace the summary")
 
-    def test_a_dry_run_never_counts(self):
+    def test_a_failed_summary_is_a_red_full_daily_even_if_green_succeeded(self):
         sha = self.SHA
-        run = daily_run(1, sha, title=f"daily {sha} (dry run)")
-        self.assertEqual(self.passed((run, green_jobs(run))), "")
-        run = daily_run(2, sha, branch="topic", title=f"daily {sha} (dry run)")
-        self.assertEqual(self.passed((run, green_jobs(run))), "")
+        run = daily_run(1, sha, head="e" * 40)
+        jobs = {f"summary {sha}": "failure", f"green {sha}": "success"}
+        self.assertEqual(train.full_dailies(sha, [(run, jobs)]), [(run, False)])
+
+    def test_the_requested_sha_must_be_full_and_lowercase(self):
+        self.assertEqual(train.daily_passed(self.SHA[:9]), "")
+        self.assertEqual(train.daily_passed(self.SHA.upper()), "")
 
     def test_the_jobs_come_from_the_runs_own_id_and_attempt(self):
         sha = self.SHA
         calls = []
         run = daily_run(7, sha, attempt=3)
-        answer = daily_runs((run, green_jobs(run)))
+        summary, green = daily_jobs(run, sha)
+        answer = daily_runs((run, [summary, green]))
         with mock.patch.object(train, "gh_json", side_effect=lambda *a: calls.append(a) or answer(*a)), \
                 mock.patch.object(train, "REPO", REPO):
-            self.assertTrue(train.daily_passed(sha))
+            self.assertEqual(train.daily_passed(sha), run["html_url"])
         self.assertIn("event=workflow_dispatch&status=completed", calls[0][-1])
         self.assertEqual(calls[1][-1], f"repos/{REPO}/actions/runs/7/attempts/3/jobs?per_page=100")
-        for stale in (green_job(sha, run_id=7, attempt=2), green_job(sha, run_id=8, attempt=3), green_job(sha, run_id=None)):
-            with self.subTest(job=stale):
-                self.assertEqual(self.passed((run, [stale])), "", "a job of another attempt or run is not this run's")
+        for wrong in ({"run_attempt": 2}, {"run_id": 8}, {"run_id": None}, {"status": "in_progress"}):
+            with self.subTest(wrong=wrong):
+                self.assertEqual(self.passed((run, [summary | wrong, green])), "")
+                self.assertEqual(self.passed((run, [summary, green | wrong])), "")
 
     def test_the_daily_promoting_its_own_commit_counts_while_it_runs_and_only_when_named(self):
         sha = self.SHA
         running = daily_run(9, sha, status="in_progress", conclusion=None, attempt=2)
-        self.assertEqual(self.passed((running, green_jobs(running)), this_run="9/2"),
-                         f"https://github.com/{REPO}/actions/runs/9")
-        self.assertEqual(self.passed((running, green_jobs(running))), "", "unnamed, an unfinished run is no evidence")
-        self.assertEqual(self.passed((running, green_jobs(running)), this_run="9/1"), "", "another attempt")
+        jobs = daily_jobs(running, sha)
+        self.assertEqual(self.passed((running, jobs)), "", "unnamed, an unfinished run is no evidence")
+        self.assertEqual(self.passed((running, jobs), this_run="9/1"), "", "another attempt")
+        # Even if the named attempt endpoint returned another run's record, its exact jobs cannot count.
+        with mock.patch.object(train, "REPO", REPO), \
+                mock.patch.object(train, "gh_json", side_effect=[running, [{"jobs": jobs}]]) as api:
+            self.assertEqual(train.daily_passed(sha, this_run="8/2"), "", "another run ID")
+        api.assert_called_once_with("api", f"repos/{REPO}/actions/runs/8/attempts/2")
         finished = daily_run(9, sha, attempt=2)
-        self.assertTrue(self.passed((finished, green_jobs(finished)), this_run="9/2"))
-        for broken in (daily_run(9, sha, status="in_progress", conclusion=None, attempt=2, head="e" * 40),
-                       daily_run(9, sha, status="in_progress", conclusion=None, attempt=2, title=f"daily {sha} (dry run)"),
+        self.assertEqual(self.passed((finished, daily_jobs(finished, sha)), this_run="9/2"), finished["html_url"])
+        for broken in (daily_run(9, sha, status="in_progress", conclusion=None, attempt=2, title=f"daily {sha} (dry run)"),
                        daily_run(9, sha, status="in_progress", conclusion=None, attempt=2, branch="topic"),
                        daily_run(9, sha, status="completed", conclusion="failure", attempt=2),
                        daily_run(9, sha, status="queued", conclusion=None, attempt=2)):
             with self.subTest(run=broken):
-                self.assertEqual(self.passed((broken, green_jobs(broken, sha)), this_run="9/2"), "")
-        no_green = daily_run(9, sha, status="in_progress", conclusion=None, attempt=2)
-        self.assertEqual(self.passed((no_green, green_jobs(no_green, conclusion="skipped")), this_run="9/2"), "")
+                self.assertEqual(self.passed((broken, daily_jobs(broken, sha)), this_run="9/2"), "")
         for text in ("9", "9/", "/2", "9/0", "x/2", "9/2 ", "09/2", "9/2/3"):
             with self.subTest(this_run=text), self.assertRaises(SystemExit):
-                self.passed((running, green_jobs(running)), this_run=text)
+                self.passed((running, jobs), this_run=text)
 
 
 class NightlyBranchTests(unittest.TestCase):
@@ -353,17 +351,18 @@ class NightlyBranchTests(unittest.TestCase):
     def test_the_daily_promotes_its_own_commit_before_it_completes_and_only_through_its_own_run(self):
         with tempfile.TemporaryDirectory() as folder:
             git, commits = repository(folder)
-            git("push", "-q", "origin", f"{commits[2]}:refs/heads/nightly/26.3")
-            running = daily_run(9, commits[2], status="in_progress", conclusion=None)
-            answer = daily_runs((running, green_jobs(running)))
+            tested, workflow_head = commits[1:]
+            git("push", "-q", "origin", f"{tested}:refs/heads/nightly/26.3")
+            running = daily_run(9, tested, head=workflow_head, status="in_progress", conclusion=None)
+            answer = daily_runs((running, daily_jobs(running, tested)))
             with mock.patch.object(train, "ROOT", Path(folder, "clone")), mock.patch.object(train, "REPO", REPO), \
                     mock.patch.object(train, "fork_gate_passed", return_value=True), \
                     mock.patch.object(train, "gh_json", side_effect=answer):
                 with self.assertRaisesRegex(SystemExit, "has no completed real daily run"):
-                    train.channel_head("nightly", commits[2])
-                self.assertEqual(train.channel_head("nightly", commits[2], daily_run="9/1"), commits[2])
+                    train.channel_head("nightly", tested)
+                self.assertEqual(train.channel_head("nightly", tested, daily_run="9/1"), tested)
                 with self.assertRaisesRegex(SystemExit, "has no completed real daily run"):
-                    train.channel_head("nightly", commits[2], daily_run="9/2")
+                    train.channel_head("nightly", tested, daily_run="9/2")
 
     def test_the_promotion_chain_hands_the_dailys_own_run_down_to_the_build(self):
         run_id = "${{ github.run_id }}/${{ github.run_attempt }}"

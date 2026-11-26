@@ -616,14 +616,26 @@ def attempt_jobs(entry):
             if job["status"] == "completed" and job["run_id"] == entry["id"] and job["run_attempt"] == attempt}
 
 
+def full_daily_verdict(sha, jobs):
+    """Job evidence for `sha` from one attempt: None without a full verdict, else whether it passed.
+
+    The exact summary job names the commit the daily resolved; the workflow's head_sha can differ.
+    Dry runs and break-glass runs have suffixed summary names.
+    """
+    summary = jobs.get(f"summary {sha}")
+    if summary not in ("success", "failure"):
+        return None
+    return summary == "success" and jobs.get(f"green {sha}") == "success"
+
+
 def daily_run_green(entry, sha, running=False):
-    """The run's URL when it is a real success (or `running`: in progress) at head_sha `sha` with its own attempt's green job."""
+    """The URL of an admitted daily run whose own attempt has green job evidence for `sha`, or ""."""
     finished = entry["status"] == "completed" and entry["conclusion"] == "success"
     underway = running and entry["status"] == "in_progress" and entry["conclusion"] is None
     real = (entry["path"] == DAILY_WORKFLOW and entry["repository"]["full_name"] == REPO
             and entry["event"] == PUBLISHING_EVENT and entry["head_branch"] in DAILY_BRANCHES
-            and entry["head_sha"] == sha and not entry["display_title"].endswith("(dry run)"))
-    if real and (finished or underway) and attempt_jobs(entry).get(f"green {sha}") == "success":
+            and not entry["display_title"].endswith("(dry run)"))
+    if real and (finished or underway) and full_daily_verdict(sha, attempt_jobs(entry)):
         return entry["html_url"]
     return ""
 
@@ -637,7 +649,9 @@ def completed_dailies(now=None):
 
 
 def daily_passed(sha, now=None, this_run=""):
-    """The URL of a real, successful daily run at head_sha `sha` whose own attempt's `green` job passed, or ""; `this_run` ("<id>/<attempt>") may still be running."""
+    """The URL of a successful real daily that tested `sha` and has green evidence in its own attempt, or "".
+    Only an explicitly named `this_run` ("<id>/<attempt>") may still be in progress.
+    """
     if not FULL_SHA.fullmatch(sha or ""):
         return ""
     if this_run:
@@ -645,7 +659,9 @@ def daily_passed(sha, now=None, this_run=""):
             raise SystemExit(f"::error::refused: a daily run is named <run id>/<attempt>, not {this_run!r}")
         run_id, attempt = this_run.split("/")
         entry = gh_json("api", f"repos/{REPO}/actions/runs/{run_id}/attempts/{attempt}")
-        return daily_run_green(entry, sha, running=True) if entry and str(entry["run_attempt"]) == attempt else ""
+        if entry and str(entry["id"]) == run_id and str(entry["run_attempt"]) == attempt:
+            return daily_run_green(entry, sha, running=True)
+        return ""
     for entry in completed_dailies(now):
         if url := daily_run_green(entry, sha):
             return url
@@ -911,13 +927,12 @@ def legs_passed(sha, legs, runs):
 
 
 def full_dailies(sha, runs):
-    """[(run, passed)] of the real full daily runs of sha, newest first: a run that succeeded or failed whose job
-    `summary <sha>` finished; it passed when the run succeeded and its `green <sha>` job did. Runs that tested nothing
-    of sha (a cancelled run, a scheduled run that skipped it, a dry or break-glass run, whose summaries are named
-    apart) don't count."""
-    return [(entry, entry["conclusion"] == "success" and jobs.get(f"green {sha}") == "success")
+    """[(run, passed)] of the real full daily runs of sha, newest first, omitting runs with no full verdict.
+    A failed run is red even when its jobs give green evidence.
+    """
+    return [(entry, entry["conclusion"] == "success" and verdict)
             for entry, jobs in runs
-            if entry["conclusion"] in ("success", "failure") and jobs.get(f"summary {sha}") in ("success", "failure")]
+            if entry["conclusion"] in ("success", "failure") and (verdict := full_daily_verdict(sha, jobs)) is not None]
 
 
 def newest_full_daily(sha, runs, since=None):
