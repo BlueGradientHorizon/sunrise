@@ -23,7 +23,12 @@ import threading
 import time
 from pathlib import Path
 
-import lab
+if __package__:
+    from . import anvil_dump
+    from .lab import free_port, parse_varint, varint
+else:
+    import anvil_dump
+    from lab import free_port, parse_varint, varint
 
 BX, BZ, SIZE = 144, 144, 96          # south-west corner and size of the platforms (inside the spawn chunks)
 LAYERS = list(range(100, 245, 16))   # platform y levels: one chunk section each, the last one reaches y = 255
@@ -1709,7 +1714,6 @@ def spawn_origin(server, say):
     """Where to build: around the world spawn, whose chunks stay loaded (96 x 96 blocks, on chunk borders)."""
     say(['save-all'])
     time.sleep(2)
-    import anvil_dump
     level = anvil_dump.read_dat(str(server.directory / 'world' / 'level.dat'))['Data']
     return (level['SpawnX'] - 48) // 16 * 16, (level['SpawnZ'] - 48) // 16 * 16
 
@@ -1745,7 +1749,7 @@ LAST = {}
 def populate(server, Bot, port, protocol, name, problems):
     """Build the whole 1.12.2 scene, save it for good and return the (still joined) bot."""
     harness = sys.modules[Bot.__module__]
-    Player = make_player(Bot, lab.varint, lab.parse_varint, harness.mcstring)
+    Player = make_player(Bot, varint, parse_varint, harness.mcstring)
     set_protocol(protocol)
     say = lambda cmds, **kw: batch(server, cmds, problems, **kw)
     if ERA < 12:
@@ -1876,7 +1880,7 @@ def build_flat(h, force=False):
         return []
     work = h.LOCAL / 'gen' / (version + '-flat')
     shutil.rmtree(work, ignore_errors=True)
-    port = lab.free_port()
+    port = free_port()
 
     class FlatServer(h.Server):
         def __init__(self, directory):         # as Server.__init__, with a flat world
@@ -1902,7 +1906,7 @@ def build_flat(h, force=False):
         # A flat world's spawn is found far away; make it (64, 64), and let a bot visit the scene's area so that its chunks
         # are loaded (they stay loaded, being within the spawn radius).
         batch(server, ['setworldspawn 64 4 64'], problems)
-        Player = make_player(h.Bot, lab.varint, lab.parse_varint, h.mcstring)
+        Player = make_player(h.Bot, varint, parse_varint, h.mcstring)
         visitor = Player(port, protocol, h.BOT)
         time.sleep(2)
         for x, z in ((24, 24), (24, 72), (24, 104), (72, 24), (72, 72), (72, 104), (104, 24), (104, 72), (104, 104), (72, 123), (-8, 63), (32, 103)):
