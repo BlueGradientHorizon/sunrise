@@ -152,6 +152,18 @@ pub trait MenusClientBackendMut {
     /// True means submitted, not accepted by the server: its corrections win.
     fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool;
     /// Side: client.
+    /// Creative mode only: destroys the local player's carried (cursor) stack on the creative
+    /// inventory screen, as its destroy slot does (`CreativeModeInventoryScreen.slotClicked`,
+    /// `ItemPickerMenu.setCarried(EMPTY)`). That cursor is the client's alone, so it is cleared
+    /// here and nothing is sent.
+    ///
+    /// `Ok(true)` means destroyed, `Ok(false)` that nothing was carried. Refuses outside a ready
+    /// client world (`Unavailable`), for a stale menu (`Stale`), outside creative mode
+    /// (`NotCreative`), and while any other menu is open, whose cursor the server holds
+    /// (`ServerOwnedMenu`). Refusals are checked before the cursor is read, change nothing and
+    /// send nothing.
+    fn menu_destroy_carried(&mut self, menu: MenuRef) -> Result<bool, CarriedDestroyError>;
+    /// Side: client.
     /// Close the local player's open container screen as Escape does
     /// (`AbstractContainerScreen.onClose`, `LocalPlayer.closeContainer`): the
     /// server is told (`ContainerClose`) and the screen goes. Refuses stale
