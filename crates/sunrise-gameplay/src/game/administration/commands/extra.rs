@@ -269,11 +269,13 @@ impl crate::game::ServerGame<'_> {
         let style_literal = ctx.literals.iter().any(|l| l == "style");
         let message = if style_literal {
             icon.style = if ctx.literals.iter().any(|l| l == "reset") {
-                "minecraft:default".into()
+                Icon::default_style()
             } else {
+                // The argument parser accepted the id; `Identifier.read` checks it again.
                 match ctx.get("style") {
-                    Some(Arg::Resource(s)) => s.clone(),
-                    _ => "minecraft:default".into(),
+                    Some(Arg::Resource(s)) => sunrise_core::identifier::Identifier::parse(s)
+                        .unwrap_or_else(|_| Icon::default_style()),
+                    _ => Icon::default_style(),
                 }
             };
             Text::translate("commands.waypoint.modify.style", &[])
@@ -764,15 +766,15 @@ impl crate::game::ServerGame<'_> {
             Some(Tag::Int(rgb)) => Some(*rgb),
             _ => None,
         };
-        Some(Icon {
-            style: style.to_string_lossy(),
-            color,
-        })
+        // `Waypoint.Icon.CODEC`'s style is a resource key: one that is no identifier fails
+        // the icon, which then stays the default.
+        let style = sunrise_core::identifier::Identifier::parse(&style.to_string_lossy()).ok()?;
+        Some(Icon { style, color })
     }
     /// `LivingEntity.addAdditionalSaveData`'s `locator_bar_icon`: written only
     /// when the icon `hasData`, so any other icon takes the key out.
     pub(in crate::game) fn save_waypoint_icon(icon: &Icon, entity: &mut Option<Tag>) {
-        if icon.style == "minecraft:default" && icon.color.is_none() {
+        if icon.style == Icon::default_style() && icon.color.is_none() {
             if let Some(Tag::Compound(map)) = entity {
                 map.remove(&JavaString::from("locator_bar_icon"));
             }
@@ -796,7 +798,7 @@ pub(in crate::game) mod waypoint_icon_save_tests {
 
     fn icon(style: &str, color: Option<i32>) -> Icon {
         Icon {
-            style: style.into(),
+            style: sunrise_core::identifier::Identifier::parse(style).unwrap(),
             color,
         }
     }
@@ -822,6 +824,20 @@ pub(in crate::game) mod waypoint_icon_save_tests {
             crate::game::ServerGame::waypoint_icon_from_saved(Some(&saved)),
             Some(icon("minecraft:bowtie", Some(0x00FF_0000)))
         );
+    }
+
+    /// `Waypoint.Icon.CODEC`'s style is a resource key (#6064): a saved style that is no
+    /// identifier fails the icon, so the entity keeps the default one.
+    #[test]
+    fn a_saved_style_that_is_no_identifier_loads_no_icon() {
+        let saved = Tag::compound([(
+            "locator_bar_icon",
+            Tag::compound([
+                ("style", Tag::String("Bad Style!".into())),
+                ("color", Tag::Int(7)),
+            ]),
+        )]);
+        assert_eq!(crate::game::ServerGame::waypoint_icon_from_saved(Some(&saved)), None);
     }
 
     #[test]

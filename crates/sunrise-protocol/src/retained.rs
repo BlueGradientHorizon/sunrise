@@ -32,6 +32,17 @@ impl OwnedHeap for String {
         self.capacity()
     }
 }
+impl OwnedHeap for sunrise_core::identifier::Identifier {
+    /// The shared value, charged in full per reference as an `Arc` is, and its text.
+    #[inline]
+    fn owned_heap_bytes(&self) -> usize {
+        use sunrise_core::identifier::IDENTIFIER_DATA_LAYOUT as DATA;
+        DATA.size()
+            .saturating_add(2 * size_of::<usize>())
+            .saturating_add(2 * (DATA.align().max(align_of::<usize>()) - 1))
+            .saturating_add(self.as_str().len())
+    }
+}
 impl<T: OwnedHeap> OwnedHeap for [T] {
     #[inline]
     fn owned_heap_bytes(&self) -> usize {
