@@ -1,7 +1,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_hooks::base::GameHooks;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_hooks::base::GameHooks;
 use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
     use mod_api::{Hooks, HostSide, LevelRef, LevelTickPostEvent, LevelTickPreEvent, ModEntry};

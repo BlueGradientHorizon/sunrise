@@ -368,6 +368,7 @@ pub(crate) mod off_level_tests {
 
 #[cfg(test)]
 pub(crate) mod nested_vehicle_discard_tests {
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
@@ -1793,6 +1794,7 @@ pub(crate) mod content_seat_tests {
 #[cfg(test)]
 pub(crate) mod trap_scatter_tests {
 
+use sunrise_core::random::RandomSource;
 use super::*;
 use sunrise_gameplay::game::server_side::passengers::trap_horse_scatter;
 

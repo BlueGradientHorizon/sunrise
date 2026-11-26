@@ -8,7 +8,8 @@ pub(crate) mod roll_loot_tests;
 
 #[cfg(test)]
 pub(crate) mod general_handle_tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
 use super::tests::with_game;
     use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay_common::game::general::GeneralRow;
@@ -108,7 +109,13 @@ use super::tests::with_game;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_player_food::NativePlayerFoodGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt3;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;

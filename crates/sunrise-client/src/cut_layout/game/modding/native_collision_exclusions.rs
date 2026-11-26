@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod tests {
 
-    use mod_api::CollisionExclusionsError as Refusal;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use mod_api::CollisionExclusionsError as Refusal;
 
     /// A portal's opening, 1 wide and 2 tall.
     const OPENING: [[f64; 6]; 1] = [[2.0, 64.0, 5.0, 3.0, 66.0, 6.0]];

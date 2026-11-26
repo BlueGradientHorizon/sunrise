@@ -15,6 +15,7 @@ use mod_api::prelude::BlockStatesHost;
 #[cfg(test)]
 pub(crate) mod tests {
 use mod_vocab::prelude::ServicesClientHost;
+use mod_vocab::prelude::ServicesClientHost;
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1;
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
 use sunrise_gameplay_common::game::tables::WorldTablesExt;

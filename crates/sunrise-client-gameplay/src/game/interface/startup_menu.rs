@@ -19,14 +19,14 @@ use winit::{event::KeyEvent, keyboard::ModifiersState};
 
 #[derive(Default)]
 pub(in crate::game) struct StartupMenu {
-    title: Option<Title>,
-    options: OptionsUi,
-    options_open: bool,
+    pub title: Option<Title>,
+    pub options: OptionsUi,
+    pub options_open: bool,
     /// The credits from Credits & Attribution, and their last frame.
     win: Option<(sunrise_client::win_screen::WinScreen, Instant)>,
     root: PathBuf,
-    cursor: (f32, f32),
-    pointer: PointerSample,
+    pub cursor: (f32, f32),
+    pub pointer: PointerSample,
     window_pointer_space: std::cell::OnceCell<PointerSpace>,
     modifiers: ModifiersState,
     physical_keys: HashSet<KeyCode>,
@@ -60,7 +60,7 @@ pub(in crate::game) struct StartupMenu {
     pub pending: Option<PendingWorldEntry>,
     pub reload_packs: bool,
     /// A committed client pack selection, independent of other reload requests.
-    pub(in crate::game) pack_selection_revision: u64,
+    pub pack_selection_revision: u64,
     /// Browse mods' worker (`mod_browser`).
     mod_jobs: super::mod_browser::Jobs,
     perf: sunrise_client::telemetry::Session,

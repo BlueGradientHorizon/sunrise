@@ -3,7 +3,11 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_gameplay_common::game::weather::WeatherGameExt;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::Dim;
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
@@ -2206,7 +2210,8 @@ use sunrise_gameplay_common::game::Dim;
 
 #[cfg(test)]
 pub(crate) mod environment_read_tests {
-    use sunrise_gameplay_common::game::weather::WeatherGameExt;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::weather::WeatherGameExt;
 use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;

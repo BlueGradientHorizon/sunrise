@@ -17,6 +17,10 @@ mod owned_slots_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;

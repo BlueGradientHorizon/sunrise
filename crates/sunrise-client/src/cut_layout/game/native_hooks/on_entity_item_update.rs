@@ -1,7 +1,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod on_entity_item_update_tests {
-    use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{Arc, ItemStack, mod_api}};
+    use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1;
+use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{Arc, ItemStack, mod_api}};
     use sunrise_gameplay::game::server_side::native_hooks_server::on_entity_item_update::ItemEntityTickAccess;
     use {sunrise_gameplay_common::game::api_values::STACK_PROJECTIONS, sunrise_gameplay_common::game::api_values::test_snapshot, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};

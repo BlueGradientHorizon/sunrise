@@ -1,3 +1,4 @@
+use sunrise_core::random::RandomSource;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::minecarts::CartKind;

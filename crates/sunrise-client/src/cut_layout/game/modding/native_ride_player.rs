@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use mod_api::RidePlayerRefusal as Refusal;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use mod_api::RidePlayerRefusal as Refusal;
     use mod_api::{EntityMountEvent, Flow, Hooks, ServerHost};
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;

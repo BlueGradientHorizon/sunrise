@@ -8,6 +8,7 @@ use sunrise_items::items::ItemStack;
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
+use sunrise_client_gameplay::game::native_hooks::TryIntoEngine;
 use sunrise_gameplay_common::game::TryIntoApi;
 use super::*;
 

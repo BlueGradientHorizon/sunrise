@@ -5,6 +5,9 @@ use mod_api::EntityRef;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
 use sunrise_gameplay::game::server_side::native_entity_state::tests::with_player;
 
 use super::*;

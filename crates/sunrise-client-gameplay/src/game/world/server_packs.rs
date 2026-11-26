@@ -74,10 +74,10 @@ impl PackPrompt {
 /// The game's `DownloadedPackSource`.
 #[derive(Default)]
 pub(in crate::game) struct ServerPackState {
-    packs: ServerPacks,
+    pub packs: ServerPacks,
     /// `downloads/` in the game folder, opened at the first download.
     queue: Option<download::Queue>,
-    pub(in crate::game) prompt: Option<PackPrompt>,
+    pub prompt: Option<PackPrompt>,
     /// The server list entry the setting is saved to (none: a direct join).
     pub(in crate::game) address: Option<String>,
     /// That entry's name, with `address`, so a pack answer updates only that row.

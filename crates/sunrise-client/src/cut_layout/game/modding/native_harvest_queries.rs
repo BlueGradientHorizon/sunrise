@@ -4,6 +4,9 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_harvest_queries_common::NativeHarvestQueriesCommonGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 use sunrise_gameplay_common::game::native_block_tables::BlockTables;
 
 use super::super::native_guest_turn_tests::with_guests;

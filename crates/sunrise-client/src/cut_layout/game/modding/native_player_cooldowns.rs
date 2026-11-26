@@ -3,7 +3,9 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt2;
+use super::super::native_entity_refs::tests::with_game;
     use sunrise_core::nbt::Tag;
     use sunrise_items::items::ItemStack;
 

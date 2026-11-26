@@ -487,6 +487,8 @@ pub(crate) fn with_command_sources(
 #[cfg(test)]
 pub(crate) mod fake_action_tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
 use sunrise_gameplay_common::game::api_values::test_snapshot;
 
 use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;

@@ -1,4 +1,5 @@
 #![cfg(test)]
+use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{Flow, Hooks, ItemPickedUpEvent, ModEntry, ServerHost};

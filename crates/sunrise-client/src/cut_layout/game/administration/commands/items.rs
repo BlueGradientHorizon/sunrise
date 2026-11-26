@@ -108,7 +108,8 @@ use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Op
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_command_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::commands::data::DataRef};
     use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};
     use std::sync::Arc;

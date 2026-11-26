@@ -4,7 +4,8 @@
 #[cfg(test)]
 pub(crate) mod held_break_slot_tests {
 
-    #[test]
+    use sunrise_gameplay_common::game::tables::GameItems;
+#[test]
     #[ignore = "daily"]
     fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
         use {sunrise_gameplay_common::game::Hand, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};

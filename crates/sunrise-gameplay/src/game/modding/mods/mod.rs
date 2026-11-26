@@ -1824,7 +1824,7 @@ pub mod tests {
         side: mod_api::Side::Both,
     }];
 
-    pub struct Fixture(pub(in crate::game) PathBuf);
+    pub struct Fixture(pub PathBuf);
     impl Fixture {
         pub fn new(label: &str) -> Self {
             let dir = std::env::temp_dir()

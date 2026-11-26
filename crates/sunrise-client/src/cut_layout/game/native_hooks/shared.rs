@@ -2,7 +2,9 @@
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::GameGameExt1;
 #[test]
     #[ignore = "daily"]
     fn declared_types_create_tick_and_reload_through_game() {

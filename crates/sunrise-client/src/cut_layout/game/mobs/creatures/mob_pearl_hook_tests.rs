@@ -1,3 +1,4 @@
+use sunrise_core::random::RandomSource;
 use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, Hit, Mob, Projectile, ProjectileKind, Species, Vec3, Who}};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{EnderPearlTeleportEvent, EntityTeleportEvent, Flow, Hooks, ModEntry, ServerHost};

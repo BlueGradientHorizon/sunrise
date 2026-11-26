@@ -909,44 +909,44 @@ pub struct ServerState {
     /// The wandering trader spawner's clock.
     pub(in crate::game::server_side) trader: sunrise_gameplay::wandering_trader::Spawner,
     /// The cat spawner (`CatSpawner`): its countdown.
-    pub(in crate::game::server_side) cat: sunrise_gameplay::cat_spawner::CatSpawner,
+    pub cat: sunrise_gameplay::cat_spawner::CatSpawner,
     /// Nether portals: the player's, items' and mobs' (game/blocks/nether_portal.rs).
-    pub(in crate::game) portals: nether_portal::Portals,
-    pub(in crate::game) book_placement_session: Option<native_book_grid::Session>,
+    pub portals: nether_portal::Portals,
+    pub book_placement_session: Option<native_book_grid::Session>,
     pub(in crate::game::server_side) hold_server: bool,
     pub(in crate::game::server_side) collider_histories: native_colliders::Histories,
     /// This world is open to the network (game/lan.rs).
-    pub(in crate::game) lan: Option<lan::LanHost>,
+    pub lan: Option<lan::LanHost>,
     /// This game is that server thread's (game/world/integrated.rs).
-    pub(in crate::game) serving: Option<integrated::Serving>,
+    pub serving: Option<integrated::Serving>,
     pub(in crate::game::server_side) dedicated_services: Option<dedicated::Services>,
-    pub(in crate::game) streaming: sunrise_level::chunk_streamer::ChunkStreamer,
-    pub(in crate::game) be_anims: sunrise_level::block_entity_ticks::BlockEntityTicks,
-    pub(in crate::game) settings: sunrise_level::sim_settings::SimSettings,
+    pub streaming: sunrise_level::chunk_streamer::ChunkStreamer,
+    pub be_anims: sunrise_level::block_entity_ticks::BlockEntityTicks,
+    pub settings: sunrise_level::sim_settings::SimSettings,
     pub(in crate::game) profile: crate::game::server_side::profile_capture_server::ServerProfile,
     /// The registries native mods registered data map types for, as of the
     /// server tables' last build: what `data_maps_updated` fires for.
     pub(in crate::game::server_side) data_map_registries: Vec<String>,
     /// The crafting table the 3x3 grid belongs to (`CraftingMenu.access`).
-    pub(in crate::game::server_side) craft_table: Option<[i32; 3]>,
+    pub craft_table: Option<[i32; 3]>,
     /// The open container and the slots it had when it opened:
     /// `Container.stillValid` holds only while every block entity the menu
     /// took is still there, so a half of a double chest (or the container)
     /// going away closes it.
-    pub(in crate::game::server_side) open_container_slots: Option<((i32, i32, i32), usize)>,
+    pub open_container_slots: Option<((i32, i32, i32), usize)>,
     pub(in crate::game::server_side) destroy_delay: u32,
     /// The prepared world is installed. The session lock is taken earlier so tag
     /// reads see ready tables, and is not this marker: a final save before the
     /// prepared `Level` is installed would replace the world with placeholder state.
-    pub(in crate::game::server_side) world_adopted: bool,
+    pub world_adopted: bool,
     /// An early shutdown must not replace on-disk tickets while the server is
     /// still publishing levels or activating their tickets.
     pub(in crate::game::server_side) startup_ticket_restore_pending: bool,
-    pub(in crate::game) next_entity: u32,
+    pub next_entity: u32,
     /// The last entity id when this level's entity pass began: an item with a
     /// later one was added during that pass and first ticks on the next
     /// (`EntityTickList`). `u32::MAX` until a tick has run.
-    pub(in crate::game) ticked_entities_through: u32,
+    pub ticked_entities_through: u32,
     /// The items `tick_blocks` dropped while applying the entities' block
     /// contacts (a boat breaking a lily pad). Vanilla runs those in each
     /// entity's own tick (`applyEffectsFromBlocks`), inside the entity pass,
@@ -966,48 +966,48 @@ pub struct ServerState {
     /// Chunks a respawn search waits for this tick, kept loading beside the
     /// player's own (taken by `update_world`).
     pub(in crate::game::server_side) spawn_wait: Vec<(i32, i32)>,
-    pub(in crate::game::server_side) attack_ticks: u32,
+    pub attack_ticks: u32,
     /// The main hand's item at the last player tick, whose attack damage and
     /// speed modifiers apply (`LivingEntity.detectEquipmentUpdates`): a hotbar
     /// swap just before an attack keeps them, with the new item's enchantments
     /// (attribute swapping).
     pub(in crate::game::server_side) attack_item: Option<Arc<str>>,
     /// Mobs a player hurt (`LivingEntity.lastHurtByPlayer`), by player UUID.
-    pub(in crate::game) last_hurt_by_player: HashMap<u32, combat_common::PlayerCredit>,
+    pub last_hurt_by_player: HashMap<u32, combat_common::PlayerCredit>,
     /// Leashed mobs a player killed, with the killer's UUID: the lead drops
     /// on the corpse's next tick (`Leashable.tickLeash`), for the mods. With
     /// the corpse's dimension: each level's tick prunes only its own.
     pub(in crate::game::server_side) lead_killers: HashMap<u32, (u128, Dim)>,
     /// Animals a player fed into love (`Animal.loveCause`), with the guest it was by
     /// connection (None: the host). Breeding credits them, wherever they are.
-    pub(in crate::game::server_side) love_cause: HashMap<u32, Option<u32>>,
+    pub love_cause: HashMap<u32, Option<u32>>,
     /// Mobs whose death (`LivingEntity.die`) has been handled.
     /// Looked up per mob each tick: a fast hasher (never iterated).
-    pub(in crate::game) died: sunrise_level::fast_hash::FxHashSet<u32>,
+    pub died: sunrise_level::fast_hash::FxHashSet<u32>,
     /// The crossbow charge's start and middle loading sounds played (`game/items/crossbow.rs`):
     /// each charge plays each once, however far a mod's tick moved the charge at a time.
     pub(in crate::game::server_side) crossbow_sounds: [bool; 2],
     /// The shield's item cooldown after an axe disabled it (ticks).
-    pub(in crate::game::server_side) shield_cooldown: u32,
+    pub shield_cooldown: u32,
     /// The source of a command run through /execute (the player otherwise).
-    pub(in crate::game::server_side) command_source: Option<commands::execute::Source>,
+    pub command_source: Option<commands::execute::Source>,
     pub(in crate::game::server_side) native_command_filter: bool,
     /// `MinecraftServer.ticksUntilAutosave`: the ticks left before the next
     /// autosave, counted down a tick at a time.
-    pub(in crate::game::server_side) ticks_until_autosave: i64,
+    pub ticks_until_autosave: i64,
     pub(in crate::game::server_side) applied_modifiers: Vec<(String, String)>,
     pub(in crate::game::server_side) xp_delay: u32,
-    pub(in crate::game::server_side) ordered: ordered_tick::OrderedTicks,
+    pub ordered: ordered_tick::OrderedTicks,
     pub(in crate::game::server_side) level_up_sound: sunrise_sim::entities::LevelUpSound,
     /// Swings of uses whose client predicts them (`SwingSource.PREDICTED`):
     /// a server does not send these back to the player who swung.
     pub(in crate::game::server_side) predicted_swings: u32,
     /// The beds players sleep in that this game marked `occupied`, by level
     /// (game/blocks/beds.rs).
-    pub(in crate::game::server_side) player_beds: Vec<(Dim, [i32; 3])>,
+    pub player_beds: Vec<(Dim, [i32; 3])>,
     /// `SleepStatus`'s active and sleeping players at the last announcement.
     pub(in crate::game::server_side) sleep_seen: (i64, i64),
-    pub(in crate::game) world_root: PathBuf,
+    pub world_root: PathBuf,
     pub(in crate::game::server_side) carrier_retention_snapshot: Vec<(u128, u32)>,
     /// Offline-to-account UUID migration: loaded entities retain the old UUID until saved.
     pub(in crate::game::server_side) owner_migration: Option<(u128, u128)>,
@@ -1016,22 +1016,22 @@ pub struct ServerState {
     pub world_debug: bool,
     /// A server's players on their way to another level, each waiting for
     /// the destination to load around them.
-    pub(in crate::game::server_side) server_trips: Vec<server_travel::Trip>,
+    pub server_trips: Vec<server_travel::Trip>,
     /// Players a command sends to another level, once it has run.
-    pub(in crate::game::server_side) level_teleports: Vec<server_travel::LevelTeleport>,
+    pub level_teleports: Vec<server_travel::LevelTeleport>,
     /// Teleports a command made inside a level, for `native_player_teleported`
     /// once the player's move has reached their client (the put-back at the end of `guest_turn`).
     pub(in crate::game) teleport_notes: Vec<server_travel::TeleportNote>,
     /// Which pass of a server tick runs (`tick_server`): the first one reads
     /// the network, the last one ends the players' tick.
-    pub(in crate::game::server_side) level_pass: levels::Pass,
+    pub level_pass: levels::Pass,
     /// The respawn point when it is not the world spawn or a bed: a respawn
     /// anchor (`game/blocks/respawn_anchor.rs`).
-    pub(in crate::game::server_side) respawn_config: Option<respawn_anchor::RespawnConfig>,
+    pub respawn_config: Option<respawn_anchor::RespawnConfig>,
     /// The next enter_dimension call comes from an End portal.
     pub(in crate::game::server_side) end_portal_travel: bool,
     pub(in crate::game::server_side) tick_scratch: TickScratch,
-    pub(in crate::game::server_side) tick_chunks:
+    pub tick_chunks:
         sunrise_sim::tick_chunk_membership::TickChunkMembership,
     /// Worn armor as of the last equipment check (frost walker).
     pub(in crate::game::server_side) location_armor: [Option<ItemStack>; 4],
@@ -1040,12 +1040,12 @@ pub struct ServerState {
     /// The boats and minecarts `native_vehicle_moved` follows (lan_vehicles.rs).
     pub(in crate::game::server_side) watched_vehicles: Vec<lan_vehicles::WatchedVehicle>,
     /// The ender dragon fight (game/mobs/dragon.rs).
-    pub(in crate::game::server_side) fight: dragon::Fight,
+    pub fight: dragon::Fight,
     /// The entity ids a hosted server gives the knots its mobs hang on, by
     /// block, while a lead is tied there.
-    pub(in crate::game) knot_ids: HashMap<[i32; 3], u32>,
+    pub knot_ids: HashMap<[i32; 3], u32>,
     /// Fence posts whose natural knot was killed and whose leads drop next tick.
-    pub(in crate::game) broken_knots: Vec<[i32; 3]>,
+    pub broken_knots: Vec<[i32; 3]>,
     /// This window's player's place in `riding`'s passengers, as `Guest.vehicle_order` is a guest's.
     pub(in crate::game::server_side) riding_order: i64,
     /// Vehicles that gained a rider this tick whose `START_RIDING_TRIGGER` was
@@ -1058,8 +1058,8 @@ pub struct ServerState {
     /// (`ServerPlayer.loadAndSpawnParentVehicle`).
     pub(in crate::game::server_side) pending_vehicle: Option<[i32; 4]>,
     /// The ender inventory (27 slots) and the ender chest showing it.
-    pub(in crate::game::server_side) ender_items: Vec<Option<ItemStack>>,
-    pub(in crate::game::server_side) ender_open: Option<(i32, i32, i32)>,
+    pub ender_items: Vec<Option<ItemStack>>,
+    pub ender_open: Option<(i32, i32, i32)>,
     pub(in crate::game::server_side) creaking: creaking::CreakingState,
     /// Reused candidate buffers for natural spawning.
     pub(in crate::game::server_side) spawn_scratch: natural_spawning::SpawnScratch,
@@ -1070,37 +1070,37 @@ pub struct ServerState {
     /// Open mod menus whose `menu_slot_changed` dispatch is currently on the call stack.
     pub(in crate::game::server_side) slot_changed_active: Vec<slot_changes::SlotChangedTarget>,
     /// Backing blocks whose contents notice is on the call stack, innermost last.
-    pub(in crate::game) contents_changing: Vec<(mod_api::LevelRef, BlockPos)>,
+    pub contents_changing: Vec<(mod_api::LevelRef, BlockPos)>,
     /// The players with each mod container open, by level (`tick_mod_container_viewers`).
-    pub(in crate::game::server_side) mod_container_viewers:
+    pub mod_container_viewers:
         HashMap<(&'static str, (i32, i32, i32)), mod_container_openers::ModContainerOpeners>,
     /// Where item entities are, while the block entities tick (hoppers).
-    pub(in crate::game) item_columns: Option<sunrise_gameplay_common::hoppers::ItemColumns>,
+    pub item_columns: Option<sunrise_gameplay_common::hoppers::ItemColumns>,
     /// The item columns for one pass of the players' pickups
     /// (`tick_guests`), rebuilt after any write to the items (a pickup, a
     /// command, an explosion): see `item_columns`.
     pub(in crate::game::server_side) pickup_columns:
         Option<sunrise_gameplay_common::hoppers::StampedItemColumns>,
     /// Where the mobs are, while the block entities tick (potent sulfur gas).
-    pub(in crate::game) pass_mobs: Option<potent_sulfur::PassMobs>,
+    pub pass_mobs: Option<potent_sulfur::PassMobs>,
     /// Entities whose copies are held out of storage; their handles refuse until stored back.
-    pub(in crate::game::server_side) held_out: Vec<u32>,
+    pub held_out: Vec<u32>,
     /// What the boats' and minecarts' ticks know about the mobs: their box reach
     /// (`vehicle_mob_reach`) and a grid of their boxes (`mobs_meeting`).
-    pub(in crate::game) vehicle_mobs: boat_passengers::VehicleMobs,
+    pub vehicle_mobs: boat_passengers::VehicleMobs,
     /// Missing profession IDs already reported for this world session.
-    pub(in crate::game::server_side) missing_professions: HashSet<String>,
+    pub missing_professions: HashSet<String>,
     /// What changed in entities' colliders this tick, for the players who track them.
     pub(in crate::game::server_side) collider_changes: Vec<native_colliders::ColliderChange>,
     /// The shapes of the open world's levels, from its dimension types.
-    pub(in crate::game) level_shapes: sunrise_level::chunk::LevelShapes,
+    pub level_shapes: sunrise_level::chunk::LevelShapes,
     /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
     /// before its startup hooks (game/modding/native_singleplayer_owner.rs). None elsewhere.
-    pub(in crate::game::server_side) singleplayer_profile:
+    pub singleplayer_profile:
         Option<native_singleplayer_owner::SingleplayerProfile>,
     /// `StructureTemplateManager.structureRepository`: the templates in memory
     /// by id, a miss included (game/administration/structure_blocks.rs).
-    pub(in crate::game::server_side) structure_templates:
+    pub structure_templates:
         HashMap<String, Option<structure_blocks::TemplateEntry>>,
     pub(in crate::game::server_side) structure_spawns:
         sunrise_sim::mobs::spawn_selection::StructureSpawns,
@@ -1115,25 +1115,25 @@ pub struct ServerState {
     pub(in crate::game::server_side) spawn_policies:
         HashMap<mod_api::DimensionKey, natural_spawning::SpawnPolicy>,
     /// Scheduled end of the server tick (`MinecraftServer.haveTime`).
-    pub(in crate::game::server_side) server_tick_deadline: Option<Instant>,
+    pub server_tick_deadline: Option<Instant>,
     /// The block a guest is acting on (game/network/lan_actions/interaction.rs).
-    pub(in crate::game::server_side) forced_hit: Option<Hit>,
+    pub forced_hit: Option<Hit>,
     /// The part of a right click a guest's packet asks for (game/network/lan_actions/interaction.rs).
     pub guest_use: Option<GuestUse>,
     /// The last `use_hand` that ended the click did so with `FAIL`, which
     /// does not consume the action (handleUseItemOn's ANY_BLOCK_USE).
     pub use_failed: bool,
-    pub(in crate::game::server_side) block_use_original: Vec<(Hand, Option<ItemStack>)>,
+    pub block_use_original: Vec<(Hand, Option<ItemStack>)>,
     /// Level events of this tick for the guests, with their excluded source.
-    pub(in crate::game::server_side) lan_events: Vec<QueuedLevelEvent>,
+    pub lan_events: Vec<QueuedLevelEvent>,
     /// Jukebox level events 1010 (song name) and 1011 (`None`) for the guests;
     /// the song's network id is only known once the hub is in hand.
-    pub(in crate::game::server_side) lan_songs: Vec<([i32; 3], Option<String>)>,
+    pub lan_songs: Vec<([i32; 3], Option<String>)>,
     pub(in crate::game::server_side) lan_cushion_breaks:
         Vec<(sunrise_world::registry::BlockStateId, [f64; 3])>,
     /// Block events (position, b0, b1, state) and entity events (id, event) for the guests.
-    pub(in crate::game) lan_block_events: Vec<([i32; 3], i32, i32, u32)>,
-    pub(in crate::game) lan_entity_events: Vec<(i32, i8)>,
+    pub lan_block_events: Vec<([i32; 3], i32, i32, u32)>,
+    pub lan_entity_events: Vec<(i32, i8)>,
     /// Successful crits (attacking guest, hit entity), queued while the hub is taken.
     pub(in crate::game::server_side) lan_critical_hits: Vec<(Option<u32>, i32, bool)>,
     /// Spear stabs that landed (the stabbing guest), queued while the hub is
@@ -1152,11 +1152,11 @@ pub struct ServerState {
     /// (`ServerPlayer.getKnownMovement`), for their turn.
     pub(in crate::game::server_side) known_movement: Vec3,
     /// Global level events for every guest (`ServerLevel.globalLevelEvent`), with their level.
-    pub(in crate::game::server_side) lan_global_events: Vec<(&'static str, i32, [i32; 3], i32)>,
+    pub lan_global_events: Vec<(&'static str, i32, [i32; 3], i32)>,
     /// `ContainerOpenersCounter`: how many players (the host and the guests)
     /// have each chest open.
-    pub(in crate::game) lid_openers: HashMap<(i32, i32, i32), i32>,
-    pub(in crate::game) lan_acting: Option<u32>,
+    pub lid_openers: HashMap<(i32, i32, i32), i32>,
+    pub lan_acting: Option<u32>,
     /// The abilities of the server player whose turn it is (`as_guest`): their record's
     /// copy, which the turn reads and writes and the put-back at the end of `guest_turn` stores. None outside a turn.
     pub(in crate::game::server_side) acting_abilities:
@@ -1165,14 +1165,14 @@ pub struct ServerState {
     /// when their own state is back in their record.
     pub(in crate::game::server_side) save_after_guest_turn: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
-    pub(in crate::game::server_side) lan_guest_swaps: Vec<u32>,
+    pub lan_guest_swaps: Vec<u32>,
     /// Connections whose turn a panic interrupted this tick: the turn helpers record the
     /// player before re-raising, the end-of-turn path records it before its callbacks run and
     /// clears it after a clean put-back. Cleared at the start of every server tick; the crash
     /// save leaves these players' files as last saved (`server_lifecycle`).
-    pub(in crate::game::server_side) interrupted_turns: Vec<u32>,
+    pub interrupted_turns: Vec<u32>,
     /// What teardown decided about the interrupted turns, for the writes after it.
-    pub(in crate::game::server_side) crash_save: server_lifecycle::CrashSave,
+    pub crash_save: server_lifecycle::CrashSave,
     /// Ender chests a mod opened for a guest inside that guest's turn
     /// (`player_open_ender_chest`), by connection, with their titles: opened as the turn
     /// ends, once the guest's own ender chest is back in their record.
@@ -1185,36 +1185,36 @@ pub struct ServerState {
     /// them (`PlayerRef::destroy_block` with `into_inventory`).
     pub(in crate::game::server_side) break_collect: Option<Vec<ItemStack>>,
     /// The name of the guest `lan_acting` acts for (`Player.getName`).
-    pub(in crate::game) lan_acting_name: Option<String>,
+    pub lan_acting_name: Option<String>,
     /// Their UUID (`Player.getUUID`).
-    pub(in crate::game) lan_acting_uuid: Option<u128>,
+    pub lan_acting_uuid: Option<u128>,
     /// Where the mods refused to prime TNT: the sound and game event the level
     /// queued right after the prime are dropped (`prime_tnt_event`).
     pub(in crate::game::server_side) tnt_refused: Option<BlockPos>,
     /// Their permission level: an op's above 0 (`PlayerList.isOp`).
-    pub(in crate::game::server_side) lan_acting_permission: Option<u8>,
+    pub lan_acting_permission: Option<u8>,
     /// The spawn protection radius that holds the acting guest back
     /// (`DedicatedServer.isUnderSpawnProtection` before the position test):
     /// None for an operator, without operators, or off a dedicated server.
     pub(in crate::game::server_side) lan_acting_spawn_protection: Option<i32>,
     /// Their entity id, which the hub (often taken out of `lan` while they
     /// act) would otherwise have to be asked for.
-    pub(in crate::game) lan_acting_entity: Option<u32>,
+    pub lan_acting_entity: Option<u32>,
     /// Whether the player currently swapped into the game is connectionless.
-    pub(in crate::game::server_side) lan_acting_fake: bool,
+    pub lan_acting_fake: bool,
     /// Command feedback to forward to a guest.
-    pub(in crate::game) chat_capture: Option<Vec<sunrise_game_data::text::Text>>,
+    pub chat_capture: Option<Vec<sunrise_game_data::text::Text>>,
     /// Packets for the guest acting now, sent once its action returns.
-    pub(in crate::game) guest_packets: Vec<sunrise_protocol::packets::play::Clientbound>,
+    pub guest_packets: Vec<sunrise_protocol::packets::play::Clientbound>,
     /// The acting guest's cooldowns, as (item, ticks): their packet needs the
     /// hub's item registry, which the guest's turn does not hold.
-    pub(in crate::game::server_side) guest_cooldowns: Vec<(Arc<str>, i32)>,
+    pub guest_cooldowns: Vec<(Arc<str>, i32)>,
     /// The acting guest's own entity events (`ServerPlayer.connection.send`),
     /// sent with their entity id, which the guest's turn does not hold.
-    pub(in crate::game) guest_entity_events: Vec<i8>,
+    pub guest_entity_events: Vec<i8>,
     /// The acting guest's equipment breaks (`onEquippedItemBroken`'s entity
     /// events), broadcast with their entity id once their turn ends.
-    pub(in crate::game::server_side) guest_equipment_breaks: Vec<i8>,
+    pub guest_equipment_breaks: Vec<i8>,
     /// Block sounds queued by the acting guest, excluding that guest.
     pub(in crate::game::server_side) guest_block_sounds: Vec<(String, [f64; 3], f32, f32)>,
     /// `Player.playSound` of the acting guest (event, position, volume,
@@ -1222,21 +1222,21 @@ pub struct ServerState {
     /// own client plays it.
     pub(in crate::game::server_side) guest_player_sounds: Vec<(String, [f64; 3], f32, f32)>,
     /// Sounds bound to an entity this tick, for the players (`game/interface/level_sounds.rs`).
-    pub(in crate::game) bound_sounds: Vec<level_sounds::BoundSound>,
+    pub bound_sounds: Vec<level_sounds::BoundSound>,
     /// `broadcastToAdmins` lines for the other operators that a command queued,
     /// sent once it returns (`send_admin_feedback`), each with the guest whose
     /// command it was (`commandSource() != source`): None for a block, a
     /// minecart, the console or the host.
-    pub(in crate::game::server_side) admin_feedback:
+    pub admin_feedback:
         Vec<(sunrise_game_data::text::Text, Option<u32>)>,
     /// The server console is running a command: whether its feedback goes to
     /// the operators (`DedicatedServer.shouldInformAdmins`,
     /// `broadcast-console-to-ops`).
-    pub(in crate::game::server_side) console_broadcast: Option<bool>,
+    pub console_broadcast: Option<bool>,
     /// The command the console is running came over RCON: its source is named `Rcon`
     /// (`RconConsoleSource.createCommandSourceStack`), not `Server`.
-    pub(in crate::game::server_side) rcon_source: bool,
-    pub(in crate::game::server_side) bosses: bossbars::BossState,
+    pub rcon_source: bool,
+    pub bosses: bossbars::BossState,
     pub rand_sequences:
         sunrise_items::random_sequences::RandomSequences,
     /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
@@ -1244,53 +1244,53 @@ pub struct ServerState {
     pub(in crate::game::server_side) restore_player_state: bool,
     pub(in crate::game::server_side) acting_input: acting_state::ServerActingInput,
     pub(in crate::game::server_side) pending_guest_ui: acting_state::ServerPendingGuestUi,
-    pub(in crate::game) audio_capture_active: bool,
-    pub(in crate::game) pending_sounds: Vec<sunrise_game_data::sound_source::ServerSound>,
-    pub(in crate::game) pending_particles:
+    pub audio_capture_active: bool,
+    pub pending_sounds: Vec<sunrise_game_data::sound_source::ServerSound>,
+    pub pending_particles:
         Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
     pub(in crate::game) pending_explosions: Vec<sunrise_sim::lan::server_effects::ServerExplosion>,
-    pub(in crate::game) pending_native_sounds:
+    pub pending_native_sounds:
         Vec<sunrise_gameplay_common::game::creatures::NativeSound>,
-    pub(in crate::game) effect_rng: sunrise_core::random::LegacyRandom,
-    pub(in crate::game::server_side) sculk: sculk_server::SculkState,
+    pub effect_rng: sunrise_core::random::LegacyRandom,
+    pub sculk: sculk_server::SculkState,
 
     pub save: ServerShared<Arc<SaveDir>>,
     /// Must precede session_lock: dropping the writer drains writes while the world is locked.
     pub(in crate::game::server_side) player_autosaves:
         ServerOnly<sunrise_sim::lan::playerdata::Autosaves>,
-    pub(in crate::game) session_lock: ServerShared<Option<sunrise_sim::save::SessionLock>>,
+    pub session_lock: ServerShared<Option<sunrise_sim::save::SessionLock>>,
     pub paused_mob_hurt:
         ServerOnly<Option<Box<sunrise_sim::mobs::PausedMobHurt>>>,
-    pub(in crate::game::server_side) raiding: ServerOnly<raids::Raiding>,
+    pub raiding: ServerOnly<raids::Raiding>,
     /// The world's data packs' content tables, when it has packs (`None`
     /// keeps `Resources.rest`'s own in use).
     pub world_tables: ServerShared<Option<WorldTables>>,
     /// Server-owned loot and item snapshots, independent of client preloads.
-    pub(in crate::game::server_side) server_loot:
+    pub server_loot:
         ServerOnly<sunrise_sim::structure_blocks::LootSnapshot>,
     /// A server's levels other than the one in place (game/world/levels.rs).
-    pub(in crate::game) levels: ServerOnly<levels::Levels>,
-    pub(in crate::game) tickets: ServerShared<sunrise_sim::ticket_levels::ChunkTickets>,
+    pub levels: ServerOnly<levels::Levels>,
+    pub tickets: ServerShared<sunrise_sim::ticket_levels::ChunkTickets>,
     pub(in crate::game::server_side) random_tick_sections:
         ServerOnly<sunrise_sim::random_tick_sections::RandomTickSections>,
     /// Entities of types Sunrise does not simulate.
-    pub(in crate::game) others:
+    pub others:
         ServerShared<sunrise_sim::join_seq::ResidentList<commands::OtherEntity>>,
     /// Item entities spawned and block entities removed while the block
     /// behaviour ran (spilled contents, popped resources).
-    pub(in crate::game::server_side) spill: ServerOnly<spill_common::Spill>,
+    pub spill: ServerOnly<spill_common::Spill>,
     pub creative_catalog: ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
     /// The mobs lent to the hook calls running now, before they join a level
     /// (game/modding/native_unspawned_mob.rs).
-    pub(in crate::game::server_side) lent_mobs: ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
+    pub lent_mobs: ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
     /// The game tests read so far, by id (the test instance registry).
     pub(in crate::game::server_side) test_defs:
         ServerOnly<std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>>,
     /// `GameTestTicker.SINGLETON`: the game tests running on this server.
-    pub(in crate::game::server_side) game_tests: ServerOnly<game_tests::GameTests>,
+    pub game_tests: ServerOnly<game_tests::GameTests>,
     /// A mod asked for the command trees again (`native_refresh_commands`):
     /// the next server tick asks every mod for its commands and resends them.
-    pub(in crate::game::server_side) native_commands:
+    pub native_commands:
         ServerOnly<sunrise_gameplay_common::game::native_server::NativeCommandState>,
     /// Other players in the current guest turn, including borrowed ancestor bodies.
     pub(in crate::game::server_side) lan_building_boxes:
@@ -1299,22 +1299,22 @@ pub struct ServerState {
     pub(in crate::game::server_side) lan_displaced_players:
         ServerOnly<Vec<lan_actions_server::DisplacedPlayer>>,
     /// A fake player's `perform_action` in progress, and what it refused.
-    pub(in crate::game::server_side) fake_action:
+    pub fake_action:
         ServerOnly<std::sync::Arc<sunrise_gameplay_common::game::native_server::FakeAction>>,
     /// A dedicated server's operator, whitelist and ban lists, for `/op`,
     /// `/ban` and friends (`DedicatedPlayerList`).
-    pub(in crate::game::server_side) server_lists:
+    pub server_lists:
         ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
     /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
-    pub(in crate::game) cmds: ServerOnly<commands::extra::CommandExtras>,
+    pub cmds: ServerOnly<commands::extra::CommandExtras>,
     /// The retained server reload listeners of the last successful reload.
     pub(in crate::game::server_side) reload_resources: ServerOnly<mod_api::RetainedListeners>,
-    pub(in crate::game) combat: ServerOnly<combat::CombatTracker>,
+    pub combat: ServerOnly<combat::CombatTracker>,
     /// Each guest's own `CombatTracker`, out of `combat` between turns.
-    pub(in crate::game::server_side) guest_combat:
+    pub guest_combat:
         ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
-    pub(in crate::game) fns: ServerOnly<functions::FnState>,
-    pub(in crate::game::server_side) exec: ServerOnly<commands::execute::ExecState>,
+    pub fns: ServerOnly<functions::FnState>,
+    pub exec: ServerOnly<commands::execute::ExecState>,
     pub(in crate::game::server_side) profile_resolver:
         Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
 }
@@ -1540,7 +1540,7 @@ impl<T> ServerOnly<T> {
 
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ServerShared<T>(pub(in crate::game) T);
+pub(in crate::game) struct ServerShared<T>(pub T);
 
 #[allow(dead_code)]
 impl<T> ServerShared<T> {

@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod equippable_slot_tests {
-    use sunrise_items::items::ItemStack;
+    use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1;
+use sunrise_items::items::ItemStack;
 
     /// `Equippable.slot`: armour goes where it is worn, a plain item goes nowhere.
     #[test]
@@ -20,7 +21,8 @@ pub(crate) mod equippable_slot_tests {
 
 #[cfg(test)]
 pub(crate) mod enchantment_conflict_tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::native_components::ItemStack;
     use {sunrise_gameplay_common::game::api_values::stack_value, sunrise_gameplay_common::game::api_values::test_snapshot};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
@@ -103,7 +105,8 @@ use sunrise_gameplay_common::game::native_components::ItemStack;
 
 #[cfg(test)]
 pub(crate) mod item_resource_property_tests {
-    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
 pub(crate) fn engine(
         resource: &mod_api::ItemResource,
         count: u32,
@@ -315,7 +318,8 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
 
 #[cfg(test)]
 pub(crate) mod hot_key_tests {
-    #[test]
+    use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1;
+#[test]
     #[ignore = "daily"]
     fn resolved_keys_select_fuel_and_compost_metadata() {
         mod_platform::testing::with_mods(Vec::new().into(), || {

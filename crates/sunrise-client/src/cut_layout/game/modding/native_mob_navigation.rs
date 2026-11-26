@@ -3,7 +3,9 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
+use super::super::native_entity_refs::tests::with_game;
     use sunrise_gameplay::game::server_side::native_mob_navigation::supplied_path_accepts;
     use mod_api::{EntityRef, MobRef, MoveToPathError, PathNode, WorldEpoch};
     use std::sync::Arc;

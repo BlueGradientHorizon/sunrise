@@ -5,6 +5,7 @@ use sunrise_world::carrier::codec;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::carrier_store::Store;
 

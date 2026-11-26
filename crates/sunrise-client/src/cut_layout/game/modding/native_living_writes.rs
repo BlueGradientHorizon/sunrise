@@ -4,6 +4,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3;
 use super::super::native_entity_refs::tests::with_game;
 
 use super::super::native_living_flags::tests::{guest, guest_server, packets, sync_guests};

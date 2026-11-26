@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay::game::server_side::dispense_fixture;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay::game::server_side::dispense_fixture;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, SoundSource, WorldEpoch};
     use sunrise_command::args::GameMode;

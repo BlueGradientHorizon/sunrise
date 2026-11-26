@@ -225,7 +225,7 @@ pub struct ChatUiState {
     /// Effective HUD visibility, which native mods can change.
     pub hide_gui: bool,
     /// The player's F1 preference, independent of native HUD mode changes.
-    pub(in crate::game) player_hides_gui: bool,
+    pub player_hides_gui: bool,
     /// Native HUD mode: keep hands visible while the HUD is hidden.
     pub show_hand_when_hidden: bool,
     /// What this frame's HUD shows that Sunrise's overlays keep clear of (`Game::hud_room`),

@@ -5,7 +5,8 @@ use sunrise_core::geometry::Vec3;
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
+    use sunrise_core::random::RandomSource;
+use super::*;
     use sunrise_sim::mobs::spawner::Spawner;
 
     /// `BaseSpawner.serverTick` with a player in range: a running delay only

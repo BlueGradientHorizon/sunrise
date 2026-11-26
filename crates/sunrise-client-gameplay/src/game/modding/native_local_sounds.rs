@@ -34,7 +34,7 @@ pub(in crate::game) struct ModSounds {
     last: Cell<u64>,
     /// Sounds asked for (`play_local_sound`), with their handle and the ticks each
     /// waits, until the next audio update plays them (`apply_mod_sounds`).
-    pub(in crate::game) queued: RefCell<Vec<(u64, SoundPlay, u32)>>,
+    pub queued: RefCell<Vec<(u64, SoundPlay, u32)>>,
     /// Stops, fades, moves and pitch changes asked for since the last audio update, in order.
     changes: RefCell<Vec<(u64, Change)>>,
     /// Each started sound's engine instance, until the engine lets it go.

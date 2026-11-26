@@ -335,7 +335,7 @@ pub(in crate::game) struct LastScreenClick {
 #[derive(Default)]
 pub struct ScreenState {
     pub(in crate::game) observed: Option<ObservedScreen>,
-    pub(in crate::game) build: ScreenBuildState,
+    pub build: ScreenBuildState,
     /// The last draw's regions and the screen they are of (`ScreenView::regions`).
     regions: (Option<Screen>, Vec<mod_api::ScreenRegion>),
     /// The box the recipe book's tab (and category arrow) sprites made as this
@@ -351,7 +351,7 @@ pub struct ScreenState {
     /// directly between two fields clears the old field's preedit and area.
     pub(in crate::game) ime_focus: Option<u64>,
     /// Last handled screen mouse press for 250ms double-click detection.
-    pub(in crate::game) last_click: Option<LastScreenClick>,
+    pub last_click: Option<LastScreenClick>,
     /// A mod's `ScreenOpening::Vanilla` answer is opening its screen: that
     /// change fires no screen hook again.
     pub(in crate::game) replacing: bool,

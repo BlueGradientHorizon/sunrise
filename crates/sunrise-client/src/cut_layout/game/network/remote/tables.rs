@@ -2,7 +2,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use {sunrise_client_lib::audio::Audio, crate::settings::Settings, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
+    use sunrise_gameplay_common::game::tables::GameItems;
+use {sunrise_client_lib::audio::Audio, crate::settings::Settings, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
     use std::{collections::HashSet, sync::Arc};
     use sunrise_core::nbt::Tag;
     use sunrise_items::items::ItemStack;

@@ -3,7 +3,9 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{bind_local_player, with_game};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
+use super::super::native_entity_refs::tests::{bind_local_player, with_game};
     use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
     use mod_api::{EntityRef, MobAiPauseRefusal, MobRef, WorldEpoch};
     use std::sync::Arc;

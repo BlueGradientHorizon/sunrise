@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, GameEventContext};
     use std::sync::Arc;

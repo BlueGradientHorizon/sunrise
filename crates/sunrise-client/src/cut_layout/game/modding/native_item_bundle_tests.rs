@@ -267,7 +267,8 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
 
 #[cfg(test)]
 mod custom_bundle_integration_tests {
-    use super::*;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use super::*;
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::{

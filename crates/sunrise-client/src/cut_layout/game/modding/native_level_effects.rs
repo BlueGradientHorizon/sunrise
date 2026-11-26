@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::Dim;
     use super::super::{
         native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,

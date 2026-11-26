@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::native_passages::tests::RemoveOnSecondSent;
 
 use sunrise_gameplay_common::game::native_passages::tests::doorway;
@@ -580,7 +581,8 @@ use sunrise_protocol::passage_sync::encode;
 
 #[cfg(test)]
 mod cross_tests {
-    use {sunrise_gameplay_common::game::native_passages::tests::doorway, sunrise_gameplay::game::native_passages::tests::listen, sunrise_gameplay_common::game::native_passages::tests::packets, sunrise_gameplay_common::game::native_passages::tests::passage_messages};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use {sunrise_gameplay_common::game::native_passages::tests::doorway, sunrise_gameplay::game::native_passages::tests::listen, sunrise_gameplay_common::game::native_passages::tests::packets, sunrise_gameplay_common::game::native_passages::tests::passage_messages};
     use sunrise_gameplay_common::game::Dim;
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::{DimensionKey, Passage, PassageCrossRefusal as Refusal, PassageId, Vec3};

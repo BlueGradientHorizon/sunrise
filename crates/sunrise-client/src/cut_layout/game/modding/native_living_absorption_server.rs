@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use super::super::native_entity_refs::tests::{bind_local_player, with_game};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;

@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::{
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use super::super::{
         native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game},
         native_guest_turn_tests::with_guests,
     };

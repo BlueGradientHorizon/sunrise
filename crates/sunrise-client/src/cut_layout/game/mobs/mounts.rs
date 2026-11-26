@@ -9,6 +9,7 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_core::random::RandomSource;
 use sunrise_gameplay_common::game::server_side::mounts::tests::sparkle_draws;
 
 use sunrise_gameplay::game::server_side::mounts::tests::equip;

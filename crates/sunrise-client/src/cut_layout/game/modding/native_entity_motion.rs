@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_fake;
 
 use crate::game::entity::Entity as _;

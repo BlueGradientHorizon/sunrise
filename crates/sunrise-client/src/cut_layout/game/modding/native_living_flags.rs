@@ -4,7 +4,10 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4;
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1;
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
 use super::super::native_entity_refs::tests::{record_key, with_game};
     use sunrise_gameplay_common::game_side;

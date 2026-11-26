@@ -4,7 +4,12 @@
 #[cfg(test)]
 mod tests {
 
-    use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_surface::NativeSurfaceGameExt1;
+use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1;
+use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt;
 use sunrise_gameplay_common::game::tables::WorldTablesExt;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::native_surface::TryIntoApi;

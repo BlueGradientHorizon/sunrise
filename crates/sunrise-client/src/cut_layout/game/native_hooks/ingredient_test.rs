@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod enumeration_tests {
-    #[test]
+    use sunrise_gameplay_common::game::tables::GameItems;
+#[test]
     #[ignore = "daily"]
     fn ingredient_keys_are_exact_for_tags_shapes_and_refuse_component_predicates() {
         mod_platform::testing::with_mods(Vec::new().into(), || {

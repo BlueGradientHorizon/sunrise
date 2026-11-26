@@ -6,6 +6,8 @@ use sunrise_items::items::ItemStack;
 use sunrise_world::teleport_consume::TeleportConsume;
 #[cfg(test)]
 pub(crate) mod teleport_hook_tests {
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay::game::server_side::consume::teleport_hook_tests::ConsumptionProbe;
 
 use sunrise_gameplay_common::game::api_values::test_snapshot;
@@ -121,7 +123,8 @@ pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_s
 
 #[cfg(test)]
 pub(crate) mod fox_consumption_hook_tests {
-    use super::*;
+    use sunrise_core::random::RandomSource;
+use super::*;
     use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{Flow, Hand, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};

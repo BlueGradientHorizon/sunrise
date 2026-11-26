@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::tables::GameItems;
 use crate::game::{Settings, load_resources};
 use sunrise_gameplay_common::game::{Options, Progress};
 use std::sync::Arc;

@@ -6,7 +6,10 @@ pub(crate) mod player_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_client_gameplay::game::native_hooks::ModGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_client_gameplay::game::native_hooks::ModGameExt1;
 use sunrise_gameplay_common::game::tables::WorldTablesExt;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
@@ -1119,7 +1122,8 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 #[cfg(test)]
 pub(crate) mod mod_capability_tests {
-    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::ServerHost;
     use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};

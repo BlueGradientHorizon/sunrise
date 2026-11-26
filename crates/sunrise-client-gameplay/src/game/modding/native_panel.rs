@@ -197,13 +197,13 @@ pub(in crate::game) struct Panel {
     of: Option<(Owner, u64)>,
     /// The mod's items as stacks; `None` for an item the game doesn't have.
     stacks: Vec<Option<ItemStack>>,
-    page: usize,
-    pub(in crate::game) search: Option<EditBox>,
+    pub page: usize,
+    pub search: Option<EditBox>,
     /// The search text the mod last heard.
     sent: String,
     /// A search text the panel's owner set (`panel_search`), cut to the box's
     /// length: it stays out of the box until a frame draws that owner's box.
-    pending: Option<(Owner, String)>,
+    pub pending: Option<(Owner, String)>,
     /// Only while dispatching Search: an empty reply still needs an editable field.
     searching: bool,
     pub(in crate::game) recipes_settings_return: Option<Screen>,

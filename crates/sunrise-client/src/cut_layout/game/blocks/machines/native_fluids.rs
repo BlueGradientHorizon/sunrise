@@ -9,6 +9,7 @@ use sunrise_level::containers::{BlockEntity, ModFluidTanks};
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::tanks;
 

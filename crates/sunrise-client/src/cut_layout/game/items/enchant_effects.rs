@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::tables::GameItems;
 use crate::game::server_side::damage_item_tests::{Rule, with_wear_part};
 
 use sunrise_core::geometry::Vec3;

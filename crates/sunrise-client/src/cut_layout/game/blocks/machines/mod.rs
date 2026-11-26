@@ -315,7 +315,8 @@ pub(crate) mod furnace_fuel_transfer_tests {
 
 #[cfg(test)]
 pub(crate) mod part_front_tests {
-    use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
     use mod_api::BlockUpdateFlags;
     use std::sync::Arc;
     use sunrise_core::position::BlockPos;

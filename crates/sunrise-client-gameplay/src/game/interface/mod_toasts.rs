@@ -10,7 +10,7 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::api_text::to_engine;
 
 pub(in crate::game) struct Pending {
-    pub(in crate::game) toast: SystemToast,
+    pub toast: SystemToast,
     kind: Option<Identifier>,
     icon: Option<Icon>,
 }

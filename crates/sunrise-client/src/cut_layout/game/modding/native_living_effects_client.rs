@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use mod_api::{EntityRef, LivingRef, WorldEpoch};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use mod_api::{EntityRef, LivingRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
 
     /// `LivingEntity.getEffectBlendFactor` on a client: the local player's

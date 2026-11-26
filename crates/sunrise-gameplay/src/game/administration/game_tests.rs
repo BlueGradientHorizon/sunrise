@@ -54,7 +54,7 @@ pub struct Info {
     pos: Pos,
     has_pos: bool,
     dim: Dim,
-    extra_rotation: Rotation,
+    pub extra_rotation: Rotation,
     tick_count: i32,
     started: bool,
     placed: bool,
@@ -350,9 +350,9 @@ struct SummarySource {
 /// `StructureGridSpawner.DimensionGridState`.
 struct DimGrid {
     first: Pos,
-    next: Pos,
+    pub next: Pos,
     /// The z extent of `rowBounds` (an `AABB(BlockPos)` is one block deep).
-    row_z: (i32, i32),
+    pub row_z: (i32, i32),
     count: i32,
     /// `testsInLastBatch`: their blocks.
     last_batch: Vec<Pos>,

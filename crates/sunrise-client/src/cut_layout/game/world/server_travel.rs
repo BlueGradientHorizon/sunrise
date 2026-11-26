@@ -10,6 +10,7 @@ use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::GameGameExt1;
 use super::*;
 
@@ -397,6 +398,7 @@ use std::sync::Arc;
 #[cfg(test)]
 pub(crate) mod transfer_lifetime_tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_client_lib::join_seq::Joined;
 use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
 

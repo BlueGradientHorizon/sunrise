@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
 use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
     use crate::game::server_side::native_entity_refs::tests::run_fresh_cases;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;

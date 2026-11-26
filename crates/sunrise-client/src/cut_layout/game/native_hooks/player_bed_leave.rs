@@ -4,7 +4,8 @@
 #[cfg(test)]
 pub(crate) mod player_bed_leave_tests {
 
-    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
 use mod_api::{Hooks, ModEntry, PlayerBedLeaveEvent, ServerHost};
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::packets::play::{PlayerCommand, Serverbound};

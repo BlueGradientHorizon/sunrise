@@ -5,6 +5,8 @@ use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay::dispense_rules::{CLICK, FAIL, Slot};
 use sunrise_core::geometry::Direction;

@@ -5,7 +5,8 @@ use sunrise_core::geometry::Aabb;
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod pass_tests {
-    use super::*;
+    use sunrise_core::random::RandomSource;
+use super::*;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
     use sunrise_gameplay_common::game::potent_sulfur_common::PassMobs;
     use sunrise_gameplay_common::potent_sulfur::nearby_living_area;

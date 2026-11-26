@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod tests {
 
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_gameplay_common::game::api_values::test_snapshot;
     use super::super::native_guest_turn_tests::with_guests;
     use mod_api::__private::game::*;
     use mod_api::BlockFace;

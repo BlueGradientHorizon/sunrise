@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{
         ArmorHurtEvent, DamageItemEvent, Flow, HitHost, Hooks, ItemPart, LivingIncomingDamageEvent,

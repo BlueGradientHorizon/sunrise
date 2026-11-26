@@ -4,7 +4,8 @@
 use mod_api::Authority;
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+use super::*;
     use mod_api::ServerTickPhase;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle;

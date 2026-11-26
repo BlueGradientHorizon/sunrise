@@ -2,7 +2,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1;
 use {sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use std::sync::{

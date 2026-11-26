@@ -3,7 +3,9 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use mod_api::{DatapackReadError as E, *};
+    use sunrise_gameplay_common::game::native_datapack_refs::NativeDatapackRefsGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use mod_api::{DatapackReadError as E, *};
 
     #[test]
     #[ignore = "daily"]

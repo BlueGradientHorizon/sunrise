@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest;

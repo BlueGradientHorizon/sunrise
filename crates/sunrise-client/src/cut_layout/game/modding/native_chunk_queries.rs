@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{Authority, ChunkRef, DimensionKey, LevelRef};
 
     /// #2906: the sections whose palette may hold a block, by section Y from the bottom, with a

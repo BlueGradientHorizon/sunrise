@@ -6,7 +6,8 @@ use sunrise_level::particle_options::ParticleType;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod shriek_capture_tests {
-    use super::*;
+    use sunrise_core::random::RandomSource;
+use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use crate::game::load_resources;
     use crate::settings::Settings;

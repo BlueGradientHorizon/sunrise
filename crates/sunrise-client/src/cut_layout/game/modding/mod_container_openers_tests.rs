@@ -2,7 +2,10 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use super::super::native_entity_refs::tests::run_fresh_cases;
     use sunrise_gameplay_common::game::lan_actions::MenuOpen;
     use mod_api::{
         BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, MenuReplace,

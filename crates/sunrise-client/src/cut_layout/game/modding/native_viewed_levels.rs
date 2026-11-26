@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::client_side::viewed_worlds::tests::client, crate::game::client_side::viewed_worlds::tests::close, crate::game::client_side::viewed_worlds::tests::column, crate::game::client_side::viewed_worlds::tests::layered, crate::game::client_side::viewed_worlds::tests::open, crate::game::client_side::viewed_worlds::tests::run, crate::game::client_side::viewed_worlds::tests::spawn};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::client_side::viewed_worlds::tests::client, crate::game::client_side::viewed_worlds::tests::close, crate::game::client_side::viewed_worlds::tests::column, crate::game::client_side::viewed_worlds::tests::layered, crate::game::client_side::viewed_worlds::tests::open, crate::game::client_side::viewed_worlds::tests::run, crate::game::client_side::viewed_worlds::tests::spawn};
     use mod_api::{
         BlockFace, BlockState, ClipBlock, ClipFluid, Host, LevelReadError, LevelRef, LightLayer,
         WorldEpoch,

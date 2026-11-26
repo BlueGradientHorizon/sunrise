@@ -36,7 +36,7 @@ pub fn observed_overlay_id(
 /// This client's window-owned mod screen and its local slot state.
 pub struct OpenNativeScreen {
     /// Fixed for the opening; slot moves have their own revision.
-    pub(in crate::game) layout_revision: u64,
+    pub layout_revision: u64,
     pub(in crate::game) slot_moves: SlotMoves,
     pub(in crate::game) screen: mod_api::__private::OwnedMenuScreen,
     pub menu: OpenNativeMenu,
@@ -53,14 +53,14 @@ pub struct OpenNativeScreen {
 pub struct OpenNativeMenu {
     pub(in crate::game) key: Pos,
     pub(in crate::game) window: i32,
-    pub(in crate::game) generation: u64,
+    pub generation: u64,
     /// The menu's type, which its screen factory is keyed by.
-    pub(in crate::game) name: String,
+    pub name: String,
     /// The server title captured for this screen, kept if the logical menu closes first.
     pub(in crate::game) title: Option<mod_api::Text>,
     /// The mod block whose matching container opened the menu, if any.
-    pub(in crate::game) block: Option<String>,
-    pub(in crate::game) pos: Option<[i32; 3]>,
+    pub block: Option<String>,
+    pub pos: Option<[i32; 3]>,
     pub(in crate::game) mod_type: Option<&'static sunrise_level::containers::ModMenuType>,
     pub(in crate::game) data: Vec<i32>,
 }

@@ -1,3 +1,4 @@
+use sunrise_core::random::RandomSource;
 use std::collections::HashSet;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;

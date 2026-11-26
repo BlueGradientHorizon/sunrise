@@ -6,7 +6,8 @@ use sunrise_gameplay_common::game::native_rain_read::weather_flags;
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
 use super::super::native_entity_refs::tests::with_game;

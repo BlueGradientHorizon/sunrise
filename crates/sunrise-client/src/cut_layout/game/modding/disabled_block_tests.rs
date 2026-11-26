@@ -2,7 +2,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::super::native_entity_refs::tests as fixture;
     use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
     use sunrise_gameplay_common::game::{Dim, Hit};

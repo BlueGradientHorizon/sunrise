@@ -29,7 +29,8 @@ pub(crate) mod respawn_motion_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    pub(crate) mod client_explosion_tests {
+    use sunrise_gameplay_common::game::tables::GameItems;
+pub(crate) mod client_explosion_tests {
         include!("client_explosion_tests.rs");
     }
 

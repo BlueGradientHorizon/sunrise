@@ -1,5 +1,6 @@
 //! `player_give_stack` against a real LAN guest and `item_from_snbt` on the public host.
 
+use sunrise_gameplay_common::game::tables::GameItems;
 use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
 use sunrise_core::nbt::parse_snbt;

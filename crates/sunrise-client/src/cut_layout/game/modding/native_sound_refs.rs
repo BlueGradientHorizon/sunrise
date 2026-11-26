@@ -4,6 +4,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest;
 
 use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets;

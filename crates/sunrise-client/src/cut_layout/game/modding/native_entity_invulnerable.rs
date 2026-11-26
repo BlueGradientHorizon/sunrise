@@ -3,7 +3,10 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
+use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;

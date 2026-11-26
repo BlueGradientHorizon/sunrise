@@ -8,6 +8,9 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;

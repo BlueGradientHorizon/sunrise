@@ -3,7 +3,12 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_player_reach::NativePlayerReachGameExt1;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::{EntityReach, EntityRef, GameMode, Hand, LivingRef};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, nbt::Tag};

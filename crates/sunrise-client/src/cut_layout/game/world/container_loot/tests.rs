@@ -1,4 +1,5 @@
 //! Production gameplay triggers, with one isolated game process per group of scenarios.
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::container_loot_level::fill_with_random;
 use sunrise_gameplay_common::game::container_loot_level::LootTarget;

@@ -24,7 +24,7 @@ pub const CHECK_EVERY: Duration = Duration::from_secs(1);
 /// A loaded config, where it was read and what its file looked like then.
 pub struct Tracked {
     pub config: ConfigFile,
-    pub(in crate::game) path: PathBuf,
+    pub path: PathBuf,
 }
 
 /// One game's configs: the window's, a server thread's or a dedicated

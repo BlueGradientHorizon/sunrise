@@ -6,6 +6,7 @@ use sunrise_world::attributes::{Modifier, Operation};
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::server_side::living_attributes::tests::modifier;
 
 use sunrise_gameplay_common::game::server_side::living_attributes::tests::saved_ids;

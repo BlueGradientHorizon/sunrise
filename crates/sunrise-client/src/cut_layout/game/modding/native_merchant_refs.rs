@@ -7,6 +7,8 @@ use sunrise_sim::merchant::Trader;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
 
 use sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn;

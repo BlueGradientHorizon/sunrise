@@ -279,7 +279,8 @@ pub(crate) mod local_coordinate_command_tests;
 
 #[cfg(test)]
 pub(crate) mod effective_presence_tests {
-    use {crate::game::server_side::commands::*};
+    use sunrise_gameplay_common::game::tables::GameItems;
+use {crate::game::server_side::commands::*};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     #[test]
     #[ignore = "daily"]
@@ -546,7 +547,8 @@ pub(crate) mod fill_note_instrument_tests {
 
 #[cfg(test)]
 pub(crate) mod item_damage_range_tests {
-    use {crate::game::server_side::commands::*};
+    use sunrise_gameplay_common::game::tables::GameItems;
+use {crate::game::server_side::commands::*};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;
 

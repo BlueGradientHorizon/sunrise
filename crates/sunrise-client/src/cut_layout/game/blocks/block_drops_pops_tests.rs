@@ -5,6 +5,7 @@
 //! and the cave-vine and sweet-berry harvests (`CaveVines.java:34`,
 //! `SweetBerryBushBlock.java:122`) all pop through it, so they drop nothing with
 //! the rule off and their usual item with it on.
+use sunrise_core::random::RandomSource;
 use super::*;
 use sunrise_gameplay_common::game::Hit;
 use {crate::game::game_tests::tests::isolated_server_game, sunrise_gameplay::game::game_tests::tests::server_game};

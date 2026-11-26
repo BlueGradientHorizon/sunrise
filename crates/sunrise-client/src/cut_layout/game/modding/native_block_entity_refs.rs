@@ -9,6 +9,7 @@ use sunrise_level::containers::BlockEntity;
 pub(crate) mod tests {
 
 use mod_vocab::HostTransaction;
+use mod_vocab::HostTransaction;
 use sunrise_gameplay_common::game::server_side::native_block_entity_refs::tests::compound;
 
 use super::*;
