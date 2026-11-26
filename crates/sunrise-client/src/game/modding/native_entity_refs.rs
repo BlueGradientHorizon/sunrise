@@ -1390,7 +1390,7 @@ impl Game<'_> {
                     self.clip_in_world(world, (from, to), (blocks, fluids), shape_context, subject)
                 })
                 .ok_or(ClipError::StaleLevel)?,
-            _ => return Err(ClipError::StaleLevel),
+            _ => Err(ClipError::StaleLevel),
         }
     }
 
