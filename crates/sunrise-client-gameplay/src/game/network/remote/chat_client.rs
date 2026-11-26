@@ -4,14 +4,12 @@ use sunrise_gameplay_common::game::remote::chat::Decoration;
 use sunrise_gameplay_common::game::remote::chat::chat_type_decorate;
 use sunrise_client::chat::{ChatSource, Tag as ChatTag};
 
-impl ChatTrust {
-    /// `ChatTrustLevel.createTag`.
-    pub(in crate::game) fn tag(&self) -> Option<ChatTag> {
-        match self {
-            Self::Secure => None,
-            Self::Modified(original) => Some(ChatTag::modified(original)),
-            Self::NotSecure => Some(ChatTag::not_secure()),
-        }
+/// `ChatTrustLevel.createTag`.
+fn chat_trust_tag(trust: &ChatTrust) -> Option<ChatTag> {
+    match trust {
+        ChatTrust::Secure => None,
+        ChatTrust::Modified(original) => Some(ChatTag::modified(original)),
+        ChatTrust::NotSecure => Some(ChatTag::not_secure()),
     }
 }
 
@@ -281,7 +279,7 @@ impl crate::game::ClientGame<'_> {
                 } else {
                     self.decorate_chat(&chat_type, &decorated, Decoration::Narration)
                 };
-                (chat_type, line, narration, trust.tag(), info)
+                (chat_type, line, narration, chat_trust_tag(&trust), info)
             }
             QueuedChatKind::Disguised { chat_type, message } => {
                 if !has_player || !visible {

@@ -1,4 +1,3 @@
-use super::super::Game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
 
@@ -50,7 +49,7 @@ impl crate::game::ClientGame<'_> {
                 sunrise_items::items::fire_starter_pitch(is_fire_charge, &mut self.common.world.random);
             self.client.audio.0.play(sound, Some(at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
-                self.with_hand(hand, Game::consume_held);
+                self.with_hand(hand, |game| game.consume_held());
             }
             return true;
         }
@@ -73,7 +72,7 @@ impl crate::game::ClientGame<'_> {
             ];
             self.client.audio.0.play(sound, Some(target_at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
-                self.with_hand(hand, Game::consume_held);
+                self.with_hand(hand, |game| game.consume_held());
             }
             return true;
         }
@@ -86,3 +85,4 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

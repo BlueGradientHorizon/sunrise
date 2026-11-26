@@ -660,7 +660,7 @@ impl crate::game::ClientGame<'_> {
                 };
                 m.extra
                     .slot_stack(using_slot)
-                    .map_or(25, |stack| Self::charge_ticks(stack).max(1)) as i32
+                    .map_or(25, |stack| sunrise_gameplay_common::game::CommonGame::charge_ticks(stack).max(1)) as i32
             });
             self.common.mobs[i].extra.held_arm_pose = poses;
             if let Some(duration) = charge_duration {
@@ -1520,7 +1520,7 @@ impl crate::game::ClientGame<'_> {
                 |c| {
                     cart_lerps
                         .get_mut(&(c.id as i32))
-                        .is_some_and(|l| l.tick(c))
+                        .is_some_and(|l| super::minecarts::tick_cart_lerp(l, c))
                 },
             );
             self.tick_remote_projectiles(&mut step);

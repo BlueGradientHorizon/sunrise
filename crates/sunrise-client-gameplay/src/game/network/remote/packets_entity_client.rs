@@ -138,8 +138,8 @@ impl crate::game::ClientGame<'_> {
                 let id = p.id as u32;
                 self.sprint_particle(position, movement, support, width, |game| {
                     // this.random: the rabbit's own, x then z.
-                    game.mob_index
-                        .get_mut(&mut game.mobs, id)
+                    game.common.mob_index
+                        .get_mut(&mut game.common.mobs, id)
                         .map(|m| (m.random.next_double(), m.random.next_double()))
                 });
             }

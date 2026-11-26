@@ -1083,7 +1083,7 @@ impl crate::game::ClientGame<'_> {
         if lerp.current.is_empty() {
             return None;
         }
-        let (p, _, yaw, pitch) = lerp.at(partial);
+        let (p, _, yaw, pitch) = minecarts::cart_lerp_at(lerp, partial);
         Some(([p.x, p.y, p.z], yaw, pitch))
     }
     /// Status for `sunrise-ctl status`.

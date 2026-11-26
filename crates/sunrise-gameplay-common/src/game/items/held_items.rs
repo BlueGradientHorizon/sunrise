@@ -390,7 +390,7 @@ impl crate::game::CommonGame<'_> {
         self.held().cloned()
     }
 
-    pub(in crate::game) fn charge_ticks(stack: &ItemStack) -> u32 {
+    pub fn charge_ticks(stack: &ItemStack) -> u32 {
         // crossbow_charge_time: 1.25 s, minus 0.25 s per Quick Charge level.
         let seconds = 1.25 - 0.25 * stack.enchantment_level("minecraft:quick_charge") as f32;
         (seconds.max(0.0) * 20.0).floor() as u32
