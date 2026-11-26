@@ -422,7 +422,7 @@ pub enum BlockStateProperty {
 /// Refused drafts are reported by the content admission path naming the submitting mod,
 /// without admitting part of its declarations.
 /// `Default` and [`Block::new`] leave out what a content file leaves out: every field is empty
-/// except `item`, true, as in a file.
+/// except `item` and `use_block_description_prefix`, true, as in a file.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]

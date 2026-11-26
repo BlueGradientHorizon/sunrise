@@ -138,7 +138,7 @@ pub struct Sprites {
     /// The first frame, at its own side, of each layer larger than the array's edge, set by
     /// [`Sprites::finish`]: `RenderAssets::atlas_sprite_pixels` returns it unscaled, where the
     /// array holds it shrunk to the edge.
-    pub oversized: std::collections::BTreeMap<u32, (u32, Vec<u8>)>,
+    pub(crate) oversized: std::collections::BTreeMap<u32, (u32, Vec<u8>)>,
     /// Each layer's LabPBR maps (`_n` normals, `_s` specular) beside its texture: their
     /// frames at their own resolution (square).
     pbr: Vec<[Option<(u32, Vec<Vec<u8>>)>; 2]>,

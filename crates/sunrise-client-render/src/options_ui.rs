@@ -1461,7 +1461,6 @@ fn key_conflicts(
     conflicts
 }
 
-/// A native mod's title or key category on Controls: bold and underlined, centred on the row at `y`.
 /// The caption of a key row: a vanilla mapping's name is its own translation key, and
 /// Sunrise's own keys ([`crate::extras::KEYS`]) have theirs.
 fn key_caption(name: &str) -> &str {
@@ -1471,6 +1470,7 @@ fn key_caption(name: &str) -> &str {
         .map_or(name, |(_, caption)| caption)
 }
 
+/// A native mod's title or key category on Controls: bold and underlined, centred on the row at `y`.
 fn section_title(text: Text, y: f32, w: f32) -> Widget {
     Widget {
         x: 0.0,
