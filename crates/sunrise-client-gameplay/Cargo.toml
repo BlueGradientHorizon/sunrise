@@ -60,8 +60,15 @@ winit = "0.30.13"
 mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
 tempfile = "3"
 sunrise-gameplay-common = { path = "../sunrise-gameplay-common", features = ["test-support"] }
-sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-mob-kind"] }
+sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-dry-side", "test-menu-validity", "test-mob-kind", "test-pack-feedback", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-resource-cache", "test-tooltip-factories"] }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"] }
+sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"] }
+sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication"] }
+sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"] }
+sunrise-threads = { path = "../sunrise-threads", features = ["test-allocation-count", "test-game-dir"] }
+mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"] }
+sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
+sunrise-world = { path = "../sunrise-world", features = ["test-support"] }
 
 [lints]
 workspace = true
@@ -76,7 +83,7 @@ sunrise-extras = ["client", "friends"]
 friends = ["dep:sunrise-friends"]
 controllers = ["client", "sunrise-client-lib/controllers", "sunrise-client-input/controllers", "dep:gilrs", "dep:sunrise-dualsense"]
 audio = ["client", "sunrise-client-lib/audio", "sunrise-client-render/audio"]
-test-support = ["sunrise-gameplay-common/test-support", "sunrise-client-render/test-support", "dep:mod_platform"]
+test-support = ["sunrise-gameplay-common/test-support", "sunrise-client-render/test-support", "dep:mod_platform", "sunrise-hooks/test-support", "sunrise-game-data/test-language-publication", "sunrise-client-lib/test-menu-validity", "sunrise-client-lib/test-payload-probe", "sunrise-client-lib/test-publication-scope", "sunrise-client-lib/test-residency-observer", "sunrise-client-lib/test-dry-side", "sunrise-client-lib/test-tooltip-factories", "sunrise-client-lib/test-pack-feedback", "sunrise-client-lib/test-resource-cache", "sunrise-mod-runtime/test-work-count", "sunrise-threads/test-allocation-count", "sunrise-threads/test-game-dir", "mod_api/testing", "sunrise-items/test-support", "sunrise-world/test-support"]
 client = ["dep:sunrise-theme", "dep:sunrise-optifine", "dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:naga", "dep:ab_glyph"]
 default = ["client"]
 

@@ -181,6 +181,7 @@ fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
 /// `BlockItem.place` and predict where the block goes.
 #[cfg(feature = "client")]
 #[test]
+#[ignore = "daily"]
 fn an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block() {
     let mut resources = None;
     let Some(mut game) = client_game(&mut resources) else {

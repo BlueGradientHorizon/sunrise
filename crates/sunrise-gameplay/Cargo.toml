@@ -39,7 +39,14 @@ mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", featu
 tempfile = "3"
 sunrise-gameplay-common = { path = "../sunrise-gameplay-common", features = ["test-support"] }
 mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"] }
-sunrise-sim = { path = "../sunrise-sim", features = ["test-mob-kind"] }
+sunrise-sim = { path = "../sunrise-sim", features = ["test-dry-side", "test-menu-validity", "test-mob-kind", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-support"] }
+sunrise-level = { path = "../sunrise-level", features = ["test-support"] }
+sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication"] }
+sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"] }
+sunrise-threads = { path = "../sunrise-threads", features = ["test-allocation-count", "test-game-dir"] }
+mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"] }
+sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
+sunrise-world = { path = "../sunrise-world", features = ["test-support"] }
 
 
 [lints]
@@ -51,4 +58,4 @@ sunrise-mod-api-gen = { path = "../sunrise-mod-api-gen" }
 [features]
 parity-fixtures = []
 state-digest = []
-test-support = ["sunrise-gameplay-common/test-support", "dep:mod_platform"]
+test-support = ["sunrise-gameplay-common/test-support", "dep:mod_platform", "sunrise-game-data/test-language-publication", "sunrise-mod-runtime/test-work-count", "sunrise-threads/test-allocation-count", "sunrise-threads/test-game-dir", "mod_api/testing", "sunrise-items/test-support", "sunrise-world/test-support", "sunrise-sim/test-dry-side", "sunrise-sim/test-menu-validity", "sunrise-sim/test-mob-kind", "sunrise-sim/test-payload-probe", "sunrise-sim/test-publication-scope", "sunrise-sim/test-residency-observer", "sunrise-sim/test-support", "sunrise-level/test-support"]

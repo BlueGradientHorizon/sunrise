@@ -17,8 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def method(source, name):
-    # Strip moved-method visibility (`pub(super)`, `pub(in crate::game)`, or side-private) for the private fixture.
+    # Strip moved-method visibility (`pub`, `pub(crate)`, `pub(super)`, `pub(in crate::game)`, or side-private) for the private fixture.
     vis_prefixes = (
+        "pub fn",
+        "pub(crate) fn",
         "pub(super) fn",
         "pub(in crate::game) fn",
         "pub(in crate::game::client_side) fn",

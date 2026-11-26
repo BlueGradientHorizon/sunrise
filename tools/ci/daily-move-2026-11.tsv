@@ -2,7 +2,6 @@
 cargo-sunrise-mod	bin:cargo-sunrise-mod	layouts::tests::the_probe_builds_dependencies_with_their_resolved_features	crates/cargo-sunrise-mod/src/layouts.rs:310	slow
 cargo-sunrise-mod	test:bounded_reads	bounded_catalog_commands	crates/cargo-sunrise-mod/tests/bounded_reads.rs:96	slow
 sunrise-gameplay-common	lib	game::api_values::loot_values::query_tests::queried_ability_parts_grant_and_deny	crates/sunrise-gameplay-common/src/game/modding/api_values/loot_query_tests.rs:109	game-boot
-sunrise-client	lib	game::server_side::api_values::read_stack_tests::read_consumers_forward_nonresident_stacks_and_mutants	crates/sunrise-client/src/game/modding/api_values/read_stack_tests.rs:38	slow
 sunrise-client	lib	cut_layout::game::server_side::commands::selector_bounds_tests::actual_selector_uses_body_overlap_but_distance_stays_at_the_origin	crates/sunrise-client/src/cut_layout/game/administration/commands/mod.rs:248	game-boot
 sunrise-client	lib	cut_layout::game::server_side::commands_server::world_cmds::allay_owner_damage_tests::allay_owner_adapters_compare_the_actual_player_uuid	crates/sunrise-client/src/cut_layout/game/administration/commands/world_cmds_server.rs:11	game-boot
 sunrise-client	lib	cut_layout::game::server_side::maps_server::tests::map_on_banner_in_adventure_mode_honours_can_place_on	crates/sunrise-client/src/cut_layout/game/blocks/maps/mod.rs:16	game-boot

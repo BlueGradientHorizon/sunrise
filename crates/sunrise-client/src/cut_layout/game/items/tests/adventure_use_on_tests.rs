@@ -332,6 +332,7 @@ fn a_builder_use_on_is_unaffected() {
 /// in adventure mode off a matching `can_place_on` an axe does not predict the
 /// strip (no sound, no swing), while a builder or a matching stack does.
 #[test]
+#[ignore = "daily"]
 fn an_adventure_use_on_is_not_predicted_on_the_client() {
     if std::env::var_os("SUNRISE_TEST_RESOURCES").is_none() {
         return;

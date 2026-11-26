@@ -256,8 +256,11 @@ pub trait SideOps: Sized {
     fn side_pick_shares_vehicle(game: &Self::Game<'_>, id: u32) -> bool;
     fn side_refresh_client_pick(game: &mut Self::Game<'_>, partial: f32);
     fn side_release_tick_targets(game: &mut Self::Game<'_>);
+    // A default body: this crate can have the feature on while the side crate that implements it does not.
     #[cfg(any(test, feature = "test-support"))]
-    fn side_set_test_forced_hit(game: &mut Self::Game<'_>, hit: Option<Hit>);
+    fn side_set_test_forced_hit(game: &mut Self::Game<'_>, hit: Option<Hit>) {
+        let _ = (game, hit);
+    }
     fn side_reset_client_item_use(game: &mut Self::Game<'_>);
     fn side_tick_client_item_use(game: &mut Self::Game<'_>);
     fn side_client_display_position(game: &Self::Game<'_>, entity: EntityRef) -> Option<[f64; 3]>;

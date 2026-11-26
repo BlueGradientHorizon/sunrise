@@ -16,7 +16,7 @@ class ItemAttackBoundary(unittest.TestCase):
         swing_source = (ROOT / 'crates/sunrise-gameplay-common/src/game/native_hooks/item_attack.rs').read_text()
         left_start = left_source.index('    pub(crate) fn native_left_click_entity_event')
         left_end = left_source.index('\n}\n', left_start)
-        swing_start = swing_source.index('     fn native_entity_swing_event')
+        swing_start = swing_source.index('    fn native_entity_swing_event')
         swing_end = swing_source.index('\n}\n', swing_start)
         methods = (
             left_source[left_start:left_end].replace('pub(crate)', 'pub')
