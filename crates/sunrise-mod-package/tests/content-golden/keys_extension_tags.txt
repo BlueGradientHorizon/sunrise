@@ -42,6 +42,7 @@ Content {
     ),
     files: [
         "data/keys_extension_tags/sunrise/block/counter.json",
+        "data/sunrise/tags/block/golem_heads.json",
         "data/sunrise/tags/block/villager_secondary_poi/armorer.json",
         "data/sunrise/tags/block/villager_secondary_poi/butcher.json",
         "data/sunrise/tags/block/villager_secondary_poi/cartographer.json",
