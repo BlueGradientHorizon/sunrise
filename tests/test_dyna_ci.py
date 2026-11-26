@@ -7,17 +7,16 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
 
 from tests.os_support import POSIX_BASH, needs_runner_shell
 from tests.test_ci_concurrency import expression_value
+from tools.ci import vendored_yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"))
-import yaml
+yaml = vendored_yaml.load()
 
 WORKFLOWS = ROOT / ".github/workflows"
 

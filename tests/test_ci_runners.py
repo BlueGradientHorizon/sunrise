@@ -15,7 +15,9 @@ import unittest
 from pathlib import Path
 
 from tests.os_support import needs_runner_shell
-from tests.test_ci_concurrency import yaml
+from tools.ci import vendored_yaml
+
+yaml = vendored_yaml.load()
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github/workflows"

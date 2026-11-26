@@ -15,7 +15,6 @@ from pathlib import Path
 import tools
 from tools import lab, prebuilt_game
 from tests.os_support import needs_runner_shell, needs_symlinks
-from tests.test_ci_concurrency import yaml
 
 COMMIT = "c" * 40
 

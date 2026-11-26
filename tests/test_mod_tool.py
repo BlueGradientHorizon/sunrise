@@ -2,12 +2,14 @@
 import json
 import re
 import shutil
-import sys
 import unittest
 from pathlib import Path
 
-from tests.test_ci_concurrency import ROOT, yaml
+from tests.test_ci_concurrency import ROOT
 from tools.ci import mod_tool
+from tools.ci import vendored_yaml
+
+yaml = vendored_yaml.load()
 
 
 def package(name, root="/w"):
