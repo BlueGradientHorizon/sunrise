@@ -309,8 +309,10 @@ class DynaRoutingTests(unittest.TestCase):
             self.assertEqual(block["needs"], "changes")
             self.assertIn("timeout-minutes", block)
             self.assertEqual(block["if"], conditions[id(block)])
+        for block in (blocks["lint"], runtime, static):
             guard = block["steps"][0]
-            self.assertEqual(guard["if"], "needs.changes.result != 'success'")
+            self.assertEqual(guard["if"], "needs.changes.result != 'success' || (github.event_name == 'workflow_dispatch' "
+                             "&& inputs.pr != '' && needs.changes.outputs.pr_merge == '')")
             self.assertEqual(guard["run"], "exit 1")
         # verify-static routes as verify does, except that a pull request outside the gate and a contributor's
         # pull request stay on GitHub's runners, and our pool gives it a medium runner (it compiles nothing heavy).

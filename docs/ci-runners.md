@@ -170,12 +170,27 @@ changes into one heavy run. The rule is `tools/ci/pr_gate.py`; `tests/test_pr_ga
 
 A reviewer runs the heavy gate on one contributor's pull request with `gh workflow run dyna-ci.yml -f pr=<number>`. A rollup or
 sync pull request of this repository is refused: each push to it already runs the heavy gate.
-Main's workflow checks out that pull request's test merge with its base (GitHub's merge commit) with a read-only
-token. Its jobs take the same runners as any heavy run of that origin: a pull request of this repository runs on
-Dyna's pool when it is on, and a fork's on boat-large (for contributors on boat's list) or GitHub's runners, never
-Dyna's (`tools/ci/dyna_ci_runner.sh`). The `pr-status` job, which runs none of its code and alone may write commit
-statuses, posts `dispatched/lint`, `dispatched/verify` and `dispatched/verify-static` on the pull request's head
-commit, each naming the merge commit it tested.
+Main's workflow uses a read-only token to select GitHub's test merge for an open pull request into this repository.
+It reads the immutable merge commit first, then reads the target branch's live ref independently. The merge must
+have exactly two parents: that live tip first and the head SHA named by the pull request second. Neither the
+pull request response's base SHA nor the dispatch revision establishes freshness.
+
+[Fetching a pull request with REST GET asks GitHub to create the test merge in the background][test-merge-get].
+[GitHub documents that `mergeable` can be null while it works and advises reading again after a moment][get-pr].
+The selector repeats that same read-only request when the merge is stale or still computing, or a conflict was
+reported against an older base. This has a short deadline and may not produce a fresh merge in time. If the
+proof fails, the gate stops before any of its check jobs check out code or publish results.
+
+The selection step records the full base, merge and head SHAs in the run summary. The check jobs check out
+only that merge SHA. Their runner routing is unchanged: a pull request of this repository runs on Dyna's pool
+when it is on, and a fork's on boat-large (for contributors on boat's list) or GitHub's runners, never Dyna's
+(`tools/ci/dyna_ci_runner.sh`). The `pr-status` job, which runs none of the pull request's code and alone may write
+commit statuses, posts `dispatched/lint`, `dispatched/verify` and `dispatched/verify-static` on the head, each
+naming the test merge. The base or head can move after selection; reviewers still compare the recorded SHAs
+with the live base and head before relying on the gate to merge.
+
+[test-merge-get]: https://docs.github.com/en/rest/guides/getting-started-with-the-git-database-api#checking-mergeability-of-pull-requests
+[get-pr]: https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
 
 The daily's vanilla parity job uses Dyna's copy of the prepared vanilla data (`/cache/sunrise-local`). It runs
 only on the main head captured at dispatch. The public log shows harness names and outcomes; harness output
