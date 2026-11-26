@@ -11,7 +11,7 @@ pub trait Hooks {
     /// or equipment model that runs its own `setupAnim` (`HumanoidArmorLayer`,
     /// `EquipmentLayerRenderer`), so a worn chestplate's model gets a call of its own. `entity` is
     /// the draw's render state. `layer` names the model by vanilla's `ModelLayerLocation`
-    /// (`minecraft:player#main`, `minecraft:zombie#inner_armor`; a mod-registered layer is
+    /// (`minecraft:player#main`, `minecraft:zombie#chestplate`; a mod-registered layer is
     /// `mymod:golem#main`), so a mod-registered layer or renderer is covered too. `model` lends the
     /// posed hierarchy as a [`crate::FrameModelPoseEdit`], addressed by the part indices
     /// [`crate::FrameModel::part`] resolves: `set_pose(index, pose)` writes position, rotation and

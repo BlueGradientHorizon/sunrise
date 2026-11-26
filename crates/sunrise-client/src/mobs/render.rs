@@ -62,7 +62,7 @@ pub trait RenderDataSource {
 
 /// What a draw tells the game at the RETURN of `EntityModel.setupAnim` for each model it poses.
 pub trait ModelPosed {
-    /// `layer` is the model's key in `Mob::kind`'s layers (`main`, `zombie#inner_armor`);
+    /// `layer` is the model's key in `Mob::kind`'s layers (`main`, `zombie#chestplate`);
     /// `model` lends the posed hierarchy.
     fn posed(
         &self,

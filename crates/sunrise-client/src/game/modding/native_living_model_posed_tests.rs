@@ -161,7 +161,7 @@ fn a_worn_chestplate_model_gets_a_call_of_its_own() {
                 .collect();
             assert_eq!(layers[0], "minecraft:zombie#main");
             assert!(
-                layers[1..].iter().any(|layer| layer.contains("armor")),
+                layers[1..].contains(&"minecraft:zombie#chestplate".to_string()),
                 "{layers:?}"
             );
         });
