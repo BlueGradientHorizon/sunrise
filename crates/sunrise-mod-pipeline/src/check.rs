@@ -43,21 +43,6 @@ pub fn line_column(text: &str, offset: usize) -> (usize, usize) {
     (line, column)
 }
 
-pub fn located(file: &str, text: &str, offset: Option<usize>, message: String) -> Problem {
-    match offset {
-        Some(at) => {
-            let (line, column) = line_column(text, at);
-            Problem {
-                file: file.to_owned(),
-                line,
-                column,
-                message,
-            }
-        }
-        None => problem(file, message),
-    }
-}
-
 /// Validates `module` and translates every entry point for Vulkan (SPIR-V), Metal (MSL) and
 /// DirectX 12 (HLSL), catching backend panics so a mod shader never takes down the game or
 /// `cargo sunrise-mod check`. Returns each refusal as `<backend> refuses it: <reason>`.

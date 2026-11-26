@@ -20,7 +20,7 @@ pub mod check;
 pub mod guard;
 pub mod stubs;
 
-use crate::check::{Problem, line_column, located, problem, translate_backends};
+use crate::check::{Problem, line_column, problem, translate_backends};
 use naga::front::glsl::InterfaceLimits;
 use sunrise_glsl::{Expanded, Glue, Includes, Inputs, ResourceKind, Stages, Translated};
 
@@ -507,15 +507,15 @@ fn is_supported_vertex_glsl_type(ty: &str) -> bool {
     )
 }
 
-/// A refusal of the declaration at byte `at` of `stage`'s text, in the file and at the line that
-/// byte came from ([`Expanded::error_at`]: an `#include`d declaration is located in its own
-/// file), and at its column in the expanded text.
-fn refusal_at(stage: &Expanded, at: usize, message: String) -> Problem {
-    let error = stage.error_at(Some(at), message);
+/// A refusal at byte `at` of `stage`'s text (none when it has no place: the stage file, no line),
+/// in the file and at the line that byte came from ([`Expanded::error_at`]: an `#include`d
+/// declaration is located in its own file), and at its column in the expanded text.
+fn refusal_at(stage: &Expanded, at: Option<usize>, message: String) -> Problem {
+    let error = stage.error_at(at, message);
     Problem {
         file: error.file,
         line: error.line as usize,
-        column: line_column(stage.text(), at).1,
+        column: at.map_or(0, |at| line_column(stage.text(), at).1),
         message: error.message,
     }
 }
@@ -529,7 +529,7 @@ fn declared_vertex_inputs(vertex: &Expanded) -> Result<Vec<(String, String)>, Pr
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(decls.len());
     for (offset, name, ty) in decls {
-        let refuse = |message: String| refusal_at(vertex, offset, message);
+        let refuse = |message: String| refusal_at(vertex, Some(offset), message);
         if !is_supported_vertex_glsl_type(ty) {
             return Err(refuse(format!(
                 "unsupported vertex input type `{ty}` for `{name}`: expected float/vecN/int/ivecN/uint/uvecN"
@@ -590,7 +590,7 @@ fn validate_vertex_inputs(
             None => {
                 return Err(refusal_at(
                     vertex,
-                    offset,
+                    Some(offset),
                     format!(
                         "undeclared vertex input `{name}`: declare it in RenderPipeline::vertex_binding"
                     ),
@@ -599,7 +599,7 @@ fn validate_vertex_inputs(
             Some((_, expected)) if *expected != ty => {
                 return Err(refusal_at(
                     vertex,
-                    offset,
+                    Some(offset),
                     format!(
                         "vertex input `{name}` declared as `{ty}` in shader, expected `{expected}` from VertexFormat"
                     ),
@@ -753,11 +753,9 @@ fn translate_compute_inner(
         &includes,
         Some(options.defines),
     )
-    .map_err(|e| vec![problem(sources.file, e.to_string())])?
-    .text()
-    .to_owned();
-    if let Some((at, msg)) = guard::refusal(&expanded) {
-        return Err(vec![located(sources.file, &expanded, at, msg)]);
+    .map_err(|e| vec![problem(sources.file, e.to_string())])?;
+    if let Some((at, msg)) = guard::refusal(expanded.text()) {
+        return Err(vec![refusal_at(&expanded, at, msg)]);
     }
     let set = assign_set1_bindings(options.mod_bindings, 0);
     let inputs = Inputs {
@@ -855,32 +853,21 @@ fn translate_inner(
     .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
     let vertex_expanded = vertex.text().to_owned();
     if let Some((at, msg)) = guard::refusal(&vertex_expanded) {
-        return Err(vec![located(
-            sources.vertex_file,
-            &vertex_expanded,
-            at,
-            msg,
-        )]);
+        return Err(vec![refusal_at(&vertex, at, msg)]);
     }
     validate_vertex_inputs(&vertex, options.vertex_inputs).map_err(|prob| vec![prob])?;
 
-    let fragment_expanded = sunrise_glsl::expand_includes(
+    let fragment = sunrise_glsl::expand_includes(
         sources.fragment,
         sources.fragment_file,
         sources.fragment_dir,
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?
-    .text()
-    .to_owned();
+    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?;
+    let fragment_expanded = fragment.text().to_owned();
     if let Some((at, msg)) = guard::refusal(&fragment_expanded) {
-        return Err(vec![located(
-            sources.fragment_file,
-            &fragment_expanded,
-            at,
-            msg,
-        )]);
+        return Err(vec![refusal_at(&fragment, at, msg)]);
     }
 
     // When both stages live in the same folder, pass original sources so `__LINE__` stays exact.
@@ -1315,6 +1302,42 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
         assert_eq!(err[0].file, "assets/example/shaders/core/glow.fsh");
         assert!(err[0].line > 0, "{err:?}");
         assert!(err[0].message.contains("chains more than 200"), "{err:?}");
+    }
+
+    /// The guard refuses an expression chained too long in an included file, and the refusal
+    /// names that file and the line in it, not the stage file and a line of the expanded text.
+    #[test]
+    fn a_guard_refusal_in_an_include_is_located_in_the_include() {
+        let chain = format!("float a = 1.0;\nfloat x = a{};\n", "+a".repeat(250));
+        let include = |id: &str| match id {
+            "example:shaders/include/chain.glsl" => Ok(Some(chain.clone())),
+            other => stub_include(other),
+        };
+        let fsh = "#version 330\nin vec2 texCoord0;\nout vec4 fragColor;\n\
+            #include <example:chain.glsl>\nvoid main() { fragColor = vec4(1.0); }\n";
+        let err = translate(&sources(VSH, fsh), &Options::default(), &include).unwrap_err();
+        assert_eq!(err.len(), 1, "{err:?}");
+        assert_eq!(err[0].file, "example:shaders/include/chain.glsl");
+        assert_eq!(err[0].line, 2);
+        assert!(err[0].message.contains("chains more than 200"), "{err:?}");
+
+        let csh = "#version 450\nlayout(local_size_x = 1) in;\n\
+            #include <example:chain.glsl>\nvoid main() {}\n";
+        let compute = ComputeSources {
+            file: "assets/example/shaders/compute/a.csh",
+            dir: "example:shaders/compute/",
+            source: csh,
+        };
+        let options = ComputeOptions {
+            defines: &[],
+            mod_bindings: &[],
+            check_backends: false,
+            interface: DEVICELESS_INTERFACE_LIMITS,
+        };
+        let err = translate_compute(&compute, &options, &include).unwrap_err();
+        assert_eq!(err.len(), 1, "{err:?}");
+        assert_eq!(err[0].file, "example:shaders/include/chain.glsl");
+        assert_eq!(err[0].line, 2);
     }
 
     /// `sampleSprite`'s texel arithmetic: `uv` 0 to 1 spans the sprite's rect once, the far edge
