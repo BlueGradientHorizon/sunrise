@@ -952,6 +952,7 @@ impl Game<'_> {
         }
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type_of(dim)));
+        world.golem_heads = Some(self.resolve_golem_heads());
         Ok(Parked {
             world,
             streaming,
