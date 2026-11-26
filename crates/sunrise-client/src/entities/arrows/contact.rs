@@ -1,4 +1,6 @@
 // Included in arrows.rs to retain its private scope.
+/// `AbstractArrow.tick`'s block phase for a thrown trident: the zero-width
+/// `level().clip(new ClipContext(position(), position().add(movement),
 /// ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this))`, then
 /// `AbstractArrow.onHitBlock`'s `position().subtract(signum * 0.05)`. Returns
 /// the position to stop at (pull-back included), the block that was hit and

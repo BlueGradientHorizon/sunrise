@@ -147,8 +147,6 @@ impl ArrowScene<'_, '_> {
         true
     }
 }
-/// `AbstractArrow.tick`'s block phase for a thrown trident: the zero-width
-/// `level().clip(new ClipContext(position(), position().add(movement),
 include!("arrows/contact.rs");
 
 include!("arrows/flight.rs");
