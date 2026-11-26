@@ -6,11 +6,12 @@ use super::*;
 pub(super) struct FrameAttempt<K = FrameKey>(Option<K>);
 
 /// The frame the renderer would be made with (`Renderer::requested_frame`), the pick's path,
-/// whether the loader accepted it.
+/// whether the loader accepted it, and its HDR request (`PickedPack::hdr`).
 type FrameKey = (
     Option<sunrise_client::gfx::FrameConfiguration>,
     PathBuf,
     Option<bool>,
+    Option<sunrise_shaders::Tonemap>,
 );
 
 impl<K: PartialEq> FrameAttempt<K> {
@@ -84,19 +85,23 @@ impl Game<'_> {
         };
         // The renderer's offer can change while the game runs (Vulkan's formats follow desktop
         // HDR and the window's output), and the frame with it.
-        let request = self.picked_pack_shape().frame();
+        let shape = self.picked_pack_shape();
+        let request = shape.frame();
         let wanted = self
             .renderer
             .as_ref()
             .map(|r| r.requested_frame(&self.settings.sunrise, request));
-        if !self.frame_attempted.changed((wanted, path, outcome)) {
+        if !self
+            .frame_attempted
+            .changed((wanted, path, outcome, shape.hdr))
+        {
             return;
         }
-        if self
-            .renderer
-            .as_ref()
-            .is_none_or(|r| r.frame_follows(&self.settings.sunrise, request))
-        {
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+        let follows = renderer.frame_follows(&self.settings.sunrise, request);
+        if !shader_packs::reconcile_pack_hdr(follows, &mut renderer.pack_hdr, shape.hdr) {
             return;
         }
         if let Err(e) = self.rebuild_renderer() {

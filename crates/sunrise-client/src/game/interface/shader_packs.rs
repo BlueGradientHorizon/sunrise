@@ -217,9 +217,13 @@ fn pack_shape(
             .file_name()
             .is_none_or(|f| !active_pack(&f.to_string_lossy(), &settings.mods).is_empty());
     // Sunrise's HDR is asked for only where it can be had: under the switch, by a pack that runs.
-    let hdr = if active && switch {
+    let hdr = if !switch {
+        None
+    } else if active {
         pick_hdr.answer(picked, &path)
     } else {
+        // Not running: whatever runs it again reads its files as they are then.
+        pick_hdr.forget();
         None
     };
     // A pack draws the terrain flat where the device can, and its passes read the solid quads'
@@ -233,35 +237,58 @@ fn pack_shape(
 }
 
 /// The pick's `sunrise.hdr` request under the switch. The frame follows the pick every frame
-/// (`follow_frame`), and reading the request reads all the pack's sources for its options: it
-/// is read when the pick changes, and again after each point where the pick's files or chosen
-/// options can change (`forget`): an options save, a resource reload, a scan of the packs.
+/// (`follow_frame`), and reading the request reads all the pack's sources for its options. It
+/// is read again when the pick changes, after a frame where the pick doesn't run (off, refused,
+/// missing, its mod off), and after each point where the pick's files or chosen options can
+/// change (`forget`): a load of the pack, an options save, a resource reload, a scan of the
+/// packs. Each frame otherwise compares the pick's name and reads nothing.
 #[derive(Default)]
 pub(crate) struct PickHdr {
-    /// The pick (`picked_pack`) it was read for, and the request.
-    read: Option<(String, Option<Tonemap>)>,
+    /// The pick (`picked_pack`) the rest is for.
+    pick: String,
+    /// Its request as last read; `None`: to be read.
+    hdr: Option<Option<Tonemap>>,
+    /// The notes about its request already in the log, so a read again doesn't repeat them.
+    reported: Vec<String>,
 }
 
 impl PickHdr {
-    /// The request of pack `picked` at `path`, read unless a read of that pick is kept. An
-    /// unknown value is logged when it is read.
+    /// The request of pack `picked` at `path`, read unless a read of that pick is kept. A note
+    /// about an unknown value is logged once.
     fn answer(&mut self, picked: &str, path: &Path) -> Option<Tonemap> {
-        if let Some((at, hdr)) = &self.read
-            && at == picked
-        {
-            return *hdr;
+        self.follow(picked);
+        if let Some(hdr) = self.hdr {
+            return hdr;
         }
         let (hdr, notes) = read_pick_hdr(picked, path);
-        for note in notes {
+        for note in self.unreported(notes) {
             log::warn!("shader pack {picked}: {note}");
         }
-        self.read = Some((picked.to_owned(), hdr));
+        self.hdr = Some(hdr);
         hdr
     }
 
     /// The pick's files or chosen options may have changed: the next answer reads them again.
     pub(super) fn forget(&mut self) {
-        self.read = None;
+        self.hdr = None;
+    }
+
+    fn follow(&mut self, picked: &str) {
+        if self.pick != picked {
+            picked.clone_into(&mut self.pick);
+            self.hdr = None;
+            self.reported.clear();
+        }
+    }
+
+    /// The notes of `notes` not yet in the log, now counted as in it.
+    fn unreported(&mut self, notes: Vec<String>) -> Vec<String> {
+        let new: Vec<String> = notes
+            .into_iter()
+            .filter(|n| !self.reported.contains(n))
+            .collect();
+        self.reported.extend(new.iter().cloned());
+        new
     }
 }
 
@@ -275,6 +302,11 @@ fn read_pick_hdr(name: &str, path: &Path) -> (Option<Tonemap>, Vec<String>) {
     };
     let pack = pack.with_chosen(chosen_shader_options(name));
     let (properties, _) = sunrise_shaders::read_properties(&pack, &mut Macros::standard());
+    hdr_request(&properties)
+}
+
+/// The request in `properties` and its notes, as the log gives them.
+fn hdr_request(properties: &Properties) -> (Option<Tonemap>, Vec<String>) {
     let (hdr, notes) = properties.sunrise_hdr();
     let notes = notes
         .into_iter()
@@ -283,21 +315,55 @@ fn read_pick_hdr(name: &str, path: &Path) -> (Option<Tonemap>, Vec<String>) {
     (hdr, notes)
 }
 
-/// Under the switch, the loader's word on the pack's request read with the renderer's macros
-/// (`properties`) when it differs from `frame`, the one the renderer's frame was made for
-/// (`Renderer::pack_hdr`): the frame's answer counts.
-fn loaded_hdr_warning(
+/// The loader's read of pack `name`'s `shaders.properties` with `macros` (the standard set and
+/// the renderer's), and what it logs about it, in order: each required feature Sunrise lacks,
+/// each note of the file. Under the switch, also each note about the HDR request not already
+/// logged for the pick (`pick_hdr`), and, when the request read here differs from `frame`, the
+/// one the renderer's frame was made for (`Renderer::pack_hdr`), that the frame's answer counts.
+/// A load reads the pack's files again: the pick's request is read again at the next frame.
+fn loaded_properties(
+    pack: &Pack,
+    macros: &mut Macros,
     switch: bool,
     frame: Option<Tonemap>,
-    properties: &Properties,
-) -> Option<String> {
-    let loaded = properties.sunrise_hdr().0;
-    (switch && loaded != frame).then(|| {
-        format!(
-            "shaders.properties asks for Sunrise's HDR as {loaded:?} with the renderer's macros, \
-             but the frame was made for {frame:?}: the frame's answer counts"
-        )
-    })
+    name: &str,
+    pick_hdr: &mut PickHdr,
+) -> (Properties, Vec<String>) {
+    let (properties, mut log) = sunrise_shaders::read_properties(pack, macros);
+    log.extend(
+        properties
+            .notes
+            .iter()
+            .map(|n| format!("shaders.properties:{}: {}", n.line, n.message)),
+    );
+    if switch {
+        let (loaded, notes) = hdr_request(&properties);
+        pick_hdr.follow(name);
+        log.extend(pick_hdr.unreported(notes));
+        if loaded != frame {
+            log.push(format!(
+                "shaders.properties asks for Sunrise's HDR as {loaded:?} with the renderer's \
+                 macros, but the frame was made for {frame:?}: the frame's answer counts"
+            ));
+        }
+        pick_hdr.forget();
+    }
+    (properties, log)
+}
+
+/// The pick's HDR request `picked` (`PickedPack::hdr`) where the frame's configuration was
+/// looked at again: a frame that `follows` serves it from now on (`installed`,
+/// `Renderer::pack_hdr`). Whether the frame is to be made again; until a new one is made, the
+/// installed one keeps its own.
+pub(super) fn reconcile_pack_hdr(
+    follows: bool,
+    installed: &mut Option<Tonemap>,
+    picked: Option<Tonemap>,
+) -> bool {
+    if follows {
+        *installed = picked;
+    }
+    !follows
 }
 
 // A native mod can bundle a pack as `native-<mod-id>`; its Mods toggle controls it too.
@@ -533,24 +599,16 @@ impl Game<'_> {
                         let mut macros = Macros::standard();
                         renderer.define_pack_macros(&mut macros);
                         // Its conditionals test the pack's options too.
-                        let (properties, notes) =
-                            sunrise_shaders::read_properties(&pack, &mut macros);
-                        for note in notes {
-                            log::warn!("shader pack {name}: {note}");
-                        }
-                        for note in &properties.notes {
-                            log::warn!(
-                                "shader pack {name}: shaders.properties:{}: {}",
-                                note.line,
-                                note.message
-                            );
-                        }
-                        if let Some(warning) = loaded_hdr_warning(
+                        let (properties, log) = loaded_properties(
+                            &pack,
+                            &mut macros,
                             super::native_shaders::linear_frame_switch(),
                             renderer.pack_hdr,
-                            &properties,
-                        ) {
-                            log::warn!("shader pack {name}: {warning}");
+                            name,
+                            &mut self.native_shaders.pick_hdr.borrow_mut(),
+                        );
+                        for line in log {
+                            log::warn!("shader pack {name}: {line}");
                         }
                         let separate_ao = properties.separate_ao();
                         renderer.set_separate_ao(separate_ao);
@@ -1283,7 +1341,9 @@ mod rendered_item_tests {
 
 #[cfg(test)]
 mod native_pack_tests {
-    use super::{PickHdr, active_pack, first_pack_shape, loaded_hdr_warning, pack_shape};
+    use super::{
+        PickHdr, active_pack, first_pack_shape, loaded_properties, pack_shape, reconcile_pack_hdr,
+    };
     use sunrise_client::mod_list::{Installed, ModList, NativePage};
     use sunrise_shaders::Tonemap;
 
@@ -1404,6 +1464,12 @@ mod native_pack_tests {
         let mut shape = |state: &mut PickHdr, path: &std::path::Path| {
             shape_of(&mut settings, state, path, true)
         };
+        // The pick turned off, as the toggle does: no pack runs, under the switch.
+        let settings_off = |state: &mut PickHdr| {
+            let mut off = hdr_settings();
+            off.sunrise.shader_pack.clear();
+            assert!(!pack_shape(&off, true, state).draws_flat);
+        };
         assert_eq!(shape(&mut state, &asks), (true, Some(Tonemap::Pack)));
         // Replaced under the same name: kept until a boundary, read there.
         std::fs::write(
@@ -1421,6 +1487,19 @@ mod native_pack_tests {
         )
         .unwrap();
         assert_eq!(shape(&mut state, &plain), (false, None));
+        assert_eq!(shape(&mut state, &asks), (true, Some(Tonemap::Pack)));
+
+        // Turned off (the toggle's empty pick), replaced under its name, turned on again: read
+        // again.
+        settings_off(&mut state);
+        std::fs::write(asks.join("shaders/shaders.properties"), "x=1\n").unwrap();
+        assert_eq!(shape(&mut state, &asks), (false, None));
+        std::fs::write(
+            asks.join("shaders/shaders.properties"),
+            "sunrise.hdr=true\n",
+        )
+        .unwrap();
+        settings_off(&mut state);
         assert_eq!(shape(&mut state, &asks), (true, Some(Tonemap::Pack)));
 
         // Behind the pack's own switch, off by default: asked once the saved options turn it
@@ -1447,49 +1526,109 @@ mod native_pack_tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    /// The loader reads the request again with the renderer's macros: where one of them changes
-    /// the answer, it says the frame's answer counts, under the switch only. An unknown value is
-    /// noted, naming its key and value, by the frame's read under the switch, and never by the
-    /// file's own read.
+    /// The loader's read of the properties (`loaded_properties`, what a load logs), with the
+    /// renderer's macros, after the frame was made for the pick's request. Where a renderer
+    /// macro changes the request it says the frame's answer counts; an unknown value only the
+    /// renderer's macros reach is noted once, with its line, key and value, and one the frame's
+    /// read already noted is not noted again. Without the switch it logs what the file's own
+    /// notes are, as before. The load reads the pack's files again at the next frame.
     #[test]
-    fn the_loader_warns_where_the_renderers_macros_change_the_request() {
-        use sunrise_shaders::{Macros, Pack, read_properties};
+    fn the_loader_reads_the_request_again_with_the_renderers_macros() {
+        use sunrise_shaders::{Macros, Pack};
         let root = std::env::temp_dir().join(format!("sunrise-hdr-loader-{}", std::process::id()));
-        let renderer_only = hdr_pack(
+        let renderer_curve = hdr_pack(
             &root,
-            "renderer_only",
-            "#ifdef MC_GL_RENDERER_OTHER\nsunrise.hdr=true\n#endif\n",
+            "renderer_curve",
+            "sunrise.hdr=true\n#ifdef MC_GL_RENDERER_OTHER\nsunrise.hdr.tonemap=sunrise\n#endif\n",
         );
+        let renderer_bad = hdr_pack(
+            &root,
+            "renderer_bad",
+            "sunrise.hdr=true\n#ifdef MC_GL_RENDERER_OTHER\nsunrise.hdr.tonemap=maybe\n#endif\n",
+        );
+        let bad = hdr_pack(&root, "bad", "a=1\nsunrise.hdr = yes\n");
         let mut settings = hdr_settings();
         let mut state = PickHdr::default();
-        // The frame is picked with the standard macros: nothing asked.
-        let frame = shape_of(&mut settings, &mut state, &renderer_only, true).1;
-        assert_eq!(frame, None);
-        let pack = Pack::open(&renderer_only).unwrap();
-        let mut macros = Macros::standard();
-        macros.define_renderer(4);
-        let (loaded, notes) = read_properties(&pack, &mut macros);
-        assert!(notes.is_empty() && loaded.notes.is_empty());
-        assert_eq!(loaded.sunrise_hdr().0, Some(Tonemap::Pack));
-        assert!(loaded_hdr_warning(true, frame, &loaded).is_some());
-        assert_eq!(loaded_hdr_warning(false, frame, &loaded), None);
-        assert_eq!(loaded_hdr_warning(true, Some(Tonemap::Pack), &loaded), None);
+        let load = |state: &mut PickHdr, path: &std::path::Path, switch: bool, frame| {
+            let pack = Pack::open(path).unwrap();
+            let mut macros = Macros::standard();
+            macros.define_renderer(4);
+            let name = path.to_string_lossy();
+            loaded_properties(&pack, &mut macros, switch, frame, &name, state).1
+        };
+        let names_value = |line: &str, at: u32, key: &str, value: &str| {
+            line.starts_with(&format!("shaders.properties:{at}: "))
+                && line.contains(&format!("`{key}`"))
+                && line.contains(&format!("`{value}`"))
+        };
 
-        let unknown = hdr_pack(&root, "unknown", "a=1\nsunrise.hdr = yes\n");
-        let (hdr, notes) = super::read_pick_hdr("unknown", &unknown);
-        assert_eq!(hdr, None);
-        assert_eq!(notes.len(), 1);
-        assert!(notes[0].starts_with("shaders.properties:2: "));
-        assert!(notes[0].contains("`sunrise.hdr`") && notes[0].contains("`yes`"));
-        // The file's own read, the one the loader logs with the switch off, notes nothing.
-        let (loaded, notes) = read_properties(&Pack::open(&unknown).unwrap(), &mut macros);
-        assert!(
-            notes.is_empty() && loaded.notes.is_empty(),
-            "{:?}",
-            loaded.notes
+        // The frame is made for the standard macros' answer: the pack's curve.
+        let frame = shape_of(&mut settings, &mut state, &renderer_curve, true).1;
+        assert_eq!(frame, Some(Tonemap::Pack));
+        let warned = load(&mut state, &renderer_curve, true, frame);
+        assert_eq!(warned.len(), 1, "{warned:?}");
+        assert!(!warned[0].starts_with("shaders.properties:"));
+        assert!(load(&mut state, &renderer_curve, false, frame).is_empty());
+        // A frame made for the loader's answer: nothing to say.
+        assert!(load(&mut state, &renderer_curve, true, Some(Tonemap::Sunrise)).is_empty());
+
+        // An unknown value behind a renderer macro: the frame's read can't see it, the load
+        // notes it, once.
+        let frame = shape_of(&mut settings, &mut state, &renderer_bad, true).1;
+        assert_eq!(frame, Some(Tonemap::Pack));
+        let noted = load(&mut state, &renderer_bad, true, frame);
+        assert_eq!(noted.len(), 2, "{noted:?}");
+        assert!(names_value(&noted[0], 3, "sunrise.hdr.tonemap", "maybe"));
+        assert_eq!(load(&mut state, &renderer_bad, true, frame).len(), 1);
+        assert!(load(&mut state, &renderer_bad, false, frame).is_empty());
+
+        // One the frame's read noted is not noted again by the load.
+        let frame = shape_of(&mut settings, &mut state, &bad, true).1;
+        assert_eq!(frame, None);
+        assert!(load(&mut state, &bad, true, frame).is_empty());
+
+        // The load reads the files again: the pack replaced under its name gives its new
+        // request at the next frame.
+        let frame = shape_of(&mut settings, &mut state, &renderer_curve, true);
+        assert_eq!(frame, (true, Some(Tonemap::Pack)));
+        std::fs::write(
+            renderer_curve.join("shaders/shaders.properties"),
+            "separateAo=true\n",
+        )
+        .unwrap();
+        assert_eq!(
+            shape_of(&mut settings, &mut state, &renderer_curve, true),
+            frame
         );
-        assert_eq!(loaded_hdr_warning(false, None, &loaded), None);
+        load(&mut state, &renderer_curve, true, frame.1);
+        assert_eq!(
+            shape_of(&mut settings, &mut state, &renderer_curve, true),
+            (false, None)
+        );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A frame that keeps serving takes the pick's new request; one made again keeps the one
+    /// it was made for until the new one is made (`build_renderer` sets it then).
+    #[test]
+    fn a_kept_frame_takes_the_new_request_and_a_rebuild_keeps_the_old() {
+        let mut installed = None;
+        assert!(!reconcile_pack_hdr(
+            true,
+            &mut installed,
+            Some(Tonemap::Pack)
+        ));
+        assert_eq!(installed, Some(Tonemap::Pack));
+        assert!(!reconcile_pack_hdr(
+            true,
+            &mut installed,
+            Some(Tonemap::Sunrise)
+        ));
+        assert_eq!(installed, Some(Tonemap::Sunrise));
+        assert!(reconcile_pack_hdr(false, &mut installed, None));
+        assert_eq!(installed, Some(Tonemap::Sunrise));
+        assert!(!reconcile_pack_hdr(true, &mut installed, None));
+        assert_eq!(installed, None);
     }
 
     #[test]
