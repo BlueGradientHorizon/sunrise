@@ -2364,9 +2364,12 @@ pub(crate) fn piglin_anim(m: &Mob, s: &State, p: &mut Poses) {
                 },
             )
         });
-    let pose = piglin_arm_pose(m, spear.is_some(), |item| {
-        s.data.is_some_and(|data| data.piglin_loves(item))
-    });
+    let pose = piglin_arm_pose(
+        m,
+        spear.is_some(),
+        |item| s.data.is_some_and(|data| data.piglin_loves(item)),
+        |stack| s.data.is_some_and(|data| data.has_tool(stack)),
+    );
     piglin_pose_humanoid(
         p,
         s,
@@ -2377,13 +2380,19 @@ pub(crate) fn piglin_anim(m: &Mob, s: &State, p: &mut Poses) {
         Some(m),
     );
 }
-/// `Piglin.getArmPose`; `spear` when the main arm holds a spear and `loved`
-/// is `PiglinAi.isLovedItem`. Admiring is read from the off-hand item alone:
+/// `Piglin.getArmPose`; `spear` when the main arm holds a spear, `loved`
+/// is `PiglinAi.isLovedItem` and `tool` is `ItemStack.has(DataComponents.TOOL)`. Admiring is read from the off-hand item alone:
 /// no use flag is involved, as a server never sends one for it. A piglin
 /// brute shares the model but not the pose: `PiglinBrute.getArmPose` is only
 /// the melee pose or the default, so it never admires or dances.
-pub fn piglin_arm_pose(m: &Mob, spear: bool, loved: impl Fn(&str) -> bool) -> PiglinPose {
-    let melee = m.ai.aggressive && m.extra.main_hand_id().is_some() && !spear;
+pub fn piglin_arm_pose(
+    m: &Mob,
+    spear: bool,
+    loved: impl Fn(&str) -> bool,
+    tool: impl Fn(&crate::items::ItemStack) -> bool,
+) -> PiglinPose {
+    // `isAggressive() && isHoldingMeleeWeapon()`: a main-hand item with the `TOOL` component.
+    let melee = m.ai.aggressive && !spear && m.extra.main_hand_stack().is_some_and(&tool);
     if m.species() == Species::PiglinBrute {
         return if melee {
             PiglinPose::MeleeWeapon
@@ -2391,17 +2400,25 @@ pub fn piglin_arm_pose(m: &Mob, spear: bool, loved: impl Fn(&str) -> bool) -> Pi
             PiglinPose::Default
         };
     }
-    // Dancing comes first.
+    // `isHolding(Items.CROSSBOW) && CrossbowItem.isCharged(getWeaponItem())`: a crossbow in
+    // either hand, and a charged main-hand weapon.
+    let crossbow = |id: Option<&str>| id == Some("minecraft:crossbow");
+    let charged = m
+        .extra
+        .main_hand_stack()
+        .and_then(|stack| stack.data())
+        .is_some_and(|data| !data.charged.is_empty());
+    // Dancing comes first, then admiring, then the melee pose, then the crossbow's.
     if m.extra.scratch[0] > 0 {
         PiglinPose::Dancing
     } else if m.extra.off_hand_id().is_some_and(loved) {
         PiglinPose::AdmiringItem
-    } else if m.extra.flag {
-        PiglinPose::CrossbowCharge
-    } else if m.extra.main_hand_id() == Some("minecraft:crossbow") && m.ai.aggressive {
-        PiglinPose::CrossbowHold
     } else if melee {
         PiglinPose::MeleeWeapon
+    } else if m.extra.flag {
+        PiglinPose::CrossbowCharge
+    } else if (crossbow(m.extra.main_hand_id()) || crossbow(m.extra.off_hand_id())) && charged {
+        PiglinPose::CrossbowHold
     } else {
         PiglinPose::Default
     }
@@ -3454,6 +3471,54 @@ mod arm_pose_tests {
     fn loved(item: &str) -> bool {
         item == "minecraft:gold_ingot"
     }
+    /// The items of these tests with the `TOOL` component: a golden axe and sword.
+    fn tool(stack: &crate::items::ItemStack) -> bool {
+        matches!(
+            &*stack.item,
+            "minecraft:golden_axe" | "minecraft:golden_sword"
+        )
+    }
+
+    /// `Piglin.getArmPose`'s order and conditions (#6084): the melee pose (aggressive, with a
+    /// `TOOL` main-hand item) comes before the crossbow's, an item without `TOOL` is no
+    /// weapon, and the hold is for a charged crossbow, aggressive or not.
+    #[test]
+    fn the_melee_pose_comes_first_and_the_hold_needs_a_charged_crossbow() {
+        let mut m = of(Species::Piglin, "minecraft:stick");
+        m.extra.set_slot_id(sunrise_items::equipment::OFFHAND, None);
+        m.ai.aggressive = true;
+        m.extra.set_main_hand(Some("minecraft:golden_sword".into()));
+        m.extra.flag = true;
+        assert_eq!(
+            piglin_arm_pose(&m, false, loved, tool),
+            PiglinPose::MeleeWeapon
+        );
+        m.extra.flag = false;
+        m.extra.set_main_hand(Some("minecraft:gold_ingot".into()));
+        assert_eq!(piglin_arm_pose(&m, false, loved, tool), PiglinPose::Default);
+        // An uncharged crossbow is not held up, aggressive or not.
+        m.extra.set_main_hand(Some("minecraft:crossbow".into()));
+        assert_eq!(piglin_arm_pose(&m, false, loved, tool), PiglinPose::Default);
+        let mut charged = crate::items::ItemStack::new("minecraft:crossbow", 1);
+        charged.data_mut().charged = vec![crate::items::ItemStack::new("minecraft:arrow", 1)];
+        m.extra.set_main_hand_stack(Some(charged));
+        m.ai.aggressive = false;
+        assert_eq!(
+            piglin_arm_pose(&m, false, loved, tool),
+            PiglinPose::CrossbowHold
+        );
+        m.ai.aggressive = true;
+        assert_eq!(
+            piglin_arm_pose(&m, false, loved, tool),
+            PiglinPose::CrossbowHold
+        );
+        // Charging still comes before the hold.
+        m.extra.flag = true;
+        assert_eq!(
+            piglin_arm_pose(&m, false, loved, tool),
+            PiglinPose::CrossbowCharge
+        );
+    }
 
     /// `Piglin.getArmPose`: `ADMIRING_ITEM` comes from a `#piglin_loved` off-hand item, with no
     /// use flag (#5132); an off-hand item outside the tag is not admired.
@@ -3462,12 +3527,15 @@ mod arm_pose_tests {
         let gold = piglin("minecraft:gold_ingot");
         assert_eq!(gold.extra.using_item, 0);
         assert_eq!(
-            piglin_arm_pose(&gold, false, loved),
+            piglin_arm_pose(&gold, false, loved, tool),
             PiglinPose::AdmiringItem
         );
         let mut stick = piglin("minecraft:stick");
         stick.extra.using_item = ADMIRE + 1;
-        assert_eq!(piglin_arm_pose(&stick, false, loved), PiglinPose::Default);
+        assert_eq!(
+            piglin_arm_pose(&stick, false, loved, tool),
+            PiglinPose::Default
+        );
     }
 
     /// `PiglinBrute.getArmPose`: a brute holding gold in its off hand does not admire it; it
@@ -3475,16 +3543,22 @@ mod arm_pose_tests {
     #[test]
     fn a_brute_never_admires() {
         let mut brute = of(Species::PiglinBrute, "minecraft:gold_ingot");
-        assert_eq!(piglin_arm_pose(&brute, false, loved), PiglinPose::Default);
+        assert_eq!(
+            piglin_arm_pose(&brute, false, loved, tool),
+            PiglinPose::Default
+        );
         brute.extra.scratch[0] = 1;
-        assert_eq!(piglin_arm_pose(&brute, false, loved), PiglinPose::Default);
+        assert_eq!(
+            piglin_arm_pose(&brute, false, loved, tool),
+            PiglinPose::Default
+        );
         brute.ai.aggressive = true;
         brute.extra.set_slot_id(
             sunrise_items::equipment::MAINHAND,
             Some("minecraft:golden_axe".into()),
         );
         assert_eq!(
-            piglin_arm_pose(&brute, false, loved),
+            piglin_arm_pose(&brute, false, loved, tool),
             PiglinPose::MeleeWeapon
         );
     }

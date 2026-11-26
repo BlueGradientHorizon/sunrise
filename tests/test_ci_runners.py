@@ -5,8 +5,10 @@
 - Neither takes a job that holds a secret or whose token can push, publish or start workflows: playsunrise is a
   partner's server, and a checks runner keeps what a fork's job left behind.
 """
+import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -14,7 +16,9 @@ import unittest
 from pathlib import Path
 
 from tests.os_support import needs_runner_shell
-from tests.test_ci_concurrency import yaml
+from tools.ci import vendored_yaml
+
+yaml = vendored_yaml.load()
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github/workflows"
@@ -78,6 +82,26 @@ def checkouts(job):
     return [step for step in job.get("steps", []) if step.get("uses", "").startswith("actions/checkout")]
 
 
+def labels_of(runs_on):
+    """The labels a parsed runs-on can select: a list's or mapping's own, a plain label, or the lists in an
+    expression's fromJSON('[...]') literals, whichever branch picks them (other values name hosted runners)."""
+    if isinstance(runs_on, dict):
+        runs_on = runs_on.get("labels", [])
+    if isinstance(runs_on, list):
+        return set(runs_on)
+    if not runs_on.startswith("${{"):
+        return {runs_on}
+    return {label for literal in re.findall(r"fromJSON\('(\[[^']*\])'\)", runs_on) for label in json.loads(literal)}
+
+
+def parsed_expression(runs_on):
+    """(every comparison the `${{ }}` expression makes, as normalised text; the operand it falls back to)."""
+    body = runs_on.removeprefix("${{").removesuffix("}}").replace("&&", " and ").replace("||", " or ")
+    tree = ast.parse(re.sub(r"!(?!=)", " not ", body).strip(), mode="eval").body
+    comparisons = {ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.Compare)}
+    return comparisons, tree.values[-1]
+
+
 def routed():
     """(where, triggers, workflow, job, runs-on, pools) for every job that can run on our runners."""
     for path in sorted(WORKFLOWS.glob("*.yml")):
@@ -85,8 +109,8 @@ def routed():
         on = triggers(document)
         for name, job in jobs(document):
             value = job.get("runs-on", "")
-            pools = {pool for pool, labels in (("light", LIGHT), ("checks", CHECKS))
-                     if any(f'"{label}"' in value for label in labels)}
+            reached = labels_of(value)
+            pools = {pool for pool, labels in (("light", LIGHT), ("checks", CHECKS)) if reached & set(labels)}
             if pools:
                 yield f"{path.name} {name}", on, document, job, value, pools
 
@@ -112,21 +136,23 @@ class OwnRunnerTests(unittest.TestCase):
         count = 0
         for where, _, _, _, value, pools in routed():
             count += 1
+            self.assertTrue(value.startswith("${{"), f"{where}: a fixed label cannot go back to GitHub")
+            comparisons, fallback = parsed_expression(value)
             # dyna-ci.yml (ours) routes through the changes job's self_hosted
             # output and dyna-medium, or SELF_HOSTED_CI=all with the fork guard
             # before the playsunrise-ci labels; the carried upstream files use
             # SELF_HOSTED_CI != 'off'. Both fall back to GitHub's runners.
             if "dyna-ci.yml" in where:
-                self.assertIn("needs.changes.outputs.self_hosted == 'true'", value, where)
-                self.assertIn("vars.SELF_HOSTED_CI == 'all'", value, where)
-                self.assertIn(TRUSTED, value, where)
+                self.assertLessEqual({"needs.changes.outputs.self_hosted == 'true'", "vars.SELF_HOSTED_CI == 'all'", TRUSTED},
+                                     comparisons, where)
             else:
-                self.assertIn("vars.SELF_HOSTED_CI != 'off'", value, where)
-            # Both labels select a GitHub-hosted Ubuntu runner when our pools are disabled.
-            self.assertRegex(value, r"\|\| 'ubuntu-(?:latest|24\.04)' \}\}$", where)
+                self.assertIn("vars.SELF_HOSTED_CI != 'off'", comparisons, where)
+            # Every branch that does not pick our labels ends in a GitHub-hosted Ubuntu runner.
+            self.assertIsInstance(fallback, ast.Constant, where)
+            self.assertIn(fallback.value, ("ubuntu-latest", "ubuntu-24.04"), where)
             if "checks" in pools:
                 # The desktop paused: every checks job back to GitHub, the bots stay.
-                self.assertIn("vars.SELF_HOSTED_CI != 'light'", value, where)
+                self.assertIn("vars.SELF_HOSTED_CI != 'light'", comparisons, where)
         self.assertGreaterEqual(count, 10)
 
     def test_light_runners_take_main_code_only(self):
@@ -159,13 +185,8 @@ class OwnRunnerTests(unittest.TestCase):
     def test_no_deployment_environment_on_our_runners(self):
         for path in sorted(WORKFLOWS.glob("*.y*ml")):
             document = yaml.safe_load(path.read_text())
-            for name, job in document["jobs"].items():
-                value = job.get("runs-on", "")
-                if isinstance(value, dict):
-                    value = value.get("labels", [])
-                routes = value if isinstance(value, list) else [value]
-                if any(route == label or f'"{label}"' in route or f"'{label}'" in route
-                       for route in routes for label in LIGHT + CHECKS):
+            for name, job in jobs(document):
+                if labels_of(job.get("runs-on", "")) & {*LIGHT, *CHECKS}:
                     self.assertNotIn("environment", job, f"{path.name} {name}")
 
     def test_deployment_environment_guard_distinguishes_script_variables(self):
@@ -213,17 +234,9 @@ class OwnRunnerTests(unittest.TestCase):
     @needs_runner_shell
     @unittest.skipUnless(shutil.which("jq"), "the hook reads the event with jq")
     def test_the_light_runners_refuse_forks_themselves(self):
+        hook = ROOT / "tools/ci/job-started.sh"
         with tempfile.TemporaryDirectory() as folder:
             home = Path(folder)
-            python = home / ".local/bin/python3.13"
-            python.parent.mkdir(parents=True)
-            python.write_text("#!/bin/sh\n")
-            python.chmod(0o755)
-            # Sourced with an unknown command the script defines its functions, prints its usage and exits;
-            # the trap then writes the job-started hook the way `install` does, into this home.
-            subprocess.run(["bash", "-c", 'trap shared_files EXIT; source "$0" none', str(ROOT / "tools/ci/checks-runners.sh")],
-                           env={**os.environ, "HOME": str(home)}, capture_output=True, check=False)
-            hook = home / ".actions-runners/ci-shared/job-started.sh"
 
             def job(event, head=None):
                 path = home / "event.json"

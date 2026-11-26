@@ -1892,13 +1892,7 @@ fn warnings(pp: &Preprocessed) -> Vec<String> {
 
 fn located(pp: &Preprocessed, list: &[crate::preprocess::Diagnostic]) -> Vec<String> {
     list.iter()
-        .map(|d| {
-            let file = pp
-                .files
-                .get(d.origin.file as usize)
-                .map_or("?", String::as_str);
-            format!("{file}:{}: {}", d.origin.line, d.message)
-        })
+        .map(|d| format!("{}:{}: {}", pp.file_of(d.origin), d.origin.line, d.message))
         .collect()
 }
 

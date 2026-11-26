@@ -1089,7 +1089,7 @@ def pack(out: Path, dist: Path, stage_tool: Path | None = None, with_tool: bool 
     if identity.get("package_format") != package_format(ROOT) or identity.get("commit") != head():
         sys.exit(f"{out} is not this source's package (format {package_format(ROOT)}, commit {head()})")
     if with_programs:
-        import release_file
+        from tools import release_file
 
         if not lists_programs(release_file.LAUNCHER_MIN, release_file.UNKNOWN_KINDS_LAUNCHER):
             sys.exit(f"{PROGRAMS}-* waits for the launcher floor: an sdk.json listing a kind a launcher doesn't know "
@@ -1141,8 +1141,12 @@ def programs(identity: dict, folder: Path) -> Path:
     route = "package-server" if identity["side"] == "server" else "package"
     inputs = json.loads(INPUTS.read_text())
     for name in inputs["routes"][route]["program"]:
-        cargo, build, *rest = shlex.split(inputs["how"][name].replace("PROFILE", "--release"))
-        run([cargo, build, "--locked", *rest], cwd=ROOT)
+        # The `how` strings are whole commands (the packager's refusals and the install guide print them as written).
+        command = shlex.split(inputs["how"][name].replace("PROFILE", "--release"))
+        if command[:2] != ["cargo", "build"]:
+            sys.exit(f"{INPUTS.name}: how[{name!r}] is {inputs['how'][name]!r}; a program is built by "
+                     "`cargo build ...`")
+        run([*command[:2], "--locked", *command[2:]], cwd=ROOT)
     # Where the player folder's game program would be: its companions are beside it.
     game = lab.cargo_target().resolve() / PROFILE / EXECUTABLE
     run(["cargo", "run", "--locked", "-q", "-p", "xtask", "--", route, "--no-game", str(game), str(folder)], cwd=ROOT)

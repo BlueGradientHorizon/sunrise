@@ -984,6 +984,7 @@ impl Game<'_> {
             kind: DamageKind::Generic,
             attacker: None,
             from: Some(at),
+            direct: None,
             attacker_species: None,
         };
         let mut struck = Vec::new();

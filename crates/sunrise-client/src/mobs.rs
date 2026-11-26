@@ -889,6 +889,11 @@ pub struct Damage {
     pub kind: DamageKind,
     pub attacker: Option<Who>,
     pub from: Option<[f64; 3]>,
+    /// The type of `DamageSource.getDirectEntity()` when it is not the
+    /// attacker: the arrow, trident, potion, spit or primed TNT that dealt
+    /// the blow, whoever (if anyone) owns it. None when the attacker dealt it
+    /// itself or no entity did, which `DamageSource.isDirect` reads as direct.
+    pub direct: Option<&'static str>,
     pub attacker_species: Option<Species>,
 }
 impl Damage {
@@ -897,6 +902,7 @@ impl Damage {
             kind: DamageKind::Fall,
             attacker: None,
             from: None,
+            direct: None,
             attacker_species: None,
         }
     }
@@ -905,6 +911,7 @@ impl Damage {
             kind,
             attacker: None,
             from: None,
+            direct: None,
             attacker_species: None,
         }
     }
@@ -913,6 +920,7 @@ impl Damage {
             kind: DamageKind::PlayerAttack,
             attacker: Some(Who::Player),
             from: Some(from),
+            direct: None,
             attacker_species: None,
         }
     }
@@ -922,6 +930,7 @@ impl Damage {
             kind: DamageKind::MaceSmash,
             attacker: Some(Who::Player),
             from: Some(from),
+            direct: None,
             attacker_species: None,
         }
     }
@@ -931,17 +940,20 @@ impl Damage {
             kind: DamageKind::Spear,
             attacker: Some(Who::Player),
             from: Some(from),
+            direct: None,
             attacker_species: None,
         }
     }
     /// `DamageSources.indirectMagic(potion, owner)`: `attacker` is the owner
     /// (none for a dispenser's potion), `from` the potion's position, which
     /// the knockback pushes away from.
-    pub fn indirect_magic(attacker: Option<Who>, from: [f64; 3]) -> Self {
+    /// `direct` is the potion's or the cloud's entity type.
+    pub fn indirect_magic(direct: &'static str, attacker: Option<Who>, from: [f64; 3]) -> Self {
         Self {
             kind: DamageKind::IndirectMagic,
             attacker,
             from: Some(from),
+            direct: Some(direct),
             attacker_species: None,
         }
     }
@@ -953,6 +965,7 @@ impl Damage {
             kind: DamageKind::Fireworks,
             attacker,
             from: Some(from),
+            direct: Some("minecraft:firework_rocket"),
             attacker_species: None,
         }
     }
@@ -961,8 +974,15 @@ impl Damage {
             kind: DamageKind::MobAttack,
             attacker: Some(Who::Mob(id)),
             from: Some(from),
+            direct: None,
             attacker_species: None,
         }
+    }
+    /// The source with `kind` as its direct entity (`getDirectEntity`), an
+    /// entity other than the attacker.
+    pub fn with_direct(mut self, kind: &'static str) -> Self {
+        self.direct = Some(kind);
+        self
     }
     pub(crate) fn with_species(mut self, species: Species) -> Self {
         self.attacker_species = Some(species);
@@ -6897,6 +6917,7 @@ mod fire_resistance_damage_tests {
                 kind,
                 attacker: Some(Who::Player),
                 from: None,
+                direct: None,
                 attacker_species: None,
             };
             let mut mob = ghast();
@@ -6948,6 +6969,7 @@ mod fire_resistance_damage_tests {
                 kind,
                 attacker: Some(Who::Player),
                 from: None,
+                direct: None,
                 attacker_species: None,
             };
             for attack in [&small_fireball, &player_direct, &crate::health::NO_ATTACK] {
@@ -6963,6 +6985,7 @@ mod fire_resistance_damage_tests {
                 kind,
                 attacker: Some(Who::Mob(5)),
                 from: None,
+                direct: None,
                 attacker_species: None,
             };
             let mob_fireball = crate::health::Attack {
@@ -7219,6 +7242,7 @@ mod magic_absorb_tests {
             kind: DamageKind::Thorns,
             attacker: Some(Who::Player),
             from: Some([4.0, 2.0, 3.0]),
+            direct: None,
             attacker_species: None,
         };
         let sounds = |m: &Mob| -> Vec<(&'static str, [f64; 3], f32, f32)> {
@@ -7305,6 +7329,7 @@ mod magic_absorb_tests {
             kind: DamageKind::IndirectMagic,
             attacker: Some(Who::Mob(m.id)),
             from: None,
+            direct: None,
             attacker_species: Some(Species::Witch),
         };
         m.damage(level, 20.0, own);
@@ -7320,7 +7345,11 @@ mod magic_absorb_tests {
         let mut test_level = crate::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut m = Mob::new(1, kind(), Vec3::ZERO, 0.0);
-        let thrown = Damage::indirect_magic(Some(Who::Player), [0.0, 1.0, 0.0]);
+        let thrown = Damage::indirect_magic(
+            "minecraft:splash_potion",
+            Some(Who::Player),
+            [0.0, 1.0, 0.0],
+        );
         assert!(m.damage_by(level, 1.0, thrown, "minecraft:splash_potion"));
         assert_eq!(m.last_direct, Some("minecraft:splash_potion"));
         let (last, _) = m.last_damage.unwrap();
@@ -7332,7 +7361,8 @@ mod magic_absorb_tests {
         assert_eq!(m.last_direct, None);
 
         let mut m = Mob::new(1, kind(), Vec3::ZERO, 0.0);
-        let dispensed = Damage::indirect_magic(None, [0.0, 1.0, 0.0]);
+        let dispensed =
+            Damage::indirect_magic("minecraft:area_effect_cloud", None, [0.0, 1.0, 0.0]);
         assert!(m.damage_by(level, 1.0, dispensed, "minecraft:area_effect_cloud"));
         assert_eq!(m.last_direct, Some("minecraft:area_effect_cloud"));
         assert_eq!(m.ai.last_hurt_by_player, 0);
@@ -7345,7 +7375,11 @@ mod magic_absorb_tests {
         let mut test_level = crate::health::TestLevel::new(0);
         let level = &mut test_level.level();
         let mut m = witch();
-        let thrown = Damage::indirect_magic(Some(Who::Player), [0.0, 1.0, 0.0]);
+        let thrown = Damage::indirect_magic(
+            "minecraft:splash_potion",
+            Some(Who::Player),
+            [0.0, 1.0, 0.0],
+        );
         assert!(m.damage_by(level, 20.0, thrown, "minecraft:splash_potion"));
         assert_eq!(m.health, 7.0);
     }
@@ -7459,6 +7493,7 @@ mod armor_hurt_tests {
             kind: DamageKind::MobAttack,
             attacker: None,
             from: None,
+            direct: None,
             attacker_species: None,
         };
         let mut m = horse();
@@ -8852,6 +8887,7 @@ mod live_damage_reduction_tests {
             kind: DamageKind::Thorns,
             attacker: Some(Who::Player),
             from: None,
+            direct: None,
             attacker_species: None,
         };
         assert!(mob.damage(&mut test_level.level(), 49.0, source));
@@ -9048,6 +9084,7 @@ mod live_damage_reduction_tests {
             kind: DamageKind::Generic,
             attacker: Some(Who::Player),
             from: None,
+            direct: None,
             attacker_species: None,
         };
 

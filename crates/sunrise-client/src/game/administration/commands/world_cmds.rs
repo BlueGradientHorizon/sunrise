@@ -359,6 +359,7 @@ impl Game<'_> {
                     kind: Self::damage_kind(&self.health_resources.damage, ty),
                     attacker,
                     from,
+                    direct: None,
                     attacker_species,
                 };
                 // DamageSource.getEntity is the causing player, even when

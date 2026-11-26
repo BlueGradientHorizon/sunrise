@@ -12,9 +12,9 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
+import tools
 from tools import lab, prebuilt_game
 from tests.os_support import needs_runner_shell, needs_symlinks
-from tests.test_ci_concurrency import yaml
 
 COMMIT = "c" * 40
 
@@ -586,11 +586,12 @@ class SdkAssetTests(unittest.TestCase):
             with self.subTest(launcher_min=launcher_min, unknown_kinds=unknown_kinds):
                 self.assertEqual(prebuilt_game.lists_programs(launcher_min, unknown_kinds), listed)
         for floor, unknown_kinds in (("1.0.0", ""), ("1.2.0", "1.2.0")):
+            release_file = type(sys)("tools.release_file")
             with self.subTest(floor=floor), tempfile.TemporaryDirectory() as directory, \
-                    patch.dict(sys.modules, {"release_file": type(sys)("release_file")}), \
+                    patch.object(tools, "release_file", release_file, create=True), \
                     patch.object(prebuilt_game, "programs") as programs:
-                sys.modules["release_file"].LAUNCHER_MIN = floor
-                sys.modules["release_file"].UNKNOWN_KINDS_LAUNCHER = unknown_kinds
+                release_file.LAUNCHER_MIN = floor
+                release_file.UNKNOWN_KINDS_LAUNCHER = unknown_kinds
                 root = Path(directory)
                 folder = root / "programs-x86_64-unknown-linux-gnu-server"
                 (folder / "exporters").mkdir(parents=True)
@@ -755,6 +756,39 @@ class AllocatorSelectionTests(unittest.TestCase):
             # Its own target folder: the build takes that folder's lock, never the checkout's.
             with self.assertRaises(Captured):
                 prebuilt_game.build(Path(target) / "unused-sdk", False)
+
+
+class ProgramsTests(unittest.TestCase):
+    identity = {"target": "x86_64-unknown-linux-gnu", "side": "client"}
+
+    def programs(self, inputs: dict) -> list[list[str]]:
+        """The commands `programs` runs for `inputs`, up to the xtask layout step, which is left unrun."""
+        commands = []
+
+        def record(command, **kwargs):
+            commands.append(command)
+            if "xtask" in command:
+                raise StopIteration
+
+        with tempfile.TemporaryDirectory() as directory:
+            listed = Path(directory) / "inputs.json"
+            listed.write_text(json.dumps(inputs))
+            with patch.object(prebuilt_game, "INPUTS", listed), \
+                 patch.object(prebuilt_game, "rustc_host", return_value=self.identity["target"]), \
+                 patch.object(prebuilt_game, "run", side_effect=record), \
+                 self.assertRaises(StopIteration):
+                prebuilt_game.programs(self.identity, Path(directory) / "folder")
+        return commands
+
+    def test_each_listed_program_is_built_with_cargo_locked_and_release(self):
+        commands = self.programs({"routes": {"package": {"program": ["sunrise-prepare"]}},
+                                  "how": {"sunrise-prepare": "cargo build PROFILE -p sunrise-prepare"}})
+        self.assertEqual(commands[0], ["cargo", "build", "--locked", "--release", "-p", "sunrise-prepare"])
+
+    def test_a_program_that_cargo_build_does_not_make_is_refused_not_run_as_cargo(self):
+        with self.assertRaisesRegex(SystemExit, "how.*sunrise-prepare.*cargo build"):
+            self.programs({"routes": {"package": {"program": ["sunrise-prepare"]}},
+                           "how": {"sunrise-prepare": "make PROFILE -p sunrise-prepare"}})
 
 
 class ScopedOs:

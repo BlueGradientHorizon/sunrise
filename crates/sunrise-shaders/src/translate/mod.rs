@@ -25,6 +25,7 @@ use naga::ShaderStage;
 use naga::front::glsl::InterfaceLimits;
 
 use crate::Preprocessed;
+use crate::preprocess::Origin;
 
 mod anonymous_structs;
 mod array_constructors;
@@ -305,7 +306,9 @@ const GBUFFERS_MATRICES: &str = "    hz_ModelViewMatrix = gbufferModelView;\n   
      mat4 hz_light = mat4(vec4(1.0 / 256.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0 / 256.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(1.0 / 32.0, 1.0 / 32.0, 0.0, 1.0));\n    \
      hz_TextureMatrix = mat4[8](mat4(1.0), hz_light, hz_light, mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0));\n";
 
-/// `pp` with `declaration` after its leading directives (`#version`, `#extension`...).
+/// `pp` with `declaration` after its leading directives (`#version`, `#extension`...). The
+/// inserted lines are Sunrise's own, so they get [`Origin::default`] and every later line keeps
+/// the pack file and line it came from.
 fn with_declaration(pp: &Preprocessed, declaration: &str) -> Preprocessed {
     let mut at = 0;
     for line in pp.code.split_inclusive('\n') {
@@ -316,7 +319,15 @@ fn with_declaration(pp: &Preprocessed, declaration: &str) -> Preprocessed {
         at += line.len();
     }
     let code = format!("{}{declaration}\n{}", &pp.code[..at], &pp.code[at..]);
-    Preprocessed { code, ..pp.clone() }
+    let mut lines = pp.lines.clone();
+    let first = pp.code[..at].matches('\n').count().min(lines.len());
+    let added = declaration.matches('\n').count() + 1;
+    lines.splice(first..first, std::iter::repeat_n(Origin::default(), added));
+    Preprocessed {
+        code,
+        lines,
+        ..pp.clone()
+    }
 }
 
 /// The type of a game input a vertex stage may read without declaring it: terrain's
@@ -1452,13 +1463,11 @@ fn compile(
     };
     let locate = |line: usize| match line
         .checked_sub(header_lines)
-        .and_then(|l| stage.pp.lines.get(l))
+        .and_then(|l| stage.pp.origin_at(l))
     {
-        Some(o) => sunrise_glsl::Location {
-            file: (stage.pp.files.get(o.file as usize))
-                .cloned()
-                .unwrap_or_default(),
-            line: o.line,
+        Some((file, line)) => sunrise_glsl::Location {
+            file: file.to_owned(),
+            line,
         },
         None => sunrise_glsl::Location {
             file: "<sunrise>".into(),
@@ -1535,6 +1544,31 @@ mod tests {
             game,
             InterfaceLimits::WGPU_DEFAULT,
         )
+    }
+
+    /// `with_declaration` puts the water mask's sampler after `#version`; an error on a later
+    /// line still names the pack's line (an inserted line used to be left out of `lines`, so
+    /// the error moved one line up).
+    #[test]
+    fn an_error_after_an_inserted_declaration_names_the_packs_line() {
+        let game = GbuffersInputs {
+            water_mask: true,
+            ..item_game()
+        };
+        let Err(errors) = item_program(
+            "gbuffers_basic",
+            "layout(location = 1, component = 4) out float x;",
+            "x",
+            &game,
+        ) else {
+            panic!("a component past the location's four is refused");
+        };
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.file.ends_with("gbuffers_basic.fsh") && e.line == 2),
+            "{errors:?}"
+        );
     }
 
     fn item_game() -> GbuffersInputs {

@@ -63,6 +63,11 @@ pub trait RenderDataSource {
     fn piglin_loves(&self, _item: &str) -> bool {
         false
     }
+    /// `ItemStack.has(DataComponents.TOOL)` by the game's item data
+    /// (`AbstractPiglin.isHoldingMeleeWeapon`). False for a source without item data.
+    fn has_tool(&self, _stack: &crate::items::ItemStack) -> bool {
+        false
+    }
 }
 
 impl std::fmt::Debug for dyn RenderDataSource + '_ {
