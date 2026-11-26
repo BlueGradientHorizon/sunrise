@@ -569,9 +569,9 @@ pub trait BlockEntityDrawContext {
     /// a double chest draws as a single closed chest, an enchanting table as its closed book
     /// lying on it, a conduit inactive, an end portal and gateway on every face with no beam,
     /// a banner's flag at rest, a beacon with no beam (its sections are computed in a tick it
-    /// never gets), and a spawner or a bed, which have no block entity renderer here, nothing. Animations driven by tickers (chest lids, the bell's shake, the
-    /// enchanting book, conduit rotation) stay at rest: build a new [`SceneBlockEntity`] when
-    /// the data changes. The dispatcher's `shouldRender` culling is skipped, since the caller's
+    /// never gets), and a spawner or a bed, which have no block entity renderer here, nothing.
+    /// Animations driven by tickers (chest lids, the bell's shake, the enchanting book, conduit
+    /// rotation) stay at rest: build a new [`SceneBlockEntity`] when the data changes. The dispatcher's `shouldRender` culling is skipped, since the caller's
     /// entity was already culled; the block entity's own position is never used.
     ///
     /// Returns [`BlockEntityDrawRefusal::Nested`], drawing nothing, when called from inside a
