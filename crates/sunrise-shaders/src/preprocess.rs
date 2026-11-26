@@ -73,7 +73,10 @@ impl Preprocessed {
     /// no line, as [`Origin::default`] does for the lines Sunrise writes.
     pub(crate) fn error_at_line(&self, line: usize, message: impl Into<String>) -> crate::Error {
         match self.lines.get(line) {
-            Some(o) => crate::Error::new(self.files[o.file as usize].clone(), o.line, message),
+            Some(o) => match self.files.get(o.file as usize) {
+                Some(file) => crate::Error::new(file.clone(), o.line, message),
+                None => crate::Error::new(self.file(), 0, message),
+            },
             None => crate::Error::new(self.file(), 0, message),
         }
     }
