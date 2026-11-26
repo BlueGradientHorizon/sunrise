@@ -559,6 +559,23 @@ pub trait LevelAccess: BlockEntityNeighbors {
     ) -> crate::fluid::ModFluidRules {
         registered
     }
+    /// Whether `fluid` (`water`, `lava` or a mod fluid's id) may flow from `from` one step toward
+    /// `direction`, into `to`, where `FlowingFluid.canMaybePassThrough` is asked: the downward
+    /// step of `spread`, `getSpread`'s side choice and every step of the slope search. Asked only
+    /// after the game's own answer was true, so it can close a side and never open a wall; its
+    /// answer is not cached. The default leaves the side open.
+    #[allow(clippy::too_many_arguments)]
+    fn fluid_passage(
+        &self,
+        _fluid: &'static str,
+        _from: BlockPos,
+        _from_state: BlockStateId,
+        _direction: Direction,
+        _to: BlockPos,
+        _to_state: BlockStateId,
+    ) -> bool {
+        true
+    }
     fn allow_block_ignite(&self, _pos: BlockPos, _cause: &'static str) -> bool {
         true
     }
@@ -740,6 +757,19 @@ pub trait LevelAccess: BlockEntityNeighbors {
         _pos: BlockPos,
         _state: BlockStateId,
         _changed: BlockId,
+        _moved: bool,
+    ) {
+    }
+    /// Observe `BlockBehaviour.onPlace` (from `LevelChunk.setBlockState`) before the
+    /// block's own `onPlace` handling, with the level's `ticks`: a write goes through
+    /// `Behaviours::set_block` with them, so its neighbour updates run as vanilla's do.
+    /// `state` is the new state and `old` the one it replaced. The default does nothing.
+    fn observe_on_place(
+        &mut self,
+        _ticks: &mut Ticks,
+        _pos: BlockPos,
+        _state: BlockStateId,
+        _old: BlockStateId,
         _moved: bool,
     ) {
     }
@@ -1077,6 +1107,11 @@ pub trait LevelAccess: BlockEntityNeighbors {
     }
     /// `DimensionType.infiniburn` resolved once for this level; None lets the fire tick resolve the tag from the bundle.
     fn infiniburn(&self) -> Option<&data::BlockSet> {
+        None
+    }
+    /// The blocks of `sunrise:golem_heads`, resolved once for this level with the mods' and data packs'
+    /// members; None is an empty tag, so only `CarvedPumpkinBlock`'s own class completes a golem on place.
+    fn golem_heads(&self) -> Option<&data::BlockSet> {
         None
     }
     /// The level's dimension type.
@@ -1545,6 +1580,37 @@ impl Behaviours {
     pub fn data(&self, state: BlockStateId) -> &BlockData {
         self.block_data(self.table.block(state))
     }
+    /// The four physical properties (`Solid`, `Replaceable`, `Liquid`, `SolidRender`) in
+    /// `BlockProperty` order, bound from the loaded behaviour tables.
+    pub fn bound_physical_properties(&self) -> [crate::block_properties::BoundBlockProperty; 4] {
+        use crate::block_properties::{BlockProperty, BoundBlockProperty};
+        let states: Arc<[u8]> = self
+            .facts
+            .iter()
+            .map(|fact| {
+                let mut mask = 0u8;
+                if fact.flags & data::state_flags::SOLID != 0 {
+                    mask |= 1;
+                }
+                if fact.flags & data::state_flags::REPLACEABLE != 0 {
+                    mask |= 2;
+                }
+                if fact.flags & data::state_flags::LIQUID != 0 {
+                    mask |= 4;
+                }
+                if fact.flags & data::state_flags::SOLID_RENDER != 0 {
+                    mask |= 8;
+                }
+                mask
+            })
+            .collect();
+        [
+            BoundBlockProperty::from_flags(states.clone(), BlockProperty::Solid),
+            BoundBlockProperty::from_flags(states.clone(), BlockProperty::Replaceable),
+            BoundBlockProperty::from_flags(states.clone(), BlockProperty::Liquid),
+            BoundBlockProperty::from_flags(states, BlockProperty::SolidRender),
+        ]
+    }
     pub fn block(&self, state: BlockStateId) -> BlockId {
         self.table.block(state)
     }
@@ -1660,16 +1726,22 @@ impl Behaviours {
     }
 
     /// Finish the paused write. If the host ran block-entity removal, pass its number of
-    /// jukebox neighbor updates; otherwise the ordinary removal runs here.
+    /// jukebox neighbor updates; otherwise the ordinary removal runs here. `ensure_entity`
+    /// runs at the end of `LevelChunk.setBlockState`, after `onPlace`, before notifications.
     pub fn finish_block_write<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
         write: BlockWrite,
         removal_updates: Option<u8>,
+        ensure_entity: impl FnOnce(&mut L, BlockPos, BlockStateId),
     ) -> bool {
-        self.sim(level, ticks)
-            .finish_block_write(write, removal_updates, flags::UPDATE_LIMIT)
+        self.sim(level, ticks).finish_block_write(
+            write,
+            removal_updates,
+            flags::UPDATE_LIMIT,
+            ensure_entity,
+        )
     }
     /// `CopperChestBlock.getFromCopperBlock(copperBlock, facing, level, pos)`.
     pub fn copper_chest_from_block<L: LevelAccess + ?Sized>(
@@ -1832,6 +1904,21 @@ impl Behaviours {
         state: BlockStateId,
     ) -> bool {
         self.sim(level, ticks).can_survive(state, pos)
+    }
+    /// Read `BlockState.canSurvive` without retaining any tick or wire-cache changes. The live
+    /// signal inputs are read from `signal_reads`; effects requested by the evaluator stay in a
+    /// fresh scratch queue that is dropped before returning.
+    pub fn can_survive_read_only<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        signal_reads: &Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> bool {
+        let mut ticks = Ticks::default();
+        let mut sim = self.sim(level, &mut ticks);
+        sim.signal_reads = Some(signal_reads);
+        sim.can_survive(state, pos)
     }
     /// `BlockState.updateShape(level, ticks, pos, direction, neighbourPos,
     /// neighbourState, random)`: the state `state` at `pos` would take after its

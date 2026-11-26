@@ -121,6 +121,39 @@ pub fn effective_view_distance(advertised: i32) -> i32 {
     advertised.clamp(2, 32)
 }
 
+/// `IntegratedServer.getProfilePermissions` / `getCustomPermissionLevel` and
+/// `MinecraftServer.getProfilePermissions`.
+pub fn integrated_profile_permission(
+    owner: Option<(&str, u128)>,
+    allow_commands: bool,
+    guest_commands: bool,
+    ops: &std::collections::HashMap<u128, u8>,
+    uuid: u128,
+    name: &str,
+) -> u8 {
+    let is_owner = owner.is_some_and(|(owner_name, _)| owner_name.eq_ignore_ascii_case(name));
+    // IntegratedServer.getCustomPermissionLevel: for non-owners this takes
+    // precedence over any entry, even when guest command access is off.
+    if !is_owner && allow_commands {
+        return if guest_commands { 2 } else { 0 };
+    }
+    // No persisted op list on integrated servers. The hub also stores
+    // temporary LAN operator levels; its automatic 0 for the owner means
+    // commands are off, not that the owner's profile is listed as an op.
+    let op_level = ops
+        .get(&uuid)
+        .copied()
+        .filter(|&level| owner.is_none_or(|(_, owner_uuid)| uuid != owner_uuid) || level != 0);
+    // IntegratedServer.getProfilePermissions overrides an owner's level
+    // when PlayerList.isOp is true, either by entry or by Allow Commands.
+    if is_owner && (op_level.is_some() || allow_commands) {
+        return 4;
+    }
+    // MinecraftServer.getProfilePermissions: the op entry's level, or
+    // ALL. The implicit-op case is already handled by the owner override.
+    op_level.unwrap_or(0)
+}
+
 /// What the other players see of a player's body besides sneaking and
 /// sprinting: the pose and the rest of `Entity.DATA_SHARED_FLAGS_ID`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -401,7 +434,7 @@ pub struct Hub {
     pub loop_context: Arc<LoopContext>,
     pub encoder: ChunkEncoder,
     pub guests: super::guest_list::GuestList,
-    pub(super) sync: Arc<SyncData>,
+    pub sync: Arc<SyncData>,
     /// The active world session rule definitions.
     pub rule_registry: Arc<crate::gamerules::RuleRegistry>,
     pub ticks: u64,
@@ -427,6 +460,8 @@ pub struct Hub {
     /// An integrated server's owner (`MinecraftServer.isSingleplayerOwner`),
     /// whose moves are never checked.
     pub singleplayer_owner: Option<u128>,
+    /// Whether the world allows commands (`WorldData.isAllowCommands`).
+    pub allow_commands: bool,
     /// The world is superflat (`ServerLevel.isFlat`, a world-wide flag, sent as
     /// `CommonPlayerSpawnInfo.isFlat` in every dimension).
     pub flat_world: bool,
@@ -476,7 +511,6 @@ pub struct Hub {
     /// the other operators get a command's `[name: ...]` line (vanilla's
     /// broadcastToAdmins). False keeps it to the console's log.
     pub admin_feedback_to_ops: bool,
-    chat_type: i32,
     dimension_type: i32,
     clock_ids: Vec<i32>,
     /// The total and rate the guests are told of every clock but the Overworld's and the one
@@ -774,9 +808,6 @@ impl Hub {
         config: HubConfig,
         loop_context: Arc<LoopContext>,
     ) -> Self {
-        let chat_type = sync
-            .id("minecraft:chat_type", "minecraft:chat")
-            .unwrap_or(0);
         let dimension_type = sync
             .id(
                 "minecraft:dimension_type",
@@ -805,6 +836,7 @@ impl Hub {
             move_solids: Vec::new(),
             move_boxes: Mutex::default(),
             singleplayer_owner: None,
+            allow_commands: false,
             flat_world: false,
             debug_world: false,
             riding: Default::default(),
@@ -823,7 +855,6 @@ impl Hub {
             admin_feedback_to_ops: true,
             weather: (false, 0.0, 0.0),
             level_sync: Default::default(),
-            chat_type,
             dimension_type,
             clock_ids,
             clock_states: Default::default(),
@@ -1169,10 +1200,14 @@ impl Hub {
     }
     /// A chat message from the host (a disguised chat: the host has no connection to sign with).
     pub fn chat(&self, sender: &str, text: &str) {
+        // ChatType.bind throws without the type: nothing is sent.
+        let Some(chat_type) = self.chat_type_id("chat") else {
+            return;
+        };
         self.broadcast(&C::DisguisedChat(play::DisguisedChat {
             message: literal(text),
             chat_type: play::ChatTypeBound {
-                chat_type: self.chat_type,
+                chat_type: chat_type.network_id() as i32,
                 name: literal(sender),
                 target: None,
             },
@@ -1484,7 +1519,7 @@ impl Hub {
         guest.last_action_tick = self.ticks;
         guest.game_mode = self.config.default_game_mode;
         guest.abilities.update_for_mode(guest.game_mode);
-        guest.permission = self.default_permission(guest.uuid);
+        guest.permission = self.default_permission(guest.uuid, &guest.name);
         guest.joined_tick = self.ticks;
         guest.position = ctx.spawn;
         guest.previous_position = ctx.spawn;
@@ -1493,15 +1528,26 @@ impl Hub {
         conn
     }
 
-    /// The permission level a player gets: an integrated server gives every
-    /// guest the game masters' level when commands are allowed
-    /// (IntegratedServer.setGuestCommandAccess); a dedicated server its
-    /// operators' level (`ops`).
-    fn default_permission(&self, uuid: u128) -> u8 {
+    /// The permission level a player gets: on an integrated server, vanilla's
+    /// `IntegratedServer.getProfilePermissions` / `getCustomPermissionLevel`;
+    /// on a dedicated server, its operator list (`ops`).
+    pub fn default_permission(&self, uuid: u128, name: &str) -> u8 {
         if self.config.integrated {
-            // IntegratedServer.getProfilePermissions / getCustomPermissionLevel.
-            let guests = if self.config.guest_commands { 2 } else { 0 };
-            self.ops.get(&uuid).copied().unwrap_or(guests)
+            let owner = self
+                .lan
+                .shared
+                .config
+                .singleplayer_profile
+                .as_ref()
+                .map(|(owner, owner_uuid)| (owner.as_str(), *owner_uuid));
+            integrated_profile_permission(
+                owner,
+                self.allow_commands,
+                self.config.guest_commands,
+                &self.ops,
+                uuid,
+                name,
+            )
         } else {
             self.ops.get(&uuid).copied().unwrap_or(0)
         }
@@ -1988,7 +2034,7 @@ impl Hub {
     pub fn refresh_permissions(&mut self) {
         for i in 0..self.guests.len() {
             {
-                let value = self.default_permission(self.guests[i].uuid);
+                let value = self.default_permission(self.guests[i].uuid, &self.guests[i].name);
                 self.guests.update(i, |guest| guest.permission = value);
             }
         }
@@ -2514,11 +2560,15 @@ impl Hub {
                     g.sender.close();
                 }
             }
+            // `keepConnectionAlive` never times out the singleplayer owner (`!isSingleplayerOwner()`).
             let silent: Vec<u32> = self
                 .guests
                 .iter()
                 .filter(|g| {
-                    g.participates_online() && g.left_reason.is_empty() && g.sender.timed_out()
+                    g.participates_online()
+                        && g.left_reason.is_empty()
+                        && g.sender.timed_out()
+                        && !self.lan.shared.is_singleplayer_owner(&g.name)
                 })
                 .map(|g| g.conn)
                 .collect();
@@ -2987,6 +3037,7 @@ impl Hub {
         let mut batches = Vec::new();
         for i in 0..self.guests.len() {
             if self.watches(&self.guests[i]) {
+                self.update_far(i);
                 self.update_view(i);
                 if let Some(batch) = self.next_batch(i, world, ctx.streaming) {
                     batches.push((i, batch));
@@ -3142,12 +3193,13 @@ impl Hub {
                     z: cz,
                 }));
             }
-            // Chunks that left the view.
+            // Chunks that left the view, but for those an area keeps past it.
+            let kept = &g.viewed.own.kept;
             let forget: Vec<_> = g
                 .sent_chunks
                 .iter()
                 .copied()
-                .filter(|&(x, z)| !tracked(cx, cz, r, x, z))
+                .filter(|&(x, z)| !tracked(cx, cz, r, x, z) && !kept.contains(&(x, z)))
                 .collect();
             for (x, z) in forget {
                 g.sent_chunks.remove(&(x, z));
@@ -3155,6 +3207,8 @@ impl Hub {
                 g.send(&C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [x, z] }));
             }
             requeue(&mut g.chunk_queue, &g.sent_chunks, (cx, cz), r);
+            let own = &g.viewed.own;
+            super::viewed_levels::own::queue_far(&mut g.chunk_queue, &g.sent_chunks, own);
         });
     }
 
@@ -5110,6 +5164,7 @@ impl Hub {
             g.sent_chunks.clear();
             g.chunk_queue.clear();
             g.viewed.forget_views();
+            g.viewed.own.reset();
             g.entity_id
         });
         self.respawned(id);
@@ -5180,6 +5235,7 @@ impl Hub {
             g.sent_chunks.clear();
             g.chunk_queue.clear();
             g.tracker.clear();
+            g.viewed.own.reset();
         });
         self.resend_teleport(i, None);
         let spawn = self.default_spawn(ctx.spawn, ctx.spawn_angle, ctx.spawn_dimension);
@@ -5579,6 +5635,7 @@ mod tests {
     mod effect_meta_tests;
     mod entity_move_check_tests;
     mod first_tick_recipe_tests;
+    mod keep_alive_owner_tests;
     mod live_player_limit_tests;
     mod main_hand_tests;
     mod ordered_inbox_tests;
@@ -6157,6 +6214,39 @@ mod tests {
     }
 
     #[test]
+    fn integrated_default_permission_matches_custom_level_before_ops() {
+        let (mut hub, _rx) = hub_with_a_guest();
+        let owner_uuid = 99u128;
+        let guest_uuid = hub.guests[0].uuid;
+        let guest_name = hub.guests[0].name.clone();
+        Arc::get_mut(&mut hub.lan.shared)
+            .unwrap()
+            .config
+            .singleplayer_profile = Some(("Owner".into(), owner_uuid));
+        hub.config.integrated = true;
+        hub.ops.insert(owner_uuid, 0);
+        hub.ops.insert(guest_uuid, 3);
+
+        hub.allow_commands = true;
+        hub.config.guest_commands = false;
+        hub.refresh_permissions();
+        assert_eq!(hub.guests[0].permission, 0);
+        assert_eq!(hub.default_permission(guest_uuid, &guest_name), 0);
+        assert_eq!(hub.default_permission(owner_uuid, "Owner"), 4);
+
+        hub.config.guest_commands = true;
+        hub.refresh_permissions();
+        assert_eq!(hub.guests[0].permission, 2);
+        assert_eq!(hub.default_permission(guest_uuid, &guest_name), 2);
+
+        hub.allow_commands = false;
+        hub.refresh_permissions();
+        assert_eq!(hub.guests[0].permission, 3);
+        assert_eq!(hub.default_permission(guest_uuid, &guest_name), 3);
+        assert_eq!(hub.default_permission(owner_uuid, "Owner"), 0);
+    }
+
+    #[test]
     fn modprofile_guest_tree_survives_refresh_with_permissions() {
         for level in 0..=4 {
             let mut sync = SyncData::empty();
@@ -6411,11 +6501,21 @@ mod tests {
 
     /// [`hub_with_a_guest`] over a sync the test built.
     fn hub_with_sync(sync: SyncData) -> (Hub, std::sync::mpsc::Receiver<crate::lan::Out>) {
-        let config = crate::lan::NetConfig {
-            announce: false,
-            listen: false,
-            ..crate::lan::NetConfig::loopback(0, "EffectSyncTest".into(), 2)
-        };
+        hub_with_net(
+            sync,
+            crate::lan::NetConfig {
+                announce: false,
+                listen: false,
+                ..crate::lan::NetConfig::loopback(0, "EffectSyncTest".into(), 2)
+            },
+        )
+    }
+
+    /// [`hub_with_sync`] on a network started from `config`.
+    fn hub_with_net(
+        sync: SyncData,
+        config: crate::lan::NetConfig,
+    ) -> (Hub, std::sync::mpsc::Receiver<crate::lan::Out>) {
         let sync = std::sync::Arc::new(sync);
         let lan = Lan::start_with(sync.clone(), config).unwrap();
         let encoder = ChunkEncoder::new(
@@ -7533,22 +7633,29 @@ mod tests {
         ));
         let folder = root.join("data").join("minecraft").join("advancement");
         std::fs::create_dir_all(&folder).unwrap();
-        let display = |icon: &str, title: &str| {
-            format!(r#"{{"icon":{{"id":"{icon}"}},"title":"{title}","description":"{title}"}}"#)
+        // `Advancement.validate`: a visible root has a background, any other advancement none.
+        let display = |icon: &str, title: &str, background: &str| {
+            format!(
+                r#"{{"icon":{{"id":"{icon}"}},"title":"{title}","description":"{title}"{background}}}"#
+            )
         };
         std::fs::write(
             folder.join("root.json"),
             format!(
-                r#"{{"display":{},"criteria":{{}}}}"#,
-                display("minecraft:stone", "Root")
+                r#"{{"display":{},"criteria":{{"never":{{"trigger":"minecraft:impossible"}}}}}}"#,
+                display(
+                    "minecraft:stone",
+                    "Root",
+                    r#","background":"minecraft:block/stone""#
+                )
             ),
         )
         .unwrap();
         std::fs::write(
             folder.join("task.json"),
             format!(
-                r#"{{"parent":"minecraft:root","display":{},"criteria":{{}}}}"#,
-                display("minecraft:dirt", "Task")
+                r#"{{"parent":"minecraft:root","display":{},"criteria":{{"never":{{"trigger":"minecraft:impossible"}}}}}}"#,
+                display("minecraft:dirt", "Task", "")
             ),
         )
         .unwrap();

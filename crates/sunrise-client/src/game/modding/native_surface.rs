@@ -148,6 +148,10 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
         self.last_hurt_target_alive(id)
     }
 
+    fn hit_reads(&self) -> Option<sunrise_client::health::HitReads<'_>> {
+        crate::game::entity::hit_reads_of!(self)
+    }
+
     fn damage_types(&self) -> &sunrise_world::damage_source::Catalog {
         &self.health_resources.damage
     }
@@ -171,6 +175,10 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
 
     fn block_states(&self) -> Option<mod_api::BlockStates<'_>> {
         Some(mod_api::BlockStates::of(self))
+    }
+
+    fn variant_tables(&self) -> Option<&sunrise_client::mobs::variants::VariantTables> {
+        Some(self.world_variants())
     }
 }
 
@@ -1028,15 +1036,18 @@ mod tests {
             let base_stone = view
                 .tags()
                 .key(&mod_api::Identifier::parse("base_stone_overworld").unwrap())
-                .unwrap();
+                .unwrap()
+                .typed();
             let climbable = view
                 .tags()
                 .key(&mod_api::Identifier::parse("minecraft:climbable").unwrap())
-                .unwrap();
+                .unwrap()
+                .typed();
             let water_tag = view
                 .tags()
                 .key(&mod_api::Identifier::parse("minecraft:water").unwrap())
-                .unwrap();
+                .unwrap()
+                .typed();
             assert_eq!(stone.is_in_tag(view.tags(), base_stone), Some(true));
             assert_eq!(
                 stone.is_in_tag(view.tags(), base_stone),

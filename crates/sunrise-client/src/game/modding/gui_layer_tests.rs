@@ -1655,8 +1655,10 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
                 game.toggle_hide_gui();
                 game.set_screen(Screen::Paused);
                 game.open_options(false);
-                game.controller_notice
-                    .raise(Notice::new("Controller disconnected", "Use the keyboard"));
+                game.controller_notice.raise(
+                    Notice::new("Controller disconnected", "Use the keyboard"),
+                    sunrise_client::toasts::ToastClock::Real,
+                );
                 let frame = game.hud([640, 480]);
                 let post = frame
                     .vertices

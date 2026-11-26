@@ -4,6 +4,7 @@ use mod_api::__private::game::{
     CallbackOwner, DatapackCandidateBuilder, RegistrationContextNew, datapack_entry_id,
     datapack_registry_directory, decode_datapack_entry, valid_namespaced,
 };
+use mod_api::__private::{NoVanillaValueDecoder, VanillaValueDecoder};
 use mod_api::{
     DatapackCandidate, DatapackDecodeError, DatapackLoadReason, DatapackRegistryDeclaration,
 };
@@ -77,13 +78,29 @@ impl Game<'_> {
                 || !self.mods.native.packages().is_empty())
     }
 
+    pub(super) fn worldgen_base_conditions(
+        &self,
+    ) -> std::result::Result<sunrise_world::conditions::LoadConditions, String> {
+        let inventory = sunrise_mod_package::enabled::EnabledMods::read(&self.options.resources)
+            .map_err(|error| error.to_string())?;
+        conditions_for_mods(&self.mods, &inventory)
+    }
+
     /// Stage the enabled packs’ actual winners before readers use their holders.
     pub(super) fn stage_datapack_registries(
+        &self,
         stack: &super::functions::PackStack,
         root: &Path,
         overlay: &PackOverlay<'_>,
         view: &mut RegistryView,
-    ) -> Result<Option<DatapackCandidate>, String> {
+        inputs: &VanillaValueInputs<'_, '_>,
+    ) -> Result<
+        Option<(
+            DatapackCandidate,
+            Option<super::native_datapack_values::DatapackVanillaValues>,
+        )>,
+        String,
+    > {
         let declarations = mod_api::__private::datapack_registry_declarations();
         if declarations.is_empty() {
             return Ok(None);
@@ -97,8 +114,45 @@ impl Game<'_> {
             .collect();
         let files = sunrise_client::datapack::registry_files(&packs, &keys)
             .map_err(|error| format_datapack_error(&error))?;
-        admit_datapack_registries(root, overlay, view, declarations, &files).map(Some)
+        if !mod_api::__private::declarations_use_vanilla_values(declarations) {
+            return admit_datapack_registries(
+                root,
+                overlay,
+                view,
+                declarations,
+                &files,
+                &mut NoVanillaValueDecoder,
+            )
+            .map(|candidate| Some((candidate, None)));
+        }
+        let biome_tags = sunrise_client::items::load_tags(root, "worldgen/biome", inputs.tag_files)
+            .map_err(|error| format!("datapack vanilla value biome tags: {error}"))?;
+        let live_features = self.res.behaviours().live_features();
+        let catalog = live_features
+            .as_ref()
+            .and_then(|features| features.state_provider_catalog());
+        let biome_names = inputs.biomes.registry_order();
+        let mut decoder = super::native_datapack_values::VanillaValueTableBuilder::new(
+            self.pack.assets.registry,
+            self.res.behaviours(),
+            &inputs.items.block_tags,
+            &inputs.items.fluid_tags,
+            &biome_names,
+            &biome_tags,
+            catalog,
+        )
+        .map_err(|error| format!("datapack vanilla value decoder: {error}"))?;
+        let candidate =
+            admit_datapack_registries(root, overlay, view, declarations, &files, &mut decoder)?;
+        Ok(Some((candidate, Some(decoder.finish()))))
     }
+}
+
+/// The world's loaded tables a vanilla value decoder reads while datapack registries are staged.
+pub(super) struct VanillaValueInputs<'a, 'b> {
+    pub(super) items: &'a sunrise_client::items::Items,
+    pub(super) tag_files: &'a PackOverlay<'b>,
+    pub(super) biomes: &'a sunrise_client::biome::Biomes,
 }
 
 #[derive(Default)]
@@ -136,6 +190,7 @@ fn admit_datapack_registries(
     view: &mut RegistryView,
     declarations: &[DatapackRegistryDeclaration],
     files: &RegistryFiles,
+    decoder: &mut dyn VanillaValueDecoder,
 ) -> Result<DatapackCandidate, String> {
     use DatapackLoadReason::{Decode, InvalidEntryId, NotUtf8};
     let base = overlay.conditions;
@@ -224,7 +279,7 @@ fn admit_datapack_registries(
                     }
                     Ok(ConditionProgress::Complete(false)) => return false,
                     Ok(ConditionProgress::Complete(true)) => {
-                        decode_datapack_entry(declaration, text).map_err(Decode)
+                        decode_datapack_entry(declaration, text, &mut *decoder).map_err(Decode)
                     }
                     Err(error) => Err(malformed(error)),
                 };
@@ -296,6 +351,121 @@ fn admit_datapack_registries(
     builder
         .finish(declarations)
         .map_err(|error| format_datapack_error(&error))
+}
+
+fn builtin_command_registries(
+    root: &std::path::Path,
+) -> BTreeMap<String, std::collections::BTreeSet<String>> {
+    let export: serde_json::Value = std::fs::read(root.join("command-registries.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    export["by_registry"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(registry, entry)| {
+            let ids = entry["ids"].as_array().into_iter().flatten();
+            let ids = ids.filter_map(serde_json::Value::as_str).map(str::to_owned);
+            (registry.clone(), ids.collect())
+        })
+        .collect()
+}
+
+/// Static built-in registries whose tags are bound before `WORLD_REGISTRIES` /
+/// `DIMENSION_REGISTRIES` load (`WorldLoader.java.patch` lines 43, 51 `staticLayerTags`).
+const WORLDGEN_STATIC_TAG_REGISTRIES: [&str; 6] = [
+    "block",
+    "item",
+    "fluid",
+    "entity_type",
+    "game_event",
+    "villager_profession",
+];
+
+/// Builds the `LoadConditions` used by worldgen and dimension pack loaders
+/// (`RegistryDataLoader.WORLD_REGISTRIES` / `DIMENSION_REGISTRIES`).
+///
+/// Follows NeoForge's `WorldLoader.java.patch` (lines 43, 51) and
+/// `ResourceManagerRegistryLoadTask.java.patch` (line 43):
+/// - Feature flags are `FeatureFlags.VANILLA_SET` (`["minecraft:vanilla"]`), matching
+///   NeoForge's `ResourceManagerRegistryLoadTask` rather than world-specific enabled features.
+/// - Static built-in registry entries come from `command-registries.json` (`neoforge:registered`).
+/// - Static-layer tags (`block`, `item`, `fluid`, `entity_type`, `game_event`,
+///   `villager_profession`) are loaded from `resources` and `packs`, so `neoforge:tag_empty`
+///   works in worldgen and dimension files.
+pub(super) fn worldgen_load_conditions(
+    base: &sunrise_world::conditions::LoadConditions,
+    resources: &std::path::Path,
+    packs: &[&sunrise_client::datapack::DataPack],
+) -> sunrise_world::conditions::LoadConditions {
+    let registries = builtin_command_registries(resources);
+    let mut pack_tag_files: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
+    for pack in packs {
+        if pack.id == "vanilla" {
+            continue;
+        }
+        for file in pack.list_kinds(&["tags"]) {
+            let Some(rest) = file.strip_prefix("data/") else {
+                continue;
+            };
+            let Some((ns, rest)) = rest.split_once('/') else {
+                continue;
+            };
+            let Some(after_tags) = rest.strip_prefix("tags/") else {
+                continue;
+            };
+            let Some((kind, path)) = after_tags.split_once('/') else {
+                continue;
+            };
+            if !WORLDGEN_STATIC_TAG_REGISTRIES.contains(&kind) {
+                continue;
+            }
+            let Some(path) = path.strip_suffix(".json") else {
+                continue;
+            };
+            if let Some(bytes) = pack.read(&file) {
+                pack_tag_files
+                    .entry(format!("tags/{ns}:{kind}/{path}"))
+                    .or_default()
+                    .push(bytes);
+            }
+        }
+    }
+    let files: Vec<(String, Vec<Vec<u8>>)> = pack_tag_files.into_iter().collect();
+    let tag_overlay = sunrise_world::loot::PackOverlay {
+        conditions: &sunrise_world::conditions::LoadConditions::vanilla(),
+        files: &files,
+        ..sunrise_world::loot::PackOverlay::default()
+    };
+    let builtin_ids = sunrise_world::tag_layers::builtin_ids(resources).unwrap_or_default();
+    let mut non_empty_tags: Vec<(String, Vec<String>)> = Vec::new();
+    for kind in WORLDGEN_STATIC_TAG_REGISTRIES {
+        let ids = builtin_ids.get(kind);
+        if let Ok(loaded) = sunrise_world::tag_layers::load(resources, kind, &tag_overlay, |id| {
+            ids.is_none_or(|known| known.contains(id))
+        }) {
+            let tags: Vec<String> = loaded
+                .into_iter()
+                .filter(|(_, members)| !members.is_empty())
+                .map(|(tag, _)| tag)
+                .collect();
+            non_empty_tags.push((format!("minecraft:{kind}"), tags));
+        }
+    }
+    // `ResourceManagerRegistryLoadTask.java.patch:43` passes `FeatureFlags.VANILLA_SET`.
+    base.clone()
+        .with_features(["minecraft:vanilla"])
+        .with_registries(
+            registries
+                .iter()
+                .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
+        )
+        .with_tags(
+            non_empty_tags
+                .iter()
+                .map(|(registry, tags)| (registry.as_str(), tags.iter().map(String::as_str))),
+        )
 }
 
 /// Strongly connected components, consumers before their dependencies
@@ -414,6 +584,7 @@ pub(super) fn content_root_with_conditions(
     sources: &super::mods::ModsState,
 ) -> sunrise_client::Result<std::path::PathBuf> {
     let conditions = conditions_for_mods(sources, inventory)?;
+    let conditions = worldgen_load_conditions(&conditions, root, &[]);
     sunrise_client::mod_content::resource_root_with_conditions(
         root,
         jars,

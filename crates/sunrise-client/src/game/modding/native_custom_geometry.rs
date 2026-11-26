@@ -37,13 +37,21 @@ impl<'a, 'g> GameWorldStageDriver<'a, 'g> {
     }
 
     fn view<'v>(
+        game: &Game<'_>,
         camera: &'v mod_api::Camera,
         alpha: f64,
-        game_time: i64,
         sections: &'v [mod_api::RenderableSection],
         oit_on: bool,
     ) -> mod_api::WorldRenderView<'v> {
-        mod_api::WorldRenderView::new(camera, alpha as f32, game_time, oit_on, sections)
+        mod_api::WorldRenderView::new(
+            camera,
+            game.world_camera_entity_eye(),
+            alpha as f32,
+            game.world.game_time,
+            game.animation_time(),
+            oit_on,
+            sections,
+        )
     }
 }
 
@@ -59,26 +67,29 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.draw.begin_custom_geometry();
         self.game.native_submit_custom_geometry(&view, self.draw);
         self.game.submit_debug_geometry(&view, self.draw);
     }
 
+    fn on_frame_graph_setup(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
+        if !mod_api::__private::listened(mod_api::HookId::FrameGraphSetup) {
+            return;
+        }
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
+        let surface = self.draw.frame_graph_surface(oit_on);
+        self.game.native_frame_graph_setup(&view, surface);
+    }
+
+    fn take_frame_graph(
+        &mut self,
+    ) -> Option<sunrise_client::gfx::mod_frame_graph::RecordedFrameGraph> {
+        self.draw.take_frame_graph()
+    }
+
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterSky);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
@@ -90,19 +101,18 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         oit_on: bool,
         out: &mut sunrise_client::gfx::world_primitives::PreparedHookGeometry,
     ) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.game.native_prepare_render_buffers(&view, self.draw);
         self.draw.finalize();
         self.game.resolve_submitted_groups(self.draw);
         let camera = DVec3::from(self.draw.camera());
-        self.game
-            .bake_model_instances(self.draw, camera, &mut out.entities, &mut out.entity_spans);
+        self.game.bake_model_instances(
+            self.draw,
+            camera,
+            &mut out.entities,
+            &mut out.entity_spans,
+            Some(&mut out.see_through),
+        );
         self.draw.sort_labels();
         let [world, see_through] = self.draw.labels();
         if !world.is_empty()
@@ -126,13 +136,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
     ) -> &[sunrise_client::gfx::world_primitives::DrawRanges] {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(stage);
         self.game
             .native_render_level_stage(stage, &view, &mut surface);
@@ -144,13 +148,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterLevel);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
@@ -227,6 +225,7 @@ impl Game<'_> {
             || mod_api::__private::listened(mod_api::HookId::SubmitCustomGeometry)
             || mod_api::__private::listened(mod_api::HookId::PrepareRenderBuffers)
             || mod_api::__private::listened(mod_api::HookId::RenderLevelStage)
+            || mod_api::__private::listened(mod_api::HookId::FrameGraphSetup)
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
     pub(super) fn follow_debug_selection(&mut self) {
@@ -268,8 +267,10 @@ impl Game<'_> {
         draw.set_time(((self.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
         let view = mod_api::WorldRenderView::new(
             frame_camera,
+            self.world_camera_entity_eye(),
             alpha as f32,
             self.world.game_time,
+            self.animation_time(),
             oit_on,
             sections,
         );
@@ -387,9 +388,670 @@ impl Game<'_> {
     ) -> Result<(), DrawError> {
         draw.quads(quads)
     }
-    /// Submit quads drawn by a mod pipeline: the handle is checked against the published
-    /// pipelines once, non-finite quads are skipped individually without rejecting valid quads
-    /// in the same slice, and quad storage grows dynamically into the GPU buffers.
+    /// Allocate a retained GPU [`mod_api::MeshRef`] on the active renderer.
+    pub(super) fn create_mesh(
+        &self,
+        desc: &mod_api::MeshDescriptor<'_>,
+    ) -> Result<mod_api::MeshRef, mod_api::MeshError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::MeshError::Unavailable)?;
+        gpu.create_mesh(mod_api::content::crash::current_native_mod(), desc)
+    }
+    /// Update vertex buffer `binding` of retained `mesh`.
+    pub(super) fn mesh_write_vertices(
+        &self,
+        mesh: mod_api::MeshRef,
+        binding: u8,
+        byte_offset: u64,
+        data: &[u8],
+    ) -> Result<(), mod_api::MeshError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::MeshError::Unavailable)?;
+        gpu.mesh_write_vertices(
+            mod_api::content::crash::current_native_mod(),
+            mesh,
+            binding,
+            byte_offset,
+            data,
+        )
+    }
+    /// Update the index buffer of retained `mesh`.
+    pub(super) fn mesh_write_indices(
+        &self,
+        mesh: mod_api::MeshRef,
+        byte_offset: u64,
+        data: &[u8],
+    ) -> Result<(), mod_api::MeshError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::MeshError::Unavailable)?;
+        gpu.mesh_write_indices(
+            mod_api::content::crash::current_native_mod(),
+            mesh,
+            byte_offset,
+            data,
+        )
+    }
+    /// Reallocate backing GPU buffers of retained `mesh` in place.
+    pub(super) fn mesh_replace(
+        &self,
+        mesh: mod_api::MeshRef,
+        desc: &mod_api::MeshDescriptor<'_>,
+    ) -> Result<(), mod_api::MeshError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::MeshError::Unavailable)?;
+        gpu.mesh_replace(mod_api::content::crash::current_native_mod(), mesh, desc)
+    }
+    /// Free retained `mesh`'s GPU buffers and retire the handle.
+    pub(super) fn mesh_release(&self, mesh: mod_api::MeshRef) -> Result<(), mod_api::MeshError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::MeshError::Unavailable)?;
+        gpu.mesh_release(mod_api::content::crash::current_native_mod(), mesh)
+    }
+    /// Allocate a retained GPU [`mod_api::UniformBufferRef`] on the active renderer's device.
+    pub(super) fn create_uniform_buffer(
+        &self,
+        bytes: &[u8],
+    ) -> Result<mod_api::UniformBufferRef, mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.create_uniform_buffer(mod_api::content::crash::current_native_mod(), bytes)
+    }
+    /// Partially or fully update retained uniform `buffer` starting at `byte_offset`.
+    pub(super) fn uniform_buffer_write(
+        &self,
+        buffer: mod_api::UniformBufferRef,
+        byte_offset: u32,
+        bytes: &[u8],
+    ) -> Result<(), mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.uniform_buffer_write(
+            mod_api::content::crash::current_native_mod(),
+            buffer,
+            byte_offset,
+            bytes,
+        )
+    }
+    /// Free retained uniform `buffer` and retire the handle.
+    pub(super) fn uniform_buffer_release(
+        &self,
+        buffer: mod_api::UniformBufferRef,
+    ) -> Result<(), mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.uniform_buffer_release(mod_api::content::crash::current_native_mod(), buffer)
+    }
+    /// Allocate a retained GPU [`mod_api::StorageBufferRef`] on the active renderer's device.
+    pub(super) fn create_storage_buffer(
+        &self,
+        desc: &mod_api::StorageBufferDescriptor,
+    ) -> Result<mod_api::StorageBufferRef, mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.create_storage_buffer(mod_api::content::crash::current_native_mod(), desc)
+    }
+    /// Queue `data` for `offset` of retained storage `buffer`.
+    pub(super) fn storage_buffer_write_range(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<(), mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.storage_buffer_write_range(
+            mod_api::content::crash::current_native_mod(),
+            buffer,
+            offset,
+            data,
+        )
+    }
+    /// The size retained storage `buffer` was created with.
+    pub(super) fn storage_buffer_size(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+    ) -> Result<u64, mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.storage_buffer_size(mod_api::content::crash::current_native_mod(), buffer)
+    }
+    /// Free retained storage `buffer` and retire the handle.
+    pub(super) fn storage_buffer_release(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+    ) -> Result<(), mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.storage_buffer_release(mod_api::content::crash::current_native_mod(), buffer)
+    }
+    /// Allocate a mod-owned offscreen [`mod_api::RenderTargetRef`] on the active renderer's device.
+    pub(super) fn create_render_target(
+        &self,
+        desc: &mod_api::RenderTargetDescriptor,
+    ) -> Result<mod_api::RenderTargetRef, mod_api::RenderTargetError> {
+        let gpu = self
+            .mod_gpu()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        gpu.create_render_target(mod_api::content::crash::current_native_mod(), desc)
+    }
+    /// Resize mod-owned offscreen `target` (no-op if unchanged).
+    pub(super) fn render_target_resize(
+        &self,
+        target: mod_api::RenderTargetRef,
+        size: [u32; 2],
+    ) -> Result<(), mod_api::RenderTargetError> {
+        let gpu = self
+            .mod_gpu()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        gpu.render_target_resize(mod_api::content::crash::current_native_mod(), target, size)
+    }
+    /// Query pixel dimensions of mod-owned offscreen `target`.
+    pub(super) fn render_target_size(
+        &self,
+        target: mod_api::RenderTargetRef,
+    ) -> Result<[u32; 2], mod_api::RenderTargetError> {
+        let gpu = self
+            .mod_gpu()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        gpu.render_target_size(mod_api::content::crash::current_native_mod(), target)
+    }
+    /// The optional device features of the active device; all off without one.
+    pub(super) fn render_capabilities(&self) -> mod_api::RenderCapabilities {
+        self.mod_gpu().map_or_else(
+            || mod_api::__private::built::render_capabilities(false, Vec::new(), false, false),
+            |gpu| gpu.render_capabilities(),
+        )
+    }
+    /// Free mod-owned offscreen `target` and retire the handle.
+    pub(super) fn render_target_release(
+        &self,
+        target: mod_api::RenderTargetRef,
+    ) -> Result<(), mod_api::RenderTargetError> {
+        let gpu = self
+            .mod_gpu()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        gpu.render_target_release(mod_api::content::crash::current_native_mod(), target)
+    }
+    /// Validate and resolve per-draw set-1 [`mod_api::DrawBindings`] against pipeline `slot`'s
+    /// declared `BindGroupLayout` and `push_constant_size`, refusing a mip level bound in ways one
+    /// pass cannot combine with [`PipelineDrawError::TargetReadWriteHazard`].
+    fn resolve_draw_bindings(
+        &self,
+        draw: &mut WorldGeometry,
+        slot: u32,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<Option<sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings>, PipelineDrawError>
+    {
+        let draw = std::cell::RefCell::new(draw);
+        self.resolve_draw_bindings_into(
+            slot,
+            bindings,
+            None,
+            &[],
+            &mut |bytes| draw.borrow_mut().push_inline_uniform(bytes),
+            &mut |bytes| draw.borrow_mut().push_texel_data(bytes),
+        )
+    }
+
+    /// Validate and resolve per-draw set-1 [`mod_api::DrawBindings`] for either the main world
+    /// pass (`active_target = None`) or an offscreen pass (`active_target = Some((target, mip_level))`:
+    /// a mod render target's mip level or a transient frame-graph target at level 0), refusing
+    /// self-sampling with [`PipelineDrawError::TargetReadWriteHazard`].
+    fn resolve_draw_bindings_into(
+        &self,
+        slot: u32,
+        bindings: &mod_api::DrawBindings<'_>,
+        active_target: Option<(mod_api::FrameTarget, u32)>,
+        transients: &[mod_api::RenderTargetDescriptor],
+        push_inline: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
+        push_texel: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
+    ) -> Result<Option<sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings>, PipelineDrawError>
+    {
+        let (layout, pc_size) = self
+            .pack
+            .render
+            .mod_pipelines
+            .bind_group_layout(slot)
+            .ok_or(PipelineDrawError::Pipeline(
+                mod_api::RenderPipelineError::Invalid,
+            ))?;
+        let writes_depth = self.pack.render.mod_pipelines.writes_depth(slot);
+        self.resolve_bindings_against(
+            layout,
+            pc_size,
+            writes_depth,
+            bindings,
+            active_target,
+            transients,
+            push_inline,
+            push_texel,
+        )
+    }
+
+    /// [`Self::resolve_draw_bindings_into`] for any pipeline kind: `layout` is the pipeline's
+    /// declared bind group, `pc_size` its push-constant bytes (0 for compute) and `writes_depth`
+    /// whether it writes depth (a depth-sampling hazard).
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::game) fn resolve_bindings_against(
+        &self,
+        layout: &mod_api::BindGroupLayout,
+        pc_size: u32,
+        writes_depth: bool,
+        bindings: &mod_api::DrawBindings<'_>,
+        active_target: Option<(mod_api::FrameTarget, u32)>,
+        transients: &[mod_api::RenderTargetDescriptor],
+        push_inline: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
+        push_texel: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
+    ) -> Result<Option<sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings>, PipelineDrawError>
+    {
+        if layout.is_empty() && pc_size == 0 {
+            if !bindings.entries.is_empty() || bindings.push_constants.is_some() {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            return Ok(None);
+        }
+        // Reject duplicate or unknown entry names in `bindings`.
+        if bindings.entries.len() != layout.entries.len() {
+            return Err(PipelineDrawError::InvalidBinding);
+        }
+        let gpu = self
+            .mod_gpu()
+            .ok_or(PipelineDrawError::Buffer(mod_api::BufferError::Unavailable))?;
+        let owner = mod_api::content::crash::current_native_mod();
+        let (max_uniform, max_texel) = gpu.mod_binding_limits();
+        // A draw of an offscreen pass binds nothing of the level that pass renders into.
+        if let Some((mod_api::FrameTarget::Mod(rt), mip)) = active_target
+            && bindings.entries.iter().any(|(_, value)| match value {
+                mod_api::BindingValue::Texture(mod_api::TextureSource::RenderTargetColor(t, _))
+                | mod_api::BindingValue::Texture(mod_api::TextureSource::RenderTargetDepth(t)) => {
+                    *t == rt
+                }
+                mod_api::BindingValue::Texture(mod_api::TextureSource::RenderTargetColorMip(
+                    view,
+                )) => {
+                    view.target == rt
+                        && (view.base_mip..view.base_mip.saturating_add(view.mip_levels))
+                            .contains(&mip)
+                }
+                mod_api::BindingValue::StorageImage(image) => {
+                    image.target == rt && image.mip_level == mip
+                }
+                _ => false,
+            })
+        {
+            return Err(PipelineDrawError::TargetReadWriteHazard);
+        }
+        let active_transient_target = match active_target {
+            Some((mod_api::FrameTarget::Transient(id), _)) => Some(id),
+            _ => None,
+        };
+
+        // Validate every declared entry before appending to byte pools so a refused draw appends
+        // nothing.
+        enum StagedEntry<'a> {
+            UniformBuffer {
+                id: u64,
+                buffer: wgpu::Buffer,
+                byte_len: u64,
+            },
+            InlineUniform(&'a [u8]),
+            Texture {
+                view_id: u64,
+                view: wgpu::TextureView,
+                mips: Option<sunrise_client::gfx::mod_render_targets::TargetMips>,
+            },
+            TransientColor {
+                target: mod_api::TransientTargetId,
+                attachment: u8,
+            },
+            TransientDepth {
+                target: mod_api::TransientTargetId,
+            },
+            TexelBytes(Vec<u8>),
+            Storage(sunrise_client::gfx::mod_storage::ResolvedStorageRange),
+            StorageImage {
+                view_id: u64,
+                view: wgpu::TextureView,
+                format: wgpu::TextureFormat,
+                mips: sunrise_client::gfx::mod_render_targets::TargetMips,
+            },
+        }
+        let mut staged = Vec::with_capacity(layout.entries.len());
+        for decl in &layout.entries {
+            let mut matches = bindings
+                .entries
+                .iter()
+                .filter(|(name, _)| *name == decl.name.as_str());
+            let Some((_, value)) = matches.next() else {
+                return Err(PipelineDrawError::InvalidBinding);
+            };
+            if matches.next().is_some() {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            match (decl.kind, value) {
+                (
+                    mod_api::BindingKind::UniformBuffer { min_size },
+                    mod_api::BindingValue::Uniform(mod_api::UniformValue::Buffer(handle)),
+                ) => {
+                    let (id, buffer, byte_len) =
+                        gpu.resolve_mod_uniform_buffer(owner, *handle, min_size)?;
+                    staged.push(StagedEntry::UniformBuffer {
+                        id,
+                        buffer,
+                        byte_len,
+                    });
+                }
+                (
+                    mod_api::BindingKind::UniformBuffer { min_size },
+                    mod_api::BindingValue::Uniform(mod_api::UniformValue::Inline(bytes)),
+                ) => {
+                    if bytes.len() < min_size as usize
+                        || !bytes.len().is_multiple_of(4)
+                        || bytes.len() as u64 > max_uniform
+                    {
+                        return Err(PipelineDrawError::InvalidBinding);
+                    }
+                    staged.push(StagedEntry::InlineUniform(bytes));
+                }
+                (
+                    mod_api::BindingKind::CombinedImageSampler { filter, .. },
+                    mod_api::BindingValue::Texture(source),
+                ) => match source {
+                    mod_api::TextureSource::TransientTargetColor(target, attachment) => {
+                        if active_transient_target == Some(*target) {
+                            return Err(PipelineDrawError::TargetReadWriteHazard);
+                        }
+                        let Some(desc) = transients.get(target.raw() as usize) else {
+                            return Err(PipelineDrawError::InvalidBinding);
+                        };
+                        let filterable = filter == mod_api::SamplerFilter::Linear;
+                        if !sunrise_client::gfx::mod_frame_graph::validate_transient_color_binding(
+                            desc,
+                            *attachment,
+                            filterable,
+                            gpu.float32_filterable(),
+                        ) {
+                            return Err(PipelineDrawError::InvalidBinding);
+                        }
+                        staged.push(StagedEntry::TransientColor {
+                            target: *target,
+                            attachment: *attachment,
+                        });
+                    }
+                    mod_api::TextureSource::TransientTargetDepth(target) => {
+                        if active_transient_target == Some(*target) {
+                            return Err(PipelineDrawError::TargetReadWriteHazard);
+                        }
+                        let Some(desc) = transients.get(target.raw() as usize) else {
+                            return Err(PipelineDrawError::InvalidBinding);
+                        };
+                        let filterable = filter == mod_api::SamplerFilter::Linear;
+                        if !sunrise_client::gfx::mod_frame_graph::validate_transient_depth_binding(
+                            desc, filterable,
+                        ) {
+                            return Err(PipelineDrawError::InvalidBinding);
+                        }
+                        staged.push(StagedEntry::TransientDepth { target: *target });
+                    }
+                    other => {
+                        let mut mips = None;
+                        let (view_id, view) = match other {
+                            mod_api::TextureSource::AtlasSprite(id) => {
+                                let sprite_key = id
+                                    .to_string()
+                                    .strip_prefix("minecraft:")
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| id.to_string());
+                                if !self.pack.render.sprite_layers.contains_key(&sprite_key)
+                                    && !self.gui.atlas.sprites.contains_key(&sprite_key)
+                                {
+                                    return Err(PipelineDrawError::InvalidBinding);
+                                }
+                                gpu.mod_atlas_texture_view()
+                            }
+                            mod_api::TextureSource::DynamicTexture(id) => {
+                                self.resolve_dynamic_texture_view(gpu, id)?
+                            }
+                            mod_api::TextureSource::StandaloneTexture(id) => {
+                                let asset_path = if id.path().ends_with(".png") {
+                                    format!("assets/{}/{}", id.namespace(), id.path())
+                                } else {
+                                    format!("assets/{}/textures/{}.png", id.namespace(), id.path())
+                                };
+                                gpu.resolve_mod_standalone_texture(id, || {
+                                    self.pack.source.read(&asset_path).ok()
+                                })?
+                            }
+                            mod_api::TextureSource::WorldDepth => {
+                                if writes_depth {
+                                    return Err(PipelineDrawError::InvalidBinding);
+                                }
+                                gpu.mod_world_depth_texture_view()
+                            }
+                            mod_api::TextureSource::Lightmap => gpu.mod_lightmap_texture_view(),
+                            mod_api::TextureSource::RenderTargetColor(target, attachment) => {
+                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let (id, view, target_mips) = gpu.resolve_mod_render_target_color(
+                                    owner,
+                                    *target,
+                                    *attachment,
+                                    filterable,
+                                )?;
+                                mips = Some(target_mips);
+                                (id, view)
+                            }
+                            mod_api::TextureSource::RenderTargetDepth(target) => {
+                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                gpu.resolve_mod_render_target_depth(owner, *target, filterable)?
+                            }
+                            mod_api::TextureSource::RenderTargetColorMip(view) => {
+                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let (id, view, target_mips) = gpu
+                                    .resolve_mod_render_target_color_mips(
+                                        owner, *view, filterable,
+                                    )?;
+                                mips = Some(target_mips);
+                                (id, view)
+                            }
+                            _ => return Err(PipelineDrawError::InvalidBinding),
+                        };
+                        staged.push(StagedEntry::Texture {
+                            view_id,
+                            view,
+                            mips,
+                        });
+                    }
+                },
+                (
+                    mod_api::BindingKind::TexelBuffer { format },
+                    mod_api::BindingValue::TexelBuffer(bytes),
+                ) => {
+                    let expanded_len = bytes.len() as u64 * (4 / format.element_bytes() as u64);
+                    if bytes.is_empty()
+                        || !bytes.len().is_multiple_of(format.element_bytes())
+                        || expanded_len > max_texel
+                    {
+                        return Err(PipelineDrawError::InvalidBinding);
+                    }
+                    let expanded = match format {
+                        mod_api::TexelBufferFormat::R8Sint => {
+                            let mut out = Vec::with_capacity(bytes.len() * 4);
+                            for &b in *bytes {
+                                out.extend_from_slice(&i32::from(b as i8).to_ne_bytes());
+                            }
+                            out
+                        }
+                        mod_api::TexelBufferFormat::R8Uint => {
+                            let mut out = Vec::with_capacity(bytes.len() * 4);
+                            for &b in *bytes {
+                                out.extend_from_slice(&u32::from(b).to_ne_bytes());
+                            }
+                            out
+                        }
+                        mod_api::TexelBufferFormat::R32Sint
+                        | mod_api::TexelBufferFormat::R32Uint => bytes.to_vec(),
+                        _ => return Err(PipelineDrawError::InvalidBinding),
+                    };
+                    staged.push(StagedEntry::TexelBytes(expanded));
+                }
+                (
+                    mod_api::BindingKind::StorageBuffer { min_size, .. },
+                    mod_api::BindingValue::StorageBuffer(slice),
+                ) => {
+                    let range = gpu
+                        .resolve_mod_storage_range(owner, *slice, min_size)
+                        .map_err(PipelineDrawError::Buffer)?;
+                    staged.push(StagedEntry::Storage(range));
+                }
+                (
+                    mod_api::BindingKind::StorageImage { access },
+                    mod_api::BindingValue::StorageImage(image),
+                ) => {
+                    let (view_id, view, format, mips) =
+                        gpu.resolve_mod_storage_image(owner, access, *image)?;
+                    staged.push(StagedEntry::StorageImage {
+                        view_id,
+                        view,
+                        format,
+                        mips,
+                    });
+                }
+                _ => return Err(PipelineDrawError::InvalidBinding),
+            }
+        }
+        // One render pass gives a mip level one usage: a draw binds no level both as a storage
+        // image it writes and as anything else (a sampled view, or another storage access).
+        let mips_of = |entry: &StagedEntry<'_>| match entry {
+            StagedEntry::Texture { mips, .. } => *mips,
+            StagedEntry::StorageImage { mips, .. } => Some(*mips),
+            _ => None,
+        };
+        if staged.iter().enumerate().any(|(i, a)| {
+            mips_of(a).is_some_and(|a| {
+                staged[i + 1..]
+                    .iter()
+                    .filter_map(mips_of)
+                    .any(|b| a.conflicts_with(&b))
+            })
+        }) {
+            return Err(PipelineDrawError::TargetReadWriteHazard);
+        }
+        let pc_slice = if pc_size > 0 {
+            let Some(bytes) = bindings.push_constants else {
+                return Err(PipelineDrawError::InvalidBinding);
+            };
+            if bytes.is_empty() || bytes.len() > pc_size as usize || !bytes.len().is_multiple_of(4)
+            {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            Some(bytes)
+        } else {
+            if bindings.push_constants.is_some() {
+                return Err(PipelineDrawError::InvalidBinding);
+            }
+            None
+        };
+
+        let mut resolved_entries = Vec::with_capacity(staged.len());
+        for entry in staged {
+            match entry {
+                StagedEntry::UniformBuffer {
+                    id,
+                    buffer,
+                    byte_len,
+                } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::UniformBuffer {
+                            id,
+                            buffer,
+                            byte_len,
+                        },
+                    );
+                }
+                StagedEntry::InlineUniform(bytes) => {
+                    let byte_range = push_inline(bytes);
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::InlineUniform {
+                            byte_range,
+                        },
+                    );
+                }
+                StagedEntry::Texture {
+                    view_id,
+                    view,
+                    mips,
+                } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::Texture {
+                            view_id,
+                            view,
+                            mips,
+                        },
+                    );
+                }
+                StagedEntry::Storage(range) => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::StorageBuffer {
+                            id: range.id,
+                            buffer: range.buffer,
+                            offset: range.offset,
+                            size: range.length,
+                        },
+                    );
+                }
+                StagedEntry::StorageImage {
+                    view_id,
+                    view,
+                    format,
+                    mips,
+                } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::StorageImage {
+                            view_id,
+                            view,
+                            format,
+                            mips,
+                        },
+                    );
+                }
+                StagedEntry::TransientColor { target, attachment } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::TransientColor {
+                            target,
+                            attachment,
+                        },
+                    );
+                }
+                StagedEntry::TransientDepth { target } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::TransientDepth {
+                            target,
+                        },
+                    );
+                }
+                StagedEntry::TexelBytes(bytes) => {
+                    let byte_range = push_texel(&bytes);
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::TexelBuffer {
+                            byte_range,
+                        },
+                    );
+                }
+            }
+        }
+        let push_constants = pc_slice.map(push_inline);
+        Ok(Some(
+            sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings {
+                entries: resolved_entries,
+                push_constants,
+            },
+        ))
+    }
+
+    fn resolve_dynamic_texture_view(
+        &self,
+        gpu: &sunrise_client::gfx::ModGpuResources,
+        id: &mod_api::Identifier,
+    ) -> Result<(u64, wgpu::TextureView), mod_api::PipelineDrawError> {
+        let Some((handle, _)) = self.dynamic_textures.get(id) else {
+            return Err(mod_api::PipelineDrawError::InvalidBinding);
+        };
+        gpu.dynamic_texture_view(handle)
+            .ok_or(mod_api::PipelineDrawError::InvalidBinding)
+    }
+
+    /// Submit quads drawn by a mod pipeline: shorthand over [`Self::native_world_draw_vertices`]
+    /// for pipelines using the default `PositionTexColor` vertex format and
+    /// [`mod_api::PrimitiveTopology::Quads`]. Non-finite quads are skipped individually without
+    /// rejecting valid quads in the same slice.
     pub(super) fn native_world_draw_pipeline_quads(
         &self,
         draw: &mut WorldGeometry,
@@ -402,8 +1064,701 @@ impl Game<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        draw.pipeline_quads(slot, quads);
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        if draw.effective_topology(base_topology) != mod_api::PrimitiveTopology::Quads {
+            return Err(PipelineDrawError::TopologyMismatch);
+        }
+        if !self
+            .pack
+            .render
+            .mod_pipelines
+            .uses_default_vertex_format(slot)
+        {
+            return Err(PipelineDrawError::VertexFormatMismatch);
+        }
+        let camera = draw.camera();
+        let mut vertices = Vec::with_capacity(quads.len() * 4);
+        for q in quads {
+            let corners_finite = q.corners.iter().all(|corner| {
+                corner
+                    .iter()
+                    .zip(camera)
+                    .all(|(&p, cam)| p.is_finite() && ((p - cam) as f32).is_finite())
+            });
+            if !corners_finite || q.uv.iter().flatten().any(|c| !c.is_finite()) {
+                continue;
+            }
+            let color = sunrise_client::world_primitives::vertex_color(q.color, 255);
+            vertices.extend((0..4).map(|corner| {
+                sunrise_client::gfx::mod_pipelines::PipelineVertex {
+                    pos: std::array::from_fn(|i| (q.corners[corner][i] - camera[i]) as f32),
+                    uv: q.uv[corner],
+                    color,
+                }
+            }));
+        }
+        if vertices.is_empty() {
+            return Ok(());
+        }
+        self.native_world_draw_vertices(
+            draw,
+            pipeline,
+            &[bytemuck::cast_slice(&vertices)],
+            None,
+            mod_api::MeshDraw::vertices(0..vertices.len() as u32),
+            &mod_api::DrawBindings::EMPTY,
+        )
+    }
+    /// Record a zero-copy retained GPU [`mod_api::MeshRef`] draw call after validating pipeline
+    /// liveness, mesh ownership/liveness, vertex-binding strides, and draw/instance bounds.
+    pub(super) fn native_world_draw_mesh(
+        &self,
+        draw: &mut WorldGeometry,
+        pipeline: RenderPipelineRef,
+        mesh: mod_api::MeshRef,
+        mesh_draw: mod_api::MeshDraw,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let topology = draw.effective_topology(base_topology);
+        let gpu = self
+            .mod_gpu()
+            .ok_or(PipelineDrawError::Mesh(mod_api::MeshError::Unavailable))?;
+        check_generated_indices(topology, &mesh_draw, gpu.max_buffer_size())?;
+        let resolved = gpu.resolve_mod_mesh_draw(
+            mod_api::content::crash::current_native_mod(),
+            mesh,
+            vertex_bindings,
+            topology,
+            &mesh_draw,
+        )?;
+        let resolved_bindings = self.resolve_draw_bindings(draw, slot, bindings)?;
+        let empty = mesh_draw.instances.is_empty()
+            || match &mesh_draw.range {
+                mod_api::DrawRange::Vertices(r) => r.is_empty(),
+                mod_api::DrawRange::Indexed { indices, .. } => indices.is_empty(),
+                _ => true,
+            };
+        if !empty {
+            draw.draw_mesh_slot(slot, resolved, mesh_draw, resolved_bindings);
+        }
         Ok(())
+    }
+    /// Check a GPU-driven [`mod_api::IndirectDraw`] against its pipeline, mesh and command
+    /// buffer, before anything is recorded: the pipeline's vertex bindings against the mesh (a
+    /// pipeline with bindings needs a mesh), the command buffer's handle, and the rest in
+    /// `IndirectSource::new`.
+    fn resolve_indirect_draw(
+        &self,
+        slot: u32,
+        topology: mod_api::PrimitiveTopology,
+        draw: &mod_api::IndirectDraw<'_>,
+    ) -> Result<sunrise_client::gfx::mod_pipelines::IndirectSource, PipelineDrawError> {
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let gpu = self
+            .mod_gpu()
+            .ok_or(PipelineDrawError::Mesh(mod_api::MeshError::Unavailable))?;
+        let owner = mod_api::content::crash::current_native_mod();
+        let mesh = match draw.mesh {
+            Some(handle) => Some(gpu.resolve_mod_mesh_indirect(owner, handle, vertex_bindings)?),
+            None if vertex_bindings.is_empty() => None,
+            None => return Err(PipelineDrawError::VertexFormatMismatch),
+        };
+        let buffer = gpu
+            .resolve_mod_storage_buffer(owner, draw.indirect_buffer)
+            .map_err(PipelineDrawError::Buffer)?;
+        sunrise_client::gfx::mod_pipelines::IndirectSource::new(
+            topology,
+            mesh,
+            buffer,
+            draw.indirect_offset,
+            draw.max_count,
+        )
+    }
+    /// Record a GPU-driven [`mod_api::IndirectDraw`] for the world pass, after checking it.
+    pub(super) fn native_world_draw_indirect(
+        &self,
+        draw: &mut WorldGeometry,
+        indirect: &mod_api::IndirectDraw<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(indirect.pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let source =
+            self.resolve_indirect_draw(slot, draw.effective_topology(base_topology), indirect)?;
+        let resolved_bindings = self.resolve_draw_bindings(draw, slot, indirect.bindings)?;
+        if indirect.max_count > 0 {
+            draw.draw_indirect_slot(slot, source, resolved_bindings);
+        }
+        Ok(())
+    }
+    /// Validate and queue a transient per-frame vertex/index draw call.
+    pub(super) fn native_world_draw_vertices(
+        &self,
+        draw: &mut WorldGeometry,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(mod_api::IndexFormat, &[u8])>,
+        mesh_draw: mod_api::MeshDraw,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let base_topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let topology = draw.effective_topology(base_topology);
+        if mesh_draw.instances.start > mesh_draw.instances.end {
+            return Err(PipelineDrawError::InvalidRange);
+        }
+        if vertices.len() != vertex_bindings.len() {
+            return Err(PipelineDrawError::VertexFormatMismatch);
+        }
+        let mut bound_slices = Vec::with_capacity(vertices.len());
+        let mut vertex_records = Vec::with_capacity(vertices.len());
+        for ((binding_idx, fmt), &slice) in vertex_bindings.iter().zip(vertices.iter()) {
+            let stride = fmt.stride as usize;
+            if slice.len() % 4 != 0 || slice.len() % stride != 0 {
+                return Err(PipelineDrawError::InvalidAlignment);
+            }
+            let record_count = slice.len() / stride;
+            match fmt.step_mode {
+                mod_api::VertexStepMode::Vertex => {
+                    if let mod_api::DrawRange::Vertices(ref range) = mesh_draw.range
+                        && (range.start > range.end || (range.end as usize) > record_count)
+                    {
+                        return Err(PipelineDrawError::InvalidRange);
+                    }
+                }
+                mod_api::VertexStepMode::Instance => {
+                    if (mesh_draw.instances.end as usize) > record_count {
+                        return Err(PipelineDrawError::InvalidRange);
+                    }
+                }
+                _ => return Err(PipelineDrawError::VertexFormatMismatch),
+            }
+            vertex_records.push((fmt.step_mode, record_count));
+            bound_slices.push((u32::from(*binding_idx), slice));
+        }
+        check_generated_indices(
+            topology,
+            &mesh_draw,
+            self.mod_gpu().map_or(u64::MAX, |gpu| gpu.max_buffer_size()),
+        )?;
+        match &mesh_draw.range {
+            mod_api::DrawRange::Vertices(range) => {
+                if range.start > range.end {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+                let count = range.end - range.start;
+                if matches!(
+                    topology,
+                    mod_api::PrimitiveTopology::Quads | mod_api::PrimitiveTopology::Lines
+                ) && count % 4 != 0
+                {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+            }
+            mod_api::DrawRange::Indexed {
+                indices: idx_range,
+                base_vertex,
+            } => {
+                let Some((fmt, idx_bytes)) = indices else {
+                    return Err(PipelineDrawError::MissingIndexBuffer);
+                };
+                let elem = fmt.byte_size() as usize;
+                if idx_bytes.len() % elem != 0 || idx_bytes.len() % 4 != 0 {
+                    return Err(PipelineDrawError::InvalidAlignment);
+                }
+                let idx_count = idx_bytes.len() / elem;
+                if idx_range.start > idx_range.end || (idx_range.end as usize) > idx_count {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+                check_indexed_vertices(&vertex_records, fmt, idx_bytes, idx_range, *base_vertex)?;
+            }
+            _ => return Err(PipelineDrawError::InvalidRange),
+        }
+        let resolved_bindings = self.resolve_draw_bindings(draw, slot, bindings)?;
+        let empty = mesh_draw.instances.is_empty()
+            || match &mesh_draw.range {
+                mod_api::DrawRange::Vertices(r) => r.is_empty(),
+                mod_api::DrawRange::Indexed { indices, .. } => indices.is_empty(),
+                _ => true,
+            };
+        if !empty {
+            draw.draw_vertices_slot(slot, &bound_slices, indices, mesh_draw, resolved_bindings);
+        }
+        Ok(())
+    }
+    /// Record one compute dispatch into a frame-graph compute node: the handle, the bindings
+    /// against the pipeline's declared bind group and the workgroup counts (or the indirect
+    /// buffer range) are all checked here, before any GPU call, so a bad dispatch is an `Err`.
+    pub(in crate::game) fn native_compute_dispatch(
+        &self,
+        pass: &mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+        transients: &[mod_api::RenderTargetDescriptor],
+        pipeline: mod_api::ComputePipelineRef,
+        bindings: &mod_api::DrawBindings<'_>,
+        workgroups: Result<[u32; 3], (mod_api::StorageBufferRef, u64)>,
+    ) -> Result<(), mod_api::ComputeDispatchError> {
+        use mod_api::ComputeDispatchError as Refused;
+        use sunrise_client::gfx::mod_compute::{DispatchKind, RecordedDispatch};
+        let dispatches = pass.dispatches.as_mut().ok_or(Refused::Unavailable)?;
+        let gpu = self.mod_gpu().ok_or(Refused::Unavailable)?;
+        let compute = self.pack.render.mod_pipelines.compute();
+        let slot = compute.slot(pipeline).map_err(Refused::Pipeline)?;
+        let built = compute.built()[slot as usize]
+            .as_ref()
+            .ok_or(Refused::Pipeline(mod_api::ComputePipelineError::Invalid))?;
+        let kind = match workgroups {
+            Ok(counts) => {
+                let max = gpu.max_compute_workgroups_per_dimension();
+                if counts.iter().any(|&n| n > max) {
+                    return Err(Refused::TooManyWorkgroups);
+                }
+                DispatchKind::Direct(counts)
+            }
+            Err((indirect, offset)) => {
+                let buffer = gpu
+                    .resolve_mod_storage_buffer(
+                        mod_api::content::crash::current_native_mod(),
+                        indirect,
+                    )
+                    .map_err(Refused::Buffer)?;
+                if !buffer.usage().contains(wgpu::BufferUsages::INDIRECT)
+                    || !offset.is_multiple_of(4)
+                    || offset.checked_add(12).is_none_or(|end| end > buffer.size())
+                {
+                    return Err(Refused::InvalidIndirect);
+                }
+                DispatchKind::Indirect { buffer, offset }
+            }
+        };
+        let mut inline = Vec::new();
+        let mut texel = Vec::new();
+        let resolved = self
+            .resolve_bindings_against(
+                &built.bind_group_layout,
+                0,
+                false,
+                bindings,
+                None,
+                transients,
+                &mut |bytes| {
+                    let start = inline.len();
+                    inline.extend_from_slice(bytes);
+                    start..inline.len()
+                },
+                &mut |bytes| {
+                    let start = texel.len();
+                    texel.extend_from_slice(bytes);
+                    start..texel.len()
+                },
+            )
+            .map_err(|error| match error {
+                PipelineDrawError::Buffer(error) => Refused::Buffer(error),
+                _ => Refused::InvalidBinding,
+            })?;
+        let indirect = workgroups.err().map(|(buffer, _)| buffer);
+        if compute_bindings_alias(&built.bind_group_layout, bindings, indirect) {
+            return Err(Refused::InvalidBinding);
+        }
+        // A storage image's texture format is the one its shader declares.
+        let entries = resolved
+            .as_ref()
+            .map_or(&[][..], |bound| &bound.entries[..]);
+        for (index, entry) in entries.iter().enumerate() {
+            if let sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::StorageImage {
+                format,
+                ..
+            } = entry
+                && sunrise_client::gfx::mod_compute::declared_storage_format(built, index)
+                    != Some(*format)
+            {
+                return Err(Refused::InvalidBinding);
+            }
+        }
+        dispatches.push(RecordedDispatch {
+            slot,
+            entries: resolved.map_or_else(Vec::new, |bindings| bindings.entries),
+            inline,
+            texel,
+            kind,
+        });
+        Ok(())
+    }
+
+    /// Record a retained GPU [`mod_api::MeshRef`] draw into an offscreen frame-graph pass.
+    pub(in crate::game) fn native_offscreen_draw_mesh(
+        &self,
+        pass: &mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+        transients: &[mod_api::RenderTargetDescriptor],
+        pipeline: RenderPipelineRef,
+        mesh: mod_api::MeshRef,
+        mesh_draw: mod_api::MeshDraw,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let gpu = self
+            .mod_gpu()
+            .ok_or(PipelineDrawError::Mesh(mod_api::MeshError::Unavailable))?;
+        let resolved = gpu.resolve_mod_mesh_draw(
+            mod_api::content::crash::current_native_mod(),
+            mesh,
+            vertex_bindings,
+            topology,
+            &mesh_draw,
+        )?;
+        let active_target = pass.target.map(|target| (target, 0));
+        let resolved_bindings = self.resolve_draw_bindings_into(
+            slot,
+            bindings,
+            active_target,
+            transients,
+            &mut |bytes| {
+                let start = pass.inline_uniforms.len();
+                pass.inline_uniforms.extend_from_slice(bytes);
+                start..pass.inline_uniforms.len()
+            },
+            &mut |bytes| {
+                let start = pass.texel_data.len();
+                pass.texel_data.extend_from_slice(bytes);
+                start..pass.texel_data.len()
+            },
+        )?;
+        let empty = mesh_draw.instances.is_empty()
+            || match &mesh_draw.range {
+                mod_api::DrawRange::Vertices(r) => r.is_empty(),
+                mod_api::DrawRange::Indexed { indices, .. } => indices.is_empty(),
+                _ => true,
+            };
+        if !empty {
+            pass.draws
+                .push(sunrise_client::gfx::mod_pipelines::PipelineDraw {
+                    slot,
+                    stage: 0,
+                    modifier_stack: 0,
+                    draw: mesh_draw,
+                    source: sunrise_client::gfx::mod_pipelines::PipelineDrawSource::Retained(
+                        resolved,
+                    ),
+                    bindings: resolved_bindings,
+                });
+        }
+        Ok(())
+    }
+    /// Record a GPU-driven [`mod_api::IndirectDraw`] into an offscreen frame-graph pass, after
+    /// checking it.
+    pub(in crate::game) fn native_offscreen_draw_indirect(
+        &self,
+        pass: &mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+        transients: &[mod_api::RenderTargetDescriptor],
+        indirect: &mod_api::IndirectDraw<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(indirect.pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        let source = self.resolve_indirect_draw(slot, topology, indirect)?;
+        let active_target = pass.target.map(|target| (target, 0));
+        let resolved_bindings = self.resolve_draw_bindings_into(
+            slot,
+            indirect.bindings,
+            active_target,
+            transients,
+            &mut |bytes| {
+                let start = pass.inline_uniforms.len();
+                pass.inline_uniforms.extend_from_slice(bytes);
+                start..pass.inline_uniforms.len()
+            },
+            &mut |bytes| {
+                let start = pass.texel_data.len();
+                pass.texel_data.extend_from_slice(bytes);
+                start..pass.texel_data.len()
+            },
+        )?;
+        if indirect.max_count > 0 {
+            pass.draws
+                .push(sunrise_client::gfx::mod_pipelines::PipelineDraw {
+                    slot,
+                    stage: 0,
+                    modifier_stack: 0,
+                    draw: mod_api::MeshDraw::vertices(0..0),
+                    source: sunrise_client::gfx::mod_pipelines::PipelineDrawSource::Indirect(
+                        source,
+                    ),
+                    bindings: resolved_bindings,
+                });
+        }
+        Ok(())
+    }
+    /// Record a transient per-frame vertex/index draw into an offscreen frame-graph pass.
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::game) fn native_offscreen_draw_vertices(
+        &self,
+        pass: &mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+        transients: &[mod_api::RenderTargetDescriptor],
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(mod_api::IndexFormat, &[u8])>,
+        mesh_draw: mod_api::MeshDraw,
+        bindings: &mod_api::DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let vertex_bindings = self.pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
+            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
+        )?;
+        let topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        if mesh_draw.instances.start > mesh_draw.instances.end {
+            return Err(PipelineDrawError::InvalidRange);
+        }
+        if vertices.len() != vertex_bindings.len() {
+            return Err(PipelineDrawError::VertexFormatMismatch);
+        }
+        let mut bound_slices = Vec::with_capacity(vertices.len());
+        for ((binding_idx, fmt), &slice) in vertex_bindings.iter().zip(vertices.iter()) {
+            let stride = fmt.stride as usize;
+            if slice.len() % 4 != 0 || slice.len() % stride != 0 {
+                return Err(PipelineDrawError::InvalidAlignment);
+            }
+            let record_count = slice.len() / stride;
+            match fmt.step_mode {
+                mod_api::VertexStepMode::Vertex => {
+                    if let mod_api::DrawRange::Vertices(ref range) = mesh_draw.range
+                        && (range.start > range.end || (range.end as usize) > record_count)
+                    {
+                        return Err(PipelineDrawError::InvalidRange);
+                    }
+                }
+                mod_api::VertexStepMode::Instance => {
+                    if (mesh_draw.instances.end as usize) > record_count {
+                        return Err(PipelineDrawError::InvalidRange);
+                    }
+                }
+                _ => return Err(PipelineDrawError::VertexFormatMismatch),
+            }
+            bound_slices.push((u32::from(*binding_idx), slice));
+        }
+        match &mesh_draw.range {
+            mod_api::DrawRange::Vertices(range) => {
+                if range.start > range.end {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+                let count = range.end - range.start;
+                if matches!(
+                    topology,
+                    mod_api::PrimitiveTopology::Quads | mod_api::PrimitiveTopology::Lines
+                ) && count % 4 != 0
+                {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+            }
+            mod_api::DrawRange::Indexed {
+                indices: idx_range, ..
+            } => {
+                let Some((fmt, idx_bytes)) = indices else {
+                    return Err(PipelineDrawError::MissingIndexBuffer);
+                };
+                let elem = fmt.byte_size() as usize;
+                if idx_bytes.len() % elem != 0 || idx_bytes.len() % 4 != 0 {
+                    return Err(PipelineDrawError::InvalidAlignment);
+                }
+                let idx_count = idx_bytes.len() / elem;
+                if idx_range.start > idx_range.end || (idx_range.end as usize) > idx_count {
+                    return Err(PipelineDrawError::InvalidRange);
+                }
+            }
+            _ => return Err(PipelineDrawError::InvalidRange),
+        }
+        let active_target = pass.target.map(|target| (target, 0));
+        let resolved_bindings = self.resolve_draw_bindings_into(
+            slot,
+            bindings,
+            active_target,
+            transients,
+            &mut |bytes| {
+                let start = pass.inline_uniforms.len();
+                pass.inline_uniforms.extend_from_slice(bytes);
+                start..pass.inline_uniforms.len()
+            },
+            &mut |bytes| {
+                let start = pass.texel_data.len();
+                pass.texel_data.extend_from_slice(bytes);
+                start..pass.texel_data.len()
+            },
+        )?;
+        let empty = mesh_draw.instances.is_empty()
+            || match &mesh_draw.range {
+                mod_api::DrawRange::Vertices(r) => r.is_empty(),
+                mod_api::DrawRange::Indexed { indices, .. } => indices.is_empty(),
+                _ => true,
+            };
+        if !empty {
+            let mut vertex_ranges = Vec::with_capacity(bound_slices.len());
+            for (binding, bytes) in bound_slices {
+                let start = pass.transient_vertices.len() as u64;
+                pass.transient_vertices.extend_from_slice(bytes);
+                let end = pass.transient_vertices.len() as u64;
+                vertex_ranges.push((binding, start..end));
+            }
+            let index_range = indices.map(|(fmt, bytes)| {
+                let start = pass.transient_indices.len() as u64;
+                pass.transient_indices.extend_from_slice(bytes);
+                let end = pass.transient_indices.len() as u64;
+                (fmt, start..end)
+            });
+            pass.draws
+                .push(sunrise_client::gfx::mod_pipelines::PipelineDraw {
+                    slot,
+                    stage: 0,
+                    modifier_stack: 0,
+                    draw: mesh_draw,
+                    source: sunrise_client::gfx::mod_pipelines::PipelineDrawSource::Transient {
+                        vertex_ranges,
+                        index_range,
+                    },
+                    bindings: resolved_bindings,
+                });
+        }
+        Ok(())
+    }
+    /// Shorthand for drawing [`PipelineQuad`]s into an offscreen frame-graph pass using the
+    /// default `PositionTexColor` vertex format.
+    pub(in crate::game) fn native_offscreen_draw_pipeline_quads(
+        &self,
+        pass: &mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+        transients: &[mod_api::RenderTargetDescriptor],
+        camera: [f64; 3],
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<(), PipelineDrawError> {
+        let slot = self
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        let topology = self
+            .pack
+            .render
+            .mod_pipelines
+            .topology(slot)
+            .unwrap_or(mod_api::PrimitiveTopology::Quads);
+        if topology != mod_api::PrimitiveTopology::Quads {
+            return Err(PipelineDrawError::TopologyMismatch);
+        }
+        if !self
+            .pack
+            .render
+            .mod_pipelines
+            .uses_default_vertex_format(slot)
+        {
+            return Err(PipelineDrawError::VertexFormatMismatch);
+        }
+        let mut vertices = Vec::with_capacity(quads.len() * 4);
+        for q in quads {
+            let corners_finite = q.corners.iter().all(|corner| {
+                corner
+                    .iter()
+                    .zip(camera)
+                    .all(|(&p, cam)| p.is_finite() && ((p - cam) as f32).is_finite())
+            });
+            if !corners_finite || q.uv.iter().flatten().any(|c| !c.is_finite()) {
+                continue;
+            }
+            let color = sunrise_client::world_primitives::vertex_color(q.color, 255);
+            vertices.extend((0..4).map(|corner| {
+                sunrise_client::gfx::mod_pipelines::PipelineVertex {
+                    pos: std::array::from_fn(|i| (q.corners[corner][i] - camera[i]) as f32),
+                    uv: q.uv[corner],
+                    color,
+                }
+            }));
+        }
+        if vertices.is_empty() {
+            return Ok(());
+        }
+        self.native_offscreen_draw_vertices(
+            pass,
+            transients,
+            pipeline,
+            &[bytemuck::cast_slice(&vertices)],
+            None,
+            mod_api::MeshDraw::vertices(0..vertices.len() as u32),
+            &mod_api::DrawBindings::EMPTY,
+        )
     }
     /// Resolve `model` once, cull copies against the frustum first, and skip any individual
     /// invalid visible copy without rolling back valid copies.
@@ -461,8 +1816,10 @@ impl Game<'_> {
         };
         let mut stage_copy = |index: usize, copy: &world_geometry::ModelCopy| {
             // The instance route draws one fixed index range per model: a copy that needs
-            // other faces, another colour, translucency or a block state takes the CPU route.
-            if copy.overlay != 0
+            // other faces, another colour, translucency, a ThroughWalls modifier, or a block state
+            // takes the CPU route.
+            if copy.through_walls
+                || copy.overlay != 0
                 || copy.color != u32::MAX
                 || copy.hidden_faces != 0
                 || cpu_only
@@ -513,18 +1870,26 @@ impl Game<'_> {
         camera: DVec3,
         entities: &mut Vec<Vertex>,
     ) {
-        self.bake_model_instances(draw, camera, entities, &mut self.entity_spans.borrow_mut());
+        self.bake_model_instances(
+            draw,
+            camera,
+            entities,
+            &mut self.entity_spans.borrow_mut(),
+            None,
+        );
     }
 
     /// Bake CPU copies onto the entity stream with their pack spans. Opaque standalone copies
     /// go as block entities, one run per overlay. Material copies follow and the renderer sorts
-    /// their translucent quads far to near.
+    /// their translucent quads far to near. Copies carrying a `ThroughWalls` pipeline modifier
+    /// bake into `see_through` when provided.
     fn bake_model_instances(
         &self,
         draw: &mut WorldGeometry,
         camera: DVec3,
         entities: &mut Vec<Vertex>,
         spans: &mut Vec<sunrise_client::gfx::pack_draw::EntitySpan>,
+        mut see_through: Option<&mut Vec<Vertex>>,
     ) {
         let capacity = self.entity_quad_capacity();
         let reserved_quads = self.entity_batch_reserved_quads();
@@ -544,6 +1909,27 @@ impl Game<'_> {
             let Some(slot) = self.standalone_geometry.instance_slot(copy.slot) else {
                 continue;
             };
+            if copy.through_walls {
+                if let (Some(out), Some(faces)) = (
+                    see_through.as_deref_mut(),
+                    self.standalone_geometry.faces(copy.slot),
+                ) {
+                    submit_opaque_model_copy(
+                        out,
+                        capacity,
+                        0,
+                        faces,
+                        copy.transform,
+                        (DVec3::from(copy.origin) - camera).as_vec3(),
+                        copy.light,
+                        copy.tint,
+                        copy.color,
+                        copy.overlay,
+                        copy.hidden_faces,
+                    );
+                }
+                continue;
+            }
             if slot.translucent || slot.state || copy.color >> 24 != 0xFF {
                 materials.push(index as u32);
                 continue;
@@ -697,6 +2083,105 @@ fn submit_material_model_copy(
         scope.submit_quad(quad)
     });
 }
+/// Refuse a `Vertices` draw whose engine-generated indices (`Quads`, `Lines`, `TriangleFan`)
+/// would need a larger index buffer than the device allows, as a draw with no vertex-step
+/// buffer to bound it would otherwise ask for.
+fn check_generated_indices(
+    topology: mod_api::PrimitiveTopology,
+    draw: &mod_api::MeshDraw,
+    max_buffer_size: u64,
+) -> Result<(), PipelineDrawError> {
+    if let mod_api::DrawRange::Vertices(range) = &draw.range
+        && matches!(
+            topology,
+            mod_api::PrimitiveTopology::Quads
+                | mod_api::PrimitiveTopology::Lines
+                | mod_api::PrimitiveTopology::TriangleFan
+        )
+        && range.start <= range.end
+        && u64::from(topology.index_count(range.end - range.start)) * 4 > max_buffer_size
+    {
+        return Err(PipelineDrawError::InvalidRange);
+    }
+    Ok(())
+}
+
+/// Check that an indexed draw only reaches records every per-vertex buffer holds: each
+/// vertex-step buffer is non-empty, and the largest index in `range` plus `base_vertex` falls
+/// inside all of them. `records` lists each bound buffer's step mode and record count.
+fn check_indexed_vertices(
+    records: &[(mod_api::VertexStepMode, usize)],
+    format: mod_api::IndexFormat,
+    index_bytes: &[u8],
+    range: &std::ops::Range<u32>,
+    base_vertex: i32,
+) -> Result<(), PipelineDrawError> {
+    if range.is_empty() {
+        return Ok(());
+    }
+    let size = format.byte_size() as usize;
+    let used = &index_bytes[range.start as usize * size..range.end as usize * size];
+    let read = |chunk: &[u8]| match format {
+        mod_api::IndexFormat::Uint16 => u32::from(u16::from_le_bytes([chunk[0], chunk[1]])),
+        _ => u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]),
+    };
+    let (lowest, highest) = used
+        .chunks_exact(size)
+        .map(read)
+        .fold((u32::MAX, 0), |(lo, hi), i| (lo.min(i), hi.max(i)));
+    let first = i64::from(lowest) + i64::from(base_vertex);
+    let last = i64::from(highest) + i64::from(base_vertex);
+    for &(step, count) in records {
+        if step == mod_api::VertexStepMode::Vertex && (first < 0 || last >= count as i64) {
+            return Err(PipelineDrawError::InvalidRange);
+        }
+    }
+    Ok(())
+}
+
+/// Whether a compute dispatch uses one storage buffer or one storage-image mip level twice with
+/// a write among the uses (or reads its indirect buffer while writing it): wgpu rejects such a
+/// usage scope when the encoder finishes, so the dispatch is refused here instead.
+fn compute_bindings_alias(
+    layout: &mod_api::BindGroupLayout,
+    bindings: &mod_api::DrawBindings<'_>,
+    indirect: Option<mod_api::StorageBufferRef>,
+) -> bool {
+    let mut buffers: Vec<(mod_api::StorageBufferRef, bool)> =
+        indirect.map(|buffer| (buffer, false)).into_iter().collect();
+    let mut images: Vec<(mod_api::StorageImageBinding, bool)> = Vec::new();
+    for decl in &layout.entries {
+        let Some((_, value)) = bindings
+            .entries
+            .iter()
+            .find(|(name, _)| *name == decl.name.as_str())
+        else {
+            continue;
+        };
+        match (decl.kind, value) {
+            (
+                mod_api::BindingKind::StorageBuffer { read_only, .. },
+                mod_api::BindingValue::StorageBuffer(slice),
+            ) => buffers.push((slice.buffer, !read_only)),
+            (
+                mod_api::BindingKind::StorageImage { access },
+                mod_api::BindingValue::StorageImage(image),
+            ) => images.push((*image, access != mod_api::StorageImageAccess::ReadOnly)),
+            _ => {}
+        }
+    }
+    let clashes = |same: bool, a_writes: bool, b_writes: bool| same && (a_writes || b_writes);
+    buffers.iter().enumerate().any(|(i, (a, a_writes))| {
+        buffers[i + 1..]
+            .iter()
+            .any(|(b, b_writes)| clashes(a == b, *a_writes, *b_writes))
+    }) || images.iter().enumerate().any(|(i, (a, a_writes))| {
+        images[i + 1..]
+            .iter()
+            .any(|(b, b_writes)| clashes(a == b, *a_writes, *b_writes))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -818,6 +2303,77 @@ mod tests {
         let generation = mod_api::__private::game::Fields::fields(&model).generation;
         sunrise_client::gfx::set_test_prepared_generation(Some(generation));
         model
+    }
+
+    #[test]
+    fn indexed_draws_need_every_vertex_buffer_to_hold_the_indexed_records() {
+        use mod_api::{IndexFormat, VertexStepMode};
+        let indices: Vec<u8> = [0u16, 1, 2, 0]
+            .iter()
+            .flat_map(|i| i.to_le_bytes())
+            .collect();
+        let check = |records: &[(VertexStepMode, usize)], base: i32| {
+            check_indexed_vertices(records, IndexFormat::Uint16, &indices, &(0..4), base)
+        };
+        assert_eq!(check(&[(VertexStepMode::Vertex, 3)], 0), Ok(()));
+        // An empty per-vertex buffer with a non-empty indexed range is refused, not drawn.
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 0)], 0),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // The largest index (2) must fit, after `base_vertex`.
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 2)], 0),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // `base_vertex` 2 moves the largest index to record 4.
+        assert_eq!(check(&[(VertexStepMode::Vertex, 5)], 2), Ok(()));
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 4)], 2),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // A negative `base_vertex` that moves the lowest index below record 0 is refused.
+        assert_eq!(
+            check(&[(VertexStepMode::Vertex, 4)], -1),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        // Instance-step buffers are bounded by the instance range, not by the indices.
+        assert_eq!(check(&[(VertexStepMode::Instance, 0)], 0), Ok(()));
+        // An empty range reads nothing.
+        assert_eq!(
+            check_indexed_vertices(
+                &[(VertexStepMode::Vertex, 0)],
+                IndexFormat::Uint16,
+                &indices,
+                &(2..2),
+                0
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn generated_indices_are_bounded_by_the_device_buffer_size() {
+        use mod_api::{MeshDraw, PrimitiveTopology};
+        let draw = MeshDraw::vertices(0..4_000_000_000).with_instances(0..4);
+        // Four million quads would need 24 bytes each of generated indices.
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Quads, &draw, 1 << 30),
+            Err(PipelineDrawError::InvalidRange)
+        );
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Triangles, &draw, 1 << 30),
+            Ok(())
+        );
+        let small = MeshDraw::vertices(0..4);
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Quads, &small, 24),
+            Ok(())
+        );
+        assert_eq!(
+            check_generated_indices(PrimitiveTopology::Quads, &small, 23),
+            Err(PipelineDrawError::InvalidRange)
+        );
     }
 
     #[test]
@@ -2798,6 +4354,393 @@ mod tests {
                     },
                 ],
             );
+        });
+    }
+
+    #[test]
+    fn compute_bindings_that_alias_a_writable_use_are_refused() {
+        use mod_api::{
+            BindEntry, BindGroupLayout, BindingKind, DrawBindings, StorageImageAccess,
+            StorageImageBinding,
+        };
+        let buffer = |slot| mod_api::__private::built::storage_buffer_ref(1, slot);
+        let slice = |slot| buffer(slot).slice(0, 16);
+        let target = mod_api::__private::built::render_target_ref(1, 0);
+        let storage = |name: &str, read_only| {
+            BindEntry::new(
+                name,
+                BindingKind::StorageBuffer {
+                    read_only,
+                    min_size: 4,
+                },
+            )
+        };
+        let image = |name: &str, access| BindEntry::new(name, BindingKind::StorageImage { access });
+        let layout = |entries: Vec<BindEntry>| {
+            entries
+                .into_iter()
+                .fold(BindGroupLayout::builder(), |b, e| b.entry(e))
+                .build()
+                .unwrap()
+        };
+        // (a) one buffer twice, one use writable; two read-only uses and two buffers are fine.
+        let mixed = layout(vec![storage("A", false), storage("B", true)]);
+        let same = DrawBindings::default()
+            .storage_buffer("A", slice(1))
+            .storage_buffer("B", slice(1));
+        assert!(compute_bindings_alias(&mixed, &same, None));
+        let apart = DrawBindings::default()
+            .storage_buffer("A", slice(1))
+            .storage_buffer("B", slice(2));
+        assert!(!compute_bindings_alias(&mixed, &apart, None));
+        let readers = layout(vec![storage("A", true), storage("B", true)]);
+        assert!(!compute_bindings_alias(&readers, &same, None));
+        // (b) the indirect buffer is also bound writable; bound read-only it is fine.
+        let writer = layout(vec![storage("A", false)]);
+        let one = DrawBindings::default().storage_buffer("A", slice(1));
+        assert!(compute_bindings_alias(&writer, &one, Some(buffer(1))));
+        assert!(!compute_bindings_alias(&writer, &one, Some(buffer(2))));
+        let reader = layout(vec![storage("A", true)]);
+        assert!(!compute_bindings_alias(&reader, &one, Some(buffer(1))));
+        // (c) one mip level in two entries with differing access; another mip is fine.
+        let images = layout(vec![
+            image("R", StorageImageAccess::ReadOnly),
+            image("W", StorageImageAccess::WriteOnly),
+        ]);
+        let mip = |level| StorageImageBinding::new(target, 0, level);
+        let clash = DrawBindings::default()
+            .storage_image("R", mip(1))
+            .storage_image("W", mip(1));
+        assert!(compute_bindings_alias(&images, &clash, None));
+        let other = DrawBindings::default()
+            .storage_image("R", mip(0))
+            .storage_image("W", mip(1));
+        assert!(!compute_bindings_alias(&images, &other, None));
+    }
+
+    /// The handles one mod makes in `frame_graph_setup` and `prepare_render_buffers`, and releases in
+    /// `render_level_stage`.
+    #[derive(Default)]
+    struct GpuHandles {
+        target: Option<mod_api::RenderTargetRef>,
+        mesh: Option<mod_api::MeshRef>,
+        uniform: Option<mod_api::UniformBufferRef>,
+        storage: Option<mod_api::StorageBufferRef>,
+        pipeline: Option<RenderPipelineRef>,
+        draw: Option<mod_api::PreparedWorldDraw>,
+    }
+
+    /// Reaches the GPU through the host in the three frame hooks, each call unwrapped: a refusal
+    /// panics the hook, and the shared boundary reports it.
+    struct GpuProbe(std::sync::Arc<Mutex<GpuHandles>>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for GpuProbe {
+        fn register_render_pipelines(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterRenderPipelinesEvent<'_>,
+        ) {
+            event.register(
+                mod_api::RenderPipeline::new(
+                    Identifier::parse("gpu_probe:sampled").unwrap(),
+                    Identifier::parse("gpu_probe:core/sampled").unwrap(),
+                    mod_api::PipelineBlend::Opaque,
+                    mod_api::WorldDepth::ThroughWalls,
+                )
+                .sampler(
+                    "ColorTex",
+                    mod_api::SamplerFilter::Nearest,
+                    mod_api::SamplerAddress::ClampToEdge,
+                ),
+            );
+        }
+
+        fn frame_graph_setup(
+            &self,
+            host: &dyn ClientHost,
+            event: &mut mod_api::FrameGraphSetupEvent<'_>,
+        ) {
+            let desc = mod_api::RenderTargetDescriptor::new([8, 8])
+                .color_target(mod_api::RenderTargetFormat::Rgba8Unorm);
+            let target = host.create_render_target(&desc).unwrap();
+            target.resize(host, [16, 16]).unwrap();
+            assert_eq!(target.size(host), Ok([16, 16]));
+            event
+                .graph
+                .add_pass(
+                    mod_api::FramePassDescriptor::new(
+                        "gpu_probe",
+                        mod_api::FrameTarget::Mod(target),
+                    ),
+                    &mut |_| {},
+                )
+                .unwrap();
+            self.0.lock().unwrap().target = Some(target);
+        }
+
+        fn prepare_render_buffers(
+            &self,
+            host: &dyn ClientHost,
+            event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
+        ) {
+            // One quad of the default `PositionTexColor` format: 24 bytes a vertex.
+            let init = [mod_api::MeshBufferInit::from_bytes(24, &[0; 96])];
+            let mesh = host
+                .create_mesh(&mod_api::MeshDescriptor::new(&init))
+                .unwrap();
+            let uniform = host.create_uniform_buffer(&[0; 16]).unwrap();
+            uniform.write(host, 0, &[1; 16]).unwrap();
+            let storage = host
+                .create_storage_buffer(&mod_api::StorageBufferDescriptor::new(64))
+                .unwrap();
+            storage.write_range(host, 0, &[1; 16]).unwrap();
+            let pipeline = host
+                .render_assets()
+                .render_pipeline(&Identifier::parse("gpu_probe:sampled").unwrap())
+                .unwrap();
+            let target = self.0.lock().unwrap().target.unwrap();
+            let draw = event
+                .context
+                .draw_mesh(
+                    RenderLevelStage::AfterOpaqueFeatures,
+                    pipeline,
+                    mesh,
+                    mod_api::MeshDraw::vertices(0..4),
+                    &mod_api::DrawBindings::default().texture(
+                        "ColorTex",
+                        mod_api::TextureSource::RenderTargetColor(target, 0),
+                    ),
+                )
+                .unwrap();
+            let mut handles = self.0.lock().unwrap();
+            handles.pipeline = Some(pipeline);
+            handles.draw = Some(draw);
+            handles.mesh = Some(mesh);
+            handles.uniform = Some(uniform);
+            handles.storage = Some(storage);
+        }
+
+        fn render_level_stage(
+            &self,
+            host: &dyn ClientHost,
+            event: &mut mod_api::RenderLevelStageEvent<'_>,
+        ) {
+            if event.stage != RenderLevelStage::AfterOpaqueFeatures {
+                return;
+            }
+            let handles = self.0.lock().unwrap();
+            event
+                .context
+                .world_pass()
+                .unwrap()
+                .draw(handles.draw.unwrap())
+                .unwrap();
+            handles.mesh.unwrap().release(host).unwrap();
+            handles.uniform.unwrap().release(host).unwrap();
+            handles.storage.unwrap().release(host).unwrap();
+            handles.target.unwrap().release(host).unwrap();
+        }
+    }
+
+    /// `Game::render` takes the renderer out of the game for `Renderer::render`, so every frame hook
+    /// runs with `game.renderer` empty: the mod GPU handles must keep working then, and refuse only
+    /// once the game holds none.
+    #[test]
+    #[ignore = "daily"]
+    fn mod_gpu_handles_work_while_the_renderer_is_out_of_the_game() {
+        use mod_api::__private::take_hook_panics;
+        use mod_api::{BufferError, MeshError, RenderTargetError};
+        use sunrise_client::gfx::mod_pipelines::{PipelineDrawSource, ResolvedSet1Entry};
+        use sunrise_client::gfx::world_primitives::FrameHooks;
+
+        // The mod's pipeline registration is process-global and published once: run in a child.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_custom_geometry::tests::mod_gpu_handles_work_while_the_renderer_is_out_of_the_game",
+            "SUNRISE_MOD_GPU_FRAME_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let (_event_loop, window) =
+                crate::game::native_hooks::particle_count_tests::hidden_window();
+            game.options.offscreen = true;
+            let renderer = game.new_renderer(window.clone()).unwrap();
+            let device_capacity = renderer.entity_quad_capacity();
+            game.set_renderer(renderer);
+            game.window = Some(window);
+
+            let handles = std::sync::Arc::new(Mutex::new(GpuHandles::default()));
+            mod_platform::__private::install(
+                vec![ModEntry::new(
+                    "gpu_probe",
+                    Box::new(GpuProbe(handles.clone())),
+                )]
+                .into(),
+            );
+            let _ = take_hook_panics();
+
+            // The mod's sampler pipeline, registered and built from its GLSL as a resource load does.
+            let mut pipelines = Vec::new();
+            use mod_api::__private::game::RegistrationContextNew;
+            Game::native_register_render_pipelines(
+                &mod_api::RegistrationContext::new(),
+                &mut pipelines,
+                &mut Vec::new(),
+                &mut Vec::new(),
+            );
+            assert_eq!(pipelines.len(), 1);
+            let vanilla = tempfile::tempdir().unwrap();
+            std::fs::write(
+                vanilla.path().join("render-pipelines.json"),
+                r#"{"required":["minecraft:pipeline/solid_block"],"optional":["minecraft:pipeline/wireframe"]}"#,
+            )
+            .unwrap();
+            sunrise_client_render::mod_pipelines::register(pipelines, vanilla.path()).unwrap();
+            let shaders = tempfile::tempdir().unwrap();
+            let core = shaders.path().join("assets/gpu_probe/shaders/core");
+            std::fs::create_dir_all(&core).unwrap();
+            std::fs::write(
+                core.join("sampled.vsh"),
+                "#version 330\n\
+                 in vec3 Position;\n\
+                 in vec2 UV0;\n\
+                 in vec4 Color;\n\
+                 out vec2 vUv;\n\
+                 out vec4 vColor;\n\
+                 void main() {\n\
+                     gl_Position = vec4(Position.xy, 0.5, 1.0);\n\
+                     vUv = UV0;\n\
+                     vColor = Color;\n\
+                 }\n",
+            )
+            .unwrap();
+            std::fs::write(
+                core.join("sampled.fsh"),
+                "#version 330\n\
+                 uniform sampler2D ColorTex;\n\
+                 in vec2 vUv;\n\
+                 in vec4 vColor;\n\
+                 out vec4 fragColor;\n\
+                 void main() {\n\
+                     fragColor = texture(ColorTex, vUv) * vColor;\n\
+                 }\n",
+            )
+            .unwrap();
+            let mut render = sunrise_client_render::assets::RenderAssets::unpublished();
+            render.mod_pipelines = sunrise_client_render::mod_pipelines::Pipelines::load(
+                &sunrise_assets::resource_source::ResourceSource::directory(
+                    shaders.path().to_owned(),
+                ),
+                7,
+            )
+            .unwrap();
+            game.pack.render = std::sync::Arc::new(render);
+
+            // `game.rs`'s `Game::render`: the renderer is out while its frame is drawn, the mod
+            // GPU handles stay.
+            let renderer_slot = game.renderer.take();
+            assert!(game.renderer.is_none());
+            assert!(game.mod_gpu().is_some());
+            assert_eq!(game.entity_quad_capacity(), device_capacity);
+
+            let camera = test_camera([0.0; 3], Mat4::IDENTITY);
+            let mut draw = WorldGeometry::default();
+            draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+            {
+                let mut driver = GameWorldStageDriver::new(game, &camera, 0.0, &mut draw);
+                driver.on_frame_graph_setup(&[], false);
+                // The recorded pass draws into the mod render target the hook created.
+                let graph = driver.take_frame_graph().unwrap();
+                let created = handles.lock().unwrap().target.unwrap();
+                assert_eq!(graph.passes.len(), 1);
+                assert_eq!(graph.passes[0].label, "gpu_probe");
+                assert!(matches!(
+                    graph.passes[0].target,
+                    Some(mod_api::FrameTarget::Mod(t)) if t == created
+                ));
+                driver.on_prepare_render_buffers(&[], false, &mut Default::default());
+                let stage_draws: Vec<_> = driver
+                    .on_render_stage(RenderLevelStage::AfterOpaqueFeatures, &[], false)
+                    .iter()
+                    .map(|ranges| ranges.pipeline_draws.clone())
+                    .collect();
+                // The mesh draw sampling the mod target's colour is in the stage batch.
+                assert_eq!(stage_draws, vec![0..1]);
+                let batch = driver.prepared_primitives();
+                assert_eq!(batch.pipelines.draws.len(), 1);
+                let recorded = &batch.pipelines.draws[0];
+                assert_eq!(recorded.slot, 0);
+                assert!(matches!(recorded.source, PipelineDrawSource::Retained(_)));
+                assert!(matches!(
+                    recorded.bindings.as_ref().map(|b| b.entries.as_slice()),
+                    Some([ResolvedSet1Entry::Texture { mips: Some(_), .. }])
+                ));
+            }
+            let panics = take_hook_panics();
+            assert!(panics.is_empty(), "{panics:?}");
+            let made = handles.lock().unwrap();
+            assert!(made.target.is_some() && made.mesh.is_some());
+            assert!(made.uniform.is_some() && made.storage.is_some());
+            let (mesh, uniform, storage, target, pipeline) = (
+                made.mesh.unwrap(),
+                made.uniform.unwrap(),
+                made.storage.unwrap(),
+                made.target.unwrap(),
+                made.pipeline.unwrap(),
+            );
+            drop(made);
+
+            // The stage released every handle: a second release is refused.
+            assert!(game.mesh_release(mesh).is_err());
+            assert!(game.render_target_resize(target, [8, 8]).is_err());
+
+            // The renderer's own textures that `TextureSource` binds resolve from the handles.
+            let gpu = game.mod_gpu().unwrap();
+            assert_eq!(
+                gpu.mod_world_depth_texture_view().0,
+                sunrise_client::gfx::mod_uniforms::WORLD_DEPTH_VIEW_ID
+            );
+            assert_eq!(
+                gpu.mod_lightmap_texture_view().0,
+                sunrise_client::gfx::mod_uniforms::LIGHTMAP_VIEW_ID
+            );
+            assert_eq!(
+                gpu.mod_atlas_texture_view().0,
+                sunrise_client::gfx::mod_uniforms::ATLAS_VIEW_ID
+            );
+            assert!(gpu.dynamic_texture_view(u64::MAX).is_none());
+
+            // Without the game's handles (the renderer still out), nothing resolves.
+            game.mod_gpu = None;
+            assert_eq!(
+                game.uniform_buffer_write(uniform, 0, &[1; 16]),
+                Err(BufferError::Unavailable)
+            );
+            assert_eq!(
+                game.storage_buffer_write_range(storage, 0, &[1; 16]),
+                Err(BufferError::Unavailable)
+            );
+            assert_eq!(
+                game.render_target_resize(target, [8, 8]),
+                Err(RenderTargetError::Unavailable)
+            );
+            assert_eq!(game.mesh_release(mesh), Err(MeshError::Unavailable));
+            assert_eq!(
+                game.native_world_draw_mesh(
+                    &mut draw,
+                    pipeline,
+                    mesh,
+                    mod_api::MeshDraw::vertices(0..4),
+                    &mod_api::DrawBindings::default().texture(
+                        "ColorTex",
+                        mod_api::TextureSource::RenderTargetColor(target, 0)
+                    ),
+                ),
+                Err(mod_api::PipelineDrawError::Mesh(MeshError::Unavailable))
+            );
+            game.renderer = renderer_slot;
         });
     }
 }

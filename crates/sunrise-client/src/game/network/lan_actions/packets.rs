@@ -282,7 +282,12 @@ impl Game<'_> {
                     if spectator {
                         return;
                     }
-                    if !host.hub.guests.update(gi, |g| g.may_reach_block(a.pos)) {
+                    let context = &host.hub.loop_context;
+                    if !host
+                        .hub
+                        .guests
+                        .update(gi, |g| g.reaches_block(context, a.pos))
+                    {
                         return;
                     }
                     // ServerPlayerGameMode.handleBlockBreakAction: no dig starts
@@ -397,7 +402,12 @@ impl Game<'_> {
                         return;
                     };
                     host.hub.ack(conn, a.sequence);
-                    if !host.hub.guests.update(gi, |g| g.may_reach_block(a.pos)) {
+                    let context = &host.hub.loop_context;
+                    if !host
+                        .hub
+                        .guests
+                        .update(gi, |g| g.reaches_block(context, a.pos))
+                    {
                         // Too far (handleBlockBreakAction's "too far"): the ack has the client
                         // undo its prediction, and only the dig drops — `destroy_pos` and the
                         // ticks since its START stay, so a STOP for the same block after the
@@ -1112,7 +1122,8 @@ impl Game<'_> {
                         })
                         .sum();
                     let range = g.reach() + 1.0;
-                    if d2 >= range * range {
+                    let within = d2 < range * range;
+                    if !g.within_interaction_range_of(g.lan_acting_uuid, p.pos, 1.0, within) {
                         return None;
                     }
                     // The block's item, a part's in its place, then the block
@@ -1129,7 +1140,7 @@ impl Game<'_> {
             S::PickItemFromEntity(p) => {
                 self.guest_pick_item(conn, true, [0; 3], p.id, |g| {
                     g.within_entity_range(p.id)
-                        .then(|| g.entity_pick_result(p.id))
+                        .then(|| g.pick_result_of(p.id))
                         .flatten()
                 });
             }
@@ -1343,6 +1354,9 @@ impl Game<'_> {
         let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return false;
         };
+        if guest.menu.is_none() && click.container == 0 {
+            return self.lan_inventory_menu_clicked(conn, click);
+        }
         let Some(open) = guest.menu.as_ref().filter(|m| {
             m.window == click.container && (m.mod_type.is_some() || m.slots == Slots::Native)
         }) else {
@@ -1399,6 +1413,55 @@ impl Game<'_> {
         }
         self.journal_guest_click(conn);
         self.journal_menu_click(conn);
+        self.lan_default_container_click(conn, click);
+        true
+    }
+
+    /// `AbstractContainerMenu.clicked` on the player's own `InventoryMenu` (window 0, no other
+    /// menu open) for the Parts attached to `minecraft:inventory`: every mod's, in mod order, since
+    /// the inventory has no owner. A handled click resends the inventory; otherwise the server
+    /// rechecks that the player is live, still has no other menu open and is not a spectator,
+    /// then runs the ordinary click. False when no Part listens or the slot is outside the menu,
+    /// leaving the click to ordinary routing.
+    fn lan_inventory_menu_clicked(&mut self, conn: u32, click: &play::ContainerClick) -> bool {
+        use super::super::lan_menus::ClickReply;
+        use sunrise_client::menu::INVENTORY_MENU;
+        if !mod_api::__private::menu_listens(mod_api::HookId::MenuClicked, INVENTORY_MENU) {
+            return false;
+        }
+        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return false;
+        };
+        let slots = sunrise_client::menu::Kind::Inventory.slot_count();
+        if guest.spectator() || usize::try_from(click.slot).is_ok_and(|slot| slot >= slots) {
+            return false;
+        }
+        let (uuid, generation) = (guest.uuid, guest.menu_generation);
+        let mut skip_default = false;
+        self.native_menu_clicked(mod_api::__private::MenuClickedCall {
+            menu: INVENTORY_MENU,
+            uuid,
+            window: 0,
+            slot: i32::from(click.slot),
+            button: i32::from(click.button),
+            mode: click.input,
+            handled: &mut skip_default,
+        });
+        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return true;
+        };
+        if guest.dead
+            || guest.disconnect_pending
+            || guest.menu_generation != generation
+            || guest.menu.is_some()
+        {
+            return true;
+        }
+        if skip_default || guest.spectator() {
+            // The client predicted the unmodified click: resend what the inventory holds.
+            self.reply_menu_click(conn, ClickReply::Inventory);
+            return true;
+        }
         self.lan_default_container_click(conn, click);
         true
     }

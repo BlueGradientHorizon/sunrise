@@ -203,6 +203,11 @@ impl Input {
     }
 }
 
+/// The key the player's own `InventoryMenu` answers to in `menu_slot_rules`, `menu_clicked` and
+/// `recipe_book_place`. Vanilla 26.3's `InventoryMenu` has no `MenuType`: its constructor passes
+/// `null` to `AbstractCraftingMenu` (`javap -c` on the 26.3 jar), so the name is Sunrise's.
+pub const INVENTORY_MENU: &str = "minecraft:inventory";
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
     Inventory,
@@ -299,7 +304,8 @@ impl Kind {
         }
     }
 
-    pub(crate) fn slot_count(self) -> usize {
+    /// How many slots this kind of menu has: its own, then the player's it shows.
+    pub fn slot_count(self) -> usize {
         self.player_slot_start()
             + match self {
                 Self::Lectern => 0,
@@ -749,6 +755,7 @@ impl Menu {
                 kind,
                 registry_id: match kind {
                     Kind::Mod(kind) => Some(kind.id.into()),
+                    Kind::Inventory => Some(INVENTORY_MENU.into()),
                     _ => None,
                 },
                 block_pos: None,
@@ -824,7 +831,7 @@ impl Menu {
     }
 
     /// Registry identity of this menu, or the mount sentinel for a mount menu.
-    /// Player inventory and the creative picker have no registered menu type.
+    /// The creative picker has no registered menu type; the player's own inventory is INVENTORY_MENU.
     pub fn registry_id(&self) -> Option<&str> {
         self.state.registry_id.as_deref()
     }
@@ -1723,9 +1730,11 @@ impl Menu {
             }
     }
 
-    /// The parts answer `mayPickup` on a mod menu type's slots that its screen shows.
+    /// The parts answer `mayPickup` on a mod menu type's slots that its screen shows, and on the
+    /// player's own inventory menu ([`INVENTORY_MENU`]).
     fn asks_pickup(&self, s: usize) -> bool {
-        matches!(self.state.kind, Kind::Mod(_)) && self.state.slots[s].role != Role::Hidden
+        matches!(self.state.kind, Kind::Mod(_) | Kind::Inventory)
+            && self.state.slots[s].role != Role::Hidden
     }
 
     fn vanilla_may_pickup(&self, env: &Env, s: usize) -> bool {
@@ -4593,11 +4602,18 @@ pub(crate) mod tests {
         assert_eq!(name(&after), "3");
         assert_eq!(tab_list(&after), Some("3".to_owned()));
         // The motion value hooks read it too, and change nothing without it.
+        let cow = crate::mobs::Mob::new(
+            1,
+            crate::mobs::sensor_scan_tests::kind(),
+            sunrise_core::geometry::Vec3::ZERO,
+            0.0,
+        );
         let values = |context: &LoopContext| {
             let (mut jump, mut speed, mut flying) = (0.5, 0.1, 0.02);
-            crate::motion::native_living_jump_power(context, 1, "minecraft:cow", &mut jump);
-            crate::motion::native_living_speed(context, 1, "minecraft:cow", &mut speed);
-            crate::motion::native_living_flying_speed(context, 1, "minecraft:cow", &mut flying);
+            let cow = crate::health::LivingLend::mob(&cow, &|| None);
+            crate::motion::native_living_jump_power(context, cow, &mut jump);
+            crate::motion::native_living_speed(context, cow, &mut speed);
+            crate::motion::native_living_flying_speed(context, cow, &mut flying);
             (jump, speed, flying)
         };
         assert_eq!(values(&before), (0.5, 0.1, 0.02));
@@ -4746,7 +4762,14 @@ pub(crate) mod tests {
         // Heal and drown read it as well.
         let health = |context: &LoopContext| {
             let (mut amount, mut cancel) = (2.0, false);
-            crate::hunger::native_living_heal(context, 1, &mut amount, &mut cancel);
+            let healed_mob = crate::mobs::Mob::new(
+                1,
+                crate::mobs::sensor_scan_tests::kind(),
+                sunrise_core::geometry::Vec3::ZERO,
+                0.0,
+            );
+            let healed = crate::health::LivingLend::mob(&healed_mob, &|| None);
+            crate::hunger::native_living_heal(context, healed, &mut amount, &mut cancel);
             let (mut drowning, mut damage, mut cancel_drown) = (false, 2.0, false);
             crate::breathing::native_living_drown(
                 context,

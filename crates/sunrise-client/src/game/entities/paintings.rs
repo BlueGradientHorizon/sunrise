@@ -85,8 +85,8 @@ impl Game<'_> {
             ticks: 0,
         };
         let mut any = false;
-        for id in &self.painting_variants.placeable {
-            let Some(v) = self.painting_variants.get(id) else {
+        for id in &world_paintings!(self).placeable {
+            let Some(v) = world_paintings!(self).get(id) else {
                 continue;
             };
             (candidate.width, candidate.height) = (v.width, v.height);
@@ -98,7 +98,7 @@ impl Game<'_> {
         if !any {
             return false;
         }
-        if let Some(v) = self.painting_variants.of_stack(stack).cloned() {
+        if let Some(v) = world_paintings!(self).of_stack(stack).cloned() {
             (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
             return self.painting_survives(&candidate);
         }
@@ -135,8 +135,8 @@ impl Game<'_> {
         };
         // Painting.create: the largest placeable variants that survive, one at random.
         let mut fitting: Vec<Variant> = Vec::new();
-        for id in self.painting_variants.placeable.clone() {
-            let Some(v) = self.painting_variants.get(&id).cloned() else {
+        for id in world_paintings!(self).placeable.clone() {
+            let Some(v) = world_paintings!(self).get(&id).cloned() else {
                 continue;
             };
             (candidate.width, candidate.height) = (v.width, v.height);
@@ -159,7 +159,7 @@ impl Game<'_> {
         // EntityType.createDefaultStackConfig -> Painting.applyImplicitComponents:
         // the stack's `painting/variant` replaces the random pick, and that
         // painting has to survive where it goes (else the use is CONSUME).
-        if let Some(v) = self.painting_variants.of_stack(stack).cloned() {
+        if let Some(v) = world_paintings!(self).of_stack(stack).cloned() {
             (candidate.variant, candidate.width, candidate.height) = (v.id, v.width, v.height);
             if !self.painting_survives(&candidate) {
                 self.award_stat("used", &stack.item, 1);
@@ -177,8 +177,7 @@ impl Game<'_> {
         );
         if let Some((_, _, Some(variant))) = sunrise_client::entity_nbt::painting_from_nbt(&raw)
             && *candidate.variant != *variant
-            && let Some(v) = self
-                .painting_variants
+            && let Some(v) = world_paintings!(self)
                 .get(&sunrise_world::datafix::dynamic::namespaced(&variant))
                 .cloned()
         {
@@ -332,14 +331,56 @@ impl Game<'_> {
     pub(super) fn tick_paintings(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
+        let mut round = self.native_tick_round();
+        // The painting whose tick just ended: it hears its Post before the next one's Pre.
+        let mut told = None;
+        // EntityTickList copy-on-iterate: while a listener may remove paintings, the round visits
+        // the paintings that were there when it began, each found again by its join.
+        let joins: Option<Vec<_>> = round
+            .told_listening()
+            .then(|| self.paintings.iter().map(|p| p.join).collect());
+        let mut turns = joins.iter().flatten();
         let mut i = 0;
-        while i < self.paintings.len() {
+        loop {
+            if let Some(id) = told.take() {
+                self.native_tick_post_one(&round, id, "minecraft:painting");
+            }
+            if joins.is_some() {
+                let Some(&join) = turns.next() else { break };
+                let Some(at) = self.paintings.locate(join) else {
+                    continue;
+                };
+                i = at;
+            } else if i >= self.paintings.len() {
+                break;
+            }
             let (lo, hi) = self.paintings[i].bounds();
             let centre = [0, 2].map(|k| ((lo[k] + hi[k]) / 2.0).floor() as i32);
             if !ticking(centre[0], centre[1]) {
                 i += 1;
                 continue;
             }
+            let id = self.paintings[i].id;
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Painting(id);
+            if self.target_removed(&target)
+                || !self.native_tick_pre_one(&mut round, id, "minecraft:painting")
+            {
+                i += 1;
+                continue;
+            }
+            // The Pre's listener may have removed paintings, this one included.
+            if self.target_removed(&target) {
+                i += 1;
+                continue;
+            }
+            if self.paintings.get(i).is_none_or(|p| p.id != id) {
+                let Some(now) = self.paintings.iter().position(|p| p.id == id) else {
+                    continue;
+                };
+                i = now;
+            }
+            told = Some(id);
             // `Entity.tickCount` is raised before the rest of the tick, and is not saved.
             self.paintings[i].ticks = self.paintings[i].ticks.saturating_add(1);
             self.paintings[i].check_interval += 1;
@@ -351,6 +392,9 @@ impl Game<'_> {
                 }
             }
             i += 1;
+        }
+        if let Some(id) = told {
+            self.native_tick_post_one(&round, id, "minecraft:painting");
         }
     }
     /// PaintingRenderer: the variant on the front, the back texture behind and
@@ -396,6 +440,11 @@ impl Game<'_> {
                         age: p.ticks as f32 + partial,
                         yaw: f32::from(p.facing & 3) * 90.0,
                         pitch: 0.0,
+                        position: at.to_array(),
+                        // EntityTypes.PAINTING: sized(0.5F, 0.5F), default eyeHeight 0.85 * 0.5.
+                        size: [0.5, 0.5],
+                        eye_height: 0.425,
+                        distance_to_camera_sq: (at - camera).length_squared(),
                         living: None,
                         tnt_fuse: None,
                         orb_value: None,
@@ -429,7 +478,7 @@ impl Game<'_> {
             };
             let asset = match p.asset.as_deref() {
                 Some(asset) => asset,
-                None => match self.painting_variants.get(&p.variant) {
+                None => match world_paintings!(self).get(&p.variant) {
                     Some(v) => v.asset.as_str(),
                     None => continue,
                 },

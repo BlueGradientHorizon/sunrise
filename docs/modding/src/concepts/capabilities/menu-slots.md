@@ -16,8 +16,9 @@ slot in the client layout does not change what the server allows.
 
 Any mod can move, activate, or hide a slot of the open screen for `menu` through
 [`ClientHost::set_screen_slot`](../../how-to/client/screens.md#moving-or-hiding-a-mod-screens-slots)
-while this opening is shown. That change affects only the client; the server can still
-quick-move items into a locally hidden slot, and the slot's acceptance rules still apply.
+while this opening is shown. It addresses the menu's container slots and, after them in menu order, its player
+slots. That change affects only the client and ends when the screen closes; the server never consults it, so
+it can still quick-move items into a locally hidden slot, and the slot's acceptance rules still apply.
 
 ## Mod-created recipe input sets
 
@@ -320,7 +321,10 @@ can set `event.valid = item.stack_matches` to close on a mismatch. With no suppl
 is `None`; in either case the game leaves the decision with the part.
 
 For a block menu, `event.pos` is the backing block and `valid` starts as the reach check: the player's
-eyes must be within their block interaction range plus 4 of each backing block. A large machine with a
+eyes must be within their block interaction range plus 4 of each backing block, as the
+`block_interaction_range` hook may answer per block. That hook also decides the reach of use, break and
+pick-block requests and of vanilla's menus, the sign editor and a lectern's book, for any player: a
+remote-access block answers it for the blocks around it. A large machine with a
 core block deep inside it can override that answer:
 
 ```rust,ignore
@@ -431,7 +435,7 @@ let moved: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
 });
 ```
 
-`MenuPart::menu_clicked` v4 runs directly on parts registered for the open mod menu's type before
+`MenuPart::menu_clicked` v5 runs directly on parts registered for the open mod menu's type before
 default click execution (`ServerGamePacketListenerImpl.handleContainerClick`,
 `AbstractContainerMenu.clicked`). The event names that type and gives the raw slot, button and
 click type. Menu-button clicks, recipe placement and creative set-slot do not reach it. There is

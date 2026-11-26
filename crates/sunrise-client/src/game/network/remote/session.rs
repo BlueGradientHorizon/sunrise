@@ -247,6 +247,7 @@ impl Game<'_> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),
+            datapack_vanilla_values: None,
             particle_packet_random: sunrise_client::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
@@ -255,7 +256,7 @@ impl Game<'_> {
             logged_out: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
-            collider_shove_start: None,
+            collider_pass_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
@@ -265,6 +266,7 @@ impl Game<'_> {
                 .unwrap_or_else(|| "Connecting to the server...".into()),
             lang,
             registries: Arc::new(Dynamic::default()),
+            variants: Arc::new(sunrise_client::mobs::variants::VariantTables::default()),
             tags: None,
             enchantments: None,
             joined: false,
@@ -542,6 +544,7 @@ impl Game<'_> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
+            datapack_vanilla_values: None,
             particle_packet_random: sunrise_client::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
@@ -549,13 +552,14 @@ impl Game<'_> {
             custom_books: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
-            collider_shove_start: None,
+            collider_pass_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
             status: "Playing Studio Replay".into(),
             lang,
             registries: Arc::new(Dynamic::default()),
+            variants: Arc::new(sunrise_client::mobs::variants::VariantTables::default()),
             tags: None,
             enchantments: None,
             joined: false,
@@ -972,7 +976,7 @@ impl Game<'_> {
         self.track_remote_levels(&spawn.dimension);
         let r = self.remote.as_mut().unwrap();
         if !same {
-            r.collider_shove_start = None;
+            r.collider_pass_start = None;
             // A same-level respawn keeps the existing ClientLevel's seed and sea level.
             r.hashed_seed = spawn.seed;
             r.sea_level = spawn.sea_level;
@@ -1018,6 +1022,7 @@ impl Game<'_> {
         self.set_local_mode_with_previous(mode, previous);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();
+        self.sync_timeline_registries();
         // ClientPacketListener.handleLogin / handleRespawn: the server's
         // Player.getLastDeathLocation, for the recovery compass.
         self.level.last_death = spawn

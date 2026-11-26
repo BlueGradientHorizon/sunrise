@@ -91,6 +91,7 @@ impl Game<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);

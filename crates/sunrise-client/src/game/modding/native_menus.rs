@@ -743,6 +743,10 @@ mod container_counter_tests;
 mod owned_slots_tests;
 
 #[cfg(test)]
+#[path = "native_menus/container_loot_open_tests.rs"]
+mod container_loot_open_tests;
+
+#[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
@@ -1827,7 +1831,7 @@ mod tests {
 
     /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
-    fn with_mod_menu_game(test: impl FnOnce(&mut Game<'_>)) {
+    pub(super) fn with_mod_menu_game(test: impl FnOnce(&mut Game<'_>)) {
         sunrise_client::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),

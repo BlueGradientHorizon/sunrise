@@ -44,8 +44,6 @@ sunrise-java-properties = { path = "../sunrise-java-properties" }
 getrandom = "0.3"
 # Shader packs: reading them and turning their GLSL into naga modules.
 sunrise-shaders = { path = "../sunrise-shaders" }
-# Sunrise's own shader packs: the format, the stages and the check (docs/shaders.md).
-sunrise-shader-api = { path = "../sunrise-shader-api" }
 # The narrator (GameNarrator): text-to-speech of chat, system messages and screens.
 sunrise-narrator = { path = "../sunrise-narrator" }
 # Sunrise mods: native code and content packages (docs/modding/src/how-to/content-mods.md).
@@ -122,6 +120,8 @@ test-residency-observer = []
 test-pack-feedback = []
 # A level side with no weather, tags or block entities, for tests and probes that never read them.
 test-dry-side = []
+# `FixedStep::still_for_tests`: a clock with SUNRISE_STILL on, for game fixtures only.
+test-still-clock = []
 default = ["audio", "controllers"]
 # Dev-only: the ignored tracker-send benchmark uses the executable's allocator.
 tracker-send-bench = []
@@ -151,6 +151,7 @@ sunrise-theme = { path = "../sunrise-theme" }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"] }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
 sunrise-world = { path = "../sunrise-world", features = ["test-support"] }
+sunrise-client-core = { path = "../sunrise-client-core", features = ["test-effect-registry"] }
 # Reads back the captures the server_perf tests write.
 sunrise-perf = { path = "../sunrise-perf" }
 # Every WGSL shader translated as wgpu's DirectX 12 backend does (gfx.rs tests).

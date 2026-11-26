@@ -61,7 +61,10 @@ COPY_WATCH_SECONDS = 120
 SMOKE = "prebuilt-smoke"
 # Where `smoke` installs the same executable without selected mods, for `start`.
 SMOKE_API = "prebuilt-smoke-api"
-EXECUTABLE = "sunrise-client.exe" if sys.platform == "win32" else "sunrise-client"
+# SUNRISE_PREBUILT_TARGET builds for another target than this computer's (a cross build): the platform below is the target's.
+CROSS_TARGET = os.environ.get("SUNRISE_PREBUILT_TARGET")
+PLATFORM = ("darwin" if CROSS_TARGET.endswith("-apple-darwin") else "win32" if "-windows-" in CROSS_TARGET else "linux") if CROSS_TARGET else sys.platform
+EXECUTABLE = "sunrise-client.exe" if PLATFORM == "win32" else "sunrise-client"
 # The furthest a game started without its prepared files gets (`loading_screen::preflight_resources`): past loading the
 # game's libraries and the mods' runtime environment (`entry::main_with`), where a split allocator aborts (#3877).
 NO_RESOURCES = "Sunrise's prepared game files are missing"
@@ -108,7 +111,7 @@ SURFACE = "surface.json"
 XZ_PRESET = 6
 # The SDK's `tool` asset: `cargo sunrise-mod native-build` compiles native mods as the launcher does.
 TOOL = "cargo-sunrise-mod"
-TOOL_PROGRAM = TOOL + (".exe" if sys.platform == "win32" else "")
+TOOL_PROGRAM = TOOL + (".exe" if PLATFORM == "win32" else "")
 # The SDK's `programs` asset: what the player folder holds besides the game program, so the runtime slice's game installs
 # from the SDK alone.
 PROGRAMS = "programs"
@@ -493,11 +496,14 @@ def api_route(out: Path, host: str) -> list[str]:
     folder.mkdir()
     common = ["--edition", "2024", "-C", "prefer-dynamic", "-C", "opt-level=3", "-L", f"dependency={deps}",
               "-L", f"dependency={out / 'host'}", "-L", f"native={out / NATIVE}"]
-    link_args = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
-    if sys.platform == "win32":
+    link_args = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(PLATFORM, [])
+    if PLATFORM == "win32":
         # Match packaging/windows/exe.rs at this executable's link, not in SDK metadata.
         link_args = ["/STACK:8388608" if host.endswith("-msvc") else "-Wl,--stack,8388608"]
-    run(["rustc", *common, "--crate-type", "bin", "--crate-name", "sunrise_native_game",
+    # A cross build names the target and the linker Cargo would use, which a bare rustc does not read.
+    linker = os.environ.get("CARGO_TARGET_" + host.upper().replace("-", "_") + "_LINKER")
+    cross_args = ["--target", host, *(["-C", f"linker={linker}"] if linker else [])] if CROSS_TARGET else []
+    run(["rustc", *common, *cross_args, "--crate-type", "bin", "--crate-name", "sunrise_native_game",
          *(flag for arg in link_args for flag in ("-C", f"link-arg={arg}")),
          *extern_args(deps, "sunrise_client"), *extern_args(deps, "mod_api"), *extern_args(deps, "sunrise_mod_package"),
          *extern_args(deps, "sunrise_mod_host"), *official_externs(deps),
@@ -521,12 +527,12 @@ def runtime_support() -> list[Path]:
     Rust toolchain. Not in `deps/`: the build tool installs every runtime `deps/` library as the game's and adds these
     from the player's toolchain itself (sunrise-native-build's `runtime_libraries`), so a second copy there would be
     listed twice."""
-    libdir = Path(run(["rustc", "--print", "target-libdir"]).strip())
+    libdir = Path(run(["rustc", "--print", "target-libdir", *(["--target", CROSS_TARGET] if CROSS_TARGET else [])]).strip())
     libraries = [path for path in libdir.iterdir() if runtime_support_file(path.name) and path.name not in MINGW_RUNTIME]
     if len(libraries) != 1:
         sys.exit(f"{libdir} holds {len(libraries)} dynamic Rust standard libraries, not one")
-    if sys.platform == "win32":
-        gcc = shutil.which("gcc")
+    if PLATFORM == "win32":
+        gcc = shutil.which("x86_64-w64-mingw32-gcc" if CROSS_TARGET else "gcc")
         if gcc is None:
             sys.exit("no gcc on PATH, so no MinGW runtime to put beside the executable")
         libraries += [Path(gcc).parent / name for name in MINGW_RUNTIME]
@@ -554,7 +560,7 @@ def holds(names: list[str], member: str) -> bool:
     folder, _, name = member.rpartition("/")
     prefix = f"{folder}/" if folder else ""
     if name.startswith("@program:"):
-        return f"{prefix}{name[9:]}{'.exe' if sys.platform == 'win32' else ''}" in names
+        return f"{prefix}{name[9:]}{'.exe' if PLATFORM == 'win32' else ''}" in names
     if name.startswith("@dylib:"):
         return f"{prefix}{dylib_prefix()}{name[7:]}{dylib_suffix()}" in names
     if name.startswith("@rmeta:"):
@@ -565,11 +571,11 @@ def holds(names: list[str], member: str) -> bool:
 
 
 def dylib_prefix() -> str:
-    return "" if sys.platform == "win32" else "lib"
+    return "" if PLATFORM == "win32" else "lib"
 
 
 def dylib_suffix() -> str:
-    return {"win32": ".dll", "darwin": ".dylib"}.get(sys.platform, ".so")
+    return {"win32": ".dll", "darwin": ".dylib"}.get(PLATFORM, ".so")
 
 
 def runtime_packages(metadata: dict, root: str) -> set[str]:
@@ -653,17 +659,17 @@ def build(out: Path, server: bool) -> None:
 def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
     layout = package_format(ROOT)
     staged = stage(target_dir, sdk_dylibs=True)
-    host = rustc_host()
+    host = CROSS_TARGET or rustc_host()
 
     # One std for the game, every mod and the executable: the game links std dynamically, as mods will.
     rustflags = "-C prefer-dynamic --emit=metadata"
     # On macOS this also gives both dylibs an @rpath install name instead of an absolute build path.
-    if sys.platform == "darwin":
+    if PLATFORM == "darwin":
         rustflags += " -C rpath"
-    features = cargo_features(server, sys.platform)
+    features = cargo_features(server, PLATFORM)
     # Linux's executable RUNPATH doesn't cover transitive dependencies, so the dylibs must find
     # their dependencies beside themselves. macOS's @rpath install names use the executable's rpath.
-    if sys.platform == "linux":
+    if PLATFORM == "linux":
         rustflags += " -C link-arg=-Wl,-rpath,$ORIGIN"
     # No official layer in a dedicated server.
     official = not server
@@ -1100,14 +1106,18 @@ def pack(out: Path, dist: Path, stage_tool: Path | None = None, with_tool: bool 
     jobs = {dist / f"{kind}-{identity['target']}{suffix}.tar.xz": (out, names)
             for kind, names in archives(out, identity["slices"]).items()}
     jobs[dist / BUILD_DATA_ARCHIVE] = (out, [".", *BUILD_DATA])
-    if identity["side"] == "client" or with_tool:
-        jobs[dist / f"tool-{identity['target']}.tar.xz"] = (tool(identity["target"]), [".", TOOL_PROGRAM])
     if with_programs:
         folder = programs(identity, out.parent / f"{PROGRAMS}-{identity['target']}{suffix}")
         jobs[dist / f"{folder.name}.tar.xz"] = (folder, tree(folder))
+    packs_tool = identity["side"] == "client" or with_tool
     # Each archive keeps its single xz stream; only independent archives run concurrently.
-    with ProcessPoolExecutor(max_workers=len(jobs)) as pool:
+    with ProcessPoolExecutor(max_workers=len(jobs) + packs_tool) as pool:
         pending = {archive: pool.submit(tar_xz, folder, names, archive) for archive, (folder, names) in jobs.items()}
+        # The tool compiles while the package's archives compress, then joins them: compressing the engine archive
+        # leaves cores idle for minutes, which the tool's build took after it (macOS, 2026-11-25: 5m52 then 7m04).
+        if packs_tool:
+            archive = dist / f"tool-{identity['target']}.tar.xz"
+            pending[archive] = pool.submit(tar_xz, tool(identity["target"]), [".", TOOL_PROGRAM], archive)
         failures = [f"{archive.name}: {error}" for archive, future in pending.items()
                     if (error := future.exception()) is not None]
     if failures:
@@ -1149,12 +1159,13 @@ def programs(identity: dict, folder: Path) -> Path:
 
 def tool(target: str) -> Path:
     """The folder holding `cargo-sunrise-mod` built from this source for `target`, which must be this computer."""
-    if rustc_host() != target:
+    if (CROSS_TARGET or rustc_host()) != target:
         sys.exit(f"the tool for {target} is built on that computer, not on {rustc_host()}")
     # `--version` names the commit; a build that names none says `dev`.
     environment = {**os.environ, "SUNRISE_TOOL_COMMIT": os.environ.get("SUNRISE_TOOL_COMMIT") or head()}
-    run(["cargo", "build", "--locked", "--release", "-p", TOOL, "--bin", TOOL], cwd=ROOT, env=environment)
-    folder = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / "release"
+    run(["cargo", "build", "--locked", "--release", *(["--target", CROSS_TARGET] if CROSS_TARGET else []), "-p", TOOL, "--bin", TOOL],
+        cwd=ROOT, env=environment)
+    folder = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / (CROSS_TARGET or ".") / "release"
     if not (folder / TOOL_PROGRAM).is_file():
         sys.exit(f"cargo built no {folder / TOOL_PROGRAM}")
     # Only a debug-assertions build reads SUNRISE_SDK_TRUSTED_KEY (sunrise-release-sign's sdk_keys_for), and the

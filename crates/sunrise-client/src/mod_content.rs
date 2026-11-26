@@ -17,7 +17,10 @@
 use crate::{
     Result,
     blocks::MAP_COLORS,
-    mobs::data::{PartAnswers, PathComputationType, VALID_EMPTY_SPAWN},
+    mobs::data::{
+        PartAnswers, PathComputationType, STURDY_TOP, VALID_EMPTY_SPAWN, VALID_SPAWN,
+        VALID_SPAWN_ICE, VALID_SPAWN_LEAVES,
+    },
 };
 use mod_api::{
     __private::{DeclarationKind, DeclarationRefusal},
@@ -37,7 +40,8 @@ use sunrise_core::{
 };
 use sunrise_mod_package::content::{
     Block, BlockEntityType, BlockShapes, Content, ContextCollision, CreativeTab, EntityType,
-    FluidLook, Item, LocalDeclaration, MenuType, MobEffect, Rarity, StateProperty, StateValues,
+    FluidLook, Item, LocalDeclaration, MenuType, MobEffect, Rarity, SpawnRule, StateProperty,
+    StateValues, check_face_rule_properties,
 };
 use sunrise_mod_package::manifest::{
     JarInputsError, JarRef, collect_jar_requirements, missing_jars,
@@ -231,6 +235,109 @@ pub fn fluid_look(id: &str) -> Option<FluidLook> {
         .unwrap_or_else(|e| e.into_inner())
         .get(id)
         .cloned()
+}
+
+fn face_rules_json(rules: &[mod_api::FaceRule]) -> J {
+    let state_obj = |map: &BTreeMap<String, String>| -> J {
+        J::Obj(
+            map.iter()
+                .map(|(k, v)| (k.clone(), J::Str(v.clone())))
+                .collect(),
+        )
+    };
+    let dir_name = |d: sunrise_core::geometry::Direction| match d {
+        sunrise_core::geometry::Direction::Down => "down",
+        sunrise_core::geometry::Direction::Up => "up",
+        sunrise_core::geometry::Direction::North => "north",
+        sunrise_core::geometry::Direction::South => "south",
+        sunrise_core::geometry::Direction::West => "west",
+        sunrise_core::geometry::Direction::East => "east",
+    };
+    J::Arr(
+        rules
+            .iter()
+            .map(|rule| {
+                let mut fields = Vec::new();
+                match &rule.neighbor {
+                    mod_api::FaceNeighbor::Any => {}
+                    mod_api::FaceNeighbor::SameBlock { state } => {
+                        let val = if state.is_empty() {
+                            J::Str("self".into())
+                        } else {
+                            J::Obj(vec![
+                                ("block".into(), J::Str("self".into())),
+                                ("state".into(), state_obj(state)),
+                            ])
+                        };
+                        fields.push(("neighbor".into(), val));
+                    }
+                    mod_api::FaceNeighbor::Block { id, state } => {
+                        let val = if state.is_empty() {
+                            J::Str(id.clone())
+                        } else {
+                            J::Obj(vec![
+                                ("block".into(), J::Str(id.clone())),
+                                ("state".into(), state_obj(state)),
+                            ])
+                        };
+                        fields.push(("neighbor".into(), val));
+                    }
+                    mod_api::FaceNeighbor::Tag { id, state } => {
+                        let val = if state.is_empty() {
+                            J::Str(format!("#{id}"))
+                        } else {
+                            J::Obj(vec![
+                                ("tag".into(), J::Str(id.clone())),
+                                ("state".into(), state_obj(state)),
+                            ])
+                        };
+                        fields.push(("neighbor".into(), val));
+                    }
+                }
+                if !rule.state.is_empty() {
+                    fields.push(("state".into(), state_obj(&rule.state)));
+                }
+                if !rule.same.is_empty() {
+                    fields.push((
+                        "same".into(),
+                        J::Arr(rule.same.iter().cloned().map(J::Str).collect()),
+                    ));
+                }
+                match &rule.faces {
+                    mod_api::FaceDirections::All => {}
+                    mod_api::FaceDirections::Horizontal => {
+                        fields.push(("faces".into(), J::Str("horizontal".into())));
+                    }
+                    mod_api::FaceDirections::Vertical => {
+                        fields.push(("faces".into(), J::Str("vertical".into())));
+                    }
+                    mod_api::FaceDirections::Only(dirs) => {
+                        fields.push((
+                            "faces".into(),
+                            J::Arr(dirs.iter().map(|&d| J::Str(dir_name(d).into())).collect()),
+                        ));
+                    }
+                }
+                if !rule.facts.is_empty() {
+                    let mut facts = Vec::new();
+                    if let Some(v) = rule.facts.is_air {
+                        facts.push(("is_air".into(), J::Bool(v)));
+                    }
+                    if let Some(v) = rule.facts.can_occlude {
+                        facts.push(("can_occlude".into(), J::Bool(v)));
+                    }
+                    if let Some(v) = rule.facts.is_solid_render {
+                        facts.push(("is_solid_render".into(), J::Bool(v)));
+                    }
+                    if let Some(v) = rule.facts.liquid {
+                        facts.push(("liquid".into(), J::Bool(v)));
+                    }
+                    fields.push(("facts".into(), J::Obj(facts)));
+                }
+                J::Obj(fields)
+            })
+            .collect(),
+    )
 }
 
 /// JSON with its object keys in file order, so a rewritten table differs
@@ -817,6 +924,9 @@ struct NewBlock<'a> {
     /// The template's `forceSolidOn` (`Some(true)`) or `forceSolidOff` (`Some(false)`), which keeps
     /// its answer over the declared shape's.
     force_solid: Option<bool>,
+    /// The template's light emission per state in registry order, read where a declared
+    /// `spawn_rule` of `default` needs it and the block declares no light of its own.
+    template_emission: Vec<u8>,
     context_shapes: BTreeMap<String, Vec<VoxelShape>>,
     state_light: Option<Vec<u8>>,
     default: u32,
@@ -1540,6 +1650,38 @@ impl<'a> Plan<'a> {
                 }
                 let combos = combinations(&decl.state_properties, &decl.default_state)
                     .map_err(|e| format!("{}: {e}", decl.id))?;
+                let mut known: BTreeMap<String, BTreeSet<String>> = decl
+                    .state_properties
+                    .iter()
+                    .map(|(name, property)| {
+                        (
+                            name.clone(),
+                            property.values().into_iter().map(str::to_owned).collect(),
+                        )
+                    })
+                    .collect();
+                for id in states.clone() {
+                    if let Some(J::Obj(own)) = properties(id) {
+                        for (name, value) in own {
+                            if let J::Str(value) = value {
+                                known.entry(name.clone()).or_default().insert(value.clone());
+                            }
+                        }
+                    }
+                }
+                for (key, rules) in [
+                    (
+                        "skip_rendering",
+                        decl.properties.skip_rendering.as_deref().unwrap_or(&[]),
+                    ),
+                    (
+                        "hides_neighbor_face",
+                        &decl.properties.hides_neighbor_face[..],
+                    ),
+                ] {
+                    check_face_rule_properties(key, rules, &known)
+                        .map_err(|e| format!("{}: {e}", decl.id))?;
+                }
                 // A `default_state` key the block itself declares is its own,
                 // and `combinations` already checks that value against the
                 // property. Only a key the template already has narrows which
@@ -1731,6 +1873,7 @@ impl<'a> Plan<'a> {
                         .unwrap_or(SkylightRule::Shape),
                     custom_dampening: custom_dampening.contains(&decl.template),
                     force_solid: force_solid.get(&decl.template).copied(),
+                    template_emission: Vec::new(),
                     context_shapes,
                     state_light,
                     default,
@@ -1816,6 +1959,18 @@ impl<'a> Plan<'a> {
                     })
                 })
                 .collect();
+            if p.spawn_rule == Some(SpawnRule::Default) {
+                b.template_emission = b
+                    .order
+                    .iter()
+                    .map(|(state, _)| {
+                        rows[(b.rename.states.start + state) as usize]
+                            .get("emission")
+                            .and_then(J::as_u32)
+                            .map_or(0, |light| light as u8)
+                    })
+                    .collect();
+            }
             let row = &rows[b.rename.states.start as usize];
             b.item = match row.get("item") {
                 Some(J::Str(i)) if i != "minecraft:air" => Some(i.clone()),
@@ -1981,6 +2136,36 @@ impl<'a> Plan<'a> {
                             .ok_or_else(|| format!("{name}: missing state fluid flag"))? =
                             J::Bool(true);
                     }
+                }
+                if name == "mob-data.json"
+                    && let Some(rule) = b.decl.properties.spawn_rule
+                {
+                    let J::Arr(columns) = &mut row else {
+                        return Err(format!("{name}: missing state row {id}").into());
+                    };
+                    let flags = columns
+                        .get_mut(1)
+                        .ok_or("mob-data.json: missing state flags")?;
+                    let mask = flags.as_u32().ok_or("mob-data.json: invalid state flags")?;
+                    let spawn = u32::from(VALID_SPAWN | VALID_SPAWN_LEAVES | VALID_SPAWN_ICE);
+                    let allowed = match rule {
+                        SpawnRule::Always => spawn,
+                        SpawnRule::Never => 0,
+                        SpawnRule::OcelotOrParrot => u32::from(VALID_SPAWN_LEAVES),
+                        SpawnRule::Default => {
+                            let light = match (&b.state_light, b.decl.properties.light) {
+                                (Some(values), _) => values[state_index],
+                                (None, Some(light)) => light,
+                                (None, None) => b.template_emission[state_index],
+                            };
+                            if mask & u32::from(STURDY_TOP) != 0 && light < 14 {
+                                spawn
+                            } else {
+                                0
+                            }
+                        }
+                    };
+                    *flags = J::Num(((mask & !spawn) | allowed).into());
                 }
                 if name == "gameplay-facts.json" {
                     row.set("id", J::Num(next.into()));
@@ -2437,11 +2622,19 @@ impl<'a> Plan<'a> {
                     let Some(entry) = doc.get_mut(&b.decl.id) else {
                         continue;
                     };
-                    if !model && let Some(skip) = b.decl.properties.skip_same_block_faces {
-                        entry.set(
-                            "rule",
-                            J::Str(if skip { "same_block" } else { "never" }.into()),
-                        );
+                    if !model {
+                        if let Some(rules) = &b.decl.properties.skip_rendering {
+                            entry.set("skip_rendering", face_rules_json(rules));
+                        }
+                        if !b.decl.properties.hides_neighbor_face.is_empty() {
+                            entry.set(
+                                "hides_neighbor_face",
+                                face_rules_json(&b.decl.properties.hides_neighbor_face),
+                            );
+                        }
+                        if let Some(supports) = b.decl.properties.supports_external_face_hiding {
+                            entry.set("supports_external_face_hiding", J::Bool(supports));
+                        }
                     }
                     // Faces beside a block that occludes nothing are drawn (`Block.shouldRenderFace`).
                     if !model && let Some(can_occlude) = b.decl.properties.occludes {
@@ -3161,7 +3354,7 @@ fn place_in_biomes(
         Some(doc) => doc,
         None => read_json(&base.join(BIOMES))?,
     };
-    let biome_tags = bundle(biome_tags, BIOME_TAGS)?;
+    let biome_tags = seed_convention_tags("worldgen/biome", bundle(biome_tags, BIOME_TAGS)?)?;
     let placed: BTreeSet<String> = bundle(placed, PLACED_FEATURES)?.into_keys().collect();
     let feature_tags = bundle(None, FEATURE_TAGS)?;
     let (entity_categories, entity_tags) = modifier_entities(base, overlay, tags)?;
@@ -3251,6 +3444,38 @@ fn modifier_tags(
                 fs::read_to_string(out_path(overlay, file))?,
             );
         }
+    }
+    seed_convention_tags(registry, result)
+}
+
+/// Layers `over` (vanilla/mod tag JSONs) on top of the built-in `c:` / `neoforge:`
+/// convention tags for `registry`, matching the world's tag layering order.
+fn seed_convention_tags(
+    registry: &str,
+    over: BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    let mut result: BTreeMap<String, String> =
+        sunrise_world::tag_layers::convention::json_entries(registry)
+            .iter()
+            .cloned()
+            .collect();
+    let no_conditions = sunrise_world::conditions::LoadConditions::default();
+    for (id, json) in over {
+        let Some(base_json) = result.get(&id).map(String::as_str) else {
+            result.insert(id, json);
+            continue;
+        };
+        let tag: J = serde_json::from_str(&json).map_err(|e| format!("tag {id}: {e}"))?;
+        if matches!(tag.get("replace"), Some(J::Bool(true))) {
+            result.insert(id, json);
+            continue;
+        }
+        let layers = [load_conditions::TagLayers {
+            values: tag_list(&tag, "values"),
+            remove: tag_list(&tag, "remove"),
+        }];
+        let merged = merge_tag(Some(base_json), &layers, false, &id, &no_conditions)?;
+        result.insert(id, merged);
     }
     Ok(result)
 }
@@ -3364,8 +3589,8 @@ pub fn biome_modifiers_over_packs(
         }
     }
     let mut doc = J::Obj(start.into_iter().map(|(id, t)| (id, J::Str(t))).collect());
-    // Pack tag files after the root's, as the worldgen loader merges them.
-    let mut biome_tags = read(BIOME_TAGS)?;
+    // Pack tag files after the root's, over the built-in convention tags, as the worldgen loader merges them.
+    let mut biome_tags = seed_convention_tags("worldgen/biome", read(BIOME_TAGS)?)?;
     for (id, pack, json) in packs.tags("biome_tags") {
         let tag: J = match serde_json::from_str(json) {
             Ok(tag) => tag,
@@ -3375,14 +3600,17 @@ pub fn biome_modifiers_over_packs(
             }
         };
         let (values, remove) = (tag_list(&tag, "values"), tag_list(&tag, "remove"));
-        let old = match tag.get("replace") {
-            Some(J::Bool(true)) => None,
-            _ => biome_tags.get(id).map(String::as_str),
+        let replaced = matches!(tag.get("replace"), Some(J::Bool(true)));
+        let old = if replaced {
+            None
+        } else {
+            biome_tags.get(id).map(String::as_str)
         };
         let layers = [load_conditions::TagLayers { values, remove }];
         let merged = merge_tag(
             old,
             &layers,
+            replaced,
             id,
             &sunrise_world::conditions::LoadConditions::new(
                 saved.enabled_mods.iter().map(String::as_str),
@@ -3642,7 +3870,12 @@ impl Known {
             Some(tag) => {
                 let (tns, path) = tag.split_once(':').unwrap_or(("minecraft", tag));
                 let rel = format!("data/{tns}/tags/{kind}/{path}.json");
-                if self.tag_files.contains(&rel) {
+                if self.tag_files.contains(&rel)
+                    || sunrise_world::tag_layers::convention::has_tag(
+                        kind,
+                        &format!("{tns}:{path}"),
+                    )
+                {
                     return true;
                 }
                 match kind {

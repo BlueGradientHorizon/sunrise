@@ -383,6 +383,39 @@ impl Game<'_> {
         light: u32,
         out: &mut Vec<Vertex>,
     ) -> bool {
+        let camera = world_origin
+            .map(|origin| origin - at)
+            .unwrap_or_else(|| DVec3::from_array(entity.position) - at);
+        self.mod_entity_renderer_geometry_with_view(
+            resolved,
+            entity,
+            entity_type,
+            at,
+            world_origin,
+            camera,
+            None,
+            block,
+            light,
+            out,
+        )
+    }
+
+    /// [`Self::mod_entity_renderer_geometry`] with an explicit [`mod_api::WorldRenderView`]
+    /// (for screen scenes, GUI entity previews, and secondary views).
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::game) fn mod_entity_renderer_geometry_with_view(
+        &self,
+        resolved: &RegisteredEntityRenderer,
+        entity: &EntityRenderState,
+        entity_type: &str,
+        at: DVec3,
+        world_origin: Option<DVec3>,
+        camera: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
+        block: [i32; 3],
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) -> bool {
         let pose = Mat4::from_translation(at.as_vec3());
         self.guarded_entity_draw(
             resolved.owner.as_ref(),
@@ -394,6 +427,8 @@ impl Game<'_> {
             pose,
             light,
             world_origin,
+            camera,
+            explicit_view,
             out,
             |draw| resolved.renderer.submit(entity, draw),
         )
@@ -417,6 +452,8 @@ impl Game<'_> {
         pose: Mat4,
         light: u32,
         world_origin: Option<DVec3>,
+        camera: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
         out: &mut Vec<Vertex>,
         submit: impl FnOnce(&mut dyn BlockEntityDrawContext) -> Result<(), String>,
     ) -> bool {
@@ -424,68 +461,68 @@ impl Game<'_> {
             return false;
         }
         let start = out.len();
-        let mut surface = BlockEntityDraw::posed(
-            partial,
-            self.world.game_time,
-            light,
-            block,
-            pose,
-            diffuse_lights(self.nether_lighting()),
-            std::mem::take(out),
-        )
-        .with_quad_budget(
-            self.entity_quad_capacity(),
-            self.entity_batch_reserved_quads(),
-        )
-        .animated(self.animation_time());
-        if world_origin.is_some() {
-            surface.track_entity_local_light_pose();
-        }
-        let run = || {
-            submit(&mut GameBlockEntityDrawContext {
-                game: self,
-                surface: &mut surface,
-            })
-        };
-        let outcome = match owner {
-            Some(owner) => owner.call(kind, operation, run),
-            None => contain_unwind(run),
-        };
-        match outcome {
-            Ok(Ok(())) => {
-                let light_at = |[x, y, z]: [i32; 3]| self.world.light(x, y, z);
-                let level = world_origin.map(|origin| LevelLight {
-                    origin,
-                    light_at: &light_at,
-                });
-                *out = surface.into_vertices_with_light(level.as_ref());
-                true
+        self.with_world_view(camera, partial, explicit_view, |view| {
+            let mut surface = BlockEntityDraw::posed_with_view(
+                view,
+                light,
+                block,
+                pose,
+                diffuse_lights(self.nether_lighting()),
+                std::mem::take(out),
+            )
+            .with_quad_budget(
+                self.entity_quad_capacity(),
+                self.entity_batch_reserved_quads(),
+            );
+            if world_origin.is_some() {
+                surface.track_entity_local_light_pose();
             }
-            Ok(Err(error)) => {
-                *out = surface.into_vertices();
-                out.truncate(start);
-                match owner {
-                    Some(owner) => log::warn!(
-                        "Sunrise: mod {}'s {kind} for {entity_type} failed ({error}); skipping this draw",
-                        owner.id()
-                    ),
-                    None => log::warn!(
-                        "Sunrise: {kind} for {entity_type} failed ({error}); skipping this draw"
-                    ),
+            let run = || {
+                submit(&mut GameBlockEntityDrawContext {
+                    game: self,
+                    surface: &mut surface,
+                })
+            };
+            let outcome = match owner {
+                Some(owner) => owner.call(kind, operation, run),
+                None => contain_unwind(run),
+            };
+            match outcome {
+                Ok(Ok(())) => {
+                    let light_at = |[x, y, z]: [i32; 3]| self.world.light(x, y, z);
+                    let level = world_origin.map(|origin| LevelLight {
+                        origin,
+                        light_at: &light_at,
+                    });
+                    *out = surface.into_vertices_with_light(level.as_ref());
+                    true
                 }
-                false
-            }
-            Err(error) => {
-                *out = surface.into_vertices();
-                out.truncate(start);
-                if owner.is_none() {
-                    log::error!(
-                        "Sunrise: {kind} for {entity_type} panicked ({error}); skipping this draw"
-                    );
+                Ok(Err(error)) => {
+                    *out = surface.into_vertices();
+                    out.truncate(start);
+                    match owner {
+                        Some(owner) => log::warn!(
+                            "Sunrise: mod {}'s {kind} for {entity_type} failed ({error}); skipping this draw",
+                            owner.id()
+                        ),
+                        None => log::warn!(
+                            "Sunrise: {kind} for {entity_type} failed ({error}); skipping this draw"
+                        ),
+                    }
+                    false
                 }
-                false
+                Err(error) => {
+                    *out = surface.into_vertices();
+                    out.truncate(start);
+                    if owner.is_none() {
+                        log::error!(
+                            "Sunrise: {kind} for {entity_type} panicked ({error}); skipping this draw"
+                        );
+                    }
+                    false
+                }
             }
-        }
+        })
     }
 }
 
@@ -533,12 +570,18 @@ mod tests {
             game.world.chunks.insert((0, 1), Arc::new(chunk));
 
             let renderer = RegisteredEntityRenderer::new(Arc::new(LitQuad), None);
+            let at = DVec3::new(10.875, 64.25, 20.375);
+            let camera = DVec3::new(6.5, 63.0, 25.5);
             let entity = mod_api::__private::built::EntityRenderState {
                 id: 1,
                 partial: 0.5,
                 age: 1.5,
                 yaw: 0.0,
                 pitch: 0.0,
+                position: at.to_array(),
+                size: [0.5, 1.0],
+                eye_height: 0.85,
+                distance_to_camera_sq: (at - camera).length_squared(),
                 living: None,
                 tnt_fuse: None,
                 orb_value: None,
@@ -547,8 +590,6 @@ mod tests {
                 attachments: None,
             }
             .into();
-            let at = DVec3::new(10.875, 64.25, 20.375);
-            let camera = DVec3::new(6.5, 63.0, 25.5);
             for (world_origin, expected) in [(Some(at), 0x7030), (None, 0x50A0)] {
                 let mut out = Vec::new();
                 assert!(game.mod_entity_renderer_geometry(

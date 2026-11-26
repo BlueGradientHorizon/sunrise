@@ -57,7 +57,7 @@ impl Game<'_> {
     /// posted, the used statistic counts and the horn is on cooldown as long.
     /// A horn whose instrument is unknown fails, which still ends the click.
     pub(super) fn use_instrument(&mut self, stack: &ItemStack) {
-        let Some(instrument) = self.res.items().instrument(stack) else {
+        let Some(instrument) = self.items().instrument(stack) else {
             return;
         };
         self.start_using_item();
@@ -111,7 +111,7 @@ impl Game<'_> {
         // a refused use stops for the stack it began with, without a release;
         // one that goes on takes the hand's stack as its own (`useItem = held`).
         if let Some(began) = self.use_start.item.take() {
-            if !self.can_continue_using(&began, &stack, None, self.hand) {
+            if !self.can_continue_using(&began, &stack, Some(self.own_entity_id()), self.hand) {
                 self.stop_using_item(&began);
                 return;
             }
@@ -199,7 +199,7 @@ impl Game<'_> {
             }
             return;
         }
-        if self.res.items().instrument(stack).is_some() {
+        if self.items().instrument(stack).is_some() {
             // The shared updateUsingItem countdown, including a mod's replacement.
             self.using = Some((slot, ticks + 1));
             return;
@@ -334,10 +334,10 @@ impl Game<'_> {
         self.using = None;
         self.use_start = Default::default();
         self.use_vibration(stack, "minecraft:item_interact_finish");
-        self.stopped_using(stack, None, hand, time_left);
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, time_left);
     }
-    /// `IItemExtension.onStopUsing` of `stack`, its use by `entity` (`None` for
-    /// the player) in `hand` cleared `time_left` ticks before its end (0 for a
+    /// `IItemExtension.onStopUsing` of `stack`, its use by `entity` (a player's
+    /// id or a mob's) in `hand` cleared `time_left` ticks before its end (0 for a
     /// finished use): only the parts of its item hear it.
     pub(in crate::game) fn stopped_using(
         &mut self,

@@ -30,13 +30,11 @@ impl Game<'_> {
             if let Some(old) = &self.renderer {
                 renderer.resize(old.config.width, old.config.height);
             }
-            self.renderer = Some(renderer);
+            self.set_renderer(renderer);
         }
         self.stitching_block_atlas = Some(atlas.clone());
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Blocks);
         self.gui = gui;
-        let (pool, mut names) = self.gui.atlas.dynamic_names();
-        self.dynamic_textures.rebind(pool, &mut names);
         sunrise_client::ui_theme::reset_atlas();
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
         prepared

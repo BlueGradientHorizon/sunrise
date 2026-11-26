@@ -121,6 +121,54 @@ pub struct VirtualHost {
     pub port: u16,
 }
 
+/// An armor stand's six pose rotations (`ArmorStand.DATA_HEAD_POSE` to `DATA_RIGHT_LEG_POSE`,
+/// vanilla's `Rotations`): x, y and z in degrees, as `getHeadPose` ... `getRightLegPose` give them.
+#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+// exhaustive: the game builds it with a literal; mods only read it
+pub struct ArmorStandPose {
+    /// `ArmorStand.headPose`: x, y and z rotation in degrees.
+    pub head: [f32; 3],
+    /// `ArmorStand.bodyPose`: x, y and z rotation in degrees.
+    pub body: [f32; 3],
+    /// `ArmorStand.leftArmPose`: x, y and z rotation in degrees.
+    pub left_arm: [f32; 3],
+    /// `ArmorStand.rightArmPose`: x, y and z rotation in degrees.
+    pub right_arm: [f32; 3],
+    /// `ArmorStand.leftLegPose`: x, y and z rotation in degrees.
+    pub left_leg: [f32; 3],
+    /// `ArmorStand.rightLegPose`: x, y and z rotation in degrees.
+    pub right_leg: [f32; 3],
+}
+
+/// A new armor stand's pose (`ArmorStand.DEFAULT_HEAD_POSE` to `DEFAULT_RIGHT_LEG_POSE`).
+impl Default for ArmorStandPose {
+    fn default() -> Self {
+        Self {
+            head: [0.0, 0.0, 0.0],
+            body: [0.0, 0.0, 0.0],
+            left_arm: [-10.0, 0.0, -10.0],
+            right_arm: [-15.0, 0.0, 10.0],
+            left_leg: [-1.0, 0.0, -1.0],
+            right_leg: [1.0, 0.0, 1.0],
+        }
+    }
+}
+
+/// An armor stand's client flags (`ArmorStand.DATA_CLIENT_FLAGS`).
+/// The default is vanilla's: no flag set.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+// exhaustive: the game builds it with a literal; mods only read it
+pub struct ArmorStandFlags {
+    /// `ArmorStand.isSmall`.
+    pub small: bool,
+    /// `ArmorStand.showArms`.
+    pub show_arms: bool,
+    /// `ArmorStand.showBasePlate`.
+    pub show_base_plate: bool,
+    /// `ArmorStand.isMarker`.
+    pub marker: bool,
+}
+
 /// A persistent entity UUID in the same bit order as the value from `EntityRef::uuid`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
 // exhaustive: a UUID is exactly one public 128-bit value
@@ -159,6 +207,19 @@ impl EntityRef {
     /// The open of the world the handle belongs to.
     pub fn epoch(self) -> WorldEpoch {
         self.epoch
+    }
+    /// Where the entity is `partial` of the way through its current tick
+    /// (`Entity.getPosition(float)`): on each axis `Mth.lerp(partial, xo, x)`, from
+    /// [`Self::previous_position`] to [`Self::position`], the position a renderer draws the
+    /// entity at with the frame's partial tick. NeoForge mods call the same vanilla method.
+    /// Side: both. None when either read is None.
+    pub fn position_at(self, host: &dyn Host, partial: f32) -> Option<[f64; 3]> {
+        let old = self.previous_position(host)?;
+        let now = self.position(host)?;
+        let delta = f64::from(partial);
+        Some(std::array::from_fn(|axis| {
+            old[axis] + delta * (now[axis] - old[axis])
+        }))
     }
     /// Use the entity's live `Entity.getRandom` stream for `draw`. The hit leaves the
     /// draws in the stream in listener order. Returns `None` without running `draw`
@@ -1291,9 +1352,9 @@ pub struct PlayerFood {
     pub exhaustion: f32,
 }
 
-// no wire: borrows the connected player's profile from the host.
+// no wire: borrows a profile from the host.
 /// A player's borrowed game profile (authlib's `GameProfile`): UUID, name and login
-/// properties, such as `textures` (the skin). A custom test host can lend one using
+/// properties, such as `textures` (the skin) when available. A custom test host can lend one using
 /// `mod_api::testing::GameProfileFixture` with the `testing` feature enabled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1307,7 +1368,7 @@ pub struct GameProfile<'a> {
 
 impl<'a> GameProfile<'a> {
     /// Read the profile's properties in login order without copying the text.
-    /// An offline-mode player has no properties.
+    /// Offline-mode players and profiles from the user cache have no properties.
     pub fn properties(&self) -> impl ExactSizeIterator<Item = ProfileProperty<'a>> + use<'a> {
         self.properties.iter().map(|property| ProfileProperty {
             name: &property.name,

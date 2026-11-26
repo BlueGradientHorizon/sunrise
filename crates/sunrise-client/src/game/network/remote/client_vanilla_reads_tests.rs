@@ -563,6 +563,48 @@ fn a_dying_mount_stays_the_jumpable_vehicle() {
     );
 }
 
+/// `LocalPlayer.getJumpRidingScale` (#5637): 0 off a mount, then the charge the held jump key
+/// builds on a saddled horse (0.1 a tick), as the jump bar reads it; 0 again after the first
+/// player tick off the horse, which resets it as `LocalPlayer.aiStep` does.
+#[test]
+#[ignore = "daily"]
+fn the_jump_riding_scale_follows_the_charge_on_a_jumpable_mount() {
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::the_jump_riding_scale_follows_the_charge_on_a_jumpable_mount",
+        || {
+            with_client_game(|game| {
+                let _connection = join(game);
+                let scale = |game: &Game<'_>| (game as &dyn ClientHost).jump_riding_scale();
+                assert_eq!(scale(game), 0.0);
+                add(game, 30, "minecraft:horse");
+                let horse = game.mobs.iter().position(|m| m.id == 30).unwrap();
+                game.mobs[horse].extra.set_saddled(true);
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: 30,
+                    passengers: vec![PLAYER as i32],
+                }))
+                .unwrap();
+                let held = sunrise_client::sprint::Keys {
+                    jump: true,
+                    ..Default::default()
+                };
+                // The first held tick starts the charge at 0; each later one adds 0.1.
+                for expected in [0.0, 0.1, 0.2, 0.3] {
+                    game.charge_mount_jump(horse, held);
+                    assert!((scale(game) - expected).abs() < 1e-6, "{}", scale(game));
+                }
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: 30,
+                    passengers: Vec::new(),
+                }))
+                .unwrap();
+                game.tick_local_player(Vec::new(), 7, None).unwrap();
+                assert_eq!(scale(game), 0.0, "the tick off the horse resets the charge");
+            });
+        },
+    );
+}
+
 /// NeoForge's `ICommonPacketListener.hasChannel` (#4677): the send test of
 /// `send_payload_to_server` for the current phase, against a server that negotiated a
 /// mod's optional channel and against a vanilla server that offered nothing.

@@ -118,27 +118,12 @@ pub fn client_biomes(
 /// KnownPack.vanilla("core") for this version.
 pub const CORE_PACK: (&str, &str, &str) = ("minecraft", "core", sunrise_protocol::GAME_VERSION);
 
-/// Synchronized registries a world's data packs add entries to (or replace
-/// them in). The others stay the game's own: Sunrise's gameplay reads them
-/// from the prepared resources only.
-/// Enchantments are among them: the items' enchantment catalog reads a
-/// world's pack definitions too, so their ids must reach clients.
-/// World clocks are too: a dimension type's `default_clock` must name a
-/// clock the client was sent, or it reads that dimension's time as zero.
-pub const PACK_REGISTRIES: &[&str] = &[
-    "minecraft:banner_pattern",
-    "minecraft:instrument",
-    "minecraft:painting_variant",
-    "minecraft:dialog",
-    "minecraft:dimension_type",
-    "minecraft:enchantment",
-    "minecraft:world_clock",
-];
-
 #[path = "data_pack_registries.rs"]
 mod pack_registries;
-pub use pack_registries::PackRegistryDefinitions;
 use pack_registries::bind_dialog_tags;
+pub use pack_registries::{
+    ChatType, PackRegistryDefinitions, REGISTRY_KINDS, RegistryKind, RegistryRef,
+};
 
 /// Bind one registry's resource and pack tags to its actual holders. Shared by
 /// WorldLoader's pending condition context and the configuration tag snapshot.
@@ -162,9 +147,9 @@ pub fn registry_tag_bindings(
 pub fn is_pack_registry_file(key: &str) -> bool {
     key.starts_with("worldgen/biome/")
         || key.split_once('/').is_some_and(|(kind, _)| {
-            PACK_REGISTRIES
+            REGISTRY_KINDS
                 .iter()
-                .any(|registry| registry.strip_prefix("minecraft:") == Some(kind))
+                .any(|table| table.key.strip_prefix("minecraft:") == Some(kind))
         })
 }
 
@@ -311,7 +296,6 @@ fn synchronized_entries(
     root: &Path,
     resources: &Path,
     key: &str,
-    overlay: &sunrise_world::loot::PackOverlay<'_>,
 ) -> Vec<((String, String), Value, bool)> {
     let path = key.trim_start_matches("minecraft:");
     let enchantments = key == "minecraft:enchantment";
@@ -321,7 +305,27 @@ fn synchronized_entries(
         .into_iter()
         .map(|(id, value)| (("minecraft".to_owned(), id), value, false))
         .collect();
-    if enchantments || matches!(path, "instrument" | "jukebox_song") {
+    if enchantments
+        || matches!(
+            path,
+            "enchantment_provider"
+                | "instrument"
+                | "jukebox_song"
+                | "timeline"
+                | "wolf_variant"
+                | "wolf_sound_variant"
+                | "cat_variant"
+                | "cat_sound_variant"
+                | "pig_variant"
+                | "pig_sound_variant"
+                | "cow_variant"
+                | "cow_sound_variant"
+                | "chicken_variant"
+                | "chicken_sound_variant"
+                | "frog_variant"
+                | "zombie_nautilus_variant"
+        )
+    {
         mod_entries(resources, path, &mut entries);
     }
     if key == "minecraft:world_clock" {
@@ -342,44 +346,7 @@ fn synchronized_entries(
             &mut entries,
         );
     }
-
-    // The gameplay table already selects the pack's song. Validate that
-    // winner, not a losing bootstrap definition.
-    if path == "jukebox_song" {
-        pack_entries(path, overlay, &mut entries);
-    }
     entries
-}
-
-/// A synchronized registry's entries from the world's data packs (`<dir>/`
-/// files, the top pack's for each id) over the game's own. Each entry is
-/// ((namespace, path), JSON, from a pack); `file_order` sorts them.
-fn pack_entries(
-    dir: &str,
-    overlay: &sunrise_world::loot::PackOverlay,
-    entries: &mut Vec<((String, String), Value, bool)>,
-) {
-    for (id, files) in overlay.kind(dir) {
-        let Some((ns, path)) = id.split_once(':') else {
-            continue;
-        };
-        let top = sunrise_world::loot::PackOverlay::top(files);
-        let value = match serde_json::from_slice::<Value>(top) {
-            Ok(value) => value,
-            Err(e) => {
-                log::warn!("Sunrise: data pack {dir} {id} is not read: {e}");
-                continue;
-            }
-        };
-        let key = (ns.to_owned(), path.to_owned());
-        match entries.iter_mut().find(|(k, ..)| *k == key) {
-            Some(entry) => {
-                entry.1 = value;
-                entry.2 = true;
-            }
-            None => entries.push((key, value, true)),
-        }
-    }
 }
 
 /// The mods' dimension types, below the packs': the overworld's with the
@@ -486,7 +453,7 @@ impl SyncData {
                 continue;
             }
             let path = key.trim_start_matches("minecraft:");
-            let mut entries = synchronized_entries(&root, resources, key, overlay);
+            let mut entries = synchronized_entries(&root, resources, key);
             // Admission already checked the typed winners' conditions.
             packed.discard_replaced(key, &mut entries);
             condition_filter::filter(&mut entries, false, overlay.conditions, path);
@@ -782,7 +749,7 @@ impl SyncData {
             let mut entries = if PackRegistryDefinitions::includes_prepared_entries(key) {
                 Vec::new()
             } else {
-                synchronized_entries(&root, resources, key, overlay)
+                synchronized_entries(&root, resources, key)
             };
             let mut damage_entries = None;
             if *key == "minecraft:damage_type" {
@@ -1352,9 +1319,9 @@ mod tests {
             panic!("staged malformed typed registries")
         };
         for diagnostic in [
-            "minecraft:dialog:\n  test:bad: unknown load conditions [absent:dialog]",
-            "minecraft:dimension_type:\n  test:bad: unknown load conditions [minecraft:unknown]",
-            "minecraft:world_clock:\n  test:bad: not a map",
+            "minecraft:dialog:\n  test:bad: data/test/dialog/bad.json: unknown load conditions [absent:dialog]",
+            "minecraft:dimension_type:\n  test:bad: data/test/dimension_type/bad.json: unknown load conditions [minecraft:unknown]",
+            "minecraft:world_clock:\n  test:bad: data/test/world_clock/bad.json: not a map",
         ] {
             assert!(typed.contains(diagnostic), "{typed}");
         }
@@ -1978,7 +1945,7 @@ mod tests {
         higher: Value,
         expected: Tag,
     ) {
-        use crate::datapack::{DataPack, DataStore};
+        use crate::datapack::{DataPack, DataPacks, DataStore};
         use sunrise_assets::resource_source::{Resource, ResourceSource};
         use sunrise_world::{item_defaults, loot::PackOverlay};
 
@@ -2018,7 +1985,7 @@ mod tests {
                 ])),
             ),
         ];
-        let files: Vec<_> = DataStore::load(&packs.iter().collect::<Vec<_>>())
+        let files: Vec<_> = DataStore::load(&DataPacks::new(&packs.iter().collect::<Vec<_>>()))
             .files
             .into_iter()
             .collect();
@@ -2131,6 +2098,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn world_pack_trims_reach_clients() {
+        use serde_json::json;
+        assert_pack_holder_sync(
+            "trim_pattern",
+            "test_patterns",
+            json!({"asset_id":"demo:zigzag","description":{"translate":"trim_pattern.demo.zigzag"}}),
+            "asset_id",
+            json!("demo:lower"),
+            json!("demo:winner"),
+            Tag::String("demo:winner".into()),
+        );
+        assert_pack_holder_sync(
+            "trim_material",
+            "test_materials",
+            json!({"palette_id":"demo:trim/jade","description":{"translate":"trim_material.demo.jade"}}),
+            "palette_id",
+            json!("demo:trim/lower"),
+            json!("demo:trim/winner"),
+            Tag::String("demo:trim/winner".into()),
+        );
+    }
+
     /// #2506: a world pack's clocks reach the clients from the pack's own files, so a dimension
     /// type that names one as `default_clock` resolves on their side. Under known-pack
     /// negotiation a clock the pack replaces goes with its data, one it leaves does not.
@@ -2169,7 +2159,10 @@ mod tests {
             }"##,
         );
         let packs = crate::datapack::discover(&world);
-        let mut files = crate::datapack::DataStore::load(&packs.iter().collect::<Vec<_>>()).files;
+        let mut files = crate::datapack::DataStore::load(&crate::datapack::DataPacks::new(
+            &packs.iter().collect::<Vec<_>>(),
+        ))
+        .files;
         // Native contributions sit below the world's enabled packs.
         files
             .get_mut("world_clock/minecraft:the_end")
@@ -2260,6 +2253,39 @@ mod tests {
         }
     }
 
+    /// The tags the world open binds for the registries it reads through `registry_tag_bindings`
+    /// (biome, structure, timeline, dialog): two pack layers of one tag, neither `replace`, the
+    /// second with an optional entry the registry lacks, give the held members in layer order.
+    #[test]
+    fn pack_tag_layers_bind_for_biome_structure_timeline_and_dialog() {
+        let root = tempfile::tempdir().unwrap();
+        let files: Vec<_> = ["worldgen/biome", "worldgen/structure", "timeline", "dialog"]
+            .into_iter()
+            .map(|kind| {
+                (
+                    format!("tags/test:{kind}/t"),
+                    vec![
+                        br#"{"values":["test:a"]}"#.to_vec(),
+                        br#"{"values":["test:b",{"id":"test:ghost","required":false}]}"#.to_vec(),
+                    ],
+                )
+            })
+            .collect();
+        let overlay = sunrise_world::loot::PackOverlay::new(&files);
+        for registry in [
+            "minecraft:worldgen/biome",
+            "minecraft:worldgen/structure",
+            "minecraft:timeline",
+            "minecraft:dialog",
+        ] {
+            let tags = registry_tag_bindings(root.path(), &overlay, registry, |id| {
+                id == "test:a" || id == "test:b"
+            })
+            .unwrap();
+            assert_eq!(tags["test:t"], ["test:a", "test:b"], "{registry}");
+        }
+    }
+
     /// #7843: the server sends its tags as `TagLoader` merged them from the
     /// whole pack stack. A world pack that adds dirt to `climbable` and
     /// replaces `mineable/pickaxe` reaches the block tags sent, over the
@@ -2335,14 +2361,20 @@ mod tests {
         // Tag conditions are ignored: the final replace restores stone after dirt.
         assert_eq!(sent("minecraft:block", "minecraft:mineable/pickaxe"), [0]);
         assert_eq!(sent("minecraft:block", "test:more"), [0]);
-        // No pack tags for items: the registry stays as it was read.
+        // No pack tags for items: the root's tag stays as it was read alongside built-in c: tags.
         let items = tags
             .registries
             .iter()
             .find(|r| r.registry == "minecraft:item")
             .unwrap();
-        assert_eq!(items.tags.len(), 1);
-        assert_eq!(items.tags[0].ids, [0]);
+        let non_convention: Vec<_> = items
+            .tags
+            .iter()
+            .filter(|t| !t.name.starts_with("c:") && !t.name.starts_with("neoforge:"))
+            .collect();
+        assert_eq!(non_convention.len(), 1);
+        assert_eq!(non_convention[0].name, "minecraft:sticks");
+        assert_eq!(non_convention[0].ids, [0]);
         assert_eq!(
             tags.registries
                 .iter()
@@ -2351,6 +2383,122 @@ mod tests {
             1,
             "one entry per registry"
         );
+    }
+
+    /// RegistryDataLoader.SYNCHRONIZED_REGISTRIES: a world pack that adds one entry to each of
+    /// the registries reaches every client in that registry's `RegistryData`, with its data.
+    /// Entries a registry's own codec is complex for are the prepared vanilla file of that
+    /// registry under a new id, except where the registry validates across entries (the timeline
+    /// is written out); the biome table is the world's admitted one.
+    #[test]
+    #[ignore = "daily"]
+    fn world_packs_add_an_entry_to_every_synchronized_registry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.local/sunrise-client")
+            .join(sunrise_core::VANILLA_VERSION);
+        let written = |registry: &str, value: &str| {
+            (
+                format!("{registry}/demo:added"),
+                vec![value.as_bytes().to_vec()],
+            )
+        };
+        let mut files = Vec::new();
+        for (registry, value) in [
+            ("world_clock", r#"{}"#),
+            // Timeline.validateRegistry refuses a (clock, marker) pair defined twice, so the
+            // entry is not a copy of a vanilla timeline with its markers.
+            (
+                "timeline",
+                r#"{"clock":"minecraft:overworld","period_ticks":24000}"#,
+            ),
+            ("decorated_pot_pattern", r#"{"asset_id":"demo:p"}"#),
+            (
+                "block_transformer",
+                r#"[{"block_state_provider":{"id":"minecraft:dirt"},"sound":"minecraft:item.hoe.till"}]"#,
+            ),
+            (
+                "worldgen/block_state_provider",
+                r#"{"type":"minecraft:simple_state_provider","state":{"Name":"minecraft:stone"}}"#,
+            ),
+            (
+                "test_environment",
+                r#"{"type":"minecraft:all_of","definitions":[]}"#,
+            ),
+            (
+                "test_instance",
+                r#"{"type":"minecraft:function","function":"demo:f","structure":"demo:s","max_ticks":1,
+                    "environment":{"type":"minecraft:all_of","definitions":[]}}"#,
+            ),
+            (
+                "trim_pattern",
+                r#"{"asset_id":"demo:zigzag","description":{"translate":"trim_pattern.demo.zigzag"}}"#,
+            ),
+            (
+                "trim_material",
+                r#"{"palette_id":"demo:trim/jade","description":{"translate":"trim_material.demo.jade"}}"#,
+            ),
+            (
+                "banner_pattern",
+                r#"{"asset_id":"demo:mural","translation_key":"test.banner"}"#,
+            ),
+            (
+                "painting_variant",
+                r#"{"asset_id":"demo:mural","width":1,"height":2}"#,
+            ),
+            (
+                "instrument",
+                r#"{"sound_event":"minecraft:item.goat_horn.sound.0","use_duration":4.0,"range":128.0,"description":"Demo"}"#,
+            ),
+        ] {
+            files.push(written(registry, value));
+        }
+        for &registry in SYNCHRONIZED {
+            let path = registry.trim_start_matches("minecraft:");
+            if registry == BIOME_REGISTRY || files.iter().any(|(key, _)| key.starts_with(path)) {
+                continue;
+            }
+            let folder = sunrise_world::json_folder::read(&root.join("data/minecraft").join(path))
+                .unwrap_or_else(|e| panic!("{registry}: no prepared folder: {e}"));
+            let first = folder
+                .files
+                .iter()
+                .find(|file| !file.name.contains('/'))
+                .unwrap_or_else(|| panic!("{registry}: no prepared file"));
+            files.push((
+                format!("{path}/demo:added"),
+                vec![first.bytes().unwrap().to_vec()],
+            ));
+        }
+        let biomes = crate::biome::Biomes::load_vanilla_for_server(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        )
+        .unwrap();
+        let plains = biomes.builtin_file("minecraft:plains").unwrap().clone();
+        let biomes = biomes.with_packs([("demo:added", &plains)]).unwrap();
+        let sync = SyncData::load_with(
+            &root,
+            &sunrise_world::loot::PackOverlay::new(&files),
+            Some(&biomes),
+            &sunrise_world::item_defaults::read(&root).unwrap(),
+            &crate::crafting::ResolvedSources::default(),
+        )
+        .unwrap();
+        let packets = sync.registry_packets(true, &LevelShapes::VANILLA);
+        assert_eq!(SYNCHRONIZED.len(), 32);
+        for &registry in SYNCHRONIZED {
+            let entry = packets
+                .iter()
+                .find(|packet| packet.registry == registry)
+                .unwrap_or_else(|| panic!("{registry} is not sent"))
+                .entries
+                .iter()
+                .find(|entry| entry.id == "demo:added")
+                .unwrap_or_else(|| panic!("{registry}: the pack's entry is not sent"));
+            assert!(
+                entry.data.is_some(),
+                "{registry}: the entry goes with its data"
+            );
+        }
     }
 
     /// RegistrySynchronization.packRegistry: a client that knows the core

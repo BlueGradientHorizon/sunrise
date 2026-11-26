@@ -737,6 +737,8 @@ impl Game<'_> {
             sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
         );
         for c in &mut self.crystals {
+            // ClientLevel.tickNonPassenger's setOldPosAndRot, then the interpolation step.
+            c.previous = c.position;
             c.time += 1;
             c.position = step(c.id, c.position);
         }

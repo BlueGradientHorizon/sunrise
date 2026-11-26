@@ -4,8 +4,8 @@
 //! block-inside effects and audiovisual event consumers remain separate work.
 mod player_init;
 use crate::{
-    Result, assets::Assets, collisions::SceneCollisions, living_attributes::attribute_error,
-    world::World,
+    Result, assets::Assets, collisions::SceneCollisions, health::LivingLend,
+    living_attributes::attribute_error, world::World,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -63,26 +63,27 @@ pub fn native_living_jump(context: &LoopContext, entity: u32, kind: &str, veloci
 }
 
 /// A living entity's jump power is about to be used (beyond NeoForge: there is no counterpart).
-/// Mods may change it. Fires on replayed ticks too, so a listener must be a pure function of its inputs.
+/// Mods may change it; `living` lends the jumping entity's body for their reads. Fires on replayed
+/// ticks too, so a listener must be a pure function of its inputs.
 #[inline(never)]
-pub fn native_living_jump_power(context: &LoopContext, entity: u32, kind: &str, power: &mut f32) {
-    crate::native_client_hooks::living_jump_power(context, entity, kind, power);
+pub fn native_living_jump_power(context: &LoopContext, living: LivingLend<'_>, power: &mut f32) {
+    crate::native_client_hooks::living_jump_power(context, living, power);
 }
 
 /// A living entity's movement speed is about to drive its travel (beyond NeoForge: there is no
 /// counterpart). Mods may change it. Fires on replayed ticks too, so a listener must be a pure
 /// function of its inputs.
 #[inline(never)]
-pub fn native_living_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
-    crate::native_client_hooks::living_speed(context, entity, kind, speed);
+pub fn native_living_speed(context: &LoopContext, living: LivingLend<'_>, speed: &mut f32) {
+    crate::native_client_hooks::living_speed(context, living, speed);
 }
 
 /// A living entity's airborne acceleration is about to be used (beyond NeoForge: there is no
 /// counterpart). Mods may change it. Fires on replayed ticks too, so a listener must be a pure
 /// function of its inputs.
 #[inline(never)]
-pub fn native_living_flying_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
-    crate::native_client_hooks::living_flying_speed(context, entity, kind, speed);
+pub fn native_living_flying_speed(context: &LoopContext, living: LivingLend<'_>, speed: &mut f32) {
+    crate::native_client_hooks::living_flying_speed(context, living, speed);
 }
 
 /// The player's crouch edge backoff asks whether it is staying on the ground surface
@@ -125,8 +126,9 @@ pub mod ladder;
 pub mod surface;
 mod travel;
 pub use fluids::{
-    BubbleColumn, FluidResources, FluidTags, LAVA, PlayerFluids, RiddenBoat, SwimEntry, WATER,
-    bubble_column_at, bubble_column_push, bubble_column_push_over, bubble_column_surfaces,
+    BubbleColumn, FluidClip, FluidRayProvider, FluidResources, FluidTags, LAVA, PlayerFluids,
+    RiddenBoat, SwimEntry, WATER, bubble_column_at, bubble_column_push, bubble_column_push_over,
+    bubble_column_surfaces, clip_world_with_fluids,
 };
 pub(crate) use surface::ModBlockFactors;
 #[cfg(any(test, feature = "test-dry-side"))]
@@ -1193,8 +1195,12 @@ impl MotionWorld<'_, '_, '_> {
         if self.player.jump_trigger_time > 0 {
             self.player.jump_trigger_time -= 1;
         }
-        self.player
-            .peaceful_regeneration(self.loop_context, self.scene.health_rules)?;
+        let side = self.side;
+        self.player.peaceful_regeneration(
+            self.loop_context,
+            &|| side.hit_reads(),
+            self.scene.health_rules,
+        )?;
         // LocalPlayer.aiStep: double-tap jump toggles creative flight.
         let was_jumping = std::mem::replace(&mut self.player.was_jumping, jumping);
         let flying_before = self.player.flying;
@@ -2883,6 +2889,23 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
         Ok(())
     }
 }
+impl MotionWorld<'_, '_, '_> {
+    /// The moving player, as the motion value and heal hooks lend it: the attributes and floats
+    /// this tick holds, the effects and stacks of the side that ticks it.
+    /// `reads` asks this tick's side ([`SideLevel::hit_reads`]).
+    fn player_lend<'a>(
+        &'a self,
+        reads: &'a dyn Fn() -> Option<crate::health::HitReads<'a>>,
+    ) -> LivingLend<'a> {
+        LivingLend::player(
+            self.player.entity_id,
+            &self.player.attributes,
+            &self.player.health.data,
+            self.player.health.ids,
+            reads,
+        )
+    }
+}
 impl LivingMotionWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
     #[inline]
@@ -2896,12 +2919,10 @@ impl LivingMotionWorld for MotionWorld<'_, '_, '_> {
     }
     #[inline]
     fn adjust_jump_power(&mut self, mut power: f32) -> f32 {
-        native_living_jump_power(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            &mut power,
-        );
+        let side = self.side;
+        let reads = || side.hit_reads();
+        let living = self.player_lend(&reads);
+        native_living_jump_power(self.loop_context, living, &mut power);
         power
     }
     #[inline]

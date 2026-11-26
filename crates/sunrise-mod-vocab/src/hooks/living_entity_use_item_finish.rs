@@ -10,8 +10,8 @@ pub trait Hooks {
     /// consumables, potions, spyglasses and mods' items. Both sides, as
     /// vanilla's `completeUsingItem`: answer the same on both, and change the
     /// world only on the server (`native_window` is false there), not on a
-    /// server's client. On the server it fires for every player of the world
-    /// (the helpers read the acting one). On a server's client the result
+    /// server's client. On the server it fires for every player of the world,
+    /// `entity` the acting one's id. On a server's client the result
     /// arrives as vanilla's client `finishUsingItem` leaves it: an item that
     /// is not a consumable unchanged (a spyglass), a consumable less one, and
     /// its use remainder (the bowl of the last stew) once that empties the
@@ -23,7 +23,7 @@ pub trait Hooks {
         side = "both",
         contract = "listen",
         neoforge = "LivingEntityUseItemEvent.Finish",
-        version = 3
+        version = 4
     )]
     fn living_entity_use_item_finish(
         stack: &ItemStack,

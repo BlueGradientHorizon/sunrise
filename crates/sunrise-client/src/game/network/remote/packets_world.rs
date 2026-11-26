@@ -13,6 +13,7 @@ impl Game<'_> {
     pub(super) fn apply_block_destruction_packet(&mut self, p: play::BlockDestruction) {
         // ClientPacketListener.handleBlockDestruction: another player's crack.
         self.destroy_block_progress(p.id, p.pos, i32::from(p.progress));
+        self.native_client_break_progress(p.id, p.pos, i32::from(p.progress));
     }
 
     /// `C::SectionBlocksUpdate`: apply verified states in packet order.
