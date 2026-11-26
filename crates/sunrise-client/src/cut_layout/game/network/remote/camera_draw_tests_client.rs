@@ -1,5 +1,5 @@
 use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::{

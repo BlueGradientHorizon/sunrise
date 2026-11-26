@@ -7,7 +7,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn received_block_particles_follow_the_provider_matrix() {
-        use {sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
         in_own_process(
             "game::client_side::lan_particles_client::tests::received_block_particles_follow_the_provider_matrix",
             || {

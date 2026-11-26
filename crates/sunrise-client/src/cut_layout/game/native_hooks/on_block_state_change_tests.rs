@@ -2,7 +2,7 @@
 //! neighbours' shapes settled, where `block_changed` hears the write before them, and on a
 //! client for each block the server sends and each write of a piston's replay.
 use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     BlockChangedEvent, BlockPart, BlockState, BlockUpdateFlags, Hooks, LevelHost, LevelSide,
     OnBlockStateChangeEvent, Registrar,

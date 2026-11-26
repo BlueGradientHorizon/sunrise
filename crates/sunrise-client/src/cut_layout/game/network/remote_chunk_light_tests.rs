@@ -1,4 +1,4 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry, sunrise_gameplay_common::game::in_own_process, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry, sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::sync::Arc;
 use sunrise_client::level_loading::Reason;
 use sunrise_level::world::World;

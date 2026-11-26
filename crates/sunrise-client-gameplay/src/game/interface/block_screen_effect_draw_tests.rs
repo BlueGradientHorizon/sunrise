@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
 #[allow(unused_imports)]
-use super::{Game, PackResources, Screen};
+use super::{PackResources, Screen};
 #[allow(unused_imports)]
 use BlockScreenEffect::{Block, Fire, Water};
 #[allow(unused_imports)]

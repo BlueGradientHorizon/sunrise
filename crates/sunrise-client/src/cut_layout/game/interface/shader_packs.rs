@@ -16,7 +16,7 @@ use sunrise_level::{chunk::Chunk, effects::EffectInstance};
     #[test]
     #[ignore = "daily"]
     fn pack_status_on_a_server_follows_what_it_sent() {
-        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_protocol::{
             entity_data::{Value, serializer},
             packets::play::{self, Clientbound as C},
@@ -98,7 +98,7 @@ use sunrise_level::{chunk::Chunk, effects::EffectInstance};
     #[test]
     #[ignore = "daily"]
     fn pack_status_starts_over_with_a_new_local_player() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         use sunrise_protocol::{
             entity_data::{Value, serializer},
             packets::play::{self, Clientbound as C},

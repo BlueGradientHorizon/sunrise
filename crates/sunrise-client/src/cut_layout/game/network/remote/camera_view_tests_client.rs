@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::camera_view_tests::BOAT;
 use crate::game::remote::camera_view_tests::FRAME_CASE;
 use crate::game::remote::camera_view_tests::FRAME_NAME;

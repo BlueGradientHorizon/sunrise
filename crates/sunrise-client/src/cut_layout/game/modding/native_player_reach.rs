@@ -182,7 +182,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_reach_uses_predicted_eyes_and_the_tracked_targets_box() {
-        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_protocol::packets::play;
         use sunrise_sim::motion::PlayerMotion;
 

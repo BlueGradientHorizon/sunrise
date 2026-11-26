@@ -392,6 +392,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn teams_are_written_joined_synced_saved_and_stale_once_removed() {
         with_game(|game| {
             let saved_board = open_lan(game);

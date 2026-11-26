@@ -4,11 +4,7 @@
 pub(in crate::game) mod tests {
     use super::*;
 
-    pub(in crate::game) fn server_game<'a>(
-        resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
-    ) -> sunrise_gameplay::game::ServerGame<'a> {
-        build_server_game(resources, false)
-    }
+    pub use sunrise_gameplay::game::game_tests::tests::server_game;
 
     /// Puts the process-wide block namespaces back as it found them.
     pub(in crate::game) struct Published(Option<Vec<String>>);

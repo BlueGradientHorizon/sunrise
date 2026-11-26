@@ -1,5 +1,5 @@
 //! Ordinary effect blends through the public handle and the client's packet/countdown paths.
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::LivingRef;
 use mod_platform::__private::part_tests::effect_key;
 use sunrise_core::geometry::Vec3;

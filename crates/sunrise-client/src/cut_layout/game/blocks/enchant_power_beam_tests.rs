@@ -1,6 +1,6 @@
 //! Block parts answer the enchanting power an enchanting table counts (`enchant_power_bonus`)
 //! and the colour a beacon beam takes (`beacon_color_multiplier`).
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client};
+use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::{
     BlockPart, EnchantPowerBonusEvent, Hooks, Host, LevelReadError, ModEntry, Mods, Registrar,
     RegistrationContext,

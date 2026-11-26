@@ -1,5 +1,5 @@
 use {crate::game::entity_sections::*, sunrise_gameplay_common::game::entity_sections::{Crossing, EntityRef, EntitySections, LiveSectionHost, Scope, WorldEpoch, player, section_coord, section_of}};
-use {crate::game::commands::Target, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {crate::game::commands::Target, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

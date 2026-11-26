@@ -4,7 +4,7 @@ use crate::game::remote::tests::client_level_environment_tests::respawn;
 use crate::game::remote::tests::client_level_environment_tests::send_types;
 use crate::game::remote::tests::client_level_environment_tests::spawn;
 use crate::game::remote::tests::client_level_environment_tests::with_height;
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay::game::native_entity_refs::tests::with_uncached_client_game as with_client_game};
+use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game as with_client_game};
 use std::sync::Arc;
 use sunrise_protocol::connection::Pipe;
 

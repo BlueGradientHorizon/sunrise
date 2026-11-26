@@ -1,6 +1,6 @@
 use super::{connect_menu_test, spawn_menu_test};
 use crate::game::remote::tests::menu_packets_tests::packets_through_pong;
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::mount_menu::CHEST, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::mount_menu::CHEST, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
 use sunrise_core::{geometry::Vec3, nbt::Tag};

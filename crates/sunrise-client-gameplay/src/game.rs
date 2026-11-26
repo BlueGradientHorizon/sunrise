@@ -1489,3 +1489,6 @@ impl sunrise_gameplay_common::game::item_snapshot::ItemBoundary for ClientGame<'
         Some(sunrise_gameplay_common::game::tables::GameItems::items(self))
     }
 }
+
+#[cfg(all(feature = "client", any(test, feature = "test-support")))]
+pub use client_side::native_entity_refs;

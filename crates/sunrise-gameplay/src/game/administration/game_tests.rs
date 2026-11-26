@@ -1676,3 +1676,45 @@ fn retry_line(info: &Info, retry: Retry, attempts: i32, successes: i32, passed: 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod tests {
+    use sunrise_gameplay_common::game::{
+        Options, Resources, execution_role::ExecutionRole, resource_load::Progress,
+        test_fixtures::{acquire_in_process_load_permit, fixture_root, offline_profiles},
+    };
+    use std::sync::Arc;
+    use sunrise_assets::resource_source::ResourceRoot;
+    use sunrise_level::sim_settings::SimSettings;
+
+    pub fn server_game(resources: &mut Option<Arc<Resources>>) -> crate::game::ServerGame<'_> {
+        let root = fixture_root();
+        let settings = SimSettings::default();
+        let (loaded, pack) = {
+            let _permit = acquire_in_process_load_permit();
+            crate::game::server_side::resource_load_server::load_resources_server(
+                ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                &root,
+                &settings,
+                1,
+                std::time::Instant::now(),
+                &Default::default(),
+                &Progress::new(),
+                true,
+            )
+            .unwrap()
+        };
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root;
+        options.execution_role = ExecutionRole::IntegratedServer;
+        let res = resources.insert(loaded);
+        let mut game = crate::game::ServerGame::new(res, pack, options, settings, None, offline_profiles)
+            .unwrap();
+        game.reset_entity_residency();
+        game.native_lifecycle.begin_open(mod_api::Authority::IntegratedServer);
+        game.world.chunks.insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+        game
+    }
+}

@@ -1,4 +1,4 @@
-use super::native_guest_turn_tests::with_guests;
+use crate::game::native_guest_turn_tests::with_guests;
 use crate::game::server_side::lan_trade_decisions_tests::RemoveHero;
 use crate::game::server_side::lan_trade_decisions_tests::open;
 use crate::game::server_side::lan_trade_decisions_tests::prepare_work;

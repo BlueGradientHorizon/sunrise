@@ -1,6 +1,6 @@
 //! The host's build metadata agrees with the chunk writer, before any world is open.
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{ClientHost, Host, ServerHost};
 use std::sync::Arc;
 use sunrise_core::nbt::{Limits, Tag};

@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_protocol::connection::{Connection, Pipe};
 
 /// `ChatComponent.addClientSystemMessage`: the line joins this client's

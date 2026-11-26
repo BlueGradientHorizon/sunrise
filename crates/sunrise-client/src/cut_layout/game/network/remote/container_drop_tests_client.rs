@@ -1,6 +1,6 @@
 use super::super::*;
 use super::{connect_play_test, spawn_menu_test};
-use {sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
+use {sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
 use mod_api::{ClientHost, ClientPacketSendEvent, Flow, Hooks, MenuClick, ModEntry};
 use mod_platform::testing::with_mods;
 use std::sync::{

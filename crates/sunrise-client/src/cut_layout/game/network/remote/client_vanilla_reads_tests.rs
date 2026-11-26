@@ -1,6 +1,6 @@
 // Client reads of vanilla state for mods (#4677), on a window joined to a server through
 // memory and fed the server's packets as it would receive them.
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::ClientHost;
 use sunrise_protocol::{
     connection::{ConnReader, ConnWriter},

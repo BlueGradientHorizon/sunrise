@@ -1,4 +1,4 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_core::{position::BlockPos, storage::PackedStorage};
 use sunrise_protocol::{
     chunk::{ChunkData, LightData, Paletted, Section, Strategy},

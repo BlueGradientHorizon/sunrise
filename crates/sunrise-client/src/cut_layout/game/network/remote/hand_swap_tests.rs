@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::equipment::{MAINHAND, OFFHAND};
 use sunrise_items::items::ItemStack;

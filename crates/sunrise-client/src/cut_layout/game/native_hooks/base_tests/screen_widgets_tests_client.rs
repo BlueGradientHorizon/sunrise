@@ -1,6 +1,6 @@
 use super::*;
 use sunrise_client_gameplay::game::input_trace::InputOrigin;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use crate::game::native_hooks::base::screen_widgets_tests::DropCounter;
 use crate::game::native_hooks::base::screen_widgets_tests::NoLoop;
 use crate::game::native_hooks::base::screen_widgets_tests::move_mouse;

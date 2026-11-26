@@ -1,5 +1,5 @@
 use {sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::play};
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in};
 use sunrise_level::particle_options::ParticleType::{Crit, EnchantedHit};
 use sunrise_protocol::entity_data::{Value, serializer};
 

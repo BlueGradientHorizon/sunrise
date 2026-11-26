@@ -12,7 +12,7 @@ pub(in crate::game) mod post_effects_parity_tests;
 pub(in crate::game) mod tests {
     use super::super::tests::{connect_play_test, spawn_menu_test};
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{ClientHost, ClientPacketEvent, EntityRef, Hooks, ModEntry};
     use std::sync::mpsc;
 

@@ -1,5 +1,5 @@
 use super::super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_NAME;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_UUID;
 use crate::game::remote::abilities::gamemode_split_tests::abilities_packet;

@@ -4,7 +4,7 @@
 pub(in crate::game) mod client_screen_tests {
     use super::*;
     use sunrise_client_gameplay::game::books::BookScreen;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
     use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;

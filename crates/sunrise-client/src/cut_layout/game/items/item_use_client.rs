@@ -8,7 +8,7 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
 #[test]
     #[ignore = "daily"]
     fn default_first_person_arm_obeys_its_own_sleeve_option() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_client::options_file::V;
 
         if run_fresh_cases(
@@ -51,7 +51,7 @@ use sunrise_client_gameplay::game::client_side::item_use_client::tests::stand_in
 #[test]
     #[ignore = "daily"]
     fn render_hand_submits_both_skinned_arms_in_draw_order() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use glam::{Mat4, Quat, Vec3};
         use mod_api::{
             ClientHost, Flow, Hand, Hooks, MainHand, ModEntry, RenderArmEvent, RenderHandEvent,

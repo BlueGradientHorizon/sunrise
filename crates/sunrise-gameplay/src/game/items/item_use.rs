@@ -318,7 +318,6 @@ pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::item_use_common::{
         consumes_at_once, duration_leaving, held, start_of, tick_left, ticks_left,
     };
-    use sunrise_client::first_person::ItemPose;
     use sunrise_core::use_animation::UseAnimation;
 
     /// A mob's use counter is 1 on the tick it starts and a bow's use lasts

@@ -1,7 +1,7 @@
 //! A status replacement must use the shared retained HUD callback boundary.
 
 use super::{AIR_LEVEL, log, take};
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
 use std::sync::Mutex;
 

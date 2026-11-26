@@ -65,51 +65,9 @@ type Slot = Arc<OnceLock<std::result::Result<Arc<CachedEntry>, String>>>;
 const KEPT: usize = 4;
 static CACHE: Mutex<Vec<(CacheKey, Slot)>> = Mutex::new(Vec::new());
 
-/// Bounds concurrent full resource loads and fresh-process children to keep peak memory low.
-static HEAVY_GATE: std::sync::LazyLock<(Mutex<(usize, usize, usize)>, std::sync::Condvar)> =
-    std::sync::LazyLock::new(|| (Mutex::new((0, 0, 0)), std::sync::Condvar::new()));
-
-pub(in crate::game) struct HeavyLoadPermit {
-    in_process: bool,
-}
-
-impl Drop for HeavyLoadPermit {
-    fn drop(&mut self) {
-        let (lock, cv) = &*HEAVY_GATE;
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
-        if self.in_process {
-            state.0 -= 1;
-        }
-        state.1 -= 1;
-        cv.notify_all();
-    }
-}
-
-pub(in crate::game) fn acquire_in_process_load_permit() -> HeavyLoadPermit {
-    const MAX_IN_PROCESS: usize = 1;
-    const MAX_TOTAL: usize = 2;
-    let (lock, cv) = &*HEAVY_GATE;
-    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
-    state.2 += 1;
-    while state.0 >= MAX_IN_PROCESS || state.1 >= MAX_TOTAL {
-        state = cv.wait(state).unwrap_or_else(|e| e.into_inner());
-    }
-    state.2 -= 1;
-    state.0 += 1;
-    state.1 += 1;
-    HeavyLoadPermit { in_process: true }
-}
-
-pub(in crate::game) fn acquire_fresh_child_permit() -> HeavyLoadPermit {
-    const MAX_TOTAL: usize = 2;
-    let (lock, cv) = &*HEAVY_GATE;
-    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
-    while state.1 >= MAX_TOTAL || state.2 > 0 {
-        state = cv.wait(state).unwrap_or_else(|e| e.into_inner());
-    }
-    state.1 += 1;
-    HeavyLoadPermit { in_process: false }
-}
+pub(in crate::game) use sunrise_gameplay_common::game::test_fixtures::{
+    acquire_fresh_child_permit, acquire_in_process_load_permit,
+};
 
 fn file_stamp(path: &Path) -> FileStamp {
     std::fs::metadata(path)

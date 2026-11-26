@@ -55,7 +55,7 @@ fn a_server_slot_update_leaves_an_unsent_creative_click_to_be_sent() {
 mod give_stack {
 
     use sunrise_gameplay_common::game::api_values::test_snapshot;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use {sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
     use mod_api::CreativeGiveError;
     use sunrise_command::args::GameMode;

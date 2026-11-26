@@ -1,5 +1,5 @@
 use super::{connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::viewed_worlds::tests::column};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::viewed_worlds::tests::column};
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
     PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,

@@ -9,7 +9,7 @@ use crate::game::remote::tests::client_hud_camera_tests::id;
 use crate::game::remote::tests::client_hud_camera_tests::mount;
 use crate::game::remote::tests::client_hud_camera_tests::num;
 use crate::game::remote::tests::client_hud_camera_tests::spawn;
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
+use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;

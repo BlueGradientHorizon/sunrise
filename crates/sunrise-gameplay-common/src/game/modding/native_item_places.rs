@@ -16,6 +16,8 @@ use sunrise_core::geometry::Direction;
 
 use sunrise_items::items::ItemStack;
 
+use crate::game::api_values::TryIntoApi;
+
 use sunrise_protocol::packets::configuration::ClientInformation;
 
 use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};

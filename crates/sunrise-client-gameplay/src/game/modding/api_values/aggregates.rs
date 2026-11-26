@@ -7,6 +7,7 @@ mod tests {
     use sunrise_gameplay_common::game::native_structure_values::TemplateBlock;
     use mod_api::{Compound, Identifier, SceneBlockEntity, Tag};
     use sunrise_world::registry::{BlockRegistry, BlockStateId};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
     #[test]
     fn aggregates_preserve_properties_reorder_and_refuse_whole_values() {

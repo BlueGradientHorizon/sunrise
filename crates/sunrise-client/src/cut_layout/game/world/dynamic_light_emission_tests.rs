@@ -4,7 +4,7 @@
 //! chunk keep or ask again as the cells' states say, and `check_light` and a server's light
 //! update ask again.
 use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::LevelDimension};
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client};
+use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::*;
 use std::sync::{
     Arc, Mutex,

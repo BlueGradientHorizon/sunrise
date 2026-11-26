@@ -1,6 +1,6 @@
 use super::*;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
+use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Edit;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Observe;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Seen;

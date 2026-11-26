@@ -3,7 +3,7 @@
 //! its checked table; the client keeps only the surface; the first mod in order wins.
 // Included as fishing's child so fixtures can construct its private hook state.
 use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::sync::{Arc, Mutex};
 use sunrise_sim::motion::PlayerMotion;
 

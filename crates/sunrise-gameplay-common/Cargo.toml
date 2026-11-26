@@ -7,6 +7,7 @@ rust-version.workspace = true
 description = "Portable gameplay rules and data shared across both logical sides"
 
 [dependencies]
+tempfile = { version = "3", optional = true }
 cap-fs-ext = "3"
 cap-std = "3"
 sunrise-hooks = { path = "../sunrise-hooks" }
@@ -45,4 +46,4 @@ sunrise-mod-api-gen = { path = "../sunrise-mod-api-gen" }
 
 [features]
 parity-fixtures = []
-test-support = []
+test-support = ["dep:tempfile"]

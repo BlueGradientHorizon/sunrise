@@ -200,7 +200,7 @@ pub(in crate::game) use server_side::functions;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::game_mode;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::game_tests;
+pub use server_side::game_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ghasts;
 #[cfg(test)]
@@ -445,7 +445,7 @@ pub(in crate::game) use server_side::native_entity_moves;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_physics;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_entity_refs;
+pub use server_side::native_entity_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_remove;
 #[allow(unused_imports)]
@@ -1141,3 +1141,6 @@ impl sunrise_gameplay_common::game::item_snapshot::ItemBoundary for ServerGame<'
         Some(sunrise_gameplay_common::game::tables::GameItems::items(self))
     }
 }
+
+#[cfg(any(test, feature = "test-support"))]
+pub use server_side::native_guest_turn_tests;

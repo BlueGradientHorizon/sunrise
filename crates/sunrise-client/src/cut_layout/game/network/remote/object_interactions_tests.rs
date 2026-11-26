@@ -40,7 +40,7 @@ fn object_interactions_pass_and_swing_vanilla() {
 #[test]
 #[ignore = "daily"]
 fn transactional_bucket_hands_reach_the_owning_client() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
+    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
     use mod_api::{
         HostTransaction, ITEM_FLUIDS, ItemPlace, ServerHost, resource_util::move_resources,
     };

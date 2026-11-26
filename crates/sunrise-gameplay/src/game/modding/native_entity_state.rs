@@ -1123,7 +1123,7 @@ pub mod tests {
     }
 
     // `EntityRef::main_arm` (`LivingEntity.getMainArm`) on a client and on a server.
-    use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+    use super::super::native_entity_refs::tests::run_fresh_cases;
     use super::super::native_guest_turn_tests::with_guests;
     use mod_api::MainHand;
     use sunrise_protocol::entity_data::{Value, serializer};

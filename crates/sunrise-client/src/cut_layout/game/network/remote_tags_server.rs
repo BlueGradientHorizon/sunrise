@@ -1,7 +1,7 @@
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{Hooks, Identifier, ModEntry, TagMembers};
     use std::sync::Arc;
     use sunrise_protocol::packets::play::Clientbound as C;

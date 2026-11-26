@@ -1,7 +1,7 @@
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use super::super::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::HostTransaction;
     use mod_api::{ENTITY_ITEMS, ItemResource, TransactionError};
     use sunrise_items::items::ItemStack;
@@ -33,7 +33,7 @@ pub(in crate::game) mod tests {
             assert_eq!(result, Err(()));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
             assert!(
-                game.side.pending_sounds.is_empty(),
+                game.server.pending_sounds.is_empty(),
                 "aborted stand equip emitted sound"
             );
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
@@ -49,7 +49,7 @@ pub(in crate::game) mod tests {
             });
             assert_eq!(result, Err(()));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
-            assert!(game.side.pending_sounds.is_empty());
+            assert!(game.server.pending_sounds.is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
             super::super::dispense_fixture::start_recording();
@@ -71,7 +71,7 @@ pub(in crate::game) mod tests {
             });
             assert_eq!(result, Ok(()));
             assert_eq!(game.armor_stands[0].equipment.get(4).unwrap().count, 1);
-            assert_eq!(game.side.pending_sounds.len(), 1);
+            assert_eq!(game.server.pending_sounds.len(), 1);
             let events = super::super::dispense_fixture::stop_recording();
             assert_eq!(events.len(), 1, "only one event at root commit: {events:?}");
             assert!(events[0].ends_with("minecraft:equip"));

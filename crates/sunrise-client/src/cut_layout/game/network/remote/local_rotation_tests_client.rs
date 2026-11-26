@@ -1,5 +1,5 @@
 use {sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client};
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::movement_input_tests::local_rotation_tests::sent_moves;
 use crate::game::remote::movement_input_tests::local_rotation_tests::sent_packets;
 use mod_api::LocalRotationError;

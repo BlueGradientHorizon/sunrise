@@ -9,7 +9,7 @@ use sunrise_gameplay_common::game::in_own_process;
 #[test]
     #[ignore = "daily"]
     fn equipment_camera_overlays_emit_in_vanilla_slot_order() {
-        use {sunrise_gameplay_common::game::in_own_process, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_client::hud::Rect;
         use sunrise_core::{geometry::Vec3, nbt::Tag};
         use sunrise_items::items::ItemStack;

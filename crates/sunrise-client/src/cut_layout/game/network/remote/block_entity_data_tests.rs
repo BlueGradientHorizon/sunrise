@@ -1,6 +1,6 @@
 //! End-to-end client receive notices with independent tag values.
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Arc, Chunk, Tag, play}};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{BlockEntityPart, BlockPart, Hooks, Registrar};
 use std::sync::{Arc, Mutex};
 

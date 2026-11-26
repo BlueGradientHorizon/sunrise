@@ -1,7 +1,7 @@
 //! Adapter fixtures run the real Game transaction open/close, root journal,
 //! deferred drops, and save gate. They need resources; the acceptance matrix
 //! coordinator fixtures in decision_tests.rs do not.
-use sunrise_gameplay_common::game::transactions::decision::storage::GameHost;
+use sunrise_gameplay_common::game::transactions::decision::storage::{ActionHost, GameHost};
 use {crate::game::transactions::decision::*, sunrise_gameplay_common::game::transactions::decision::{Effect, Identity, ItemStack, Menu, Mutation, Outcome, Reply, Side, Step, run, storage, tests}};
 use crate::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;

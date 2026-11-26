@@ -4,6 +4,7 @@
 //! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
 //! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
 use crate::game::ServerGame;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::api_values::component_edit::{GearEdits, prepare_component_edit};
 use sunrise_gameplay_common::game::native_server::PlayerRead;
 use sunrise_gameplay_common::game::transactions::{After, DeferredEffect};

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {sunrise_gameplay_common::game::in_own_process, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, crate::game::remote::tests::connect_menu_test, crate::game::remote::tests::spawn_menu_test};
+    use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::remote::tests::connect_menu_test, crate::game::remote::tests::spawn_menu_test};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use serde_json::json;
     use std::sync::{

@@ -1,5 +1,5 @@
 use {sunrise_client_gameplay::game::client_side::locator_bar::GuiDraw, sunrise_client_gameplay::game::client_side::locator_bar::TrackedWaypoint};
-use {sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_gameplay_common::game::in_own_process, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
+use {sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use std::time::Duration;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 use sunrise_client::{level_loading::Reason, locator_bar::WaypointStyles};

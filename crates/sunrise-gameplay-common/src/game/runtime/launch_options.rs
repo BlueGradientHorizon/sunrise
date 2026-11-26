@@ -127,8 +127,8 @@ impl Options {
     }
     /// The command line alone: no file is read and nothing changes. `None` for `--help` and
     /// `--launch-api`, which print and end the run.
-    #[cfg(test)]
-    pub(in crate::game) fn parse(args: impl Iterator<Item = String>) -> Result<Option<Self>> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn parse(args: impl Iterator<Item = String>) -> Result<Option<Self>> {
         Self::from_launch(LaunchArguments::parse(
             args,
             &std::env::current_dir()?,

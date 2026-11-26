@@ -1,6 +1,6 @@
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Chunk, Holder, Tag, play}};
 use {sunrise_client_gameplay::game::client_side::remote_client::Remote, sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry};
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{AttachmentCodec, AttachmentType, Host};
 use sunrise_mod_runtime::attachments::AttachmentSync;
 use sunrise_protocol::attachment_sync::Message;

@@ -1,5 +1,5 @@
 use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Arc, C, PlayerMotion, Vec3, motion, play, ui}};
 use mod_api::{Flow, HostSide, SoundPlay, SoundSource};
 use std::sync::Mutex;

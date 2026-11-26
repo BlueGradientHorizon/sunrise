@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::in_own_process, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::{
     connection::Pipe,

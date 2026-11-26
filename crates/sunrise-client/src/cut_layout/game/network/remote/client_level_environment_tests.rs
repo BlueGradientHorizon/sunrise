@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Progress, sunrise_gameplay::game::native_entity_refs::tests::with_uncached_client_game as with_client_game, sunrise_client_gameplay::game::packs::stage_pack};
+use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Progress, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game as with_client_game, sunrise_client_gameplay::game::packs::stage_pack};
 use std::sync::Arc;
 use sunrise_level::environment::Sample;
 use sunrise_protocol::{

@@ -65,7 +65,7 @@ fn root_with_asset(name: &str, bytes: &[u8]) -> PathBuf {
 #[test]
 #[ignore = "daily"]
 fn panicking_client_reload_registration_discards_its_listener_and_edges() {
-    use {sunrise_gameplay_common::game::Progress, sunrise_gameplay::game::native_entity_refs::tests::with_uncached_client_game, sunrise_client_gameplay::game::packs::stage_pack};
+    use {sunrise_gameplay_common::game::Progress, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game, sunrise_client_gameplay::game::packs::stage_pack};
     use mod_api::{AddClientReloadListenersEvent, Hooks, ModEntry, VanillaClientListeners};
     use std::sync::{
         Mutex,
@@ -677,7 +677,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
 #[test]
 #[ignore = "daily"]
 fn client_reload_reads_real_assets_with_pack_overrides() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{self, ModEntry};
     use mod_api::{AddClientReloadListenersEvent, Hooks};
     use mod_platform::testing::with_mods;
@@ -886,7 +886,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
 #[test]
 #[ignore = "daily"]
 fn client_setup_reaches_each_listener_once_per_firing() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{ClientSetupContext, Hooks, ModEntry};
     use mod_platform::testing::with_mods;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -943,7 +943,7 @@ fn only_the_first_local_client_is_the_client_start() {
 #[test]
 #[ignore = "daily"]
 fn the_lifecycle_moments_fire_once_each_in_order() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{ClientHost, Hooks, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::Mutex;
@@ -1075,7 +1075,7 @@ fn the_lifecycle_moments_fire_once_each_in_order() {
 #[test]
 #[ignore = "daily"]
 fn an_arm_pose_answer_replaces_the_pose_the_item_gives() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{ArmPose, ClientHost, GetArmPoseEvent, Hand, Hooks, ModEntry};
     use mod_platform::testing::with_mods;
 
@@ -1165,7 +1165,7 @@ fn resolved_ui_resources_do_not_restore_a_filtered_panorama_face() {
 #[test]
 #[ignore = "daily"]
 fn refused_client_context_keeps_pack_and_listeners() {
-    use {sunrise_gameplay_common::game::Progress, sunrise_gameplay::game::native_entity_refs::tests::with_uncached_client_game, sunrise_client_gameplay::game::packs::stage_pack};
+    use {sunrise_gameplay_common::game::Progress, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game, sunrise_client_gameplay::game::packs::stage_pack};
     use mod_api::__private::reload::PreparedStep;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1275,7 +1275,7 @@ fn startup_client_reload_listener_context_reports_known_facts_and_no_published_a
 #[test]
 #[ignore = "daily"]
 fn client_completion_reads_published_resources_without_world_access() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{
         AddClientReloadListenersEvent, ClientReloadHost, ClientReloadListenerContext,
         ClientResourcesReloadedEvent, Hooks, ModEntry,
@@ -1344,7 +1344,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
         .name("client-startup-fixture".into())
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
-            use {sunrise_gameplay_common::game::Audio, sunrise_client_gameplay::game::UiResources, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::start_client_game};
+            use {sunrise_gameplay_common::game::Audio, sunrise_client_gameplay::game::UiResources, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::start_client_game};
             use mod_api::{
                 ClientHost, ClientSetupContext, ClientSetupEvent, ClientTickPreEvent,
                 ConfigContext, ConfigLoadingEvent, Hooks, ModEntry, RegisterConfigsEvent,
@@ -1476,7 +1476,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
 #[test]
 #[ignore = "daily"]
 fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{ArmPose, ClientHost, GetArmPoseEvent, Hand, Hooks, ModEntry};
     use mod_platform::testing::with_mods;
     use std::{

@@ -242,7 +242,7 @@ fn an_overlay_fires_opening_then_closing_through_the_observer() {
 #[ignore = "daily"]
 fn title_hook_requests_one_orderly_quit() {
     use sunrise_client_gameplay::game::EventLoopCtl;
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{ClientStoppingEvent, ScreenKeyPressedPreEvent};
     use std::cell::Cell;
     use winit::event_loop::ControlFlow;

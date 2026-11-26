@@ -121,7 +121,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn config_permissions_and_once_per_side_survive_two_worlds() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
         use mod_api::{
             ConfigContext, Hooks, ModEntry, Registrar, RegistrationContext, SettingSpec,
         };

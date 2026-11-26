@@ -1,4 +1,4 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::prelude::NetworkClientHost;
 use mod_api::{ContainerClickRequest, PacketBuildError};
 use sunrise_core::nbt::{Compound, Tag};

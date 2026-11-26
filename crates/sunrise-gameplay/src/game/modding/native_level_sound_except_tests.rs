@@ -4,6 +4,7 @@
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, SoundSource};
 use std::sync::{Arc, mpsc};
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
 use sunrise_sim::lan::{Out, PlayerSender};
 

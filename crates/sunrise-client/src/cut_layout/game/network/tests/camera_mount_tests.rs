@@ -1,6 +1,6 @@
 //! A spectated rider backs off by its living vehicle's scale and camera distance (26.3 `Camera.alignWithEntity`).
 //! Expected frames are recorded into `.local` by `tools/test_camera_parity.py` (`VanillaCameraOracle`).
-use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use serde_json::Value;
 use sunrise_client::camera::Camera;
 use sunrise_core::geometry::Vec3;

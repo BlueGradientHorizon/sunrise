@@ -14,7 +14,7 @@ use sunrise_client::particles::ParticleLevel;
     #[test]
     #[ignore = "daily"]
     fn a_client_mods_fireworks_sound_only_when_audible() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         with_client_game(|game| {
             let eye = sunrise_core::geometry::Vec3::new(0.5, 200.0, 0.5);
             game.player = Some(sunrise_sim::motion::PlayerMotion::new(game.motion, eye).unwrap());

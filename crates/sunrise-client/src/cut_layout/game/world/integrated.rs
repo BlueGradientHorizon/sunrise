@@ -156,7 +156,7 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn a_quit_while_the_world_loads_waits_for_its_server() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use {sunrise_client_gameplay::game::EventLoopCtl, sunrise_client_gameplay::game::client_side::integrated_client::Starting};
         use std::cell::Cell;
         use winit::event_loop::ControlFlow;
@@ -318,7 +318,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_game_data::text::Text;
         use sunrise_sim::lan::data::{SyncData, WorldTags};
 

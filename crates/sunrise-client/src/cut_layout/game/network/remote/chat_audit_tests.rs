@@ -1,5 +1,5 @@
 use {sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::Signature, sunrise_gameplay_common::game::remote::Tag, sunrise_gameplay_common::game::remote::play};
-use {sunrise_gameplay_common::game::in_own_process, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_protocol::rsa::{RsaPrivateKey, RsaPublicKey, SignatureHash};
 use sunrise_protocol::secure_chat;
 use {

@@ -1,6 +1,6 @@
 //! Minecraft 26.3 display parity tests against VanillaDisplayParityOracle (.local witness).
 use {sunrise_client_gameplay::game::client_side::text_displays::RemoteTextDisplay, sunrise_client_gameplay::game::client_side::text_displays::Shows};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
 use glam::{DVec3, Mat4};
 use sunrise_client::{

@@ -89,7 +89,7 @@ fn translate_gives_the_text_of_a_defined_key_and_none_otherwise() {
 #[ignore = "daily"]
 fn a_trait_mod_measures_text_through_its_draw_context() {
     use sunrise_client_gameplay::game::host::draw::GameDrawContext;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::DrawContext;
 
     with_client_game(|game| {

@@ -12,7 +12,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn client_attack_batch_keeps_order_deduplication_and_server_constraints() {
-        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_core::geometry::Vec3;
         use sunrise_level::chunk::Chunk;
         use sunrise_protocol::packets::play::{self, Clientbound as C};

@@ -1,4 +1,4 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_gameplay::game::server_side::advancements::icons::tests::assert_icon;
 use sunrise_gameplay::game::server_side::advancements::icons::tests::batch;
 use sunrise_gameplay::game::server_side::advancements::icons::tests::fixture;

@@ -4032,3 +4032,11 @@ pub mod native_registry_entries;
 
 #[path = "game/modding/native_resources.rs"]
 pub mod native_resources;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_fixtures;
+
+#[cfg(test)]
+mod native_entity_refs {
+    pub use super::test_fixtures as tests;
+}

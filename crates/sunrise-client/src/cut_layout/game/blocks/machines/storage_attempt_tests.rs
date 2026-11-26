@@ -414,7 +414,7 @@ fn place<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S>, pos: Pos, blo
 #[test]
 #[ignore = "daily"]
 fn item_capability_presence_does_not_open_loot_or_load_chunks() {
-    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client};
+    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
     use sunrise_core::nbt::Tag;
 
     if run_fresh_cases(

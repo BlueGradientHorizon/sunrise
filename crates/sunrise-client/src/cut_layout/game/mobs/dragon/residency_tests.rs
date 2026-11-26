@@ -1,6 +1,6 @@
 //! Production singleton installation/removal and id-allocation contracts.
 use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 
 #[test]
 #[ignore = "daily"]

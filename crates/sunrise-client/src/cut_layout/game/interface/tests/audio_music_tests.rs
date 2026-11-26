@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::in_own_process, sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
 use serde_json::json;
 use std::sync::Arc;

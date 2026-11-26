@@ -1,5 +1,5 @@
 //! #968/#3720: crack effects wait for commit; explicit block-update requests survive abort.
-use super::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{HostTransaction, TransactionError};
 use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
@@ -7,7 +7,7 @@ use sunrise_level::chunk::Chunk;
 #[test]
 #[ignore = "daily"]
 fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
-    use super::native_guest_turn_tests::with_guests;
+    use crate::game::native_guest_turn_tests::with_guests;
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
     use sunrise_sim::lan::{Out, PlayerSender};
     with_guests(|game| {
@@ -16,7 +16,7 @@ fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let (tx, rx) = std::sync::mpsc::channel();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -86,7 +86,7 @@ fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
 #[test]
 #[ignore = "daily"]
 fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
-    use super::native_guest_turn_tests::with_guests;
+    use crate::game::native_guest_turn_tests::with_guests;
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
     use sunrise_sim::lan::{Out, PlayerSender};
     with_guests(|game| {
@@ -96,7 +96,7 @@ fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.world.block_log = Some(Vec::new());
         let (tx, rx) = std::sync::mpsc::channel();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -176,7 +176,7 @@ fn bone_meal_on_an_invalid_block_changes_nothing() {
 #[test]
 #[ignore = "daily"]
 fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
-    use super::native_guest_turn_tests::with_guests;
+    use crate::game::native_guest_turn_tests::with_guests;
     use sunrise_sim::lan::PlayerSender;
 
     with_guests(|game| {
@@ -187,7 +187,7 @@ fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
         game.world.modified.clear();
         game.world.dirty_sections.clear();
         let (tx, rx) = std::sync::mpsc::channel();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -229,7 +229,7 @@ fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
         // LevelReader.getBiome reads the cell its fuzzy zoom selects, which for a block on a
         // cell's edge such as `pos` can be a neighbour in an unloaded chunk: read back through a
         // block whose zoomed cell is `pos`'s own.
-        let zoom = game.side.streaming.biome_zoom;
+        let zoom = game.server.streaming.biome_zoom;
         let probe = (0..16)
             .flat_map(|x| (64..68).flat_map(move |y| (0..16).map(move |z| [x, y, z])))
             .find(|&[x, y, z]| {
@@ -282,7 +282,7 @@ fn biome_writes_roll_back_and_only_the_root_commit_notifies_clients() {
 #[test]
 #[ignore = "daily"]
 fn biome_negative_min_y_and_unwind_restore_without_publication() {
-    use super::native_guest_turn_tests::with_guests;
+    use crate::game::native_guest_turn_tests::with_guests;
     use sunrise_sim::lan::PlayerSender;
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
@@ -292,7 +292,7 @@ fn biome_negative_min_y_and_unwind_restore_without_publication() {
         game.world.modified.clear();
         game.world.dirty_sections.clear();
         let (tx, rx) = std::sync::mpsc::channel();
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()

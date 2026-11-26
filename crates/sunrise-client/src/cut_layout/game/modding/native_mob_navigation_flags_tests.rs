@@ -1,4 +1,4 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{EntityRef, MobRef, WorldEpoch};
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::{Mob, nav::NavKind};

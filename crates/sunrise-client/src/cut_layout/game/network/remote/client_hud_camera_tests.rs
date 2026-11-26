@@ -1,5 +1,5 @@
 // 26.3 witness: real Hud, recorded into `.local` by `tools/test_camera_parity.py`.
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use std::collections::BTreeMap;
 use sunrise_protocol::{
     entity_data::{Value, serializer},

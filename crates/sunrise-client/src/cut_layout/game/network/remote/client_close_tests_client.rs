@@ -3,7 +3,7 @@ use crate::game::remote::tests::client_close_tests::chest;
 use crate::game::remote::tests::client_close_tests::close;
 use crate::game::remote::tests::client_close_tests::deliver;
 use crate::game::remote::tests::client_close_tests::isolated;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
 
 #[test]
 #[ignore = "daily"]

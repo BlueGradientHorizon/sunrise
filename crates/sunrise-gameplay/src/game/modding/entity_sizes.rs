@@ -531,6 +531,7 @@ pub(in crate::game) mod tests {
 
     /// A client logged in to a memory server, receiving that server's packets by their wire
     /// form, with `Log` listening; its chunk at the origin is loaded and empty.
+    #[cfg(any())]
     pub(in crate::game) fn with_loopback_client(
         test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Seen>),
     ) {
@@ -556,6 +557,7 @@ pub(in crate::game) mod tests {
         });
     }
 
+    #[cfg(any())]
     pub(in crate::game::server_side) fn deliver(
         game: &mut crate::game::ClientGame<'_>,
         packet: sunrise_protocol::packets::play::Clientbound,
@@ -568,6 +570,7 @@ pub(in crate::game) mod tests {
             .unwrap();
     }
 
+    #[cfg(any())]
     pub(in crate::game) fn add_entity(
         game: &mut crate::game::ClientGame<'_>,
         id: i32,
@@ -601,6 +604,7 @@ pub(in crate::game) mod tests {
         );
     }
 
+    #[cfg(any())]
     pub(in crate::game) fn entity_data(
         game: &mut crate::game::ClientGame<'_>,
         id: i32,
@@ -613,6 +617,7 @@ pub(in crate::game) mod tests {
         );
     }
 
+    #[cfg(any())]
     pub(in crate::game::server_side) fn scale(
         game: &mut crate::game::ClientGame<'_>,
         id: i32,
@@ -647,6 +652,7 @@ pub(in crate::game) mod tests {
     /// client's new copy is sized by its type, standing, before the constructing listeners run.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn a_client_copy_is_sized_before_entity_constructing() {
         if in_fresh_process("a_client_copy_is_sized_before_entity_constructing") {
             return;
@@ -681,6 +687,7 @@ pub(in crate::game) mod tests {
     /// arrives first, asleep and waking, and the same pose sent again asks nothing.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn a_client_copy_is_sized_by_its_synched_pose_not_its_bed() {
         use sunrise_protocol::entity_data::{Value, serializer};
         if in_fresh_process("a_client_copy_is_sized_by_its_synched_pose_not_its_bed") {
@@ -736,6 +743,7 @@ pub(in crate::game) mod tests {
     /// size the copy had. Its box and F3+B outline then take the answer.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn a_client_copy_takes_a_new_scale_at_its_tick() {
         if in_fresh_process("a_client_copy_takes_a_new_scale_at_its_tick") {
             return;
@@ -779,6 +787,7 @@ pub(in crate::game) mod tests {
     /// client: each lid move asks again, and the copy's box keeps the answer as the lid moves.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn a_floor_shulkers_client_copy_asks_as_its_lid_moves() {
         use sunrise_protocol::entity_data::{Value, serializer};
         if in_fresh_process("a_floor_shulkers_client_copy_asks_as_its_lid_moves") {

@@ -7,7 +7,7 @@ mod result_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
 
     #[test]
     #[ignore = "daily"]

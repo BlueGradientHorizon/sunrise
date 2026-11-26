@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::Flow;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::{

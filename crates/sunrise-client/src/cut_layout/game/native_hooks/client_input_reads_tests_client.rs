@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use {sunrise_gameplay_common::game::Screen, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::MappingError;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::motion::PlayerMotion;

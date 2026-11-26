@@ -9,7 +9,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_player_nudges_out_of_a_rotated_collider_as_from_stone() {
-        use {sunrise_gameplay_common::game::in_own_process, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_core::geometry::{
             Aabb,
             oriented::{ColliderBoxes, Frame, OrientedCollider},

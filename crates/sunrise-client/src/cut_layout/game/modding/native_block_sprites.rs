@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod biome_tint_tests {
 
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{
         Authority, BiomeColorsEvent, ClientHost, ColorResolver, Hooks, ModEntry,
         prelude::BlockStatesHost,

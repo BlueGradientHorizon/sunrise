@@ -1,6 +1,6 @@
 // Applied client writes, held server updates and reconciliation through the real Game.
 use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Arc, BlockStateId, C, Chunk, DryLevel, Game, play}};
 use mod_api::{BlockPart, LevelDimension, LevelSide, OnBlockStateChangeEvent, Registrar};
 use std::sync::Mutex;

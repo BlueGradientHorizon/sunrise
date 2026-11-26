@@ -81,7 +81,7 @@ use sunrise_core::use_animation::UseAnimation;
     #[test]
     #[ignore = "daily"]
     fn a_use_animation_read_inside_the_part_is_not_asked_again() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use std::sync::{Arc, Mutex};
         sunrise_gameplay_common::game::in_own_process(
@@ -140,7 +140,7 @@ use sunrise_core::use_animation::UseAnimation;
     #[test]
     #[ignore = "daily"]
     fn another_stacks_part_is_asked_from_inside_a_part() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use std::sync::{Arc, Mutex};
         sunrise_gameplay_common::game::in_own_process(
@@ -206,7 +206,7 @@ use sunrise_core::use_animation::UseAnimation;
     #[test]
     #[ignore = "daily"]
     fn a_part_reading_a_transformed_copy_is_not_asked_again() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use std::sync::{Arc, Mutex};
         sunrise_gameplay_common::game::in_own_process(

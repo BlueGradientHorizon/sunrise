@@ -1,5 +1,5 @@
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Arc, Chunk, Hit, ItemStack, Path, inventory}};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client;
+use crate::game::server_side::native_entity_refs::tests::with_game_role_client;
 use mod_api::{BlockPart, Hooks, LevelSide, Registrar, SmokeSourceEvent};
 
 struct Bale;

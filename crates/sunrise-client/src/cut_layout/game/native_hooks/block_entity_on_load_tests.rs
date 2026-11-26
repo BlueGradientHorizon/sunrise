@@ -157,7 +157,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_entity_on_load_client_instance_reads_received_fields() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         use sunrise_client::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;
         let log = Log::default();

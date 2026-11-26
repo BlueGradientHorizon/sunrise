@@ -5,7 +5,7 @@
 //! lets go of a held mapping.
 use super::Screen;
 use sunrise_client_gameplay::game::client_side::event_loop::EventLoopCtl;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::prelude::ClientInputClientHost;
 use mod_api::*;
 use std::sync::Mutex;

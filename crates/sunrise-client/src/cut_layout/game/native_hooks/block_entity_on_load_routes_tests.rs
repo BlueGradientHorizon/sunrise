@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client};
+    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
     use mod_api::*;
     use std::sync::{
         Arc, Mutex,

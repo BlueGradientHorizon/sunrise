@@ -1,7 +1,7 @@
 use {crate::game::piston_push::*, sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Game, Lid, Vec3, tests}};
 use sunrise_gameplay_common::game::boats_common::Boat;
 use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_gameplay_common::game::remote::passengers::PassengerSeat;
 use mod_api::{
     BlockPart, BounceOnEvent, BounceRestitutionEvent, Flow, Hooks, LevelRandomHost, LevelSide,

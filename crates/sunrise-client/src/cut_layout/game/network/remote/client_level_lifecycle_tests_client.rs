@@ -91,7 +91,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
 #[test]
 #[ignore = "daily"]
 fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, crate::game::remote::tests::connect_play_test, crate::game::remote::tests::spawn_menu_test};
+    use {crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::remote::tests::connect_play_test, crate::game::remote::tests::spawn_menu_test};
     use mod_api::{AudioStream, AudioStreamState, SoundSource, StreamSpec};
     use sunrise_client::net::Event;
     use sunrise_protocol::packets::{Empty, play::Clientbound};
@@ -134,7 +134,7 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
 #[test]
 #[ignore = "daily"]
 fn client_level_transitions_stop_streams_opened_during_unload() {
-    use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{
         AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost,
         ClientLevelUnloadEvent, Hooks, ModEntry, SoundSource, StreamSpec,

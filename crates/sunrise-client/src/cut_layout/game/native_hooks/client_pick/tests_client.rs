@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 #[test]
 #[ignore = "daily"]
 fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
-    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -171,7 +171,7 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
 #[test]
 #[ignore = "daily"]
 fn frame_pick_without_listeners_keeps_the_vanilla_result() {
-    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
@@ -302,7 +302,7 @@ pub(in crate::game) fn with_pick_game(
     x: f64,
     run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &mut sunrise_protocol::connection::Connection),
 ) {
-    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::play::{self, Clientbound as C};

@@ -7,7 +7,7 @@ pub(in crate::game) mod select_on_a_server_tests {
     #[test]
     #[ignore = "daily"]
     fn picking_a_trade_on_a_server_moves_the_payment_here_too() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         use sunrise_items::items::ItemStack;
         use sunrise_protocol::packets::play::Serverbound as S;
         use sunrise_sim::merchant::{ItemCost, MerchantOffer};

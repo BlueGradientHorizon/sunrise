@@ -7,7 +7,7 @@ use crate::game::remote::tests::camera_parity_red_tests::make_chunk;
 use crate::game::remote::tests::camera_parity_red_tests::parity_witness;
 use crate::game::remote::tests::camera_parity_red_tests::sync_interaction_size;
 use crate::game::remote::tests::camera_parity_red_tests::vec3_bits_expected;
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
+use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use std::sync::Arc;
 use sunrise_client::{
     debug_entries::Status, debug_overlay::Displayer, level_loading::Reason,

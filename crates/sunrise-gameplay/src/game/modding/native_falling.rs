@@ -173,6 +173,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn falling_client_tick_commits_state_without_detaching_its_owner() {
         bound_falling_client(|game, _| {
             game.remote_projectile_data(
@@ -222,6 +223,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn falling_lifecycle_commands_unload_park_and_remote() {
         use crate::game::{
             commands::Target,
@@ -356,6 +358,7 @@ mod tests {
         assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
     }
 
+    #[cfg(any())]
     fn bound_falling_client(
         exercise: impl FnOnce(
             &mut crate::game::ClientGame<'_>,

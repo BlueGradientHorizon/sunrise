@@ -4,7 +4,7 @@
 mod client_lid_tests {
     use super::*;
     use sunrise_gameplay_common::game::boats_common::Boat;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::{mobs::Mob, motion::PlayerMotion};

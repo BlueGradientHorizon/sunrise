@@ -2,7 +2,7 @@
 //! answering it calls that part inside the pick (after the block's own effects, before its
 //! fluid's, the next pick and the rain), with the level's random itself: the part's draws and
 //! `add_particle`'s limiter roll move one stream in call order.
-use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{
     AnimateTickEvent, BlockPart, BlockPos, ClientHost, Hooks, ModEntry, ParticleOptions, Registrar,
     RegistrationContext,

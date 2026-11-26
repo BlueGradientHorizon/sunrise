@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
 
-    use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::HostSide;
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::packets::play;
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn resetting_a_local_fall_discards_the_distance_before_landing() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+        use crate::game::server_side::native_entity_refs::tests::with_client_game;
         use mod_api::ClientHost;
         use sunrise_sim::{
             landing::{FallEvent, SceneSound},
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn player_collision_flags_distinguish_a_ceiling_from_the_floor_and_a_wall() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+        use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_core::geometry::Vec3;
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::motion::PlayerMotion;

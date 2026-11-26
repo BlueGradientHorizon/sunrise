@@ -2,7 +2,7 @@
 #[ignore = "daily"]
 fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
     use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{
         __private::game::RegistrationContextNew, CameraType, ClientHost, DimensionTransition,
         DimensionTransitionScreen, DrawContext, SoundPlay, SoundRef, SoundState,

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use download::Progress::*;
     use std::{path::Path, time::Duration};
     use sunrise_protocol::{
@@ -320,7 +320,7 @@ mod tests {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::server_packs::tests::closing_save_reports_reach_the_title_in_the_owning_window",
             || {
-                use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::server_side::integrated::Serving};
+                use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::server_side::integrated::Serving};
                 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
 
                 struct Listener;
@@ -401,7 +401,7 @@ mod tests {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::server_packs::tests::scheduled_task_error_toasts_are_admitted_by_the_owning_client",
             || {
-                use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::server_side::integrated::Serving};
+                use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::server_side::integrated::Serving};
                 use mod_api::{
                     ClientHost, Flow, Hooks, ModEntry, ServerHost, ToastAddEvent, ToastKind,
                 };

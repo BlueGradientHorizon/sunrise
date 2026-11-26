@@ -6,7 +6,7 @@
 #[test]
 #[ignore = "daily"]
 fn update_attributes_answers_the_local_players_living_reads() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
         buf::Reader,

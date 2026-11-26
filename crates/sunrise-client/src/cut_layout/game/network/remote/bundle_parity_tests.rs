@@ -1,5 +1,5 @@
 //! Atomic play packet bundle dispatch against the recorded 26.3 witness.
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use std::time::{Duration, Instant};
 use sunrise_client::net::Session;
 use sunrise_protocol::{

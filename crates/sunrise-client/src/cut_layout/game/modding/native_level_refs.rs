@@ -2204,7 +2204,7 @@ mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod environment_read_tests {
-    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;

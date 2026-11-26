@@ -800,3 +800,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "native_entity_refs/tests.rs"]
+pub mod tests;

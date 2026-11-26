@@ -1,6 +1,6 @@
 use super::*;
 use sunrise_gameplay_common::game::boats_common::Boat;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
 

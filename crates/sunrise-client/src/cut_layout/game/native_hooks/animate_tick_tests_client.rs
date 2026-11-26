@@ -1,5 +1,5 @@
 use crate::game::native_hooks::animate_tick_tests::with_hearts;
-use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::BlockPos;
 use std::sync::Arc;
 use sunrise_core::random::{LegacyRandom, RandomSource as _};

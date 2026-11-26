@@ -231,7 +231,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
     sunrise_gameplay_common::game::in_own_process(
         "game::server_side::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides",
         || {
-            use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+            use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
             let part = BounceProbe::default();
             let mods: mod_api::Mods =
                 vec![mod_api::ModEntry::new("bounce", Box::new(part.clone()))].into();
@@ -645,7 +645,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
     sunrise_gameplay_common::game::in_own_process(
         "game::server_side::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
         || {
-            use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+            use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
             use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
             let part = StepProbe::default();
@@ -874,7 +874,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
     sunrise_gameplay_common::game::in_own_process(
         "game::server_side::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
         || {
-            use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+            use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
             let part = StepWrites::default();
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "step_writes",

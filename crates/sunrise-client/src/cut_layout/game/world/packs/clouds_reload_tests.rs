@@ -6,7 +6,7 @@
 //! required shader programs"), even with Improved Transparency off. Each case runs in a process
 //! of its own, in a folder whose `resourcepacks` holds the packs.
 use sunrise_client_gameplay::game::client_side::model_baking_completed_tests::reload;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 
 const NAME: &str = "game::client_side::packs::clouds_reload_tests::a_pack_whose_clouds_vanilla_reads_past_fails_the_load";
 const CASE: &str = "SUNRISE_CLOUDS_RELOAD_CASE";

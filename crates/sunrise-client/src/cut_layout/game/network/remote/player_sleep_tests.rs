@@ -4,7 +4,7 @@
 #[test]
 #[ignore = "daily"]
 fn client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::{

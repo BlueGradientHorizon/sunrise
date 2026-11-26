@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {sunrise_client_gameplay::game::EventLoopCtl, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_client_gameplay::game::EventLoopCtl, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{
         __private::{HookPanicReport, take_hook_panics},
         AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost, Hooks,

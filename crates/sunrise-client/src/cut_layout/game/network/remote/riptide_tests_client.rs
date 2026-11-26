@@ -4,7 +4,7 @@ use sunrise_client_gameplay::game::remote::riptide_tests::START;
 use sunrise_client_gameplay::game::remote::riptide_tests::arena;
 use sunrise_client_gameplay::game::remote::riptide_tests::server_to_client;
 use crate::game::remote::riptide_tests::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use std::sync::mpsc::channel;
 use sunrise_sim::lan::PlayerSender;
 

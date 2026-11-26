@@ -142,7 +142,7 @@ fn disconnect_and_protocol_incarnation_change_drop_and_invalidate() {
 #[test]
 #[ignore = "daily"]
 fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_protocol::{connection::Pipe, packets::configuration::Ping};
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();

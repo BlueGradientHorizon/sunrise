@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 
 /// A client's painting lives on `Entity.tickCount`, which its renderer reads as the age: it
 /// advances with each running level tick and holds while the level is frozen.

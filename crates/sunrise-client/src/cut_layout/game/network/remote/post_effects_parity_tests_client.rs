@@ -3,7 +3,7 @@ use crate::game::client_side::remote_client::ingress_state::post_effects_parity_
 use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::overworld_spawn;
 use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::post_effects_witness;
 use crate::game::client_side::remote_client::ingress_state::post_effects_parity_tests::wait_for_pong;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use std::time::{Duration, Instant};
 use sunrise_client::{multiplayer, net::Session, title::Mode};
 use sunrise_level::camera_math::CameraType;

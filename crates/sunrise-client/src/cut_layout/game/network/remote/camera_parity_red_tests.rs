@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use serde_json::Value;
 use std::sync::Arc;
 use sunrise_client::screen_effects::Blend;

@@ -1,7 +1,7 @@
 use super::*;
 use sunrise_gameplay::game::remote::recipe_properties::tests::cut_pack;
 use sunrise_gameplay::game::remote::recipe_properties::tests::place_stonecutter;
-use {sunrise_gameplay_common::game::lan_actions::GuestCommand, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
+use {sunrise_gameplay_common::game::lan_actions::GuestCommand, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use sunrise_mod_package::content::RECIPE_PRIORITIES_PATH;
 use sunrise_protocol::{
     buf::Reader,

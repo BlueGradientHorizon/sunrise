@@ -2,7 +2,7 @@
 //! Witness recorded into `.local` by `tools/test_gamemode_split_parity.py` (`VanillaClientGameModeSplitOracle`, JDK 25).
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Arc, C, Chunk, Empty, ItemStack, Path, S, Screen, Tag, Vec3, abilities, inventory, motion, movement, passengers, play, status, tick}};
 use sunrise_gameplay::game::game_mode::mode_from_id;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use serde_json::Value as JsonValue;
 use sunrise_command::args::GameMode;
 use sunrise_protocol::connection::ConnReader;

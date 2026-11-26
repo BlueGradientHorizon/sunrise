@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
 #[test]

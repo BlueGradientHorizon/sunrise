@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(in crate::game) mod customize_chat_overlay_tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_client_gameplay::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::Lift;
     use sunrise_client_gameplay::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::Seen;
     use sunrise_client_gameplay::game::native_hooks::customize_chat_overlay::customize_chat_overlay_tests::chat_top;

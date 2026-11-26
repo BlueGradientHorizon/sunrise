@@ -5,7 +5,7 @@ use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEn
 #[test]
 #[ignore = "daily"]
 fn client_handles_reach_a_custom_level() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{DimensionKey, LevelRef};
     use std::sync::Arc;
     use sunrise_client::level_loading::Reason;
@@ -183,7 +183,7 @@ fn client_handles_reach_a_custom_level() {
 #[test]
 #[ignore = "daily"]
 fn client_handle_reads_answer_from_the_clients_copy() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{EntityRef, EquipmentSlot, GlobalPos};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;

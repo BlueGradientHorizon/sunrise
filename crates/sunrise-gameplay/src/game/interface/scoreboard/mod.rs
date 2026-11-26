@@ -917,7 +917,6 @@ pub(in crate::game) mod tab_list_tests {
         atomic::{AtomicI32, Ordering},
         mpsc,
     };
-    use sunrise_client::tab_list;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::lan::{Joined, PlayerSender};
 

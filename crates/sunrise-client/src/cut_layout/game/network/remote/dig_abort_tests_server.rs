@@ -1,5 +1,5 @@
 use crate::game::remote::tests::dig_abort_tests::CountActions;
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay_common::game::Hit, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::ModEntry;
 use mod_platform::testing::with_mods;
 use std::sync::{

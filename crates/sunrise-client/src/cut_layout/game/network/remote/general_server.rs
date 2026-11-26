@@ -10,7 +10,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_shown_pickable_general_row_receives_the_named_use_and_attack() {
         use {sunrise_gameplay_common::game::general::GeneralEntityRecord, sunrise_gameplay_common::game::general::GeneralTypeEnvelope};
-        use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+        use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
         use {sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
         use sunrise_gameplay::game::native_player_death::tests::add_guest;
         use mod_api::{Flow, HostSide, InteractionResult};

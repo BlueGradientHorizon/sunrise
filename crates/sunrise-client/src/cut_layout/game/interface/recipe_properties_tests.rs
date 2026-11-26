@@ -1,7 +1,7 @@
 //! Connection lifecycle of the authoritative recipe property generation.
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_protocol::{connection::Pipe, packets::recipes::UpdateRecipes};
 
     #[test]

@@ -154,7 +154,7 @@ pub(in crate::game) mod game_mode;
 #[path = "game_server.rs"]
 pub(in crate::game) mod game_server;
 #[path = "administration/game_tests.rs"]
-pub(in crate::game) mod game_tests;
+pub mod game_tests;
 #[path = "mobs/golems.rs"]
 pub(in crate::game) mod golems;
 #[path = "items/hand_server.rs"]
@@ -316,7 +316,10 @@ pub(in crate::game) mod native_entity_moves;
 #[path = "modding/native_entity_physics.rs"]
 pub(in crate::game) mod native_entity_physics;
 #[path = "modding/native_entity_refs.rs"]
-pub(in crate::game) mod native_entity_refs;
+pub mod native_entity_refs;
+#[cfg(any(test, feature = "test-support"))]
+#[path = "modding/native_guest_turn_tests.rs"]
+pub mod native_guest_turn_tests;
 #[path = "modding/native_entity_remove.rs"]
 pub(in crate::game) mod native_entity_remove;
 #[path = "modding/native_entity_riding.rs"]
@@ -347,12 +350,18 @@ pub(in crate::game) mod native_harvest_queries;
 pub mod native_inventories;
 #[path = "modding/native_item_places.rs"]
 pub mod native_item_places;
+#[cfg(test)]
+#[path = "modding/native_item_places_effects_tests.rs"]
+mod native_item_places_effects_tests;
 #[path = "modding/native_level_border.rs"]
 pub(in crate::game) mod native_level_border;
 #[path = "modding/native_level_effects.rs"]
 pub mod native_level_effects;
 #[path = "modding/native_level_events.rs"]
 pub(in crate::game) mod native_level_events;
+#[cfg(test)]
+#[path = "modding/native_level_notify_tests.rs"]
+mod native_level_notify_tests;
 #[path = "modding/native_level_items.rs"]
 pub mod native_level_items;
 #[path = "modding/native_level_players.rs"]
@@ -775,6 +784,9 @@ pub(in crate::game) mod native_living_absorption_server;
 pub(in crate::game) mod native_living_body_server;
 #[path = "modding/native_menu_refs_server.rs"]
 pub(in crate::game) mod native_menu_refs_server;
+#[cfg(test)]
+#[path = "modding/native_menu_drop_tests.rs"]
+mod native_menu_drop_tests;
 #[path = "modding/native_mob_navigation.rs"]
 pub(in crate::game) mod native_mob_navigation;
 #[path = "modding/native_player_attack.rs"]

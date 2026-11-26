@@ -1,7 +1,7 @@
 // `client_block_changed` through the real client: server updates, batched section updates,
 // predictions and their reconciliation each tell a changed block once, after the write.
 use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Arc, BlockStateId, C, Chunk, play}};
 use mod_api::{ClientBlockChangedEvent, ClientHost};
 use std::sync::Mutex;

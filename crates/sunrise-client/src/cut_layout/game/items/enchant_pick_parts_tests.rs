@@ -603,7 +603,7 @@ fn short_enchantment_item_holders_bind_for_both_selectors() {
 #[test]
 #[ignore = "daily"]
 fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packets() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},

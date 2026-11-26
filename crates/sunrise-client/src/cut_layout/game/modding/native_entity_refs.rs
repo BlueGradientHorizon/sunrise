@@ -107,30 +107,17 @@ pub(in crate::game) mod general_handle_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    /// Run `test` on a game-sized stack, preserving libtest's thread name and panic payload.
-    pub(in crate::game) fn run_with_game_stack(test: impl FnOnce() + Send + 'static) {
-        let mut worker =
-            std::thread::Builder::new().stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES);
-        if let Some(name) = std::thread::current().name() {
-            worker = worker.name(name.to_owned());
-        }
-        if let Err(payload) = worker.spawn(test).unwrap().join() {
-            std::panic::resume_unwind(payload);
-        }
-    }
+    pub use sunrise_gameplay_common::game::test_fixtures::{
+        FRESH_CASE_LIMIT, fixture_block_names, fixture_facts_mut, fixture_root, output_within, ran_one_test,
+        record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+    };
+    pub use sunrise_gameplay::game::native_entity_refs::tests::{
+        bind_acting_guest, bind_local_player, collect_all_entities, collect_entities_in,
+        collect_game_all_entities, collect_game_entities_in, prepare_entity_ticking_neighborhood,
+    };
+    #[cfg(feature = "client")]
+    pub use sunrise_client_gameplay::game::native_entity_refs::tests::test_window;
 
-    /// Resolve a fixture after registration or a late Parts reinstall from its loaded table.
-    pub(in crate::game) fn resolve_parts<S: sunrise_gameplay_common::game::Side>(
-        game: &sunrise_gameplay::game::server_side::native_entity_refs::Game<'_, S>,
-    ) -> Result<(), String>
-    where
-        for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-    {
-        sunrise_gameplay_common::game::api_values::resolve_block_definitions(game.pack.assets.registry)?;
-        mod_api::__private::resolve_items(game.items().registry_order.iter().map(|id| &**id))
-            .map_err(|errors| format!("fixture item keys refused: {errors:?}"))?;
-        game.resolve_parts().map_err(|error| error.to_string())
-    }
     #[allow(unused_imports)]
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     #[allow(unused_imports)]
@@ -141,201 +128,6 @@ pub(in crate::game) mod tests {
     use mod_api::{EntityRef, LevelReadError, LevelRef};
 
     // Keep the handle and direct Game routes separate when collecting for assertions.
-    pub(in crate::game) fn collect_all_entities(
-        host: &dyn mod_api::Host,
-        level: LevelRef,
-    ) -> Result<Vec<EntityRef>, LevelReadError> {
-        let mut entities = Vec::new();
-        let _ = level.visit_all_entities(host, &mut |entity| {
-            entities.push(entity);
-            ControlFlow::Continue(())
-        })?;
-        Ok(entities)
-    }
-
-    pub(in crate::game) fn collect_entities_in(
-        host: &dyn mod_api::Host,
-        level: LevelRef,
-        min: [f64; 3],
-        max: [f64; 3],
-    ) -> Result<Vec<EntityRef>, LevelReadError> {
-        let mut entities = Vec::new();
-        let _ = level.visit_entities_in(host, min, max, &mut |entity| {
-            entities.push(entity);
-            ControlFlow::Continue(())
-        })?;
-        Ok(entities)
-    }
-
-    pub(in sunrise_gameplay::game::server_side) fn collect_game_all_entities(
-        game: &sunrise_gameplay::game::ServerGame<'_>,
-        level: LevelRef,
-    ) -> Result<Vec<EntityRef>, LevelReadError> {
-        let mut entities = Vec::new();
-        let _ = game.level_visit_all_entities(level, &mut |entity| {
-            entities.push(entity);
-            ControlFlow::Continue(())
-        })?;
-        Ok(entities)
-    }
-
-    pub(in sunrise_gameplay::game::server_side) fn collect_game_entities_in(
-        game: &sunrise_gameplay::game::ServerGame<'_>,
-        level: LevelRef,
-        min: [f64; 3],
-        max: [f64; 3],
-    ) -> Result<Vec<EntityRef>, LevelReadError> {
-        let mut entities = Vec::new();
-        let _ = game.level_visit_entities_in(level, min, max, &mut |entity| {
-            entities.push(entity);
-            ControlFlow::Continue(())
-        })?;
-        Ok(entities)
-    }
-
-    /// Isolate declarations and frozen registries without changing another test's resources.
-    pub(in crate::game) fn run_fresh_cases(name: &str, flag: &str, cases: &[&str]) -> bool {
-        run_fresh_cases_at_once(name, flag, cases, 1)
-    }
-
-    /// [`run_fresh_cases`] with up to `at_once` children running together, for a test that runs
-    /// alone in its job: each child still has its own process and folders.
-    pub(in sunrise_gameplay::game::server_side) fn run_fresh_cases_at_once(
-        name: &str,
-        flag: &str,
-        cases: &[&str],
-        at_once: usize,
-    ) -> bool {
-        if std::env::var_os(flag).is_some() {
-            return false;
-        }
-        let resources = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").expect(
-            "SUNRISE_TEST_RESOURCES must name the prepared resources (.local/sunrise-client/<version>)",
-        ))
-        .canonicalize()
-        .expect("SUNRISE_TEST_RESOURCES names a folder that does not exist");
-        let scratch_owner = tempfile::tempdir().unwrap();
-        let target = scratch_owner.path();
-        let run = |case: &str| {
-            let _permit = super::super::resource_load::acquire_fresh_child_permit();
-            let scratch = target.join(format!("fresh-case-{case}"));
-            std::fs::create_dir(&scratch).unwrap();
-            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-            command
-                .args([
-                    "--ignored",
-                    "--exact",
-                    name,
-                    "--nocapture",
-                    "--test-threads=4",
-                ])
-                .current_dir(&scratch)
-                .env(flag, case)
-                .env("SUNRISE_TEST_RESOURCES", &resources)
-                .env("SUNRISE_NO_AUDIO", "1")
-                .env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1");
-            for key in [
-                "SUNRISE_HOME",
-                "SUNRISE_LAUNCHER_HOME",
-                "XDG_DATA_HOME",
-                "XDG_CONFIG_HOME",
-                "XDG_RUNTIME_DIR",
-                "SUNRISE_LAUNCHER_TRASH",
-                "SUNRISE_LAUNCHER_CLIPBOARD",
-                "SUNRISE_LAUNCHER_DESKTOP",
-            ] {
-                let home = scratch.join(key);
-                std::fs::create_dir(&home).unwrap();
-                command.env(key, home);
-            }
-            let output = output_within(&mut command, name, case);
-            std::fs::remove_dir_all(scratch).unwrap();
-            output
-        };
-        for group in cases.chunks(at_once.max(1)) {
-            let run = &run;
-            let outputs: Vec<_> = std::thread::scope(|scope| {
-                let running: Vec<_> = group
-                    .iter()
-                    .map(|&case| scope.spawn(move || run(case)))
-                    .collect();
-                running
-                    .into_iter()
-                    .map(|child| child.join().unwrap())
-                    .collect()
-            });
-            for (case, output) in group.iter().zip(outputs) {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                // The child's log, captured with this test's own output.
-                print!("{stdout}");
-                eprint!("{}", String::from_utf8_lossy(&output.stderr));
-                assert!(output.status.success(), "{name}: {case}");
-                assert!(
-                    ran_one_test(&stdout),
-                    "{name}: {case}: the child matched no test of that name"
-                );
-            }
-        }
-        true
-    }
-
-    /// The longest a fresh child may run: a hang in its startup or shutdown fails the parent
-    /// with the child killed, instead of waiting for the whole test run's own limit.
-    pub(in crate::game) const FRESH_CASE_LIMIT: std::time::Duration =
-        std::time::Duration::from_secs(900);
-
-    /// `command`'s output, killing the child if it outlives [`FRESH_CASE_LIMIT`].
-    pub(in sunrise_gameplay::game::server_side) fn output_within(
-        command: &mut std::process::Command,
-        name: &str,
-        case: &str,
-    ) -> std::process::Output {
-        use std::io::Read;
-        use std::process::Stdio;
-        let mut child = command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut stdout = child.stdout.take().unwrap();
-        let mut stderr = child.stderr.take().unwrap();
-        let out = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stdout.read_to_end(&mut bytes);
-            bytes
-        });
-        let err = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stderr.read_to_end(&mut bytes);
-            bytes
-        });
-        let deadline = std::time::Instant::now() + FRESH_CASE_LIMIT;
-        let status = loop {
-            if let Some(status) = child.try_wait().unwrap() {
-                break status;
-            }
-            if std::time::Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                panic!("{name}: {case}: the child did not finish within {FRESH_CASE_LIMIT:?}");
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        };
-        std::process::Output {
-            status,
-            stdout: out.join().unwrap(),
-            stderr: err.join().unwrap(),
-        }
-    }
-
-    /// Whether libtest's summary says exactly one test passed: `--exact` with a name no test
-    /// has runs nothing and still exits 0.
-    pub(in sunrise_gameplay::game::server_side) fn ran_one_test(stdout: &str) -> bool {
-        stdout
-            .lines()
-            .any(|line| line.starts_with("test result: ok. 1 passed;"))
-    }
-
     /// A child run with a name no test has fails the parent instead of passing vacuously.
     #[test]
     #[ignore = "daily"]
@@ -375,112 +167,8 @@ pub(in crate::game) mod tests {
         Some(root)
     }
 
-    pub(in crate::game) fn prepare_entity_ticking_neighborhood(
-        game: &mut sunrise_gameplay::game::ServerGame<'_>,
-        center: sunrise_core::position::ChunkPos,
-    ) {
-        for z in center.z - 2..=center.z + 2 {
-            for x in center.x - 2..=center.x + 2 {
-                if !game.world.chunks.contains_key(&(x, z)) {
-                    let mut chunk = sunrise_level::chunk::Chunk::empty(x, z);
-                    // A ticking column is lit (`ChunkMap.prepareTickingChunk`); `forceload` waits for it.
-                    chunk.lit = true;
-                    game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
-                    game.block_ticks
-                        .add_empty_chunk(sunrise_core::position::ChunkPos::new(x, z))
-                        .unwrap();
-                }
-            }
-        }
-    }
-
-    /// Bind the fixture body's canonical identity before configuring its acting context.
-    pub(in crate::game) fn bind_local_player(
-        game: &mut sunrise_gameplay::game::ServerGame<'_>,
-        id: u32,
-        uuid: u128,
-    ) {
-        game.side.next_entity = game.side.next_entity.max(id);
-        game.player.as_mut().expect("fixture player body").entity_id =
-            i32::try_from(id).expect("fixture entity ID fits the protocol");
-        game.level.player_uuid = Some(sunrise_sim::lan::playerdata::uuid_ints(uuid));
-        game.bind_local_player_residency();
-        game.side.lan_acting_entity = Some(id);
-        game.side.lan_acting_uuid = Some(uuid);
-    }
-
-    /// Install the server record backing a fixture's already configured acting body.
-    pub(in crate::game) fn bind_acting_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-        use std::sync::{
-            Arc,
-            atomic::{AtomicI32, AtomicUsize},
-        };
-        use sunrise_protocol::packets::configuration::ClientInformation;
-        use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
-        let conn = game.side.lan_acting.unwrap();
-        let id = game.side.lan_acting_entity.unwrap();
-        let uuid = game.side.lan_acting_uuid.unwrap();
-        let name = game.side.lan_acting_name.clone().unwrap();
-        let at = game.player.as_ref().unwrap().position;
-        game.side.next_entity = game.side.next_entity.max(id);
-        game.lan_host(
-            sunrise_gameplay::game::server_side::lan::LanSettings {
-                port: 0,
-                guest_commands: false,
-                force_game_mode: false,
-            },
-            NetConfig {
-                listen: false,
-                announce: false,
-                lod_distance: 0,
-                ..NetConfig::lan(0, String::new(), 2)
-            },
-            HubConfig {
-                default_game_mode: 0,
-                guest_commands: false,
-                force_game_mode: false,
-                hardcore: false,
-                view_distance: 2,
-                simulation_distance: 2,
-                dimension: game.dim.id().to_owned(),
-                allow_flight: true,
-                seed: 0,
-                max_players: 2,
-                integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
-            },
-        )
-        .unwrap();
-        let (tx, _rx) = std::sync::mpsc::channel();
-        let mut guest = Guest::new(
-            Joined {
-                conn,
-                uuid,
-                name,
-                properties: Vec::new(),
-                info: ClientInformation::new(8),
-                brand: String::new(),
-                sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
-                latency: Arc::new(AtomicI32::new(0)),
-                address: "127.0.0.1:1".parse().unwrap(),
-                expected: false,
-            },
-            id as i32,
-            [at.x, at.y, at.z],
-            10,
-        );
-        guest.placed = true;
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
-        game.reset_entity_residency();
-    }
-
     pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         with_game_at(fixture_root(), test);
-    }
-
-    pub(in crate::game) fn fixture_root() -> std::path::PathBuf {
-        std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap())
     }
 
     pub(in crate::game) fn with_game_at(
@@ -492,77 +180,6 @@ pub(in crate::game) mod tests {
             super::super::execution_role::ExecutionRole::IntegratedServer,
             test,
         );
-    }
-
-    /// Keep a key that a test mod's `register` declared. The game fixture registers the
-    /// installed mods again (`register_game_keys`), and a key's slot is stable for the process,
-    /// so the repeat must declare the same key.
-    pub(in crate::game) fn record_key<K: Copy + PartialEq + std::fmt::Debug>(
-        slot: &std::sync::OnceLock<K>,
-        key: K,
-    ) {
-        assert_eq!(
-            *slot.get_or_init(|| key),
-            key,
-            "a repeat registration declared another key"
-        );
-    }
-
-    /// Create a hidden desktop window during winit's initial `Resumed` callback.
-    /// Keep the returned event loop alive while the fixture uses the window.
-    pub(in crate::game) fn test_window(
-        size: [u32; 2],
-    ) -> (
-        winit::event_loop::EventLoop<()>,
-        std::sync::Arc<winit::window::Window>,
-    ) {
-        use winit::application::ApplicationHandler;
-        use winit::dpi::PhysicalSize;
-        use winit::event::WindowEvent;
-        use winit::event_loop::{ActiveEventLoop, EventLoop};
-        use winit::platform::pump_events::EventLoopExtPumpEvents;
-        use winit::window::{Window, WindowId};
-
-        struct HiddenWindow {
-            size: [u32; 2],
-            window: Option<Window>,
-        }
-
-        impl ApplicationHandler for HiddenWindow {
-            fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-                let [width, height] = self.size;
-                self.window = Some(
-                    event_loop
-                        .create_window(
-                            Window::default_attributes()
-                                .with_visible(false)
-                                .with_inner_size(PhysicalSize::new(width, height)),
-                        )
-                        .unwrap(),
-                );
-            }
-
-            fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
-        }
-
-        let mut builder = EventLoop::builder();
-        #[cfg(target_os = "linux")]
-        {
-            use winit::platform::x11::EventLoopBuilderExtX11;
-            builder.with_x11().with_any_thread(true);
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use winit::platform::windows::EventLoopBuilderExtWindows;
-            builder.with_any_thread(true);
-        }
-        let mut event_loop = builder.build().unwrap();
-        let mut app = HiddenWindow { size, window: None };
-        event_loop.pump_app_events(Some(std::time::Duration::ZERO), &mut app);
-        let window = app
-            .window
-            .expect("winit did not resume to create the fixture window");
-        (event_loop, std::sync::Arc::new(window))
     }
 
     pub(in crate::game) fn with_client_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
@@ -609,52 +226,6 @@ pub(in crate::game) mod tests {
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
         with_game_role_and_facts_client(root, role, None, test);
-    }
-
-    /// Cached unique block names of `root`'s `facts.json` so `with_game` skips re-parsing 9.7 MB.
-    fn fixture_block_names(root: &std::path::Path) -> std::sync::Arc<Vec<String>> {
-        use std::path::PathBuf;
-        use std::sync::{Arc, Mutex, OnceLock};
-        use std::time::SystemTime;
-        type Stamp = Option<(u64, Option<SystemTime>)>;
-        type Slot = Arc<OnceLock<Arc<Vec<String>>>>;
-        static NAMES: Mutex<Vec<((PathBuf, Stamp), Slot)>> = Mutex::new(Vec::new());
-
-        let canon = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-        let stamp = std::fs::metadata(canon.join("facts.json"))
-            .ok()
-            .map(|m| (m.len(), m.modified().ok()));
-        let key = (canon, stamp);
-        let slot = {
-            let mut entries = NAMES.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(pos) = entries.iter().position(|(k, _)| *k == key) {
-                let entry = entries.remove(pos);
-                let slot = entry.1.clone();
-                entries.push(entry);
-                slot
-            } else {
-                if entries.len() >= 4 {
-                    entries.remove(0);
-                }
-                let slot = Arc::new(OnceLock::new());
-                entries.push((key, slot.clone()));
-                slot
-            }
-        };
-        slot.get_or_init(|| {
-            let (registry, _) = sunrise_world::level::data::load_registry_with_flags(root).unwrap();
-            let ids: std::collections::HashSet<_> = (0..registry.len())
-                .map(|i| {
-                    registry
-                        .state(sunrise_world::registry::BlockStateId(i as u32))
-                        .unwrap()
-                        .name
-                        .clone()
-                })
-                .collect();
-            Arc::new(ids.into_iter().collect())
-        })
-        .clone()
     }
 
     /// Configure the fixture's owned gameplay facts before constructing the game.
@@ -736,10 +307,7 @@ pub(in crate::game) mod tests {
         if let Some(configure) = configure {
             configure(
                 loaded.pack.assets.registry,
-                &mut std::sync::Arc::get_mut(&mut loaded.resources)
-                    .unwrap()
-                    .core
-                    .facts,
+                fixture_facts_mut(&mut loaded.resources),
             );
         }
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -830,10 +398,7 @@ pub(in crate::game) mod tests {
         if let Some(configure) = configure {
             configure(
                 loaded.pack.assets.registry,
-                &mut std::sync::Arc::get_mut(&mut loaded.resources)
-                    .unwrap()
-                    .core
-                    .facts,
+                fixture_facts_mut(&mut loaded.resources),
             );
         }
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();

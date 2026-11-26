@@ -1,7 +1,7 @@
 //! A menu part reads the same authoritative generation as Host queries.
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
     use sunrise_items::items::ItemStack;
     use sunrise_protocol::{connection::Pipe, packets::recipes::UpdateRecipes};

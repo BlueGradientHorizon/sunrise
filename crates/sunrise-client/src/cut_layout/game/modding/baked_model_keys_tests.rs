@@ -1,7 +1,7 @@
 //! A client mod borrows a block state's baked variants and quads in `model_baking_completed`.
 //! It keeps keys, and a reload supersedes them.
 use sunrise_client_gameplay::game::client_side::model_baking_completed_tests::reload;
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{
     BakedModelKey, ClientHost, Hooks, ModEntry, ModelBakingCompletedEvent, ModelError, ModelRef,
 };

@@ -398,6 +398,9 @@ pub(in crate::game) mod native_entity_layers;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_refs_client.rs"]
 pub mod native_entity_refs_client;
+#[cfg(all(feature = "client", any(test, feature = "test-support")))]
+#[path = "modding/native_entity_refs_fixture_mount.rs"]
+pub mod native_entity_refs;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_renderers.rs"]
 pub(in crate::game) mod native_entity_renderers;
@@ -421,10 +424,6 @@ pub(in crate::game) mod native_item_particles;
 #[cfg(feature = "client")]
 #[path = "modding/native_key_mappings.rs"]
 pub(in crate::game) mod native_key_mappings;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "modding/native_level_notify_tests.rs"]
-pub(in crate::game) mod native_level_notify_tests;
 #[cfg(feature = "client")]
 #[path = "modding/native_living_effects_client.rs"]
 pub(in crate::game) mod native_living_effects_client;
@@ -999,9 +998,6 @@ pub(in crate::game) mod native_entity_state_client;
 #[cfg(feature = "client")]
 #[path = "modding/native_harvest_queries_client.rs"]
 pub(in crate::game) mod native_harvest_queries_client;
-#[cfg(feature = "client")]
-#[path = "modding/native_item_places_client.rs"]
-pub(in crate::game) mod native_item_places_client;
 #[cfg(feature = "client")]
 #[path = "modding/native_lifecycle_client.rs"]
 pub(in crate::game) mod native_lifecycle_client;

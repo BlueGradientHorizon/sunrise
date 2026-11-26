@@ -4,6 +4,7 @@
 pub mod tests {
 
 use sunrise_gameplay_common::game::native_player_death::tests::new_guest;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 use mod_api::{GlobalPos, Identifier, PlayerRef};
 

@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::passage_cross_tests::scene;
 use crate::game::remote::passage_cross_tests::sent;
 use mod_api::{PassageCrossError, PassageId};

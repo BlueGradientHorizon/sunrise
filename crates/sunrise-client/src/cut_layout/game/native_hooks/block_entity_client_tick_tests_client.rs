@@ -1,4 +1,4 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use crate::game::native_hooks::block_entity_client_tick_tests::CHUNK;
 use crate::game::native_hooks::block_entity_client_tick_tests::CRATE;
 use crate::game::native_hooks::block_entity_client_tick_tests::CRATE_AT;

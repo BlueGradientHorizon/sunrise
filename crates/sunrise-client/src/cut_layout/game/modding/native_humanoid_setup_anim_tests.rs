@@ -1,5 +1,5 @@
 //! The real client-host adapter through CPU, skinned and layer-only setup routes.
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{Hooks, HumanoidPart, HumanoidSetupAnimEvent};
 use std::sync::{Arc, Mutex};
 use sunrise_client::mobs::{render, skin};

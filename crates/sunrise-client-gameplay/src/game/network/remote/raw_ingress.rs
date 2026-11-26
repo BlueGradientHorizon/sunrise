@@ -1,7 +1,7 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
 use super::opening::RemoteOpening;
 #[cfg(test)]
-use super::{C, Game, Received, play};
+use super::{C, Received, play};
 #[cfg(test)]
 use std::time::{Duration, Instant};
 use sunrise_client_lib::net::Event;

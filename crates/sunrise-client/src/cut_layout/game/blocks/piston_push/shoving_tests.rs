@@ -1,6 +1,6 @@
 use {crate::game::piston_push::carrying::shoving::*};
 use {sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client};
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest, sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{Collider, ColliderBox};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;

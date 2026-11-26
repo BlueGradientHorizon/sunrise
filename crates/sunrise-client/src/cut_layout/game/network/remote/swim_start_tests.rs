@@ -1,7 +1,7 @@
 //! Exercise both owning player tick routes, not the standalone swim oracle.
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Arc, Chunk, Game, ItemStack, Keys, PlayerMotion, S, Vec3, motion, play, tick}};
 use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{CanStartSwimmingEvent, EquipmentSlot, Hooks, Host, LogicalSide, SwimmingCheck};
 use std::sync::Mutex;
 use winit::keyboard::KeyCode;

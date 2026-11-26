@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use sunrise_client::hud::{GuiScale, HudBatch};
 
 pub fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

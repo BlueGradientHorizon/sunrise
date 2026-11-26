@@ -2,7 +2,7 @@
 //! registry or item table knows. Vanilla's codecs refuse any other while the biome file is
 //! decoded (`Registry.byNameCodec`, `Item.CODEC`), and the attribute files are read before a
 //! level's registries exist, so the level that draws the option makes the lookup.
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_core::nbt::Tag;
 use sunrise_level::particle_options::ParticleType;
 use sunrise_world::chunk::BlockState;

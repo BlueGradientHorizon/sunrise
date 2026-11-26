@@ -1,6 +1,6 @@
 //! A block's parts answer the state the camera sees of it (`state_at_viewpoint`), and the
 //! camera's fluid follows the answer.
-use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use std::sync::Arc;
 use sunrise_client::fog::FogType;
 use sunrise_level::chunk::Chunk;

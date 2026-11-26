@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
     use mod_api::{
         ClientHost, FlipFrameEvent, Hooks, ModEntry, RenderFramePostEvent, RenderFramePreEvent,

@@ -225,7 +225,7 @@ fn both_startup_repositories_lend_only_available_text_services() {
 #[test]
 #[ignore = "daily"]
 fn live_pack_rediscovery_can_read_a_registered_client_setting() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
+    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{HostSide, Registrar, RegistrationContext, SettingSpec};
 
     if run_fresh_cases(

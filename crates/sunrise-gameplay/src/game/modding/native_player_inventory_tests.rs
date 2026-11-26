@@ -1,6 +1,6 @@
 //! Reading and writing inventory slots against real LAN guests through the public player handle.
 
-use super::native_guest_turn_tests::with_guests;
+use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     Host, HostTransaction, InventoryView, ItemStack, PlayerDataRefusal, StackWriteError,
     TransactionError, prelude::*,
