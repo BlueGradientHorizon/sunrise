@@ -1,4 +1,6 @@
-use crate::game::{Dim, Options, PackResources, Resources, owner_link::OwnerRequest};
+use crate::game::launch_options::Options;
+use crate::game::owner_link::OwnerRequest;
+use crate::game::{Dim, PackResources, Resources};
 use std::{
     sync::{
         Arc, Mutex,

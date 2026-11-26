@@ -33,6 +33,8 @@ use resource_load::{load_resources, load_resources_skip_lang, load_resources_unc
 /// `stations` methods read the same tables, but taking `&self` blocks a
 /// `&mut self.…` in the same scope; these expand to a match on the fields,
 /// which borrows stay disjoint from.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! world_items {
     ($s:ident) => {
         match (&$s.server_items, $crate::game::Side::world_tables(&$s.side)) {
@@ -42,16 +44,8 @@ macro_rules! world_items {
         }
     };
 }
-#[allow(unused_macros)]
-macro_rules! server_world_items {
-    ($s:ident) => {
-        match (&$s.server_items, $s.side.world_tables.0.as_ref()) {
-            (Some(items), _) => &**items,
-            (None, Some(t)) => &t.items,
-            (None, None) => $s.res.items(),
-        }
-    };
-}
+#[doc(hidden)]
+#[macro_export]
 macro_rules! world_recipes {
     ($s:ident) => {
         match $crate::game::Side::world_tables(&$s.side) {
@@ -60,15 +54,8 @@ macro_rules! world_recipes {
         }
     };
 }
-#[allow(unused_macros)]
-macro_rules! server_world_recipes {
-    ($s:ident) => {
-        match $s.side.world_tables.0.as_ref() {
-            Some(t) => &t.recipes,
-            None => $s.res.recipes(),
-        }
-    };
-}
+#[doc(hidden)]
+#[macro_export]
 macro_rules! world_stations {
     ($s:ident) => {
         match $crate::game::Side::world_tables(&$s.side) {
@@ -77,17 +64,10 @@ macro_rules! world_stations {
         }
     };
 }
-#[allow(unused_macros)]
-macro_rules! server_world_stations {
-    ($s:ident) => {
-        match $s.side.world_tables.0.as_ref() {
-            Some(t) => &t.stations,
-            None => $s.res.stations(),
-        }
-    };
-}
 /// The biome table the world plays with (`Game::biomes`), as a field-level
 /// borrow: the world's packs' over the game's own.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! world_biomes {
     ($s:expr) => {
         match &$s.world_biomes {
@@ -97,6 +77,8 @@ macro_rules! world_biomes {
     };
 }
 /// The acting player's stacks as field-level borrows, in vanilla `EquipmentSlot` order.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! acting_equipment {
     ($s:expr) => {{
         use sunrise_items::equipment::{BODY, SADDLE};
@@ -114,6 +96,8 @@ macro_rules! acting_equipment {
 }
 /// This side's level data for a tick as a field-level borrow, so it stands beside the tick's own
 /// borrows of the game. Build it before taking a field mutably.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! game_side {
     ($s:expr) => {
         $crate::game::native_surface::GameSide {
@@ -128,7 +112,7 @@ macro_rules! game_side {
                 ))
             }),
             facts: $s.res.facts(),
-            biomes: world_biomes!($s),
+            biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $crate::game::side_ops::tables::SideOps::side_level_features(
                 &$s.side,
@@ -136,7 +120,7 @@ macro_rules! game_side {
             ),
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
-            player_equipment: acting_equipment!($s),
+            player_equipment: $crate::acting_equipment!($s),
             hit_borrows: $crate::game::native_surface::HitBorrows {
                 living_types: $s.res.living_type_keys(),
                 attributes: &$s.motion.attributes,
@@ -153,7 +137,7 @@ macro_rules! game_side {
     ($s:expr, $meta:expr) => {{
         let (player_uuid, level, session_lock): (Option<u128>, Option<mod_api::LevelRef>, bool) =
             $meta;
-        game_side!(
+        $crate::game_side!(
             $s,
             (player_uuid, level, session_lock),
             $crate::game::side_ops::tables::SideOps::side_level_features(
@@ -174,12 +158,12 @@ macro_rules! game_side {
             dim: $s.dim,
             level,
             facts: $s.res.facts(),
-            biomes: world_biomes!($s),
+            biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $features,
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
-            player_equipment: acting_equipment!($s),
+            player_equipment: $crate::acting_equipment!($s),
             hit_borrows: $crate::game::native_surface::HitBorrows {
                 living_types: $s.res.living_type_keys(),
                 attributes: &$s.motion.attributes,
@@ -195,7 +179,7 @@ macro_rules! game_side {
 #[cfg(feature = "client")]
 macro_rules! client_game_side {
     ($s:expr, $meta:expr) => {
-        game_side!(
+        $crate::game_side!(
             $s,
             $meta,
             match &$s.side.remote {
@@ -209,30 +193,10 @@ macro_rules! client_game_side {
         )
     };
 }
-/// Server-side `game_side!` using direct field borrows on `self.side` so sibling mutable borrows
-/// of unrelated `ServerState` fields (e.g. `pending_sounds`, `ordered.lava_random`) stay disjoint.
-#[allow(unused_macros)]
-macro_rules! server_game_side {
-    ($s:expr) => {{
-        let level = $s.native_lifecycle.epoch().and_then(|epoch| {
-            let key = $s.dim.key();
-            let id = mod_api::__private::dimension_id(key)?;
-            Some(mod_api::LevelRef::with_generation(
-                epoch,
-                key,
-                $s.side.levels.0.runtime.generation_of(id),
-            ))
-        });
-        let player_uuid = $s.side.lan_acting_uuid;
-        let session_lock = $s.side.session_lock.0.is_some();
-        game_side!(
-            $s,
-            (player_uuid, level, session_lock),
-            $s.level.enabled_features.as_arc(),
-            session_lock.then(|| $s.res.items())
-        )
-    }};
-}
+#[macro_use]
+#[path = "game/server_side.rs"]
+pub(in crate::game) mod server_side;
+
 /// The world's packs' content files, as a field-level borrow (see the macros).
 fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOverlay<'_> {
     match world_tables {
@@ -2420,6 +2384,8 @@ pub(in crate::game) use client_side::server_links;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::server_packs;
 #[allow(unused_imports)]
+pub(in crate::game) use server_side as server_state;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::scoreboard;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::sculk_fixture;
@@ -2431,10 +2397,6 @@ pub(in crate::game) use server_side::seats;
 pub(in crate::game) use server_side::server_lifecycle;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_reload;
-#[path = "game/server_side.rs"]
-pub(in crate::game) mod server_side;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side as server_state;
 #[path = "game/blocks/block_entity_anims_common.rs"]
 pub(in crate::game) mod block_entity_anims_common;
 #[path = "game/world/light_emission.rs"]

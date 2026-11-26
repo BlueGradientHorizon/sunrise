@@ -17,7 +17,6 @@ use crate::game::remote::chat_received::{QueuedChat, QueuedChatKind};
 use crate::game::remote::client_fluid_step;
 use crate::game::remote::client_view_distance;
 use crate::game::remote::dry_level::DryLevel;
-use crate::game::remote::entity_sound_state;
 use crate::game::remote::face_direction;
 use crate::game::remote::hand_id;
 use crate::game::remote::hand_operated;

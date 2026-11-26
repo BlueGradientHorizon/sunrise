@@ -1,6 +1,40 @@
 use super::*;
 use sunrise_level::profile_lookup::TabPlayer;
 
+/// The live entity a bound sound names; absence means that object was removed.
+pub(in crate::game) fn entity_sound_state(
+    id: i32,
+    player: Option<(i32, [f64; 3], bool)>,
+    mob: Option<sunrise_game_data::sound_source::SoundEntityState>,
+    tracked: &HashMap<i32, crate::game::client_side::remote_client::Tracked>,
+    dragon: Option<(i32, [f64; 3])>,
+) -> Option<sunrise_game_data::sound_source::SoundEntityState> {
+    use sunrise_game_data::sound_source::SoundEntityState;
+    if let Some((player_id, position, silent)) = player
+        && player_id == id
+    {
+        return Some(SoundEntityState {
+            position,
+            silent,
+            removed: false,
+        });
+    }
+    let mut state = mob.or_else(|| {
+        tracked.get(&id).map(|t| SoundEntityState {
+            position: t.position,
+            silent: t.silent,
+            removed: false,
+        })
+    })?;
+    // The dragon's Mob is metadata storage; only Dragon follows its movement.
+    if let Some((dragon_id, position)) = dragon
+        && dragon_id == id
+    {
+        state.position = position;
+    }
+    Some(state)
+}
+
 #[cfg(feature = "client")]
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn apply_remote_health(&mut self) {

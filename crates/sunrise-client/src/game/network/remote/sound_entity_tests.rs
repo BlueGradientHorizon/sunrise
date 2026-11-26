@@ -1,3 +1,4 @@
+use crate::game::client_side::remote_client::sync::entity_sound_state;
 /// `ClientboundSoundEntityPacket`: the sound is heard where the entity it
 /// names is — the local player included, which is no tracked entity — and
 /// an id this level doesn't have plays nothing at all.
@@ -26,28 +27,28 @@ fn a_sound_entity_is_heard_where_its_entity_is() {
     );
     let player = Some((2, [0.5, 70.0, 0.5], false));
     assert_eq!(
-        crate::game::remote::entity_sound_state(2, player, None, &tracked, None)
+        entity_sound_state(2, player, None, &tracked, None)
             .filter(|s| !s.silent)
             .map(|s| s.position),
         Some([0.5, 70.0, 0.5]),
         "the local player is named by Remote.entity_id"
     );
     assert_eq!(
-        crate::game::remote::entity_sound_state(7, player, None, &tracked, None)
+        entity_sound_state(7, player, None, &tracked, None)
             .filter(|s| !s.silent)
             .map(|s| s.position),
         Some([8.5, 64.0, -3.5]),
         "another entity the server spawned"
     );
     assert_eq!(
-        crate::game::remote::entity_sound_state(9, player, None, &tracked, None)
+        entity_sound_state(9, player, None, &tracked, None)
             .filter(|s| !s.silent)
             .map(|s| s.position),
         None,
         "getEntity is null: handleSoundEntityEvent returns"
     );
     assert_eq!(
-        crate::game::remote::entity_sound_state(2, None, None, &tracked, None)
+        entity_sound_state(2, None, None, &tracked, None)
             .filter(|s| !s.silent)
             .map(|s| s.position),
         None,
@@ -78,18 +79,12 @@ fn a_sound_entity_retains_silence_for_players_and_non_mob_targets() {
             size_answer: None,
         },
     );
-    let state = crate::game::remote::entity_sound_state(7, None, None, &tracked, None).unwrap();
+    let state = entity_sound_state(7, None, None, &tracked, None).unwrap();
     assert!(state.silent);
     assert!(!state.removed);
     assert_eq!(state.position, [8.5, 64.0, -3.5]);
-    let player = crate::game::remote::entity_sound_state(
-        2,
-        Some((2, [1.0, 2.0, 3.0], true)),
-        None,
-        &tracked,
-        None,
-    )
-    .unwrap();
+    let player =
+        entity_sound_state(2, Some((2, [1.0, 2.0, 3.0], true)), None, &tracked, None).unwrap();
     assert!(player.silent);
-    assert!(crate::game::remote::entity_sound_state(9, None, None, &tracked, None).is_none());
+    assert!(entity_sound_state(9, None, None, &tracked, None).is_none());
 }

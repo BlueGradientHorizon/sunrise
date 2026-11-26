@@ -6,7 +6,8 @@
 //! Restrictions opens RestrictionsScreen.
 //! Parity reference: https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/WorldOptionsScreen
 use super::{Game, Screen};
-use crate::game::{integrated_link::ServerOptions, owner_link::OwnerRequest};
+use crate::game::integrated_link::ServerOptions;
+use crate::game::owner_link::OwnerRequest;
 use sunrise_client::{
     font::Font,
     game_rules_screen::{Exit, RulesScreen},

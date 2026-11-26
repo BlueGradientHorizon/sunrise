@@ -2437,44 +2437,44 @@ impl crate::game::Side for ClientState {
     }
 
     const IS_SERVER: bool = false;
-    fn host_side<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> mod_api::HostSide<'g> {
+    fn host_side<'a, 'g>(game: &'g mut crate::game::ClientGame<'a>) -> mod_api::HostSide<'g> {
         mod_api::HostSide::Client(game)
     }
-    fn as_host<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::Host {
+    fn as_host<'a, 'g>(game: &'g crate::game::ClientGame<'a>) -> &'g dyn mod_api::Host {
         game
     }
     fn as_block_states_backend<'a, 'g>(
-        game: &'g crate::game::Game<'a, Self>,
+        game: &'g crate::game::ClientGame<'a>,
     ) -> &'g dyn mod_api::prelude::BlockStatesBackend {
         game
     }
     fn as_config_context<'a, 'g>(
-        game: &'g crate::game::Game<'a, Self>,
+        game: &'g crate::game::ClientGame<'a>,
     ) -> &'g dyn mod_api::ConfigContext {
         game
     }
     fn as_reload_context<'a, 'g>(
-        game: &'g crate::game::Game<'a, Self>,
+        game: &'g crate::game::ClientGame<'a>,
     ) -> &'g dyn mod_api::ReloadContext {
         game
     }
     fn as_pack_discovery_context_mut<'a, 'g>(
-        game: &'g mut crate::game::Game<'a, Self>,
+        game: &'g mut crate::game::ClientGame<'a>,
     ) -> &'g mut dyn mod_api::PackDiscoveryContext {
         game
     }
     fn as_client_host_mut<'a, 'g>(
-        game: &'g mut crate::game::Game<'a, Self>,
+        game: &'g mut crate::game::ClientGame<'a>,
     ) -> Option<&'g mut dyn mod_api::ClientHost> {
         Some(game)
     }
     fn as_client_text_host<'a, 'g>(
-        game: &'g crate::game::Game<'a, Self>,
+        game: &'g crate::game::ClientGame<'a>,
     ) -> Option<&'g dyn mod_api::prelude::ClientTextClientHost> {
         Some(game)
     }
     fn attachment_store<'a, 'g>(
-        game: &'g mut crate::game::Game<'a, Self>,
+        game: &'g mut crate::game::ClientGame<'a>,
     ) -> &'g mut dyn mod_api::AttachmentStore {
         game
     }

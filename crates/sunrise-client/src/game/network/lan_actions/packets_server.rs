@@ -1397,6 +1397,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }),
         );
     }
+    pub(in crate::game) fn spawn_protection_for(&self, host: &LanHost, uuid: u128) -> Option<i32> {
+        let radius = host.hub.spawn_protection;
+        (self.is_dedicated_server()
+            && radius > 0
+            && !host.hub.ops.is_empty()
+            && !host.hub.ops.contains_key(&uuid))
+        .then_some(radius)
+    }
+
     /// DedicatedServer.isUnderSpawnProtection: no operators, an operator or a
     /// radius of 0 or less is never under it; else a block within the radius
     /// of the world spawn (square, in the Overworld) is.

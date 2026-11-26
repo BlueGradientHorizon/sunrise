@@ -205,28 +205,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    /// The player riding through `riding` and its place: the acting guest (its kept place, if
-    /// any, comes from the hub's list) or, outside a guest turn, this game's own player.
-    pub(in crate::game) fn riding_player(&self) -> Option<(u32, i64)> {
-        match (
-            crate::game::Side::lan_acting_entity(&self.side),
-            crate::game::Side::lan_acting(&self.side),
-        ) {
-            (Some(id), _) if crate::game::Side::lan_acting_uuid(&self.side).is_some() => {
-                Some((id, i64::MIN))
-            }
-            (_, None) => self.player.as_ref().map(|p| {
-                (
-                    p.entity_id as u32,
-                    crate::game::Side::riding_order(&self.side),
-                )
-            }),
-            _ => None,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

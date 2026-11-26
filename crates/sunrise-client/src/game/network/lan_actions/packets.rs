@@ -1,5 +1,4 @@
 use super::Game;
-use crate::game::server_side::lan::LanHost;
 
 /// The creative-slot wire codec bounds a stack's count to 1..=99; an item whose
 /// own max stack size a native mod raised past 99 becomes the ceiling instead.
@@ -13,15 +12,6 @@ pub(in crate::game) fn creative_count_exceeds(count: u32, own_max: u32) -> bool 
 }
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
-    pub(in crate::game) fn spawn_protection_for(&self, host: &LanHost, uuid: u128) -> Option<i32> {
-        let radius = host.hub.spawn_protection;
-        (self.is_dedicated_server()
-            && radius > 0
-            && !host.hub.ops.is_empty()
-            && !host.hub.ops.contains_key(&uuid))
-        .then_some(radius)
-    }
-
     pub(in crate::game) fn spawn_protects(
         &self,
         radius: i32,

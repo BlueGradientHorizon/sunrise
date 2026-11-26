@@ -1,6 +1,8 @@
 //! The client section index shared by spatial queries and crosshair picking.
-use super::{aabb_extents, knot_bounds};
-use crate::game::{Dim, Game, entity::Entity as _, general::general_type_catalog};
+use crate::game::entity::Entity as _;
+use crate::game::general::general_type_catalog;
+use crate::game::pick_entity_common::{aabb_extents, knot_bounds};
+use crate::game::{Dim, Game};
 use std::collections::BTreeMap;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_level::fast_hash::FxHashMap;

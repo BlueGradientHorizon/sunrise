@@ -1,10 +1,8 @@
 //! Commands from the control socket (`sunrise-ctl`), run on the game thread.
 use super::event_loop::EventLoopCtl;
 use super::{Game, Screen};
-use crate::game::{
-    integrated_link::NO_ANSWER,
-    owner_link::{ControlRequest, OwnerRequest},
-};
+use crate::game::integrated_link::NO_ANSWER;
+use crate::game::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};
 use std::{
     sync::mpsc::Sender,

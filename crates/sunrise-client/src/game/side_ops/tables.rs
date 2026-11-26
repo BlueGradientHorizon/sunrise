@@ -1,6 +1,7 @@
 //! Role-dispatched table/parts side operations (rewritten to `SideOps` traits at switch).
-use crate::game::{Game, WorldTables};
-use crate::game::{Resources, cauldron_interactions};
+use crate::game::Game;
+use crate::game::cauldron_interactions;
+use crate::game::{Resources, WorldTables};
 use std::sync::Arc;
 use sunrise_items::{enchant::Enchantments, items::Items};
 use sunrise_protocol::registry::Ids;

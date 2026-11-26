@@ -130,40 +130,6 @@ pub(in crate::game) fn player_voice_pitch() -> f32 {
     1.0
 }
 
-/// The live entity a bound sound names; absence means that object was removed.
-pub(in crate::game) fn entity_sound_state(
-    id: i32,
-    player: Option<(i32, [f64; 3], bool)>,
-    mob: Option<sunrise_game_data::sound_source::SoundEntityState>,
-    tracked: &HashMap<i32, crate::game::client_side::remote_client::Tracked>,
-    dragon: Option<(i32, [f64; 3])>,
-) -> Option<sunrise_game_data::sound_source::SoundEntityState> {
-    use sunrise_game_data::sound_source::SoundEntityState;
-    if let Some((player_id, position, silent)) = player
-        && player_id == id
-    {
-        return Some(SoundEntityState {
-            position,
-            silent,
-            removed: false,
-        });
-    }
-    let mut state = mob.or_else(|| {
-        tracked.get(&id).map(|t| SoundEntityState {
-            position: t.position,
-            silent: t.silent,
-            removed: false,
-        })
-    })?;
-    // The dragon's Mob is metadata storage; only Dragon follows its movement.
-    if let Some((dragon_id, position)) = dragon
-        && dragon_id == id
-    {
-        state.position = position;
-    }
-    Some(state)
-}
-
 /// `ClientboundOpenScreenPacket.title` as a container screen draws it: the
 /// component's styles, and the `§` codes a literal holds (`StringDecomposer`).
 pub(in crate::game) fn menu_title(tag: &Tag) -> sunrise_game_data::text::Text {

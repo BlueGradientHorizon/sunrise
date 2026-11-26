@@ -12,10 +12,8 @@ use sunrise_client_gameplay::agent_navigation as navigation;
 #[cfg(feature = "client")]
 use super::event_loop::EventLoopCtl;
 use super::{Game, Screen};
-use crate::game::{
-    integrated_link::NO_ANSWER,
-    owner_link::{ControlRequest, OwnerRequest},
-};
+use crate::game::integrated_link::NO_ANSWER;
+use crate::game::owner_link::{ControlRequest, OwnerRequest};
 use navigation::{Cell, Node, Plan, Progress};
 use serde_json::{Value, json};
 use std::{

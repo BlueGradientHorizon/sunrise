@@ -656,7 +656,7 @@ impl Component {
     }
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The guest `conn` of the server’s LAN hub.
     pub(in crate::game) fn command_guest(&self, conn: u32) -> Option<&Guest> {
         crate::game::side_ops::player::SideOps::side_command_guest(&self.side, conn)

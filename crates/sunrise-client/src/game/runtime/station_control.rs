@@ -1,10 +1,8 @@
 //! Control-socket commands for menus and item components, so scripts can
 //! drive the workstation screens (`sunrise-ctl click-slot 600`, ...).
 use super::{Game, Screen};
-use crate::game::{
-    integrated_link::NO_ANSWER,
-    owner_link::{ControlRequest, OwnerRequest},
-};
+use crate::game::integrated_link::NO_ANSWER;
+use crate::game::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;

@@ -1,5 +1,5 @@
+use crate::game::client_side::remote_client::sync::entity_sound_state;
 use crate::game::client_side::remote_client::{Tracked, seat_passengers};
-use crate::game::remote::entity_sound_state;
 
 /// `ClientPacketListener.handleSetEntityPassengersPacket`: the vehicle
 /// ejects its passengers, then each listed entity `startRiding`s it, so

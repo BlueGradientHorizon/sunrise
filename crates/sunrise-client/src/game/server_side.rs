@@ -1,6 +1,10 @@
 //! Server-owned fields of [`super::Game`].
 use super::*;
 
+#[macro_use]
+#[path = "server_macros.rs"]
+mod server_macros;
+
 #[path = "network/lan_actions/acting_state.rs"]
 pub(in crate::game) mod acting_state;
 #[path = "interface/advancements/mod.rs"]
@@ -1905,39 +1909,39 @@ impl crate::game::Side for ServerState {
     }
 
     const IS_SERVER: bool = true;
-    fn host_side<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> mod_api::HostSide<'g> {
+    fn host_side<'a, 'g>(game: &'g mut crate::game::ServerGame<'a>) -> mod_api::HostSide<'g> {
         mod_api::HostSide::Server(game)
     }
-    fn as_host<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::Host {
+    fn as_host<'a, 'g>(game: &'g crate::game::ServerGame<'a>) -> &'g dyn mod_api::Host {
         game
     }
     fn as_block_states_backend<'a, 'g>(
-        game: &'g crate::game::Game<'a, Self>,
+        game: &'g crate::game::ServerGame<'a>,
     ) -> &'g dyn mod_api::prelude::BlockStatesBackend {
         game
     }
     fn as_config_context<'a, 'g>(
-        game: &'g crate::game::Game<'a, Self>,
+        game: &'g crate::game::ServerGame<'a>,
     ) -> &'g dyn mod_api::ConfigContext {
         game
     }
     fn as_reload_context<'a, 'g>(
-        game: &'g crate::game::Game<'a, Self>,
+        game: &'g crate::game::ServerGame<'a>,
     ) -> &'g dyn mod_api::ReloadContext {
         game
     }
     fn as_pack_discovery_context_mut<'a, 'g>(
-        game: &'g mut crate::game::Game<'a, Self>,
+        game: &'g mut crate::game::ServerGame<'a>,
     ) -> &'g mut dyn mod_api::PackDiscoveryContext {
         game
     }
     fn as_server_host_mut<'a, 'g>(
-        game: &'g mut crate::game::Game<'a, Self>,
+        game: &'g mut crate::game::ServerGame<'a>,
     ) -> Option<&'g mut dyn mod_api::ServerHost> {
         Some(game)
     }
     fn attachment_store<'a, 'g>(
-        game: &'g mut crate::game::Game<'a, Self>,
+        game: &'g mut crate::game::ServerGame<'a>,
     ) -> &'g mut dyn mod_api::AttachmentStore {
         game
     }
