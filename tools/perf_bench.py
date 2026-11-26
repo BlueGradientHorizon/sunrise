@@ -70,16 +70,11 @@ import uuid
 import zipfile
 from pathlib import Path
 
-try:
-    from . import lab, runtime, stress_scenes
-except ImportError:
-    import lab
-    import runtime
-    import stress_scenes
-
-ROOT = lab.ROOT
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from tools import lab, runtime, stress_scenes
 from tools.ci import cargo_jobs
+
 WORK = ROOT / ".local/perf-bench"
 VANILLA = lab.GAME
 SEED = 1234
