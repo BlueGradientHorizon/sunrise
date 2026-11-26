@@ -766,12 +766,13 @@ impl GeneralRow {
     /// `Entity.commonTick` and `Entity.baseTick` for one tick of the row, before its type's
     /// tick runs: `tickCount`, the old position and rotation, the boarding cooldown, then
     /// `updateFluidInteraction` (a current pushes the velocity unless the row rides or has
-    /// `noPhysics`; water resets the fall and lava halves it) and `checkBelowWorld`. `scan`
-    /// measures the fluids for the row's box, position and eye height and may add a current to
-    /// the velocity it is given. False when the row fell below the world (`min_y - 64`): the
+    /// `noPhysics`; water resets the fall and lava halves it) and `checkBelowWorld`. `bounds` is the
+    /// row's box at its position; `scan` measures the fluids for it, the position and the eye
+    /// height and may add a current to the velocity it is given. False when the row fell below the world (`min_y - 64`): the
     /// caller discards it. Gravity, drag and moves are the type's own tick.
     pub(super) fn base_tick(
         &mut self,
+        bounds: Aabb,
         mounted: bool,
         min_y: i32,
         scan: impl FnOnce(Aabb, Vec3, f64, &mut Vec3) -> sunrise_client::mobs::living::Fluids,
@@ -785,7 +786,7 @@ impl GeneralRow {
             self.velocity = Vec3::ZERO;
         }
         let was_eye_in_water = self.fluids.eye_in_water;
-        let (bounds, at, eye) = (Entity::bounds(self), self.position, self.fluid_eye_y());
+        let (at, eye) = (self.position, bounds.max_position().y);
         let pushed = !mounted && !self.no_physics && self.is_pushed_by_fluid();
         let mut unpushed = self.velocity;
         let mut fluids = scan(

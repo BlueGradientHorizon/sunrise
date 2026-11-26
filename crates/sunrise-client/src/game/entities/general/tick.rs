@@ -239,17 +239,23 @@ impl Game<'_> {
         let min_y = self.world.layout().min_y();
         let row = &mut self.resident_entities.general.rows[index];
         let id = row.id;
-        let alive = row.base_tick(mount.is_some(), min_y, |bounds, at, eye, velocity| {
-            sunrise_client::entities::scan_entity_fluids(
-                bounds,
-                at,
-                eye,
-                velocity,
-                &self.world,
-                &self.res.motion().fluids,
-                &self.loop_context,
-            )
-        });
+        let bounds = super::Entity::bounds(row);
+        let alive = row.base_tick(
+            bounds,
+            mount.is_some(),
+            min_y,
+            |bounds, at, eye, velocity| {
+                sunrise_client::entities::scan_entity_fluids(
+                    bounds,
+                    at,
+                    eye,
+                    velocity,
+                    &self.world,
+                    &self.res.motion().fluids,
+                    &self.loop_context,
+                )
+            },
+        );
         if alive {
             return;
         }

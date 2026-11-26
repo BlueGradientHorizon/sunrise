@@ -39,6 +39,11 @@ fn row() -> GeneralRow {
 
 const MIN_Y: i32 = -64;
 
+/// The row's box: the engine passes the type's, which these plain rows have no catalog for.
+fn bounds() -> Aabb {
+    Aabb::new(Vec3::new(0.2, 64.0, 0.2), Vec3::new(0.8, 64.6, 0.8))
+}
+
 /// A scan that finds nothing and leaves the velocity alone.
 fn dry(_: Aabb, _: Vec3, _: f64, _: &mut Vec3) -> Fluids {
     Fluids::default()
@@ -75,12 +80,12 @@ fn the_base_tick_counts_remembers_and_cools_down() {
     row.boarding_cooldown = 1;
     row.position = Vec3::new(3.0, 70.0, 4.0);
     row.rotation = [30.0, 40.0];
-    assert!(row.base_tick(false, MIN_Y, dry));
+    assert!(row.base_tick(bounds(), false, MIN_Y, dry));
     assert_eq!(row.tick_count, i32::MIN);
     assert_eq!(row.previous, Vec3::new(3.0, 70.0, 4.0));
     assert_eq!(row.previous_rotation, [30.0, 40.0]);
     assert_eq!(row.boarding_cooldown, 0);
-    assert!(row.base_tick(false, MIN_Y, dry));
+    assert!(row.base_tick(bounds(), false, MIN_Y, dry));
     assert_eq!(row.tick_count, i32::MIN + 1);
     assert_eq!(row.boarding_cooldown, 0);
 }
@@ -90,7 +95,7 @@ fn the_base_tick_counts_remembers_and_cools_down() {
 fn a_riding_row_has_no_velocity_and_no_current() {
     let mut row = row();
     row.velocity = Vec3::new(1.0, 2.0, 3.0);
-    assert!(row.base_tick(true, MIN_Y, water));
+    assert!(row.base_tick(bounds(), true, MIN_Y, water));
     assert_eq!(row.velocity, Vec3::ZERO);
     assert!(row.fluids.in_water, "its fluids are still measured");
 }
@@ -101,7 +106,7 @@ fn a_riding_row_has_no_velocity_and_no_current() {
 fn water_pushes_the_row_and_resets_its_fall() {
     let mut row = row();
     row.fall_distance = 5.0;
-    assert!(row.base_tick(false, MIN_Y, water));
+    assert!(row.base_tick(bounds(), false, MIN_Y, water));
     assert!((row.velocity.x - 0.014).abs() < 1.0e-12);
     assert_eq!(row.fall_distance, 0.0);
     assert!(row.fluids.in_water && !row.fluids.in_lava);
@@ -110,10 +115,10 @@ fn water_pushes_the_row_and_resets_its_fall() {
         !row.under_water,
         "wasEyeInWater is the sample taken before this tick's scan"
     );
-    assert!(row.base_tick(false, MIN_Y, water));
+    assert!(row.base_tick(bounds(), false, MIN_Y, water));
     assert!(row.under_water);
     assert!((row.velocity.x - 0.028).abs() < 1.0e-12);
-    assert!(row.base_tick(false, MIN_Y, dry));
+    assert!(row.base_tick(bounds(), false, MIN_Y, dry));
     assert!(!row.fluids.in_water);
     assert!(
         !row.under_water,
@@ -127,7 +132,7 @@ fn a_no_physics_row_is_not_pushed_by_a_current() {
     let mut row = row();
     row.no_physics = true;
     row.velocity = Vec3::new(0.0, 1.0, 0.0);
-    assert!(row.base_tick(false, MIN_Y, water));
+    assert!(row.base_tick(bounds(), false, MIN_Y, water));
     assert_eq!(row.velocity, Vec3::new(0.0, 1.0, 0.0));
     assert!(row.fluids.in_water);
 }
@@ -138,14 +143,14 @@ fn a_no_physics_row_is_not_pushed_by_a_current() {
 fn lava_halves_the_fall_but_not_on_the_first_tick() {
     let mut row = row();
     row.fall_distance = 8.0;
-    assert!(row.base_tick(false, MIN_Y, lava));
+    assert!(row.base_tick(bounds(), false, MIN_Y, lava));
     assert_eq!(row.fall_distance, 8.0);
     assert!(!row.fluids.in_lava);
     assert!((row.velocity.z - 0.007).abs() < 1.0e-12);
-    assert!(row.base_tick(false, MIN_Y, lava));
+    assert!(row.base_tick(bounds(), false, MIN_Y, lava));
     assert_eq!(row.fall_distance, 4.0);
     assert!(row.fluids.in_lava);
-    assert!(row.base_tick(false, MIN_Y, lava));
+    assert!(row.base_tick(bounds(), false, MIN_Y, lava));
     assert_eq!(row.fall_distance, 2.0);
 }
 
@@ -154,9 +159,9 @@ fn lava_halves_the_fall_but_not_on_the_first_tick() {
 fn a_row_below_the_world_is_discarded() {
     let mut row = row();
     row.position.y = f64::from(MIN_Y - 64);
-    assert!(row.base_tick(false, MIN_Y, dry));
+    assert!(row.base_tick(bounds(), false, MIN_Y, dry));
     row.position.y = f64::from(MIN_Y - 64) - 0.001;
-    assert!(!row.base_tick(false, MIN_Y, dry));
+    assert!(!row.base_tick(bounds(), false, MIN_Y, dry));
 }
 
 /// The base tick applies no gravity and makes no move: what the type's own tick does is its own.
@@ -165,7 +170,7 @@ fn the_base_tick_neither_falls_nor_moves() {
     let mut row = row();
     row.velocity = Vec3::new(0.2, -0.3, 0.1);
     row.position = Vec3::new(1.0, 80.0, 1.0);
-    assert!(row.base_tick(false, MIN_Y, dry));
+    assert!(row.base_tick(bounds(), false, MIN_Y, dry));
     assert_eq!(row.velocity, Vec3::new(0.2, -0.3, 0.1));
     assert_eq!(row.position, Vec3::new(1.0, 80.0, 1.0));
 }
