@@ -649,7 +649,7 @@ fn a_float_condition_gates_an_include() {
 /// Macros that double at every level are refused once their expansion has spent the work the
 /// translator reads for a stage, at the line that expands them: the directives expand each line
 /// whole before naga reads it (naga's preprocessor handed naga one token at a time, and naga
-/// stopped at the first it couldn't take).
+/// stopped at the first it couldn't take). The stop has no token position, so its column is unknown.
 #[test]
 #[ignore = "daily"]
 fn an_expansion_past_the_budget_is_refused_where_it_is() {
@@ -664,7 +664,7 @@ fn an_expansion_past_the_budget_is_refused_where_it_is() {
     let refused = Error {
         file: tests::VSH_FILE.into(),
         line: 42,
-        column: 1,
+        column: 0,
         stage: Some(ShaderStage::Vertex),
         unprovided: None,
         message: directives::stopped(crate::macros::Stop::Work),
@@ -672,11 +672,10 @@ fn an_expansion_past_the_budget_is_refused_where_it_is() {
     assert_eq!(errors, [refused]);
 }
 
-/// A post shader's includes are pasted with every branch (no defines), and its directives run on
-/// the whole: an `#if` an include leaves open names that include and the line of the `#if`, as
-/// naga's preprocessor named it; a refused redefinition names its own line.
+/// A post shader's directives are read after pasting its includes. Refusals keep the include's
+/// authored line and byte column of the directive, past comments and across splices.
 #[test]
-fn a_post_shaders_directive_errors_name_the_include_and_line() {
+fn a_post_shaders_directive_errors_name_the_include_and_position() {
     let run = |include: &str| {
         let read = |id: &str| -> Result<Option<String>, String> {
             Ok((id == "p:shaders/include/lib.glsl").then(|| include.to_owned()))
@@ -696,12 +695,35 @@ fn a_post_shaders_directive_errors_name_the_include_and_line() {
             None,
         )
         .unwrap();
-        let error = run_directives(&code, &["DEPTH"]).unwrap_err();
-        (error.file, error.line)
+        run_directives(&code, &["DEPTH"]).unwrap_err()
     };
-    let lib = "p:shaders/include/lib.glsl".to_owned();
-    assert_eq!(run("float a;\n#if 1\n#ifdef X\n#endif\n"), (lib.clone(), 2));
-    assert_eq!(run("// first\n/* a\n   b */\n#define DEPTH 1\n"), (lib, 4));
+    for (include, line, column) in [
+        ("float a;\n\t/*é*/ #if 1\n#ifdef X\n#endif\n", 2, 9),
+        ("// first\n/* a\n   b */\n#define DEPTH 1\n", 4, 1),
+        ("\t/*é*/ #undef X Y\n", 1, 9),
+        ("\t/*é*/ \\\n  #undef X Y\n", 2, 3),
+    ] {
+        let error = run(include);
+        assert_eq!(
+            (error.file.as_str(), error.line, error.column),
+            ("p:shaders/include/lib.glsl", line, column)
+        );
+    }
+}
+
+/// Overflow of the logical line counter reports the physical line, not an unrelated token.
+#[test]
+fn a_line_counter_overflow_does_not_invent_a_column() {
+    let code = Expanded {
+        lines: Lines::from_text("#define N __LINE__\n#line 4294967295\n\tfloat x = N;\n"),
+        files: vec!["p:shaders/post/a.fsh".into()],
+        version: 110,
+    };
+    let error = run_directives(&code, &[]).unwrap_err();
+    assert_eq!(
+        error,
+        Error::new("p:shaders/post/a.fsh", 3, "line number outside GLSL range")
+    );
 }
 
 /// An error on the line after a call over lines names its own line: the joined lines keep theirs.
