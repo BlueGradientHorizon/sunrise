@@ -4,17 +4,19 @@
 //! small files through [`crate::sdk_fetch::fetch_build`]; none links the generator's catalog.
 use crate::options::Options;
 use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build, fetch_pinned};
+use crate::sdk_notes::{self, Shipped};
 use crate::uses_table::{self, Scanned, surface_of};
 use mod_surface::child::ChildEntry;
 use mod_surface::uses::{Change, Fit, USES_FILE, UsesTable};
 use mod_surface::{Surface, leaf};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
 use std::rc::Rc;
 use sunrise_mod_package::{
     Manifest, Package,
     manifest::MAX_USES,
-    sdk::{self, ChangeNote, Index},
+    sdk::{self, Index},
 };
 use sunrise_native_build::check::{self, Builds, Judged, Unlisted, Verdict};
 use sunrise_native_build::game_uses;
@@ -199,28 +201,31 @@ pub(crate) fn sdk(args: &[String]) -> Result<(), String> {
     let project = Path::new(".");
     let old = fetch_build(project, a)?;
     let new = fetch_build(project, b)?;
-    let notes = build_notes(&new)?;
+    let chain = sdk_notes::chain(&new, Some(&old.build), |text| fetch_build(project, text))?;
     println!("{} to {}", old.name, new.name);
     print!(
         "{}",
-        diff_text(&surface_of(&old)?, &surface_of(&new)?, &new.name, &notes)
+        diff_text(&surface_of(&old)?, &surface_of(&new)?, &chain.notes)
     );
+    if let Some(line) = chain.stopped_line() {
+        println!("{line}");
+    }
     Ok(())
 }
 
-/// The diff from `old` to `new`, with the change notes of the build `new` (named `new_name`)
-/// under the changes they name: the notes of the changes since the SDK published before it.
-fn diff_text(old: &Surface, new: &Surface, new_name: &str, notes: &[ChangeNote]) -> String {
+/// The diff from `old` to `new`, with the change `notes` of the builds between them under the
+/// changes they name, each tagged with the build that carried it.
+fn diff_text(old: &Surface, new: &Surface, notes: &[Shipped]) -> String {
     let mut diff = mod_surface::diff(old, new);
-    for note in notes {
+    for shipped in notes {
         let text = mod_surface::diff::Note {
-            file: new_name.to_owned(),
-            why: note.why.clone(),
-            migrate: note.migrate.clone(),
+            file: shipped.build.clone(),
+            why: shipped.note.why.clone(),
+            migrate: shipped.note.migrate.clone(),
         };
-        // An id the note names may be unchanged here when `old` is not the build `new`
-        // was compared with; the note then explains a change this diff does not show.
-        diff.attach(&text, &note.ids);
+        // An id the note names may be unchanged here when `old` is not the build the note's
+        // build was compared with; the note then explains a change this diff does not show.
+        diff.attach(&text, &shipped.note.ids);
     }
     diff.to_text()
 }
@@ -598,11 +603,15 @@ pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: &str) -> Result<(),
     };
     let new = fetch_build(root, to)?;
     let new_surface = surface_of(&new)?;
-    let notes = migrate_notes(&build_notes(&new)?);
+    let chain = sdk_notes::chain(&new, Some(&old.build), |text| fetch_build(root, text))?;
+    let notes = migrate_notes(&chain.notes);
     print!(
         "{}",
         report(name, &old, &new, &uses, &old_surface, &new_surface, &notes)
     );
+    if let Some(line) = chain.stopped_line() {
+        println!("{line}");
+    }
     // The game code the mod declares, by the new build's build data.
     let made = uses_table::table(&uses, &parsed, &old)?;
     // A misfit already known stays when the build data cannot be read: why it cannot comes second.
@@ -642,24 +651,17 @@ pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: &str) -> Result<(),
     Ok(())
 }
 
-/// The change notes `sdk`'s `sdk.json` carries (`surface.notes`): those of the changes since the
-/// SDK published before it. The fetch verified the file.
-fn build_notes(sdk: &PinnedSdk) -> Result<Vec<ChangeNote>, String> {
-    let path = sdk.dir.join(sdk::INDEX);
-    let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let index = Index::read(&bytes, &sdk.build).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(index.surface.notes)
-}
-
-/// Each changed id's `migrate` line from `notes`; a note without one adds nothing.
-fn migrate_notes(notes: &[ChangeNote]) -> std::collections::BTreeMap<String, String> {
-    let mut out = std::collections::BTreeMap::new();
-    for note in notes {
-        let Some(migrate) = &note.migrate else {
+/// Each changed id's `migrate` line from `notes` with the build that carried it; the newest
+/// build's wins, and a note without a line adds nothing.
+fn migrate_notes(notes: &[Shipped]) -> BTreeMap<String, (String, String)> {
+    let mut out = BTreeMap::new();
+    for shipped in notes {
+        let Some(migrate) = &shipped.note.migrate else {
             continue;
         };
-        for id in &note.ids {
-            out.insert(id.clone(), migrate.clone());
+        for id in &shipped.note.ids {
+            out.entry(id.clone())
+                .or_insert_with(|| (shipped.build.clone(), migrate.clone()));
         }
     }
     out
@@ -673,7 +675,7 @@ fn report(
     uses: &mod_surface::uses::Uses,
     old_surface: &Surface,
     new_surface: &Surface,
-    notes: &std::collections::BTreeMap<String, String>,
+    notes: &BTreeMap<String, (String, String)>,
 ) -> String {
     let total = uses.items.len();
     let misfits = match uses.fits(new_surface) {
@@ -712,8 +714,10 @@ fn report(
             };
             text.push_str(&format!("      closest now: {}{names}\n", record.id));
         }
-        if let Some(migrate) = notes.get(id) {
-            text.push_str(&format!("      note from the change: \"{migrate}\"\n"));
+        if let Some((build, migrate)) = notes.get(id) {
+            text.push_str(&format!(
+                "      note from the change ({build}): \"{migrate}\"\n"
+            ));
         }
     }
     text
@@ -810,6 +814,7 @@ mod tests {
     use super::*;
     use mod_surface::{Counterparts, Hook, HookContract, HookEngine, HookKind, Side};
     use sunrise_mod_package::manifest::MANIFEST;
+    use sunrise_mod_package::sdk::ChangeNote;
 
     fn hook(id: &str, doc: &str, neoforge: &[&str]) -> Hook {
         Hook::new(
@@ -929,6 +934,13 @@ mod tests {
         }
     }
 
+    fn shipped(build: &str, note: ChangeNote) -> Shipped {
+        Shipped {
+            build: build.into(),
+            note,
+        }
+    }
+
     #[test]
     fn a_content_mods_pin_report_does_not_access_the_sdk() {
         let dir = tempfile::tempdir().unwrap();
@@ -947,18 +959,30 @@ mod tests {
     #[test]
     fn the_pin_report_takes_each_ids_migrate_line() {
         let notes = migrate_notes(&[
-            note(
-                &["method:ServerHost::give_item"],
-                "Parts",
-                Some("items go through Parts under a transaction"),
+            shipped(
+                "newer",
+                note(
+                    &["method:ServerHost::give_item"],
+                    "Parts",
+                    Some("items go through Parts under a transaction"),
+                ),
             ),
-            note(&["hook:x"], "only why", None),
+            shipped("newer", note(&["hook:x"], "only why", None)),
+            shipped(
+                "older",
+                note(
+                    &["method:ServerHost::give_item"],
+                    "first",
+                    Some("older line"),
+                ),
+            ),
         ]);
         assert_eq!(
-            notes
-                .get("method:ServerHost::give_item")
-                .map(String::as_str),
-            Some("items go through Parts under a transaction")
+            notes.get("method:ServerHost::give_item"),
+            Some(&(
+                "newer".to_owned(),
+                "items go through Parts under a transaction".to_owned()
+            ))
         );
         assert_eq!(notes.len(), 1);
     }
@@ -998,10 +1022,13 @@ mod tests {
                 .migrate
                 .is_some_and(|text| !text.trim().is_empty())
         );
-        let notes = migrate_notes(&[note(
-            &[id],
-            "The fixture phase was removed.",
-            Some("switch to the replacement fixture phase"),
+        let notes = migrate_notes(&[shipped(
+            "42c5f70",
+            note(
+                &[id],
+                "The fixture phase was removed.",
+                Some("switch to the replacement fixture phase"),
+            ),
         )]);
         let pinned = |name: &str, build: &str| PinnedSdk {
             name: name.into(),
@@ -1025,7 +1052,7 @@ mod tests {
         );
         assert!(
             text.lines().any(|line| line.trim()
-                == "note from the change: \"switch to the replacement fixture phase\""),
+                == "note from the change (42c5f70): \"switch to the replacement fixture phase\""),
             "{text}"
         );
     }
@@ -1037,11 +1064,13 @@ mod tests {
         let text = diff_text(
             &old,
             &new,
-            "42c5f70",
-            &[note(
-                &["hook:gone"],
-                "It fired twice.",
-                Some("Listen to hook:once."),
+            &[shipped(
+                "42c5f70",
+                note(
+                    &["hook:gone"],
+                    "It fired twice.",
+                    Some("Listen to hook:once."),
+                ),
             )],
         );
         assert!(text.contains("0 breaking without a note"), "{text}");
@@ -1066,6 +1095,123 @@ mod tests {
         assert_eq!(
             closest(&old, &new, "hook:block_broken").map(|r| r.id),
             Some("hook:block_break")
+        );
+    }
+
+    /// A build folder holding only the `sdk.json` of `commit`, which names `previous` and carries `notes`.
+    fn chained(
+        root: &Path,
+        commit: &str,
+        previous: Option<&str>,
+        notes: Vec<ChangeNote>,
+    ) -> PinnedSdk {
+        let dir = root.join(commit);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("surface.json"), r#"{"hash":"ab"}"#).unwrap();
+        let build = sdk::Build {
+            commit: commit.into(),
+            game: sdk::GAME.into(),
+            date: "2026-11-13".into(),
+            nightly: None,
+        };
+        let mut index = Index::of_folder(&dir, build, "1.99.1".into()).unwrap();
+        index.surface.previous = previous.map(str::to_owned);
+        index.surface.notes = notes;
+        std::fs::write(dir.join(sdk::INDEX), index.to_json()).unwrap();
+        PinnedSdk {
+            build: commit.into(),
+            name: format!("name-{}", &commit[..1]),
+            surface: dir.join("surface.json"),
+            dir,
+        }
+    }
+
+    /// Three builds, each carrying one note, the third (`c`) the newest.
+    fn three_builds(root: &Path) -> Vec<PinnedSdk> {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        let c = "c".repeat(40);
+        vec![
+            chained(root, &a, None, vec![note(&["hook:one"], "first", None)]),
+            chained(
+                root,
+                &b,
+                Some(&a),
+                vec![note(&["hook:two"], "second", None)],
+            ),
+            chained(
+                root,
+                &c,
+                Some(&b),
+                vec![note(&["hook:three"], "third", None)],
+            ),
+        ]
+    }
+
+    /// Fetches a build of `builds` by its id, as a release would.
+    fn fetcher(builds: &[PinnedSdk]) -> impl Fn(&str) -> Result<PinnedSdk, String> + '_ {
+        |text| {
+            builds
+                .iter()
+                .find(|b| b.build == text)
+                .map(|b| PinnedSdk {
+                    build: b.build.clone(),
+                    name: b.name.clone(),
+                    dir: b.dir.clone(),
+                    surface: b.surface.clone(),
+                })
+                .ok_or_else(|| format!("no release for {text}"))
+        }
+    }
+
+    fn why_by_build(chain: &sdk_notes::Chain) -> Vec<(&str, &str)> {
+        chain
+            .notes
+            .iter()
+            .map(|s| (s.build.as_str(), s.note.why.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn the_chain_collects_each_hop_and_stops_at_the_older_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let builds = three_builds(dir.path());
+        let chain = sdk_notes::chain(&builds[2], Some(&builds[0].build), fetcher(&builds)).unwrap();
+        assert_eq!(
+            why_by_build(&chain),
+            [("name-c", "third"), ("name-b", "second")]
+        );
+        assert_eq!(chain.stopped, None);
+    }
+
+    #[test]
+    fn the_chain_without_an_older_build_ends_where_it_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let builds = three_builds(dir.path());
+        let chain = sdk_notes::chain(&builds[2], None, fetcher(&builds)).unwrap();
+        assert_eq!(
+            why_by_build(&chain),
+            [
+                ("name-c", "third"),
+                ("name-b", "second"),
+                ("name-a", "first")
+            ]
+        );
+        assert_eq!(chain.stopped, None);
+    }
+
+    #[test]
+    fn the_chain_keeps_its_notes_when_a_build_cannot_be_fetched() {
+        let dir = tempfile::tempdir().unwrap();
+        let builds = three_builds(dir.path());
+        let chain = sdk_notes::chain(&builds[2], None, |text| {
+            Err(format!("no release for {text}"))
+        })
+        .unwrap();
+        assert_eq!(why_by_build(&chain), [("name-c", "third")]);
+        assert!(
+            chain.stopped.is_some_and(|why| why.contains("bbbbbbb")),
+            "names the build it stopped at"
         );
     }
 
