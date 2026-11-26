@@ -33,13 +33,19 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// A stage's code with where each of its lines came from.
+///
+/// `code`, `lines` and `files` are private and stay parallel: `lines` has one [`Origin`] per line
+/// of `code` (`code.split('\n')`) and every origin's file indexes `files`. [`Preprocessed::new`]
+/// and [`Preprocessed::from_source`] are how a stage is built by hand, [`preprocess`] builds the
+/// pack's, and [`Preprocessed::with_code`] and [`Preprocessed::with_declaration`] derive one from
+/// another. The one exception is the stage of a file that could not be read, the
+/// [`Default`]: no code, no lines, no files, and its diagnostic.
 #[derive(Clone, Debug, Default)]
 pub struct Preprocessed {
-    /// The code, one line per entry of `lines`.
-    pub code: String,
-    pub lines: Vec<Origin>,
-    /// The pack paths of the files read, the stage file first.
-    pub files: Vec<String>,
+    code: String,
+    lines: Vec<Origin>,
+    files: Vec<String>,
     /// The stage's `#version`, the first one read (an included file's too): the number and the
     /// profile word, if any.
     pub version: Option<(u32, Option<String>)>,
@@ -53,6 +59,94 @@ pub struct Preprocessed {
 }
 
 impl Preprocessed {
+    /// A stage of `code` whose line `n` (from 0) came from `lines[n]`, a line of `files`' file.
+    /// Refuses a `lines` that is not one origin per line of `code`, or an origin whose file is
+    /// not in `files`.
+    pub fn new(code: String, lines: Vec<Origin>, files: Vec<String>) -> Result<Self, String> {
+        let expected = code.split('\n').count();
+        if lines.len() != expected {
+            return Err(format!(
+                "{} line origins for {expected} lines of code",
+                lines.len()
+            ));
+        }
+        if let Some(origin) = lines.iter().find(|o| o.file as usize >= files.len()) {
+            return Err(format!(
+                "a line of file {} when there are {} files",
+                origin.file,
+                files.len()
+            ));
+        }
+        Ok(Self {
+            code,
+            lines,
+            files,
+            ..Self::default()
+        })
+    }
+
+    /// A stage of `code` read whole from the one file `file`: line `n` of the code is line `n` of
+    /// the file.
+    pub fn from_source(file: &str, code: &str) -> Self {
+        Self {
+            code: code.to_owned(),
+            lines: code
+                .split('\n')
+                .zip(1u32..)
+                .map(|(_, line)| Origin { file: 0, line })
+                .collect(),
+            files: vec![file.to_owned()],
+            ..Self::default()
+        }
+    }
+
+    /// The code, one line per entry of [`Preprocessed::lines`].
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+
+    /// Where each line of the code came from.
+    pub fn lines(&self) -> &[Origin] {
+        &self.lines
+    }
+
+    /// The pack paths of the files read, the stage file first.
+    pub fn files(&self) -> &[String] {
+        &self.files
+    }
+
+    /// This stage with `code` in place of its own, for a rewrite that keeps its lines where they
+    /// are. A line the rewrite added at the end gets [`Origin::default`], and one it removed
+    /// loses its origin.
+    pub(crate) fn with_code(&self, code: String) -> Self {
+        let mut out = self.clone();
+        out.lines
+            .resize(code.split('\n').count(), Origin::default());
+        out.code = code;
+        out
+    }
+
+    /// This stage with `declaration` after its leading directives (`#version`, `#extension`...).
+    /// The inserted lines are Sunrise's own, so they get [`Origin::default`] and every later line
+    /// keeps the pack file and line it came from.
+    pub(crate) fn with_declaration(&self, declaration: &str) -> Self {
+        let mut at = 0;
+        for line in self.code.split_inclusive('\n') {
+            let t = line.trim_start();
+            if !(t.is_empty() || t.starts_with('#')) {
+                break;
+            }
+            at += line.len();
+        }
+        let first = self.code[..at].matches('\n').count().min(self.lines.len());
+        let added = declaration.matches('\n').count() + 1;
+        let mut out = self.clone();
+        out.code = format!("{}{declaration}\n{}", &self.code[..at], &self.code[at..]);
+        out.lines
+            .splice(first..first, std::iter::repeat_n(Origin::default(), added));
+        out
+    }
+
     /// `file:line` of an output line (from 0), for messages.
     pub fn locate(&self, line: usize) -> String {
         let none = (self.file_of(Origin::default()), 0);
@@ -61,7 +155,7 @@ impl Preprocessed {
     }
 
     /// The pack file an origin names: `"?"` for an index outside [`Preprocessed::files`], which
-    /// only a `Preprocessed` built by hand has.
+    /// only an origin of the [`Default`] stage (no files) has.
     pub(crate) fn file_of(&self, origin: Origin) -> &str {
         self.files
             .get(origin.file as usize)
@@ -77,15 +171,14 @@ impl Preprocessed {
 
     /// The stage's own file: the first of [`Preprocessed::files`]. [`preprocess`] always reads it
     /// first; only a stage file that could not be read (refused by its diagnostic before any
-    /// translation) or a `Preprocessed` built by hand has none, and then the name is empty.
+    /// translation) has none, and then the name is empty.
     pub(crate) fn file(&self) -> &str {
         self.files.first().map_or("", String::as_str)
     }
 
     /// An error at output line `line` (from 0), at the pack's file and line it came from. A line
-    /// with no origin is one Sunrise added to the code (a declaration put in, say) after the
-    /// lines were mapped, or one of a `Preprocessed` built by hand: it names the stage file with
-    /// no line, as [`Origin::default`] does for the lines Sunrise writes.
+    /// past the code's last has no origin: it names the stage file with no line, as
+    /// [`Origin::default`] does for the lines Sunrise writes.
     pub(crate) fn error_at_line(&self, line: usize, message: impl Into<String>) -> crate::Error {
         match self.origin_at(line) {
             Some((file, line)) => crate::Error::new(file, line, message),
@@ -638,5 +731,19 @@ mod tests {
             message: why.clone(),
         };
         assert_eq!(p.diagnostics, [refused]);
+    }
+
+    #[test]
+    fn a_stage_is_built_only_with_one_origin_per_line_inside_its_files() {
+        let at = |file, line| Origin { file, line };
+        let files = || vec!["a.fsh".to_owned()];
+        let built = Preprocessed::new("x\ny".into(), vec![at(0, 1), at(0, 2)], files()).unwrap();
+        assert_eq!((built.code(), built.lines().len()), ("x\ny", 2));
+        assert!(Preprocessed::new("x\ny".into(), vec![at(0, 1)], files()).is_err());
+        assert!(Preprocessed::new("x".into(), vec![at(0, 1), at(0, 2)], files()).is_err());
+        assert!(Preprocessed::new("x".into(), vec![at(1, 1)], files()).is_err());
+        let read = Preprocessed::from_source("b.fsh", "x\ny\n");
+        assert_eq!(read.lines(), [at(0, 1), at(0, 2), at(0, 3)]);
+        assert_eq!(read.files(), ["b.fsh"]);
     }
 }
