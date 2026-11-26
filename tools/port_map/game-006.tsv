@@ -53,7 +53,7 @@ LivingEntity.onEffectUpdated	port	crates/sunrise-client/src/game/items/potions.r
 LivingEntity.onEffectsRemoved	port	crates/sunrise-client/src/game/items/potions.rs::Game::apply_effect_status	gap: minor: same as onEffectUpdated, mobs only react to speed and slowness
 LivingEntity.refreshDirtyAttributes	port	crates/sunrise-client/src/game/items/potions.rs::Game::apply_effect_status	modifiers diffed against the applied list each tick (player)
 LivingEntity.dealDefaultKnockback	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	gap: minor: pushed away from the source position; an arrow uses its previous position, vanilla uses its flight direction
-LivingEntity.applyItemBlocking	port	crates/sunrise-client/src/health.rs::Environment::apply_blocking	gap: minor: the player's shield only; a mob holding a shield never blocks
+LivingEntity.applyItemBlocking	port	crates/sunrise-client/src/health/environment.rs::Environment::apply_blocking	gap: minor: the player's shield only; a mob holding a shield never blocks
 LivingEntity.playSecondaryHurtSound	port	crates/sunrise-client/src/game/items/enchant_effects.rs::Game::thorns	enchant.thorns.hit at the attacker
 LivingEntity.resolveMobResponsibleForDamage	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	gap: minor: last_hurt_by comes from any attacker; no #no_anger damage types or wind charge exemption
 LivingEntity.resolvePlayerResponsibleForDamage	inline	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::resolve_player_responsible	a tamed wolf's or cat's hit is its owner's (setLastHurtByPlayer), so the kill drops experience and player-only loot
