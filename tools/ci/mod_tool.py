@@ -11,6 +11,7 @@ The folders are the workspace packages `cargo-sunrise-mod` depends on (normal an
 by `cargo metadata`, so a crate the tool starts to use is watched without anyone editing a list here.
 """
 import argparse
+import ast
 import importlib.util
 import datetime as dt
 import json
@@ -64,8 +65,8 @@ def crates(metadata: dict | None = None) -> list[str]:
 
 
 def build_inputs() -> list[str]:
-    """`BUILD_FILES`, `BUILD_PROGRAM` and every tools/ module it imports, transitively (`from tools import x`,
-    `import x` or `from x import y` where tools/x.py exists), so a module the build starts to use is watched without
+    """`BUILD_FILES`, `BUILD_PROGRAM` and every tools/ module it imports, transitively (`from tools import x`, or
+    `import x` / `from x import y` where tools/x.py exists), so a module the build starts to use is watched without
     anyone editing a list here."""
     found, todo = set(), [BUILD_PROGRAM]
     while todo:
@@ -73,10 +74,15 @@ def build_inputs() -> list[str]:
         if path in found:
             continue
         found.add(path)
-        for line in (ROOT / path).read_text().splitlines():
-            if not (match := re.match(r"\s*(?:from tools import ([\w, ]+)|import (\w+)|from (\w+) import)", line)):
+        for node in ast.walk(ast.parse((ROOT / path).read_text())):
+            if isinstance(node, ast.ImportFrom) and node.module == "tools":
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                names = [node.module]
+            elif isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            else:
                 continue
-            names = match.group(1).replace(" ", "").split(",") if match.group(1) else [match.group(2) or match.group(3)]
             todo.extend(f"tools/{name}.py" for name in names if (ROOT / f"tools/{name}.py").is_file())
     return sorted({*BUILD_FILES, *found})
 
