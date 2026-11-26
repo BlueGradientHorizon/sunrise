@@ -1349,7 +1349,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Dispatch a typed or IME-committed character to the focused mounted widget.
-    pub(in crate::game::client_side) fn mounted_widget_char_typed(
+    pub fn mounted_widget_char_typed(
         &mut self,
         c: char,
         modifiers: u32,

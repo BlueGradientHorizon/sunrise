@@ -40,7 +40,7 @@ pub(in crate::game) struct CreditLoan<'a> {
 }
 
 impl CreditPlan {
-    pub(in crate::game) fn lend(self, players: &mut HashMap<u32, PlayerCredit>) -> CreditLoan<'_> {
+    pub fn lend(self, players: &mut HashMap<u32, PlayerCredit>) -> CreditLoan<'_> {
         CreditLoan {
             plan: self,
             players,

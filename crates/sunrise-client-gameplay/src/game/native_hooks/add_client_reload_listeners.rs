@@ -6,7 +6,7 @@ pub(in crate::game) fn native_add_client_reload_listeners(
     context: &dyn mod_api::ClientReloadListenerContext,
     register: impl FnMut(&mut dyn FnMut(&mut dyn mod_api::ClientReloadListeners) -> bool),
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_add_client_reload_listeners(context, register);
+    crate::game::native_hooks::fire::fire_add_client_reload_listeners(context, register);
 }
 
 /// The hook points. Each does nothing in Sunrise.

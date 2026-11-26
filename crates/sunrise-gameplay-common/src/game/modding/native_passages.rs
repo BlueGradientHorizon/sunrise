@@ -50,8 +50,8 @@ pub(crate) struct Passages {
 
 #[derive(Default)]
 pub(in crate::game) struct LevelPassages {
-    pub(in crate::game) count: u32,
-    pub(in crate::game) chunks: FxHashMap<[i32; 2], Vec<(PassageId, Passage)>>,
+    pub count: u32,
+    pub chunks: FxHashMap<[i32; 2], Vec<(PassageId, Passage)>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,7 +101,7 @@ impl Passages {
 
     /// A new hub (the LAN opened again) records the chunks it sends from its start while a
     /// passage lives, so a chunk it sends before the next `flush_passages` carries them.
-    pub(in crate::game) fn record_on(&self, hub: &mut sunrise_sim::lan::hub::Hub) {
+    pub fn record_on(&self, hub: &mut sunrise_sim::lan::hub::Hub) {
         if !self.index.is_empty() {
             hub.chunk_watches.record_for_passages();
         }

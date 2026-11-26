@@ -138,16 +138,16 @@ pub(in crate::game) const PLAYER_OFF_LIMITS: &str = "map/decorations/player_off_
 pub(in crate::game) struct Holder {
     pub(in crate::game) who: u32,
     /// The last tick it carried the map, and saw it framed.
-    pub(in crate::game) carried: i64,
+    pub carried: i64,
     pub(in crate::game) framed: i64,
-    pub(in crate::game) step: i32,
+    pub step: i32,
     /// The changed pixels' box (min x, min y, max x, max y).
     pub(in crate::game) dirty: Option<[i32; 4]>,
     pub(in crate::game) decorations: bool,
     pub(in crate::game) tick: u32,
     /// Wore map invisibility gear on its last tick
     /// (`MapItemSavedData.hasMapInvisibilityItemEquipped`).
-    pub(in crate::game) invisible: bool,
+    pub invisible: bool,
 }
 impl Holder {
     pub(in crate::game) fn new(who: u32) -> Self {

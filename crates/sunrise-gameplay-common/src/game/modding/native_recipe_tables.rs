@@ -21,7 +21,7 @@ pub(in crate::game) type RecipeUpdate =
     Result<(Vec<(String, serde_json::Value)>, Vec<String>), String>;
 impl IncomingRecipes {
     /// Take one part; the finished update on the last.
-    pub(in crate::game) fn push(
+    pub fn push(
         &mut self,
         part: sunrise_sim::lan::recipes::ContentPart,
     ) -> Option<RecipeUpdate> {

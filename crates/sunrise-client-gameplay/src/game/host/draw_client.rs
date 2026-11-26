@@ -250,7 +250,7 @@ impl<'a, 'g> GameCameraDrawContext<'a, 'g> {
 impl<'a, 'g> GameDrawContext<'a, 'g> {
     pub(crate) fn new(
         game: &'a crate::game::ClientGame<'g>,
-        surface: &'a mut crate::hud::HudBatch,
+        surface: &'a mut sunrise_client_render::hud::HudBatch,
     ) -> Self {
         Self {
             game,
@@ -262,7 +262,7 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
     /// Lend a fresh clip stack and isolate the drawable tail of one listener.
     pub(crate) fn stage(
         game: &crate::game::ClientGame<'_>,
-        surface: &mut crate::hud::HudBatch,
+        surface: &mut sunrise_client_render::hud::HudBatch,
         listen: &mut dyn FnMut(&mut dyn DrawContext) -> bool,
     ) {
         let counts = (

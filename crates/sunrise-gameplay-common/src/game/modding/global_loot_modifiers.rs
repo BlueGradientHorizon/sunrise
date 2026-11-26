@@ -19,7 +19,7 @@ use sunrise_world::{
 
 pub struct Serializers(HashMap<String, Arc<dyn GlobalLootModifierSerializer>>);
 impl Serializers {
-    pub(super) fn capture() -> Self {
+    pub fn capture() -> Self {
         Self(
             mod_api::__private::global_loot_modifier_serializer_declarations()
                 .into_iter()

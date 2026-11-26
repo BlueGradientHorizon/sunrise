@@ -37,7 +37,7 @@ pub struct FurnaceMenuEffects {
 }
 
 impl GuestMenuEffects {
-    pub(in crate::game) fn dropped(dropped: Vec<ItemStack>) -> Self {
+    pub fn dropped(dropped: Vec<ItemStack>) -> Self {
         Self {
             dropped,
             ..Self::default()
@@ -149,9 +149,9 @@ pub struct Journal {
     pub windows: HashMap<u32, KeptMerchantWindow>,
     pub mobs: HashMap<u32, Box<KeptMerchantMob>>,
     pub sequences: Option<sunrise_items::random_sequences::RandomSequences>,
-    pub(in crate::game) active: Option<u32>,
-    pub(in crate::game) correct_on_abort: std::collections::BTreeSet<(u32, i32)>,
-    pub(in crate::game) refused_clicks: std::collections::BTreeSet<(u32, i32)>,
+    pub active: Option<u32>,
+    pub correct_on_abort: std::collections::BTreeSet<(u32, i32)>,
+    pub refused_clicks: std::collections::BTreeSet<(u32, i32)>,
 }
 
 pub enum Effect {

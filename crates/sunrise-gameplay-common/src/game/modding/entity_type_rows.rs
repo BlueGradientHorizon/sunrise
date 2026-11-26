@@ -67,7 +67,7 @@ impl EntityTypeRows {
         self.ids.binary_search_by(|t| t.as_str().cmp(id)).is_ok()
     }
     /// `EntityType.getDimensions()` of `id`: its width, height and eye height.
-    pub(in crate::game) fn dimensions(&self, id: &str) -> Option<[f32; 3]> {
+    pub fn dimensions(&self, id: &str) -> Option<[f32; 3]> {
         let i = self
             .dimensions
             .binary_search_by(|(t, _)| t.as_str().cmp(id))

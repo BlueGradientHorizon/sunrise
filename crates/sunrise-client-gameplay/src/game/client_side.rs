@@ -1287,7 +1287,7 @@ pub(in crate::game) struct ClientState {
     /// (`Minecraft.lastActiveTime`: pausing waits 500 ms).
     pub(in crate::game::client_side) focus_lost: Option<Instant>,
     /// The keyboard's modifier state (`KeyEvent.modifiers`).
-    pub(in crate::game::client_side) modifiers: winit::keyboard::ModifiersState,
+    pub modifiers: winit::keyboard::ModifiersState,
     /// The window's fullscreen request and reported state.
     pub(in crate::game::client_side) fullscreen: sunrise_client::window::FullscreenState,
     /// MouseHandler's accumulated look and wheel state.
@@ -2234,7 +2234,7 @@ impl ClientState {
 #[cfg(feature = "client")]
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ClientOnly<T>(pub(in crate::game::client_side) T);
+pub(in crate::game) struct ClientOnly<T>(pub T);
 
 #[cfg(feature = "client")]
 #[allow(dead_code)]

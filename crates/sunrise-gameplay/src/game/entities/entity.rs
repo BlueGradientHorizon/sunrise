@@ -680,7 +680,7 @@ macro_rules! define_server_entity_handles {
         /// Every list moved out of `Game`, for [`for_each_entity_mut`]: the
         /// world stays readable while the entities change.
         pub(in crate::game) struct TakenEntities {
-            $(pub(in crate::game) $field: sunrise_sim::join_seq::JoinList<$ty, { $crate::game::entity::direct_entity_edit!($kind) }>,)*
+            $(pub(in crate::game) $field: sunrise_sim::join_seq::JoinList<$ty, { sunrise_gameplay_common::game::entity::direct_entity_edit!($kind) }>,)*
         }
 
 

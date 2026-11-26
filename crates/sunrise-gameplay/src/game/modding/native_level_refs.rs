@@ -429,7 +429,7 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         hit: BlockHit,
     ) -> Option<BlockTransformPreview> {
-        use super::native_server::PlayerRead;
+        use sunrise_gameplay_common::game::native_server::PlayerRead;
         let world = self.native_level_read_world(level)?;
         if level.dimension() != self.common.dim.key()
             || !world.is_loaded_at(pos[0], pos[1], pos[2])

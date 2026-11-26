@@ -976,15 +976,15 @@ pub struct GameLevel<'w> {
     /// Every entity on the walk; see `entity::for_each_entity`.
     other_entities: entity::EntityLists<'w>,
     /// End crystals, which aren't on the walk yet.
-    crystals: &'w [dragon_common::Crystal],
+    pub crystals: &'w [dragon_common::Crystal],
     /// The fishing hooks here, which aren't on the walk either. None ignores
     /// block triggers, so each counts on a plate or tripwire. The flag says
     /// whether it also reaches `entityInside` (`applyEffectsFromBlocks`): not
     /// a hook on an entity, whose tick skips that step.
-    trigger_hooks: Vec<(Aabb, bool)>,
+    pub trigger_hooks: Vec<(Aabb, bool)>,
     /// The lightning bolts here: none ignores block triggers
     /// (`Entity.isIgnoringBlockTriggers`).
-    trigger_extras: Vec<Aabb>,
+    pub trigger_extras: Vec<Aabb>,
     biomes: &'w Biomes,
     /// `BiomeManager`'s zoom over this level's seed, for `biome_name`.
     biome_zoom: sunrise_core::biome::BiomeZoom,
@@ -1010,7 +1010,7 @@ pub struct GameLevel<'w> {
     pub spill: &'w mut spill_common::Spill,
     /// Where the chunk tickets let blocks tick.
     tickets: sunrise_sim::ticket_levels::Levels,
-    random_tick_sections: &'w mut sunrise_sim::random_tick_sections::RandomTickSections,
+    pub random_tick_sections: &'w mut sunrise_sim::random_tick_sections::RandomTickSections,
     /// Players with each chest open (a trapped chest's signal), also what a
     /// recount of the openers replaces (`ContainerOpenersCounter.recheckOpeners`).
     lid_openers: &'w mut HashMap<(i32, i32, i32), i32>,
@@ -1040,7 +1040,7 @@ pub struct GameLevel<'w> {
     pub drop_entity: Option<mod_api::EntityRef>,
     /// `LootContextParams.INTERACTING_ENTITY` of a block-interaction drop: the
     /// player whose click `use_without_item` runs for.
-    interacting: Option<sunrise_world::loot::LootEntity>,
+    pub interacting: Option<sunrise_world::loot::LootEntity>,
     /// What a location predicate of such a drop reads beyond the level's own
     /// fields (`blocks::location_world`).
     location: location_world::LocationRefs<'w>,
@@ -1109,7 +1109,7 @@ pub fn server_only_block_use(
 }
 impl GameLevel<'_> {
     /// `LilyPadBlock.entityInside`: the boxes of the boats that can break a pad.
-    fn boat_trigger_boxes(&self) -> impl Iterator<Item = Aabb> + '_ {
+    pub fn boat_trigger_boxes(&self) -> impl Iterator<Item = Aabb> + '_ {
         self.entities().boats.iter().map(boats_common::Boat::bounds)
     }
     /// How many entities in `area` press plates and tripwires, or with
@@ -1201,7 +1201,7 @@ pub struct FallingBlock {
     /// its motion to the clients tracking it after its next update.
     pub sync_velocity: bool,
     /// `Entity.stuckSpeedMultiplier`: a cobweb it is in scales its next move.
-    stuck: Vec3,
+    pub stuck: Vec3,
     pub damage: sunrise_sim::falling_block::Damage,
     /// The UUID and compound it was loaded with, kept while it moves.
     pub saved: Option<Box<([i32; 4], sunrise_core::nbt::Tag)>>,
@@ -1278,11 +1278,11 @@ pub struct Resources {
 }
 
 pub struct WorldCore {
-    item_data: Arc<sunrise_world::item_defaults::ItemData>,
+    pub item_data: Arc<sunrise_world::item_defaults::ItemData>,
     facts: BlockFacts,
     biomes: Arc<Biomes>,
     environment: Environment,
-    collision: Arc<BlockCollisionRegistry<'static>>,
+    pub collision: Arc<BlockCollisionRegistry<'static>>,
     motion: MotionResources,
     suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
     spawn_registries: sunrise_sim::mobs::finalize::SpawnRegistries,
@@ -1299,11 +1299,11 @@ pub struct WorldRest {
     living_type_keys: sunrise_sim::health::LivingTypeKeys,
     mob_data: sunrise_sim::mobs::MobData,
     /// Complete pre-creation facts for the registered entity types.
-    spawner_types: HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
+    pub spawner_types: HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
     providers: Providers,
     nether_environment: Environment,
     end_environment: Environment,
-    behaviours: Arc<Behaviours>,
+    pub behaviours: Arc<Behaviours>,
     stations: sunrise_sim::stations::StationData,
 }
 
@@ -1317,16 +1317,16 @@ pub struct WorldTables {
     /// The pack files the tables were built from (a native mod's among
     /// them), for the advancement tree reload and the loot data.
     pub files: Vec<(String, Vec<Vec<u8>>)>,
-    priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
+    pub priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
     pub items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
-    packed_registries: Arc<sunrise_sim::lan::data::PackRegistryDefinitions>,
+    pub packed_registries: Arc<sunrise_sim::lan::data::PackRegistryDefinitions>,
     pub(in crate::game) providers: Providers,
     pub loot: Arc<sunrise_world::loot::LootData>,
     pub loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     pub recipes: Recipes,
     pub stations: sunrise_sim::stations::StationData,
-    reload_sources: Option<Arc<sunrise_sim::crafting::ResolvedSources>>,
+    pub reload_sources: Option<Arc<sunrise_sim::crafting::ResolvedSources>>,
     /// The values of the data map types native mods registered (`native_data_map_types`).
     pub data_maps: native_data_maps_common::DataMaps,
     /// Pack tags used by advancement predicates and built-in data maps
@@ -1345,7 +1345,7 @@ pub use condition_reload_state::PreparedWorldReload;
 
 impl WorldTables {
     /// The registries [`WorldTables::pack_tags`] holds.
-    const PACK_TAG_REGISTRIES: [&'static str; 2] = ["worldgen/biome", "worldgen/structure"];
+    pub const PACK_TAG_REGISTRIES: [&'static str; 2] = ["worldgen/biome", "worldgen/structure"];
 }
 
 /// The equipment slot of `armor[index]`: head, chest, legs, feet.
@@ -1480,14 +1480,14 @@ impl ResizeState {
 /// phase returns an error.
 #[derive(Default)]
 pub struct TickScratch {
-    ticking: Vec<(i32, i32)>,
-    inside: Vec<BlockPos>,
-    standing: Vec<(BlockPos, bool, f64)>,
-    boat_cells: Vec<BlockPos>,
-    touched: Vec<BlockPos>,
-    sensing: Vec<BlockPos>,
-    rest: Vec<BlockPos>,
-    later: Vec<BlockPos>,
+    pub ticking: Vec<(i32, i32)>,
+    pub inside: Vec<BlockPos>,
+    pub standing: Vec<(BlockPos, bool, f64)>,
+    pub boat_cells: Vec<BlockPos>,
+    pub touched: Vec<BlockPos>,
+    pub sensing: Vec<BlockPos>,
+    pub rest: Vec<BlockPos>,
+    pub later: Vec<BlockPos>,
 }
 
 #[allow(dead_code)]
@@ -1864,7 +1864,7 @@ impl Dim {
     }
     /// `Level.getSeaLevel` of the level: the sea level its noise settings give a mod's level, else
     /// the built-in level's.
-    fn sea_level(self) -> i32 {
+    pub fn sea_level(self) -> i32 {
         Self::sea_level_of_id(self.id())
     }
     /// [`Self::sea_level`] of the level `id` names.

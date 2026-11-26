@@ -1,6 +1,6 @@
 // Shared state, helpers and mixed tests stay at the original LAN action scope.
 
-pub(in crate::game) const RECIPE_CHECK_COST: u32 = 1;
+pub const RECIPE_CHECK_COST: u32 = 1;
 pub const RECIPE_CHECK_LIMIT: u32 = 10;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuOpen {

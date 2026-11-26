@@ -87,7 +87,7 @@ impl crate::game::CommonGame<'_> {
 
     /// `LivingEntity.canFreeze`'s armor half: any worn piece in
     /// `freeze_immune_wearables`.
-    pub(crate) fn wears_freeze_immune(&self) -> bool {
+    pub fn wears_freeze_immune(&self) -> bool {
         let immune = self
             .res
             .items()

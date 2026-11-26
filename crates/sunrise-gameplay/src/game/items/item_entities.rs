@@ -22,7 +22,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
-    pub(in crate::game::server_side) fn joined_during_entity_pass(&self, id: u32) -> bool {
+    pub fn joined_during_entity_pass(&self, id: u32) -> bool {
         id > self.server.ticked_entities_through || self.server.contact_drops.contains(&id)
     }
     pub(in crate::game) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {

@@ -544,7 +544,7 @@ macro_rules! define_entity_handles {
 
             /// Visits every entity once in join order. On authoritative lists, tick passes
             /// can reorder storage; report any such list rather than taking it as join order.
-            pub(in crate::game) fn walk_in_join_order(
+            pub fn walk_in_join_order(
                 self,
                 mut visit: impl FnMut(EntityHandle, JoinSeq),
             ) -> Result<(), JoinOrderError> {
@@ -1504,7 +1504,7 @@ impl Entity for ThrownTrident {
 impl<'w> EntityLists<'w> {
     /// Non-player, non-mob boxes with `Entity.blocksBuilding`. The block level
     /// supplies its minecart snapshot; the mob level reads the live cart boxes.
-    pub(in crate::game) fn non_mob_building_blocker_boxes(
+    pub fn non_mob_building_blocker_boxes(
         self,
         carts: impl Iterator<Item = Aabb> + 'w,
         crystals: &'w [dragon_common::Crystal],

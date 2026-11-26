@@ -102,7 +102,7 @@ impl PrimedTnt {
     /// water, each step down is narrowed to a float before it adds to the
     /// fall; landing forgets it. Returns whether it landed after a fall, when
     /// the caller posts HIT_GROUND.
-    pub(in crate::game) fn check_fall_damage(&mut self, moved_y: f64) -> bool {
+    pub fn check_fall_damage(&mut self, moved_y: f64) -> bool {
         if !self.in_water && moved_y < 0.0 {
             self.fall_distance -= f64::from(moved_y as f32);
         }
@@ -117,7 +117,7 @@ impl PrimedTnt {
     /// snow and cobwebs it went through make it stuck, a bubble column lifts or
     /// drags it, and slime it stands on slows it, first. Returns the columns it
     /// is at the top of, which send their surface particles.
-    pub(in crate::game) fn apply_effects_from_blocks(
+    pub fn apply_effects_from_blocks(
         &mut self,
         motion: sunrise_sim::motion::BodyMotion<'_>,
         registry: &sunrise_world::registry::BlockRegistry,
@@ -175,7 +175,7 @@ impl PrimedTnt {
     }
     /// Client prediction and isolated physics tests have no server landing effects.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn tick_among(
+    pub fn tick_among(
         &mut self,
         world: &sunrise_level::world::World,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
@@ -211,7 +211,7 @@ impl PrimedTnt {
         self.finish_tick(motion, assets, fluids, recorded.then_some(movement.wanted))
     }
 
-    pub(in crate::game) fn move_before_fall(
+    pub fn move_before_fall(
         &mut self,
         motion: sunrise_sim::motion::BodyMotion<'_>,
         border: Option<&sunrise_core::geometry::border::BorderGeometry>,
@@ -297,7 +297,7 @@ impl PrimedTnt {
         )
     }
 
-    pub(in crate::game) fn move_restitution(
+    pub fn move_restitution(
         &self,
         motion: sunrise_sim::motion::BodyMotion<'_>,
         movement: sunrise_sim::motion::BodyMove,
@@ -312,7 +312,7 @@ impl PrimedTnt {
         )
     }
 
-    pub(in crate::game) fn finish_tick(
+    pub fn finish_tick(
         &mut self,
         motion: sunrise_sim::motion::BodyMotion<'_>,
         assets: &sunrise_level::assets::Assets,

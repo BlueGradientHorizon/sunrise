@@ -649,7 +649,7 @@ impl crate::game::ClientGame<'_> {
     /// up (`pad_synthetic_event`), not the window's. A controller's click or
     /// a focused widget's is not the mouse, so the native mods' mouse hooks
     /// skip it.
-    pub(in crate::game::client_side) fn pad_synthetic_input(&self) -> bool {
+    pub fn pad_synthetic_input(&self) -> bool {
         self.client.pad.0.menu.synthetic
     }
 

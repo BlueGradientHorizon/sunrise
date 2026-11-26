@@ -4,7 +4,7 @@ use mod_api::BlockMetadata;
 pub use sunrise_command::args::BlockInput;
 pub use sunrise_world::registry::BlockStateId;
 
-pub(in crate::game) struct PreparedBlockEdit {
+pub struct PreparedBlockEdit {
     pub(in crate::game) palette: Vec<u32>,
     pub(in crate::game) filters: Vec<BlockInput>,
 }

@@ -1,7 +1,7 @@
 /// First writes to each field, independently: moving an item need not clone its stack.
 #[derive(Default)]
 pub struct KeptItemEntity {
-    pub(in crate::game) stack: Option<ItemStack>,
+    pub stack: Option<ItemStack>,
     pub pickup_delay: Option<i64>,
     pub target: Option<Option<[i32; 4]>>,
     pub velocity: Option<Vec3>,
@@ -15,7 +15,7 @@ impl KeptItemEntity {
         self.velocity = self.velocity.or(child.velocity);
     }
 
-    pub(in crate::game) fn restore(self, item: &mut sunrise_sim::entities::ItemEntity) {
+    pub fn restore(self, item: &mut sunrise_sim::entities::ItemEntity) {
         if let Some(stack) = self.stack {
             item.stack = stack;
         }

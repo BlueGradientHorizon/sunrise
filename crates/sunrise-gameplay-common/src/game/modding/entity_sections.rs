@@ -33,7 +33,7 @@
 #[path = "entity_sections/observer_cache.rs"]
 pub(in crate::game) mod observer_cache;
 #[path = "entity_sections/player.rs"]
-pub(in crate::game) mod player;
+pub mod player;
 #[allow(unused_imports)]
 pub(in crate::game) use player::PlayerSectionObserver;
 
@@ -89,17 +89,17 @@ pub(in crate::game) struct EntitySections {
     /// A telling is under way: a listener's moves wait for the next one.
     pub(in crate::game) busy: bool,
     /// The mobs' position updates during their family's tick; kept for its capacity.
-    pub(in crate::game) ticked: Vec<PositionWrite>,
+    pub ticked: Vec<PositionWrite>,
     /// Mobs that crossed into another section during their family's tick, in the order of the
     /// writes; told to the residency table once the pass has its rows back. Kept for its capacity.
-    pub(in crate::game) entered: Vec<(u32, [f64; 3])>,
+    pub entered: Vec<(u32, [f64; 3])>,
     /// A projectile row is lent during its individual tick. Position reads during its write
     /// boundary use this value until the row is restored.
     pub(in crate::game) write_position: Option<(u32, [f64; 3])>,
     /// Projectile ids seen by the current pass; kept to forget rows removed during settlement.
-    pub(in crate::game) projectile_ids: Vec<u32>,
+    pub projectile_ids: Vec<u32>,
     /// Projectile ids resident after settlement; kept to avoid a fresh set per pass.
-    pub(in crate::game) projectile_live: sunrise_level::fast_hash::FxHashSet<u32>,
+    pub projectile_live: sunrise_level::fast_hash::FxHashSet<u32>,
 }
 
 impl EntitySections {
@@ -126,7 +126,7 @@ impl EntitySections {
     /// that is a crossing. One not filed in this level yet (it changed level, or its join is
     /// still to be told) is filed where it was, `from` when the boundary knows it, so a move
     /// before its join is told is a crossing too; otherwise it is filed untold.
-    pub(in crate::game) fn moved(
+    pub fn moved(
         &mut self,
         scope: Scope,
         id: u32,

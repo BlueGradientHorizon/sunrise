@@ -72,7 +72,7 @@ impl Drop for PlayerSectionPass<'_> {
 }
 
 impl PlayerSectionScope {
-    pub(in crate::game) fn begin(self, lifecycle: &mut NativeLifecycle) -> PlayerSectionPass<'_> {
+    pub fn begin(self, lifecycle: &mut NativeLifecycle) -> PlayerSectionPass<'_> {
         let observer = lifecycle
             .player_section_observer
             .get_or_insert_with(Default::default);

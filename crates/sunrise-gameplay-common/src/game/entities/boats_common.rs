@@ -1329,7 +1329,7 @@ impl Boat {
         &self.type_names[usize::from(self.chest)]
     }
 
-    pub(in crate::game) fn shared_type_name(&self) -> Arc<str> {
+    pub fn shared_type_name(&self) -> Arc<str> {
         Arc::clone(&self.type_names[usize::from(self.chest)])
     }
 }

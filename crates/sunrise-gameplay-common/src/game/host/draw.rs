@@ -15,7 +15,7 @@ pub fn font_id_str(id: &mod_api::Identifier) -> std::borrow::Cow<'static, str> {
 /// Engine font view lent to [`ClientTooltipComponent`] and `render_tooltip_pre`.
 pub struct EngineTooltipFont<'a> {
     pub(in crate::game) font: &'a sunrise_client::font::Font,
-    pub(in crate::game) id: &'a Identifier,
+    pub id: &'a Identifier,
     pub(in crate::game) name: std::borrow::Cow<'static, str>,
 }
 /// `Font.lineHeight`: nine GUI pixels a line, before `scale`.

@@ -139,7 +139,7 @@ impl ExactSizeIterator for Slots<'_> {}
 
 /// State-level container queries shared by the game and comparator signals.
 pub struct Containers<'a> {
-    pub(in crate::game) world: &'a World,
+    pub world: &'a World,
     pub(in crate::game) behaviours: &'a Behaviours,
     pub(in crate::game) items: &'a Items,
     pub(in crate::game) registry: &'static sunrise_world::registry::BlockRegistry,
@@ -260,7 +260,7 @@ impl PlacementAttempt {
         allowed
     }
 
-    pub(in crate::game) fn wrote_entity(&mut self) {
+    pub fn wrote_entity(&mut self) {
         self.entity = None;
     }
 }
@@ -594,7 +594,7 @@ impl Containers<'_> {
         }
         self.insertion_room(view, slot, stack)
     }
-    pub(in crate::game) fn insertion_room(
+    pub fn insertion_room(
         &self,
         view: &View,
         slot: usize,

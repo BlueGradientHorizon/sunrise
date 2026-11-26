@@ -208,7 +208,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    pub(in crate::game::client_side) fn client_pick_entity_reach(
+    pub fn client_pick_entity_reach(
         &self,
         direction: [f64; 3],
     ) -> f64 {
@@ -223,7 +223,7 @@ impl crate::game::ClientGame<'_> {
     /// `AttackRange.getClosesetHit` plus `LocalPlayer.filterHitResult` on block hits:
     /// preserves entity hits, in-range block hits, and misses separately so block hits
     /// do not fall back to the plain `LocalPlayer.pick` ray.
-    pub(in crate::game::client_side) fn attack_range_pick_result(
+    pub fn attack_range_pick_result(
         &self,
         range: &serde_json::Value,
     ) -> super::pick_entity::AttackRangePickResult {

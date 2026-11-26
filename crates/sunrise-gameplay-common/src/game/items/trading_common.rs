@@ -7,11 +7,11 @@ pub struct MerchantState {
     /// selection hint and active offer (`sunrise_client::merchant::Session`).
     pub session: Box<merchant::Session>,
     /// The offer list's scroll offset.
-    pub(in crate::game) scroll: usize,
+    pub scroll: usize,
     /// The scroller is held by the mouse (`isDragging`).
-    pub(in crate::game) dragging: bool,
+    pub dragging: bool,
     /// The offer button that keeps focus after a click (drawn highlighted).
-    pub(in crate::game) focused: Option<usize>,
+    pub focused: Option<usize>,
     /// The trading mob (its offers and experience are written back on
     /// close) and its custom name.
     pub mob: Option<u32>,
@@ -42,7 +42,7 @@ pub fn merchant_display_name(progress: bool, profession: &str, custom: Option<Te
 
 impl MerchantState {
     /// `Merchant.showProgressBar`: villagers only.
-    pub(in crate::game) fn progress(&self) -> bool {
+    pub fn progress(&self) -> bool {
         self.session.show_progress()
     }
 }

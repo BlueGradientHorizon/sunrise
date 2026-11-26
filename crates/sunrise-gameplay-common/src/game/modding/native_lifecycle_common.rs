@@ -47,9 +47,9 @@ pub enum OpenState {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) struct OpenAttempt {
-    pub(in crate::game) authority: Authority,
+    pub authority: Authority,
     pub(in crate::game) epoch: u64,
-    pub(in crate::game) session: OpenState,
+    pub session: OpenState,
     pub(in crate::game) ticks: u64,
     /// A tick started and its end has not fired (or the tick errored).
     pub(in crate::game) tick_open: bool,
@@ -81,7 +81,7 @@ pub struct NativeLifecycle {
     pub(in crate::game) tasks: ScheduledTasks,
     /// The section `entity_entering_section` files each entity under, for this epoch's world.
     pub(in crate::game) entity_sections: super::entity_sections::EntitySections,
-    pub(in crate::game) section_observer: super::entity_sections::observer_cache::ObserverCache,
+    pub section_observer: super::entity_sections::observer_cache::ObserverCache,
     pub(in crate::game) player_section_observer:
         Option<std::rc::Rc<super::entity_sections::PlayerSectionObserver>>,
     /// Tossed item entities `item_toss` is still asking about, innermost last: a join flush

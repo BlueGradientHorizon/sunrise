@@ -125,7 +125,7 @@ pub struct ModsState {
         Arc<std::sync::OnceLock<Result<crate::game::load_conditions::ConditionTable, String>>>,
     pub(in crate::game) profession_declarations:
         Arc<std::sync::OnceLock<Vec<(String, mod_api::ProfessionDefinition)>>>,
-    pub(in crate::game) loot_modifier_serializers:
+    pub loot_modifier_serializers:
         Arc<std::sync::OnceLock<super::global_loot_modifiers::Serializers>>,
     /// Saved switches gate the first data inventory while registration keeps
     /// its existing startup ordering. Runtime dispatch owns later switches.
@@ -2152,7 +2152,7 @@ pub(in crate::game) fn collect_cauldron_fluid_contents(
 }
 
 /// Registered callbacks indexed directly by the slots resolved in enchantment content.
-pub(in crate::game) static ENCHANTMENT_DAMAGE_EFFECTS: std::sync::OnceLock<
+pub static ENCHANTMENT_DAMAGE_EFFECTS: std::sync::OnceLock<
     Vec<std::sync::Arc<dyn mod_api::EnchantmentDamageEffect>>,
 > = std::sync::OnceLock::new();
 

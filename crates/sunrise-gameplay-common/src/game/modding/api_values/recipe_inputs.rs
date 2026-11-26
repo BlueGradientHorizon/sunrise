@@ -4,7 +4,7 @@ use sunrise_items::items::Items;
 
 /// Validate registry membership once while retaining the registry's shared item identity.
 /// Counts and damage are API values, not attempted inventory writes.
-pub(in crate::game) fn stack(
+pub fn stack(
     value: &ApiStack,
     items: &Items,
 ) -> Result<EngineStack, StackWriteError> {

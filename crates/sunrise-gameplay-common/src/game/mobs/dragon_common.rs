@@ -345,13 +345,13 @@ pub struct Path {
     pub(in crate::game) next: usize,
 }
 impl Path {
-    pub(in crate::game) fn done(&self) -> bool {
+    pub fn done(&self) -> bool {
         self.next >= self.nodes.len()
     }
     pub fn advance(&mut self) {
         self.next += 1;
     }
-    pub(in crate::game) fn next_pos(&self) -> [i32; 3] {
+    pub fn next_pos(&self) -> [i32; 3] {
         self.nodes[self.next]
     }
 }
@@ -413,7 +413,7 @@ impl PartialEq for PathBox {
 }
 impl Phase {
     /// `EnderDragonPhase` ids.
-    pub(in crate::game) fn id(&self) -> i32 {
+    pub fn id(&self) -> i32 {
         match self {
             Self::Holding { .. } => 0,
             Self::Strafe { .. } => 1,
@@ -466,7 +466,7 @@ impl Phase {
             },
         }
     }
-    pub(in crate::game) fn sitting(&self) -> bool {
+    pub fn sitting(&self) -> bool {
         matches!(
             self,
             Self::Scanning { .. }
@@ -475,7 +475,7 @@ impl Phase {
                 | Self::Hover { .. }
         )
     }
-    pub(in crate::game) fn target(&self) -> Option<Vec3> {
+    pub fn target(&self) -> Option<Vec3> {
         match self {
             Self::Holding { target, .. }
             | Self::Strafe { target, .. }
@@ -488,7 +488,7 @@ impl Phase {
             _ => None,
         }
     }
-    pub(in crate::game) fn fly_speed(&self) -> f32 {
+    pub fn fly_speed(&self) -> f32 {
         match self {
             Self::Landing { .. } => 1.5,
             Self::Charging { .. } | Self::Dying { .. } => 3.0,
@@ -537,7 +537,7 @@ pub struct Dragon {
     /// The phase left was `Flaming` (`DragonSittingFlamingPhase.end`) and its
     /// cloud is still to be discarded.
     pub flame_ended: bool,
-    pub(in crate::game) flame_count: i32,
+    pub flame_count: i32,
     pub sitting_damage: f32,
     /// `LivingEntity.equipment`: nothing in the fight reads it; it is kept
     /// for mods and saves.
@@ -650,7 +650,7 @@ impl Crystal {
 
 impl Dragon {
     /// `Entity.teleportSetPosition` with the command's relative motion flags.
-    pub(in crate::game) fn teleport_motion(&mut self, relative: [bool; 3]) {
+    pub fn teleport_motion(&mut self, relative: [bool; 3]) {
         self.velocity = super::commands_common::teleport_velocity(self.velocity, relative, false);
     }
     /// `EnderDragon`'s constructor: full health, hovering (`EnderDragonPhase.HOVERING`). Only
@@ -725,7 +725,7 @@ impl Dragon {
         self.health > 0.0
     }
     /// `isDeadOrDying` for the killing blow: the dying flight, or no health.
-    pub(in crate::game) fn down(&self) -> bool {
+    pub fn down(&self) -> bool {
         matches!(self.phase, Phase::Dying { .. }) || !self.alive()
     }
     /// The entity's own box, not any of the separate `EnderDragonPart` boxes.
@@ -750,7 +750,7 @@ impl Dragon {
         )
     }
     /// Whether the phase, part scaling and source guards reach LivingEntity.
-    pub(in crate::game) fn reaches_base_check(
+    pub fn reaches_base_check(
         &self,
         part: usize,
         damage: f32,
@@ -865,7 +865,7 @@ impl Dragon {
 /// Saving and loading the dragon and the crystals as chunk entities.
 impl Dragon {
     /// `Entity.firstTick`: no tick has run yet.
-    pub(in crate::game) fn first_tick(&self) -> bool {
+    pub fn first_tick(&self) -> bool {
         self.ticks == 0
     }
     pub fn to_nbt(

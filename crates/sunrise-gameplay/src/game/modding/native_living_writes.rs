@@ -92,7 +92,7 @@ impl crate::game::ServerGame<'_> {
                     {
                         game.server
                             .guest_packets
-                            .push(super::lan_actions::swing_packet(
+                            .push(sunrise_gameplay_common::game::lan_actions::swing_packet(
                                 id as i32,
                                 c.hand,
                                 c.animation,

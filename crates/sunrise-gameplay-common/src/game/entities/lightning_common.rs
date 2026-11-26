@@ -7,14 +7,14 @@ use sunrise_level::random_source;
 #[derive(Default)]
 pub struct StrikeState {
     /// Mooshrooms and copper golems change once per bolt.
-    pub(in crate::game) converted: Vec<u32>,
+    pub converted: Vec<u32>,
     /// The mobs it has struck (`hitEntities`).
-    pub(in crate::game) hit: Vec<u32>,
+    pub hit: Vec<u32>,
     /// The dropped items in the strike box (`hitEntities` holds every entity).
-    pub(in crate::game) hit_items: Vec<u32>,
+    pub hit_items: Vec<u32>,
     /// Items a cushion dropped under it, spared for 20 ticks
     /// (`Cushion.dropItem`: `setInvulnerableTime(20)`).
-    pub(in crate::game) spared: Vec<u32>,
+    pub spared: Vec<u32>,
 }
 
 pub struct Bolt {

@@ -368,7 +368,7 @@ impl crate::game::ClientGame<'_> {
         super::camera_rotation(CameraType::FirstPerson, yaw, pitch)
     }
     /// The player as `Camera.alignWithEntity` sees it.
-    pub(in crate::game::client_side) fn player_camera_entity(&mut self) -> Option<CameraEntity> {
+    pub fn player_camera_entity(&mut self) -> Option<CameraEntity> {
         let (scale, distance) = {
             let p = self.common.player.as_mut()?;
             (

@@ -998,7 +998,7 @@ pub struct ServerState {
     pub(in crate::game::server_side) owner_migration: Option<(u128, u128)>,
     /// The world is the Debug preset (`Level.isDebug`, for every dimension): its blocks
     /// cannot be changed and nothing ticks.
-    pub(in crate::game::server_side) world_debug: bool,
+    pub world_debug: bool,
     /// A server's players on their way to another level, each waiting for
     /// the destination to load around them.
     pub(in crate::game::server_side) server_trips: Vec<server_travel::Trip>,
@@ -1048,7 +1048,7 @@ pub struct ServerState {
     pub(in crate::game::server_side) creaking: creaking::CreakingState,
     /// Reused candidate buffers for natural spawning.
     pub(in crate::game::server_side) spawn_scratch: natural_spawning::SpawnScratch,
-    pub(in crate::game::server_side) hoppers:
+    pub hoppers:
         HashMap<(i32, i32, i32), sunrise_gameplay_common::hoppers::HopperState>,
     /// The source of the running dispenser behaviour, including across mod callbacks.
     pub(in crate::game::server_side) dispense_source: Option<dispenser::DispenseSource>,
@@ -1107,7 +1107,7 @@ pub struct ServerState {
     pub guest_use: Option<GuestUse>,
     /// The last `use_hand` that ended the click did so with `FAIL`, which
     /// does not consume the action (handleUseItemOn's ANY_BLOCK_USE).
-    pub(in crate::game::server_side) use_failed: bool,
+    pub use_failed: bool,
     pub(in crate::game::server_side) block_use_original: Vec<(Hand, Option<ItemStack>)>,
     /// Level events of this tick for the guests, with their excluded source.
     pub(in crate::game::server_side) lan_events: Vec<QueuedLevelEvent>,

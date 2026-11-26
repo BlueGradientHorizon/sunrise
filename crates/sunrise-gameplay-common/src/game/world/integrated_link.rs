@@ -83,7 +83,7 @@ pub struct Flags {
 }
 
 impl Flags {
-    pub(in crate::game) fn emergency_save(
+    pub fn emergency_save(
         &self,
         server: std::thread::ThreadId,
         timeout: Duration,

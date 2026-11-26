@@ -1,6 +1,6 @@
 //! Server-side implementations of `side_ops::world` and server-only world/save/control helpers.
 use super::*;
-use crate::game::native_hooks;
+use sunrise_gameplay_common::game::native_hooks;
 use serde_json::{Value, json};
 
 impl crate::game::ServerGame<'_> {

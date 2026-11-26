@@ -75,7 +75,7 @@ impl crate::game::ClientGame<'_> {
 pub(in crate::game) fn native_can_rider_interact(
     call: mod_api::__private::CanRiderInteractCall<'_>,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_can_rider_interact(call);
+    crate::game::native_hooks::fire::fire_can_rider_interact(call);
 }
 
 pub(in crate::game) struct ResidentClientPickEntity {

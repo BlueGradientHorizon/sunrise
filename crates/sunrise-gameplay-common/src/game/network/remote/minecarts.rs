@@ -3,11 +3,11 @@ use super::*;
 /// `NewMinecartBehavior.MinecartStep`, including the server's rail pitch.
 #[derive(Clone, Copy)]
 pub struct CartStep {
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) movement: Vec3,
-    pub(in crate::game) yaw: f32,
-    pub(in crate::game) pitch: f32,
-    pub(in crate::game) weight: f32,
+    pub position: Vec3,
+    pub movement: Vec3,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub weight: f32,
 }
 
 /// The client's state of a minecart on `NewMinecartBehavior`: the steps the

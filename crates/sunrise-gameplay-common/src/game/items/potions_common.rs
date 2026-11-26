@@ -21,28 +21,28 @@ pub struct CloudSettings {
 #[derive(Clone, Debug)]
 pub struct ThrownPotion {
     /// Its entity id once a server's clients track it (0 until then).
-    pub(in crate::game) id: u32,
-    pub(in crate::game) stack: ItemStack,
+    pub id: u32,
+    pub stack: ItemStack,
     /// The position before the last tick, for drawing between ticks.
-    pub(in crate::game) previous: Vec3,
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) velocity: Vec3,
-    pub(in crate::game) age: u32,
+    pub previous: Vec3,
+    pub position: Vec3,
+    pub velocity: Vec3,
+    pub age: u32,
     /// `Projectile.getOwner`'s display name: the player who threw it (none
     /// for a dispenser's).
-    pub(in crate::game) owner: Option<Text>,
+    pub owner: Option<Text>,
     /// `Projectile.getOwner` as a target: the thrower (`Who::Player`, a
     /// guest's with `guest` set), none for a dispenser's or a server's.
-    pub(in crate::game) thrower: Option<Who>,
+    pub thrower: Option<Who>,
     /// On a server, the guest (by connection) who threw it.
-    pub(in crate::game) guest: Option<u32>,
+    pub guest: Option<u32>,
     /// `Projectile.leftOwner`: until then it can't hit its thrower.
-    pub(in crate::game) left_owner: bool,
+    pub left_owner: bool,
     /// `Projectile.lastDeflectedBy`: a mob deflects it once in a row.
-    pub(in crate::game) last_deflected_by: Option<u32>,
+    pub last_deflected_by: Option<u32>,
     /// `Entity.random`: `ProjectileDeflection.REVERSE` draws from the
     /// projectile's own source, not the level's.
-    pub(in crate::game) random: LegacyRandom,
+    pub random: LegacyRandom,
 }
 
 pub struct CloudParticle {
@@ -53,29 +53,29 @@ pub struct CloudParticle {
 
 /// A potion-bearing `AreaEffectCloud`: its effects, settings and recent victims.
 pub struct PotionCloud {
-    pub(in crate::game) settings: CloudSettings,
-    pub(in crate::game) effects: Vec<(&'static str, i32, i32)>,
+    pub settings: CloudSettings,
+    pub effects: Vec<(&'static str, i32, i32)>,
     /// The effects above that were added hidden (`MobEffectInstance.isVisible` false: no
     /// particles); the instances the cloud applies are copies and keep that.
-    pub(in crate::game) hidden: Vec<&'static str>,
+    pub hidden: Vec<&'static str>,
     /// The effects above that were ambient (`MobEffectInstance.isAmbient`).
-    pub(in crate::game) ambient: Vec<&'static str>,
+    pub ambient: Vec<&'static str>,
     /// `AreaEffectCloud.radiusPerTick`: natural clouds use `-radius / duration`.
-    pub(in crate::game) radius_per_tick: f32,
+    pub radius_per_tick: f32,
     /// The potion's colour (`PotionContents.getColor`).
-    pub(in crate::game) color: u32,
+    pub color: u32,
     /// `AreaEffectCloud.customParticle`: the value decoded when the cloud was loaded.
-    pub(in crate::game) custom_particle: Option<CloudParticle>,
+    pub custom_particle: Option<CloudParticle>,
     /// Each victim and the tick it can be affected again.
-    pub(in crate::game) victims: Vec<(Victim, i32)>,
+    pub victims: Vec<(Victim, i32)>,
     /// Who its instant damage names (`indirectMagic(cloud, owner)`): the
     /// thrower, else the cloud.
-    pub(in crate::game) source: Text,
+    pub source: Text,
     /// `AreaEffectCloud.getOwner`: the thrower (`ThrownLingeringPotion.onHitAsPotion`), whose
     /// kill a mob's death to its instant damage is.
-    pub(in crate::game) owner: Option<Who>,
+    pub owner: Option<Who>,
     /// On a server, the guest (by connection) who threw it.
-    pub(in crate::game) guest: Option<u32>,
+    pub guest: Option<u32>,
 }
 
 /// What a player's body was last given for its effects and enchantments:
@@ -137,7 +137,7 @@ impl CloudSettings {
 impl PotionCloud {
     /// `AreaEffectCloud.updateParticle`: the custom particle when one is set,
     /// else an entity effect in the potion's colour.
-    pub(in crate::game) fn particle(&self) -> ParticleOptions {
+    pub fn particle(&self) -> ParticleOptions {
         self.custom_particle
             .as_ref()
             .map(|particle| particle.options.clone())

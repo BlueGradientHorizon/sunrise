@@ -18,12 +18,12 @@ pub struct NativeCommands {
     /// Each root's traversal level.
     pub(in crate::game) levels: HashMap<String, u8>,
     /// Accepted display data, before filtering roots of a replacement tree.
-    pub(in crate::game) tree: Value,
-    pub(in crate::game) arguments: CommandArguments,
+    pub tree: Value,
+    pub arguments: CommandArguments,
     /// Executable path to registration slot; never sent to the hub.
-    pub(in crate::game) slots: CommandExecutorSlots,
+    pub slots: CommandExecutorSlots,
     /// Process-local execution table indexed by the current dispatcher's parsed keys.
-    pub(in crate::game) executors: Vec<RegisteredExecutor>,
+    pub executors: Vec<RegisteredExecutor>,
 }
 
 /// The session's state of the mods' commands.

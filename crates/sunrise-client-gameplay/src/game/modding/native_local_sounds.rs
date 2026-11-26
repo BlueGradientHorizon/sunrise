@@ -52,7 +52,7 @@ impl Default for ModSounds {
 }
 impl ModSounds {
     /// Queues `sound` to start at the next audio update, `after` ticks from then.
-    pub(in crate::game::client_side) fn queue(&self, sound: &SoundPlay, after: u32) -> SoundRef {
+    pub fn queue(&self, sound: &SoundPlay, after: u32) -> SoundRef {
         let id = self.last.get() + 1;
         self.last.set(id);
         self.queued.borrow_mut().push((id, sound.clone(), after));

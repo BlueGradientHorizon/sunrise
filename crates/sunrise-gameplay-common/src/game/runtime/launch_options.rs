@@ -20,7 +20,7 @@ pub struct Options {
     pub timeout: Option<Duration>,
     pub report: Option<PathBuf>,
     pub world: Option<String>,
-    pub(in crate::game) look: Option<(f32, f32)>,
+    pub look: Option<(f32, f32)>,
     pub time: Option<i64>,
     pub weather: Option<String>,
     pub dimension: Option<String>,

@@ -120,8 +120,8 @@ pub enum NativeRecipeLayout {
 /// gives it (`Some(25.0)` draws "25%"); `None` gives it every time.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NativeRecipeResult {
-    pub(crate) stacks: Vec<mod_api::Stack>,
-    pub(crate) chance: Option<f32>,
+    pub stacks: Vec<mod_api::Stack>,
+    pub chance: Option<f32>,
 }
 
 /// A recipe the panel shows (`native_panel_recipes`). Each slot, and each

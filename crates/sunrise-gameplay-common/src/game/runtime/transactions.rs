@@ -111,7 +111,7 @@ pub(in crate::game) type ComposterRandoms =
 /// `transaction_lifecycle` reads.
 #[derive(Default)]
 pub struct OpenTransactions {
-    pub(in crate::game) levels: Vec<Level>,
+    pub levels: Vec<Level>,
     pub attachment_query_scopes: AttachmentQueryScopes,
     // A live, non-ZST address distinguishes journal instances.
     pub(in crate::game) tag: Option<Box<u8>>,
@@ -164,7 +164,7 @@ impl OpenTransactions {
         self.retained_original_attachments.pop();
     }
 
-    pub(in crate::game) fn close_retained_originals(
+    pub fn close_retained_originals(
         &self,
         frame: Option<TransactionFrame>,
         commit: bool,
@@ -318,9 +318,9 @@ impl<'g, S: crate::game::SideGame<'g> + ?Sized> Drop for ClosingPhase<'_, 'g, S>
 }
 
 pub(in crate::game) struct KeptBlock {
-    pub(in crate::game) state: BlockStateId,
-    pub(in crate::game) replay: Option<BlockReplay>,
-    pub(in crate::game) strict: bool,
+    pub state: BlockStateId,
+    pub replay: Option<BlockReplay>,
+    pub strict: bool,
 }
 
 pub(in crate::game) type RemovedRow = (Box<BlockEntity>, u64);
@@ -354,16 +354,16 @@ pub type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
 #[derive(Clone, Copy)]
 pub struct BlockReplay {
     pub(in crate::game) state: BlockStateId,
-    pub(in crate::game) flags: i32,
+    pub flags: i32,
     /// Replay LevelWriteHost writes through the direct host's block-entity creation path.
-    pub(in crate::game) level_host: bool,
+    pub level_host: bool,
     /// A level-host write only hid the entity from other reads. At commit
     /// the real Level.setBlock still has to run its removal side effects.
-    pub(in crate::game) replay_removal: bool,
+    pub replay_removal: bool,
     /// Any tentative write at this position replaced the block with one that does not keep
     /// connection groups (`!Behaviours::keeps_block_entity`), even if a later write returned
     /// it to a compatible block.
-    pub(in crate::game) clear_connection_group: bool,
+    pub clear_connection_group: bool,
 }
 
 /// Preserve requested updates, and suppress an effect only if every write
@@ -385,9 +385,9 @@ pub(in crate::game) fn merge_block_update_flags(earlier: i32, later: i32) -> i32
 /// Before-images of the fields a general-entity scope wrote, at one depth.
 #[derive(Default)]
 pub(in crate::game) struct KeptGeneralEntity {
-    pub(in crate::game) velocity: Option<Vec3>,
-    pub(in crate::game) rotation: Option<[f32; 2]>,
-    pub(in crate::game) fall_distance: Option<f64>,
+    pub velocity: Option<Vec3>,
+    pub rotation: Option<[f32; 2]>,
+    pub fall_distance: Option<f64>,
 }
 
 /// One journal, either an open frame or a level-local batch split from one at close.
@@ -477,7 +477,7 @@ pub struct Level {
     /// Held once this transaction reaches an attachment map, until it closes: the save
     /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
     /// values, which only the root commit makes saveable.
-    pub(in crate::game) save_gate: Option<sunrise_sim::join_seq::visibility::PassLease>,
+    pub save_gate: Option<sunrise_sim::join_seq::visibility::PassLease>,
     /// Each chunk's unsaved mark and save queue entry before this transaction first reached an
     /// attachment map in it: an abort puts them back, so a chunk only a tentative write marked
     /// is clean again.
@@ -508,7 +508,7 @@ pub struct Level {
     pub departed: Vec<entities::Departure>,
     /// The entities taken for a transfer whose arrival is not adopted yet, by source id, each
     /// with the slot its arrival reads an abort's way back from.
-    pub(in crate::game) in_flight: HashMap<u32, entities::ArrivalRollback>,
+    pub in_flight: HashMap<u32, entities::ArrivalRollback>,
 }
 
 /// A slot's stack before a transaction first wrote it, and the generation of the block entity
@@ -516,7 +516,7 @@ pub struct Level {
 /// replaced it.
 pub struct KeptSlot {
     pub stack: Option<ItemStack>,
-    pub(in crate::game) generation: Option<u64>,
+    pub generation: Option<u64>,
 }
 
 /// Identity of one player body for transaction rollback: either the local host player
@@ -545,20 +545,20 @@ pub struct KeptAttachments {
 pub struct Kept {
     pub entity: Option<BlockEntity>,
     /// The pre-write batch, stored apart from the entity clone's fresh identity.
-    pub(in crate::game) client_update_fields: Option<sunrise_core::nbt::Compound>,
-    pub(in crate::game) generation: Option<u64>,
+    pub client_update_fields: Option<sunrise_core::nbt::Compound>,
+    pub generation: Option<u64>,
     /// None where it had no map: an abort removes one a write made.
-    pub(in crate::game) attachments: Option<Attachments>,
-    pub(in crate::game) hopper: Option<HopperState>,
+    pub attachments: Option<Attachments>,
+    pub hopper: Option<HopperState>,
     /// The custom name Sunrise keeps beside the model (`World::block_names`).
-    pub(in crate::game) name: Option<sunrise_core::nbt::Tag>,
+    pub name: Option<sunrise_core::nbt::Tag>,
     /// The container lock and loot table roll kept beside the model.
-    pub(in crate::game) extras: BlockEntityExtras,
-    pub(in crate::game) contents_watches: Vec<(Pos, u64)>,
+    pub extras: BlockEntityExtras,
+    pub contents_watches: Vec<(Pos, u64)>,
 }
 
 impl Kept {
-    pub(in crate::game) fn capture(
+    pub fn capture(
         world: &sunrise_level::world::World,
         hoppers: &HashMap<Pos, HopperState>,
         pos: Pos,
@@ -584,7 +584,7 @@ impl Kept {
         }
     }
 
-    pub(in crate::game) fn capture_client(world: &sunrise_level::world::World, pos: Pos) -> Self {
+    pub fn capture_client(world: &sunrise_level::world::World, pos: Pos) -> Self {
         let entity = world.block_entities.get(&pos);
         Self {
             entity: entity.cloned(),
@@ -606,7 +606,7 @@ impl Kept {
         }
     }
 
-    pub(in crate::game) fn restore_client(
+    pub fn restore_client(
         self,
         world: &mut sunrise_level::world::World,
         removed: bool,
@@ -660,27 +660,27 @@ impl Kept {
 }
 
 pub struct KeptPlayerHealth {
-    pub(in crate::game) data: sunrise_world::synced_floats::SyncedFloats,
-    pub(in crate::game) events_len: usize,
-    pub(in crate::game) dead: bool,
-    pub(in crate::game) guest: Option<(u32, bool, u32)>,
+    pub data: sunrise_world::synced_floats::SyncedFloats,
+    pub events_len: usize,
+    pub dead: bool,
+    pub guest: Option<(u32, bool, u32)>,
 }
 
 pub struct KeptMobHealth {
-    pub(in crate::game) absorption: f32,
-    pub(in crate::game) health: f32,
-    pub(in crate::game) needs_sync: bool,
-    pub(in crate::game) death_time: i32,
-    pub(in crate::game) death_canceled: bool,
-    pub(in crate::game) processed: bool,
+    pub absorption: f32,
+    pub health: f32,
+    pub needs_sync: bool,
+    pub death_time: i32,
+    pub death_canceled: bool,
+    pub processed: bool,
 }
 
 pub struct KeptMobEffects {
-    pub(in crate::game) active: Vec<StoredEffect>,
-    pub(in crate::game) chains: Vec<EffectInstance>,
-    pub(in crate::game) ambient: Vec<&'static str>,
-    pub(in crate::game) hidden: Vec<&'static str>,
-    pub(in crate::game) dirty: bool,
+    pub active: Vec<StoredEffect>,
+    pub chains: Vec<EffectInstance>,
+    pub ambient: Vec<&'static str>,
+    pub hidden: Vec<&'static str>,
+    pub dirty: bool,
 }
 
 /// Storage identity, not a public player handle. Fake players in different levels
@@ -698,11 +698,11 @@ pub enum PlayerStorageHome {
 
 #[derive(Clone)]
 pub struct KeptPlayer {
-    pub(in crate::game) inventory: Vec<Option<ItemStack>>,
-    pub(in crate::game) armor: [Option<ItemStack>; 4],
-    pub(in crate::game) offhand: Option<ItemStack>,
-    pub(in crate::game) equipment: Equipment,
-    pub(in crate::game) carried: Option<ItemStack>,
+    pub inventory: Vec<Option<ItemStack>>,
+    pub armor: [Option<ItemStack>; 4],
+    pub offhand: Option<ItemStack>,
+    pub equipment: Equipment,
+    pub carried: Option<ItemStack>,
 }
 
 /// The raw slots before the first write, with a mob's separate gear overlay.
@@ -716,18 +716,18 @@ pub enum KeptEquipment {
 }
 
 pub struct KeptClick {
-    pub(in crate::game) conn: u32,
-    pub(in crate::game) drag: Option<(u8, Vec<usize>)>,
-    pub(in crate::game) craft: Option<sunrise_sim::lan::menu::ModCraft>,
-    pub(in crate::game) slot_changed_seen: Option<Vec<Option<ItemStack>>>,
-    pub(in crate::game) owned: Option<(u64, Box<sunrise_sim::menu::Menu>)>,
-    pub(in crate::game) machine: Option<(i32, Box<sunrise_sim::menu::Menu>)>,
-    pub(in crate::game) places: Option<super::native_menu_values::MenuSlotPlaces>,
+    pub conn: u32,
+    pub drag: Option<(u8, Vec<usize>)>,
+    pub craft: Option<sunrise_sim::lan::menu::ModCraft>,
+    pub slot_changed_seen: Option<Vec<Option<ItemStack>>>,
+    pub owned: Option<(u64, Box<sunrise_sim::menu::Menu>)>,
+    pub machine: Option<(i32, Box<sunrise_sim::menu::Menu>)>,
+    pub places: Option<super::native_menu_values::MenuSlotPlaces>,
 }
 
 #[derive(Clone)]
 pub struct KeptMenus {
-    pub(in crate::game) craft_grid: [Option<ItemStack>; 4],
+    pub craft_grid: [Option<ItemStack>; 4],
 }
 
 /// What a write tells the world, at the root commit.
@@ -858,7 +858,7 @@ pub enum After {
 }
 
 impl After {
-    pub(in crate::game) fn level_owned(&self) -> bool {
+    pub fn level_owned(&self) -> bool {
         matches!(
             self,
             Self::Block(_)
@@ -929,7 +929,7 @@ impl Level {
         }
     }
 
-    pub(in crate::game) fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
+    pub fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
         self.blocks
             .entry(pos)
             .and_modify(|kept| kept.strict = true)
@@ -940,11 +940,11 @@ impl Level {
             });
     }
 
-    pub(in crate::game) fn keep_connection_group(&mut self, pos: Pos, group: Option<u64>) {
+    pub fn keep_connection_group(&mut self, pos: Pos, group: Option<u64>) {
         self.connection_groups.entry(pos).or_insert(group);
     }
 
-    pub(in crate::game) fn merge_level_writes(&mut self, child: &mut Self) {
+    pub fn merge_level_writes(&mut self, child: &mut Self) {
         for (pos, biome) in std::mem::take(&mut child.biomes) {
             self.biomes.entry(pos).or_insert(biome);
         }
@@ -1003,7 +1003,7 @@ impl Level {
         }
     }
 
-    pub(in crate::game) fn keep_player(
+    pub fn keep_player(
         &mut self,
         owner: JournaledPlayer,
         ender_items: &[Option<ItemStack>],
@@ -1027,7 +1027,7 @@ impl Level {
 
     /// Keep a resolved equipment row at its first write in this transaction.
     /// `mob_gear` is absent for a stand; a mob's overlay may itself be absent.
-    pub(in crate::game) fn keep_equipment(
+    pub fn keep_equipment(
         &mut self,
         dim: Dim,
         id: u32,

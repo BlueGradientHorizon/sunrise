@@ -9,18 +9,18 @@ use sunrise_sim::advancements::{self as adv, EntityView, Progress, Tree};
 #[derive(Clone, Debug, Default)]
 pub struct TravelMarks {
     /// `startingToFallPosition`.
-    pub(in crate::game) fall: Option<[f64; 3]>,
+    pub fall: Option<[f64; 3]>,
     /// `currentExplosionImpactPos` and `currentExplosionCause` (the entity
     /// that made the blast, if any).
-    pub(in crate::game) blast: Option<([f64; 3], Option<EntityView>)>,
+    pub blast: Option<([f64; 3], Option<EntityView>)>,
     /// `enteredLavaOnVehiclePosition`.
-    pub(in crate::game) lava_ride: Option<[f64; 3]>,
+    pub lava_ride: Option<[f64; 3]>,
     /// `enteredNetherPosition`.
-    pub(in crate::game) nether: Option<[f64; 3]>,
+    pub nether: Option<[f64; 3]>,
     /// The (effect, amplifier) pairs `EffectsChangedTrigger` last saw.
-    pub(in crate::game) effects: Vec<(&'static str, i32)>,
+    pub effects: Vec<(&'static str, i32)>,
     /// `PlayerEffects::changes` as the last tick saw it.
-    pub(in crate::game) effect_changes: u32,
+    pub effect_changes: u32,
 }
 #[derive(Default)]
 pub struct AdvState {
@@ -65,16 +65,16 @@ pub struct RemoteTree {
 }
 
 pub struct RemoteNode {
-    pub(in crate::game) id: String,
+    pub id: String,
     pub(in crate::game) parent: Option<usize>,
-    pub(in crate::game) children: Vec<usize>,
+    pub children: Vec<usize>,
     pub(in crate::game) displayed: bool,
 }
 
 impl RemoteTree {
     /// Root and nearest displayed parent of each current node, resolved by
     /// ID only after walking the actual insertion-time ancestors.
-    pub(in crate::game) fn widget_links<'a>(
+    pub fn widget_links<'a>(
         &'a self,
         tree: &'a Tree,
     ) -> impl Iterator<Item = (Option<usize>, Option<usize>)> + 'a {

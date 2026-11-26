@@ -219,7 +219,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         pitch: f32,
     ) -> bool {
         if self.game.server.lan.is_none()
-            || !super::native_hooks::mod_sound_ok(sound, at, source, volume, pitch)
+            || !sunrise_gameplay_common::game::native_hooks::mod_sound_ok(sound, at, source, volume, pitch)
         {
             return false;
         }

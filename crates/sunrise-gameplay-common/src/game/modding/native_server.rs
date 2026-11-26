@@ -26,7 +26,7 @@ pub use argument_kinds::{
 };
 use mod_api::__private::game::*;
 #[allow(unused_imports)]
-pub(in crate::game) use registered_commands::NativeCommandState;
+pub use registered_commands::NativeCommandState;
 // Their old home, for mixin code that names them here.
 use crate::game::{
     api_values::{project_stack, stack_read_metadata},
@@ -867,7 +867,7 @@ impl ScopedPlayerState {
 /// clears it on every exit, an early return or a panic unwinding through a mod's hook, and the
 /// effect it stopped, cleared as each action starts.
 #[derive(Default)]
-pub(in crate::game) struct FakeAction {
+pub struct FakeAction {
     pub(in crate::game) acting: AtomicBool,
     /// The first effect stopped since the action started.
     pub(in crate::game) blocked: Mutex<Option<FakeEffect>>,
@@ -2600,12 +2600,12 @@ pub(in crate::game) mod network_settings_tests {
 }
 
 /// `Inventory`'s slot numbers past the 36 main slots (`EQUIPMENT_SLOT_MAPPING`).
-pub(in crate::game) const SLOTS: u32 = 43;
+pub const SLOTS: u32 = 43;
 
 /// 0..35 main (0..8 hotbar), 36..39 feet to head, 40 offhand, 41 body, 42 saddle.
 /// ItemPlace uses 100..103 for armour and -106 for offhand; InventoryMenu has no 41/42.
 /// The slot the game keeps `Inventory` slot `slot` in.
-pub(in crate::game) fn inventory_slot(slot: u32) -> Option<Slot> {
+pub fn inventory_slot(slot: u32) -> Option<Slot> {
     Some(match slot {
         0..36 => Slot::Inv(slot as usize),
         // `armor` is head first: 36 feet is its last.

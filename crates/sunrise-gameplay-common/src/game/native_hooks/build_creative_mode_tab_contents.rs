@@ -38,10 +38,10 @@ impl BuildKey {
 
 pub(in crate::game) struct Published {
     pub(in crate::game) key: BuildKey,
-    pub(in crate::game) lists: Contents,
+    pub lists: Contents,
     pub(in crate::game) api: OnceCell<Arc<CreativeModeTabs>>,
-    pub(in crate::game) holders: Arc<Holders>,
-    pub(in crate::game) items: Arc<Items>,
+    pub holders: Arc<Holders>,
+    pub items: Arc<Items>,
 }
 
 pub(in crate::game) struct ActiveBuild {

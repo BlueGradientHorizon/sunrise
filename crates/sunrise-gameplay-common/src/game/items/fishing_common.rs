@@ -26,23 +26,23 @@ pub struct Hook {
     /// `FishingHook.hookedIn`: set in `onHitEntity`, transitioned to `State::Hooked` on the next tick.
     pub hooked_in: Option<u32>,
     /// `Projectile.leftOwner`: until true, caster's root-vehicle tree is excluded from hits.
-    pub(in crate::game) left_owner: bool,
+    pub left_owner: bool,
     /// `Entity.yRot` updated on `Projectile.updateRotation` and `ProjectileDeflection.REVERSE`.
     pub yaw: f32,
     /// `Entity.xRot` updated on `Projectile.updateRotation`.
     pub pitch: f32,
     pub last_deflected_by: Option<u32>,
     pub needs_sync: bool,
-    pub(in crate::game) tick_count: i32,
-    pub(in crate::game) life: i32,
+    pub tick_count: i32,
+    pub life: i32,
     pub ground: sunrise_world::ground_support::GroundState,
     pub nibble: i32,
     pub time_until_lured: i32,
     pub time_until_hooked: i32,
     pub fish_angle: f32,
-    pub(in crate::game) out_of_water: i32,
-    pub(in crate::game) open_water: bool,
-    pub(in crate::game) luck: i32,
+    pub out_of_water: i32,
+    pub open_water: bool,
+    pub luck: i32,
     pub lure: i32,
     /// The fishing medium it last floated in outside water (`native_fishing_medium`): the
     /// table its catch rolls and the wait it draws. None in water.
@@ -67,12 +67,12 @@ impl sunrise_sim::join_seq::Joined for Hook {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct HookMedium {
     /// The mod that answered.
-    pub(in crate::game) mod_id: &'static str,
+    pub mod_id: &'static str,
     /// The table the mod answered, as it answered it.
-    pub(in crate::game) answered: Option<String>,
+    pub answered: Option<String>,
     /// The table a catch rolls: the answer's, once checked; None rolls vanilla's.
-    pub(in crate::game) loot_table: Option<String>,
-    pub(in crate::game) lure_ticks: Option<[i32; 2]>,
+    pub loot_table: Option<String>,
+    pub lure_ticks: Option<[i32; 2]>,
 }
 
 pub const SIZE: f64 = 0.25;

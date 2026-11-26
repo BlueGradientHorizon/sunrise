@@ -7,7 +7,7 @@ use sunrise_gameplay_common::game::host::draw::{
 #[cfg(feature = "client")]
 pub struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
-    pub(crate) surface: &'a mut crate::hud::HudBatch,
+    pub(crate) surface: &'a mut sunrise_client::hud::HudBatch,
     /// The call's open clips (`push_clip`), closed when the call returns.
     pub(in crate::game) clips: crate::game::gui_clips::GuiClips,
     pub(in crate::game) tooltip_font: Option<&'a EngineTooltipFont<'a>>,
@@ -73,7 +73,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
             &self.game.client.gui.atlas,
             &text,
             at,
-            crate::hud::rgba(r, g, b, a),
+            sunrise_client::hud::rgba(r, g, b, a),
             shadow,
             name,
         ))
@@ -201,11 +201,11 @@ pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
 #[cfg(feature = "client")]
 pub(crate) struct GameCameraDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
-    pub(crate) surface: &'a mut sunrise_client_render::screen_effects::CameraQuads,
+    pub(crate) surface: &'a mut sunrise_client::screen_effects::CameraQuads,
 }
 /// [`WorldDrawContext`] on the game's `crate::world_geometry::WorldGeometry`.
 #[cfg(feature = "client")]
 pub(crate) struct GameWorldDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
-    pub(crate) surface: &'a mut crate::world_geometry::WorldGeometry,
+    pub(crate) surface: &'a mut sunrise_client::world_geometry::WorldGeometry,
 }

@@ -76,7 +76,7 @@ impl ClientGame<'_> {
         })
     }
 
-    pub(in crate::game::client_side) fn crosshair_block_target(
+    pub fn crosshair_block_target(
         &self,
         hit: super::Hit,
     ) -> Option<CrosshairTarget> {
@@ -111,7 +111,7 @@ impl ClientGame<'_> {
         }
     }
 
-    pub(in crate::game::client_side) fn pick_entity_candidate_within(
+    pub fn pick_entity_candidate_within(
         &mut self,
         max_distance: f64,
         max_distance_sq: f64,

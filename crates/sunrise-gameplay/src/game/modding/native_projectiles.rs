@@ -4,7 +4,8 @@
 //! projectile whose impact a mod canceled flies the tick again from where it was,
 //! through whatever it hit.
 use super::{Game, commands::Target, dragon_common::SPECIAL, lan_pvp::meets_players};
-use crate::game::{creatures::TargetQuery, native_hooks::mob_kind};
+use crate::game::native_hooks::mob_kind;
+use sunrise_gameplay_common::game::creatures::TargetQuery;
 use std::ops::Range;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_level::fast_hash::{FxHashMap, FxHashSet};

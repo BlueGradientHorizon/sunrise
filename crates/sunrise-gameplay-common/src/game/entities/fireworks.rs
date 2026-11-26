@@ -34,7 +34,7 @@ pub struct Rocket {
     pub(in crate::game) previous: Vec3,
     pub(in crate::game) velocity: Vec3,
     pub(in crate::game) life: i32,
-    pub(in crate::game) lifetime: i32,
+    pub lifetime: i32,
     pub(in crate::game) explosions: Arc<Vec<FireworkExplosion>>,
     /// Boosting the player (attachedToEntity).
     pub(in crate::game) attached: bool,
@@ -50,7 +50,7 @@ pub struct Rocket {
     /// `Projectile.leftOwner`: until then it can't hit its owner.
     pub(in crate::game) left_owner: bool,
     /// `Projectile.lastDeflectedBy`: prevents repeated deflection by the same mob.
-    pub(in crate::game) last_deflected_by: Option<u32>,
+    pub last_deflected_by: Option<u32>,
     /// `DATA_ATTACHED_TO_TARGET`: the server entity the rocket follows;
     /// boosting happens when it is the local player.
     pub(in crate::game) attached_to: Option<u32>,
@@ -71,7 +71,7 @@ pub struct Rocket {
     pub(in crate::game) fall_distance: f64,
     /// `Entity.stuckSpeedMultiplier`: a cobweb or powder snow it went through
     /// slows its next move.
-    pub(in crate::game) stuck: Vec3,
+    pub stuck: Vec3,
     /// `Entity.wasTouchingWater`: entering water splashes.
     pub(in crate::game) was_touching_water: bool,
     /// `Entity.firstTick`: no splash on the tick it appears in water.
@@ -87,7 +87,7 @@ impl Rocket {
     }
     /// `Projectile.updateRotation`: a fifth of the way from `old` (yaw,
     /// pitch) toward its motion's direction, the short way round.
-    pub(in crate::game) fn update_rotation(&mut self, old: [f32; 2]) {
+    pub fn update_rotation(&mut self, old: [f32; 2]) {
         let v = self.velocity;
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = sunrise_core::geometry::trig::atan2_degrees;
@@ -236,7 +236,7 @@ impl Rocket {
     /// One tick of a server's client: the rocket flies on by itself between
     /// the server's updates (a rocket that follows an entity is placed by the
     /// caller).
-    pub(in crate::game) fn remote_step(&mut self, motion: sunrise_sim::motion::BodyMotion<'_>) {
+    pub fn remote_step(&mut self, motion: sunrise_sim::motion::BodyMotion<'_>) {
         self.previous = self.position;
         if self.attached_to.is_none() {
             let mut scene = SceneCollisions {
@@ -309,7 +309,7 @@ impl Rocket {
         )
     }
     /// [`Self::bounds`] at `position`.
-    pub(in crate::game) fn bounds_at(position: Vec3) -> Aabb {
+    pub fn bounds_at(position: Vec3) -> Aabb {
         let h = 0.125;
         Aabb::new(
             Vec3::new(position.x - h, position.y, position.z - h),
@@ -360,7 +360,7 @@ impl Rocket {
         Some((from, wanted, moved, motion))
     }
 
-    pub(in crate::game) fn flight_contact(
+    pub fn flight_contact(
         &mut self,
         motion: sunrise_sim::motion::BodyMotion<'_>,
         wanted: Vec3,

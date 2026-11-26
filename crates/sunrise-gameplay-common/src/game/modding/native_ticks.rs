@@ -87,15 +87,15 @@ pub struct KindNames {
 }
 
 impl KindNames {
-    pub(in crate::game) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.text.clear();
         self.ends.clear();
     }
-    pub(in crate::game) fn push(&mut self, kind: &str) {
+    pub fn push(&mut self, kind: &str) {
         self.text.push_str(kind);
         self.ends.push(self.text.len());
     }
-    pub(in crate::game) fn names(&self) -> impl Iterator<Item = &str> {
+    pub fn names(&self) -> impl Iterator<Item = &str> {
         let mut start = 0;
         self.ends.iter().map(move |&end| {
             let name = &self.text[start..end];
@@ -181,15 +181,15 @@ impl TickRound {
         !self.canceled.is_empty() && self.canceled.contains(&id)
     }
     /// Whether a part ended the tick of item `id` (`on_entity_item_update`).
-    pub(in crate::game) fn halted(&self, id: u32) -> bool {
+    pub fn halted(&self, id: u32) -> bool {
         !self.halted.is_empty() && self.halted.contains(&id)
     }
     /// A part ended the tick of item `id`.
-    pub(in crate::game) fn halt(&mut self, id: u32) {
+    pub fn halt(&mut self, id: u32) {
         self.halted.push(id);
     }
     /// Whether `entity_entering_section` is listened to: each entity's position updates are filed.
-    pub(in crate::game) fn sections(&self) -> bool {
+    pub fn sections(&self) -> bool {
         self.sections
     }
     /// Whether the round keeps the entities that tick: a mod hears their ticks or their moves.
@@ -212,7 +212,7 @@ impl TickRound {
         }
     }
     /// The `n`th entity, in order, that the family's Pre let through.
-    pub(in crate::game) fn let_through(&self, n: usize) -> Option<u32> {
+    pub fn let_through(&self, n: usize) -> Option<u32> {
         self.ticking.get(n).map(|(id, _)| *id)
     }
     /// Applies the call's output to this batch only, keeping existing cancellations intact.

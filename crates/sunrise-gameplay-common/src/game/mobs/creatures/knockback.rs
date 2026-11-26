@@ -25,7 +25,7 @@ pub fn apply_player_knockback(
 /// The full player path, shared with calls that borrow a guest's body in its own level.
 /// `random` is the player's own (`Entity.random`), which a short direction's retries draw from;
 /// the caller writes it back to the player.
-pub(in crate::game) fn player_knockback_velocity(
+pub fn player_knockback_velocity(
     player: &sunrise_sim::motion::PlayerMotion,
     random: &mut sunrise_core::random::EntityRandom,
     level: &mut sunrise_sim::health::DamageLevel<'_>,

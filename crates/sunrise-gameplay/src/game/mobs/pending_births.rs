@@ -222,7 +222,7 @@ impl ServerGame<'_> {
                 .replace_contents(attachments);
         }
         if fresh {
-            let kind = super::native_hooks::mob_kind(&mob);
+            let kind = sunrise_gameplay_common::game::native_hooks::mob_kind(&mob);
             self.initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
         }
         mob
@@ -266,7 +266,7 @@ impl ServerGame<'_> {
         let dimension = self.common.dim.id();
         let (parent, kind, size) = (
             dying.id,
-            super::native_hooks::mob_kind(dying),
+            sunrise_gameplay_common::game::native_hooks::mob_kind(dying),
             dying.extra.size,
         );
         let _ = self.dispatch_pending_children(

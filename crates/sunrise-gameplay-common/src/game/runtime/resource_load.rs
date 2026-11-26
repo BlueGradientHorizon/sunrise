@@ -206,7 +206,7 @@ impl Progress {
     pub fn new() -> Self {
         Self::with(&STAGE_LINES)
     }
-    pub(in crate::game) fn set(&self, stage: u32) {
+    pub fn set(&self, stage: u32) {
         self.value.store(stage, Ordering::Relaxed);
     }
     pub fn with(lines: &'static [&'static str]) -> Self {
@@ -240,8 +240,8 @@ impl<'scope, T: Send + 'scope> Step<'scope, T> {
 }
 
 pub struct WorldRestLoader {
-    pub(in crate::game) progress: Progress,
-    pub(in crate::game) handle: JoinHandle<std::result::Result<(), String>>,
+    pub progress: Progress,
+    pub handle: JoinHandle<std::result::Result<(), String>>,
 }
 
 impl WorldRestLoader {

@@ -87,7 +87,7 @@ impl crate::game::ClientGame<'_> {
 pub(in crate::game) fn native_block_entity_client_tick(
     subject: mod_api::BlockEntityClientScope<'_>,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_block_entity_client_tick(subject);
+    crate::game::native_hooks::fire::fire_block_entity_client_tick(subject);
 }
 
 #[cfg(feature = "client")]

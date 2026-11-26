@@ -8,14 +8,14 @@ pub struct NativeHookHost<'a> {
 
 impl NativeHookHost<'_> {
     /// A mob is about to acquire or clear a target.
-    pub(in crate::game) fn native_living_change_target(
+    pub fn native_living_change_target(
         &self,
         call: mod_api::__private::LivingChangeTargetCall<'_>,
     ) {
         self.fire_living_change_target(call);
     }
     /// A mob is about to run `Mob.checkDespawn`.
-    pub(in crate::game) fn native_mob_despawn(
+    pub fn native_mob_despawn(
         &self,
         dimension: &str,
         mob: MobRef,

@@ -147,9 +147,9 @@ pub type LoadedMaps<V> = BTreeMap<String, HashMap<String, BTreeMap<String, V>>>;
 
 #[derive(Default)]
 pub struct DataMaps {
-    pub(in crate::game) biome_keys: std::sync::Arc<mod_api::__private::BiomeKeys>,
+    pub biome_keys: std::sync::Arc<mod_api::__private::BiomeKeys>,
     maps: BTreeMap<String, HashMap<String, Vec<(String, Tag)>>>,
-    pub(in crate::game) mob_maps: std::sync::Arc<sunrise_sim::neoforge_mob_maps::NeoForgeMobMaps>,
+    pub mob_maps: std::sync::Arc<sunrise_sim::neoforge_mob_maps::NeoForgeMobMaps>,
 }
 
 /// `minecraft:` for an id written without a namespace.
@@ -235,7 +235,7 @@ impl DataMaps {
     }
 
     /// Merge the pack files and publish their winning values as NBT.
-    pub(in crate::game) fn load(
+    pub fn load(
         types: &[DataMapType],
         overlay: &sunrise_world::loot::PackOverlay<'_>,
         registries: &dyn MapRegistries,
@@ -254,7 +254,7 @@ impl DataMaps {
         published
     }
 
-    pub(in crate::game) fn with_builtins(mut self, builtin: Loaded) -> Self {
+    pub fn with_builtins(mut self, builtin: Loaded) -> Self {
         for (definition, values) in builtin.values {
             if self
                 .maps
@@ -274,7 +274,7 @@ impl DataMaps {
     }
 
     /// The registries with a loaded type, in id order: what `data_maps_updated` names.
-    pub(in crate::game) fn registries(&self) -> Vec<String> {
+    pub fn registries(&self) -> Vec<String> {
         self.maps.keys().cloned().collect()
     }
 

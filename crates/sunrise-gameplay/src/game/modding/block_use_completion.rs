@@ -47,7 +47,7 @@ impl crate::game::ServerGame<'_> {
     /// Listener hand replacements and whole replacements by the action (such as
     /// a bucket becoming a water bucket) do not change the reported original.
     /// This matches vanilla passing the same stack object it read before the action.
-    pub(in crate::game::server_side) fn finish_block_use(&mut self, pos: [i32; 3], _hand: Hand) {
+    pub fn finish_block_use(&mut self, pos: [i32; 3], _hand: Hand) {
         let stack = self
             .server
             .block_use_original

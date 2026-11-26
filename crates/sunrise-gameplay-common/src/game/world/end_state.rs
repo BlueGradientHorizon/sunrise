@@ -111,11 +111,11 @@ pub(in crate::game) struct EndFlash {
     pub(in crate::game) duration: i32,
     pub(in crate::game) intensity: f32,
     pub(in crate::game) old_intensity: f32,
-    pub(in crate::game) x_angle: f32,
-    pub(in crate::game) y_angle: f32,
+    pub x_angle: f32,
+    pub y_angle: f32,
 }
 impl EndFlash {
-    pub(in crate::game) fn tick(&mut self, clock: i64) {
+    pub fn tick(&mut self, clock: i64) {
         let seed = clock.div_euclid(600);
         if self.seed != Some(seed) {
             let mut random = LegacyRandom::new(seed);
@@ -138,14 +138,14 @@ impl EndFlash {
         };
     }
     /// `EndFlashState.flashStartedThisTick`.
-    pub(in crate::game) fn started_this_tick(&self) -> bool {
+    pub fn started_this_tick(&self) -> bool {
         self.intensity > 0.0 && self.old_intensity <= 0.0
     }
-    pub(in crate::game) fn intensity(&self, partial: f32) -> f32 {
+    pub fn intensity(&self, partial: f32) -> f32 {
         self.old_intensity + (self.intensity - self.old_intensity) * partial
     }
     /// SkyRenderer.renderEndFlash's pose: the sprite at height 100 turned to the flash.
-    pub(in crate::game) fn pose(&self) -> glam::Mat4 {
+    pub fn pose(&self) -> glam::Mat4 {
         flash_pose(self.x_angle, self.y_angle)
     }
 }
@@ -197,7 +197,7 @@ impl EndState {
     }
     /// `EyeOfEnder.tick` on a server's client: it moves by its last known
     /// motion; only the server steers it.
-    pub(in crate::game) fn step_remote_eyes(&mut self) {
+    pub fn step_remote_eyes(&mut self) {
         for e in &mut self.eyes {
             e.previous = e.position;
             e.life += 1;
@@ -293,13 +293,13 @@ impl SummonedEye {
 /// The EyeOfEnder entity.
 pub struct EyeOfEnder {
     /// Its entity id once a server's clients track it (0 until then).
-    pub(in crate::game) id: u32,
-    pub(in crate::game) position: glam::DVec3,
-    pub(in crate::game) previous: glam::DVec3,
-    pub(in crate::game) velocity: glam::DVec3,
-    pub(in crate::game) target: glam::DVec3,
-    pub(in crate::game) life: u32,
-    pub(in crate::game) survive: bool,
+    pub id: u32,
+    pub position: glam::DVec3,
+    pub previous: glam::DVec3,
+    pub velocity: glam::DVec3,
+    pub target: glam::DVec3,
+    pub life: u32,
+    pub survive: bool,
 }
 impl EyeOfEnder {
     /// EyeOfEnder.updateDeltaMovement.

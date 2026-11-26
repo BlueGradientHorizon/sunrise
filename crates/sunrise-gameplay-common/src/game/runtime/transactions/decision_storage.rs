@@ -7,7 +7,7 @@ use sunrise_sim::join_seq::visibility::PassLease;
 /// admission gate checks passes_settled(), including this lease. In particular
 /// commands.save.failed is still produced by the existing save-all command.
 pub struct ActiveAction {
-    pub(in crate::game) menu: MenuId,
+    pub menu: MenuId,
     _save_gate: PassLease,
 }
 
@@ -28,7 +28,7 @@ struct KeptMenu {
 #[derive(Default)]
 pub struct Journal {
     menus: HashMap<MenuId, KeptMenu>,
-    pub(in crate::game) owners: HashMap<MenuId, engine::KeptOwner>,
+    pub owners: HashMap<MenuId, engine::KeptOwner>,
     // The harness has no Game::After queue. Production uses that existing queue
     // directly through GameHost::defer, preserving listener/apply effect order.
     #[cfg(test)]

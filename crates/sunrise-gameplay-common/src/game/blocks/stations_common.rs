@@ -52,7 +52,7 @@ impl Kind {
         }
     }
 
-    pub(in crate::game) fn title_key(self) -> &'static str {
+    pub fn title_key(self) -> &'static str {
         match self {
             Self::Enchanting => "container.enchant",
             Self::Anvil => "container.repair",
@@ -73,7 +73,7 @@ impl Kind {
 }
 
 impl Kind {
-    pub(in crate::game) fn texture(self) -> &'static str {
+    pub fn texture(self) -> &'static str {
         match self {
             Self::Enchanting => "gui/container/enchanting_table",
             Self::Anvil => "gui/container/anvil",
@@ -87,7 +87,7 @@ impl Kind {
         }
     }
     /// (titleLabelX, titleLabelY).
-    pub(in crate::game) fn title_pos(self) -> (f32, f32) {
+    pub fn title_pos(self) -> (f32, f32) {
         match self {
             Self::Anvil => (60.0, 6.0),
             Self::Smithing => (44.0, 15.0),
@@ -96,7 +96,7 @@ impl Kind {
             _ => (8.0, 6.0),
         }
     }
-    pub(in crate::game) fn input_pos(self, i: usize) -> (f32, f32) {
+    pub fn input_pos(self, i: usize) -> (f32, f32) {
         let table: &[(f32, f32)] = match self {
             Self::Enchanting => &[(15.0, 47.0), (35.0, 47.0)],
             Self::Anvil => &[(27.0, 47.0), (76.0, 47.0)],
@@ -110,7 +110,7 @@ impl Kind {
         };
         table[i.min(table.len() - 1)]
     }
-    pub(in crate::game) fn result_pos(self) -> Option<(f32, f32)> {
+    pub fn result_pos(self) -> Option<(f32, f32)> {
         match self {
             Self::Enchanting => None,
             Self::Anvil => Some((134.0, 47.0)),

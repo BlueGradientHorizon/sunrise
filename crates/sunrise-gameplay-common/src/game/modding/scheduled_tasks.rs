@@ -72,7 +72,7 @@ impl ScheduledTasks {
     }
 
     /// A task for `owner` due `delay_ticks` ticks from now (`0` is due in the current tick).
-    pub(in crate::game) fn schedule(
+    pub fn schedule(
         &mut self,
         owner: Option<&'static str>,
         delay_ticks: u32,
@@ -103,13 +103,13 @@ impl ScheduledTasks {
     /// Withdraw `id` if it is still waiting. `TaskId` is an opaque capability, so holding it
     /// suffices to cancel the task. The caller gets the detached owner and callable back only once
     /// all bookkeeping is updated, so captures can be disposed under the scheduling owner's policy.
-    pub(in crate::game) fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
+    pub fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
         let &due = self.due.get(&id)?;
         self.remove(due, id)
     }
 
     /// The next task due by now, taken off the queue before any of its mod code runs.
-    pub(in crate::game) fn pop_due(&mut self) -> Option<PendingTask> {
+    pub fn pop_due(&mut self) -> Option<PendingTask> {
         let (&(due, id), _) = self.queue.first_key_value()?;
         if due > self.now {
             return None;

@@ -13,7 +13,7 @@ pub(in crate::game) const GUI_KEYS: [&str; 5] = [
 impl crate::game::ClientGame<'_> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
-    pub(in crate::game::client_side) fn open_player_inventory(&mut self) {
+    pub fn open_player_inventory(&mut self) {
         if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();

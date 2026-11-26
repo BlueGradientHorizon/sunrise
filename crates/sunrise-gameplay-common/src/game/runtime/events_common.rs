@@ -34,12 +34,12 @@ pub enum Condition {
 }
 
 pub struct Wait {
-    pub(in crate::game) condition: Condition,
+    pub condition: Condition,
     /// The event sequence number when the wait started.
-    pub(in crate::game) since: u64,
-    pub(in crate::game) started: Instant,
-    pub(in crate::game) timeout: Duration,
-    pub(in crate::game) reply: Sender<String>,
+    pub since: u64,
+    pub started: Instant,
+    pub timeout: Duration,
+    pub reply: Sender<String>,
 }
 
 #[derive(Default)]

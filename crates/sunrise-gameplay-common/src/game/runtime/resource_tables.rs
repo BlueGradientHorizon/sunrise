@@ -52,7 +52,7 @@ impl Resources {
     pub fn mob_data(&self) -> &sunrise_sim::mobs::MobData {
         &self.rest().mob_data
     }
-    pub(in crate::game) fn providers(&self) -> &Providers {
+    pub fn providers(&self) -> &Providers {
         &self.rest().providers
     }
     pub(in crate::game) fn nether_environment(&self) -> &Environment {
@@ -109,7 +109,7 @@ impl PackResources {
         })
     }
 
-    pub(in crate::game) fn assemble(
+    pub fn assemble(
         root: &sunrise_assets::resource_source::ResourceRoot,
         parts: PackParts,
     ) -> Result<Self> {

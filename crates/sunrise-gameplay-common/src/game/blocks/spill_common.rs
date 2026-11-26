@@ -94,7 +94,7 @@ impl Pending {
     pub(in crate::game) fn record_saved(&mut self, pos: [i32; 3], tag: &sunrise_core::nbt::Tag) {
         self.record_source(pos, source_snapshot(tag.clone(), None, None));
     }
-    pub(in crate::game) fn record_source(
+    pub fn record_source(
         &mut self,
         pos: [i32; 3],
         source: sunrise_world::loot::copy::BlockSource,
@@ -244,7 +244,7 @@ pub enum BlockDropEntity<'a> {
 }
 
 impl<'a> BlockDropEntity<'a> {
-    pub(in crate::game) fn at(
+    pub fn at(
         world: &sunrise_level::world::World,
         key: (i32, i32, i32),
         data: Option<&'a Compound>,
@@ -482,7 +482,7 @@ pub struct BlockDrops {
     /// The experience points to award at the block's centre.
     pub(in crate::game) experience: u32,
     /// A mod canceled the break's drops: `spawnAfterBreak` doesn't run.
-    pub(in crate::game) canceled: bool,
+    pub canceled: bool,
 }
 
 #[derive(Default)]
@@ -806,7 +806,7 @@ impl GameLevel<'_> {
     /// the block (`native_machine_destroy_block`), the loot is rolled with its
     /// `drop_tool` (`dropResources(.., entity, tool)`) and, given `drop_into`,
     /// kept there instead of popped.
-    pub(in crate::game) fn drop_resources_now(&mut self, pos: BlockPos, state: BlockStateId) {
+    pub fn drop_resources_now(&mut self, pos: BlockPos, state: BlockStateId) {
         let key = (pos.x, pos.y, pos.z);
         let at = [pos.x, pos.y, pos.z];
         self.unpack_loot(super::container_loot_level::LootTarget::Block(key), None);

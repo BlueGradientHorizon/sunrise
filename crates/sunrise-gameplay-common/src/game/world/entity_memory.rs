@@ -21,7 +21,7 @@ pub enum RemovedVehicle {
 }
 
 impl RemovedVehicle {
-    pub(in crate::game) fn position(&self) -> Vec3 {
+    pub fn position(&self) -> Vec3 {
         match self {
             Self::Mob { position, .. } => *position,
             Self::Boat(boat) => boat.position,
@@ -41,7 +41,7 @@ impl RemovedVehicle {
         }
     }
 
-    pub(in crate::game) fn kind(&self) -> String {
+    pub fn kind(&self) -> String {
         match self {
             Self::Mob { kind, .. } => kind.clone(),
             Self::Boat(boat) => boat.entity_type(),

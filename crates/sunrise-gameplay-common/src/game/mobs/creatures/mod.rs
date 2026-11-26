@@ -140,14 +140,14 @@ pub struct MobDrawFrame<'a> {
 
 #[derive(Default)]
 pub struct NormalActionFrame {
-    pub(in crate::game) events: std::collections::VecDeque<MobEvent>,
+    pub events: std::collections::VecDeque<MobEvent>,
     pub(in crate::game) broke: Vec<u32>,
     pub(in crate::game) actor: Option<u32>,
 }
 #[derive(Default)]
 pub struct NormalMobActions {
     pub root: NormalActionFrame,
-    pub(in crate::game) nested: Vec<NormalActionFrame>,
+    pub nested: Vec<NormalActionFrame>,
 }
 impl NormalMobActions {
     pub fn new(events: Vec<MobEvent>) -> Self {
@@ -167,8 +167,8 @@ pub struct MobOutputBatch {
 }
 #[derive(Default)]
 pub struct PendingMobBatch {
-    pub(in crate::game) batches: std::collections::VecDeque<MobOutputBatch>,
-    pub(in crate::game) pushes: sunrise_sim::mobs::PendingPushes,
+    pub batches: std::collections::VecDeque<MobOutputBatch>,
+    pub pushes: sunrise_sim::mobs::PendingPushes,
 }
 
 /// Remove the current action before dispatch; retain only the unentered tail on unwind.
@@ -177,7 +177,7 @@ pub struct RemainingActions<'a, T> {
     pub(in crate::game) target: &'a mut Vec<T>,
 }
 impl<'a, T> RemainingActions<'a, T> {
-    pub(in crate::game) fn new(target: &'a mut Vec<T>) -> Self {
+    pub fn new(target: &'a mut Vec<T>) -> Self {
         Self {
             remaining: std::mem::take(target).into_iter(),
             target,
@@ -212,7 +212,7 @@ pub struct Creatures {
     pub canceled_players: Vec<u32>,
     /// The snapshot's buffer between ticks, empty: ~400 bytes a mob, so
     /// thousands of mobs would allocate and free megabytes every tick.
-    pub(in crate::game) seen_buf: Vec<Seen>,
+    pub seen_buf: Vec<Seen>,
     /// Per-tick scratch retained between creature ticks.
     pub event_buf: Vec<MobEvent>,
     pub pickable_projectile_targets: Vec<sunrise_sim::projectiles::TargetCandidate>,

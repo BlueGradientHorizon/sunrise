@@ -38,11 +38,11 @@ pub struct EntityJournal {
     /// The travellers that arrived from another level, by the ids they arrived under.
     pub arrivals: HashSet<u32>,
     /// The removals asked for, in order: each runs at the root commit.
-    pub(in crate::game) removals: Vec<Removal>,
+    pub removals: Vec<Removal>,
     /// Each mob's `removed` flag before the transaction first removed it.
     pub mob_removed: HashMap<u32, bool>,
     /// The join and leave announcements held for the root commit, in order.
-    pub(in crate::game) announcements: Vec<Announcement>,
+    pub announcements: Vec<Announcement>,
     /// Each raw record a spawn wrote over in `persist.anon` (by kind and position: an end
     /// crystal standing there keeps its own there), as it was before the first such spawn.
     pub anon: Vec<KeptAnon>,
@@ -82,7 +82,7 @@ pub enum Step {
 
 impl Step {
     /// A journal's steps: its joins, then its removals, then the rest of what it held.
-    pub(in crate::game) fn of(
+    pub fn of(
         announcements: Vec<Announcement>,
         removals: Vec<Removal>,
     ) -> Vec<Step> {
@@ -100,15 +100,15 @@ impl Step {
 /// half-told batches: the entities the transaction added and removed are never announced,
 /// and each batch keeps its `loaded_from_disk` and bound.
 pub struct Committing {
-    pub(in crate::game) dimension: Dim,
+    pub dimension: Dim,
     /// The entities the transaction added and removed: never told to join.
-    pub(in crate::game) removed: Vec<u32>,
+    pub removed: Vec<u32>,
     /// What is left to tell, in the order it was asked for: the transaction's own
     /// announcements, then those the listeners ask for. Entries stay, so an index is a place.
-    pub(in crate::game) queue: Vec<Step>,
+    pub queue: Vec<Step>,
     /// The entity whose removal is running: it reads as present until it has run, as it does
     /// outside a transaction.
-    pub(in crate::game) removing: Option<u32>,
+    pub removing: Option<u32>,
 }
 
 /// The innermost commit being told in `dimension`: a listener's commit in another level sits
@@ -137,7 +137,7 @@ pub fn open_in(transactions: &mut [Level], dimension: Dim) -> Option<&mut Level>
 
 impl EntityJournal {
     /// A nested commit: the parent's mark is earlier and stays.
-    pub(in crate::game) fn merge(&mut self, child: Self) {
+    pub fn merge(&mut self, child: Self) {
         self.arrivals.extend(child.arrivals);
         self.removals.extend(child.removals);
         for (id, was) in child.mob_removed {
@@ -151,7 +151,7 @@ impl EntityJournal {
         }
     }
     /// A nested abort: its arrivals stay out of the parent's abort too.
-    pub(in crate::game) fn keep_arrivals(&mut self, arrivals: HashSet<u32>) {
+    pub fn keep_arrivals(&mut self, arrivals: HashSet<u32>) {
         self.arrivals.extend(arrivals);
     }
     /// Keeps the first record each key had: a later spawn there wrote over this one's.

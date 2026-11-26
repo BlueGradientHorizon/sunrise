@@ -14,7 +14,7 @@ use sunrise_sim::colliders::ColliderState;
 /// A server entity's collider, with the form the save writes.
 pub struct ColliderEntry {
     pub state: ColliderState,
-    pub(in crate::game) saved: Compound,
+    pub saved: Compound,
 }
 
 /// The per-entity maps the game keeps by entity id: attachments, and colliders. It reads as
@@ -134,8 +134,8 @@ pub fn origin_bits(origin: Vec3) -> [u64; 3] {
 }
 
 pub struct Placement {
-    pub(in crate::game) keys: Vec<PlacementKey>,
-    pub(in crate::game) prepared: sunrise_world::moving_colliders::Prepared,
+    pub keys: Vec<PlacementKey>,
+    pub prepared: sunrise_world::moving_colliders::Prepared,
 }
 
 /// The placements of each level's colliders, kept from tick to tick.

@@ -17,8 +17,8 @@ pub use sunrise_items::items::{ItemStack, Items};
 #[derive(Clone)]
 pub struct Scratch {
     item: Option<Arc<str>>,
-    pub(in crate::game) stack: Option<ItemStack>,
-    pub(in crate::game) overflow: Option<ItemStack>,
+    pub stack: Option<ItemStack>,
+    pub overflow: Option<ItemStack>,
 }
 
 impl crate::game::CommonGame<'_> {
