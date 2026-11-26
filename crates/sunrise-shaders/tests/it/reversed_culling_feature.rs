@@ -20,7 +20,7 @@ fn read(properties: &str) -> (sunrise_shaders::Properties, Vec<String>) {
 #[test]
 fn requested_reversed_culling_loads_and_packs_take_the_path_it_guards() {
     // A pack that asks for reversed culling, optional or required, loads without a note and
-    // sees `IRIS_FEATURE_REVERSED_CULLING` (spec 3.2, decision D-6); one that doesn't ask keeps
+    // sees `IRIS_FEATURE_REVERSED_CULLING` (spec 3.2, decision D-7); one that doesn't ask keeps
     // its other value. `shadow.culling=reversed` written plainly still applies.
     let guarded = "#ifdef IRIS_FEATURE_REVERSED_CULLING\nshadow.culling=reversed\n\
                    #else\nshadow.culling=true\n#endif\n";

@@ -199,7 +199,7 @@ the full list.
 - **Tests:** `pack_post::tests::a_sampler_of_another_class_than_its_image_refuses_the_program`
   (`sunrise-render-shaderpack`).
 
-## D-6: which feature flags get `IRIS_FEATURE_<flag>`, and which reads see it
+## D-7: which feature flags get `IRIS_FEATURE_<flag>`, and which reads see it
 
 - **Open point:** spec rev 1, 3.2, lines 372-373: `iris.features.optional` asks to "enable those supported and define
   `IRIS_FEATURE_<flag>` for each"; `iris.features.required` asks to refuse the pack when one is unsupported "and enable

@@ -1485,7 +1485,7 @@ mod native_pack_tests {
 
     /// The pick's HDR read before the frame is made and the Shader Options page read
     /// `shaders.properties` as the load does: what a flag the pack lists guards (spec 3.2,
-    /// decision D-6) is read; what an unlisted flag guards is not.
+    /// decision D-7) is read; what an unlisted flag guards is not.
     #[test]
     fn the_hdr_read_and_the_options_page_see_the_features_the_pack_lists() {
         let root = std::env::temp_dir().join(format!("sunrise-hdr-feature-{}", std::process::id()));

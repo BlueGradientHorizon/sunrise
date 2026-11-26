@@ -6,7 +6,7 @@ pub(crate) use sunrise_glsl::macros::lex;
 
 /// The feature flags of `iris.features.*` (spec 3.2) Sunrise has. A pack that requires one of
 /// them loads; one it lacks is noted. For each of them the pack lists, in either list, its
-/// programs and property files see `IRIS_FEATURE_<NAME>` (spec 1.5.1, 3.2; decision D-6 and
+/// programs and property files see `IRIS_FEATURE_<NAME>` (spec 1.5.1, 3.2; decision D-7 and
 /// OQ-2 in docs/cleanroom/): `Macros::define_features`. `BLOCK_EMISSION_ATTRIBUTE`: terrain's
 /// `at_midBlock.w` is the light its block gives. `SEPARATE_HARDWARE_SAMPLERS` (ShaderDoc,
 /// "Separate Hardware Shadow Samplers"): `shadowtex0`/`shadowtex1` stay plain depth samplers when
@@ -45,7 +45,7 @@ const FEATURE_MACRO: &str = "IRIS_FEATURE_";
 /// It is not found as one (`options`, `switches_on`, `value_options`), so it is never defined for
 /// the pack's property files, never counted as on in `program.*.enabled`, and a saved choice
 /// never rewrites it (`Pack::with_chosen`, `options::apply`). As written, uncommented, it is the
-/// pack's own directive, with a directive's scope (decision D-6): in a program, the rest of the
+/// pack's own directive, with a directive's scope (decision D-7): in a program, the rest of the
 /// stage's preprocessed source; in `shaders.properties`, the rest of that file.
 pub(crate) fn is_feature_answer(name: &str) -> bool {
     name.starts_with(FEATURE_MACRO)
@@ -268,7 +268,7 @@ impl Macros {
     }
 
     /// Defines `IRIS_FEATURE_<NAME>` as `1` for each of [`FEATURES`] that `properties` lists in
-    /// `iris.features.optional` (spec 3.2) or `iris.features.required` (decision D-6), a name
+    /// `iris.features.optional` (spec 3.2) or `iris.features.required` (decision D-7), a name
     /// matching in any case and the macro taking the name as `FEATURES` writes it. A flag
     /// Sunrise lacks stays undefined. Whether any was defined.
     pub fn define_features(&mut self, properties: &crate::Properties) -> bool {

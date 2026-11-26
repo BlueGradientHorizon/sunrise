@@ -83,7 +83,7 @@ pub fn value_options(pack: &Pack) -> BTreeMap<String, String> {
 /// `macros` with the pack's options at their defaults: the switches that are on, and the
 /// value options. `shaders.properties` and the program switches test them (3.3, 8.1). No
 /// `IRIS_FEATURE_*` is among them (`is_feature_answer`): those macros are Sunrise's answers to
-/// the flags the pack lists (`Macros::define_features`, decision D-6).
+/// the flags the pack lists (`Macros::define_features`, decision D-7).
 pub fn with_options(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
     let mut out = macros.clone();
     for name in switches_on(pack) {
@@ -97,7 +97,7 @@ pub fn with_options(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
 
 /// A pack's `shaders.properties` as the game reads it before the programs, with the pack's
 /// options over `macros` (the standard set and the renderer's), in two reads (spec 3.2,
-/// decision D-6): the first, with no `IRIS_FEATURE_*`, settles the flags the pack lists;
+/// decision D-7): the first, with no `IRIS_FEATURE_*`, settles the flags the pack lists;
 /// `Macros::define_features` then defines the answers in `macros` (any `IRIS_FEATURE_*` it held
 /// before is dropped first) and in the option set, and the second read, the one returned, sees
 /// them. The file and the pack's options are read once, for both reads. A flag list only a feature macro reaches is not read, and the
@@ -536,7 +536,7 @@ mod tests {
         names
     }
 
-    /// `IRIS_FEATURE_<NAME>` (spec 3.2, decision D-6): defined as `1` for a flag Sunrise has
+    /// `IRIS_FEATURE_<NAME>` (spec 3.2, decision D-7): defined as `1` for a flag Sunrise has
     /// that `iris.features.optional` or `iris.features.required` lists, in any case, under the
     /// name as Sunrise writes it; undefined for one the pack doesn't list, one Sunrise lacks, and
     /// the name in the pack's own case. `shaders.properties`, the programs and the id files read
@@ -806,7 +806,7 @@ mod tests {
     }
 
     /// A pack's own `#define` / `#undef` of an `IRIS_FEATURE_*` name inside `shaders.properties`
-    /// decides that file's conditionals from its line on (decision D-6): a define lets the first
+    /// decides that file's conditionals from its line on (decision D-7): a define lets the first
     /// read reach a list behind it; an undef hides Sunrise's answer from the later `#ifdef`s,
     /// not from the lines above it nor from the programs.
     #[test]

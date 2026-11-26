@@ -118,7 +118,7 @@ fn authored_fade_globals_keep_their_own_meaning() {
 #[test]
 fn fade_feature_negotiation_ignores_case_and_defines_the_written_macro() {
     // The request matches in any case; the answer is `IRIS_FEATURE_FADE_VARIABLE` as Sunrise
-    // writes the flag (decision D-6), never the pack's own spelling.
+    // writes the flag (decision D-7), never the pack's own spelling.
     for (request, rejected, probe) in [
         ("", false, "opaque"),
         (
