@@ -601,7 +601,6 @@ impl Macros {
         // A paste that makes no single token (`b ## (`, `name_ ## a ## _to_ ## b ##(x)`) stays
         // the tokens it is made of: the name before the `(` is then rescanned and can call a
         // macro.
-<<<<<<< HEAD
         // With [`Macros::bound`], the tokens a paste splits into are charged before they are made:
         // their text once more, and each part with the paste's names.
         let mut split = Vec::with_capacity(joined.len());
@@ -616,28 +615,10 @@ impl Macros {
             split.extend(parts.into_iter().map(|text| ExpansionToken {
                 text: text.into(),
                 hidden: token.hidden.clone(),
+                source: token.source,
             }));
         }
         split
-=======
-        joined
-            .into_iter()
-            .flat_map(|token| {
-                let parts = lex(&token.text);
-                if parts.len() < 2 {
-                    return vec![token];
-                }
-                parts
-                    .into_iter()
-                    .map(|text| ExpansionToken {
-                        text: text.into(),
-                        hidden: token.hidden.clone(),
-                        source: token.source,
-                    })
-                    .collect()
-            })
-            .collect()
->>>>>>> origin/mod-dx-6108-6109-yyq619-b8a7e24c2e33
     }
 }
 
