@@ -11,13 +11,14 @@ use sunrise_client::mod_list::ModList;
 use sunrise_client::shader_options::ShaderOptions;
 use sunrise_client::text::Text;
 use sunrise_shaders::{
-    BlockIds, BlockLayers, Macros, Pack, Properties, dimension_folder_named, load_post,
+    BlockIds, BlockLayers, Macros, Pack, Properties, Tonemap, dimension_folder_named, load_post,
 };
 
 use super::native_shaders::{fingerprint, outcome, refused, remember};
 use super::{Dim, Game, Screen};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use sunrise_client_render::render_geometry::EntitySpan;
 
 /// The values the player chose for pack `name`'s options (`shaderpacks/<name>.txt`).
@@ -160,9 +161,13 @@ pub(crate) struct PickedPack {
     pub draws_flat: bool,
     /// Its passes read the solid quads' vertices (`pack_reads_vertices`): they start wide.
     pub starts_wide: bool,
-    /// Under `SUNRISE_HDR_FRAME=float`, with no pack available: the frame is the layered float
-    /// one where HDR output is on (the renderer decides, `FrameRequest::hdr_float`).
+    /// Under `SUNRISE_HDR_FRAME=float`, with no pack available or one that asks for Sunrise's
+    /// HDR (`hdr`): the frame is the layered float one where HDR output is on (the renderer
+    /// decides, `FrameRequest::hdr_float`).
     pub hdr_float: bool,
+    /// Under the switch, the running pack's `sunrise.hdr` request (`Properties::sunrise_hdr`),
+    /// read before any program with the standard macros and the pack's options (`frame_hdr`).
+    pub hdr: Option<Tonemap>,
 }
 impl PickedPack {
     /// What it asks of the renderer's frame.
@@ -172,23 +177,87 @@ impl PickedPack {
 }
 
 pub(super) fn picked_pack_shape(settings: &sunrise_client::settings::Settings) -> PickedPack {
+    pack_shape(settings, super::native_shaders::linear_frame_switch())
+}
+
+/// `picked_pack_shape` with `switch` for `SUNRISE_HDR_FRAME=float`.
+fn pack_shape(settings: &sunrise_client::settings::Settings, switch: bool) -> PickedPack {
     let picked = picked_pack(settings);
     let dir = Game::shader_packs_dir();
     let path = dir.join(picked);
-    let switch = super::native_shaders::linear_frame_switch();
     let active = !picked.is_empty()
         && !sunrise_client::shader_pack_list::unsupported(&dir, picked)
         && (!switch || (path.exists() && outcome(&path) != Some(false)))
         && path
             .file_name()
             .is_none_or(|f| !active_pack(&f.to_string_lossy(), &settings.mods).is_empty());
+    // Sunrise's HDR is asked for only where it can be had: under the switch, by a pack that runs.
+    let hdr = if active && switch {
+        frame_hdr(picked, &path)
+    } else {
+        None
+    };
     // A pack draws the terrain flat where the device can, and its passes read the solid quads'
     // vertices: the sections are laid out so.
     PickedPack {
         draws_flat: active,
         starts_wide: active,
-        hdr_float: !active && switch,
+        hdr_float: switch && (!active || hdr.is_some()),
+        hdr,
     }
+}
+
+/// When the chosen options' file of pack `name` was last written, and its size.
+type ChosenStamp = Option<(u64, std::time::SystemTime)>;
+
+thread_local! {
+    // The frame follows the pick every frame under the switch (`follow_frame`), and reading a
+    // pack's request reads all its sources for the options: the last read, by the pack's path
+    // and its chosen options' file, until the loader reads that pack (`hdr_disagreement`).
+    static FRAME_HDR: RefCell<Option<(PathBuf, ChosenStamp, Option<Tonemap>)>> =
+        const { RefCell::new(None) };
+}
+
+fn chosen_stamp(name: &str) -> ChosenStamp {
+    let file = Game::shader_packs_dir().join(sunrise_shaders::chosen_file(name));
+    let meta = std::fs::metadata(file).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
+}
+
+/// The `sunrise.hdr` request of pack `name` at `path` as the frame is picked for it: its
+/// `shaders.properties` read with the standard macros and the pack's options as chosen, since
+/// the renderer's macros come with the renderer the answer picks. Nothing when it can't be read.
+fn frame_hdr(name: &str, path: &Path) -> Option<Tonemap> {
+    let stamp = chosen_stamp(name);
+    let cached = FRAME_HDR.with_borrow(|read| {
+        read.as_ref()
+            .filter(|(at, chosen, _)| at == path && *chosen == stamp)
+            .map(|(.., hdr)| *hdr)
+    });
+    if let Some(hdr) = cached {
+        return hdr;
+    }
+    let hdr = Pack::open(path).ok().and_then(|pack| {
+        let pack = pack.with_chosen(chosen_shader_options(name));
+        sunrise_shaders::read_properties(&pack, &mut Macros::standard())
+            .0
+            .sunrise_hdr()
+    });
+    FRAME_HDR.with_borrow_mut(|read| *read = Some((path.to_owned(), stamp, hdr)));
+    hdr
+}
+
+/// The loader read pack `path`'s request as `loaded`, with the renderer's macros, where the
+/// frame was picked for `frame` (`PickedPack::hdr`). Returns the frame's answer when they differ,
+/// which counts: the renderer was made for it. The frame's read is dropped, so the next pick
+/// reads the pack's files as they are now.
+fn hdr_disagreement(
+    path: &Path,
+    frame: Option<Tonemap>,
+    loaded: Option<Tonemap>,
+) -> Option<Option<Tonemap>> {
+    FRAME_HDR.with_borrow_mut(|read| read.take_if(|(at, ..)| at == path));
+    (frame != loaded).then_some(frame)
 }
 
 // A native mod can bundle a pack as `native-<mod-id>`; its Mods toggle controls it too.
@@ -435,6 +504,18 @@ impl Game<'_> {
                                 note.line,
                                 note.message
                             );
+                        }
+                        // Only the switch picks a frame for the request.
+                        if super::native_shaders::linear_frame_switch() {
+                            let loaded = properties.sunrise_hdr();
+                            let frame = picked_pack_shape(&self.settings).hdr;
+                            if let Some(frame) = hdr_disagreement(&path, frame, loaded) {
+                                log::warn!(
+                                    "shader pack {name}: shaders.properties asks for Sunrise's \
+                                     HDR as {loaded:?} with the renderer's macros, but the frame \
+                                     was picked for {frame:?}: the frame's answer counts"
+                                );
+                            }
                         }
                         let separate_ao = properties.separate_ao();
                         renderer.set_separate_ao(separate_ao);
@@ -1165,8 +1246,9 @@ mod rendered_item_tests {
 
 #[cfg(test)]
 mod native_pack_tests {
-    use super::{active_pack, picked_pack_shape};
+    use super::{active_pack, hdr_disagreement, pack_shape, picked_pack_shape};
     use sunrise_client::mod_list::{Installed, ModList, NativePage};
+    use sunrise_shaders::Tonemap;
 
     #[test]
     fn unknown_pack_is_optimistic_but_refusal_owner_and_presence_override_it() {
@@ -1212,6 +1294,80 @@ mod native_pack_tests {
         let missing = picked_pack_shape(&settings);
         assert_eq!(missing.draws_flat, !switch);
         assert_eq!(missing.hdr_float, switch);
+    }
+
+    /// Under `SUNRISE_HDR_FRAME=float`, a running pack whose `shaders.properties` asks for
+    /// Sunrise's HDR (with its options as chosen) gets the float frame; one that doesn't gets
+    /// today's pack frame, and without the switch nothing is read.
+    #[test]
+    fn a_pack_asking_for_hdr_gets_the_float_frame_under_the_switch() {
+        use sunrise_client::settings::Settings;
+        let root = std::env::temp_dir().join(format!("sunrise-hdr-request-{}", std::process::id()));
+        let pack = |name: &str, properties: &str| {
+            let path = root.join(name);
+            std::fs::create_dir_all(path.join("shaders")).unwrap();
+            std::fs::write(path.join("shaders/shaders.properties"), properties).unwrap();
+            path
+        };
+        let mut settings = Settings::default();
+        settings.sunrise.hdr = sunrise_client_render::graphics::HdrMode::On;
+        let mut shape = |path: &std::path::Path, switch: bool| {
+            settings.sunrise.shader_pack = path.to_string_lossy().into_owned();
+            let shape = pack_shape(&settings, switch);
+            assert!(shape.draws_flat, "{path:?} runs");
+            (shape.hdr_float, shape.hdr)
+        };
+        let plain = pack("plain", "separateAo=true\n");
+        let asks = pack("asks", "sunrise.hdr = true\n");
+        let curve = pack(
+            "curve",
+            "sunrise.hdr = true\nsunrise.hdr.tonemap = sunrise\n",
+        );
+        let unknown = pack("unknown", "sunrise.hdr = on\n");
+        assert_eq!(shape(&asks, false), (false, None));
+        assert_eq!(shape(&plain, true), (false, None));
+        assert_eq!(shape(&unknown, true), (false, None));
+        assert_eq!(shape(&curve, true), (true, Some(Tonemap::Sunrise)));
+        assert_eq!(shape(&asks, true), (true, Some(Tonemap::Pack)));
+
+        // Behind the pack's own switch, off by default: asked once the player turns it on.
+        let option = pack("option", "#ifdef HDR_OUTPUT\nsunrise.hdr=true\n#endif\n");
+        std::fs::write(
+            option.join("shaders/settings.glsl"),
+            "//#define HDR_OUTPUT\n#ifdef HDR_OUTPUT\n#endif\n",
+        )
+        .unwrap();
+        assert_eq!(shape(&option, true), (false, None));
+        let chosen = root.join("option.txt");
+        std::fs::write(&chosen, "HDR_OUTPUT=true\n").unwrap();
+        assert_eq!(shape(&option, true), (true, Some(Tonemap::Pack)));
+        std::fs::write(&chosen, "HDR_OUTPUT=false\n").unwrap();
+        assert_eq!(shape(&option, true), (false, None));
+
+        // The loader's read, with the renderer's macros, against the frame's: a disagreement
+        // returns the frame's answer, which the frame keeps until the loader reads the pack; the
+        // pick reads its files again after that load, and only after a load of that pack.
+        assert_eq!(shape(&asks, true), (true, Some(Tonemap::Pack)));
+        assert_eq!(
+            hdr_disagreement(&asks, Some(Tonemap::Pack), Some(Tonemap::Pack)),
+            None
+        );
+        assert_eq!(shape(&asks, true), (true, Some(Tonemap::Pack)));
+        std::fs::write(
+            asks.join("shaders/shaders.properties"),
+            "sunrise.hdr=false\n",
+        )
+        .unwrap();
+        assert_eq!(shape(&asks, true), (true, Some(Tonemap::Pack)));
+        assert_eq!(hdr_disagreement(&plain, None, None), None);
+        assert_eq!(shape(&asks, true), (true, Some(Tonemap::Pack)));
+        assert_eq!(
+            hdr_disagreement(&asks, Some(Tonemap::Pack), None),
+            Some(Some(Tonemap::Pack))
+        );
+        assert_eq!(shape(&asks, true), (false, None));
+        assert_eq!(hdr_disagreement(&asks, None, None), None);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

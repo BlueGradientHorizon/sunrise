@@ -37,7 +37,8 @@ pub(super) struct NativeShaders {
 }
 
 /// `SUNRISE_HDR_FRAME=float`: the frame is float where the renderer is made with no pack picked,
-/// or one refused, as HDR without a pack is (`PickedPack::hdr_float`).
+/// one refused, or one asking for Sunrise's HDR, as HDR without a pack is
+/// (`PickedPack::hdr_float`).
 pub(super) fn linear_frame_switch() -> bool {
     std::env::var("SUNRISE_HDR_FRAME").is_ok_and(|v| v == "float")
 }
