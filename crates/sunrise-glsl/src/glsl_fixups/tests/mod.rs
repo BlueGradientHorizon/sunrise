@@ -245,6 +245,24 @@ fn a_helper_taking_its_sampler_translates() {
     assert!(!names.contains(&"tap"), "{names:?}");
 }
 
+/// A bad type in a retained parameter points to the type, not the specialized header's start.
+#[test]
+fn an_error_in_a_specialized_signature_names_the_retained_type() {
+    let fsh = "#version 330\nuniform sampler2D Sampler0;\nin vec2 texCoord0;\nout vec4 fragColor;\n\
+        vec4 tap(sampler2D s, UnknownType uv) { return texture(s, uv); }\n\
+        void main() { fragColor = tap(Sampler0, texCoord0); }\n";
+    let errors = translate(fsh).unwrap_err();
+    let error = &errors[0];
+    assert!(
+        error.message.ends_with("found Identifier(\"UnknownType\")"),
+        "{errors:?}"
+    );
+    assert_eq!(
+        (error.file.as_str(), error.line, error.column),
+        (crate::tests::FSH_FILE, 5, 23)
+    );
+}
+
 /// A sampler parameter with no name used to hand `replace_ident` an empty name to replace,
 /// which it found at the same place forever, growing the text until the game ran out of memory.
 #[test]

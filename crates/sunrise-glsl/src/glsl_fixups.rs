@@ -18,7 +18,7 @@ const MAX_LEN: usize = 64 * 1024;
 const SCAN_BUDGET: usize = 64 << 20;
 
 /// `text` with the rewrites, where they apply; anything they can't follow is left as it was.
-/// Copies keep their source positions, including the body of a specialized function.
+/// Copies keep their source positions, including retained parameters and specialized bodies.
 pub(super) fn fixups(text: Lines) -> Lines {
     if text.text().len() > MAX_LEN {
         return text;
@@ -206,19 +206,24 @@ fn split_top(list: &str) -> Vec<&str> {
 /// A function at the file's top level whose parameters include a `sampler2D`.
 struct SamplerFn {
     name: String,
-    /// The header from its return type to its `{` (or `;` for a prototype), and the body after.
+    /// The whole function, from the start of its return type to just after its `}` or `;`.
     start: usize,
     end: usize,
-    params: Vec<String>,
+    return_type_end: usize,
+    name_at: usize,
+    open_paren: usize,
+    /// The trimmed parameter ranges in the input, in declaration order.
+    params: Vec<Range<usize>>,
+    close_paren: usize,
     /// The indices of the `sampler2D` parameters and their names.
     samplers: Vec<(usize, String)>,
     /// `None` for a prototype.
     body: Option<String>,
-    /// Where the body starts (its `{`).
+    /// Where the body starts (its `{`, or the `;` of a prototype).
     body_at: usize,
-    return_type: String,
 }
 
+/// Find sampler helpers and record the byte ranges of the signature pieces they can keep.
 fn sampler_functions(text: &str) -> Vec<SamplerFn> {
     let closing = closings(text);
     let mut out = Vec::new();
@@ -233,12 +238,18 @@ fn sampler_functions(text: &str) -> Vec<SamplerFn> {
                 if let (Some((name_at, name)), Some(close)) = (ident_before(text, i), closing[i])
                     && let Some((type_at, return_type)) = ident_before(text, name_at)
                 {
-                    let params: Vec<String> = split_top(&text[i + 1..close])
+                    let params: Vec<Range<usize>> = split_top(&text[i + 1..close])
                         .into_iter()
-                        .map(|p| p.trim().to_owned())
+                        .map(|p| {
+                            let trimmed = p.trim_start();
+                            let at = p.as_ptr() as usize - text.as_ptr() as usize;
+                            let start = at + p.len() - trimmed.len();
+                            start..start + trimmed.trim_end().len()
+                        })
                         .collect();
                     let samplers: Vec<(usize, String)> = params
                         .iter()
+                        .map(|range| &text[range.clone()])
                         .enumerate()
                         .filter(|(_, p)| p.split_whitespace().any(|w| w == "sampler2D"))
                         .map(|(n, p)| (n, p.split_whitespace().last().unwrap_or("").to_owned()))
@@ -264,11 +275,14 @@ fn sampler_functions(text: &str) -> Vec<SamplerFn> {
                             name: name.to_owned(),
                             start: type_at,
                             end,
+                            return_type_end: type_at + return_type.len(),
+                            name_at,
+                            open_paren: i,
                             params,
+                            close_paren: close,
                             samplers,
                             body,
                             body_at,
-                            return_type: return_type.to_owned(),
                         });
                         i = end;
                         continue;
@@ -428,7 +442,8 @@ fn specialized_call(
 }
 
 /// One pass per function with `sampler2D` parameters, until none is left or one can't be
-/// followed (a caller passes something that is no sampler's name).
+/// followed (a caller passes something that is no sampler's name). A specialized signature
+/// keeps the source positions of the return type, parentheses and retained parameters.
 fn specialize_sampler_params(original: Lines) -> Lines {
     let mut text = original.text().to_owned();
     // The text with where each line came from, edited with it.
@@ -553,39 +568,43 @@ fn specialize_sampler_params(original: Lines) -> Lines {
         if !followable {
             break;
         }
-        // One copy of an overload per set of samplers its callers pass, keeping its other
-        // parameters; a prototype becomes the copies' prototypes.
-        let signature = |g: &SamplerFn, chosen: &[String]| {
-            let params: Vec<&str> = g
-                .params
-                .iter()
-                .enumerate()
-                .filter(|(n, _)| !g.samplers.iter().any(|(s, _)| s == n))
-                .map(|(_, p)| p.as_str())
-                .collect();
-            format!(
-                "{} {}_hz_{}({})",
-                g.return_type,
-                g.name,
-                chosen.join("_"),
-                params.join(", ")
-            )
-        };
-        // A copy's lines come from the function's: its header's line, then its body's line for
-        // line while the copy keeps their count (else the line it starts on).
+        // One copy per set of samplers, including for prototypes. The signature keeps the
+        // spans it copies; the body's fallback line origins stay line for line when possible.
         let copies_of = |g: &SamplerFn| -> Lines {
             let header = lines.origin_at(g.start);
+            let copy = |out: &mut Lines, range: Range<usize>| {
+                out.push_spanned(&lines.text()[range.clone()], header, &lines, range);
+            };
+            let write = |out: &mut Lines, code: &str| {
+                out.push_replacement(code, header, &lines, g.start);
+            };
             let mut copies = Lines::default();
             for chosen in &variants {
+                copy(&mut copies, g.start..g.return_type_end);
+                write(&mut copies, " ");
+                copies.push_replacement(
+                    &format!("{}_hz_{}", g.name, chosen.join("_")),
+                    header,
+                    &lines,
+                    g.name_at,
+                );
+                copy(&mut copies, g.open_paren..g.open_paren + 1);
+                let retained = g
+                    .params
+                    .iter()
+                    .enumerate()
+                    .filter(|(n, _)| !g.samplers.iter().any(|(s, _)| s == n));
+                for (i, (_, range)) in retained.enumerate() {
+                    if i != 0 {
+                        write(&mut copies, ", ");
+                    }
+                    copy(&mut copies, range.clone());
+                }
+                copy(&mut copies, g.close_paren..g.close_paren + 1);
                 match &g.body {
                     Some(written) => {
                         let body = specialize(g, chosen).map(|(b, _)| b).unwrap_or_default();
-                        copies.push_replacement(
-                            &format!("{} ", signature(g, chosen)),
-                            header,
-                            &lines,
-                            g.start,
-                        );
+                        write(&mut copies, " ");
                         let from = lines.origins_from(g.body_at);
                         let text = body.text();
                         if text.matches('\n').count() == written.matches('\n').count() {
@@ -599,12 +618,10 @@ fn specialize_sampler_params(original: Lines) -> Lines {
                         }
                         copies.push("\n", header);
                     }
-                    None => copies.push_replacement(
-                        &format!("{};\n", signature(g, chosen)),
-                        header,
-                        &lines,
-                        g.start,
-                    ),
+                    None => {
+                        copy(&mut copies, g.body_at..g.end);
+                        write(&mut copies, "\n");
+                    }
                 }
             }
             copies
