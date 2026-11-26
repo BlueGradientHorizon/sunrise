@@ -1662,7 +1662,7 @@ impl Game<'_> {
             let (tag, _) = sunrise_core::nbt::parse_snbt(id)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             let value = sunrise_client::scoreboard::tag_to_json(&tag);
-            sunrise_world::loot::validate_loot_condition(&value)
+            sunrise_world::loot::validate_typed_loot_condition(&value)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
         } else {

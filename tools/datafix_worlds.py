@@ -30,22 +30,24 @@ import zipfile
 import zlib
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import datafix_scene as scene  # noqa: E402
-import datafix_scene_12 as scene12  # noqa: E402
-import lab  # noqa: E402
+if __package__:
+    from . import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12
+    from .lab import free_port, offline_uuid, parse_varint, varint
+else:
+    import datafix_paths
+    import datafix_scene as scene
+    import datafix_scene_12 as scene12
+    from lab import free_port, offline_uuid, parse_varint, varint
 
 ROOT = Path(__file__).resolve().parent.parent
-from datafix_paths import writable_root
-
-LOCAL = writable_root()
-LEGACY = {'1.8.9', '1.9.4', '1.10.2', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.1', '1.16.5'}
+LOCAL = datafix_paths.writable_root()
 
 
 def worlds_dir(name):
     return LOCAL / 'worlds-pre-1.17' if name.split('-')[0] in LEGACY else LOCAL / 'worlds'
 
 
+# The versions the harness covers, oldest first: a choice, not something any file states.
 VERSIONS = ['1.8.9', '1.9.4', '1.10.2', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.1', '1.16.5', '1.17.1', '1.18.1', '1.18.2', '1.19', '1.19.2', '1.19.3', '1.19.4', '1.20.1', '1.20.2', '1.20.4', '1.20.5', '1.20.6', '1.21.1',
             '1.21.3', '1.21.4', '1.21.5', '1.21.6', '1.21.8', '1.21.9', '1.21.10', '1.21.11', '26.1', '26.1.2', '26.2']
 # Extra worlds of one version with another world type, for the level.dat generator settings:
@@ -63,6 +65,9 @@ VARIANTS = {
                                  '{"chunk_generator":{"type":"minecraft:surface"},"biome_source":{"type":"minecraft:fixed","options":'
                                  '{"biomes":["minecraft:desert"]}}}'}),
 }
+# Worlds saved before 1.17 go in worlds-pre-1.17: every version of VERSIONS before this one.
+FIRST_MODERN = '1.17.1'
+LEGACY = set(VERSIONS[:VERSIONS.index(FIRST_MODERN)])
 MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
 LOCK = json.loads((ROOT / 'research-lock.json').read_text())['java_runtimes']
 BOT = 'Upgrader'
@@ -89,15 +94,12 @@ def fetch(path, url, sha1, what):
 
 def version_meta(version):
     path = LOCAL / 'servers' / version / 'version.json'
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        # Missing, or unreadable from an older run's cut-short write: fetched again.
+    if not path.exists():   # fetch() renames a whole file into place, so a file that exists is never cut short
         manifest_path = os.environ.get('SUNRISE_DATAFIX_MANIFEST')
         manifest = json.loads(Path(manifest_path).read_text()) if manifest_path else json.load(urllib.request.urlopen(MANIFEST))
         entry = next(v for v in manifest['versions'] if v['id'] == version)
         fetch(path, entry['url'], entry['sha1'], f'{version}: version metadata')
-        return json.loads(path.read_text())
+    return json.loads(path.read_text())
 
 
 def server_jar(version):
@@ -242,7 +244,7 @@ def failed(lines):
 
 def mcstring(s):
     data = s.encode()
-    return lab.varint(len(data)) + data
+    return varint(len(data)) + data
 
 
 class Bot:
@@ -254,21 +256,21 @@ class Bot:
         self.buffer = b''
         self.protocol = protocol
         self.stop = threading.Event()
-        self.send(0, lab.varint(protocol) + mcstring('127.0.0.1') + struct.pack('>H', port) + lab.varint(2))
+        self.send(0, varint(protocol) + mcstring('127.0.0.1') + struct.pack('>H', port) + varint(2))
         if protocol <= 758:  # 1.18.2: the name only
             self.send(0, mcstring(name))
         elif protocol == 759:  # 1.19: no signature data
             self.send(0, mcstring(name) + b'\x00')
         elif protocol == 760:  # 1.19.2: no signature data, optional UUID
-            self.send(0, mcstring(name) + b'\x00' + b'\x01' + lab.offline_uuid(name).bytes)
+            self.send(0, mcstring(name) + b'\x00' + b'\x01' + offline_uuid(name).bytes)
         elif protocol <= 763:  # 1.19.3 - 1.20.1: optional UUID
-            self.send(0, mcstring(name) + b'\x01' + lab.offline_uuid(name).bytes)
+            self.send(0, mcstring(name) + b'\x01' + offline_uuid(name).bytes)
         else:
-            self.send(0, mcstring(name) + lab.offline_uuid(name).bytes)
+            self.send(0, mcstring(name) + offline_uuid(name).bytes)
         while True:
             pid, data = self.receive()
             if pid == 3:
-                self.threshold = lab.parse_varint(data, 0)[1]
+                self.threshold = parse_varint(data, 0)[1]
             elif pid == 2:
                 break
             elif pid == 0:
@@ -293,15 +295,15 @@ class Bot:
             elif pid == disconnect:
                 raise RuntimeError(f'disconnected during configuration: {data!r}')
             elif not old and self.known_packs(data):
-                self.send(7, lab.varint(0))  # claim no packs: the server sends full registries
+                self.send(7, varint(0))  # claim no packs: the server sends full registries
 
     @staticmethod
     def known_packs(data):
         try:
-            pos, count = lab.parse_varint(data, 0)
+            pos, count = parse_varint(data, 0)
             if count < 1:
                 return False
-            pos, n = lab.parse_varint(data, pos)
+            pos, n = parse_varint(data, pos)
             return data[pos:pos + n] == b'minecraft'
         except IndexError:
             return False
@@ -340,18 +342,18 @@ class Bot:
                 return value
 
     def send(self, packet_id, payload=b''):
-        body = lab.varint(packet_id) + payload
+        body = varint(packet_id) + payload
         if self.threshold >= 0:
-            body = lab.varint(len(body)) + zlib.compress(body) if len(body) >= self.threshold else lab.varint(0) + body
-        self.sock.sendall(lab.varint(len(body)) + body)
+            body = varint(len(body)) + zlib.compress(body) if len(body) >= self.threshold else varint(0) + body
+        self.sock.sendall(varint(len(body)) + body)
 
     def receive(self):
         length = self.read_varint()
         body = self.read_exact(length)
         if self.threshold >= 0:
-            pos, size = lab.parse_varint(body, 0)
+            pos, size = parse_varint(body, 0)
             body = zlib.decompress(body[pos:]) if size else body[pos:]
-        pos, packet_id = lab.parse_varint(body, 0)
+        pos, packet_id = parse_varint(body, 0)
         return packet_id, body[pos:]
 
 
@@ -449,7 +451,7 @@ def build(name, force=False):
     era = scene.era(data_version)
     work = LOCAL / 'gen' / name
     shutil.rmtree(work, ignore_errors=True)
-    port = lab.free_port()
+    port = free_port()
     states = block_states(jar, java(version)) if version in STATE_GRID and not props else ()
     server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
     if props and props.get('level-type') == 'debug_all_block_states':

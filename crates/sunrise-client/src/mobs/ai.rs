@@ -1,7 +1,7 @@
 //! The per-tick mob update in vanilla order (`Entity.baseTick`,
 //! `LivingEntity.baseTick/tick/aiStep`, `Mob.serverAiStep`) and the
 //! dispatch to each species family's goals and special behaviour.
-pub use freezing::{can_freeze, wears_gaze_disguise};
+pub use freezing::{can_freeze, gaze_disguised, wears_gaze_disguise};
 mod feeding;
 mod flower_contact;
 mod freezing;
@@ -575,6 +575,11 @@ impl Mob {
         self.extra
             .swing_right_arm
             .is_some_and(|right| right == self.main_arm_left())
+    }
+    /// `LivingEntity.isSwinging`: a swing is under way, whichever hand it names. The local
+    /// player's model mirrors its swing through `swing_right_arm` only.
+    pub fn is_swinging(&self) -> bool {
+        self.ai.swinging || self.extra.swing_right_arm.is_some()
     }
     /// LivingEntity.swing
     pub fn swing(&mut self) {

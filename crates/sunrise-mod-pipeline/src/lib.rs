@@ -20,9 +20,9 @@ pub mod check;
 pub mod guard;
 pub mod stubs;
 
-use crate::check::{Problem, located, problem, translate_backends};
+use crate::check::{Problem, line_column, located, problem, translate_backends};
 use naga::front::glsl::InterfaceLimits;
-use sunrise_glsl::{Glue, Includes, Inputs, Stages, Translated};
+use sunrise_glsl::{Expanded, Glue, Includes, Inputs, ResourceKind, Stages, Translated};
 
 /// The folder under `assets/<namespace>/` holding core shader programs (`.vsh` and `.fsh`).
 pub const CORE_FOLDER: &str = "shaders/core";
@@ -310,11 +310,16 @@ pub fn assign_set1_bindings<'a>(
     out
 }
 
-/// Extract non-vanilla uniform blocks, `sampler2D`s, `isamplerBuffer`/`usamplerBuffer`s, and
-/// `layout(push_constant)` blocks from a mod shader pair for deviceless static checking
-/// (`cargo sunrise-mod check`). Reserved vanilla `BindGroupLayouts.java` names (plus
-/// `SpriteRect` when `textured`) are never extracted as mod bindings so undeclared vanilla
-/// names are still refused.
+/// The non-vanilla uniform blocks, `sampler2D`s, integer texel buffers, storage buffers and
+/// storage images a mod shader pair declares, and the push-constant size its
+/// `layout(push_constant)` block asks for ([`MAX_PUSH_CONSTANT_SIZE`], `0` without one), for
+/// deviceless static checking (`cargo sunrise-mod check`), which has no `BindGroupLayout` to ask.
+/// They are the declarations the translator binds, found by the same code
+/// ([`sunrise_glsl::resources`]), each name once in the order the vertex stage then the fragment
+/// stage first declares it. Reserved vanilla `BindGroupLayouts.java` names (plus `SpriteRect` when
+/// `textured`) are never mod bindings, so undeclared vanilla names are still refused. The stages
+/// are read as the translator reads them: with comments gone and includes inlined
+/// ([`extract_program_bindings`]).
 pub fn extract_mod_bindings(
     vertex: &str,
     fragment: &str,
@@ -325,105 +330,25 @@ pub fn extract_mod_bindings(
     let is_reserved = |name: &str| {
         VANILLA_BIND_GROUP_LAYOUT_NAMES.contains(&name) || (textured && name == "SpriteRect")
     };
-    for source in [vertex, fragment] {
-        let mut in_block_comment = false;
-        for raw_line in source.lines() {
-            let mut line = raw_line.trim();
-            if in_block_comment {
-                if let Some(end) = line.find("*/") {
-                    in_block_comment = false;
-                    line = line[end + 2..].trim();
-                } else {
-                    continue;
-                }
-            }
-            if let Some(start) = line.find("/*") {
-                if let Some(end) = line[start + 2..].find("*/") {
-                    let before = line[..start].trim();
-                    let after = line[start + 2 + end + 2..].trim();
-                    line = if before.is_empty() { after } else { before };
-                } else {
-                    in_block_comment = true;
-                    line = line[..start].trim();
-                }
-            }
-            if let Some(comment) = line.find("//") {
-                line = line[..comment].trim();
-            }
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some(image) = sunrise_glsl::storage_image(line) {
-                if !is_reserved(image.name) && !out.iter().any(|(n, _)| n == image.name) {
-                    out.push((
-                        image.name.to_owned(),
-                        ModBindingKind::StorageImage {
-                            access: sunrise_glsl::ImageAccess::of_qualifiers(&image.qualifiers),
-                        },
-                    ));
-                }
-                continue;
-            }
-            if let Some(block) = sunrise_glsl::storage_block(line) {
-                if !is_reserved(block.name) && !out.iter().any(|(n, _)| n == block.name) {
-                    out.push((
-                        block.name.to_owned(),
-                        ModBindingKind::StorageBuffer {
-                            read_only: block.qualifiers.contains(&"readonly"),
-                        },
-                    ));
-                }
-                continue;
-            }
-            let Some(at) = line.find("uniform") else {
-                continue;
-            };
-            let head = line[..at].trim();
-            if !(head.is_empty() || head.starts_with("layout")) {
-                continue;
-            }
-            // Check for layout(push_constant) uniform Name { ... }
-            if head.starts_with("layout")
-                && let Some(open) = head.find('(')
-                && let Some(close) = head[open + 1..].rfind(')')
-                && head[open + 1..open + 1 + close]
-                    .split(',')
-                    .any(|item| item.trim() == "push_constant")
-            {
+    for resource in [vertex, fragment]
+        .into_iter()
+        .flat_map(sunrise_glsl::resources)
+    {
+        let kind = match resource.kind {
+            ResourceKind::PushConstantBlock => {
                 push_constant_size = MAX_PUSH_CONSTANT_SIZE;
                 continue;
             }
-            let rest = line[at + "uniform".len()..].trim();
-            let first_end = rest
-                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                .unwrap_or(rest.len());
-            let first = &rest[..first_end];
-            let after_first = rest[first_end..].trim();
-            let (name, kind) = if matches!(first, "sampler2D" | "isamplerBuffer" | "usamplerBuffer")
-            {
-                let name_end = after_first
-                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                    .unwrap_or(after_first.len());
-                let name = &after_first[..name_end];
-                if name.is_empty() {
-                    continue;
-                }
-                let kind = if first == "sampler2D" {
-                    ModBindingKind::CombinedImageSampler
-                } else {
-                    ModBindingKind::TexelBuffer
-                };
-                (name, kind)
-            } else if !first.is_empty() && (after_first.is_empty() || after_first.starts_with('{'))
-            {
-                (first, ModBindingKind::UniformBuffer)
-            } else {
-                continue;
-            };
-            if is_reserved(name) || out.iter().any(|(n, _)| n == name) {
-                continue;
+            ResourceKind::UniformBlock => ModBindingKind::UniformBuffer,
+            ResourceKind::Sampler2D => ModBindingKind::CombinedImageSampler,
+            ResourceKind::TexelBuffer => ModBindingKind::TexelBuffer,
+            ResourceKind::StorageBuffer { read_only } => {
+                ModBindingKind::StorageBuffer { read_only }
             }
-            out.push((name.to_owned(), kind));
+            ResourceKind::StorageImage { access } => ModBindingKind::StorageImage { access },
+        };
+        if !is_reserved(resource.name) && !out.iter().any(|(name, _)| name == resource.name) {
+            out.push((resource.name.to_owned(), kind));
         }
     }
     (out, push_constant_size)
@@ -495,34 +420,71 @@ pub fn pipeline_glue<'a>(interface: InterfaceLimits, fragment_finish: Option<&'a
     }
 }
 
-/// Build the `prelude` and `setup` snippets for an arbitrary list of `(name, glsl_type)` vertex
-/// inputs assigned deterministic sequential locations `0..N`.
-fn build_owned_glue(vertex_inputs: &[(&str, &str)]) -> (String, String) {
-    use std::fmt::Write as _;
-    let mut prelude = String::new();
-    let mut setup = String::new();
-    for (loc, (name, ty)) in vertex_inputs.iter().enumerate() {
-        writeln!(prelude, "layout(location = {loc}) in {ty} hz_attr_{loc};").unwrap();
-        write!(setup, "{name} = hz_attr_{loc}; ").unwrap();
-    }
-    (prelude, setup)
+/// What [`translate_inner`] and [`translate_linear_fragment`] both hand the translator for
+/// `options`: the mod's set-1 bindings, and the glue snippets binding `options.vertex_inputs` to
+/// deterministic sequential locations `0..N`.
+struct Setup<'a> {
+    set1: Set1Bindings<'a>,
+    prelude: String,
+    setup: String,
 }
 
-/// The glue for `options.vertex_inputs` over the snippets from [`build_owned_glue`].
-fn owned_glue<'a>(
-    options: &Options<'a>,
-    prelude: &'a str,
-    setup: &'a str,
-    fragment_finish: Option<&'a str>,
-) -> Glue<'a> {
-    Glue {
-        inputs: options.vertex_inputs,
-        prelude,
-        setup,
-        finish: "",
-        vertex_id: "int(gl_VertexIndex)",
-        fragment_finish,
-        interface: options.interface,
+impl<'a> Setup<'a> {
+    fn new(options: &Options<'a>) -> Self {
+        use std::fmt::Write as _;
+        let mut prelude = String::new();
+        let mut setup = String::new();
+        for (loc, (name, ty)) in options.vertex_inputs.iter().enumerate() {
+            writeln!(prelude, "layout(location = {loc}) in {ty} hz_attr_{loc};").unwrap();
+            write!(setup, "{name} = hz_attr_{loc}; ").unwrap();
+        }
+        Self {
+            set1: assign_set1_bindings(options.mod_bindings, options.push_constant_size),
+            prelude,
+            setup,
+        }
+    }
+
+    fn inputs<'b>(
+        &'b self,
+        options: &Options<'_>,
+        defines: &'b [&'b str],
+        includes: &'b Includes<'b>,
+    ) -> Inputs<'b> {
+        Inputs {
+            blocks: if options.textured {
+                &BLOCKS_WITH_SPRITE
+            } else {
+                &BLOCKS
+            },
+            samplers: if options.textured {
+                &TEXTURED_SAMPLERS
+            } else {
+                &[]
+            },
+            extra_set: MOD_BIND_GROUP_SET,
+            extra_blocks: &self.set1.blocks,
+            extra_samplers: &self.set1.samplers,
+            extra_texel_buffers: &self.set1.texel_buffers,
+            extra_storage_buffers: &self.set1.storage_buffers,
+            extra_storage_images: &self.set1.storage_images,
+            push_constant_binding: self.set1.push_constant_binding,
+            loose: &[],
+            defines,
+            includes,
+        }
+    }
+
+    fn glue<'b>(&'b self, options: &Options<'b>, fragment_finish: Option<&'b str>) -> Glue<'b> {
+        Glue {
+            inputs: options.vertex_inputs,
+            prelude: &self.prelude,
+            setup: &self.setup,
+            finish: "",
+            vertex_id: "int(gl_VertexIndex)",
+            fragment_finish,
+            interface: options.interface,
+        }
     }
 }
 
@@ -545,158 +507,99 @@ fn is_supported_vertex_glsl_type(ty: &str) -> bool {
     )
 }
 
-/// Parse top-level vertex `in <type> <name>;` declarations from preprocessed GLSL source,
-/// returning `(byte_offset, name, glsl_type)`.
-fn parse_vertex_in_decls(text: &str) -> Vec<(usize, &str, &str)> {
-    let mut out = Vec::new();
-    let mut brace_depth = 0u32;
-    let mut in_block_comment = false;
-    let mut line_start = 0usize;
-    for raw_line in text.split_inclusive('\n') {
-        let offset = line_start;
-        line_start += raw_line.len();
-        let mut line = raw_line.trim();
-        if in_block_comment {
-            if let Some(end) = line.find("*/") {
-                in_block_comment = false;
-                line = line[end + 2..].trim();
-            } else {
-                continue;
-            }
-        }
-        if let Some(start) = line.find("/*") {
-            if let Some(end) = line[start + 2..].find("*/") {
-                // Single-line block comment; ignore only if it's the whole line.
-                if start == 0 && start + 2 + end + 2 >= line.len() {
-                    continue;
-                }
-            } else {
-                in_block_comment = true;
-                line = line[..start].trim();
-            }
-        }
-        if let Some(comment) = line.find("//") {
-            line = line[..comment].trim();
-        }
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let open_braces = line.bytes().filter(|&b| b == b'{').count() as u32;
-        let close_braces = line.bytes().filter(|&b| b == b'}').count() as u32;
-        let top_level = brace_depth == 0 && open_braces == 0 && close_braces == 0;
-        brace_depth = brace_depth
-            .saturating_add(open_braces)
-            .saturating_sub(close_braces);
-        if !top_level {
-            continue;
-        }
-        for stmt in line.split(';') {
-            let mut rest = stmt.trim();
-            if rest.is_empty() {
-                continue;
-            }
-            // Strip optional `layout(...)`.
-            if let Some(after_layout) = rest.strip_prefix("layout") {
-                let trimmed = after_layout.trim_start();
-                if let Some(after_open) = trimmed.strip_prefix('(')
-                    && let Some(close) = after_open.find(')')
-                {
-                    rest = after_open[close + 1..].trim_start();
-                }
-            }
-            let tokens = rest.split_whitespace();
-            let mut saw_in = false;
-            let mut ty = None;
-            let mut name = None;
-            for tok in tokens {
-                if !saw_in {
-                    if tok == "in" {
-                        saw_in = true;
-                    } else if matches!(
-                        tok,
-                        "flat"
-                            | "smooth"
-                            | "noperspective"
-                            | "centroid"
-                            | "sample"
-                            | "invariant"
-                            | "highp"
-                            | "mediump"
-                            | "lowp"
-                    ) {
-                        continue;
-                    } else {
-                        break;
-                    }
-                } else if ty.is_none() {
-                    if matches!(tok, "highp" | "mediump" | "lowp") {
-                        continue;
-                    }
-                    ty = Some(tok);
-                } else if name.is_none() {
-                    name = Some(tok);
-                    break;
-                }
-            }
-            if let (Some(ty), Some(name)) = (ty, name) {
-                // Skip function prototypes or array-syntax edge cases only if invalid ident.
-                if name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
-                    out.push((offset, name, ty));
-                }
-            }
-        }
+/// A refusal of the declaration at byte `at` of `stage`'s text, in the file and at the line that
+/// byte came from ([`Expanded::error_at`]: an `#include`d declaration is located in its own
+/// file), and at its column in the expanded text.
+fn refusal_at(stage: &Expanded, at: usize, message: String) -> Problem {
+    let error = stage.error_at(Some(at), message);
+    Problem {
+        file: error.file,
+        line: error.line as usize,
+        column: line_column(stage.text(), at).1,
+        message: error.message,
     }
-    out
 }
 
-/// Extract declared vertex `in` attributes `(name, glsl_type)` from expanded vertex GLSL for
-/// standalone tooling (`cargo sunrise-mod check`) that validates `.vsh` files without running
-/// the mod's Rust registration code.
-pub fn extract_vertex_inputs(vertex_expanded: &str) -> Result<Vec<(String, String)>, String> {
-    let decls = parse_vertex_in_decls(vertex_expanded);
+/// The vertex inputs `(name, glsl_type)` a vertex stage declares, from its expanded text
+/// ([`sunrise_glsl::stage_inputs`]: includes inlined, comments gone). Refuses an unsupported
+/// type, a name declared twice and more than 16 inputs, locating the refusal in the file and at
+/// the line the declaration came from ([`refusal_at`]).
+fn declared_vertex_inputs(vertex: &Expanded) -> Result<Vec<(String, String)>, Problem> {
+    let decls = sunrise_glsl::stage_inputs(vertex.text());
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(decls.len());
-    for (_, name, ty) in decls {
+    for (offset, name, ty) in decls {
+        let refuse = |message: String| refusal_at(vertex, offset, message);
         if !is_supported_vertex_glsl_type(ty) {
-            return Err(format!(
+            return Err(refuse(format!(
                 "unsupported vertex input type `{ty}` for `{name}`: expected float/vecN/int/ivecN/uint/uvecN"
-            ));
+            )));
         }
         if !seen.insert(name) {
-            return Err(format!("duplicate vertex input `{name}`"));
+            return Err(refuse(format!("duplicate vertex input `{name}`")));
         }
         out.push((name.to_owned(), ty.to_owned()));
         if out.len() > 16 {
-            return Err("vertex shader declares more than 16 vertex inputs".to_owned());
+            return Err(refuse(
+                "vertex shader declares more than 16 vertex inputs".to_owned(),
+            ));
         }
     }
     Ok(out)
 }
 
-/// Refuse any top-level vertex `in` declaration that is not listed in `vertex_inputs` or whose
-/// GLSL type disagrees with the pipeline's [`VertexFormat`].
+/// Reads an include for a program: the sprite helpers ([`SPRITE_INCLUDE`]) are pasted when
+/// `sprite` (the pipeline is textured, or the reader is finding out whether it is) and refused
+/// otherwise, every other file comes from `include`.
+fn read_include(
+    id: &str,
+    sprite: bool,
+    include: &dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    if id != SPRITE_INCLUDE {
+        return include(id);
+    }
+    if sprite {
+        return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
+    }
+    Err(format!(
+        "{SPRITE_INCLUDE} requires a sprite texture (RenderPipeline::textured)"
+    ))
+}
+
+/// The [`Includes`] of a program's stages, reading files through `read` ([`read_include`]).
+fn program_includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>) -> Includes<'a> {
+    Includes {
+        read,
+        namespace: "minecraft",
+        folder: INCLUDE_FOLDER,
+        once: &["moj_import"],
+    }
+}
+
+/// Refuse any top-level vertex `in` declaration ([`sunrise_glsl::stage_inputs`] of the expanded
+/// stage, comments gone) that is not listed in `vertex_inputs` or whose GLSL type disagrees with
+/// the pipeline's [`VertexFormat`]. A declaration is located by where its name stands in
+/// `vertex`, in the file and at the line it came from ([`refusal_at`]).
 fn validate_vertex_inputs(
-    vertex_file: &str,
-    vertex_expanded: &str,
+    vertex: &Expanded,
     vertex_inputs: &[(&str, &str)],
 ) -> Result<(), Problem> {
-    for (offset, name, ty) in parse_vertex_in_decls(vertex_expanded) {
+    for (offset, name, ty) in sunrise_glsl::stage_inputs(vertex.text()) {
         match vertex_inputs.iter().find(|(n, _)| *n == name) {
             None => {
-                return Err(located(
-                    vertex_file,
-                    vertex_expanded,
-                    Some(offset),
+                return Err(refusal_at(
+                    vertex,
+                    offset,
                     format!(
                         "undeclared vertex input `{name}`: declare it in RenderPipeline::vertex_binding"
                     ),
                 ));
             }
             Some((_, expected)) if *expected != ty => {
-                return Err(located(
-                    vertex_file,
-                    vertex_expanded,
-                    Some(offset),
+                return Err(refusal_at(
+                    vertex,
+                    offset,
                     format!(
                         "vertex input `{name}` declared as `{ty}` in shader, expected `{expected}` from VertexFormat"
                     ),
@@ -706,6 +609,75 @@ fn validate_vertex_inputs(
         }
     }
     Ok(())
+}
+
+/// What a program's text says of its pipeline, for deviceless static checking (`cargo sunrise-mod
+/// check`), which has no `RenderPipeline` to ask: [`extract_program_bindings`].
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProgramBindings {
+    /// Whether the program samples the pipeline's sprite texture: it names `Sampler0`,
+    /// `SpriteRect` or `sampleSprite`, or includes [`SPRITE_INCLUDE`].
+    pub textured: bool,
+    /// The mod's own bindings ([`extract_mod_bindings`]).
+    pub bindings: Vec<(String, ModBindingKind)>,
+    /// The vertex stage's `in`s `(name, glsl_type)` in declaration order, the ones an included
+    /// file declares too, checked as the translator checks them: a supported type, each name
+    /// once, at most 16.
+    pub vertex_inputs: Vec<(String, String)>,
+    /// What its `layout(push_constant)` block asks for, `0` without one.
+    pub push_constant_size: u32,
+    /// The id (`ns:path`) of every file either stage's expansion pasted, each once, the vertex
+    /// stage's first.
+    pub includes: Vec<String>,
+}
+
+/// What a program's two stages declare, read as [`translate`] reads them: `#include`s inlined
+/// under `defines` and comments removed. A uniform block, sampler or buffer an included file
+/// declares is the program's too (#5905), and one named only in a comment is not, nor does a
+/// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
+/// refuses the program, as [`translate`] does, with the include's error, and so does a vertex
+/// input of an unsupported type, a duplicate one or a 17th, in the file and at the line that
+/// declares it, an included file's among them.
+/// [`SPRITE_INCLUDE`] is always pasted: including it is itself asking for the sprite texture.
+pub fn extract_program_bindings(
+    sources: &ProgramSources<'_>,
+    defines: &[&str],
+    include: &dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Result<ProgramBindings, Problem> {
+    let read = |id: &str| read_include(id, true, include);
+    let includes = program_includes(&read);
+    let defines = effective_defines(defines);
+    let expand = |text: &str, file: &str, dir: &str| {
+        sunrise_glsl::expand_includes(text, file, dir, &includes, Some(&defines))
+            .map_err(|e| problem(file, e.to_string()))
+    };
+    let vertex = expand(sources.vertex, sources.vertex_file, sources.vertex_dir)?;
+    let fragment = expand(
+        sources.fragment,
+        sources.fragment_file,
+        sources.fragment_dir,
+    )?;
+    let textured = [&vertex, &fragment].iter().any(|stage| {
+        stage
+            .text()
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .any(|word| matches!(word, "Sampler0" | "SpriteRect" | "sampleSprite"))
+    });
+    let (bindings, push_constant_size) =
+        extract_mod_bindings(vertex.text(), fragment.text(), textured);
+    let mut includes = vertex.includes().to_vec();
+    for id in fragment.includes() {
+        if !includes.contains(id) {
+            includes.push(id.clone());
+        }
+    }
+    Ok(ProgramBindings {
+        textured,
+        bindings,
+        vertex_inputs: declared_vertex_inputs(&vertex)?,
+        push_constant_size,
+        includes,
+    })
 }
 
 /// Prepend [`DEPTH_ZERO_TO_ONE`] to caller-supplied defines.
@@ -773,12 +745,7 @@ fn translate_compute_inner(
     options: &ComputeOptions<'_>,
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<sunrise_glsl::ComputeTranslated, Vec<Problem>> {
-    let includes = Includes {
-        read: &include,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let includes = program_includes(include);
     let expanded = sunrise_glsl::expand_includes(
         sources.source,
         sources.file,
@@ -875,34 +842,18 @@ fn translate_inner(
     extra_samplers: &[&str],
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<BuiltProgram, Vec<Problem>> {
-    let read = |id: &str| -> Result<Option<String>, String> {
-        if id == SPRITE_INCLUDE {
-            if options.textured {
-                return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
-            }
-            return Err(format!(
-                "{SPRITE_INCLUDE} requires a sprite texture (RenderPipeline::textured)"
-            ));
-        }
-        include(id)
-    };
-    let includes = Includes {
-        read: &read,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let read = |id: &str| read_include(id, options.textured, include);
+    let includes = program_includes(&read);
 
-    let vertex_expanded = sunrise_glsl::expand_includes(
+    let vertex = sunrise_glsl::expand_includes(
         sources.vertex,
         sources.vertex_file,
         sources.vertex_dir,
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?
-    .text()
-    .to_owned();
+    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
+    let vertex_expanded = vertex.text().to_owned();
     if let Some((at, msg)) = guard::refusal(&vertex_expanded) {
         return Err(vec![located(
             sources.vertex_file,
@@ -911,11 +862,7 @@ fn translate_inner(
             msg,
         )]);
     }
-    if let Err(prob) =
-        validate_vertex_inputs(sources.vertex_file, &vertex_expanded, options.vertex_inputs)
-    {
-        return Err(vec![prob]);
-    }
+    validate_vertex_inputs(&vertex, options.vertex_inputs).map_err(|prob| vec![prob])?;
 
     let fragment_expanded = sunrise_glsl::expand_includes(
         sources.fragment,
@@ -966,35 +913,16 @@ fn translate_inner(
             ),
         )]);
     }
-    let set1 = assign_set1_bindings(options.mod_bindings, options.push_constant_size);
-    let inputs = Inputs {
-        blocks: if options.textured {
-            &BLOCKS_WITH_SPRITE
-        } else {
-            &BLOCKS
-        },
-        samplers: if options.textured {
-            &TEXTURED_SAMPLERS
-        } else {
-            &[]
-        },
-        extra_set: MOD_BIND_GROUP_SET,
-        extra_blocks: &set1.blocks,
-        extra_samplers: &set1.samplers,
-        extra_texel_buffers: &set1.texel_buffers,
-        extra_storage_buffers: &set1.storage_buffers,
-        extra_storage_images: &set1.storage_images,
-        push_constant_binding: set1.push_constant_binding,
-        loose: &[],
-        defines,
-        includes: &includes,
-    };
-    let (glue_prelude, glue_setup) = build_owned_glue(options.vertex_inputs);
-    let glue = owned_glue(options, &glue_prelude, &glue_setup, None);
+    let setup = Setup::new(options);
+    let set1 = &setup.set1;
+    let inputs = setup.inputs(options, defines, &includes);
+    let glue = setup.glue(options, None);
 
     let provided = |name: &str| extra_samplers.contains(&name);
-    let mut translated = sunrise_glsl::translate(&stages, &inputs, &glue, &provided)
-        .map_err(|errs| map_glsl_errors(sources, &errs, options.textured))?;
+    let to_problems =
+        |errs: Vec<sunrise_glsl::Error>| map_glsl_errors(sources, &errs, options.textured);
+    let mut translated =
+        sunrise_glsl::translate(&stages, &inputs, &glue, &provided).map_err(to_problems)?;
     if let Some(pc_binding) = set1.push_constant_binding
         && let Some(actual_size) = translated.uniform_block_size(MOD_BIND_GROUP_SET, pc_binding)
         && actual_size > options.push_constant_size
@@ -1012,9 +940,9 @@ fn translate_inner(
         && let Some(out_name) = fragment_loc0_output_name(&translated.fragment)
     {
         let finish = linear_fragment_finish(out_name);
-        let linear_glue = owned_glue(options, &glue_prelude, &glue_setup, Some(&finish));
+        let linear_glue = setup.glue(options, Some(&finish));
         translated = sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided)
-            .map_err(|errs| map_glsl_errors(sources, &errs, options.textured))?;
+            .map_err(to_problems)?;
     }
 
     if options.check_backends {
@@ -1047,37 +975,15 @@ pub fn translate_linear_fragment(
 ) -> Result<naga::Module, String> {
     guard::guarded(|| {
         let defines = effective_defines(options.defines);
+        // The text is expanded already: nothing is left to include.
         let noop = |_: &str| Ok(None);
-        let includes = Includes {
-            read: &noop,
-            namespace: "minecraft",
-            folder: INCLUDE_FOLDER,
-            once: &["moj_import"],
-        };
-        let set1 = assign_set1_bindings(options.mod_bindings, options.push_constant_size);
-        let inputs = Inputs {
-            blocks: if options.textured {
-                &BLOCKS_WITH_SPRITE
-            } else {
-                &BLOCKS
-            },
-            samplers: if options.textured {
-                &TEXTURED_SAMPLERS
-            } else {
-                &[]
-            },
-            extra_set: MOD_BIND_GROUP_SET,
-            extra_blocks: &set1.blocks,
-            extra_samplers: &set1.samplers,
-            extra_texel_buffers: &set1.texel_buffers,
-            extra_storage_buffers: &set1.storage_buffers,
-            extra_storage_images: &set1.storage_images,
-            push_constant_binding: set1.push_constant_binding,
-            loose: &[],
-            defines: &defines,
-            includes: &includes,
-        };
-        let (glue_prelude, glue_setup) = build_owned_glue(options.vertex_inputs);
+        let read = |id: &str| read_include(id, options.textured, &noop);
+        let includes = program_includes(&read);
+        let setup = Setup::new(options);
+        let inputs = setup.inputs(options, &defines, &includes);
+        // The program is one `translate` built, which provides no extra samplers: only
+        // `translate_oit` does, and the renderer never re-translates an OIT program.
+        let provided = |_: &str| false;
         let stages = Stages {
             dir: "",
             vertex: vertex_expanded,
@@ -1085,29 +991,25 @@ pub fn translate_linear_fragment(
             vertex_file: "",
             fragment_file: "",
         };
-        let base = sunrise_glsl::translate(
-            &stages,
-            &inputs,
-            &owned_glue(options, &glue_prelude, &glue_setup, None),
-            &|_| false,
-        )
-        .map_err(|errs| sunrise_glsl::describe(&errs))?;
+        let glue = setup.glue(options, None);
+        let base = sunrise_glsl::translate(&stages, &inputs, &glue, &provided)
+            .map_err(|errs| sunrise_glsl::describe(&errs))?;
         let Some(out_name) = fragment_loc0_output_name(&base.fragment) else {
             return Ok(base.fragment);
         };
         let finish = linear_fragment_finish(out_name);
-        sunrise_glsl::translate(
-            &stages,
-            &inputs,
-            &owned_glue(options, &glue_prelude, &glue_setup, Some(&finish)),
-            &|_| false,
-        )
-        .map_err(|errs| sunrise_glsl::describe(&errs))
-        .map(|t| t.fragment)
+        let linear_glue = setup.glue(options, Some(&finish));
+        sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided)
+            .map_err(|errs| sunrise_glsl::describe(&errs))
+            .map(|t| t.fragment)
     })
     .unwrap_or_else(Err)
 }
 
+/// The translator's `errors` as problems in the program's files. An error refusing `Sampler0` or
+/// `SpriteRect` as a block or sampler the pipeline doesn't provide
+/// ([`sunrise_glsl::Error::unprovided`]) adds, on an untextured pipeline, the hint to declare it
+/// textured.
 fn map_glsl_errors(
     sources: &ProgramSources<'_>,
     errors: &[sunrise_glsl::Error],
@@ -1117,9 +1019,7 @@ fn map_glsl_errors(
         .iter()
         .map(|err| {
             let mut message = err.message.clone();
-            if !textured
-                && (message.contains("Sampler0 is not") || message.contains("SpriteRect is not"))
-            {
+            if !textured && matches!(err.unprovided.as_deref(), Some("Sampler0" | "SpriteRect")) {
                 message += " (requires RenderPipeline::textured)";
             }
             let file = if !err.file.is_empty() {
@@ -1900,5 +1800,143 @@ void main() {{
                 }
             )]
         );
+    }
+
+    /// The bindings come from the text the translator reads, where comments are gone: a
+    /// declaration named only in a line or a block comment is not the mod's.
+    #[test]
+    fn a_name_only_in_a_comment_is_not_a_mod_binding() {
+        let vsh = "#version 330\n// uniform sampler2D LineOnly;\nin vec3 Position;\n\
+            void main() { gl_Position = vec4(Position, 1.0); }\n";
+        let fsh = "#version 330\n/* uniform sampler2D Spanning;\n\
+            layout(std140) uniform Hidden { vec4 h; };\n*/\n\
+            uniform sampler2D Real; /* uniform sampler2D Trailing; */\n\
+            out vec4 fragColor;\nvoid main() { fragColor = texture(Real, vec2(0.0)); }\n";
+        let ProgramBindings {
+            bindings,
+            push_constant_size,
+            ..
+        } = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include).unwrap();
+        assert_eq!(
+            bindings,
+            vec![("Real".to_owned(), ModBindingKind::CombinedImageSampler)]
+        );
+        assert_eq!(push_constant_size, 0);
+    }
+
+    /// A vertex input only in a line or block comment is no input: the comments go before the
+    /// declarations are read.
+    #[test]
+    fn a_commented_vertex_input_is_no_input() {
+        let vsh = "#version 330\n// in vec3 Commented;\nin vec3 Position; // in vec2 Trailing;\n\
+            /* in vec4 Block;\nin vec4 Spanning; */\nin vec2 UV0;\n\
+            void main() { gl_Position = vec4(Position, UV0.x); }\n";
+        let fsh = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let program = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include).unwrap();
+        assert_eq!(
+            program.vertex_inputs,
+            [
+                ("Position".to_owned(), "vec3".to_owned()),
+                ("UV0".to_owned(), "vec2".to_owned())
+            ]
+        );
+    }
+
+    /// A vertex stage's `in`s are read from the text the translator reads, so those an included
+    /// file declares are the program's too, and a refused one is located in the file and at the line
+    /// it came from.
+    #[test]
+    fn vertex_inputs_come_from_the_expanded_vertex_stage() {
+        let vsh = "#version 330\n#include <example:attributes.glsl>\nin vec2 UV0;\n\
+            void main() { gl_Position = vec4(Position, 1.0); }\n";
+        let fsh = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => Ok(Some(
+                "in vec3 Position;\nlayout(location = 3) in uvec4 Packed;\n".to_owned(),
+            )),
+            other => stub_include(other),
+        };
+        let program = extract_program_bindings(&sources(vsh, fsh), &[], &include).unwrap();
+        let expected = [("Position", "vec3"), ("Packed", "uvec4"), ("UV0", "vec2")]
+            .map(|(name, ty)| (name.to_owned(), ty.to_owned()));
+        assert_eq!(program.vertex_inputs, expected);
+
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => Ok(Some("in mat4 Matrix;\n".to_owned())),
+            other => stub_include(other),
+        };
+        let refused = extract_program_bindings(&sources(vsh, fsh), &[], &include)
+            .expect_err("an unsupported vertex input type is refused");
+        assert_eq!(refused.file, "example:shaders/include/attributes.glsl");
+        assert_eq!(refused.line, 1);
+        assert!(
+            refused.message.contains("`mat4` for `Matrix`"),
+            "{refused:?}"
+        );
+
+        // The translator refuses an undeclared `in` of an include the same way, on a line
+        // that is no line of the expanded text.
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => {
+                Ok(Some("in vec3 Position;\nin vec4 Stray;\n".to_owned()))
+            }
+            other => stub_include(other),
+        };
+        let refused = translate(&sources(vsh, fsh), &Options::default(), &include)
+            .expect_err("an undeclared vertex input is refused");
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(refused[0].file, "example:shaders/include/attributes.glsl");
+        assert_eq!(refused[0].line, 2);
+        assert!(refused[0].message.contains("`Stray`"), "{refused:?}");
+    }
+
+    /// A program whose include cannot be expanded is refused with the include's error, not read
+    /// from its unexpanded text (where a binding would still be found).
+    #[test]
+    fn a_program_including_a_missing_file_is_refused_with_no_bindings() {
+        let vsh = "#version 330\n#include <minecraft:nothing_here.glsl>\nin vec3 Position;\n\
+            void main() { gl_Position = vec4(Position, 1.0); }\n";
+        let fsh = "#version 330\nuniform sampler2D Real;\nout vec4 fragColor;\n\
+            void main() { fragColor = texture(Real, vec2(0.0)); }\n";
+        let refused = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include)
+            .expect_err("a missing include refuses the program");
+        assert_eq!(refused.file, "assets/example/shaders/core/glow.vsh");
+        assert!(
+            refused.message.contains("nothing_here.glsl not found"),
+            "{refused:?}"
+        );
+    }
+
+    /// The hint to declare `.textured` follows the name the pipeline refused: `Sampler0`
+    /// and `SpriteRect` get it on an untextured pipeline, a name merely ending in one does not.
+    #[test]
+    fn the_textured_hint_follows_the_unbound_name() {
+        let hint = "(requires RenderPipeline::textured)";
+        let refused = |declaration: &str, used: &str| {
+            let fsh = format!(
+                "#version 330\n{declaration}\nout vec4 fragColor;\n\
+                 void main() {{ fragColor = {used}; }}\n"
+            );
+            let problems = translate(&sources(VSH, &fsh), &Options::default(), &stub_include)
+                .expect_err("an undeclared name is refused");
+            assert_eq!(problems.len(), 1, "{problems:?}");
+            problems[0].message.clone()
+        };
+        let sampler = refused(
+            "uniform sampler2D Sampler0;",
+            "texture(Sampler0, vec2(0.0))",
+        );
+        assert!(sampler.ends_with(hint), "{sampler}");
+        let rect = refused(
+            "layout(std140) uniform SpriteRect { vec4 r; };",
+            "vec4(r.x)",
+        );
+        assert!(rect.ends_with(hint), "{rect}");
+        let other = refused(
+            "uniform sampler2D MySampler0;",
+            "texture(MySampler0, vec2(0.0))",
+        );
+        assert!(other.contains("MySampler0 is not"), "{other}");
+        assert!(!other.contains(hint), "{other}");
     }
 }

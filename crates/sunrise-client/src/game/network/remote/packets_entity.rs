@@ -94,6 +94,7 @@ impl Game<'_> {
                         row.custom_name = name.as_ref().map(sunrise_client::entity_nbt::name_text);
                     }
                     (3, Value::Bool(visible)) => row.custom_name_visible = *visible,
+                    (5, Value::Bool(no_gravity)) => row.no_gravity = *no_gravity,
                     _ => {}
                 }
             }

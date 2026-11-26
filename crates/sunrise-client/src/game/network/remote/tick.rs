@@ -37,7 +37,6 @@ impl Game<'_> {
         self.tick_end_flash();
         self.player_border();
         self.tick_remote_entities(running);
-        self.tick_remote_arm_poses();
         self.tick_random_textures();
         // Breeze.tick's block dust: drawn by each client for the breezes it sees.
         if running {
@@ -92,8 +91,6 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// ClientLevel.tickEntities; a frozen level only ticks the players
-    /// (`TickRateManager.isEntityFrozen`).
     /// `GuardianRenderer.getEntityToLookAt`: a guardian's eye follows its
     /// synched attack target, else the camera.
     pub(in crate::game) fn tick_remote_guardian_eyes(&mut self, running: bool) {
@@ -129,7 +126,9 @@ impl Game<'_> {
         self.guardian_look_scratch = looks;
     }
 
-    /// `ClientLevel.tickEntities`: the section index takes each crossing at its entity's turn.
+    /// `ClientLevel.tickEntities`: a frozen level only ticks the players
+    /// (`TickRateManager.isEntityFrozen`), and the section index takes each crossing at its
+    /// entity's turn.
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
         self.client_pick.sections.get_mut().begin_entity_ticks();
         self.tick_remote_entity_turns(running);
@@ -861,29 +860,7 @@ impl Game<'_> {
             if let Some(r) = self.remote.as_mut() {
                 general::tick_remote_general(&mut r.general.rows, &mut lerps);
             }
-            // Armor stands: ClientLevel.tickNonPassenger's setOldPosAndRot,
-            // then their SteppedInterpolationHandler's step, as the mobs'.
-            if let Some(r) = self.remote.as_mut() {
-                for a in &mut self.armor_stands {
-                    let step = r
-                        .stepped
-                        .get_mut(&(a.id as i32))
-                        .and_then(|h| h.interpolate());
-                    a.interpolate(step.map(|at| {
-                        let p = at.position;
-                        (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
-                    }));
-                    // LivingEntity.baseTick's tickEffects.
-                    super::super::potions::client_tick_effects(
-                        &mut a.client_effects,
-                        &mut a.darkness_blend,
-                    );
-                    self.client_pick
-                        .sections
-                        .get_mut()
-                        .move_id(a.id, a.position.components());
-                }
-            }
+            self.tick_remote_armor_stands(|_| true);
             // The yaw of a boat eases toward the server's over the same steps
             // as its position, read before `step` counts one off.
             let turns: HashMap<i32, (f32, u32)> = lerps
@@ -924,30 +901,7 @@ impl Game<'_> {
         } else if !frozen_ticking.is_empty() {
             let ticking_set: sunrise_client::fast_hash::FxHashSet<u32> =
                 frozen_ticking.iter().map(|&id| id as u32).collect();
-            if let Some(r) = self.remote.as_mut() {
-                for a in &mut self.armor_stands {
-                    if !ticking_set.contains(&a.id) {
-                        continue;
-                    }
-                    let step = r
-                        .stepped
-                        .get_mut(&(a.id as i32))
-                        .and_then(|h| h.interpolate());
-                    a.interpolate(step.map(|at| {
-                        let p = at.position;
-                        (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
-                    }));
-                    // LivingEntity.baseTick's tickEffects.
-                    super::super::potions::client_tick_effects(
-                        &mut a.client_effects,
-                        &mut a.darkness_blend,
-                    );
-                    self.client_pick
-                        .sections
-                        .get_mut()
-                        .move_id(a.id, a.position.components());
-                }
-            }
+            self.tick_remote_armor_stands(|id| ticking_set.contains(&id));
         }
         lerps.retain(|_, l| l.steps > 0);
         if let Some(r) = self.remote.as_mut() {
@@ -957,6 +911,37 @@ impl Game<'_> {
             for (id, l) in cart_lerps {
                 r.cart_lerps.entry(id).or_insert(l);
             }
+        }
+    }
+    /// The armor stands `ticks` admits (all in a running level, those that tick while
+    /// frozen otherwise): ClientLevel.tickNonPassenger's setOldPosAndRot, then their
+    /// SteppedInterpolationHandler's step, as the mobs', `LivingEntity.baseTick`'s
+    /// tickEffects, and the pick index's move.
+    fn tick_remote_armor_stands(&mut self, ticks: impl Fn(u32) -> bool) {
+        let Some(r) = self.remote.as_mut() else {
+            return;
+        };
+        for a in &mut self.armor_stands {
+            if !ticks(a.id) {
+                continue;
+            }
+            let step = r
+                .stepped
+                .get_mut(&(a.id as i32))
+                .and_then(|h| h.interpolate());
+            a.interpolate(step.map(|at| {
+                let p = at.position;
+                (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
+            }));
+            // LivingEntity.baseTick's tickEffects.
+            super::super::potions::client_tick_effects(
+                &mut a.client_effects,
+                &mut a.darkness_blend,
+            );
+            self.client_pick
+                .sections
+                .get_mut()
+                .move_id(a.id, a.position.components());
         }
     }
     /// The visit of each entity of the client level whose kind is told no tick
@@ -1656,8 +1641,9 @@ impl Game<'_> {
         }
     }
 
-    /// Humanoid held arm poses, once the tick has set equipment and use state.
-    pub(in crate::game) fn tick_remote_arm_poses(&mut self) {
+    /// Humanoid held arm poses, selected at the frame's extraction from the equipment and use state
+    /// the tick set (`AvatarRenderer.extractRenderState` → `getArmPose`).
+    pub(in crate::game) fn extract_remote_arm_poses(&mut self) {
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
             if !sunrise_client::mobs::anim::extracts_humanoid(m) {

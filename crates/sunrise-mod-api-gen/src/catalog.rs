@@ -570,7 +570,11 @@ impl Hook {
             });
         }
         if let Some(validator) = &api.output_validator
-            && (!matches!(api.contract, Contract::Cancel | Contract::Listen)
+            && (!matches!(
+                api.contract,
+                Contract::Cancel | Contract::Listen | Contract::Collect
+            ) || (api.contract == Contract::Collect
+                && (answered_by_mod || api.registration_append.is_some()))
                 || scope.is_some()
                 || entry.event_per_listener
                 || (api.contract == Contract::Listen
@@ -581,7 +585,7 @@ impl Hook {
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "output_validator is a path on a global cancel or plain global listen hook with shared outputs"
+                error: "output_validator is a path on a global cancel, plain global collect or plain global listen hook with shared outputs"
                     .into(),
             });
         }

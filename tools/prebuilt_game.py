@@ -44,6 +44,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from tools import file_lock, lab
 PROFILE = "release"
 # What rustc writes for a dylib or proc macro on each OS, plus metadata and the MinGW import libraries.
 SUFFIXES = (".rmeta", ".so", ".dll", ".dll.a", ".dylib")
@@ -118,10 +120,12 @@ PROGRAMS = "programs"
 
 
 LAUNCHER_FILES = ("src/game_app.rs", "assets/icons/sunrise.icns")  # game_app.rs include_bytes!es the icon
+# The sunrise-launcher commit the bundle preparation is fetched at (tools/ci/launcher_pin.sh reads the same file).
+LAUNCHER_PIN = ROOT / "tools/ci/launcher-pin"
 
 
 def launcher_pin() -> str:
-    pin = (ROOT / "tools/ci/launcher-pin").read_text().strip()
+    pin = LAUNCHER_PIN.read_text().strip()
     if not re.fullmatch(r"[0-9a-f]{40}", pin):
         sys.exit("tools/ci/launcher-pin must be a full 40-character lowercase commit SHA")
     return pin
@@ -630,7 +634,7 @@ def assert_externs(out: Path, eligible: list[str]) -> None:
 def build(out: Path, server: bool) -> None:
     # Resolve before entering the staged copy. Keep its source and Cargo outputs exclusively owned until collection
     # and validation are done. Closing the file releases the lock; leave its name in place for future builds.
-    configured_target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / "prebuilt"
+    configured_target = lab.cargo_target().resolve() / "prebuilt"
     target_dir = configured_target.resolve()
     # Collection empties the output. It must neither remove a path to the build's lock and stage
     # nor overlap the actual work directory when `prebuilt` is a symlink or junction.
@@ -641,18 +645,8 @@ def build(out: Path, server: bool) -> None:
                      "choose another output.")
     target_dir.mkdir(parents=True, exist_ok=True)
     with (target_dir / ".sdk-build.lock").open("a+b") as lock:
-        try:
-            if os.name == "nt":
-                import msvcrt
-
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as error:
-            sys.exit(f"Cannot acquire the SDK build lock in {target_dir}: {error}. Use a separate CARGO_TARGET_DIR.")
+        if not file_lock.lock(lock, wait=False):
+            sys.exit(f"Cannot acquire the SDK build lock in {target_dir}. Use a separate CARGO_TARGET_DIR.")
         _build_locked(output, server, target_dir)
 
 
@@ -782,7 +776,7 @@ def carry_patches(staged: Path, out: Path) -> dict:
             shutil.copytree(source, destination, symlinks=True)
             if any(path.is_symlink() for path in destination.rglob("*")):
                 raise ValueError("copied game patch contains a symlink")
-            spec["path"] = str(destination.relative_to(out))
+            spec["path"] = destination.relative_to(out).as_posix()
     # This deliberately is not the game's buildable workspace manifest.
     lines = []
     for registry, entries in patches.items():
@@ -873,7 +867,7 @@ def smoke(out: Path) -> None:
         shutil.rmtree(installed)
     installed.mkdir()
     # Use the same dylib link arguments as sunrise-native-build, not the executable's link policy.
-    platform = {"darwin": "macos", "win32": "windows"}.get(sys.platform, sys.platform)
+    platform = {"darwin": "macos", "win32": "windows"}.get(PLATFORM, PLATFORM)
     prefix = f"{platform} "
     policy = ROOT / "crates/sunrise-native-build/src/dylib-link-args.txt"
     link_args = [line.removeprefix(prefix) for line in policy.read_text(encoding="utf-8").splitlines()
@@ -985,9 +979,6 @@ def start(out: Path) -> None:
     a hang or any other stop, so an archive whose libraries disagree (two allocators, #3877) cannot ship. On Windows
     it runs without MinGW on PATH, as on a player's computer, so a runtime DLL the launcher would not install fails
     here (#3521)."""
-    # Run as a script, so lab sits on the path beside it; tests import this module without running `start`.
-    import lab
-
     client = json.loads((out / IDENTITY).read_text())["side"] == "client"
     for installed in (out.parent / SMOKE, out.parent / SMOKE_API):
         with tempfile.TemporaryDirectory(dir=out.parent) as scratch:
@@ -1055,9 +1046,12 @@ def start(out: Path) -> None:
 
 def tar_xz(folder: Path, names: list[str], archive: Path) -> None:
     """A tar of `names` (paths under `folder`, folders included) the same on every OS and run: sorted `./` entries,
-    zero times and owners, GNU format, xz-compressed with no timestamp of its own."""
+    zero times and owners, GNU format, xz-compressed with no timestamp of its own. Modes are 0o755 for folders and
+    executables and 0o644 for other files, whatever the host's umask or file system gave them (Windows reports
+    0o666 and 0o777)."""
     def clean(info: tarfile.TarInfo) -> tarfile.TarInfo:
         info.mtime, info.uid, info.gid, info.uname, info.gname = 0, 0, 0, "", ""
+        info.mode = 0o755 if info.isdir() or info.mode & 0o111 else 0o644
         return info
     with lzma.open(archive, "wb", format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=XZ_PRESET) as xz, \
             tarfile.open(fileobj=xz, mode="w", format=tarfile.GNU_FORMAT) as tar:
@@ -1150,7 +1144,7 @@ def programs(identity: dict, folder: Path) -> Path:
         cargo, build, *rest = shlex.split(inputs["how"][name].replace("PROFILE", "--release"))
         run([cargo, build, "--locked", *rest], cwd=ROOT)
     # Where the player folder's game program would be: its companions are beside it.
-    game = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / PROFILE / EXECUTABLE
+    game = lab.cargo_target().resolve() / PROFILE / EXECUTABLE
     run(["cargo", "run", "--locked", "-q", "-p", "xtask", "--", route, "--no-game", str(game), str(folder)], cwd=ROOT)
     if identity["side"] == "client" and identity["target"].startswith("x86_64-pc-windows"):
         run([sys.executable, str(ROOT / "tools/ci/fetch_dxc.py"), str(folder)], cwd=ROOT)
@@ -1165,7 +1159,7 @@ def tool(target: str) -> Path:
     environment = {**os.environ, "SUNRISE_TOOL_COMMIT": os.environ.get("SUNRISE_TOOL_COMMIT") or head()}
     run(["cargo", "build", "--locked", "--release", *(["--target", CROSS_TARGET] if CROSS_TARGET else []), "-p", TOOL, "--bin", TOOL],
         cwd=ROOT, env=environment)
-    folder = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / (CROSS_TARGET or ".") / "release"
+    folder = lab.cargo_target().resolve() / (CROSS_TARGET or ".") / "release"
     if not (folder / TOOL_PROGRAM).is_file():
         sys.exit(f"cargo built no {folder / TOOL_PROGRAM}")
     # Only a debug-assertions build reads SUNRISE_SDK_TRUSTED_KEY (sunrise-release-sign's sdk_keys_for), and the

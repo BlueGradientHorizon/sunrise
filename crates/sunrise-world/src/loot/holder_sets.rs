@@ -225,7 +225,6 @@ impl Binding {
             "entries",
             "children",
             "condition",
-            "conditions",
             "terms",
             "term",
             "modifier",
@@ -250,9 +249,7 @@ impl Binding {
                 } else {
                     let function = match field {
                         "modifier" | "functions" | "on_pass" | "on_fail" => Some(true),
-                        "condition" | "conditions" | "terms" | "term" | "requirements" => {
-                            Some(false)
-                        }
+                        "condition" | "terms" | "term" | "requirements" => Some(false),
                         _ => None,
                     };
                     changed |=

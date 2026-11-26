@@ -400,6 +400,15 @@ impl TravelTail {
     }
 }
 
+/// What a travel branch started its own move with: the `living_travel_moved` inputs that
+/// the move itself overwrites (#5074).
+#[derive(Clone, Copy, Debug)]
+struct TravelStart {
+    mode: sunrise_world::travel::TravelMode,
+    position: Vec3,
+    on_ground: bool,
+}
+
 /// Travel stopped in `Entity.move` or after `handleFallFlyingCollisions`' hurt.
 #[derive(Debug)]
 pub struct TravelPause(TravelStop);
@@ -409,6 +418,7 @@ enum TravelStop {
     Move {
         movement: MovePause,
         tail: TravelTail,
+        start: TravelStart,
     },
     AfterHit,
 }
@@ -442,13 +452,19 @@ impl TravelPause {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
     ) -> ControlFlow<Self> {
-        let TravelStop::Move { movement, tail } = self.0 else {
+        let TravelStop::Move {
+            movement,
+            tail,
+            start,
+        } = self.0
+        else {
             return ControlFlow::Continue(());
         };
         if let Some(fall) = mob.resume_fall(w, level, events, movement.fall) {
             return ControlFlow::Break(Self(TravelStop::Move {
                 movement: MovePause { fall, ..movement },
                 tail,
+                start,
             }));
         }
         if !mob.removed {
@@ -460,6 +476,7 @@ impl TravelPause {
                 movement.effect,
                 events,
             );
+            mob.fire_travel_moved(w, start);
             tail.finish(mob, w, level, events, true)?;
         }
         ControlFlow::Continue(())
@@ -2035,7 +2052,14 @@ impl Mob {
             self.yaw,
             self.effective_gravity(),
         ));
-        self.travel_move_with(w, level, events, pause, TravelTail::FallFlying { before })
+        self.travel_move_with(
+            w,
+            level,
+            events,
+            pause,
+            sunrise_world::travel::TravelMode::Glide,
+            TravelTail::FallFlying { before },
+        )
     }
     /// LivingEntity.travelFlying: no gravity, `0.91F` drag in the air,
     /// `0.8F` in water and 0.5 in lava. A happy ghast swims as fast as it
@@ -2088,7 +2112,14 @@ impl Mob {
             (air_speed, f64::from(0.91_f32))
         };
         self.move_relative(speed, input);
-        self.travel_move_with(w, level, events, pause, TravelTail::Flying { drag })
+        self.travel_move_with(
+            w,
+            level,
+            events,
+            pause,
+            sunrise_world::travel::TravelMode::Flying,
+            TravelTail::Flying { drag },
+        )
     }
 
     /// Continue immediately unless movement needs the owning game. Only a
@@ -2099,9 +2130,10 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         pause: bool,
+        mode: sunrise_world::travel::TravelMode,
         tail: TravelFinish,
     ) -> ControlFlow<TravelPause> {
-        self.travel_move_with(w, level, events, pause, TravelTail::Fixed(tail))
+        self.travel_move_with(w, level, events, pause, mode, TravelTail::Fixed(tail))
     }
 
     fn travel_move_with(
@@ -2110,13 +2142,50 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         pause: bool,
+        mode: sunrise_world::travel::TravelMode,
         tail: TravelTail,
     ) -> ControlFlow<TravelPause> {
+        let start = TravelStart {
+            mode,
+            position: self.position,
+            on_ground: self.ground.on_ground,
+        };
         if let Some(movement) = self.move_until_pause(w, level, events, &mut MoveGate::new(), pause)
         {
-            return ControlFlow::Break(TravelPause(TravelStop::Move { movement, tail }));
+            return ControlFlow::Break(TravelPause(TravelStop::Move {
+                movement,
+                tail,
+                start,
+            }));
         }
+        self.fire_travel_moved(w, start);
         tail.finish(self, w, level, events, pause)
+    }
+
+    /// `living_travel_moved` (movement phase 4, #5074): the branch's own move is done and its
+    /// drag and gravity are not. A listener's finite velocity is what they act on.
+    fn fire_travel_moved(&mut self, w: &MobWorld, start: TravelStart) {
+        if self.removed {
+            return;
+        }
+        let mut velocity = self.velocity;
+        crate::travel_gate::moved_controlled(
+            w.loop_context,
+            self.id,
+            &self.kind.id,
+            || start.mode,
+            crate::travel_gate::Moved {
+                moved: self.position.subtract(start.position),
+                on_ground_before: start.on_ground,
+                on_ground: self.ground.on_ground,
+                jumping: self.ai.jumping,
+            },
+            &mut velocity,
+            super::equine::controlled(self),
+        );
+        if velocity != self.velocity {
+            self.set_velocity(velocity);
+        }
     }
     /// `Entity.getBlockPosBelowThatAffectsMyMovement` for air travel and restitution.
     fn movement_support_position(&self, w: &MobWorld) -> BlockPos {
@@ -2205,6 +2274,7 @@ impl Mob {
             level,
             events,
             pause,
+            sunrise_world::travel::TravelMode::Air,
             TravelTail::Air {
                 friction,
                 stop_gliding,
@@ -2290,6 +2360,11 @@ impl Mob {
             level,
             events,
             pause,
+            if water {
+                sunrise_world::travel::TravelMode::Water
+            } else {
+                sunrise_world::travel::TravelMode::Lava
+            },
             TravelTail::Fluid {
                 falling,
                 old_y,

@@ -70,14 +70,11 @@ import uuid
 import zipfile
 from pathlib import Path
 
-try:
-    from . import lab, runtime, stress_scenes
-except ImportError:
-    import lab
-    import runtime
-    import stress_scenes
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, runtime, stress_scenes
+from tools.ci import cargo_jobs
 
-ROOT = lab.ROOT
 WORK = ROOT / ".local/perf-bench"
 VANILLA = lab.GAME
 SEED = 1234
@@ -1097,7 +1094,7 @@ def hardware():
         info.update(os_version=q("sw_vers", "-productVersion"), cpu=q("sysctl", "-n", "machdep.cpu.brand_string"),
                     ram_mb=int(q("sysctl", "-n", "hw.memsize") or 0) >> 20)
     elif sys.platform == "win32":
-        info.update(os_version=windows_version(), cpu=windows_cpu(), ram_mb=windows_ram_bytes() >> 20)
+        info.update(os_version=windows_version(), cpu=windows_cpu(), ram_mb=cargo_jobs.physical_memory() >> 20)
     else:
         release = dict(l.split("=", 1) for l in Path("/etc/os-release").read_text().splitlines() if "=" in l)
         info["os_version"] = f"{release.get('PRETTY_NAME', '').strip(chr(34))} (kernel {platform.release()})"
@@ -1105,7 +1102,7 @@ def hardware():
             if line.startswith("model name"):
                 info["cpu"] = line.split(":", 1)[1].strip()
                 break
-        info["ram_mb"] = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") >> 20
+        info["ram_mb"] = cargo_jobs.physical_memory() >> 20
     return info
 
 
@@ -1127,19 +1124,6 @@ def windows_cpu():
             return str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
     except OSError:
         return platform.processor()
-
-
-def windows_ram_bytes():
-    import ctypes
-
-    class Status(ctypes.Structure):  # MEMORYSTATUSEX
-        _fields_ = [("dwLength", ctypes.c_uint32), ("dwMemoryLoad", ctypes.c_uint32)] + [
-            (name, ctypes.c_uint64) for name in ("ullTotalPhys", "ullAvailPhys", "ullTotalPageFile",
-                                                 "ullAvailPageFile", "ullTotalVirtual", "ullAvailVirtual",
-                                                 "ullAvailExtendedVirtual")]
-
-    status = Status(dwLength=ctypes.sizeof(Status))
-    return status.ullTotalPhys if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)) else 0
 
 
 def report(args, distance, runs, app):

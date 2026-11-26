@@ -183,6 +183,24 @@ pub trait SlotRules {
         may_pickup: &mut bool,
         max_stack: &mut u32,
     );
+    /// Whether a part answers `menu_pick_all` for the menu type `menu`.
+    fn pick_all_listens(&self, menu: &str) -> bool {
+        let _ = menu;
+        false
+    }
+    /// `canTakeItemForPickAll(carried, slot)` of a mod menu type: `allowed` arrives true, and the
+    /// parts may refuse the gather the slot's `stack`.
+    fn pick_all(
+        &self,
+        menu: &str,
+        slot: usize,
+        carried: &ItemStack,
+        stack: &ItemStack,
+        context: SlotContext<'_>,
+        allowed: &mut bool,
+    ) {
+        let _ = (menu, slot, carried, stack, context, allowed);
+    }
 }
 
 /// The anvil's inputs while asking about the result vanilla just calculated.

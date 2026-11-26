@@ -1092,6 +1092,9 @@ mod native_block_entity_transform;
 mod native_block_entity_transform_tests;
 #[path = "game/modding/native_block_extra_models.rs"]
 mod native_block_extra_models;
+#[cfg(test)]
+#[path = "game/modding/native_block_metadata_reads_tests.rs"]
+mod native_block_metadata_reads_tests;
 #[path = "game/modding/native_block_sounds.rs"]
 pub(crate) mod native_block_sounds;
 #[path = "game/modding/native_block_sprites.rs"]
@@ -1490,6 +1493,9 @@ mod native_living_body;
 mod native_living_effects;
 #[path = "game/modding/native_living_flags.rs"]
 mod native_living_flags;
+#[cfg(test)]
+#[path = "game/modding/native_living_model_posed_tests.rs"]
+mod native_living_model_posed_tests;
 #[path = "game/modding/native_living_position.rs"]
 mod native_living_position;
 #[path = "game/modding/native_living_refs.rs"]
@@ -1497,6 +1503,9 @@ mod native_living_refs;
 #[cfg(test)]
 #[path = "game/modding/native_living_renderers_tests.rs"]
 mod native_living_renderers_tests;
+#[cfg(test)]
+#[path = "game/modding/native_living_travel_moved_tests.rs"]
+mod native_living_travel_moved_tests;
 #[cfg(test)]
 #[path = "game/modding/native_living_travel_sweep_tests.rs"]
 mod native_living_travel_sweep_tests;
@@ -3485,7 +3494,7 @@ struct Game<'a> {
     /// The window's inbox for server notices, kept across world disconnects.
     client_reports: Arc<sunrise_client::chunk_io::Reports>,
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
-    link_prompt: Option<String>,
+    link_prompt: Option<chat::LinkPrompt>,
     /// A command the player didn't type, waiting for their answer
     /// (game/network/remote_chat.rs).
     command_prompt: Option<remote_chat::CommandPrompt>,
@@ -3769,6 +3778,9 @@ struct Game<'a> {
     /// `Renderer::render` so `ClientHost` queries still see framebuffer size and
     /// prepared-model limits.
     render_snapshot: std::cell::Cell<Option<RenderSnapshot>>,
+    /// A session VSync change came while `Renderer::render` had the renderer out: the surface
+    /// is reconfigured once it is back (`apply_pending_present_mode`).
+    present_mode_pending: bool,
     /// The shader pack's state and bound mod pipeline slots as the latest frame's render
     /// callbacks read them, set before `Renderer::render` takes `self.renderer` away
     /// (`ClientOptionsClientHost::shader_pack_state`, `RenderAssets::pipeline_pack_bound`).
@@ -4491,9 +4503,6 @@ struct Game<'a> {
     gamemode_switcher: Option<sunrise_client::game_mode_switcher::GameModeSwitcher>,
     /// The system clipboard (`KeyboardHandler.clipboardManager`).
     clipboard: sunrise_client::clipboard::SystemClipboard,
-    /// The game is handling a key, mouse or typed-text event, from the window or the
-    /// control socket: the only time a mod reaches the clipboard (`with_user_input`).
-    user_input: std::cell::Cell<bool>,
     /// Select All in the append-only text fields.
     text_selection: sunrise_client::clipboard::AppendSelection,
     /// The client loop consumes a mod's quit request outside the calling hook.
@@ -6341,7 +6350,19 @@ impl Game<'_> {
     }
     /// Side effects reported by the behaviour library, in vanilla order.
     fn process_level_events(&mut self) -> Result<()> {
-        let events = std::mem::take(&mut self.level_events);
+        let mut events = std::mem::take(&mut self.level_events);
+        // A mod's `server_level_event` may keep a level event from going out.
+        if self.is_logical_server()
+            && mod_api::__private::listened(mod_api::HookId::ServerLevelEvent)
+            && !native_hooks::server_level_event::LevelEventsAsked::marked()
+        {
+            events.retain(|event| match *event {
+                LevelEvent::LevelEvent { id, pos, data, .. } => {
+                    !self.server_level_event_canceled(id, [pos.x, pos.y, pos.z], data, false)
+                }
+                _ => true,
+            });
+        }
         self.lan_record_events(&events);
         dispense_fixture::record_events(&events);
         for event in events {
@@ -9097,13 +9118,14 @@ impl Game<'_> {
                         r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
                     )
                 });
-                self.mod_block_entity_geometry(
+                let mod_cracks = self.mod_block_entity_geometry(
                     mods.chain(untemplated_eye),
                     camera,
                     alpha as f32,
                     &mut out,
                 );
                 self.mark_stage(out.len(), "DESTROY");
+                out.extend(mod_cracks);
                 for &(pos, stage) in &cracks {
                     let state = self.world.block(pos[0], pos[1], pos[2]);
                     self.res
@@ -10798,7 +10820,7 @@ impl Game<'_> {
             self.settings.sunrise.translucent_batching,
             self.effective_vsync(),
             &self.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.settings),
+            self.picked_pack_shape(),
             display,
             self.settings.texture_atlas_settings(),
         )?;
@@ -11408,6 +11430,7 @@ impl Game<'_> {
         ) -> Result<bool>,
     ) -> Result<bool> {
         self.begin_frame_draws();
+        self.extract_arm_poses();
         let prepare = spans::guard("prepare");
         let mut pr = spans::laps();
         // The window's GPU holds the atlas: its copy in memory is kept
@@ -12439,6 +12462,7 @@ impl Game<'_> {
         };
         drop(frame);
         self.renderer = renderer_slot;
+        self.apply_pending_present_mode();
         self.requested_post_effects_buf = requested_post_effects;
         prepared_draws.clear();
         *self.prepared_model_draws.borrow_mut() = prepared_draws;
@@ -13688,7 +13712,9 @@ impl Game<'_> {
                     self.advance_flight();
                     self.tick_world_icon();
                     let ticked = Instant::now();
-                    let rendered = self.render_and_flip(elapsed)?;
+                    // A mod's `framerate_limit` of 0 skips this frame's render.
+                    let limit = self.framerate_limit();
+                    let rendered = limit != 0 && self.render_and_flip(elapsed)?;
                     self.native_frame_end()?;
                     // Drain once for both the raw flight and the slow-frame/capture route.
                     let frame_spans = if sunrise_client::spans::recording_here() {
@@ -13752,7 +13778,7 @@ impl Game<'_> {
                         self.frame_stats.record_gpu(&r.gpu_times);
                         r.gpu_times.clear();
                     }
-                    self.limit_frame();
+                    self.limit_frame(limit);
                     let paused = self.pauses_game();
                     if paused != self.pause {
                         let mut cancel = false;
@@ -14585,6 +14611,7 @@ impl<'a> Game<'a> {
             model_copy_order: Default::default(),
             world_geometry: Some(Default::default()),
             render_snapshot: std::cell::Cell::new(None),
+            present_mode_pending: false,
             pack_frame_state: std::cell::Cell::new(None),
             pack_frame_slots: Default::default(),
             debug_renderers: Vec::new(),
@@ -14978,7 +15005,6 @@ impl<'a> Game<'a> {
             previous_mode: None,
             gamemode_switcher: None,
             clipboard: Default::default(),
-            user_input: Default::default(),
             text_selection: Default::default(),
             client_quit: std::cell::Cell::new(saving::ClientQuit::Running),
             saved_for_exit: false,

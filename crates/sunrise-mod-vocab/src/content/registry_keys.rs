@@ -393,6 +393,12 @@ pub fn block_definitions() -> Option<&'static sunrise_mod_runtime::block_definit
     resolved_block_keys().get().map(|blocks| &**blocks)
 }
 
+/// Share the immutable definitions published with completed block identities, for a holder
+/// that outlives the borrow or moves to another thread.
+pub fn block_definitions_shared() -> Option<Arc<sunrise_mod_runtime::block_definitions::Blocks>> {
+    resolved_block_keys().get().cloned()
+}
+
 /// Find an item in the completed registry without allocating at a hook boundary.
 pub fn item_key(id: &str) -> Option<ItemKey> {
     Some(ItemKey(*resolved_items().get()?.slots.get(id)?))

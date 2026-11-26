@@ -240,6 +240,9 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.fluids.in_water),
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.fluids.in_water)
+            }
             Body::Other(_) => None,
         }
     }
@@ -255,6 +258,9 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.is_in_lava()),
             Body::Mob(m) => Some(m.fluids.in_lava),
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.fluids.in_lava)
+            }
             Body::Other(_) => None,
         }
     }
@@ -275,6 +281,18 @@ impl Game<'_> {
                 (m.fluids.water, m.fluids.in_water),
                 (m.fluids.lava, m.fluids.in_lava),
             ),
+            Some(Body::Other(Target::General(id))) => {
+                let fluids = self
+                    .resident_entities
+                    .general
+                    .row(id)
+                    .ok_or(EntityReadError::Unavailable)?
+                    .fluids;
+                (
+                    (fluids.water, fluids.in_water),
+                    (fluids.lava, fluids.in_lava),
+                )
+            }
             _ => return Err(EntityReadError::Unavailable),
         };
         Ok(visit_touched_fluids(water, lava, visit))
@@ -288,6 +306,10 @@ impl Game<'_> {
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
                 Body::Player(p) => eye_fluid(p.is_eye_in_fluid(WATER), p.is_eye_in_fluid(LAVA)),
                 Body::Mob(m) => eye_fluid(m.fluids.eye_in_water, m.fluids.eye_in_lava),
+                Body::Other(Target::General(id)) => {
+                    let fluids = self.resident_entities.general.row(id)?.fluids;
+                    eye_fluid(fluids.eye_in_water, fluids.eye_in_lava)
+                }
                 Body::Other(_) => return None,
             },
         )
@@ -298,6 +320,9 @@ impl Game<'_> {
             Body::Player(p) if !self.is_logical_server() => Some(p.is_under_water()),
             Body::Player(p) => Some(p.fluids.was_eye_in_water && p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.was_eye_in_water && m.fluids.in_water),
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.under_water)
+            }
             Body::Other(_) => None,
         }
     }
@@ -719,7 +744,7 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Returns the mob's or dropped item's no-gravity flag (`Entity.isNoGravity`).
+    /// Returns the mob's, dropped item's or general row's no-gravity flag (`Entity.isNoGravity`).
     pub(super) fn entity_no_gravity(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(m.no_gravity),
@@ -728,6 +753,9 @@ impl Game<'_> {
                 .iter()
                 .find(|i| i.id == id)
                 .map(|i| i.no_gravity),
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.no_gravity)
+            }
             _ => None,
         }
     }
@@ -763,6 +791,7 @@ impl Game<'_> {
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
+            Target::General(id) => self.resident_entities.general.row(id)?.tick_count,
             _ => return None,
         })
     }
@@ -793,7 +822,8 @@ impl Game<'_> {
             true
         })
     }
-    /// Sets the mob's or dropped item's no-gravity flag (`Entity.setNoGravity`). Returns false
+    /// Sets the mob's, dropped item's or general row's no-gravity flag (`Entity.setNoGravity`).
+    /// Returns false
     /// for players and guests.
     pub(super) fn entity_set_no_gravity(&mut self, entity: EntityRef, no_gravity: bool) -> bool {
         match self.native_entity_target(entity) {
@@ -809,6 +839,15 @@ impl Game<'_> {
                     .is_some_and(|i| {
                         i.no_gravity = no_gravity;
                         i.needs_sync = true;
+                        true
+                    })
+            }
+            Some(Target::General(id)) => {
+                self.resident_entities
+                    .general
+                    .row_mut(id)
+                    .is_some_and(|row| {
+                        row.no_gravity = no_gravity;
                         true
                     })
             }

@@ -84,6 +84,13 @@ fn face_bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> [[f32; 3]; 2] {
 }
 
 impl StandaloneGeometry {
+    /// The standalone models and every block state's model of `pack`.
+    ///
+    /// With `block_entity_render`, a state whose block has a special renderer also records it
+    /// (`StateModel::special`) and widens its bounds by that part's default geometry. With `None`
+    /// no state records a special part and its bounds hold the block-state faces alone: only
+    /// for a caller that reads `prepared_upload`, which holds the standalone slots and no state.
+    /// A `Game` always passes its renderer, joined before the first world frame.
     pub(super) fn new(
         pack: &super::PackResources,
         gui: &super::UiResources,
@@ -150,17 +157,9 @@ impl StandaloneGeometry {
                         return None;
                     }
                     special_scratch.clear();
-                    super::minecarts::render_default_state(
-                        renderer,
-                        gui,
-                        world,
-                        0,
-                        false,
-                        id,
-                        Mat4::IDENTITY,
-                        0,
-                        &mut special_scratch,
-                    );
+                    super::minecarts::with_default_scene(gui, world, false, |scene| {
+                        renderer.render_state(scene, id.0, Mat4::IDENTITY, 0, &mut special_scratch);
+                    });
                     point_bounds(special_scratch.iter().map(|vertex| vertex.pos))
                 });
                 Self::bind_state(pack, &layer_sprites, id, special)
@@ -446,6 +445,12 @@ pub struct BlockEntityDraw<'v> {
     pub(super) level_lit: bool,
     /// `unlit` is on: elements drawn now skip face shading and draw full bright.
     pub(super) unlit: bool,
+    /// `crumbling` is on: elements drawn now are covered by the breaking crack.
+    crumbling: bool,
+    /// The breaking stage at the block drawn, when it is cracked (`crumbling_stage`).
+    crumbling_stage: Option<u8>,
+    /// The vertex ranges drawn under `crumbling`, beside `spins`.
+    crumbled: Vec<(usize, usize)>,
     /// Each element drawn under `level_light` (vertex range and local centre),
     /// beside `spins`.
     lit: Vec<LitElement>,
@@ -458,6 +463,8 @@ pub struct BlockEntityDraw<'v> {
     quad_capacity: sunrise_client::gfx::EntityQuadCapacity,
     /// Complete quads already reserved by other draw sources in the same combined batch.
     reserved_quads: usize,
+    /// Inside a mod's submit that `block_entity` dispatched: another `block_entity` is refused.
+    nested: bool,
 }
 
 /// One element (`block`, `model`, `terrain_model`, `cube` or `quad`) drawn under
@@ -558,6 +565,8 @@ struct PreparedRecord {
     pose: Mat4,
     tint: u32,
     light: u32,
+    /// Drawn under `crumbling`: its baked vertices join `crumbled`.
+    crumbling: bool,
 }
 
 /// Instance tint in the same bytes the CPU vertex colour uses.
@@ -670,6 +679,27 @@ fn place_geometry(
     }
 }
 
+/// Adds to `overlay` the placed vertices of one block's `ranges` (offsets into `placed`,
+/// camera-relative, turned by any `spin`) projected onto the crack stage whose sprite starts at
+/// `sprite`: what `submitCrumblingOverlay` draws again over the parts a renderer chose.
+fn crack_overlay(
+    placed: &[Vertex],
+    ranges: &[(usize, usize)],
+    origin: Vec3,
+    sprite: [f32; 2],
+    overlay: &mut Vec<Vertex>,
+) {
+    for &(from, to) in ranges {
+        let to = to.min(placed.len());
+        if from >= to {
+            continue;
+        }
+        let at = overlay.len();
+        overlay.extend_from_slice(&placed[from..to]);
+        sunrise_client::breaking::entity_geometry(&mut overlay[at..], origin, sprite);
+    }
+}
+
 #[allow(dead_code)]
 impl<'v> BlockEntityDraw<'v> {
     /// A frame drawn from `pose` (relative to the camera), borrowing `view`, lit by `light` and
@@ -697,11 +727,15 @@ impl<'v> BlockEntityDraw<'v> {
             spins: Vec::new(),
             level_lit: false,
             unlit: false,
+            crumbling: false,
+            crumbling_stage: None,
+            crumbled: Vec::new(),
             lit: Vec::new(),
             prepared: false,
             records: Vec::new(),
             quad_capacity: sunrise_client::gfx::EntityQuadCapacity::default_device(),
             reserved_quads: 0,
+            nested: false,
         }
     }
 
@@ -720,11 +754,6 @@ impl<'v> BlockEntityDraw<'v> {
         self.quad_capacity = quad_capacity;
         self.reserved_quads = reserved_quads;
         self
-    }
-
-    /// Device-derived entity quad capacity and reserved quad count for this draw.
-    pub(super) fn quad_budget(&self) -> (sunrise_client::gfx::EntityQuadCapacity, usize) {
-        (self.quad_capacity, self.reserved_quads)
     }
 
     /// Opens the renderer-owned scoped quad submission sink for this draw.
@@ -751,7 +780,8 @@ impl<'v> BlockEntityDraw<'v> {
         self.spins.last().is_some_and(|(_, spin)| spin.is_some())
     }
 
-    /// Record a prepared copy at the current vertex, unless this draw is CPU-only or spinning.
+    /// Record a prepared copy at the current vertex, unless this draw is CPU-only or spinning,
+    /// or the cracked block's overlay needs the model's vertices.
     fn defer_model(&mut self, slot: u32, generation: u64, tint: u32) -> bool {
         self.defer_model_at(slot, generation, self.pose(), tint, self.light)
     }
@@ -766,7 +796,12 @@ impl<'v> BlockEntityDraw<'v> {
         tint: u32,
         light: u32,
     ) -> bool {
-        if !self.prepared || self.spinning() || self.level_lit || self.unlit {
+        if !self.prepared
+            || self.spinning()
+            || self.level_lit
+            || self.unlit
+            || (self.crumbling && self.crumbling_stage.is_some())
+        {
             return false;
         }
         self.records.push(PreparedRecord {
@@ -776,6 +811,7 @@ impl<'v> BlockEntityDraw<'v> {
             pose,
             tint,
             light,
+            crumbling: self.crumbling,
         });
         true
     }
@@ -805,6 +841,21 @@ impl<'v> BlockEntityDraw<'v> {
                     e.start += count;
                     e.end += count;
                 }
+            }
+            let mut shifted = Vec::with_capacity(self.crumbled.len() + 1);
+            for &(start, end) in &self.crumbled {
+                if end <= record.at {
+                    shifted.push((start, end));
+                } else if start >= record.at {
+                    shifted.push((start + count, end + count));
+                } else {
+                    shifted.push((start, record.at));
+                    shifted.push((record.at + count, end + count));
+                }
+            }
+            self.crumbled = shifted;
+            if record.crumbling && count > 0 {
+                self.crumbled.push((record.at, record.at + count));
             }
             self.vertices.splice(record.at..record.at, extra);
         }
@@ -901,6 +952,24 @@ impl<'v> BlockEntityDraw<'v> {
             self.local_light_translation = light_translation;
         }
     }
+    /// `Err` inside a submit that [`Self::one_level`] runs: a carried block entity is drawn one
+    /// level deep, so input a mod controls cannot recurse without end.
+    fn refuse_nested(&self) -> Result<(), mod_api::BlockEntityDrawRefusal> {
+        if self.nested {
+            Err(mod_api::BlockEntityDrawRefusal::Nested)
+        } else {
+            Ok(())
+        }
+    }
+    /// Runs `submit` as a carried block entity's: under its own pose level, with
+    /// [`Self::refuse_nested`] refusing what it draws that way.
+    fn one_level(&mut self, submit: impl FnOnce(&mut Self)) {
+        self.nested = true;
+        self.push();
+        submit(self);
+        self.pop();
+        self.nested = false;
+    }
     /// Moves what is drawn next by `by`, in blocks.
     fn translate(&mut self, by: [f32; 3]) {
         self.apply(Mat4::from_translation(Vec3::from_array(by)));
@@ -986,6 +1055,23 @@ impl<'v> BlockEntityDraw<'v> {
     pub(super) fn unlit(&mut self, on: bool) {
         self.unlit = on;
     }
+    /// What is drawn next by `quad`, `cube`, `block`, `model` and `terrain_model` gets the
+    /// breaking crack while `on` (`native_draw_crumbling`).
+    fn crumbling(&mut self, on: bool) {
+        self.crumbling = on;
+    }
+    /// Marks the vertices from `start` as drawn under `crumbling`, joining the range before
+    /// them when they follow it.
+    pub(super) fn crumbling_since(&mut self, start: usize) {
+        let end = self.vertices.len();
+        if !self.crumbling || end <= start {
+            return;
+        }
+        match self.crumbled.last_mut() {
+            Some((_, last_end)) if *last_end == start => *last_end = end,
+            _ => self.crumbled.push((start, end)),
+        }
+    }
     /// The vertices from `start` of an element `unlit` covers: under `unlit` they lose their
     /// shading normal and draw full bright (their colours carry no shade), else `lit_since`.
     /// `terrain_model` keeps its own shading and calls `lit_since` directly.
@@ -1062,6 +1148,7 @@ impl<'v> BlockEntityDraw<'v> {
             },
             self.light,
         );
+        self.crumbling_since(start);
     }
 
     /// A quad of `corners` showing a dynamic texture: `quad`'s shading and light, UVs in the
@@ -1186,6 +1273,7 @@ impl<'v> BlockEntityDraw<'v> {
         );
         self.quad_scope().retain_valid_since(start);
         self.drawn_since(start, Self::cell_centre, self.light & 0xffff);
+        self.crumbling_since(start);
     }
 }
 
@@ -1257,6 +1345,8 @@ struct KeptEntry {
     /// Its elements lit by the level (`BlockEntityDraw::level_light`), from the
     /// start of `vertices`.
     lit: Vec<LitElement>,
+    /// The vertex ranges drawn under `BlockEntityDraw::crumbling`, from the start of `vertices`.
+    crumbled: Vec<(usize, usize)>,
 }
 
 /// Geometry mods kept (`BlockEntityDraw::keep`), by position. As
@@ -1303,6 +1393,7 @@ impl KeptGeometry {
         vertices: &[Vertex],
         spins: Vec<(usize, Option<Spin>)>,
         lit: Vec<LitElement>,
+        crumbled: Vec<(usize, usize)>,
         now: i64,
     ) -> &mut KeptEntry {
         use std::collections::hash_map::Entry;
@@ -1314,6 +1405,7 @@ impl KeptGeometry {
             vertices: Vec::new(),
             spins,
             lit,
+            crumbled,
         };
         let entry = match self.entries.entry(pos) {
             Entry::Vacant(slot) => slot.insert(entry),
@@ -1337,11 +1429,14 @@ impl KeptGeometry {
         draw: &mut BlockEntityDraw<'v>,
         origin: Vec3,
         level: &LevelLight<'_>,
+        crack: Option<(u8, Option<[f32; 2]>)>,
+        overlay: &mut Vec<Vertex>,
         bounds: impl FnOnce() -> [f32; 6],
         visible: impl FnOnce([f32; 6], usize) -> bool,
         submit: impl FnOnce(&mut BlockEntityDraw<'v>),
     ) {
         let start = draw.vertices.len();
+        let sprite = crack.and_then(|(_, sprite)| sprite);
         if let Some(entry) = self.get(pos, key, revision, draw.view.game_time) {
             if visible(entry.bounds, start) {
                 let take = entry
@@ -1372,6 +1467,15 @@ impl KeptGeometry {
                     );
                     draw.quad_scope().retain_valid_since(start);
                 }
+                if let Some(sprite) = sprite {
+                    crack_overlay(
+                        &draw.vertices[start..],
+                        &entry.crumbled,
+                        origin,
+                        sprite,
+                        overlay,
+                    );
+                }
             }
             return;
         }
@@ -1387,6 +1491,9 @@ impl KeptGeometry {
         draw.spins.clear();
         draw.level_lit = false;
         draw.unlit = false;
+        draw.crumbling = false;
+        draw.crumbling_stage = crack.map(|(stage, _)| stage);
+        draw.crumbled.clear();
         draw.lit.clear();
         draw.records.clear();
         submit(draw);
@@ -1398,12 +1505,16 @@ impl KeptGeometry {
             e.start -= start;
             e.end -= start;
         }
+        for (from, to) in &mut draw.crumbled {
+            *from -= start;
+            *to -= start;
+        }
         // The scope drops quads only once it is full, so a draw that leaves room dropped none:
         // only a complete extraction is retained. A full one may have been cut short, and a
         // later frame with more room must extract it again.
         let complete = draw.quad_scope().has_room();
         let vertices = &mut draw.vertices[start..];
-        let (spins, lit, cached) = if draw.kept && complete {
+        let (spins, lit, crumbled, cached) = if draw.kept && complete {
             // Keep the intrinsic floors, not the sampled light written into the frame.
             let entry = self.keep(
                 pos,
@@ -1413,16 +1524,18 @@ impl KeptGeometry {
                 vertices,
                 std::mem::take(&mut draw.spins),
                 std::mem::take(&mut draw.lit),
+                std::mem::take(&mut draw.crumbled),
                 draw.view.game_time,
             );
             (
                 &entry.spins,
                 &entry.lit,
+                &entry.crumbled,
                 Some(entry.vertices.as_mut_slice()),
             )
         } else {
             self.forget(pos);
-            (&draw.spins, &draw.lit, None)
+            (&draw.spins, &draw.lit, &draw.crumbled, None)
         };
         place_geometry(
             vertices,
@@ -1435,6 +1548,9 @@ impl KeptGeometry {
                 pass: LightPass::Fresh(cached),
             }),
         );
+        if let Some(sprite) = sprite {
+            crack_overlay(vertices, crumbled, origin, sprite, overlay);
+        }
     }
 
     fn forget(&mut self, pos: [i32; 3]) {
@@ -1610,14 +1726,17 @@ impl Game<'_> {
     /// `BlockEntityRenderer.getViewDistance` to the camera (`shouldRender`) and with its bounds
     /// (`native_block_entity_render_bounding_box`) in the frustum. Ordinary (non-global)
     /// renderers require an eye-visible section, matching built-in block entities.
+    /// Returns the crack overlay of the geometry its mods drew under `crumbling` (the
+    /// `DESTROY` stage's vertices, for the caller to draw after marking that stage), empty
+    /// when nothing is being mined.
     pub(super) fn mod_block_entity_geometry<'a>(
         &self,
         blocks: impl Iterator<Item = (&'a ([i32; 3], u32), bool)>,
         camera: DVec3,
         partial: f32,
         out: &mut Vec<Vertex>,
-    ) {
-        self.mod_block_entity_geometry_with_view(blocks, camera, partial, None, out);
+    ) -> Vec<Vertex> {
+        self.mod_block_entity_geometry_with_view(blocks, camera, partial, None, out)
     }
 
     /// [`Self::mod_block_entity_geometry`] with an explicit [`mod_api::WorldRenderView`] for
@@ -1629,7 +1748,7 @@ impl Game<'_> {
         partial: f32,
         explicit_view: Option<&mod_api::WorldRenderView<'_>>,
         out: &mut Vec<Vertex>,
-    ) {
+    ) -> Vec<Vertex> {
         self.with_world_view(camera, partial, explicit_view, |view| {
             let mut draw = BlockEntityDraw {
                 view,
@@ -1646,6 +1765,9 @@ impl Game<'_> {
                 spins: Vec::new(),
                 level_lit: false,
                 unlit: false,
+                crumbling: false,
+                crumbling_stage: None,
+                crumbled: Vec::new(),
                 lit: Vec::new(),
                 prepared: prepared_route(
                     self.pack_ids.is_some(),
@@ -1656,10 +1778,14 @@ impl Game<'_> {
                 records: Vec::new(),
                 quad_capacity: self.entity_quad_capacity(),
                 reserved_quads: self.entity_batch_reserved_quads(),
+                nested: false,
             };
             let now = view.game_time;
             let mut kept = self.kept_block_entities.borrow_mut();
             kept.sweep(now);
+            // The stage stored at each cracked position: empty, and never looked in, with no crack.
+            let cracks = self.crack_stage_map();
+            let mut overlay = Vec::new();
             let distances = self.view_distances();
             let light_at = |b: [i32; 3]| self.world.light(b[0], b[1], b[2]);
             for (&(pos, state), eye_visible) in blocks {
@@ -1694,6 +1820,11 @@ impl Game<'_> {
                         origin: corner,
                         light_at: &light_at,
                     },
+                    (!cracks.is_empty())
+                        .then(|| cracks.get(&pos))
+                        .flatten()
+                        .map(|&stage| (stage, self.crack_origin(u32::from(stage)))),
+                    &mut overlay,
                     || {
                         let mut bounds = DEFAULT_BOUNDS;
                         self.api_block_entity_render_bounding_box(
@@ -1725,7 +1856,8 @@ impl Game<'_> {
                 );
             }
             *out = draw.vertices;
-        });
+            overlay
+        })
     }
 
     pub(super) fn prepared_copy_room(&self, already: u64, incoming: usize) -> Option<usize> {
@@ -1862,6 +1994,15 @@ impl Game<'_> {
     /// (`BlockEntityDrawContext::unlit`).
     pub(super) fn native_draw_unlit(&self, draw: &mut BlockEntityDraw, on: bool) {
         draw.unlit(on);
+    }
+    /// The breaking stage at the block drawn (`BlockEntityDrawContext::crumbling_stage`).
+    pub(super) fn native_draw_crumbling_stage(&self, draw: &BlockEntityDraw) -> Option<u8> {
+        draw.crumbling_stage
+    }
+    /// What is drawn next by `quad`, `cube`, `block`, `model` and `terrain_model` gets the
+    /// breaking crack while `on` (`BlockEntityDrawContext::crumbling`).
+    pub(super) fn native_draw_crumbling(&self, draw: &mut BlockEntityDraw, on: bool) {
+        draw.crumbling(on);
     }
     /// Draws a quad with `corners` in blocks under `draw`'s pose, in a model
     /// face's order (top left, bottom left, bottom right, top right as seen
@@ -2042,6 +2183,7 @@ impl Game<'_> {
             },
             draw.light,
         );
+        draw.crumbling_since(start);
         all
     }
 
@@ -2070,7 +2212,117 @@ impl Game<'_> {
             &mut draw.vertices,
         );
         draw.drawn_since(start, BlockEntityDraw::cell_centre, draw.light & 0xffff);
+        draw.crumbling_since(start);
         true
+    }
+
+    /// `BlockEntityRenderDispatcher`'s extract and submit for `entity`, a block entity of
+    /// block state `state` (None: the state is not in the registry) that the caller carries
+    /// (`BlockEntityDrawContext::block_entity`), under `draw`'s pose and light, with no overlay
+    /// (`NO_OVERLAY`). The entity's own position is never read and `shouldRender`'s culling is
+    /// skipped: the caller's entity was culled already.
+    ///
+    /// A state with a vanilla renderer draws through `BlockEntityRenderer::render_state`
+    /// (`sunrise_client::block_entity_render`), the renderer's no-level form, from the data in
+    /// `entity.fields.nbt`; any other state's mod Part submits, one level deep, with the entity
+    /// as its data. A state with neither draws nothing.
+    pub(super) fn native_draw_block_entity(
+        &self,
+        draw: &mut BlockEntityDraw,
+        state: Option<BlockStateId>,
+        entity: &mod_api::SceneBlockEntity,
+    ) -> Result<(), mod_api::BlockEntityDrawRefusal> {
+        draw.refuse_nested()?;
+        let Some(state) = state else {
+            return Ok(());
+        };
+        let block = &*self.res.facts().get(state).name;
+        let renderer = self.res.block_entity_render();
+        if !renderer.renders(state.0) {
+            draw.one_level(|draw| {
+                self.native_block_entity_submit(
+                    draw.block,
+                    block,
+                    state,
+                    mod_api::BlockEntityDataView::new(entity),
+                    draw,
+                );
+            });
+            return Ok(());
+        }
+        // The saved tag as `BlockEntity.loadWithComponents` reads it, at the origin.
+        let mut fields = entity.fields.nbt.clone();
+        fields.insert(
+            "id".into(),
+            sunrise_core::nbt::Tag::String(entity.id.as_str().into()),
+        );
+        for key in ["x", "y", "z"] {
+            fields.insert(key.into(), sunrise_core::nbt::Tag::Int(0));
+        }
+        let saved = sunrise_core::nbt::Tag::Compound(fields);
+        let decoded = sunrise_client::save::decode_block_entity_for_block(&saved, block)
+            .map(|(_, entity)| entity);
+        let anim = sunrise_client::block_entity_render::BlockAnim {
+            sherds: if block == "minecraft:decorated_pot" {
+                super::block_entity_anims::pot_sherds(Some(&saved))
+            } else {
+                Default::default()
+            },
+            ..Default::default()
+        };
+        let banner = match &decoded {
+            Some(BlockEntity::Banner(banner)) => {
+                super::banners::layer_textures(&self.stations().banners, &banner.layers)
+            }
+            _ => Vec::new(),
+        };
+        let skin = match &decoded {
+            Some(BlockEntity::Skull(skull)) => self.skull_skin(skull),
+            _ => None,
+        };
+        let gui = &self.gui;
+        let scene = sunrise_client::block_entity_render::Scene {
+            camera: DVec3::ZERO,
+            sign_outline: sunrise_client::block_entity_render::SignOutline::None,
+            orientation: Quat::IDENTITY,
+            anim: &|_| anim.clone(),
+            texts: None,
+            partial: draw.view.partial_tick,
+            game_time: draw.view.game_time,
+            max_y: self.world.shape.max_y() - 1,
+            world: &self.world,
+            sprites: &gui.atlas.sprites,
+            emissive: &gui.atlas.emissive,
+            translucent_sprites: &gui.atlas.translucent,
+            atlas_revision: gui.atlas.revision,
+            nether: self.nether_lighting(),
+            lid: &|_| 0.0,
+            sign: &|_| match &decoded {
+                Some(BlockEntity::Sign(sign)) => Some(sign),
+                _ => None,
+            },
+            inline_images: None,
+            banner: &|_| banner.clone(),
+            skull: &|_| skin.clone(),
+            glyph: &|c| gui.atlas.glyph_cell(c),
+            glyphs: gui.atlas.font.epoch(),
+            font: Some(&gui.atlas.font),
+            dynamic_visible: None,
+        };
+        if !draw.quad_scope().has_room() {
+            return Ok(());
+        }
+        let start = draw.vertices.len();
+        renderer.render_state(
+            &scene,
+            state.0,
+            draw.pose(),
+            super::minecarts::special_light(draw.light),
+            &mut draw.vertices,
+        );
+        draw.quad_scope().retain_valid_since(start);
+        draw.drawn_since(start, BlockEntityDraw::cell_centre, draw.light & 0xffff);
+        Ok(())
     }
 
     /// Resolved block state `id` as one model: what `native_draw_block` draws
@@ -2097,27 +2349,28 @@ impl Game<'_> {
     /// packed `light`. It takes no tint and no hidden faces; `color` (`0xAARRGGBB`) multiplies
     /// it, and below opaque it blends as `entityTranslucent` does. The end portal and gateway
     /// draw their starfield whatever `color` is, as `rendertype_end_portal` does. Non-finite
-    /// quads are skipped individually and the contribution stays within `capacity` minus
-    /// `reserved_quads`.
-    #[allow(clippy::too_many_arguments)]
+    /// quads are skipped individually and the contribution stays within `scope`'s budget.
     pub(super) fn special_model_part(
         &self,
         state: BlockStateId,
         pose: Mat4,
         light: u32,
         color: u32,
-        out: &mut Vec<Vertex>,
-        capacity: sunrise_client::gfx::EntityQuadCapacity,
-        reserved_quads: usize,
+        scope: &mut sunrise_client::gfx::EntityQuadScope<'_>,
     ) {
         use sunrise_client::block_entity_render::{END_GATEWAY_LAYER, END_PORTAL_LAYER};
-        if !sunrise_client::gfx::EntityQuadScope::new(out, capacity, reserved_quads).has_room() {
+        if !scope.has_room() {
             return;
         }
-        let start = out.len();
-        self.special_block_model(state, pose, super::minecarts::special_light(light), out);
-        sunrise_client::gfx::EntityQuadScope::new(out, capacity, reserved_quads)
-            .retain_valid_since(start);
+        let start = scope.vertices_mut().len();
+        self.special_block_model(
+            state,
+            pose,
+            super::minecarts::special_light(light),
+            scope.vertices_mut(),
+        );
+        scope.retain_valid_since(start);
+        let out = scope.vertices_mut();
         if color != u32::MAX {
             for vertex in &mut out[start..] {
                 vertex.color =
@@ -4258,6 +4511,8 @@ mod tests {
                 &mut draw,
                 Vec3::ZERO,
                 &level,
+                None,
+                &mut Vec::new(),
                 || DEFAULT_BOUNDS,
                 |_, _| true,
                 |draw| {
@@ -4456,6 +4711,8 @@ mod tests {
                 &mut draw,
                 Vec3::new(4.0, -2.0, 3.0),
                 &level,
+                None,
+                &mut Vec::new(),
                 || {
                     bounds_calls.set(bounds_calls.get() + 1);
                     DEFAULT_BOUNDS
@@ -4563,6 +4820,8 @@ mod tests {
                         0x42
                     },
                 },
+                None,
+                &mut Vec::new(),
                 || DEFAULT_BOUNDS,
                 |_, _| true,
                 |draw| {
@@ -4594,6 +4853,7 @@ mod tests {
             drawn,
             DEFAULT_BOUNDS,
             &[vertex(0.5)],
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             0,
@@ -4639,6 +4899,7 @@ mod tests {
             &[vertex(0.25)],
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             2,
         );
         assert!(kept.get(pos, KEY, drawn, 2).is_none());
@@ -4676,6 +4937,8 @@ mod tests {
                 &mut draw,
                 Vec3::ZERO,
                 &level,
+                None,
+                &mut Vec::new(),
                 || DEFAULT_BOUNDS,
                 |_, _| true,
                 |draw| {
@@ -4708,6 +4971,7 @@ mod tests {
             &[vertex(0.0)],
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             0,
         );
         kept.keep(
@@ -4716,6 +4980,7 @@ mod tests {
             m,
             DEFAULT_BOUNDS,
             &[vertex(0.0)],
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             0,
@@ -4789,6 +5054,8 @@ mod tests {
                     origin: corner,
                     light_at: &|_| 0xF0,
                 },
+                None,
+                &mut Vec::new(),
                 || bounds,
                 |b, _| mod_block_entity_visible(Some(&frustum), origin, b, in_eye, false),
                 |draw| {
@@ -4848,5 +5115,493 @@ mod tests {
             4
         );
         assert_eq!(submits.get(), 3);
+    }
+
+    /// What `crumbling(true)` covers, and no more: `quad`, `cube`, `block`, `model` and
+    /// `terrain_model` drawn under it are projected onto the crack's destroy stage
+    /// (`breaking::entity_geometry`), the same draws under `crumbling(false)` are not, and
+    /// `crumbling_stage` reads the stage the frame gave the block (none for a posed frame).
+    #[test]
+    #[ignore = "daily"]
+    fn crumbling_overlay_covers_quad_cube_block_model_and_terrain_model_only_while_on() {
+        use super::super::host::draw::GameBlockEntityDrawContext;
+        use mod_api::BlockEntityDrawContext;
+
+        let _fixture =
+            sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            game.gui
+                .atlas
+                .sprites
+                .insert("mymod:block/casing".into(), sprite());
+            let id = Identifier::parse("minecraft:block/grass_block").unwrap();
+            let model = game.render_assets().model(&id).unwrap();
+            let game = &*game;
+            let mut faces = [None; 6];
+            faces[1] = Some(mod_api::CubeFace::new("mymod:block/casing"));
+            let all_kinds = |surface: &mut BlockEntityDraw| {
+                let mut drawn = GameBlockEntityDrawContext {
+                    game,
+                    surface: &mut *surface,
+                };
+                assert!(drawn.quad(
+                    "mymod:block/casing",
+                    [[0.0, 1.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+                    [0.0, 0.0, 16.0, 16.0],
+                    0xFFFFFF,
+                ));
+                assert!(drawn.cube([0.0; 3], [16.0; 3], faces, 0xFFFFFF));
+                assert_eq!(drawn.model(model, u32::MAX), Ok(()));
+                assert_eq!(
+                    drawn.terrain_model(model, mod_api::TerrainModelOptions::default()),
+                    Ok(())
+                );
+                assert!(game.native_draw_block(surface, BlockStateId(1)));
+            };
+
+            let posed = BlockEntityDraw::posed(
+                0.0,
+                0,
+                0xF0F0,
+                [0; 3],
+                Mat4::IDENTITY,
+                diffuse_lights(false),
+                Vec::new(),
+            );
+            assert_eq!(game.native_draw_crumbling_stage(&posed), None);
+
+            let mut surface = draw();
+            surface.crumbling_stage = Some(4);
+            assert_eq!(game.native_draw_crumbling_stage(&surface), Some(4));
+            all_kinds(&mut surface);
+            let before = surface.vertices.len();
+            assert!(before > 0 && surface.crumbled.is_empty(), "off by default");
+            surface.crumbling(true);
+            all_kinds(&mut surface);
+            surface.crumbling(false);
+            let covered = surface.vertices.len() - before;
+            assert!(covered > 0);
+            all_kinds(&mut surface);
+            assert_eq!(
+                surface.crumbled,
+                [(before, before + covered)],
+                "the five draws under crumbling(true) and no others"
+            );
+
+            let stage = [0.25, 0.5];
+            let mut overlay = Vec::new();
+            crack_overlay(
+                &surface.vertices,
+                &surface.crumbled,
+                Vec3::ZERO,
+                stage,
+                &mut overlay,
+            );
+            assert_eq!(overlay.len(), covered);
+            let mut expected = surface.vertices[before..before + covered].to_vec();
+            sunrise_client::breaking::entity_geometry(&mut expected, Vec3::ZERO, stage);
+            let bytes = |vertices: &[Vertex]| bytemuck::cast_slice::<_, u8>(vertices).to_vec();
+            assert_eq!(bytes(&overlay), bytes(&expected));
+            assert!(overlay.iter().all(|v| {
+                v.layer == 11 && v.light == sunrise_client::breaking::stage_light(stage)
+            }));
+        });
+    }
+
+    /// Kept geometry marked with `crumbling` shows the crack as it is each frame without a new
+    /// submit: it starts, advances to another stage sprite, turns with `spin` and clears, and
+    /// only the marked part is covered.
+    #[test]
+    fn kept_crumbling_follows_the_stage_and_the_spin_without_a_new_submit() {
+        use std::cell::Cell;
+        use sunrise_client::breaking::stage_light;
+
+        const TURNING: [[f32; 3]; 4] = [
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ];
+        let pos = [1, 2, 3];
+        let mut kept = KeptGeometry::default();
+        let mut draw = draw();
+        let revision = machine();
+        let submits = Cell::new(0);
+        let seen = Cell::new(None);
+        let mut frame = |tick: f64, crack: Option<(u8, Option<[f32; 2]>)>| {
+            draw.view =
+                mod_api::WorldRenderView::new(&DEFAULT_DRAW_CAMERA, None, 0.0, 0, tick, false, &[]);
+            draw.vertices.clear();
+            let mut overlay = Vec::new();
+            kept.render(
+                pos,
+                KEY,
+                revision,
+                &mut draw,
+                Vec3::ZERO,
+                &LevelLight {
+                    origin: DVec3::from_array(pos.map(f64::from)),
+                    light_at: &|_| 0xF0,
+                },
+                crack,
+                &mut overlay,
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    submits.set(submits.get() + 1);
+                    seen.set(draw.crumbling_stage);
+                    draw.keep();
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                    draw.crumbling(true);
+                    draw.spin([0.0, 1.0, 0.0], [0.5; 3], 90.0, 0.0);
+                    draw.quad(TURNING, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                    draw.crumbling(false);
+                    draw.still();
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                },
+            );
+            (draw.vertices.clone(), overlay)
+        };
+        let positions = |vertices: &[Vertex]| vertices.iter().map(|v| v.pos).collect::<Vec<_>>();
+
+        // Submitted once, with the stage the frame gave the block.
+        let (vertices, overlay) = frame(0.0, Some((2, Some([0.25, 0.5]))));
+        assert_eq!((submits.get(), seen.get()), (1, Some(2)));
+        assert_eq!(vertices.len(), 12);
+        assert_eq!(overlay.len(), 4, "only the part drawn under crumbling");
+        assert!(overlay.iter().all(|v| {
+            v.layer == 11 && v.light == stage_light([0.25, 0.5]) && v.color == 0xFFFF_FFFF
+        }));
+        let at_rest = positions(&vertices[4..8]);
+        assert_eq!(positions(&overlay), at_rest);
+
+        // The stage advances: no new submit, the new stage's sprite, and the part's turn.
+        let (vertices, overlay) = frame(1.0, Some((3, Some([0.5, 0.5]))));
+        assert_eq!(submits.get(), 1);
+        assert_eq!(overlay.len(), 4);
+        assert!(overlay.iter().all(|v| v.light == stage_light([0.5, 0.5])));
+        let turned = positions(&vertices[4..8]);
+        assert_ne!(turned, at_rest, "the part turned with the clock");
+        assert_eq!(positions(&overlay), turned, "and the crack with it");
+
+        // The crack clears, then starts again, still with no new submit.
+        let (vertices, overlay) = frame(1.0, None);
+        assert_eq!((submits.get(), vertices.len(), overlay.len()), (1, 12, 0));
+        let (_, overlay) = frame(2.0, Some((9, Some([0.0, 0.5]))));
+        assert_eq!((submits.get(), overlay.len()), (1, 4));
+        // A stage whose sprite the atlas lacks draws no crack.
+        let (_, overlay) = frame(2.0, Some((4, None)));
+        assert!(overlay.is_empty());
+    }
+
+    /// A prepared model recorded between two crumbling draws is spliced in at its record: the
+    /// range the two draws merged into splits around it, so the model is not cracked and both
+    /// quads are.
+    #[test]
+    fn a_deferred_model_between_crumbling_draws_splits_the_merged_range() {
+        let quad = bake_flat_face(
+            [0.0; 3],
+            [16.0; 3],
+            [0.0, 0.0, 16.0, 16.0],
+            Direction::South,
+            Material {
+                sprite: String::new(),
+                force_translucent: false,
+            },
+            -1,
+        )
+        .unwrap();
+        let slots = vec![Some(vec![super::super::minecarts::PreparedModelFace::new(
+            &quad,
+            sprite(),
+        )])];
+        let mut d = draw();
+        d.prepared = true;
+        d.crumbling(true);
+        d.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+        d.crumbling(false);
+        assert!(d.defer_model(0, 1, u32::MAX));
+        d.crumbling(true);
+        d.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+        assert_eq!(d.crumbled, [(0, 8)], "the two quads' ranges join");
+        d.bake_recorded(&slots);
+        assert_eq!(d.vertices.len(), 12);
+        assert_eq!(
+            d.crumbled,
+            [(0, 4), (8, 12)],
+            "the model at 4..8 is left out"
+        );
+    }
+
+    /// `crumbling` lasts to the end of one block entity's draw: the next one drawn through the
+    /// same scratch draw is not covered unless it turns it on.
+    #[test]
+    fn crumbling_ends_with_the_block_entity_that_turned_it_on() {
+        let level = LevelLight {
+            origin: DVec3::ZERO,
+            light_at: &|_| 0,
+        };
+        let mut kept = KeptGeometry::default();
+        let mut draw = draw();
+        let mut overlay = Vec::new();
+        for (pos, crumbling) in [([0, 64, 0], true), ([1, 64, 0], false)] {
+            kept.render(
+                pos,
+                KEY,
+                machine(),
+                &mut draw,
+                Vec3::ZERO,
+                &level,
+                Some((1, Some([0.0, 0.0]))),
+                &mut overlay,
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    if crumbling {
+                        draw.crumbling(true);
+                    }
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                },
+            );
+        }
+        assert_eq!(draw.vertices.len(), 8);
+        assert_eq!(overlay.len(), 4, "the first block's quad alone");
+    }
+
+    /// A carried block entity's submit draws one level deep: inside it `refuse_nested` refuses,
+    /// and the pose and the guard are back as they were once it ends.
+    #[test]
+    fn a_carried_submit_refuses_a_nested_one_and_restores_the_pose() {
+        let mut d = draw();
+        let pose = d.pose();
+        assert_eq!(d.refuse_nested(), Ok(()));
+        let mut inside = None;
+        d.one_level(|d| {
+            d.translate([1.0, 2.0, 3.0]);
+            inside = Some(d.refuse_nested());
+        });
+        assert_eq!(inside, Some(Err(mod_api::BlockEntityDrawRefusal::Nested)));
+        assert_eq!(d.refuse_nested(), Ok(()));
+        assert_eq!(d.pose(), pose);
+    }
+
+    /// `BlockEntityDrawContext::block_entity` draws a chest, a sign, a banner, a shulker box,
+    /// a skull and a mod's block entity into pixels, draws nothing for a bed (its renderer is
+    /// its block model) and for a type nobody renders, and refuses a call from inside its own
+    /// dispatch of a mod's submit.
+    #[test]
+    #[ignore = "daily"]
+    fn carried_block_entities_draw_visible_pixels() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_entity_draw::tests::carried_block_entities_draw_visible_pixels",
+            "SUNRISE_CARRIED_BLOCK_ENTITY_CHILD",
+            &["carried"],
+        ) {
+            return;
+        }
+        use super::super::{api_values::TryIntoApi, host::draw::GameBlockEntityDrawContext};
+        use mod_api::{
+            BlockEntityDrawContext, BlockEntityDrawRefusal, BlockEntityPart,
+            BlockEntitySubmitEvent, BlockPart, ClientHost, Hooks, ModEntry, Mods, Registrar,
+            RegistrationContext, SceneBlockEntity,
+        };
+        use std::sync::{Arc, Mutex};
+        use sunrise_core::nbt::{Compound, Tag};
+
+        struct Carried {
+            inner: Arc<Mutex<Option<SceneBlockEntity>>>,
+            nested: Arc<Mutex<Option<Result<(), BlockEntityDrawRefusal>>>>,
+        }
+        #[mod_api::sunrise_part]
+        impl BlockPart for Carried {}
+        #[mod_api::sunrise_part]
+        impl BlockEntityPart for Carried {
+            fn block_entity_submit(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut BlockEntitySubmitEvent<'_>,
+            ) {
+                let _ = event.draw.quad(
+                    "block/stone",
+                    [[0.0, 1.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+                    [0.0, 0.0, 16.0, 16.0],
+                    0xFF_FFFF,
+                );
+                if let Some(inner) = self.inner.lock().unwrap().clone() {
+                    *self.nested.lock().unwrap() = Some(event.draw.block_entity(&inner));
+                }
+            }
+        }
+        struct CarriedMod {
+            inner: Arc<Mutex<Option<SceneBlockEntity>>>,
+            nested: Arc<Mutex<Option<Result<(), BlockEntityDrawRefusal>>>>,
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for CarriedMod {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let kind = r
+                    .block_entity_type("carried")
+                    .blocks(&["minecraft:stone"])
+                    .build();
+                r.block_entity_part(
+                    &kind,
+                    Carried {
+                        inner: self.inner.clone(),
+                        nested: self.nested.clone(),
+                    },
+                )
+                .unwrap();
+            }
+        }
+        let inner = Arc::new(Mutex::new(None));
+        let nested = Arc::new(Mutex::new(None));
+        let mods: Mods = vec![ModEntry::new(
+            "carried_be",
+            Box::new(CarriedMod {
+                inner: inner.clone(),
+                nested: nested.clone(),
+            }),
+        )]
+        .into();
+        crate::game::api_values::install_parts(&mods).unwrap();
+
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
+                let game: &Game<'_> = game;
+                let entity = |game: &Game<'_>, id: &str, block: &str, nbt: Compound| {
+                    let state = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state(block)
+                        .unwrap_or_else(|| panic!("no block {block}"))
+                        .try_into_api()
+                        .unwrap();
+                    SceneBlockEntity::new(
+                        Identifier::parse(id).unwrap(),
+                        state,
+                        mod_api::item::containers::ModBlockEntityFields {
+                            nbt,
+                            items: Vec::new(),
+                            data: Vec::new(),
+                        },
+                    )
+                };
+                // The vertices `block_entity` adds under an identity pose, lit fully.
+                let drawn = |entity: &SceneBlockEntity| {
+                    let mut surface = draw();
+                    surface.pose = Mat4::IDENTITY;
+                    surface.light = 240 | 240 << 8;
+                    let result = GameBlockEntityDrawContext {
+                        game,
+                        surface: &mut surface,
+                    }
+                    .block_entity(entity);
+                    (result, surface.vertices)
+                };
+                // Lit pixels of a 64 by 64 picture of `vertices` over a white atlas.
+                let lit_pixels = |vertices: &[Vertex]| {
+                    let atlas = &game.gui.atlas;
+                    let white = vec![255; (atlas.width * atlas.height * 4) as usize];
+                    let view = Mat4::from_scale_rotation_translation(
+                        Vec3::new(0.5, 0.5, 0.2),
+                        Quat::IDENTITY,
+                        Vec3::new(-0.25, -0.5, 0.4),
+                    );
+                    let rendered = sunrise_client::gfx::entity_pixel_test::render(
+                        vertices,
+                        [atlas.width, atlas.height],
+                        &white,
+                        view,
+                        false,
+                    )
+                    .expect("software Vulkan entity pixels");
+                    rendered
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .filter(|p| p[0] != 0 || p[1] != 0 || p[2] != 0)
+                        .count()
+                };
+
+                let mut sign = Compound::new();
+                let mut front = Compound::new();
+                front.insert(
+                    "messages".into(),
+                    Tag::List(vec![
+                        Tag::String("carried".into()),
+                        Tag::String("".into()),
+                        Tag::String("".into()),
+                        Tag::String("".into()),
+                    ]),
+                );
+                // Black text (the default) is the picture's own black: dye it so it shows.
+                front.insert("color".into(), Tag::String("white".into()));
+                sign.insert("front_text".into(), Tag::Compound(front));
+                let rendered = [
+                    ("minecraft:chest", "minecraft:chest", Compound::new()),
+                    ("minecraft:sign", "minecraft:oak_sign", sign),
+                    ("minecraft:banner", "minecraft:red_banner", Compound::new()),
+                    (
+                        "minecraft:shulker_box",
+                        "minecraft:shulker_box",
+                        Compound::new(),
+                    ),
+                    (
+                        "minecraft:skull",
+                        "minecraft:skeleton_skull",
+                        Compound::new(),
+                    ),
+                    ("carried_be:carried", "minecraft:stone", Compound::new()),
+                ];
+                for (id, block, nbt) in rendered {
+                    let carried = entity(game, id, block, nbt);
+                    let (result, vertices) = drawn(&carried);
+                    assert_eq!(result, Ok(()), "{id}");
+                    let pixels = lit_pixels(&vertices);
+                    assert!(pixels >= 8, "{id} on {block} drew {pixels} pixels");
+                }
+
+                // A bed's renderer is its block model, and a stone block entity of another
+                // mod has no Part: both draw nothing and are no error.
+                for (id, block) in [
+                    ("minecraft:bed", "minecraft:red_bed"),
+                    ("other_mod:machine", "minecraft:dirt"),
+                ] {
+                    let (result, vertices) = drawn(&entity(game, id, block, Compound::new()));
+                    assert_eq!(result, Ok(()), "{id}");
+                    assert!(vertices.is_empty(), "{id} drew {} vertices", vertices.len());
+                }
+
+                // The mod's submit draws a chest of its own: that is the nested call, refused,
+                // while the same chest drawn from outside draws.
+                *inner.lock().unwrap() = Some(entity(
+                    game,
+                    "minecraft:chest",
+                    "minecraft:chest",
+                    Compound::new(),
+                ));
+                let carried = entity(
+                    game,
+                    "carried_be:carried",
+                    "minecraft:stone",
+                    Compound::new(),
+                );
+                let (result, vertices) = drawn(&carried);
+                assert_eq!(result, Ok(()));
+                assert_eq!(
+                    *nested.lock().unwrap(),
+                    Some(Err(BlockEntityDrawRefusal::Nested))
+                );
+                let (_, chest) = drawn(&inner.lock().unwrap().clone().unwrap());
+                assert_eq!(
+                    vertices.len(),
+                    4,
+                    "only the mod's quad: the nested chest drew nothing, a chest alone {}",
+                    chest.len()
+                );
+                assert!(!chest.is_empty());
+            });
+        });
     }
 }

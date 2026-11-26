@@ -1092,7 +1092,10 @@ pub(super) fn emit<'a>(
                 .as_ref()
                 .is_some_and(|(_, param)| param.ty == "LevelRandomSide");
         let filtered_subscribers = name == "add_pack_finders";
-        let movement_side_filter = matches!(name, "entity_move" | "living_travel");
+        let movement_side_filter = matches!(
+            name,
+            "entity_move" | "living_travel" | "living_travel_moved"
+        );
         let allow_subscriber = fresh_name("allow", &mut used);
         let client_controlled = fresh_name("client_controlled", &mut used);
         let invoke_part = fresh_name("invoke_part", &mut used);
@@ -1704,11 +1707,10 @@ pub(super) fn emit<'a>(
                 Contract::Collect if attributed_append => {
                     format!("{event}.mod_id = {mod_id_expr}; {plain_call};")
                 }
-                Contract::Listen => match &validate_proposal {
+                Contract::Listen | Contract::Collect => match &validate_proposal {
                     Some(validate) => format!("{plain_call}; {}", validate(mod_id_expr)),
                     None => format!("{plain_call};"),
                 },
-                _ => format!("{plain_call};"),
             };
             format!("{local_event} {snapshot_statement}{invocation} {local_write_back}")
         };
@@ -1855,6 +1857,19 @@ pub(super) fn emit<'a>(
                     ),
                 )
             }
+            None if movement_side_filter => {
+                let side_guard = format!(
+                    "if {client_controlled} && {mod_entry}.side == super::Side::Server {{ continue; }}"
+                );
+                let active = enter_active(&format!("{mod_entry}.id"));
+                (
+                    String::new(),
+                    format!(
+                        "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ {side_guard} {active} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {} }} }}",
+                        call(&mod_item, &format!("{mod_entry}.id"), "continue;", "break"),
+                    ),
+                )
+            }
             None => {
                 let each = if hook.independent_listener {
                     format!(
@@ -1970,6 +1985,12 @@ pub(super) fn emit<'a>(
                         let before = fresh_name("before", &mut used);
                         format!(
                             "let mut {refused} = (false, false); for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ let {before} = ({event}.may_place, {event}.may_pickup); {part_call} {refused}.0 |= {before}.0 && !{event}.may_place; {refused}.1 |= {before}.1 && !{event}.may_pickup; }} {event}.may_place &= !{refused}.0; {event}.may_pickup &= !{refused}.1;"
+                        )
+                    } else if name == "menu_pick_all" {
+                        // As for slot rules: a Part's refusal stands.
+                        let refused = fresh_name("refused", &mut used);
+                        format!(
+                            "let mut {refused} = false; for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_call} {refused} |= !{event}.allowed; }} {event}.allowed &= !{refused};"
                         )
                     } else {
                         format!(
