@@ -24,7 +24,7 @@ impl LanguageInfo {
         format!("{} ({})", self.name, self.region)
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Language {
     pub code: Arc<str>,
     /// `LanguageInfo.bidirectional`: text without a strong character reads
@@ -38,8 +38,84 @@ pub struct Language {
     /// own (the engine's `sunrise` namespace and the crates'), built once with it. `None` when
     /// it has no strings of Sunrise's own to leave out.
     vanilla: Option<Arc<Language>>,
+    /// What the mods' run-time entries ([`set_mod_entries`]) replaced: each key's value from the
+    /// packs, `None` for a key the packs don't have. Put back before entries are applied again.
+    shadowed: HashMap<String, Option<String>>,
 }
 pub const DEFAULT: &str = "en_us";
+
+/// Entries mods add at run time from their own data (a quest book's language files under
+/// `config/`): mod id, then language code, then key and text. Applied over the packs' entries
+/// of every language [`set`] publishes, so they survive a resource reload.
+static MOD_ENTRIES: RwLock<BTreeMap<String, BTreeMap<String, HashMap<String, String>>>> =
+    RwLock::new(BTreeMap::new());
+
+/// Puts back what earlier mod entries replaced in `language`, then applies the mods' entries for
+/// `en_us` and then for its own code (a key missing in the selected language falls back to
+/// `en_us`, as the packs' files do), mods in id order.
+fn apply_mod_entries(language: &mut Language) {
+    for (key, value) in std::mem::take(&mut language.shadowed) {
+        match value {
+            Some(value) => language.map.insert(key, value),
+            None => language.map.remove(&key),
+        };
+    }
+    let entries = MOD_ENTRIES.read().unwrap_or_else(|e| e.into_inner());
+    let codes: &[&str] = if &*language.code == DEFAULT {
+        &[DEFAULT]
+    } else {
+        &[DEFAULT, &language.code]
+    };
+    for code in codes {
+        for by_code in entries.values() {
+            for (key, value) in by_code.get(*code).into_iter().flatten() {
+                let before = language.map.insert(key.clone(), value.clone());
+                language.shadowed.entry(key.clone()).or_insert(before);
+            }
+        }
+    }
+}
+
+/// Replaces mod `mod_id`'s run-time entries for language `code` with `entries` (an empty map drops
+/// them) and publishes the current language again with every mod's entries, so text looks them
+/// up at once. Returns how many entries `mod_id` now has for `code`.
+pub fn set_mod_entries(mod_id: &str, code: &str, entries: HashMap<String, String>) -> usize {
+    let count = entries.len();
+    {
+        let mut all = MOD_ENTRIES.write().unwrap_or_else(|e| e.into_inner());
+        let by_code = all.entry(mod_id.to_owned()).or_default();
+        if entries.is_empty() {
+            by_code.remove(code);
+        } else {
+            by_code.insert(code.to_owned(), entries);
+        }
+        if by_code.is_empty() {
+            all.remove(mod_id);
+        }
+    }
+    republish();
+    count
+}
+
+/// Drops all of mod `mod_id`'s run-time entries, in every language, and publishes again.
+pub fn clear_mod_entries(mod_id: &str) {
+    let removed = MOD_ENTRIES
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(mod_id)
+        .is_some();
+    if removed {
+        republish();
+    }
+}
+
+/// Publishes the current language again so [`set`] applies the mods' entries as they are now.
+fn republish() {
+    let current = CURRENT.read().unwrap_or_else(|e| e.into_inner()).clone();
+    if let Some(current) = current {
+        set((*current).clone());
+    }
+}
 
 static CURRENT: RwLock<Option<Arc<Language>>> = RwLock::new(None);
 /// A language that only the calling thread sees, and the keys it was asked for and did not have
@@ -834,7 +910,8 @@ fn isolated_reload_publications_are_mutable_nested_and_thread_local() {
     });
 }
 
-pub fn set(language: Language) {
+pub fn set(mut language: Language) {
+    apply_mod_entries(&mut language);
     #[cfg(feature = "test-language-publication")]
     let language = match PUBLICATION.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -1873,6 +1950,70 @@ mod tests {
 
 #[cfg(test)]
 mod shared_source_tests {
+    /// Issue #5474: a mod's run-time entries lie over the packs', the selected language falls
+    /// back to the mod's en_us entries, and dropping them puts the packs' text back.
+    #[test]
+    fn mod_entries_lie_over_the_packs_and_come_off_again() {
+        let mod_id = "lang_test_mod_entries";
+        let mut language = Language {
+            code: "de_de".into(),
+            map: [("t5474.a", "pack a"), ("t5474.b", "pack b")]
+                .into_iter()
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .collect(),
+            ..Language::default()
+        };
+        let entries = |pairs: &[(&str, &str)]| -> HashMap<String, String> {
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect()
+        };
+        MOD_ENTRIES.write().unwrap().insert(
+            mod_id.to_owned(),
+            [
+                (
+                    "en_us".to_owned(),
+                    entries(&[("t5474.a", "en a"), ("t5474.c", "en c")]),
+                ),
+                ("de_de".to_owned(), entries(&[("t5474.a", "de a")])),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        apply_mod_entries(&mut language);
+        assert_eq!(
+            language.get("t5474.a"),
+            Some("de a"),
+            "the selected language wins"
+        );
+        assert_eq!(
+            language.get("t5474.b"),
+            Some("pack b"),
+            "untouched keys stay"
+        );
+        assert_eq!(
+            language.get("t5474.c"),
+            Some("en c"),
+            "falls back to the mod's en_us"
+        );
+        // Applying again (a resource reload) gives the same result, not a stale shadow.
+        apply_mod_entries(&mut language);
+        assert_eq!(language.get("t5474.a"), Some("de a"));
+        MOD_ENTRIES.write().unwrap().remove(mod_id);
+        apply_mod_entries(&mut language);
+        assert_eq!(
+            language.get("t5474.a"),
+            Some("pack a"),
+            "the packs' text is back"
+        );
+        assert_eq!(
+            language.get("t5474.c"),
+            None,
+            "a key only the mod had is gone"
+        );
+    }
+
     use super::*;
     #[test]
     fn selected_language_and_english_fallback_read_resolved_resources() {
