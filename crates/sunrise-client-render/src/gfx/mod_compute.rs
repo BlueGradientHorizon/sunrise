@@ -39,6 +39,9 @@ struct CompiledCompute {
     layout: wgpu::BindGroupLayout,
     /// The bind-group binding each declared entry starts at, in declaration order.
     bindings: Vec<(u32, BindingKind)>,
+    /// The device sampler of each set-1 sampler descriptor the pipeline declares, made once at
+    /// compile time.
+    samplers: std::collections::HashMap<Sampler, wgpu::Sampler>,
     label: String,
 }
 
@@ -47,8 +50,6 @@ struct CompiledCompute {
 pub struct ModCompute {
     generation: u64,
     pipelines: Vec<Option<CompiledCompute>>,
-    /// The device sampler of each set-1 sampler descriptor the compiled pipelines declare.
-    samplers: std::collections::HashMap<Sampler, wgpu::Sampler>,
     /// The slots whose dispatches were refused at record time and logged, so a persistent
     /// refusal logs once, not every frame.
     warned: std::collections::HashSet<u32>,
@@ -336,10 +337,19 @@ fn compile(
     if let Some(error) = validation.or(internal) {
         return Err((Refusal::Invalid, error.to_string()));
     }
+    let samplers = bindings
+        .iter()
+        .filter_map(|(_, kind)| match kind {
+            BindingKind::CombinedImageSampler { sampler } => Some(*sampler),
+            _ => None,
+        })
+        .map(|sampler| (sampler, create_mod_sampler(device, &sampler)))
+        .collect();
     Ok(CompiledCompute {
         pipeline,
         layout,
         bindings,
+        samplers,
         label,
     })
 }
@@ -390,16 +400,6 @@ impl ModCompute {
         let mut owned: Vec<(u32, &[u8], wgpu::BufferUsages)> = Vec::new();
         let mut buffers: Vec<(u32, wgpu::Buffer)> = Vec::new();
         let max_groups = device.limits().max_compute_workgroups_per_dimension;
-        for compiled in self.pipelines.iter().flatten() {
-            for (_, kind) in &compiled.bindings {
-                if let BindingKind::CombinedImageSampler { sampler } = kind {
-                    self.samplers
-                        .entry(*sampler)
-                        .or_insert_with(|| create_mod_sampler(device, sampler));
-                }
-            }
-        }
-        let samplers = &self.samplers;
         for dispatch in dispatches {
             let Some(Some(compiled)) = self.pipelines.get(dispatch.slot as usize) else {
                 continue;
@@ -474,7 +474,7 @@ impl ModCompute {
                         ResolvedSet1Entry::Texture { view, .. },
                         BindingKind::CombinedImageSampler { sampler },
                     ) => {
-                        let Some(sampler) = samplers.get(sampler) else {
+                        let Some(sampler) = compiled.samplers.get(sampler) else {
                             ok = false;
                             break;
                         };

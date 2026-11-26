@@ -7,6 +7,9 @@ ids = [
     "type:BindGroupLayoutError.BadMaxLod",
     "type:BindGroupLayoutBuilder",
     "type:BindingKind",
+    "type:BindingKind.CombinedImageSampler",
+    "handle:RenderPipeline::sampler",
+    "handle:BindGroupLayoutBuilder::sampler",
     "type:Sampler",
     "type:RenderPipeline",
 ]
