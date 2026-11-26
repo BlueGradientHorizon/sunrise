@@ -1039,6 +1039,7 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
                 file: compute.files.first().cloned().unwrap_or_default(),
                 line: 0,
                 message: format!("`{name}` must have {counts:?} numbers, not {}", v.len()),
+                unbound: None,
             });
             return None;
         }
@@ -1061,6 +1062,7 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
                 file: compute.files.first().cloned().unwrap_or_default(),
                 line: 0,
                 message,
+                unbound: None,
             });
             code
         }
@@ -1071,6 +1073,7 @@ pub fn translate_compute(compute: &Preprocessed) -> Result<ComputeProgram, Vec<E
             file: compute.files.first().cloned().unwrap_or_default(),
             line: 0,
             message,
+            unbound: None,
         });
         code
     });
@@ -1455,6 +1458,7 @@ fn compile(
             file: stage.pp.files.first().cloned().unwrap_or_default(),
             line: 1,
             message,
+            unbound: None,
         }]
     })?;
     let text = integer_bounds::rewrite(&array_constructors::rewrite(&specialized));

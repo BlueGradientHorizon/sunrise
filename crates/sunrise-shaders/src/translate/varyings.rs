@@ -77,6 +77,7 @@ pub(super) fn assign(
                     file: stage.pp.files.first().cloned().unwrap_or_default(),
                     line: 0,
                     message: format!("`{}`: this struct can't be a varying", var.name),
+                    unbound: None,
                 }),
                 Err(TooManyParts) => errors.push(too_many()),
             }
