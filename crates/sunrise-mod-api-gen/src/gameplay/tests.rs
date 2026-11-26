@@ -76,14 +76,15 @@ pub trait Hooks {
 "FixtureHost::fixed" = {{ kind = "static", owner = "::sunrise_gameplay_common::game::CommonGame", borrow = "none" }}
 "FixtureHost::local" = {{ kind = "local", owner = "crate::game::{ty}", borrow = "shared" }}
 
-[items.{key}]
-kind = "shared_trait"
-owner = "::sunrise_gameplay_common::game::SharedRead"
-borrow = "shared"
 "#));
     }
     declarations.push_str(
         r#"
+[items.server]
+kind = "shared_trait"
+owner = "::sunrise_gameplay_common::game::SharedRead"
+borrow = "shared"
+
 [host.server."FixtureBackendMut::update"]
 kind = "common"
 owner = "::sunrise_gameplay_common::game::CommonGame"
@@ -110,7 +111,23 @@ borrow = "mutable"
     }
 
     let compile = |name: &str, src: &str, deps: &[(&str, &Path)], library: bool| {
-        let input = root.join(format!("{name}.rs"));
+        let input = if let Some(package) = GameplayPackage::from_library(name) {
+            let directory = package.domain().package_path(root);
+            let common = if package == GameplayPackage::Common {
+                ""
+            } else {
+                "[dependencies]\nsunrise-gameplay-common = { path = \"../sunrise-gameplay-common\" }\n"
+            };
+            put(
+                root,
+                &format!("crates/{}/Cargo.toml", package.domain().package),
+                &format!("[package]\nname = {:?}\n{common}", package.domain().package),
+            );
+            fs::create_dir_all(directory.join("src")).unwrap();
+            directory.join("src/lib.rs")
+        } else {
+            root.join(format!("{name}.rs"))
+        };
         fs::write(&input, src).unwrap();
         let file = root.join(if library {
             format!("lib{name}.rlib")
@@ -278,12 +295,12 @@ pub mod goal {
             "impl mod_api::ClientHost for ClientGame<'_> {} impl ClientGame<'_> { fn desktop(&self) -> Option<u32> { Some(self.client) } }".into()
         };
         let extra = if server {
-            "assert_eq!(FixtureBackendMut::consume(&mut game, mod_api::ItemStack(7)), 12); assert_eq!(FixtureBackendMut::update(&mut game, 2), 6); let _ = FixtureServerHost::service(&game); assert_eq!(FixtureClientBackend::desktop(&game), None); native_hooks::borrowed(&common::Borrowed(&4));"
+            "assert_eq!(FixtureBackendMut::consume(&mut game, mod_api::ItemStack(7)), 12); assert_eq!(FixtureBackendMut::update(&mut game, 2), 6); let _ = FixtureServerHost::service(&game); assert_eq!(FixtureClientBackend::desktop(&game), None); native_hooks::fixture::native_borrowed(&common::Borrowed(&4));"
         } else {
             "assert_eq!(FixtureClientBackend::desktop(&game), Some(6));"
         };
         let borrowed = if server {
-            "pub fn borrowed(view: &common::Borrowed<'_>) { fire::fire_borrowed(view); }"
+            "pub fn native_borrowed(view: &sunrise_gameplay_common::game::Borrowed<'_>) { super::fire::fire_borrowed(view); }"
         } else {
             ""
         };
@@ -304,13 +321,18 @@ pub mod game {{
     mod host {{ {} }}
     mod native_hooks {{
         mod fire {{ {} }}
-        use super::common;
-        {borrowed}
+        pub mod fixture {{
+            use super::super::{ty};
+            impl {ty}<'_> {{
+                pub fn native_{name}(&{mutable}self) {{ self.fire_{name}(); }}
+            }}
+            {borrowed}
+        }}
     }}
     pub fn run() {{
         let {mutable}game = {ty} {{ common: common::CommonGame(&4), {name}: {value} }};
         game.native_shared();
-        game.fire_{name}();
+        game.native_{name}();
         assert_eq!(FixtureHost::local(&game), {value});
         assert_eq!(FixtureHost::shared(&game), {value} + 2);
         assert_eq!(FixtureHost::operation(&game), {value} + 1);
@@ -325,11 +347,6 @@ pub mod game {{
             includes(package, crate::build::HOST_OUTPUT),
             includes(package, FIRE)
         );
-        let source = if server {
-            source
-        } else {
-            source.replace("        use super::common;", "")
-        };
         sides.push(compile(
             package.domain().key,
             &source,
@@ -361,4 +378,37 @@ fn main() {
         false,
     );
     assert!(Command::new(dedicated).status().unwrap().success());
+
+    put(root, "crates/sunrise-mod-api-gen/source-layout", "split\n");
+    let configs = [
+        "unix\ntarget_os=\"linux\"".into(),
+        "windows\ntarget_os=\"windows\"".into(),
+    ];
+    crate::check_hook_wiring(root, &configs).unwrap();
+
+    let common_source = GameplayPackage::Common
+        .domain()
+        .package_path(root)
+        .join("src/lib.rs");
+    let source = fs::read_to_string(&common_source).unwrap();
+    let body = "pub fn common_read(&self) -> u32 { *self.0 }";
+    let moved = source.replace(body, "").replace(
+        "    pub struct Borrowed",
+        r#"    pub trait ShadowRead { fn common_read(&self) -> u32; }
+    impl ShadowRead for CommonGame<'_> { fn common_read(&self) -> u32 { *self.0 + 10 } }
+    pub fn stale_call(game: &CommonGame<'_>) -> u32 { CommonGame::common_read(game) }
+    pub struct Borrowed"#,
+    );
+    assert_ne!(moved, source);
+    compile(
+        "sunrise_gameplay_common",
+        &moved,
+        &[("mod_api", &api)],
+        true,
+    );
+    let error = crate::check_hook_wiring(root, &configs).unwrap_err();
+    assert!(
+        error.contains("CommonGame::common_read: no matching inherent definition"),
+        "{error}"
+    );
 }

@@ -155,7 +155,9 @@ impl<'a> Sources<'a> {
                     .filter_map(|item| match item {
                         Item::Fn(item) => Some(Item::Fn(item.clone())),
                         Item::Struct(item) => Some(Item::Struct(item.clone())),
-                        Item::Enum(_) | Item::Union(_) | Item::Type(_) if types => {
+                        Item::Enum(_) | Item::Union(_) | Item::Type(_) | Item::Trait(_)
+                            if types =>
+                        {
                             Some(item.clone())
                         }
                         Item::Use(item) => Some(Item::Use(item.clone())),
@@ -178,10 +180,36 @@ impl<'a> Sources<'a> {
                 Item::Enum(item) => build.enabled(&item.attrs),
                 Item::Union(item) => build.enabled(&item.attrs),
                 Item::Type(item) => build.enabled(&item.attrs),
+                Item::Trait(item) => build.enabled(&item.attrs),
                 Item::Use(item) => build.enabled(&item.attrs),
                 Item::Mod(item) => build.enabled(&item.attrs),
                 _ => true,
             })
+    }
+
+    pub(super) fn variants(&mut self, package: &str) -> Result<&[ModuleVariant], String> {
+        let root = self.root;
+        let parse = |path: &Path, text: &str| {
+            let parsed = if package == "sunrise_mod_vocab" {
+                syn::parse_file(&crate::exports::expand(root, text)?)
+            } else {
+                syn::parse_file(text)
+            };
+            parsed.map_err(|error| format!("{}: {error}", path.display()))
+        };
+        self.files
+            .entry(package.to_owned())
+            .or_insert_with(|| {
+                let (_, lib) = source::crate_root(root, package)?;
+                let dir = lib
+                    .parent()
+                    .expect("a library file has a folder")
+                    .to_owned();
+                walk_module_variants(package.to_owned(), lib, dir, false, false, parse)
+            })
+            .as_ref()
+            .map(Vec::as_slice)
+            .map_err(Clone::clone)
     }
 
     pub(super) fn items<'s>(
@@ -201,26 +229,14 @@ impl<'a> Sources<'a> {
                 };
                 parsed.map_err(|error| format!("{}: {error}", path.display()))
             };
-            let files = self.files.entry(package.to_owned()).or_insert_with(|| {
-                let (_, lib) = source::crate_root(root, package)?;
-                let dir = lib
-                    .parent()
-                    .expect("a library file has a folder")
-                    .to_owned();
-                walk_module_variants(package.to_owned(), lib, dir, false, false, parse)
-            });
+            let files = self.variants(package)?;
             let path = if module.is_empty() {
                 package.to_owned()
             } else {
                 format!("{package}::{module}")
             };
             let mut variants = Vec::new();
-            for variant in files
-                .as_ref()
-                .map_err(Clone::clone)?
-                .iter()
-                .filter(|v| v.file.module == path)
-            {
+            for variant in files.iter().filter(|v| v.file.module == path) {
                 let path = &variant.file.path;
                 let text = fs::read_to_string(path)
                     .map_err(|error| format!("{}: {error}", path.display()))?;

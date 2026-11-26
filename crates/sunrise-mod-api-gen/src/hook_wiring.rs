@@ -1,5 +1,6 @@
 //! The source-only CI check for catalog targets. Build generation never calls the check.
 mod calls;
+mod semantic;
 mod sources;
 
 use crate::{
@@ -17,16 +18,22 @@ use syn::{Block, Expr, Item, Type};
 /// Check that each declared hook target reaches its adapter or dispatcher. Never writes sources.
 /// Each entry in `target_cfgs` is one supported build's `rustc --print cfg` output.
 pub fn check_hook_wiring(root: &Path, target_cfgs: &[String]) -> Result<(), String> {
-    check_with_builds(
-        root,
-        &Catalog::load(root)?.hooks,
-        Build::from_targets(target_cfgs)?,
-    )
+    let build = Build::from_targets(target_cfgs)?;
+    if crate::SourceLayout::read(root)?.is_split() {
+        return check_split(root, build);
+    }
+    check_with_builds(root, &Catalog::load(root)?.hooks, build)
 }
 
 pub fn check_gameplay_hook_wiring(root: &Path, target_cfgs: &[String]) -> Result<(), String> {
-    let catalog = crate::gameplay::Routing::load(root)?.catalog(root)?;
-    check_with_builds(root, &catalog.hooks, Build::from_targets(target_cfgs)?)
+    check_split(root, Build::from_targets(target_cfgs)?)
+}
+
+fn check_split(root: &Path, build: Build) -> Result<(), String> {
+    let routing = crate::gameplay::Routing::load(root)?;
+    let catalog = routing.catalog(root)?;
+    check_with_builds(root, &catalog.hooks, build.clone())?;
+    semantic::check(root, &routing, &build)
 }
 
 #[cfg(test)]

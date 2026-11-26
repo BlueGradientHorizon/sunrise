@@ -6,6 +6,7 @@ use super::*;
 use crate::gameplay::{Borrow, GameplayAudit, GameplayPackage, HostRoute, RouteKind, Routing};
 use heck::ToUpperCamelCase;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use syn::visit::Visit;
 
@@ -999,6 +1000,18 @@ pub(crate) fn gameplay_forwarders(
     routing: &Routing,
     audit: &mut GameplayAudit,
 ) -> Result<String, String> {
+    render_forwarders(
+        &gameplay_forwarder_plan(areas, package, routing, audit)?,
+        Some((routing, package)),
+    )
+}
+
+fn gameplay_forwarder_plan<'a>(
+    areas: &'a [Area],
+    package: GameplayPackage,
+    routing: &'a Routing,
+    audit: &mut GameplayAudit,
+) -> Result<Vec<ForwarderImpl<'a>>, String> {
     let mut plan = forwarder_plan(areas)?;
     plan.retain(|implementation| match implementation.target {
         ForwarderTarget::Table(_) => package == GameplayPackage::Common,
@@ -1095,7 +1108,138 @@ pub(crate) fn gameplay_forwarders(
         }
         implementation.methods = methods;
     }
-    render_forwarders(&plan, Some((routing, package)))
+    Ok(plan)
+}
+
+pub(crate) struct HostCallee {
+    pub label: String,
+    pub owner: String,
+    pub method: String,
+    pub kind: RouteKind,
+    pub borrow: Borrow,
+    pub arity: usize,
+}
+
+pub(crate) fn host_callees(
+    areas: &[Area],
+    package: GameplayPackage,
+    routing: &Routing,
+) -> Result<Vec<HostCallee>, String> {
+    let mut audit = GameplayAudit::default();
+    let plan = gameplay_forwarder_plan(areas, package, routing, &mut audit)?;
+    if !audit.issues.is_empty() {
+        return Err(audit
+            .issues
+            .iter()
+            .map(|issue| format!("{}: {}", issue.entry, issue.reason))
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    let mut used = BTreeSet::new();
+    let mut checks = Vec::new();
+    let mut items_used = false;
+    for implementation in plan {
+        for (entry, call) in implementation.methods {
+            let label = format!("{}::{}", implementation.trait_name, entry.name);
+            let arity = entry
+                .sig
+                .inputs
+                .iter()
+                .filter(|arg| matches!(arg, FnArg::Typed(_)))
+                .count();
+            let mut note = |owner: String, method: &str, kind, borrow, arity| {
+                checks.push(HostCallee {
+                    label: label.clone(),
+                    owner,
+                    method: method.into(),
+                    kind,
+                    borrow,
+                    arity,
+                });
+            };
+            match call {
+                ForwarderCall::Routed(route) => {
+                    used.insert(label.clone());
+                    note(
+                        route.owner.clone(),
+                        &entry.name,
+                        route.kind,
+                        route.borrow,
+                        arity,
+                    );
+                }
+                ForwarderCall::Inherent { owner, receiver } => {
+                    let owner = if owner.contains("::") {
+                        owner.to_owned()
+                    } else {
+                        format!("crate::game::{owner}")
+                    };
+                    let borrow = match receiver {
+                        None => Borrow::None,
+                        Some(ForwarderBorrow::Shared) => Borrow::Shared,
+                        Some(ForwarderBorrow::Mutable) => Borrow::Mutable,
+                    };
+                    note(owner, &entry.name, RouteKind::Local, borrow, arity);
+                }
+                ForwarderCall::Table(owner) => {
+                    let owner = split_table(package, owner)?;
+                    note(owner.clone(), "of", RouteKind::Static, Borrow::None, 1);
+                    note(owner, &entry.name, RouteKind::Local, Borrow::Shared, arity);
+                }
+                ForwarderCall::Service | ForwarderCall::Published(_) | ForwarderCall::Refusal => {
+                    continue;
+                }
+            }
+            if !entry
+                .attrs
+                .iter()
+                .any(|attr| attr.path().is_ident("forward_api_inputs"))
+            {
+                let (setup, _, _) = boundary_arguments_with(
+                    &entry.sig,
+                    &entry.name,
+                    entry
+                        .attrs
+                        .iter()
+                        .any(|attr| attr.path().is_ident("read_stack")),
+                    entry
+                        .attrs
+                        .iter()
+                        .any(|attr| attr.path().is_ident("serialize_text")),
+                    package.common(),
+                    Some("__ITEMS_ROUTE_WITNESS__"),
+                )?;
+                items_used |= setup.contains("__ITEMS_ROUTE_WITNESS__");
+                if package == GameplayPackage::Common
+                    && let ForwarderTarget::Table(owner) = implementation.target
+                    && setup.contains("__ITEMS_ROUTE_WITNESS__")
+                {
+                    note(owner.into(), "items", RouteKind::Local, Borrow::Shared, 0);
+                }
+            }
+        }
+    }
+    if let Some(rows) = routing.host.get(&package) {
+        for label in rows.keys() {
+            if !used.contains(label) {
+                return Err(format!("{label}: unused host route"));
+            }
+        }
+    }
+    if let Some(items) = routing.items.get(&package) {
+        if !items_used || package == GameplayPackage::Common {
+            return Err("items: unused conversion receiver route".into());
+        }
+        checks.push(HostCallee {
+            label: "items".into(),
+            method: "items".into(),
+            owner: items.owner.clone(),
+            kind: items.kind,
+            borrow: items.borrow,
+            arity: 0,
+        });
+    }
+    Ok(checks)
 }
 
 /// API records whose game representation is owned by another crate. Conversions are
