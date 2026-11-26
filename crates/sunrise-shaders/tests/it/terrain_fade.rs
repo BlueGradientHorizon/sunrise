@@ -16,10 +16,7 @@ fn requested_fade_feature_loads() {
 
 #[test]
 fn terrain_vertex_reads_renderer_fade_without_a_pack_declaration() {
-    let pp = |code: &str| Preprocessed {
-        code: code.into(),
-        ..Default::default()
-    };
+    let pp = |code: &str| Preprocessed::from_source("", code);
     let vertex =
         pp("varying float seen;\nvoid main() { seen = mc_chunkFade; gl_Position = gl_Vertex; }");
     let fragment =
@@ -44,10 +41,7 @@ fn terrain_vertex_reads_renderer_fade_without_a_pack_declaration() {
 
 #[test]
 fn missing_terrain_value_is_an_error_instead_of_an_invented_fade() {
-    let vertex = Preprocessed {
-        code: "void main() { gl_Position = vec4(mc_chunkFade); }".into(),
-        ..Default::default()
-    };
+    let vertex = Preprocessed::from_source("", "void main() { gl_Position = vec4(mc_chunkFade); }");
     let fragment = Preprocessed::from_source("", "void main() { gl_FragColor = vec4(1.0); }");
     assert!(
         translate_gbuffers(
