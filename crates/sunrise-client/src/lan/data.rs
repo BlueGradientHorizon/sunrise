@@ -392,8 +392,8 @@ fn file_order<T>(entries: &mut [((String, String), T, bool)]) {
     entries.sort_by_cached_key(|((ns, path), ..)| (format!("{path}.json"), ns.clone()));
 }
 
-/// NbtOps conversion now lives with the prepared resources in
-/// `sunrise_client_core::json_nbt`; the pack loaders keep reading it here.
+/// The existing registry and text JSON-to-NBT projection, shared by pack
+/// loading and text component encoding.
 pub use sunrise_client_core::json_nbt::{component_nbt, json_to_nbt};
 
 impl SyncData {

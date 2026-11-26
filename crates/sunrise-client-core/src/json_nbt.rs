@@ -1,12 +1,12 @@
-//! JSON as the NBT vanilla's `NbtOps` produces from a codec: pack files, components
-//! and dialog data all cross that way. Integers stay ints (longs past `i32`), every
-//! other number is a double, booleans are bytes and null is an empty compound.
+//! The existing JSON-to-NBT projection for synchronized registry data and text
+//! components, not a general `NbtOps` conversion.
 
 use serde_json::Value;
 use sunrise_core::nbt::{JavaString, Tag};
 
-/// A JSON value as the NBT that vanilla's NbtOps would produce from the codec
-/// (integers are ints, other numbers doubles, booleans bytes).
+/// Project registry JSON to NBT. A JSON integer representable as a signed `i64`
+/// becomes `Int` if it fits in `i32`, otherwise `Long`. All other numbers become
+/// `Double`, booleans become `Byte`, and null becomes an empty compound.
 pub fn json_to_nbt(v: &Value) -> Tag {
     match v {
         Value::Null => Tag::compound(Vec::<(&str, Tag)>::new()),
@@ -24,11 +24,11 @@ pub fn json_to_nbt(v: &Value) -> Tag {
     }
 }
 
-/// A component's JSON as NbtOps writes it. A list whose elements differ in type
-/// (translation arguments mixing numbers and components) stays one list: the NBT
-/// writer wraps each element that isn't a compound under the empty key, as
-/// `ListTag.wrapIfNeeded` does, so wrapping it here too would leave the client a
-/// `{"": 1}` argument it cannot read.
+/// Project a text component's JSON using the same mapping as [`json_to_nbt`].
+/// A list whose elements differ in type (translation arguments mixing numbers
+/// and components) stays one list: the NBT writer wraps each non-compound
+/// element under the empty key, as `ListTag.wrapIfNeeded` does. Wrapping here
+/// too would leave the client with a `{"": 1}` argument it cannot read.
 pub fn component_nbt(v: &Value) -> Tag {
     match v {
         Value::Array(a) => Tag::List(a.iter().map(component_nbt).collect()),
