@@ -209,6 +209,9 @@ class PrReadyTests(unittest.TestCase):
             popen.return_value.__enter__.return_value.stdout = []
             popen.return_value.__enter__.return_value.wait.return_value = 0
             popen.return_value.__enter__.return_value.returncode = 0
+            # No Windows job object: on Windows the reaper hands `job` to ctypes, which would follow a mock's
+            # `_as_parameter_` without end.
+            popen.return_value.__enter__.return_value.job = None
             pr_ready.run_windows([step], False)
         self.assertEqual(popen.call_args.args[0],
                          ["cargo", "test", "--manifest-path", "a/Cargo.toml", "--locked"])
