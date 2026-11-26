@@ -77,9 +77,7 @@ pub use sunrise_game_data::suggestion::Suggestion;
 pub use sunrise_sim::mobs::Damage;
 pub use sunrise_world::level::BonemealCheck;
 pub use {
-    sunrise_client::atlas_sources::qualified, sunrise_client::extras_hud::Corners,
-    sunrise_client::hud::HudBatch, sunrise_client::hud::rgba, sunrise_client::keybinds,
-    sunrise_client::music::Music, sunrise_client::music::MusicLayer, sunrise_game_data::text::Text,
+    sunrise_game_data::text::Text,
     sunrise_items::items::ItemStack, sunrise_level::biome::BiomeColors,
     sunrise_level::biome::SpawnEntry, sunrise_level::block_entities::Pos,
     sunrise_level::containers::BlockEntity, sunrise_level::containers::MOD_MENUS,

@@ -1,5 +1,5 @@
 //! Shared lifecycle wrappers and world-close cleanup shared across server and client roles.
-use super::{Game, scheduled_tasks::ScheduledTasks};
+use super::scheduled_tasks::ScheduledTasks;
 use mod_api::{Authority, LifecycleContext, ServerTickPhase, TickId, WorldEpoch};
 use std::sync::atomic::{AtomicU64, Ordering};
 

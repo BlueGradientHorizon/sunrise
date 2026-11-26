@@ -1,7 +1,6 @@
 use super::Game;
 use mod_api::{Answered, InlineImageReplacement};
 use std::collections::BTreeMap;
-use sunrise_client::hud::HudAtlas;
 use sunrise_game_data::text::{InlineObject, Text};
 
 pub fn substitute(
