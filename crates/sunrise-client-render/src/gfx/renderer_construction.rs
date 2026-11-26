@@ -2570,6 +2570,10 @@ impl Renderer {
             pass_timing_gap: std::time::Duration::ZERO,
             keep_timed_frames: false,
             own_timing: None,
+            #[cfg(feature = "test-support")]
+            tone_curve_ran: false,
+            #[cfg(feature = "test-support")]
+            pack_loads: 0,
             pack_entity_rest: Vec::new(),
             cloud_bindings,
             pack_weather: None,
@@ -2614,6 +2618,8 @@ impl Renderer {
             screenshot: None,
             screenshot_result: None,
             pack_hdr: None,
+            pack_hdr_pick: String::new(),
+            pack_served: None,
             screenshot_readbacks: screenshot_readback::Readbacks::default(),
             screenshot_quality: 1,
             screenshot_halvings: 0,

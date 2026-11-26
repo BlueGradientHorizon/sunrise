@@ -98,6 +98,7 @@ pub(super) fn build_renderer(
     // waiting for `Game::apply_settings` after the handoff.
     renderer.set_present_mode(vsync, settings.present_mode);
     renderer.pack_hdr = shader_pack.hdr;
+    renderer.pack_hdr_pick = shader_pack.pick;
     renderer.hud.sprite_animations = atlas.renderer_animations();
     // The packs' core shaders: the device refusing a pipeline vanilla requires fails the load,
     // after the renderer is made (`ShaderManager.apply`'s required programs).

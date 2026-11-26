@@ -116,11 +116,15 @@ impl Renderer {
         } = args;
 
         let mut fg_made = false;
+        // Sunrise's HDR as served to the pack whose post passes draw this frame; `None` when none
+        // draws (no pack, or no scaled target to run it on: the world without its passes).
+        let mut drawn_pack_hdr = None;
 
         if let Some((color, depth)) = &scaled
             && pack_post
             && let Some((dimension, Some(mut post))) = self.pack_post.take()
         {
+            drawn_pack_hdr = Some(post.hdr);
             let format = post.formats[0];
             // The standard primitive blend cannot target an integer or unblendable colortex0.
             // On that route the pack world stages have no compatible pass, rather than firing
@@ -426,6 +430,8 @@ impl Renderer {
                 real: false,
                 hand_drawn: !pack_draws_hand,
                 hand_view_proj,
+                // Frame generation runs where no pack's passes drew the world.
+                pack_tonemap: false,
             };
             let onto = (&view_target, &target_texture, generated);
             fg_made =
@@ -512,6 +518,7 @@ impl Renderer {
             real: true,
             hand_drawn: !pack_draws_hand,
             hand_view_proj,
+            pack_tonemap: pack_owns_tone_curve(drawn_pack_hdr),
         };
         let readback =
             self.draw_overlay(&mut encoder, frame, &view_target, &target_texture, &overlay);
