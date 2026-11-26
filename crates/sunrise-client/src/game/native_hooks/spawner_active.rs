@@ -14,13 +14,17 @@ impl Game<'_> {
     }
 
     /// Vanilla's `isNearPlayer` answer `near` for `spawner`, as a mod's `spawner_active` leaves
-    /// it: `near` itself when no mod listens.
-    pub(in crate::game) fn spawner_active(&self, spawner: mod_api::Spawner, near: bool) -> bool {
+    /// it: `near` itself when no mod listens, in which case `spawner` is never built.
+    pub(in crate::game) fn spawner_active(
+        &self,
+        spawner: impl FnOnce() -> mod_api::Spawner,
+        near: bool,
+    ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::SpawnerActive) {
             return near;
         }
         let mut active = near;
-        self.native_spawner_active(self.dim.id(), spawner, &mut active);
+        self.native_spawner_active(self.dim.id(), spawner(), &mut active);
         active
     }
 }

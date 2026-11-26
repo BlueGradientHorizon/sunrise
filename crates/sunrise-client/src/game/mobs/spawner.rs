@@ -105,15 +105,15 @@ impl Game<'_> {
         let at = [key.0, key.1, key.2].map(|c| f64::from(c) + 0.5);
         let range = f64::from(spawner.required_player_range);
         let near = self.alive_player_near(at[0], at[1], at[2], range);
-        let identity = match cart {
+        let identity = |game: &Self| match cart {
             Some(id) => mod_api::Spawner::Minecart {
-                entity: mod_api::EntityRef::new(self.lend_epoch(), id),
+                entity: mod_api::EntityRef::new(game.lend_epoch(), id),
             },
             None => mod_api::Spawner::Block {
                 pos: mod_api::BlockPos::new(key.0, key.1, key.2),
             },
         };
-        let active = self.spawner_active(identity, near);
+        let active = self.spawner_active(|| identity(self), near);
         if !active
             || !self
                 .ui
@@ -140,7 +140,7 @@ impl Game<'_> {
         // `BaseSpawner` belongs either to a monster spawner block (`SpawnerBlockEntity`) or to a
         // spawner minecart (`MinecartSpawner`); both `mob_spawn_position_check` (`PositionCheck`)
         // and `finalize_spawn` (`FinalizeSpawnEvent`) receive that typed spawner identity.
-        let source = Some(identity);
+        let source = Some(identity(self));
         let mut plan = |game: &Self| {
             let mut level = game.natural_level();
             level.spawner = source;
@@ -515,7 +515,7 @@ impl Game<'_> {
             })
         };
         let near = self.spawner_active(
-            mod_api::Spawner::Block {
+            || mod_api::Spawner::Block {
                 pos: mod_api::BlockPos::new(key.0, key.1, key.2),
             },
             near,
@@ -775,7 +775,9 @@ mod tests {
 
     /// `spawner_active` (#6040): a mod keeps a spawner with no player in range ticking and one
     /// with a player beside it idle, each asked once a tick from vanilla's `isNearPlayer`
-    /// answer, and the saved `RequiredPlayerRange` is left as it was.
+    /// answer, and the saved `RequiredPlayerRange` is left as it was. At delay 0 the forced-active
+    /// far spawner runs its spawn (`BaseSpawner.serverTick` reads the answer the tick settled on,
+    /// not `isNearPlayer` again) and the hook is not asked a second time.
     #[test]
     #[ignore = "daily"]
     fn a_mod_decides_whether_a_spawner_is_active() {
@@ -830,8 +832,32 @@ mod tests {
                     *heard.lock().unwrap(),
                     [
                         (dimension.clone(), [8, 64, 120], false),
-                        (dimension, [8, 64, 12], true)
+                        (dimension.clone(), [8, 64, 12], true)
                     ]
+                );
+                // At delay 0 the far spawner the mod forces active runs its spawn, which
+                // with nothing to spawn draws its next delay: the spawn reads the tick's
+                // answer, since asking the level again would find no player and stop it.
+                game.world.chunks.insert(
+                    (0, 7),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 7)),
+                );
+                heard.lock().unwrap().clear();
+                game.world.block_entities.insert(
+                    far,
+                    BlockEntity::Spawner(Box::new(Spawner {
+                        spawn_delay: 0,
+                        ..Spawner::default()
+                    })),
+                );
+                game.tick_spawner(far).unwrap();
+                let (delay, range) = state(game, far);
+                assert!((200..800).contains(&delay), "{delay}");
+                assert_eq!(range, 16);
+                assert_eq!(
+                    *heard.lock().unwrap(),
+                    [(dimension, [8, 64, 120], false)],
+                    "asked once for the tick, not again by the spawn"
                 );
             });
         });

@@ -295,6 +295,8 @@ Both configured ordinary spawners and chunk-generation packs lend the real candi
 loads its configured entity data before the position check. Trial spawners post placement checks, but run
 obstruction checks directly without posting a position check.
 
+To keep a monster spawner running with no player near, or idle with one beside it, answer [`spawner_active`](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/spawner_active.rs).
+
 ## Stopping a spawn or leaving a mob plain
 
 `finalize_spawn` has two cancels. Returning `Flow::Cancel` skips finalization: the mob spawns, but with no equipment, attributes or class setup. Setting `event.spawn_cancelled = true` vetoes admission but still runs initialization and its draws. Set both to skip initialization and veto admission. `event.spawner` carries the shared
