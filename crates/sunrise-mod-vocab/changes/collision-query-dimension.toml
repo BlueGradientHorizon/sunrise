@@ -1,0 +1,5 @@
+ids = [
+    "method:CollisionQuery::dimension",
+    "method:CollisionQuery::with_dimension",
+]
+why = "A block part's collision_shape can tell which level a query is in: CollisionQuery::dimension() is the dimension id of the level the game made the query in (the level vanilla's getCollisionShape is given). A part that keeps its own state by position, such as a cable bus's facade shape, keys it by pos and dimension, since one position exists in every dimension. Additive: no hook_version change."

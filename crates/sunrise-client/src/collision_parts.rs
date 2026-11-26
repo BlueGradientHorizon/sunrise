@@ -52,6 +52,9 @@ fn entity_of(context: &CollisionContext<'_>) -> u32 {
 /// tick: [`Self::begin_tick`] points it at the tick's level and keeps the shared names.
 pub struct ModParts {
     context: RefCell<Arc<LoopContext>>,
+    /// The dimension id of the level being ticked, which every query names; none before the
+    /// first tick.
+    dimension: RefCell<Option<Arc<str>>>,
     /// Whether a part is running: a query made inside it gets the normal shape, never a nested
     /// call.
     busy: Cell<bool>,
@@ -65,16 +68,21 @@ impl ModParts {
     pub fn new(context: Arc<LoopContext>) -> Self {
         Self {
             context: RefCell::new(context),
+            dimension: RefCell::new(None),
             busy: Cell::new(false),
             items: RefCell::default(),
             fluids: RefCell::default(),
         }
     }
 
-    /// Starts a tick of the level `context` belongs to.
-    pub fn begin_tick(&self, context: &Arc<LoopContext>) {
+    /// Starts a tick of the level `context` belongs to, whose dimension id is `dimension`.
+    pub fn begin_tick(&self, context: &Arc<LoopContext>, dimension: &str) {
         if !Arc::ptr_eq(&self.context.borrow(), context) {
             *self.context.borrow_mut() = Arc::clone(context);
+        }
+        let mut current = self.dimension.borrow_mut();
+        if current.as_deref() != Some(dimension) {
+            *current = Some(dimension.into());
         }
     }
 
@@ -107,6 +115,9 @@ impl ModParts {
                 .with_always_collide_with_fluid(context.always_collide_with_fluid());
         if let Some(item) = held_item {
             query = query.with_held_item(item);
+        }
+        if let Some(dimension) = &*self.dimension.borrow() {
+            query = query.with_dimension(Arc::clone(dimension));
         }
         if let Some(names) = standable {
             let mut fluids = self.fluids.borrow_mut();
@@ -240,6 +251,37 @@ mod tests {
         // Outside the part the same position is asked for itself.
         assert!(ask(&parts, 9, [5, 64, 5]).is_some());
         assert_eq!(COLLISION_ASKS.get(), 2);
+    }
+
+    /// #6034: a query names the level it is made in, so a part keeping its own state by position
+    /// can tell two dimensions apart; a tick of another level names that one.
+    #[test]
+    fn a_query_names_the_dimension_of_the_level_being_ticked() {
+        let parts = parts();
+        let seen = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let record = Rc::clone(&seen);
+        COLLISION_ANSWER.with_borrow_mut(|answer| {
+            *answer = Some(Box::new(move |query| {
+                record
+                    .borrow_mut()
+                    .push(query.dimension().map(str::to_owned));
+                None
+            }));
+        });
+        ask(&parts, 7, [1, 64, 1]);
+        let context = Arc::new(loop_context());
+        parts.begin_tick(&context, "minecraft:overworld");
+        ask(&parts, 7, [1, 64, 1]);
+        parts.begin_tick(&context, "minecraft:the_nether");
+        ask(&parts, 7, [1, 64, 1]);
+        assert_eq!(
+            *seen.borrow(),
+            [
+                None,
+                Some("minecraft:overworld".to_owned()),
+                Some("minecraft:the_nether".to_owned()),
+            ]
+        );
     }
 
     #[test]

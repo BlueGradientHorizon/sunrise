@@ -1336,7 +1336,7 @@ fn a_carried_guests_settle_asks_a_part_about_the_guest() {
     rig.within(|| {
         side.hub
             .settle(0, [20.5, 9.0, 12.5], [22.0, 9.0, 12.5], &ctx);
-        parts.begin_tick(&looped);
+        parts.begin_tick(&looped, "minecraft:overworld");
         sunrise_client_render::moving_colliders::as_mover(DECK, || {
             side.hub
                 .settle(0, [20.5, 9.0, 12.5], [22.0, 9.0, 12.5], &ctx)
