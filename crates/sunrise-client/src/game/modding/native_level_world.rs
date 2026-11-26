@@ -248,45 +248,11 @@ impl Game<'_> {
         self.native_level_world(level)?;
         Some(self.level.seed)
     }
-    /// `level.getChunkSource().getGenerator()`'s codec id: a runtime level's own generator,
-    /// else the level's stem, the enabled packs' before the saved one, else vanilla's noise
-    /// generator for a built-in level.
+    /// `level.getChunkSource().getGenerator()`'s codec id: the generator `make_streaming`
+    /// built the level with, recorded when it did.
     pub(super) fn level_generator_type(&self, level: LevelRef) -> Option<mod_api::Identifier> {
-        use super::runtime_levels::Generate;
-        self.native_level_world(level)?;
-        let dim = level.dimension_id();
-        let id = match self.runtime_terrain(Dim::from_id(dim)) {
-            // A runtime level of layers or air is a superflat generator.
-            Some((Generate::Layers { .. }, _)) => "minecraft:flat".to_owned(),
-            Some((Generate::Stem(stem), _)) => stem.generator_type()?.to_owned(),
-            None => {
-                let packed = self.world_tables.as_ref().and_then(|tables| {
-                    tables
-                        .biomes
-                        .overrides
-                        .entries(sunrise_world::worldgen::overrides::DIMENSIONS)
-                        .find(|(id, _)| *id == dim)
-                        .and_then(|(_, json)| serde_json::from_str::<serde_json::Value>(json).ok())
-                });
-                let saved = || {
-                    let settings = self.level.generator.as_ref()?.settings();
-                    let stem = settings.get("dimensions")?.get(dim)?;
-                    Some(sunrise_client::scoreboard::tag_to_json(stem))
-                };
-                match packed.or_else(saved) {
-                    Some(stem) => stem["generator"]["type"].as_str()?.to_owned(),
-                    None if matches!(
-                        dim,
-                        "minecraft:overworld" | "minecraft:the_nether" | "minecraft:the_end"
-                    ) =>
-                    {
-                        "minecraft:noise".to_owned()
-                    }
-                    None => return None,
-                }
-            }
-        };
-        mod_api::Identifier::parse(&id).ok()
+        let id = self.native_level_world(level)?.generator_type.as_deref()?;
+        mod_api::Identifier::parse(id).ok()
     }
     /// The difficulty (`Level.getDifficulty`): `peaceful`, `easy`, `normal`
     /// or `hard`, as `/difficulty` names it.
@@ -519,42 +485,27 @@ impl Game<'_> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
 
-    /// `LevelRef::generator_type` (#6032): the saved stem's `generator.type` for a superflat
-    /// and a debug world, vanilla's noise generator for a built-in level no stem names, and
-    /// nothing for a stale level.
+    /// `LevelRef::generator_type` (#6032): the generator the level was built with, as its
+    /// world recorded it, nothing before one is recorded, and nothing for a stale level.
     #[test]
     #[ignore = "daily"]
-    fn a_level_names_the_chunk_generator_its_stem_names() {
-        use sunrise_client::save::{WorldGen, WorldGenerator, WorldPreset};
+    fn a_level_names_the_chunk_generator_it_was_built_with() {
         with_game(|game| {
             let overworld = game.level("minecraft:overworld").unwrap();
             let generator = |game: &super::super::Game<'_>| {
                 overworld.generator_type(game).map(|id| id.to_string())
             };
-            game.level.generator = None;
-            assert_eq!(generator(game).as_deref(), Some("minecraft:noise"));
-            for (preset, expected) in [
-                (WorldPreset::Flat, "minecraft:flat"),
-                (WorldPreset::Debug, "minecraft:debug"),
-                (WorldPreset::Normal, "minecraft:noise"),
-            ] {
-                let dir = tempfile::tempdir().unwrap();
-                let options = WorldGen {
-                    preset,
-                    ..WorldGen::default()
-                };
-                sunrise_client::save::write_world_gen_settings(dir.path(), 1, options).unwrap();
-                game.level.generator = WorldGenerator::read_new(dir.path());
-                assert!(
-                    game.level.generator.is_some(),
-                    "{preset:?} wrote its settings"
-                );
-                assert_eq!(generator(game).as_deref(), Some(expected), "{preset:?}");
-            }
+            // The harness stops short of building terrain, so it sets what `make_streaming`
+            // records (a_level_reports_the_generator_it_was_built_with covers the recording).
+            game.world.generator_type = Some("minecraft:debug".to_owned());
+            assert_eq!(generator(game).as_deref(), Some("minecraft:debug"));
+            game.world.generator_type = None;
+            assert_eq!(generator(game), None);
             let stale = mod_api::LevelRef::new(
                 mod_api::WorldEpoch::new(overworld.epoch().get() + 1),
                 overworld.dimension(),
             );
+            game.world.generator_type = Some("minecraft:noise".to_owned());
             assert_eq!(stale.generator_type(game), None);
         });
     }
