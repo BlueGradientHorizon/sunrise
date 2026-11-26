@@ -821,6 +821,11 @@ where
                 Ok(id)
             })
             .map_err(stage("biomes"))?;
+        if let Some(terrain) = &self.mod_terrain {
+            terrain
+                .create_biomes(&mut chunk, &self.data, self.seed, [min, height])
+                .map_err(stage("biomes"))?;
+        }
         let chunk = Arc::new(chunk);
         let mut cache = self.biome_cache.lock().unwrap();
         cache.insert((pos.x, pos.z), chunk.clone());
@@ -1157,8 +1162,20 @@ where
         };
         context.set_lattice(lattice);
         // Masking off structures in WorldOptions does not change the terrain's range.
+        let mut block_entities = Vec::new();
         let filled = match &self.mod_terrain {
-            Some(terrain) => terrain.fill(&mut chunk, data.registry, self.seed, [min, height]),
+            Some(terrain) => terrain.fill(
+                &mut chunk,
+                &mut block_entities,
+                data.registry,
+                self.seed,
+                [
+                    min,
+                    height,
+                    self.settings.level_min_y,
+                    self.settings.level_min_y + self.settings.level_height,
+                ],
+            ),
             None => fill_noise(
                 &mut chunk,
                 volume,
@@ -1186,7 +1203,7 @@ where
                 biomes: center,
                 data: data.clone(),
                 decorated: false,
-                block_entities: Vec::new(),
+                block_entities: std::mem::take(&mut block_entities),
                 structure_starts: references,
                 own_starts,
                 entities: Vec::new(),
@@ -1246,7 +1263,7 @@ where
                 biomes: center,
                 data: data.clone(),
                 decorated: false,
-                block_entities: Vec::new(),
+                block_entities: std::mem::take(&mut block_entities),
                 structure_starts: references,
                 own_starts,
                 entities: Vec::new(),
@@ -1312,7 +1329,7 @@ where
             biomes: center,
             data: data.clone(),
             decorated: false,
-            block_entities: Vec::new(),
+            block_entities: std::mem::take(&mut block_entities),
             structure_starts: references,
             own_starts,
             entities: Vec::new(),
