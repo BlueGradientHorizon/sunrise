@@ -1,6 +1,5 @@
 import argparse
 import contextlib
-import io
 import datetime
 import io
 import json
