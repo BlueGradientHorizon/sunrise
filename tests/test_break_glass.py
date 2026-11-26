@@ -54,12 +54,13 @@ def history(folder, *changes):
     git("commit", "-q", "-m", "0.1.0")
     parent = git("rev-parse", "HEAD")
     # Each entry goes straight into the index, with nothing on disk: a symbolic link is the entry git stores for one
-    # (mode 120000, its target as content), and a file name may hold a line break no Windows file system allows.
+    # (mode 120000, its target as content), and a file name may hold a line break no Windows file system allows,
+    # which Git for Windows takes into the index only with core.protectNTFS off.
     for path, kind in changes:
         mode, content = ("120000", "a.md") if kind == "link" else ("100644", "fix\n")
         blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], input=content, cwd=repo, text=True,
                               capture_output=True, check=True).stdout.strip()
-        git("update-index", "--add", "--cacheinfo", f"{mode},{blob},{path}")
+        git("-c", "core.protectNTFS=false", "update-index", "--add", "--cacheinfo", f"{mode},{blob},{path}")
     git("commit", "-q", "--allow-empty", "-m", "cherry-pick")
     return parent, git("rev-parse", "HEAD")
 
