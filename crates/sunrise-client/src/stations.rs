@@ -1097,7 +1097,6 @@ pub fn apply_trim(
 mod tests {
     use super::*;
     use crate::enchant::tests::{sample, sample_items};
-    use serde_json::Value;
     use std::fs;
     use sunrise_core::nbt::Tag;
 
