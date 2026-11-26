@@ -174,8 +174,14 @@ fn real_packs_read() {
                     attributes: vec![("mc_Entity".into(), "vec4(-1.0)".into())],
                     ..Default::default()
                 };
+                // The game's terrain draws give `mc_chunkFade` too (`pack_atlas`'s terrain
+                // attributes); its other draws don't.
+                let mut chunks = terrain.clone();
+                chunks
+                    .attributes
+                    .push(("mc_chunkFade".into(), "1.0".into()));
                 let inputs = sunrise_shaders::GameInputs {
-                terrain: Some(terrain.clone()),
+                terrain: Some(chunks.clone()),
                 sky: Some(terrain.clone()),
                 celestial: Some(terrain.clone()),
                 entities: Some(terrain.clone()),
@@ -189,14 +195,14 @@ fn real_packs_read() {
                     ..terrain.clone()
                 }),
                 // As the game's (`pack_atlas::game_terrain`): solid, then cutout terrain.
-                terrain_parts: Some([terrain.clone(), terrain.clone()]),
+                terrain_parts: Some([chunks.clone(), chunks.clone()]),
                 // And both in one pass.
                 terrain_one_pass: Some(sunrise_shaders::GbuffersInputs {
                     parts: Some(sunrise_shaders::Parts {
                         solid: "hz_v_pos.x > 0.0".into(),
                         cutout_alpha_test: None,
                     }),
-                    ..terrain.clone()
+                    ..chunks.clone()
                 }),
                 terrain_geometry: Some(sunrise_shaders::GeometryInputs {
                     inputs: sunrise_shaders::GbuffersInputs {
@@ -204,7 +210,7 @@ fn real_packs_read() {
                             "layout(set = 3, binding = 1) readonly buffer HzVertices {{ uint hz_vertices[]; }};\n{}",
                             terrain.declarations
                         ),
-                        ..terrain.clone()
+                        ..chunks.clone()
                     },
                     pull: "        hz_v_pos = uintBitsToFloat(uvec3(hz_vertices[hz_vertex_index * 6u], \
                            hz_vertices[hz_vertex_index * 6u + 1u], hz_vertices[hz_vertex_index * 6u + 2u]));\n"
