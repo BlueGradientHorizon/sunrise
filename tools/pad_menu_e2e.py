@@ -170,8 +170,9 @@ class Game:
         """Hidden or not, a tiling compositor sizes the window, and these cases assume 16:9."""
         width, height = self.ctl('ui')['gui_size']
         if abs(width / height - WINDOW_ASPECT) > WINDOW_ASPECT_SLACK:
-            print(f'warning: the window is {width:g}x{height:g} GUI pixels, not 16:9, and cases that scroll will '
-                  "fail. On a tiling compositor, float the app id 'sunrise'.", file=sys.stderr, flush=True)
+            print(f'warning: the window is {width:g}x{height:g} GUI pixels, not 16:9: cases that scroll may fail '
+                  '(sunrise_bumpers skips when every page fits at this GUI size). On a tiling compositor, float the '
+                  "app id 'sunrise'.", file=sys.stderr, flush=True)
 
     def restart(self):
         """Quit and start again on the same files."""
@@ -1913,8 +1914,9 @@ def sunrise_bumpers(args, name):
         game.wait_targets()
         ids = {page: page.lower().replace(' ', '-') for page in SUNRISE_PAGES}
         shown = [page for page in SUNRISE_PAGES if any(w['id'] == ids[page] for w in game.widgets())]
-        # The scale is held to what the window fits (vanilla's), so a tall window shows every page: the case needs
-        # the 16:9 window the script asks for, and has nothing to walk in one where every page fits.
+        # The scale is held to what the window fits (vanilla's), so the GUI size the window ends up with decides
+        # whether the list scrolls: where every page fits at that size (a tall window) there is nothing to walk,
+        # and the case skips.
         if len(shown) == len(SUNRISE_PAGES):
             raise Skipped(f'every page fits at {game.ctl("ui")["gui_size"]} GUI px: the list never scrolls in this '
                           f'window')
