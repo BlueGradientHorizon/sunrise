@@ -13,6 +13,8 @@ use sunrise_protocol::payload_negotiation::Phase;
 
 #[test]
 fn epoch_end_wakes_a_dedicated_payload_receiver_before_the_main_root_finishes() {
+    mod_platform::__private::initialize().unwrap();
+
     with_vanilla_peer(|transport| {
         let epoch = transport.epoch().unwrap();
         let Classified::Raw(deliveries) =

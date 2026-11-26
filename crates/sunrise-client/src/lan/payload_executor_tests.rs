@@ -211,6 +211,8 @@ fn reply_count(snapshot: &dyn Fn() -> Vec<Vec<u8>>) -> usize {
 
 #[test]
 fn queued_work_reserves_before_acceptance_and_keeps_original_credit_until_last_drop() {
+    mod_platform::__private::initialize().unwrap();
+
     with_case(
         Mode::Success,
         3 << 20,
@@ -250,6 +252,8 @@ fn queued_work_reserves_before_acceptance_and_keeps_original_credit_until_last_d
 
 #[test]
 fn provider_pressure_refuses_work_before_acceptance() {
+    mod_platform::__private::initialize().unwrap();
+
     with_case(Mode::Pressure, 1, |probe, incoming, endpoint, _, out| {
         let original = Arc::downgrade(&incoming.lease);
         dispatch_server(incoming, endpoint.clone(), queue(&probe, &endpoint));
@@ -264,6 +268,8 @@ fn provider_pressure_refuses_work_before_acceptance() {
 
 #[test]
 fn a_panicking_work_destructor_on_refused_enqueue_quarantines_only_its_registration() {
+    mod_platform::__private::initialize().unwrap();
+
     with_case(
         Mode::PressureWithPanickingDrop,
         1,
@@ -288,6 +294,8 @@ fn a_panicking_work_destructor_on_refused_enqueue_quarantines_only_its_registrat
 
 #[test]
 fn handler_error_or_epoch_cancellation_publishes_no_staged_work_or_replies() {
+    mod_platform::__private::initialize().unwrap();
+
     for mode in [Mode::Error, Mode::Panic, Mode::Cancel, Mode::Reconfigure] {
         with_case(mode, 1, |probe, incoming, endpoint, _, out| {
             let original = Arc::downgrade(&incoming.lease);
@@ -400,6 +408,8 @@ fn main_root_blocks_later_network_delivery_and_keeps_its_ingress_charge() {
 
 #[test]
 fn failed_publication_and_remaining_work_drop_outside_epoch_gate() {
+    mod_platform::__private::initialize().unwrap();
+
     with_case(
         Mode::PublicationClosed,
         1,
@@ -480,6 +490,8 @@ fn a_hosted_pairing_body_keeps_and_refunds_its_prepaid_reservation() {
 
 #[test]
 fn disabled_owner_refuses_before_entering_its_native_handler() {
+    mod_platform::__private::initialize().unwrap();
+
     with_case(Mode::Success, 1, |probe, incoming, endpoint, _, out| {
         let original = Arc::downgrade(&incoming.lease);
         assert!(mod_api::__private::set_mod_enabled("executor_probe", false));
