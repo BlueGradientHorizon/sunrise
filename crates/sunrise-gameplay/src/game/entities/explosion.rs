@@ -808,7 +808,7 @@ impl crate::game::ServerGame<'_> {
                         self.server.combat.0.attack(),
                         no_push,
                         crate::game::entity_server::player_victim_causer!(self, decision),
-                        acting_equipment!(self)
+                        acting_equipment!(self.common)
                     ),
                     &self.common.health_resources,
                     rules,

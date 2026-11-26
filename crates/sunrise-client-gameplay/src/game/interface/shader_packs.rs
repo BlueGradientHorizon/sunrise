@@ -480,7 +480,7 @@ impl crate::game::ClientGame<'_> {
                         for note in sunrise_shaders::resolve_resources(&mut post.textures, &read) {
                             log::warn!("shader pack {name}: {note}");
                         }
-                        let biomes = world_biomes!(self);
+                        let biomes = world_biomes!(self.common);
                         let names: Vec<&str> =
                             biomes.list.iter().map(|b| b.name.as_str()).collect();
                         post.custom.set_biomes(&names);

@@ -15,7 +15,7 @@ use sunrise_sim::{
 };
 
 pub struct PlacementWorld<'a, 'r, S: crate::game::SideGame<'r>>(
-    pub(in crate::game) &'a S, pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
+    pub &'a S, pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
 );
 
 impl<'__carrier, S: crate::game::SideGame<'__carrier>> sunrise_sim::cushion::World for PlacementWorld<'_, '__carrier, S> {

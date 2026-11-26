@@ -762,7 +762,7 @@ impl crate::game::ServerGame<'_> {
                             self.server.combat.0.attack(),
                             no_push,
                             None,
-                            acting_equipment!(self)
+                            acting_equipment!(self.common)
                         ),
                         &self.common.health_resources,
                         rules,
@@ -787,7 +787,7 @@ impl crate::game::ServerGame<'_> {
                             self.server.combat.0.attack(),
                             no_push,
                             None,
-                            acting_equipment!(self)
+                            acting_equipment!(self.common)
                         ),
                         &self.common.health_resources,
                         rules,

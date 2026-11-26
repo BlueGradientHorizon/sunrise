@@ -266,7 +266,7 @@ impl crate::game::ServerGame<'_> {
                 health: PlayerHealthRead::Synced(&p.health.data, p.health.ids),
                 attributes: Some(&p.attributes),
                 effects: Some(&self.common.potions.effects),
-                equipment: acting_equipment!(self),
+                equipment: acting_equipment!(self.common),
                 attachments: None,
             });
             (Some(body), lend_mob.and_then(HitLend::mob).or_else(parked))
@@ -279,7 +279,7 @@ impl crate::game::ServerGame<'_> {
                             self.common.player.as_mut(),
                             id,
                             &self.common.potions.effects,
-                            acting_equipment!(self),
+                            acting_equipment!(self.common),
                         )
                     })
                     .or_else(parked),

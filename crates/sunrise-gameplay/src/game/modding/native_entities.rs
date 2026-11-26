@@ -79,7 +79,7 @@ impl crate::game::ServerGame<'_> {
         let root = match kind {
             "minecraft:tnt" if deferred.0 < self.common.tnts.len() => {
                 Some(super::entity_residency::assign_resident_id!(
-                    self.tnts,
+                    self.common.tnts,
                     deferred.0,
                     e,
                     &mut self.server.next_entity,
@@ -88,7 +88,7 @@ impl crate::game::ServerGame<'_> {
             }
             "minecraft:falling_block" if deferred.1 < self.common.falling.len() => {
                 Some(super::entity_residency::assign_resident_id!(
-                    self.falling,
+                    self.common.falling,
                     deferred.1,
                     f,
                     &mut self.server.next_entity,
@@ -97,7 +97,7 @@ impl crate::game::ServerGame<'_> {
             }
             "minecraft:firework_rocket" if deferred.2 < self.common.rockets.len() => {
                 Some(super::entity_residency::assign_resident_id!(
-                    self.rockets,
+                    self.common.rockets,
                     deferred.2,
                     e,
                     &mut self.server.next_entity,
@@ -276,21 +276,21 @@ impl crate::game::ServerGame<'_> {
     fn assign_pending_join_ids(&mut self) {
         self.assign_dragon_and_crystal_ids();
         use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(self.tnts, t, &mut self.server.next_entity, None);
+        assign_resident_ids!(self.common.tnts, t, &mut self.server.next_entity, None);
         assign_resident_ids!(
-            self.falling,
+            self.common.falling,
             f,
             &mut self.server.next_entity,
             Some(&f.attachment_lifetime)
         );
         assign_resident_ids!(
-            self.creatures.projectiles,
+            self.common.creatures.projectiles,
             p,
             &mut self.server.next_entity,
             Some(&p.attachment_lifetime)
         );
-        assign_resident_ids!(self.tridents, t, &mut self.server.next_entity, None);
-        assign_resident_ids!(self.rockets, r, &mut self.server.next_entity, None);
+        assign_resident_ids!(self.common.tridents, t, &mut self.server.next_entity, None);
+        assign_resident_ids!(self.common.rockets, r, &mut self.server.next_entity, None);
     }
     /// The entity inserted earliest after `mark` (and, with a `through`, no later than it), but
     /// the `skipped`.
@@ -480,7 +480,7 @@ impl crate::game::ServerGame<'_> {
                 live[i].2 = true;
             }
         };
-        super::entity::for_each_entity!(super::entity::entity_lists_of!(self), e => {
+        super::entity::for_each_entity!(super::entity::entity_lists_of!(self.common), e => {
             seen(e.id());
         });
         self.common.crystals.iter().for_each(|c| seen(c.id));

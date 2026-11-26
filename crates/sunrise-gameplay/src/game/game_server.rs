@@ -2241,7 +2241,7 @@ impl crate::game::ServerGame<'_> {
         let rules = self.common.level_rules();
         let liquid_transaction_open = self.has_level_transaction();
         let environment = self.common.res.environment_of(&self.dimension_type().id);
-        let other_entities = entity::entity_lists_of!(self, without_carts);
+        let other_entities = entity::entity_lists_of!(self.common, without_carts);
         let mut level = GameLevel {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),
@@ -2283,7 +2283,7 @@ impl crate::game::ServerGame<'_> {
             guest_boxes,
             building_player_boxes,
             player_collision,
-            biomes: world_biomes!(self),
+            biomes: world_biomes!(self.common),
             biome_zoom: self.server.streaming.biome_zoom,
             seed: self.common.level.seed,
             behaviours: self.common.res.behaviours(),

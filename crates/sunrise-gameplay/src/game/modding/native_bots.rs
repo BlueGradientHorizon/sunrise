@@ -5,6 +5,7 @@
 use super::{glide_wear, shield, worn_boots};
 use mod_api::{PlayerInput, SimulatedMove};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_items::items::ItemStack;
 use sunrise_level::world::World;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion};

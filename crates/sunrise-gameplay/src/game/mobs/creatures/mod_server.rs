@@ -900,7 +900,7 @@ impl crate::game::ServerGame<'_> {
                             self.common.player.as_mut(),
                             id,
                             &self.common.potions.effects,
-                            acting_equipment!(self),
+                            acting_equipment!(self.common),
                         )
                     }),
                 )
@@ -4244,7 +4244,7 @@ impl crate::game::ServerGame<'_> {
                                 self.common.player.as_mut(),
                                 attack.attacker,
                                 &self.common.potions.effects,
-                                acting_equipment!(self),
+                                acting_equipment!(self.common),
                             )
                         })
                         .flatten(),

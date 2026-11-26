@@ -35,7 +35,7 @@ impl crate::game::ServerGame<'_> {
                     attack,
                     no_push,
                     crate::game::server_side::entity_server::player_victim_causer!(self, decision),
-                    acting_equipment!(self)
+                    acting_equipment!(self.common)
                 ),
                 &self.common.health_resources,
                 rules,

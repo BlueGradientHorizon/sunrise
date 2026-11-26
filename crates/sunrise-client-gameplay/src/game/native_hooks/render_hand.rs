@@ -1,5 +1,6 @@
 use crate::game::BlockEntityDraw;
 use sunrise_client::mesher::Vertex;
+use sunrise_gameplay_common::game::Dim;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

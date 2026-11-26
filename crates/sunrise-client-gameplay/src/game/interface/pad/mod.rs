@@ -4,7 +4,7 @@
 //! move vector and the right stick turning the view. `sunrise-ctl pad`
 //! injects a virtual pad on top of the real one.
 use super::event_loop::EventLoopCtl;
-use super::{Game, Screen};
+use super::Screen;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use sunrise_client::actions::Action;
@@ -179,7 +179,7 @@ pub(in crate::game) enum Connection {
 /// hardware pads, only `sunrise-ctl pad`'s virtual one.
 #[cfg(not(feature = "controllers"))]
 pub(in crate::game) mod hardware {
-    use super::{super::Game, Pads};
+    use super::Pads;
     use serde_json::{Value, json};
     use sunrise_client::gamepad::{PadState, Pulse, Rumble};
 

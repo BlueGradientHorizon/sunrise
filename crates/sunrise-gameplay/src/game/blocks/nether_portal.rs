@@ -1140,7 +1140,7 @@ impl crate::game::ServerGame<'_> {
                 let t = &self.common.tridents[index];
                 if !t.in_ground || t.previous != t.position {
                     super::entity_residency::assign_resident_id!(
-                        self.tridents,
+                        self.common.tridents,
                         index,
                         t,
                         &mut self.server.next_entity,
@@ -1152,7 +1152,7 @@ impl crate::game::ServerGame<'_> {
                 let r = &self.common.rockets[index];
                 if r.attached_to.is_none() && !r.attached {
                     super::entity_residency::assign_resident_id!(
-                        self.rockets,
+                        self.common.rockets,
                         index,
                         r,
                         &mut self.server.next_entity,

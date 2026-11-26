@@ -3,7 +3,7 @@
 //! and places itself (or drops as an item) as sand does. It acts where the
 //! world is simulated, in the level in place, which it names by its
 //! `dimension` (`minecraft:overworld`) as `native_set_block` does.
-use super::{FallingBlock, Game};
+use super::FallingBlock;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_world::registry::BlockStateId;
 
