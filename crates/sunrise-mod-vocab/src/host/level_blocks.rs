@@ -36,6 +36,28 @@ pub trait LevelBlocksBackend {
         state: BlockState,
     ) -> Result<bool, LevelReadError>;
     /// Side: both.
+    /// The fire odds of the supplied `state` at `pos`, asked from its side `face`, the one
+    /// facing the fire or the air fire may take: `(ignite, burn)` as fire itself reads them
+    /// (`FireBlock.getIgniteOdds` and `getBurnOdds`; NeoForge's
+    /// `IBlockExtension.getFlammability` and `getFireSpreadSpeed`). The mods' `fire_odds`
+    /// answers come first, then the world's `neoforge:flammable` data map, then vanilla's
+    /// table (`FireBlock.bootStrap`). Ignite odds are at least 0 and burn odds 0 to 300; a
+    /// waterlogged state is `(0, 0)`. `state` need not be placed there. `pos` must be in
+    /// bounds and loaded; an unknown state, an unavailable host or phase and a query nested in
+    /// another block query of the same state at the same position return
+    /// `Err(LevelReadError::Unavailable)`, a dead handle `Err(LevelReadError::Stale)`. On a
+    /// client this is a prediction from its loaded local level. It reads without loading,
+    /// placing or changing the level.
+    #[access(WorldOnly)]
+    #[game_method(native_level_fire_odds)]
+    fn level_fire_odds(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockState,
+        face: Direction,
+    ) -> Result<(i32, i32), LevelReadError>;
+    /// Side: both.
     /// The contextual friction of `state` at `pos` (`IBlockExtension.getFriction`).
     /// The state need not occupy the position. `entity` is the optional live handle passed to the block's part. A stale entity
     /// is refused. Returns `Ok(None)` for a nested query that repeats
