@@ -1461,6 +1461,15 @@ fn key_conflicts(
     conflicts
 }
 
+/// The caption of a key row: a vanilla mapping's name is its own translation key, and
+/// Sunrise's own keys ([`crate::extras::KEYS`]) have theirs.
+fn key_caption(name: &str) -> &str {
+    crate::extras::KEYS
+        .iter()
+        .find(|(key, _)| *key == name)
+        .map_or(name, |(_, caption)| caption)
+}
+
 /// A native mod's title or key category on Controls: bold and underlined, centred on the row at `y`.
 fn section_title(text: Text, y: f32, w: f32) -> Widget {
     Widget {
@@ -2209,15 +2218,16 @@ fn narrate_widget(
                 }
             }
             Act::Key(name) => {
-                let bound = s.keys.get(name) != "key.keyboard.unknown";
+                let key = s.extras.key(name).unwrap_or_else(|| s.keys.get(name));
+                let bound = key != "key.keyboard.unknown";
                 n.what = What::Named {
-                    title: bind(tr(name), bound),
+                    title: bind(tr(key_caption(name)), bound),
                     active,
                 };
             }
             Act::ResetKey(name) => {
                 n.what = What::Named {
-                    title: t("narrator.controls.reset", &[tr(name)]),
+                    title: t("narrator.controls.reset", &[tr(key_caption(name))]),
                     active,
                 };
             }
@@ -3372,12 +3382,17 @@ impl OptionsUi {
                         }
                         Act::Key(name) => self.selected_key = Some(*name),
                         Act::ResetKey(name) => {
-                            s.keys.set(name, KeyBinds::default_of(name));
+                            if !s.extras.reset_key(name) {
+                                s.keys.set(name, KeyBinds::default_of(name));
+                            }
                             events.push(Event::Changed);
                         }
                         Act::ResetKeys => {
                             s.keys.reset_all();
                             s.mods.keys.clear();
+                            for (name, _) in crate::extras::KEYS {
+                                s.extras.reset_key(name);
+                            }
                             events.push(Event::Changed);
                         }
                         Act::ModKey(i, k) => {
@@ -4458,12 +4473,17 @@ impl OptionsUi {
                         }
                         Act::Key(name) => self.selected_key = Some(name),
                         Act::ResetKey(name) => {
-                            s.keys.set(name, KeyBinds::default_of(name));
+                            if !s.extras.reset_key(name) {
+                                s.keys.set(name, KeyBinds::default_of(name));
+                            }
                             events.push(Event::Changed);
                         }
                         Act::ResetKeys => {
                             s.keys.reset_all();
                             s.mods.keys.clear();
+                            for (name, _) in crate::extras::KEYS {
+                                s.extras.reset_key(name);
+                            }
                             events.push(Event::Changed);
                         }
                         Act::ModKey(i, k) => {
@@ -7333,6 +7353,93 @@ mod tests {
             ui.scroll_at(&s, size, (240.0, 60.0), -0.25);
             assert_eq!(ui.scroll, 4.5, "{page:?}");
         }
+    }
+
+    /// Sunrise's own keys are listed on Key Binds under their own category after vanilla's
+    /// (#5866): a row's button captures the next key into the same setting the Extras page
+    /// sets, and its reset button puts the default back.
+    #[test]
+    fn sunrise_keys_are_rebound_and_reset_from_key_binds() {
+        let atlas = atlas();
+        let mut s = Settings::default();
+        let mut ui = OptionsUi::default();
+        ui.show(Page::KeyBinds);
+        let size = (480.0, 240.0);
+        let (widgets, top, _, _) = ui.layout(&s, size.0, size.1);
+        let keys: Vec<(&str, f32)> = widgets
+            .iter()
+            .filter_map(|w| match w.kind {
+                WKind::Button {
+                    act: Act::Key(name),
+                    ..
+                } => Some((name, w.y)),
+                _ => None,
+            })
+            .collect();
+        let sunrise: Vec<&str> = crate::extras::KEYS.iter().map(|(name, _)| *name).collect();
+        let first = keys
+            .iter()
+            .position(|(name, _)| sunrise.contains(name))
+            .unwrap();
+        assert_eq!(
+            keys[first..]
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>(),
+            sunrise,
+            "Sunrise's keys come after every vanilla mapping, in their own order"
+        );
+        assert!(
+            keys[..first]
+                .iter()
+                .all(|(name, _)| keybinds::MAPPINGS.iter().any(|m| m.0 == *name))
+        );
+        let category = tr(crate::extras::KEY_CATEGORY).plain();
+        assert!(widgets.iter().any(|w| matches!(&w.kind,
+            WKind::Text { text, .. } if text.plain() == category)));
+        let row = |ui: &mut OptionsUi, s: &Settings, act: Act| {
+            let (widgets, _, _, _) = ui.layout(s, size.0, size.1);
+            let w = widgets
+                .into_iter()
+                .find(|w| matches!(&w.kind, WKind::Button { act: a, .. } if *a == act))
+                .unwrap();
+            (w.x, w.y + w.h / 2.0)
+        };
+        // Scroll the shader pack row into view, click its button, then press J.
+        let (_, y) = row(&mut ui, &s, Act::Key(crate::extras::SHADER_PACK_KEY));
+        ui.scroll = y - (top + 20.0);
+        let (x, at) = row(&mut ui, &s, Act::Key(crate::extras::SHADER_PACK_KEY));
+        assert_eq!(
+            ui.click(&mut s, &atlas, x + 1.0, at, size, [480, 240], false, false),
+            vec![Event::ButtonClick]
+        );
+        assert_eq!(ui.selected_key, Some(crate::extras::SHADER_PACK_KEY));
+        assert_eq!(
+            ui.key(&mut s, &atlas, winit::keyboard::KeyCode::KeyJ, None),
+            vec![Event::Changed]
+        );
+        assert_eq!(s.extras.shader_pack_key, "key.keyboard.j");
+        assert_eq!(
+            s.keys.get("key.attack"),
+            "key.mouse.left",
+            "no vanilla mapping moved"
+        );
+        // Its reset button, now active, puts K back.
+        let (x, at) = row(&mut ui, &s, Act::ResetKey(crate::extras::SHADER_PACK_KEY));
+        assert_eq!(
+            ui.click(&mut s, &atlas, x + 1.0, at, size, [480, 240], false, false),
+            vec![Event::ButtonClick, Event::Changed]
+        );
+        assert_eq!(s.extras.shader_pack_key, "key.keyboard.k");
+        // Reset All puts every Sunrise key back too.
+        s.extras.pvp.editor_key = "key.keyboard.h".into();
+        s.extras.sort_key = "key.keyboard.y".into();
+        for (name, _) in crate::extras::KEYS {
+            assert!(s.extras.reset_key(name));
+        }
+        assert_eq!(s.extras.pvp.editor_key, "key.keyboard.unknown");
+        assert_eq!(s.extras.sort_key, "key.keyboard.unknown");
+        assert!(!s.extras.reset_key("key.attack"));
     }
 
     #[test]

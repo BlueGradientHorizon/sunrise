@@ -435,6 +435,18 @@ the level's `min_y` and `height`, and borrowed immutable `metadata()`. Resolve `
 placed block. `set_block` skips a position outside the chunk or build height and answers whether
 it wrote. The chunk starts as air; invalid state ordinals are refused rather than written.
 
+`set_block_entity_nbt(nbt)` is vanilla's `ChunkAccess.setBlockEntityNbt`: a block entity's data
+from generation on, such as a chest's `LootTable` and `LootTableSeed`, at the block the tag's `x`,
+`y` and `z` name. It waits as the chunk's pending data and becomes the block's block entity before
+the chunk first loads, as a structure's chest does; data with no `id`, or for a block that has no
+block entity by then, is dropped.
+
+`create_biomes(chunk)` is vanilla's `ChunkGenerator.createBiomes`, run at the biome step before the
+terrain: `chunk.fill_biomes_from_noise(&mut |[qx, qy, qz]| ...)` gives each 4×4×4 cell the
+`BiomeKey` its quart position resolves to, as `ChunkAccess.fillBiomesFromNoise` does. The chunk
+keeps those biomes; structure placement and carvers still ask the level stem's biome source, as in
+vanilla. A generator that does not answer keeps the source's biomes.
+
 By default the generator gives terrain only: the level has no surface, carvers, structures or
 features, and its biomes come from the level stem's biome source. It does not need
 `noise_settings`. As in vanilla's `ChunkMap` for non-noise generators, any climate or erosion

@@ -401,6 +401,7 @@ fn publish(game: &mut crate::game::Game<'_>) {
         sunrise_world::native_worldgen_hooks::NativeWorldgenHooks {
             alter_ground: crate::game::api_values::alter_ground,
             on_tree_grow: crate::game::native_tree_grow::on_tree_grow,
+            mirror: super::mirror,
             rotate: super::rotate,
             feature: native_worldgen_parts::feature,
         },

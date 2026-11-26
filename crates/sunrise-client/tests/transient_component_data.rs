@@ -553,13 +553,17 @@ fn command_datastore_filters_winning_files_without_lower_pack_fallback() {
     );
     let low = DataPack::from_source("low".into(), ResourceSource::directory(low));
     let high = DataPack::from_source("high".into(), ResourceSource::directory(high));
+    let empty_root = root.path().join("empty_root");
+    std::fs::create_dir_all(&empty_root).unwrap();
+    std::fs::write(empty_root.join("items.json"), "{}").unwrap();
+    let defaults = sunrise_world::item_defaults::read(&empty_root).unwrap();
     let store = DataStore::load(&DataPacks::new(&[&low, &high]));
-    assert!(!store.item_modifiers.contains_key("minecraft:override"));
-    assert!(store.item_modifiers.contains_key("minecraft:z_good"));
-    assert!(!store.predicates.contains_key("minecraft:bad_predicate"));
-    assert!(store.predicates.contains_key("minecraft:z_good"));
-    assert!(!store.slot_sources.contains_key("minecraft:bad_slots"));
-    assert!(store.slot_sources.contains_key("minecraft:z_good"));
+    let files: Vec<_> = store.files.into_iter().collect();
+    let overlay = sunrise_world::loot::PackOverlay::new(&files);
+    let err = match sunrise_world::loot::LootData::load(&empty_root, &overlay, &defaults) {
+        Ok(_) => panic!("expected refused transient components to fail LootData::load"),
+        Err(err) => err.to_string(),
+    };
     // The refused winners fail the reload, each listed; the lower pack's file does not return.
     for (entry, component) in [
         (
@@ -575,9 +579,11 @@ fn command_datastore_filters_winning_files_without_lower_pack_fallback() {
             "minecraft:creative_slot_lock",
         ),
     ] {
-        assert!(store.refused[entry].contains(component), "{entry}");
+        assert!(
+            err.contains(entry) && err.contains(component),
+            "{entry} / {component} missing in {err}"
+        );
     }
-    assert_eq!(store.refused.len(), 3, "{:?}", store.refused);
 }
 
 #[test]

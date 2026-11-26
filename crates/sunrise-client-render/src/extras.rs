@@ -10,6 +10,16 @@ pub const FILE: &str = "sunrise-extras.txt";
 pub const SORT_KEY: &str = "sunrise.sort";
 /// The name the options screen uses while the shader pack key waits for a key.
 pub const SHADER_PACK_KEY: &str = "sunrise.shader_pack_key";
+/// Sunrise's own key bindings and their captions, in the order Controls -> Key Binds lists
+/// them under its "Sunrise" category, after vanilla's: the same bindings the Extras page and
+/// the PvP page set.
+pub const KEYS: [(&str, &str); 3] = [
+    (SHADER_PACK_KEY, "sunrise.extras.shader_pack_key"),
+    (crate::pvp::HUD_EDITOR_KEY, "sunrise.pvp.hud_editor_key"),
+    (SORT_KEY, "sunrise.extras.sort_key"),
+];
+/// The caption of Sunrise's own category on Controls -> Key Binds.
+pub const KEY_CATEGORY: &str = "sunrise.key.category";
 
 // no wire: this is private to the built-in HUD layout.
 /// A screen corner for Sunrise's internal extras and PvP HUD boxes.
@@ -279,6 +289,22 @@ impl Extras {
             }
         }
         text
+    }
+    /// The binding of Sunrise's own key `name` (one of [`KEYS`]); none for another name.
+    pub fn key(&self, name: &str) -> Option<&str> {
+        Some(match name {
+            SORT_KEY => &self.sort_key,
+            SHADER_PACK_KEY => &self.shader_pack_key,
+            crate::pvp::HUD_EDITOR_KEY => &self.pvp.editor_key,
+            _ => return None,
+        })
+    }
+    /// Puts Sunrise's own key `name` back to its default; false for another name.
+    pub fn reset_key(&mut self, name: &str) -> bool {
+        match Self::default().key(name) {
+            Some(default) => self.set_key(name, default.to_owned()),
+            None => false,
+        }
     }
     /// Binds the extra key `name` (`SORT_KEY`); false for
     /// another name (a vanilla mapping).

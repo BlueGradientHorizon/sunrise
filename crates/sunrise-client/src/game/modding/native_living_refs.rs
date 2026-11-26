@@ -819,7 +819,11 @@ impl Game<'_> {
                 let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
-                m.heal(&self.loop_context, amount);
+                m.heal(
+                    &self.loop_context,
+                    &|| crate::game::entity::hit_reads_of!(self),
+                    amount,
+                );
                 m.needs_sync = true;
                 true
             }

@@ -299,6 +299,7 @@ pub(super) fn load_core(
                         resources.data_changes(),
                         registry,
                         additional_data,
+                        conditions.clone(),
                     );
                 }
                 Ok::<_, String>(biomes)
@@ -925,6 +926,7 @@ pub(super) fn load_resources_for_mods_with_limit(
             resolved.data_changes(),
             assets.registry,
             &additional_data,
+            conditions.clone(),
         );
     }
     api_values::resolve_block_definitions(assets.registry)?;
