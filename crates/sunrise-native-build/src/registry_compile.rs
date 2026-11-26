@@ -326,6 +326,7 @@ pub(super) fn stage_and_cargo(
     let patch =
         super::patch::prepare(rust, game, &out.join("fnr"), projects, &sdk, options.mixins)?;
     if let Some(patch) = &patch {
+        let game_features = sdk.legacy_game_features()?;
         for name in &patch.names {
             let dir = patch.dir.join(name);
             let mut manifest = toml::toml! { [package] name = (name.clone()) version = "0.0.0" edition = "2024" [lib] path = "src/lib.rs" };
@@ -344,8 +345,7 @@ pub(super) fn stage_and_cargo(
                 );
             }
             manifest.insert("dependencies".into(), dependencies.into());
-            let features: toml::Table = sdk
-                .game_features()
+            let features: toml::Table = game_features
                 .iter()
                 .map(|feature| (feature.clone(), toml::Value::Array(Vec::new())))
                 .collect();
@@ -374,7 +374,7 @@ pub(super) fn stage_and_cargo(
             members.push(relative.clone());
             wrapper_deps.insert(
                 name.clone(),
-                toml::toml! { path = (relative) features = (sdk.game_features().iter().cloned().map(toml::Value::String).collect::<Vec<_>>()) }.into(),
+                toml::toml! { path = (relative) features = (game_features.iter().cloned().map(toml::Value::String).collect::<Vec<_>>()) }.into(),
             );
         }
         // The tool's workspace files would make the crates a second workspace inside this one.

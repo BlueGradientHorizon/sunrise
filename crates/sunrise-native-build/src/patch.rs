@@ -187,7 +187,7 @@ pub fn build(
         if check_only {
             cmd.arg("--emit=metadata");
         }
-        game_cfg(&mut cmd, sdk);
+        game_cfg(&mut cmd, sdk.legacy_game_features()?);
         // An `@` file, one argument per line: an extern per SDK crate passes Windows'
         // 32,767-character command-line limit.
         let mut externs = Vec::new();
@@ -422,6 +422,7 @@ pub fn prepare<'a>(
     if bundles.is_empty() {
         return Ok(None);
     }
+    let features = sdk.legacy_game_features()?;
     let loops = loop_slots(game, &bundles)?;
     let requests: Vec<(String, String, String)> = bundles
         .iter()
@@ -570,7 +571,7 @@ pub fn prepare<'a>(
         // flags it is compiled with (the prebuilt game's target is this computer's,
         // `check_identity`), and the features the game was built with.
         let mut print = super::prebuilt::rustc_with(rust, &[], "2024");
-        game_cfg(&mut print, sdk);
+        game_cfg(&mut print, features);
         print.args(["--print", "cfg"]);
         let printed = print.output().map_err(|e| e.to_string())?;
         if !printed.status.success() {
@@ -659,8 +660,8 @@ fn unlink(path: &Path, kind: fs::FileType) -> std::io::Result<()> {
 
 /// The game's features as the `--cfg` flags the patch library is compiled with. The compile and
 /// the `--print cfg` that the tool plans against both take them from here, so they cannot drift.
-fn game_cfg(cmd: &mut std::process::Command, sdk: &Identity) {
-    for feature in sdk.game_features() {
+fn game_cfg(cmd: &mut std::process::Command, features: &[String]) {
+    for feature in features {
         cmd.arg("--cfg").arg(format!("feature=\"{feature}\""));
     }
 }

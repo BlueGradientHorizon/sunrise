@@ -832,6 +832,38 @@ class PrebuiltContentsTests(unittest.TestCase):
             {"name": "native-sys", "version": "1.0.0", "library": "native"},
         ])
 
+    def test_runtime_feature_facts_follow_target_artifacts_and_normal_aliases(self):
+        target = Path("/target/triple")
+        edges = {"host": {"common_loan": "common", "sim": "server", "ui": "client"}}
+        packages = []
+        nodes = []
+        artifacts = []
+        for owner in ("host", "common", "server", "client"):
+            name = f"fixture_{owner}"
+            lib = {"name": name, "kind": ["lib"]}
+            packages.append({"id": owner, "name": owner, "version": "0.1.0", "targets": [lib]})
+            nodes.append({"id": owner, "deps": [
+                {"name": alias, "pkg": dep, "dep_kinds": [{"kind": None}]}
+                for alias, dep in edges.get(owner, {}).items()
+            ]})
+            artifacts.append({"reason": "compiler-artifact", "package_id": owner, "target": lib,
+                              "features": [f"feature-{owner}"], "filenames": [str(target / name)]})
+        host_artifact = dict(artifacts[1], features=["host-only"], filenames=["/target/debug/common"])
+        metadata = {"packages": packages, "resolve": {"nodes": nodes}}
+
+        desktop = prebuilt_game.runtime_role_facts(metadata, "host", artifacts + [host_artifact], target, "client")
+        dedicated = prebuilt_game.runtime_role_facts(metadata, "host", artifacts[:-1], target, "server")
+        self.assertEqual(desktop["libraries"]["common@0.1.0:fixture_common"], {
+            "package": "common", "library": "fixture_common", "features": ["feature-common"], "aliases": {},
+        })
+        self.assertEqual(desktop["libraries"]["host@0.1.0:fixture_host"]["aliases"], {
+            "common_loan": "common@0.1.0:fixture_common", "sim": "server@0.1.0:fixture_server",
+            "ui": "client@0.1.0:fixture_client",
+        })
+        self.assertEqual(dedicated["side"], "server")
+        self.assertNotIn("client@0.1.0:fixture_client", dedicated["libraries"])
+        self.assertNotIn("ui", dedicated["libraries"]["host@0.1.0:fixture_host"]["aliases"])
+
     def test_sdk_assertion_refuses_a_duplicate_eligible_facade_on_every_os(self):
         root = self.folder("deps/libsunrise_core-one.rmeta", "deps/libmod_api-one.rmeta",
                            "deps/libsunrise_mod_package-one.rmeta")
