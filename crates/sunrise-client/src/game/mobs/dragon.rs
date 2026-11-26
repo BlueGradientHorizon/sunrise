@@ -623,7 +623,7 @@ impl DragonHurt {
 }
 fn dragon_hit_hooks_listened() -> bool {
     [
-        mod_api::HookId::EntityInvulnerable,
+        mod_api::HookId::EntityInvulnerabilityCheck,
         mod_api::HookId::LivingIncomingDamage,
         mod_api::HookId::LivingShieldBlock,
         mod_api::HookId::LivingDamagePre,

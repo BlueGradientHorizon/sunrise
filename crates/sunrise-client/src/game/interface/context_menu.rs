@@ -1507,16 +1507,18 @@ mod tests {
         let mut m = menu(entries);
         let k = key(1, 1, 1);
         for h in 7..=11 {
-            let boxes = m.ensure_layout([100.0, h as f32], k, &width);
-            let ch = boxes[0].content_rect[3];
+            let (ch, scroll, max_scroll) = {
+                let boxes = m.ensure_layout([100.0, h as f32], k, &width);
+                (
+                    boxes[0].content_rect[3],
+                    boxes[0].scroll,
+                    boxes[0].max_scroll,
+                )
+            };
             assert!(ch > 0.0 && ch < 6.0);
-            let (offset, thumb_h) = scrollbar_thumb(
-                ch,
-                m.cache.levels[0].content_height,
-                boxes[0].scroll,
-                boxes[0].max_scroll,
-            )
-            .expect("thumb present for scrollable tiny viewport");
+            let (offset, thumb_h) =
+                scrollbar_thumb(ch, m.cache.levels[0].content_height, scroll, max_scroll)
+                    .expect("thumb present for scrollable tiny viewport");
             assert!(offset >= 0.0 && thumb_h > 0.0 && offset + thumb_h <= ch + 1e-4);
         }
     }
