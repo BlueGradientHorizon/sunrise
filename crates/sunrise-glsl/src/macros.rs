@@ -7,6 +7,7 @@
 use std::cell::{Cell, RefCell};
 
 use crate::condition::resolve_defined;
+use crate::located::Lines;
 use std::collections::BTreeMap;
 
 /// How many lines one macro call may span: its arguments join the line the call starts on.
@@ -311,7 +312,7 @@ impl Macros {
     /// ends `text` and whose opening parenthesis is on the next nonempty line.
     pub fn unfinished_call(&self, text: &str, upcoming: &[&str]) -> bool {
         self.begin();
-        let (tokens, unfinished) = self.expand_tokens(expansion_tokens(text));
+        let (tokens, unfinished) = self.expand_tokens(expansion_tokens(text, false));
         unfinished
             || (tokens.iter().rfind(|t| !t.blank()).is_some_and(|t| {
                 self.map.get_key_value(&t.text).is_some_and(|(name, m)| {
@@ -329,11 +330,25 @@ impl Macros {
     /// (expanded first, raw beside `##`, which pastes) when a `(` follows their name.
     pub fn expand(&self, text: &str) -> String {
         self.begin();
-        self.expand_tokens(expansion_tokens(text))
+        self.expand_tokens(expansion_tokens(text, false))
             .0
             .iter()
             .map(|t| t.text.as_str())
             .collect()
+    }
+
+    /// Append the same expansion as [`Self::expand`], with source positions for diagnostics.
+    pub(crate) fn expand_located(&self, input: &Lines, out: &mut Lines) {
+        self.begin();
+        for token in self.expand_tokens(expansion_tokens(input.text(), true)).0 {
+            match token.source {
+                TokenSource::Copy(at) => {
+                    out.push_spanned(&token.text, None, input, at..at + token.text.len());
+                }
+                TokenSource::Call(at) => out.push_replacement(&token.text, None, input, at),
+                TokenSource::None => out.push(&token.text, None),
+            }
+        }
     }
 
     /// [`Macros::expand`], or why it stopped ([`Stop`]) when it did.
@@ -416,7 +431,7 @@ impl Macros {
                     if self.names && !self.charge(made) {
                         break;
                     }
-                    expansion_tokens(&m.body)
+                    expansion_tokens(&m.body, false)
                 }
                 Some(params) => {
                     // With [`Macros::bound`], each token the call reads is charged as it is read,
@@ -465,7 +480,14 @@ impl Macros {
             if !self.charge(made) {
                 break;
             }
+            let call = match token.source {
+                TokenSource::Copy(at) | TokenSource::Call(at) => TokenSource::Call(at),
+                TokenSource::None => TokenSource::None,
+            };
             for token in &mut body {
+                if token.source == TokenSource::None {
+                    token.source = call;
+                }
                 if token.hidden.is_empty() {
                     token.hidden.clone_from(&hidden);
                     continue;
@@ -563,6 +585,7 @@ impl Macros {
                         left = token;
                     } else if !token.text.is_empty() {
                         left.text.push_str(&token.text);
+                        left.source = TokenSource::None;
                         left.hidden.retain(|h| token.hidden.contains(h));
                     }
                     joined.push(left);
@@ -578,6 +601,7 @@ impl Macros {
         // A paste that makes no single token (`b ## (`, `name_ ## a ## _to_ ## b ##(x)`) stays
         // the tokens it is made of: the name before the `(` is then rescanned and can call a
         // macro.
+<<<<<<< HEAD
         // With [`Macros::bound`], the tokens a paste splits into are charged before they are made:
         // their text once more, and each part with the paste's names.
         let mut split = Vec::with_capacity(joined.len());
@@ -595,6 +619,25 @@ impl Macros {
             }));
         }
         split
+=======
+        joined
+            .into_iter()
+            .flat_map(|token| {
+                let parts = lex(&token.text);
+                if parts.len() < 2 {
+                    return vec![token];
+                }
+                parts
+                    .into_iter()
+                    .map(|text| ExpansionToken {
+                        text: text.into(),
+                        hidden: token.hidden.clone(),
+                        source: token.source,
+                    })
+                    .collect()
+            })
+            .collect()
+>>>>>>> origin/mod-dx-6108-6109-yyq619-b8a7e24c2e33
     }
 }
 
@@ -604,6 +647,15 @@ impl Macros {
 struct ExpansionToken<'a> {
     text: String,
     hidden: Vec<&'a str>,
+    source: TokenSource,
+}
+
+/// Byte offset in the macro expansion's input, as a copy or anchored at the macro call.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TokenSource {
+    Copy(usize),
+    Call(usize),
+    None,
 }
 
 impl ExpansionToken<'_> {
@@ -611,6 +663,7 @@ impl ExpansionToken<'_> {
         Self {
             text: text.into(),
             hidden: Vec::new(),
+            source: TokenSource::None,
         }
     }
 
@@ -619,8 +672,21 @@ impl ExpansionToken<'_> {
     }
 }
 
-fn expansion_tokens(text: &str) -> Vec<ExpansionToken<'_>> {
-    lex(text).into_iter().map(ExpansionToken::new).collect()
+/// Tokenize `text`, retaining offsets only when this is the diagnostic path's input, not
+/// replacement text (which will take the macro call's position).
+fn expansion_tokens(text: &str, located: bool) -> Vec<ExpansionToken<'_>> {
+    let mut at = 0;
+    lex(text)
+        .into_iter()
+        .map(|text| {
+            let mut token = ExpansionToken::new(text);
+            if located {
+                token.source = TokenSource::Copy(at);
+                at += text.len();
+            }
+            token
+        })
+        .collect()
 }
 
 /// What [`arguments`] read.

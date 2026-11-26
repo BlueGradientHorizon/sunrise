@@ -199,6 +199,12 @@ fn sampler_parameters_are_replaced_at_once_and_not_as_members() {
     );
 }
 
+fn replace_ident(text: &str, from: &str, to: &str) -> String {
+    let mut lines = Lines::from_text(text);
+    super::replace_ident(&mut lines, from, to);
+    lines.text().to_owned()
+}
+
 #[test]
 fn a_parameter_matched_twice_in_one_identifier_stays_whole() {
     assert_eq!(replace_ident("c.ss + ss * s", "s", "t"), "c.ss + ss * t");

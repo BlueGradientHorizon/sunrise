@@ -1010,10 +1010,10 @@ pub fn translate_linear_fragment(
     .unwrap_or_else(Err)
 }
 
-/// The translator's `errors` as problems, each in the file it names (the stage's file or an
-/// `#include`d one, by asset path). An error refusing `Sampler0` or `SpriteRect` as a block or
-/// sampler the pipeline doesn't provide ([`sunrise_glsl::Error::unprovided`]) adds, on an
-/// untextured pipeline, the hint to declare it textured.
+/// The translator's `errors` as problems with their authored file (the stage's file or an
+/// `#include`d one, by asset path), line and column. An error refusing `Sampler0` or `SpriteRect`
+/// as a block or sampler the pipeline doesn't provide ([`sunrise_glsl::Error::unprovided`])
+/// adds, on an untextured pipeline, the hint to declare it textured.
 fn map_glsl_errors(errors: &[sunrise_glsl::Error], textured: bool) -> Vec<Problem> {
     errors
         .iter()
@@ -1025,7 +1025,7 @@ fn map_glsl_errors(errors: &[sunrise_glsl::Error], textured: bool) -> Vec<Proble
             Problem {
                 file: asset_path(&err.file),
                 line: err.line as usize,
-                column: 0,
+                column: err.column as usize,
                 message,
             }
         })
@@ -1082,6 +1082,20 @@ void main() {
             fragment_dir: "example:shaders/core/",
             fragment: f,
         }
+    }
+
+    /// Translation reports the authored column, not column 0 or a position in rewritten GLSL.
+    #[test]
+    fn a_translator_problem_keeps_the_authored_column() {
+        let fragment = "#version 330\nout vec4 fragColor;\nvoid main() {\n    fragColor = missing_color;\n}\n";
+        let problems = translate(&sources(VSH, fragment), &Options::default(), &stub_include)
+            .expect_err("the fragment reads an undeclared name");
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        let problem = &problems[0];
+        assert_eq!(
+            (problem.file.as_str(), problem.line, problem.column),
+            ("assets/example/shaders/core/glow.fsh", 4, 17)
+        );
     }
 
     #[test]
