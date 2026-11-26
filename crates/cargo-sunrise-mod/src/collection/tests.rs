@@ -102,6 +102,24 @@ fn a_new_collection_lists_only_this_repositorys_published_projects_in_id_order()
 }
 
 #[test]
+fn a_non_github_origin_is_told_apart_from_an_unregistered_github_repository() {
+    let no_index = || -> Result<Index, String> { panic!("no index is read without an origin ID") };
+    let never = |url: &str| -> Result<Option<String>, String> { panic!("fetched {url}") };
+    let elsewhere =
+        published_from(&never, "https://gitlab.com/example/ports", no_index).unwrap_err();
+    assert!(
+        elsewhere.starts_with("origin is not a GitHub repository"),
+        "{elsewhere}"
+    );
+    let unknown = |_: &str| Ok(None);
+    let unregistered = published_from(&unknown, ORIGIN, no_index).unwrap_err();
+    assert!(
+        unregistered.starts_with("This repository isn't registered yet"),
+        "{unregistered}"
+    );
+}
+
+#[test]
 fn a_new_collection_can_be_scaffolded_from_the_verified_empty_index() {
     let cache = tempfile::tempdir().unwrap();
     let projects = published_from(&origin_id, ORIGIN, || {

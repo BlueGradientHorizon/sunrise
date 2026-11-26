@@ -171,7 +171,9 @@ fn published_from(
     origin: &str,
     read_index: impl FnOnce() -> Result<Index, String>,
 ) -> Result<Vec<(String, String)>, String> {
-    let id = author_release::github_repository_id(fetch, origin)?;
+    let name = author_release::github_name(origin)
+        .ok_or("origin is not a GitHub repository: the projects a collection lists are found by their GitHub repository")?;
+    let id = author_release::github_repository_id(fetch, &name)?;
     let index = read_index()?;
     let mut projects: Vec<_> = index
         .projects

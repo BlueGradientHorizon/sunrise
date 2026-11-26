@@ -62,9 +62,12 @@ pub(crate) fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, Stri
 }
 
 pub(crate) fn github_name(origin: &str) -> Option<String> {
-    let url;
+    github_name_from_origin(origin, url::Url::parse(origin).ok().as_ref())
+}
+
+fn github_name_from_origin(origin: &str, url: Option<&url::Url>) -> Option<String> {
     let path = if origin.contains("://") {
-        url = url::Url::parse(origin).ok()?;
+        let url = url?;
         if !matches!(url.scheme(), "https" | "ssh")
             || !url.host_str()?.eq_ignore_ascii_case("github.com")
             || url.query().is_some()
@@ -95,33 +98,40 @@ pub(crate) fn github_name(origin: &str) -> Option<String> {
     (valid(owner) && valid(repo)).then(|| path.to_owned())
 }
 
-/// GitHub's page for opening a pull request from `head` into `base`, for a GitHub `origin`.
-fn pull_request_url(origin: &str, base: &str, head: &str) -> Option<String> {
-    github_name(origin)
-        .map(|name| format!("https://github.com/{name}/compare/{base}...{head}?expand=1"))
+/// GitHub's page for opening a pull request from `head` into `base` in `repository`.
+fn pull_request_url(repository: &str, base: &str, head: &str) -> String {
+    format!("https://github.com/{repository}/compare/{base}...{head}?expand=1")
 }
 
-/// Resolve origin's stable GitHub ID, since a name can be reused after a rename.
-pub(crate) fn github_repository_id(fetch: Fetch<'_>, origin: &str) -> Result<u64, String> {
+/// Resolve the stable GitHub ID of a parsed `owner/name`, since a name can be reused after a rename.
+pub(crate) fn github_repository_id(fetch: Fetch<'_>, name: &str) -> Result<u64, String> {
     #[derive(Deserialize)]
     struct GitHubRepository {
         id: u64,
     }
-    let name = github_name(origin).ok_or(NOT_REGISTERED)?;
     let url = format!("https://api.github.com/repos/{name}");
     let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
     let GitHubRepository { id } = serde_json::from_str(&text).map_err(|e| format!("{url}: {e}"))?;
     Ok(id)
 }
 
-fn require_registered_repository(fetch: Fetch<'_>, origin: &str) -> Result<(), String> {
-    let id = github_repository_id(fetch, origin)?;
+fn registered_repository_name(fetch: Fetch<'_>, origin: &str) -> Result<String, String> {
+    let url = url::Url::parse(origin).ok();
+    // Git would pass a token embedded in the URL on to every command line that names it.
+    if url.as_ref().is_some_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && (!url.username().is_empty() || url.password().is_some())
+    }) {
+        return Err("origin's push URL carries credentials; remove them and use a Git credential helper or SSH".into());
+    }
+    let name = github_name_from_origin(origin, url.as_ref()).ok_or(NOT_REGISTERED)?;
+    let id = github_repository_id(fetch, &name)?;
     let url = format!(
         "{}/repositories/{id}.toml",
         sunrise_addresses::MOD_REGISTRY_METADATA
     );
     fetch(&url)?.ok_or(NOT_REGISTERED)?;
-    Ok(())
+    Ok(name)
 }
 
 fn workflow(fetch: Fetch<'_>) -> Result<String, String> {
@@ -656,14 +666,7 @@ fn release(
     if origin.lines().count() != 1 {
         return Err("origin pushes to more than one URL; release needs exactly one".into());
     }
-    // Git would pass a token embedded in the URL on to every command line that names it.
-    if url::Url::parse(&origin).is_ok_and(|url| {
-        matches!(url.scheme(), "http" | "https")
-            && (!url.username().is_empty() || url.password().is_some())
-    }) {
-        return Err("origin's push URL carries credentials; remove them and use a Git credential helper or SSH".into());
-    }
-    require_registered_repository(fetch, &origin)?;
+    let repository = registered_repository_name(fetch, &origin)?;
     let version = next_version(&project.manifest.version, requested)?;
     let tag = format!("{}v{version}", project.prefix);
     let tag_ref = format!("refs/tags/{tag}");
@@ -834,7 +837,7 @@ fn release(
         "Released {version}: pushed {tag} to origin. GitHub Actions will build and attest the release."
     );
     if let Some(name) = &release_branch {
-        let page = pull_request_url(&origin, base, name).unwrap_or_default();
+        let page = pull_request_url(&repository, base, name);
         println!(
             "Open a pull request from {name} into {base} and merge it, so {base} carries the version before the next release. {page}"
         );

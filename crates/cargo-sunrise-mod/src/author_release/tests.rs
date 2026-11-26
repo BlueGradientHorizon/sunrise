@@ -119,15 +119,18 @@ fn release_preflight_requires_only_a_repository_row_for_origins_github_id() {
             "ssh://git@github.com/author/renamed.git",
             "git@github.com:author/renamed.git",
         ] {
-            require_registered_repository(&fetch, origin).unwrap();
+            assert_eq!(
+                registered_repository_name(&fetch, origin).unwrap(),
+                "author/renamed"
+            );
         }
         assert_eq!(
-            require_registered_repository(&fetch, "git@github.com:author/example.git"),
+            registered_repository_name(&fetch, "git@github.com:author/example.git"),
             Err(NOT_REGISTERED.into())
         );
     }
     assert_eq!(
-        require_registered_repository(&registry, "https://github.com.example/author/example"),
+        registered_repository_name(&registry, "https://github.com.example/author/example"),
         Err(NOT_REGISTERED.into())
     );
     let origin = "git@github.com:author/example.git";
@@ -136,7 +139,7 @@ fn release_preflight_requires_only_a_repository_row_for_origins_github_id() {
         false => registry(url),
     };
     assert_eq!(
-        require_registered_repository(&down, origin).unwrap_err(),
+        registered_repository_name(&down, origin).unwrap_err(),
         format!("{METADATA}/repositories/101.toml: 503")
     );
 }
@@ -155,23 +158,10 @@ fn caller_matches_root_and_subfolder_workflow_contract() {
 }
 
 #[test]
-fn pull_request_page_is_githubs_compare_view_for_a_github_origin() {
+fn pull_request_page_is_githubs_compare_view_for_the_repository() {
     assert_eq!(
-        pull_request_url(
-            "git@github.com:author/example.git",
-            "main",
-            "release/example/v1.5.0"
-        )
-        .as_deref(),
-        Some("https://github.com/author/example/compare/main...release/example/v1.5.0?expand=1")
-    );
-    assert_eq!(
-        pull_request_url(
-            "https://gitlab.com/author/example.git",
-            "main",
-            "release/v1.5.0"
-        ),
-        None
+        pull_request_url("author/example", "main", "release/example/v1.5.0"),
+        "https://github.com/author/example/compare/main...release/example/v1.5.0?expand=1"
     );
 }
 
