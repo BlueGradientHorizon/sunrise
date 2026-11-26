@@ -1094,7 +1094,8 @@ void main() {
     /// Translation reports the authored column, not column 0 or a position in rewritten GLSL.
     #[test]
     fn a_translator_problem_keeps_the_authored_column() {
-        let fragment = "#version 330\nout vec4 fragColor;\nvoid main() {\n    fragColor = missing_color;\n}\n";
+        let fragment =
+            "#version 330\nout vec4 fragColor;\nvoid main() {\n    fragColor = missing_color;\n}\n";
         let problems = translate(&sources(VSH, fragment), &Options::default(), &stub_include)
             .expect_err("the fragment reads an undeclared name");
         assert_eq!(problems.len(), 1, "{problems:?}");
@@ -2043,7 +2044,7 @@ void main() {{
             );
             assert_eq!(
                 translate(&render, &Options::default(), &include).unwrap_err(),
-                [expected.clone()]
+                std::slice::from_ref(&expected)
             );
         }
         let compute = ComputeSources {

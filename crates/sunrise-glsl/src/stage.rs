@@ -64,7 +64,9 @@ pub fn compile_stage(
     let at = |text: &str, span: naga::Span, message: String| {
         let start = span.to_range().map_or(0, |r| r.start);
         let line = text[..start.min(text.len())].matches('\n').count();
-        (source.locate)(line).error(message).with_stage(source.stage)
+        (source.locate)(line)
+            .error(message)
+            .with_stage(source.stage)
     };
     let mut text = String::with_capacity(source.header.len() + source.code.len());
     text.push_str(source.header);

@@ -254,7 +254,13 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
             for j in k + 1..=k + taken {
                 let piece = logical[j].trim_end_matches('\r');
                 input.push(" ", None);
-                with_line(&mut input, piece, byte_at(piece), &joined, number(j, offset));
+                with_line(
+                    &mut input,
+                    piece,
+                    byte_at(piece),
+                    &joined,
+                    number(j, offset),
+                );
             }
             let last = number(k + taken, offset);
             if !(0..1 << 32).contains(&last) && macros.mentions(&probe, "__LINE__") {

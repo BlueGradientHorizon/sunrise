@@ -913,7 +913,11 @@ pub fn translate_compute(
     let parsed = run_directives(&code, inputs.defines).map_err(refused)?;
     let (module, info) = compile(stage, &parsed, &names, &|_| false, interface)?;
     let Some(entry) = module.entry_points.first() else {
-        return Err(refused(Error::new(file, 0, "the compute shader has no `main`")));
+        return Err(refused(Error::new(
+            file,
+            0,
+            "the compute shader has no `main`",
+        )));
     };
     let workgroup_size = entry.workgroup_size;
     let uses_subgroup = module_uses_subgroup(&module);
@@ -1234,7 +1238,8 @@ fn expand_with(
                     "version" | "extension" => {}
                     _ => {
                         let at = line.as_ptr() as usize - text.as_ptr() as usize;
-                        self.out.push_spanned(line, origin, &authored, at..at + line.len());
+                        self.out
+                            .push_spanned(line, origin, &authored, at..at + line.len());
                     }
                 }
                 self.out.push("\n", origin);
@@ -2294,9 +2299,10 @@ fn compile(
                 .filter(|s| s.to_range().is_some())
                 .last();
             let span = span.unwrap_or_default();
-            vec![code
-                .error_in(span, stage::validation_message(e.into_inner()))
-                .with_stage(stage)]
+            vec![
+                code.error_in(span, stage::validation_message(e.into_inner()))
+                    .with_stage(stage),
+            ]
         })?;
     let entry = info.get_entry_point(0);
     for (handle, global) in module.global_variables.iter() {
@@ -3415,9 +3421,7 @@ void main() { }
         let error = translate_core(vsh, fsh, &[], &include, &GLUE).unwrap_err();
         assert_eq!((error[0].file.as_str(), error[0].line), (FSH_FILE, 3));
         assert!(
-            error[0]
-                .message
-                .starts_with("(float big[0x7fffffff];)"),
+            error[0].message.starts_with("(float big[0x7fffffff];)"),
             "{error:?}"
         );
     }

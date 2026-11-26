@@ -112,7 +112,11 @@ struct Columns {
 
 impl Columns {
     fn column_at(&self, at: usize) -> u32 {
-        let distance = if self.copied { at - self.range.start } else { 0 };
+        let distance = if self.copied {
+            at - self.range.start
+        } else {
+            0
+        };
         self.column
             .saturating_add(u32::try_from(distance).unwrap_or(u32::MAX))
     }
@@ -222,11 +226,7 @@ impl Lines {
     pub fn push_authored(&mut self, text: &str, origin: Origin) {
         let from = self.text.len();
         self.push(text, Some(origin));
-        self.map(
-            from..self.text.len(),
-            Position { origin, column: 1 },
-            true,
-        );
+        self.map(from..self.text.len(), Position { origin, column: 1 }, true);
     }
 
     /// Append `text` with the byte positions of an equally long `range` of `src`. For copies
@@ -275,7 +275,9 @@ impl Lines {
     }
 
     fn copy_columns(&mut self, src: &Lines, range: Range<usize>, to: usize) {
-        let first = src.columns.partition_point(|run| run.range.end <= range.start);
+        let first = src
+            .columns
+            .partition_point(|run| run.range.end <= range.start);
         for run in &src.columns[first..] {
             if run.range.start >= range.end {
                 break;
@@ -447,9 +449,8 @@ impl Expanded {
         (errors.into_iter())
             .map(|(span, message)| {
                 let at = span.to_range().map(|r| r.start);
-                let origin = || {
-                    at.and_then(|at| self.lines.origin(breaks.partition_point(|&b| b < at)))
-                };
+                let origin =
+                    || at.and_then(|at| self.lines.origin(breaks.partition_point(|&b| b < at)));
                 self.located_error(at.and_then(|at| self.lines.position(at)), origin, message)
             })
             .collect()
