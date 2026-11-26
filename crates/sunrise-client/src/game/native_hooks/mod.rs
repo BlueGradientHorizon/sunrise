@@ -593,6 +593,9 @@ mod tags_updated;
 mod teleport_command;
 mod texture_atlas_stitched;
 mod tick_target_millis;
+mod tick_weather_effects;
+#[cfg(test)]
+mod tick_weather_effects_tests;
 mod toast_add;
 mod tool_modified_state;
 mod translate;
