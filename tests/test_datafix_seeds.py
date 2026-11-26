@@ -30,7 +30,7 @@ class DatafixSeedKeyTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for rel in datafix_seeds.SOURCE_FILES:
+        for rel in datafix_seeds.source_files():
             path = self.root / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f'# {rel}\n', encoding='utf-8')
@@ -75,7 +75,7 @@ class DatafixSeedKeyTests(unittest.TestCase):
 
     def test_key_changes_for_every_defining_input(self):
         base = self.key()
-        for rel in datafix_seeds.SOURCE_FILES:
+        for rel in datafix_seeds.source_files():
             with self.subTest(source=rel):
                 path = self.root / rel
                 original = path.read_bytes()
@@ -112,6 +112,16 @@ class DatafixSeedKeyTests(unittest.TestCase):
         self.lab.write_text('def varint(value):\n    return value\n', encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'free_port'):
             self.key()
+
+    def test_source_files_are_this_tool_and_the_generator_with_what_it_imports(self):
+        self.assertEqual(datafix_seeds.source_files(), [
+            'tools/anvil_dump.py', 'tools/datafix_paths.py', 'tools/datafix_scene.py', 'tools/datafix_scene_12.py',
+            'tools/datafix_scene_old.py', 'tools/datafix_seeds.py', 'tools/datafix_worlds.py'])
+
+    def test_a_tools_module_the_generator_gains_is_a_source_file(self):
+        from tools import datafix_worlds as worlds, file_lock
+        with mock.patch.object(worlds, 'file_lock', file_lock, create=True):
+            self.assertIn('tools/file_lock.py', datafix_seeds.source_files())
 
     def test_lab_functions_are_the_ones_the_seed_tools_import(self):
         self.assertEqual(datafix_seeds.lab_functions(), ['free_port', 'offline_uuid', 'parse_varint', 'varint'])
