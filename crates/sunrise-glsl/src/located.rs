@@ -11,6 +11,9 @@ pub struct Error {
     pub file: String,
     pub line: u32,
     pub message: String,
+    /// The block or sampler a pipeline does not provide, for the error that says so (a program
+    /// reads a name its pipeline neither binds nor provides); `None` for every other error.
+    pub unprovided: Option<String>,
 }
 
 impl std::fmt::Display for Error {
@@ -32,7 +35,14 @@ impl Error {
             file: file.into(),
             line,
             message: message.into(),
+            unprovided: None,
         }
+    }
+
+    /// This error, saying `name` is the block or sampler the pipeline does not provide.
+    pub fn with_unprovided(mut self, name: impl Into<String>) -> Self {
+        self.unprovided = Some(name.into());
+        self
     }
 }
 
@@ -414,6 +424,7 @@ mod tests {
             file: "minecraft:shaders/core/text.fsh".into(),
             line,
             message: "fragment shader: oops".into(),
+            unprovided: None,
         };
         assert_eq!(
             describe(&[error(3), error(0)]),

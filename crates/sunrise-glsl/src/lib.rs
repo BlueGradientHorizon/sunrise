@@ -2241,7 +2241,9 @@ fn main_at(text: &str) -> impl Iterator<Item = usize> + '_ {
         .map(|r| r.start)
 }
 
-/// Parses and validates one stage; errors at the file and line each part of it came from.
+/// Parses and validates one stage; errors at the file and line each part of it came from. A
+/// block or sampler the stage reads that the pipeline does not provide is refused with its name
+/// in [`Error::unprovided`].
 fn compile(
     stage: ShaderStage,
     code: &Expanded,
@@ -2290,10 +2292,13 @@ fn compile(
             if provided(name) {
                 continue;
             }
-            return Err(vec![code.error_in(
-                module.global_variables.get_span(handle),
-                format!("{name} is not a block or sampler of this pipeline"),
-            )]);
+            return Err(vec![
+                code.error_in(
+                    module.global_variables.get_span(handle),
+                    format!("{name} is not a block or sampler of this pipeline"),
+                )
+                .with_unprovided(name),
+            ]);
         }
     }
     Ok((module, info))
@@ -3018,6 +3023,7 @@ mod tests {
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                unprovided: Some("Day".into()),
                 message: "vertex shader: Day is not a block or sampler of this pipeline".into(),
             }]
         );
@@ -3028,6 +3034,7 @@ mod tests {
             vec![Error {
                 file: FSH_FILE.into(),
                 line: 2,
+                unprovided: Some("Bounds".into()),
                 message: "fragment shader: Bounds is not a block or sampler of this pipeline"
                     .into(),
             }]
@@ -3342,6 +3349,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                unprovided: Some("Lightmap".into()),
                 message: "vertex shader: Lightmap is not a block or sampler of this pipeline"
                     .into(),
             }]
@@ -3359,6 +3367,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
         );
@@ -3373,6 +3382,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 3,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
         );
@@ -3384,6 +3394,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 5,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
         );
@@ -3409,6 +3420,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 3,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl: not text".into(),
             }]
         );
@@ -3620,6 +3632,7 @@ void main() { }
             vec![Error {
                 file: "demo:custom/core/test.vsh".into(),
                 line: 4,
+                unprovided: Some("Extra".into()),
                 message: "vertex shader: Extra is not a block or sampler of this pipeline".into(),
             }]
         );
