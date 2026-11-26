@@ -67,7 +67,7 @@ fn game<'a>(
 
 fn index(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> usize {
     match game.target_with_uuid(sunrise_sim::save::uuid_from_text(SUPPLIED).unwrap()) {
-        Some(super::commands::Target::Mob(id)) => {
+        Some(sunrise_gameplay_common::game::commands_common::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }
         other => panic!("{other:?}"),
@@ -183,7 +183,7 @@ fn the_saved_pickup_cooldown_follows_the_model() {
         0,
         tail as i32,
     ]) {
-        Some(super::commands::Target::Mob(id)) => {
+        Some(sunrise_gameplay_common::game::commands_common::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }
         other => panic!("{other:?}"),

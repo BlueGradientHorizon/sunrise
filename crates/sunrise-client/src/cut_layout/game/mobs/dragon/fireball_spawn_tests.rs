@@ -1,6 +1,6 @@
 use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::settings::Settings;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;

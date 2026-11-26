@@ -49,7 +49,7 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
                         fixture::begin(path, answer, server_only);
                         let swings = game.swings_started;
                         sunrise_client::interaction_input::use_on_target(
-                            &mut sunrise_gameplay::game::server_side::remote_server::RemoteUseWorld(
+                            &mut sunrise_client_gameplay::game::client_side::remote_client::RemoteUseWorld(
                                 game,
                                 mod_api::InteractionAttempt::Press,
                             ),

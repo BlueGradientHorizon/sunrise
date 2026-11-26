@@ -60,7 +60,7 @@ pub(in crate::game) mod block_entity_on_load;
 pub(in crate::game) mod block_entity_save_additional_tests;
 
 #[path = "block_entity_tick_server.rs"]
-pub(in crate::game) mod block_entity_tick;
+pub mod block_entity_tick;
 
 #[path = "build_creative_mode_tab_contents_server.rs"]
 pub(in crate::game) mod build_creative_mode_tab_contents;

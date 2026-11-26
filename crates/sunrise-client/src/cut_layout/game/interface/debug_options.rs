@@ -9,7 +9,7 @@ use winit::keyboard::KeyCode;
 pub(crate) mod tests {
 
 use super::*;
-use sunrise_gameplay_common::game::resource_load::load_resources;
+use crate::game::load_resources;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_gameplay_common::game::launch_options::Options;

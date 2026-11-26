@@ -113,10 +113,10 @@ pub(in crate::game) use client_side::client_cracks;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::client_executor;
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::client_item_extensions;
+pub use client_side::client_item_extensions;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::client_reload;
+pub use client_side::client_reload;
 #[path = "game/client_side.rs"]
 pub mod client_side;
 #[allow(unused_imports)]
@@ -1367,7 +1367,7 @@ pub(in crate::game) mod server_side;
 mod ui_core_shader_tests;
 
 #[path = "game/runtime/resource_tables.rs"]
-mod resource_tables;
+pub mod resource_tables;
 
 #[path = "game/runtime/resource_load.rs"]
 mod resource_load;

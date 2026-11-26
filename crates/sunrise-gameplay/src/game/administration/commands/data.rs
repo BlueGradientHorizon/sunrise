@@ -21,7 +21,7 @@ pub enum DataRef {
 pub(in crate::game) fn empty() -> Tag {
     Tag::Compound(Compound::new())
 }
-pub(in crate::game) fn set_key(tag: &mut Tag, key: &str, value: Tag) {
+pub fn set_key(tag: &mut Tag, key: &str, value: Tag) {
     if let Tag::Compound(c) = tag {
         c.insert(JavaString::from(key), value);
     }

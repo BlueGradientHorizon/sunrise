@@ -247,7 +247,7 @@ mod prediction_state;
 mod format_state;
 
 #[path = "raw_ingress.rs"]
-pub(in crate::game) mod ingress_state;
+pub mod ingress_state;
 
 #[cfg(feature = "client")]
 #[path = "remote_attributes.rs"]
@@ -1303,8 +1303,8 @@ impl crate::game::ClientGame<'_> {
 
 /// The game as the tick's input sees it.
 #[cfg(feature = "client")]
-pub(in crate::game) struct RemoteInputWorld<'g, 'a>(
-    pub(in crate::game) &'g mut crate::game::ClientGame<'a>,
+pub struct RemoteInputWorld<'g, 'a>(
+    pub &'g mut crate::game::ClientGame<'a>,
 );
 
 #[cfg(feature = "client")]

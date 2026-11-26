@@ -38,7 +38,7 @@ impl ServerGame<'_> {
 /// The most feedback lines `Commands::run_command_with_output` keeps.
 pub const MAX_FEEDBACK_LINES: usize = 256;
 /// The most bytes it keeps of one feedback line.
-pub(in crate::game) const MAX_FEEDBACK_LINE_BYTES: usize = 4096;
+pub const MAX_FEEDBACK_LINE_BYTES: usize = 4096;
 
 /// `lines` as plain text, at most `MAX_FEEDBACK_LINES` of them, each cut to at most
 /// `MAX_FEEDBACK_LINE_BYTES` bytes at a character boundary.

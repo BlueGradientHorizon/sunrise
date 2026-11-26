@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_gameplay_common::game::commands_common::Target;
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::commands::execute::ExecState;

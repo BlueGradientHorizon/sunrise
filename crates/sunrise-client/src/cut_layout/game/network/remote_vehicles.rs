@@ -437,7 +437,7 @@ pub(crate) mod tests {
             || {
                 use sunrise_items::items::ItemStack;
                 use sunrise_sim::{mobs::camel, motion::PlayerMotion};
-                sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+                sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(client, "CamelRider").unwrap();
                     let remote = game.side.remote.as_mut().unwrap();
@@ -507,7 +507,7 @@ mod plugin_seat_tests {
         use sunrise_core::geometry::Vec3;
         use sunrise_items::items::ItemStack;
         use sunrise_sim::{mobs::Mob, sprint::Keys};
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
             let mut horse_mob = Mob::new(7, kind, Vec3::new(8.5, 100.0, 8.5), 0.0);
             horse_mob.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));

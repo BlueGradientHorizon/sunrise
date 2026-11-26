@@ -18,7 +18,7 @@ pub(in crate::game) const TRAP_RANGE: f64 = 10.0;
 /// Ticks of invulnerability the trap's riders and horses start with.
 pub(in crate::game) const TRAP_INVULNERABLE: i32 = 60;
 
-pub(in crate::game::server_side) fn trap_horse_scatter(random: &mut LegacyRandom) -> (f64, f64) {
+pub fn trap_horse_scatter(random: &mut LegacyRandom) -> (f64, f64) {
     (random.triangle(0.0, 1.1485), random.triangle(0.0, 1.1485))
 }
 

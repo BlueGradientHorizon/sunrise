@@ -8,6 +8,7 @@ use sunrise_gameplay::game::server_side::advancements::View;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::advancements::Tree;
+use sunrise_sim::advancements as adv;
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
 pub(crate) mod inventory_changed_tests;

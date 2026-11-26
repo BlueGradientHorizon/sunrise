@@ -3,7 +3,7 @@
 //! player with infinite materials, and `BlockAttachedEntity.tick`'s
 //! `discard()` when the support goes away (no `entity_die` game event).
 use super::super::*;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::Hit;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::Progress;
@@ -96,11 +96,11 @@ fn named_stack() -> ItemStack {
 }
 
 fn capture() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 fn events() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap())
 }
 
 /// `CushionItem.useOn` builds the entity with `EntityType.createDefaultStackConfig`,

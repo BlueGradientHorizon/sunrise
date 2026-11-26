@@ -9,7 +9,7 @@ mod tests {
     use super::*;
     use std::time::Instant;
     use sunrise_level::spans;
-    use sunrise_gameplay::dedicated::report::Recording;
+    use sunrise_gameplay::dedicated::report::{Plan, Recording};
     use sunrise_perf_format::v1::Trigger;
     use sunrise_sim::server_perf::SamplerOptions;
 

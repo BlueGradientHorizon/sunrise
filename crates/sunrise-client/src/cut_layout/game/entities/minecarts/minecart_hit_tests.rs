@@ -22,16 +22,16 @@ fn game_with_player(
 }
 
 fn start_events() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
 }
 
 fn take_events() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
         .with(|e| std::mem::take(e.borrow_mut().as_mut().unwrap()))
 }
 
 fn stop_events() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
 }
 
 /// `VehicleEntity.hurtServer`: the hit shakes the cart, adds `damage * 10`,

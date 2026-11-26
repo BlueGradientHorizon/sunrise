@@ -154,7 +154,7 @@ pub(crate) fn run_chunk_loaded_families_keep_vanilla_lookup_and_save_order() {
         );
         game.creatures.projectiles.push(arrow);
         game.restore_vehicle_tree_state(tag, state).unwrap();
-        crate::game::entity_residency::assign_resident_ids!(
+        sunrise_gameplay::game::entity_residency::assign_resident_ids!(
             game.creatures.projectiles,
             p,
             &mut game.side.next_entity,

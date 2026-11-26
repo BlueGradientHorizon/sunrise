@@ -54,9 +54,9 @@ pub(crate) fn deaths(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) -> Vec<([f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
     f(game);
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
         events
             .borrow_mut()
             .take()

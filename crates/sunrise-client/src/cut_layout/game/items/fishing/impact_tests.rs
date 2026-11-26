@@ -4,7 +4,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::fishing_common::Hook;
 use sunrise_items::items::ItemStack;
 use super::*;
-use sunrise_gameplay::game::native_projectiles::impact_probe::{Action, point, with_probe};
+use crate::game::server_side::native_projectiles::impact_probe::{Action, point, with_probe};
 use std::sync::atomic::Ordering;
 use sunrise_sim::mobs::Mob;
 

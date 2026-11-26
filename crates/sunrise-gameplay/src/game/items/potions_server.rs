@@ -2291,7 +2291,7 @@ pub fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Option<&Tag>) -> Tag
 /// `BottleItem.use`: find a living `AreaEffectCloud` owned by an `EnderDragon`
 /// within the player's box grown by 2, and shrink its radius by 0.5. Gives
 /// the cloud's position when one was found.
-pub(in crate::game) fn collect_dragon_breath(
+pub fn collect_dragon_breath(
     player_box: Aabb,
     clouds: &mut sunrise_sim::join_seq::ResidentList<Breath>,
 ) -> Option<[f64; 3]> {

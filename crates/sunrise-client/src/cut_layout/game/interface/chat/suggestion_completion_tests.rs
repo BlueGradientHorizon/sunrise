@@ -12,6 +12,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use sunrise_client::chat::{ChatAbilities, ChatVisibility};
+#[cfg(test)]
+use sunrise_client_gameplay::game::client_side::chat::chat_tree;
 
 /// Exercise the actual Game keyboard/mouse handlers and generated mod dispatch.
 #[test]

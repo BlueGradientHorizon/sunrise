@@ -4,7 +4,7 @@
 //! library, so neither a fired nor a cleared event may come back. A pending
 //! one is still read from the world's saved file when the world is opened.
 use super::*;
-use sunrise_gameplay::game::administration::commands::execute::ExecState;
+use sunrise_gameplay::game::commands::execute::ExecState;
 
 /// A server game whose world is a fresh folder with one pack holding
 /// `hs:hello`, which counts its runs in the `hs` objective.

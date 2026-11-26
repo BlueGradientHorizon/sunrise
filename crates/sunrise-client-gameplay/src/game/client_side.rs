@@ -10,9 +10,9 @@ pub mod activity;
 pub(in crate::game) mod advancements_client;
 #[cfg(feature = "client")]
 #[path = "interface/advancements_screen.rs"]
-pub(in crate::game) mod advancements_screen;
+pub mod advancements_screen;
 #[path = "runtime/agent/mod.rs"]
-pub(in crate::game) mod agent;
+pub mod agent;
 #[cfg(feature = "client")]
 #[path = "runtime/agent_settings.rs"]
 pub(in crate::game) mod agent_settings;
@@ -57,7 +57,7 @@ pub(in crate::game) mod camera_hud;
 pub(in crate::game) mod cauldron_prediction_client;
 #[cfg(feature = "client")]
 #[path = "interface/chat.rs"]
-pub(in crate::game) mod chat;
+pub mod chat;
 #[cfg(feature = "client")]
 #[path = "interface/client_ambient.rs"]
 pub mod client_ambient;
@@ -103,7 +103,7 @@ pub(in crate::game) mod composter_client;
 #[path = "interface/container_hooks.rs"]
 pub(in crate::game) mod container_hooks;
 #[path = "interface/container_layout.rs"]
-pub(in crate::game) mod container_layout;
+pub mod container_layout;
 #[cfg(feature = "client")]
 #[path = "runtime/control.rs"]
 pub(in crate::game) mod control;
@@ -256,7 +256,7 @@ pub mod integrated_client;
 pub(in crate::game) mod interactions;
 #[cfg(feature = "client")]
 #[path = "interface/inventory_input.rs"]
-pub(in crate::game) mod inventory_input;
+pub mod inventory_input;
 #[path = "interface/item_draw.rs"]
 pub mod item_draw;
 #[cfg(feature = "client")]
@@ -318,7 +318,7 @@ pub(in crate::game) mod mob_sounds;
 pub(in crate::game) mod mod_browser;
 #[cfg(feature = "client")]
 #[path = "interface/mod_toasts.rs"]
-pub(in crate::game) mod mod_toasts;
+pub mod mod_toasts;
 #[cfg(feature = "client")]
 #[path = "side_ops/modapi_client.rs"]
 pub(in crate::game) mod modapi_client;
@@ -452,7 +452,7 @@ pub mod native_mob_draw;
 #[path = "modding/native_model_3d.rs"]
 pub(in crate::game) mod native_model_3d;
 #[path = "modding/native_net.rs"]
-pub(in crate::game) mod native_net;
+pub mod native_net;
 #[cfg(feature = "client")]
 #[path = "modding/native_packet_builders.rs"]
 pub(in crate::game) mod native_packet_builders;
@@ -565,7 +565,7 @@ pub(in crate::game) mod pickups;
 pub(in crate::game) mod play_input;
 #[cfg(feature = "client")]
 #[path = "interface/play_keys.rs"]
-pub(in crate::game) mod play_keys;
+pub mod play_keys;
 #[cfg(feature = "client")]
 #[path = "player_client.rs"]
 pub(in crate::game) mod player_client;
@@ -617,7 +617,7 @@ pub(in crate::game) mod remote_removal;
 pub(in crate::game) mod remote_stations;
 #[cfg(feature = "client")]
 #[path = "network/remote_tags.rs"]
-pub(in crate::game) mod remote_tags;
+pub mod remote_tags;
 #[path = "network/remote_vehicles.rs"]
 pub mod remote_vehicles;
 #[cfg(feature = "client")]
@@ -704,7 +704,7 @@ pub(in crate::game) mod spectator;
 pub(in crate::game) mod stack_attribute_tooltip;
 #[cfg(feature = "client")]
 #[path = "interface/startup_menu.rs"]
-pub(in crate::game) mod startup_menu;
+pub mod startup_menu;
 #[cfg(feature = "client")]
 #[path = "runtime/station_control.rs"]
 pub(in crate::game) mod station_control;

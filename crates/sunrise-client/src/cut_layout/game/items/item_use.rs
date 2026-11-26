@@ -489,7 +489,7 @@ pub(crate) mod interact_vibration_tests {
                 );
             })
             .expect("SUNRISE_TEST_RESOURCES must name prepared resources");
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "CakeClient").unwrap();
                 let remote = game.side.remote.as_mut().unwrap();
@@ -585,7 +585,7 @@ pub(crate) mod interact_vibration_tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
                 let food = ItemStack::new("minecraft:rotten_flesh", 1);
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "Eater").unwrap();

@@ -115,10 +115,10 @@ pub(crate) mod game_event_tests {
     }
     /// The events posted since [`reset`].
     fn posted() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| e.borrow().clone().unwrap_or_default())
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| e.borrow().clone().unwrap_or_default())
     }
     fn reset() {
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     }
 
     /// `ItemFrame.interact`: putting an item in and turning it each post

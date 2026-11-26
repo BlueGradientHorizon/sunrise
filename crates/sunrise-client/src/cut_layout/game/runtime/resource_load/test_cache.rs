@@ -36,7 +36,7 @@ struct CacheKey {
     root: PathBuf,
     vanilla_root: PathBuf,
     role: execution_role::ExecutionRole,
-    owning: mods::item_data_load::OwningLoad,
+    pub owning: mods::item_data_load::OwningLoad,
     worker_threads: usize,
     #[cfg(feature = "client")]
     texture_budget_mib: u32,

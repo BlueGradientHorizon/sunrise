@@ -94,7 +94,7 @@ pub(in crate::game::server_side) fn write_static_entity_fields(tag: &mut Tag) {
 
 /// Why the engine is collecting entity tags. Structure capture is not a world save.
 #[derive(Clone, Copy)]
-pub(in crate::game) enum EntitySnapshot {
+pub enum EntitySnapshot {
     Save,
     Unload,
     Structure,
@@ -201,7 +201,7 @@ fn take_moved(tag: &mut Tag) -> bool {
 }
 
 /// Whether `tag` was queued as a fresh add; the mark comes off.
-fn take_fresh(tag: &mut Tag) -> bool {
+pub fn take_fresh(tag: &mut Tag) -> bool {
     match tag {
         Tag::Compound(c) => c.remove(&FRESH_ADD.into()).is_some(),
         _ => false,
@@ -220,10 +220,10 @@ pub(in crate::game::server_side) fn with_raw(modelled: Tag, raw: Option<&Tag>) -
     with_raw_over(modelled, raw, &[])
 }
 /// The orb saves ticked Fire and stored (not ticked) Air over the loaded compound.
-pub(in crate::game) const ORB_LIVE: &[&str] = &["Fire", "Air"];
+pub const ORB_LIVE: &[&str] = &["Fire", "Air"];
 /// [`with_raw`] for a writer that simulates some of the fields Sunrise
 /// otherwise invents: the keys in `live` keep the writer's value.
-pub(in crate::game::server_side) fn with_raw_over(
+pub fn with_raw_over(
     mut modelled: Tag,
     raw: Option<&Tag>,
     live: &[&str],
@@ -251,7 +251,7 @@ pub(in crate::game::server_side) fn with_raw_over(
     modelled
 }
 
-fn read_attachments(
+pub fn read_attachments(
     tag: &Tag,
     id: u32,
     maps: &mut HashMap<
@@ -2507,7 +2507,7 @@ fn strip_finalize(tag: &mut Tag) {
 }
 /// `riders` under `tag`'s `Passengers`, after the passengers it kept from
 /// loading (`Entity.saveWithoutId`).
-pub(in crate::game::server_side) fn add_passengers(tag: &mut Tag, riders: Vec<Tag>) {
+pub fn add_passengers(tag: &mut Tag, riders: Vec<Tag>) {
     if let Tag::Compound(c) = tag {
         let mut list = match c.get(&"Passengers".into()) {
             Some(Tag::List(l)) => l.clone(),
@@ -2536,7 +2536,7 @@ fn root_vehicle(id: u32, vehicle_of: impl Fn(u32) -> Option<u32>) -> u32 {
 /// `ServerPlayer.saveParentVehicle`'s root: that of `vehicle`, while no
 /// other player rides its tree (`Entity.hasExactlyOnePlayerPassenger`);
 /// `others` are the vehicles the other players ride.
-fn parent_vehicle_root(
+pub fn parent_vehicle_root(
     vehicle: u32,
     others: &[u32],
     vehicle_of: impl Fn(u32) -> Option<u32>,
@@ -2546,14 +2546,14 @@ fn parent_vehicle_root(
     (!shared).then_some(root)
 }
 /// RootVehicle {Attach: the mount's UUID, Entity: the root's tree}.
-fn root_vehicle_tag(attach: [i32; 4], entity: Tag) -> Tag {
+pub fn root_vehicle_tag(attach: [i32; 4], entity: Tag) -> Tag {
     Tag::compound([
         ("Attach", Tag::IntArray(attach.to_vec())),
         ("Entity", entity),
     ])
 }
 /// `Entity.getPassengersAndSelf` of `root`, from each rider's mount.
-pub(in crate::game::server_side) fn vehicle_tree(
+pub fn vehicle_tree(
     root: u32,
     mounts: &[(u32, Option<u32>)],
 ) -> Vec<u32> {
@@ -2574,7 +2574,7 @@ pub(in crate::game::server_side) fn vehicle_tree(
 
 /// Only a Mob or an AbstractBoat is Leashable: any other kind never reads
 /// `leash`, so a summoned or loaded tag must not be kept and saved.
-fn drop_unleashable_leash(tag: &mut Tag, kind: &str, is_mob: bool) {
+pub fn drop_unleashable_leash(tag: &mut Tag, kind: &str, is_mob: bool) {
     if !is_mob
         && sunrise_gameplay_common::game::boats_common::any_boat_wood(kind).is_none()
         && let Tag::Compound(c) = tag
@@ -2584,7 +2584,7 @@ fn drop_unleashable_leash(tag: &mut Tag, kind: &str, is_mob: bool) {
 }
 /// `Entity.load`: a string `Team` adds the entity (`name`, its UUID) to that
 /// team when the scoreboard has it; else vanilla only logs a warning.
-fn join_saved_team(board: &mut Scoreboard, name: &str, tag: &Tag) -> bool {
+pub fn join_saved_team(board: &mut Scoreboard, name: &str, tag: &Tag) -> bool {
     let Some(team) = text(tag.get("Team")) else {
         return false;
     };

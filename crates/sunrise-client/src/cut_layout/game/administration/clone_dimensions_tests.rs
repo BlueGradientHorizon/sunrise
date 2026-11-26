@@ -10,7 +10,9 @@ use super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
-use sunrise_gameplay_common::game::{Options, Progress, Resources, load_resources};
+use sunrise_gameplay_common::game::{Options, Progress, Resources};
+#[cfg(test)]
+use crate::game::load_resources;
 use crate::settings::Settings;
 
 fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {

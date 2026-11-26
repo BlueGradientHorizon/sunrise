@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_client_gameplay::game::world::server_packs::PackNotifier;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::toasts::SystemToast;
 use sunrise_game_data::text::Text;

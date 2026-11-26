@@ -568,7 +568,7 @@ impl crate::game::ServerGame<'_> {
 
 /// `RespawnPosAngle.calculateLookAtYaw`: the yaw from the position to the
 /// bottom centre of the block.
-pub(in crate::game::server_side) fn look_at_yaw(position: Vec3, block: [i32; 3]) -> f32 {
+pub fn look_at_yaw(position: Vec3, block: [i32; 3]) -> f32 {
     let d = Vec3::new(
         f64::from(block[0]) + 0.5 - position.x,
         f64::from(block[1]) - position.y,

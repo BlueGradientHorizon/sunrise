@@ -1,7 +1,10 @@
 #[test]
 #[ignore = "daily"]
 fn tracking_emitters_follow_the_packet_target() {
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources, sunrise_gameplay_common::game::totem_common::TOTEM_EVENT};
+    use sunrise_client_lib::audio::Audio;
+    use crate::game::load_resources;
+    use crate::settings::Settings;
+    use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::totem_common::TOTEM_EVENT};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::particle_options::ParticleType;
     use sunrise_protocol::{

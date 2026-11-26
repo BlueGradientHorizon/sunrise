@@ -69,7 +69,7 @@ pub(crate) fn exercise_blank_inventory_presses() {
         .into(),
         || {
             super::native_entity_refs::tests::with_client_game(|game| {
-                let _window = crate::game::native_hooks::particle_count_tests::frame_scene(game);
+                let _window = sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene(game);
                 let mut millis = 0;
                 for (screen, id) in [
                     (Screen::Inventory, "inventory"),

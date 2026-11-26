@@ -931,7 +931,7 @@ impl crate::game::ClientGame<'_> {
 /// (`HappyGhast.getControllingPassenger`: wearing body armor, player on
 /// top, not on a still timeout — the rider steers it with `travelRidden`
 /// on their own client, and the mount goes to the server as `MoveVehicle`).
-fn client_moves(m: &Mob, first_passenger: bool, steer: bool) -> bool {
+pub fn client_moves(m: &Mob, first_passenger: bool, steer: bool) -> bool {
     if !first_passenger || !m.alive() {
         return false;
     }
@@ -948,7 +948,7 @@ fn client_moves(m: &Mob, first_passenger: bool, steer: bool) -> bool {
 
 /// `LocalPlayer.sendRidingJump`: START_RIDING_JUMP with
 /// `floor(getJumpRidingScale() * 100)`, as `onPlayerJump` gets it.
-fn riding_jump(player: i32, scale: f32) -> S {
+pub fn riding_jump(player: i32, scale: f32) -> S {
     S::PlayerCommand(play::PlayerCommand {
         id: player,
         action: 3,
@@ -958,7 +958,7 @@ fn riding_jump(player: i32, scale: f32) -> S {
 
 /// `ServerboundMoveVehiclePacket.fromEntity`: where the mount this client
 /// moves is, and how it is turned (`at`: getClientPositionAndRotation).
-fn mount_move(m: &Mob, at: PosRot) -> S {
+pub fn mount_move(m: &Mob, at: PosRot) -> S {
     S::MoveVehicle(play::MoveVehicleRequest {
         position: at.position,
         yaw: at.yaw,

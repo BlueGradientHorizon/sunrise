@@ -13,7 +13,7 @@ use sunrise_sim::lan::server_effects::ServerQueuedParticle;
 use sunrise_world::registry::BlockStateId;
 
 /// Validated inputs for queueing or deferring a level or entity-bound native sound.
-pub(in crate::game) struct NativeSoundRequest<'a> {
+pub struct NativeSoundRequest<'a> {
     pub(in crate::game) level: LevelRef,
     pub(in crate::game) sound: &'a str,
     pub(in crate::game) at: [f64; 3],

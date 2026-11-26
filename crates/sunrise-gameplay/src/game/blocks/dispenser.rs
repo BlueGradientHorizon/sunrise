@@ -47,7 +47,7 @@ use {
 };
 
 /// A behaviour returns a detached stack; the dispenser applies the slot limit afterwards.
-pub(in crate::game::server_side) fn mod_dispensed(
+pub fn mod_dispensed(
     (stack, event): mod_api::Dispensed,
     items: &Items,
 ) -> std::result::Result<Dispensed, mod_api::StackWriteError> {

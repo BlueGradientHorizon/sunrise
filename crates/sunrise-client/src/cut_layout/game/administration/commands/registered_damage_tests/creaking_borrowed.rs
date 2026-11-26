@@ -216,7 +216,7 @@ pub(crate) fn run_borrowed_creaking_hurt_finishes_before_the_tick_continues() {
         }
         with_game(|game| {
             if case == "sting" {
-                sunrise_gameplay::game::native_living_flags::tests::guest_server(game, true, false);
+                crate::game::server_side::native_living_flags::tests::guest_server(game, true, false);
             }
             setup_live_damage_world(game);
             if case == "sting" {

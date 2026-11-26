@@ -11,7 +11,8 @@ use sunrise_client::settings::Settings;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::Screen;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::resource_load::load_resources;
+#[cfg(test)]
+use crate::game::load_resources;
 use super::super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;

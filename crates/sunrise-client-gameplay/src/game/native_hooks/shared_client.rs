@@ -27,14 +27,14 @@ pub(in crate::game) fn title_target_id(target: ScreenTarget) -> Option<&'static 
     }
 }
 
-pub(in crate::game) fn observed_overlay_id(
+pub fn observed_overlay_id(
     overlays: &[(bool, &'static str)],
 ) -> Option<&'static str> {
     overlays.iter().find_map(|(open, id)| open.then_some(*id))
 }
 
 /// This client's window-owned mod screen and its local slot state.
-pub(in crate::game) struct OpenNativeScreen {
+pub struct OpenNativeScreen {
     /// Fixed for the opening; slot moves have their own revision.
     pub(in crate::game) layout_revision: u64,
     pub(in crate::game) slot_moves: SlotMoves,
@@ -50,7 +50,7 @@ pub(in crate::game) struct OpenNativeScreen {
 
 /// The menu the screen presents: where its slots are stored, the opener,
 /// and the window's live data.
-pub(in crate::game) struct OpenNativeMenu {
+pub struct OpenNativeMenu {
     pub(in crate::game) key: Pos,
     pub(in crate::game) window: i32,
     pub(in crate::game) generation: u64,

@@ -6,7 +6,7 @@
 use super::*;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::launch_options::Options;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use std::sync::Arc;
 #[cfg(test)]

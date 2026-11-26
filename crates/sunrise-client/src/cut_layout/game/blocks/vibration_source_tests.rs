@@ -10,7 +10,7 @@ use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_gameplay_common::game::Resources;
-use sunrise_gameplay_common::game::resource_load::load_resources;
+use crate::game::load_resources;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_gameplay_common::game::Options;

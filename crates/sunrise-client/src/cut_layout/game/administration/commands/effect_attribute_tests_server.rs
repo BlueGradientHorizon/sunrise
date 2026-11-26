@@ -1,5 +1,5 @@
 use sunrise_gameplay_common::game::commands_common::Target;
-use crate::game::administration::commands::world_cmds::effect_attribute_tests::with_game;
+use crate::game::server_side::commands::world_cmds::effect_attribute_tests::with_game;
 
 /// `isTransmittingWaypoint` reads the range with Invisibility's modifier:
 /// the given zombie's 100 is hidden to 0, so its next waypoint check

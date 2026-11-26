@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_client_gameplay::game::client_side::container_hooks::BUILT;
 use sunrise_client::hud::HudBatch;
 use sunrise_items::items::ItemStack;
 use winit::event::MouseButton;

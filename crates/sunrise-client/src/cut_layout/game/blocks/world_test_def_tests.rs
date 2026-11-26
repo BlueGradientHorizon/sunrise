@@ -7,7 +7,8 @@ use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
 use sunrise_client::settings::Settings;
-use sunrise_gameplay_common::game::resource_load::{Progress, load_resources};
+use sunrise_gameplay_common::game::resource_load::Progress;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::launch_options::Options;
 
 /// A world folder with one data pack holding `h275:broken`.

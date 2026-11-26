@@ -409,7 +409,7 @@ impl WorldRequest {
     }
 }
 
-pub(in crate::game) struct WorldLoader {
+pub struct WorldLoader {
     handle: JoinHandle<std::result::Result<PreparedWorld, String>>,
 }
 

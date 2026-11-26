@@ -122,7 +122,7 @@ struct SweepDamage {
 /// A sweep attack's reach to the other players (`Player.doSweepAttack`),
 /// worked out as the attacker.
 #[derive(Clone)]
-pub(in crate::game) struct Sweep {
+pub struct Sweep {
     /// The attacking guest (none: the host).
     attacker: Option<u32>,
     /// The attacker's creative mode: their hit passes the victim's

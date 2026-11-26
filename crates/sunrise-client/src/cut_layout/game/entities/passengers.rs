@@ -199,9 +199,9 @@ pub(crate) mod off_level_tests {
                     game.options.dedicated = Some(Vec::new());
                     let at = Vec3::new(10.0, 200.0, 20.0);
                     if cart {
-                        game.carts.push(crate::game::minecarts::Minecart::new(
+                        game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
                             71,
-                            crate::game::minecarts::CartKind::Rideable,
+                            sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
                             at,
                         ));
                     } else {
@@ -779,9 +779,9 @@ fn discard_during_dismount(cart: bool) {
                 game.options.dedicated = Some(Vec::new());
                 let at = Vec3::new(10.0, 200.0, 20.0);
                 if cart {
-                    game.carts.push(crate::game::minecarts::Minecart::new(
+                    game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
                         71,
-                        crate::game::minecarts::CartKind::Rideable,
+                        sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
                         at,
                     ));
                 } else {
@@ -848,9 +848,9 @@ fn with_vehicle_tree(
             game.side.world_root = game.options.game_dir.as_ref().unwrap().join("world");
             let at = Vec3::new(10.0, 200.0, 20.0);
             if cart {
-                game.carts.push(crate::game::minecarts::Minecart::new(
+                game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
                     71,
-                    crate::game::minecarts::CartKind::Rideable,
+                    sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
                     at,
                 ));
             } else {
@@ -1128,7 +1128,7 @@ fn with_vehicle_tree(
                     game.set_allow_commands(true);
                     if mode == 2 {
                         game.carts
-                            .update(0, |cart| cart.kind = crate::game::minecarts::CartKind::Tnt);
+                            .update(0, |cart| cart.kind = sunrise_gameplay_common::game::minecarts::CartKind::Tnt);
                     }
                     set_vehicle_test_attachment(game);
                     let vehicle = game.entity(71).unwrap();
@@ -1254,7 +1254,7 @@ fn with_vehicle_tree(
                         ))];
                         if cart {
                             game.carts.update(0, |vehicle| {
-                                vehicle.kind = crate::game::minecarts::CartKind::Chest;
+                                vehicle.kind = sunrise_gameplay_common::game::minecarts::CartKind::Chest;
                                 vehicle.items = items;
                             });
                         } else {
@@ -1407,7 +1407,7 @@ fn with_vehicle_tree(
                         game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
                         game.carts
-                            .update(0, |cart| cart.kind = crate::game::minecarts::CartKind::Tnt);
+                            .update(0, |cart| cart.kind = sunrise_gameplay_common::game::minecarts::CartKind::Tnt);
                         game.arrow_hits_cart(0, 1.0, Vec3::ZERO, true, false, None, None);
                     }
                     assert_eq!(calls.load(Ordering::Relaxed), 1);
@@ -1614,7 +1614,7 @@ fn with_vehicle_tree(
                         3 => game.hurt_cart(0, 5.0, false, false, CartHit::default()),
                         _ => {
                             game.carts.update(0, |cart| {
-                                cart.kind = crate::game::minecarts::CartKind::Tnt
+                                cart.kind = sunrise_gameplay_common::game::minecarts::CartKind::Tnt
                             });
                             game.arrow_hits_cart(0, 1.0, Vec3::ZERO, true, false, None, None);
                         }

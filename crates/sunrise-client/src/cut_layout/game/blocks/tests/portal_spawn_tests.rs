@@ -11,7 +11,7 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::launch_options::Options;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::resource_load::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 #[cfg(test)]
 use sunrise_gameplay_common::game::execution_role;

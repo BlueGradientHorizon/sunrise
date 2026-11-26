@@ -13,7 +13,7 @@ use {
 };
 
 /// Resolve USE_EFFECTS through the stack's component patch.
-pub(in crate::game) fn interact_vibrations(stack: &ItemStack, default: Option<bool>) -> bool {
+pub fn interact_vibrations(stack: &ItemStack, default: Option<bool>) -> bool {
     if stack.count == 0 {
         return false;
     }

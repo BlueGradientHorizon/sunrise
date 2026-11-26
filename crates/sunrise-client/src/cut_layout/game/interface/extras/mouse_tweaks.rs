@@ -9,7 +9,7 @@ mod result_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client_gameplay::game::interface::extras::mouse_tweaks::Drag;
+    use sunrise_client_gameplay::game::client_side::extras::mouse_tweaks::Drag;
     use sunrise_gameplay_common::game::Screen;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
 

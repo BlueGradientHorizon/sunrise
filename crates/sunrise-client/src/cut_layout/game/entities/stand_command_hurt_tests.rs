@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::Progress;
 use sunrise_gameplay_common::game::Resources;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::execution_role;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
@@ -187,11 +187,11 @@ fn damage_immunity_on_worn_boots_refuses_campfire_but_not_in_fire_or_wrong_slot(
 }
 
 fn capture() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 fn take_events() -> Vec<(&'static str, [f64; 3], Option<sunrise_sim::mobs::Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap_or_default())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap_or_default())
 }
 
 #[test]
@@ -465,9 +465,9 @@ fn events(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) -> Vec<(&'static str, Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
     f(game);
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| {
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
         e.borrow_mut()
             .take()
             .unwrap()

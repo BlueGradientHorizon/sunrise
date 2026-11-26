@@ -10,7 +10,7 @@ use super::*;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::Progress;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 #[cfg(test)]
 use sunrise_gameplay_common::game::execution_role;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

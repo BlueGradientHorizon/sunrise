@@ -29,7 +29,7 @@ use sunrise_sim::entities::ArmorStand;
 use sunrise_sim::mobs::{Mob, Species, Who};
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_sim::save::uuid_text;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use sunrise_client::settings::Settings;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_gameplay_common::game::Options;

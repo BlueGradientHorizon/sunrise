@@ -3,7 +3,7 @@
 //! becomes `ItemUtils.createFilledResult(held, player, sulfur_cube_bucket)`
 //! (tools/test_sulfur_bucket_parity.py measures the same on vanilla 26.3).
 use crate::settings::Settings;
-use sunrise_gameplay_common::game::{InteractTarget, Options, Progress, Resources, load_resources};
+use sunrise_gameplay_common::game::{InteractTarget, Options, Progress, Resources};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::PlayerMotion;

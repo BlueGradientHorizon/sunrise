@@ -384,6 +384,7 @@ use super::*;
 #[cfg(test)]
 pub(crate) mod off_level_tests {
     use super::*;
+    use sunrise_gameplay::game::server_side::mounts::dismounts_underwater;
 
     #[test]
     #[ignore = "daily"]

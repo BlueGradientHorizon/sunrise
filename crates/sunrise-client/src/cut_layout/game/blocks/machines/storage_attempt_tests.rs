@@ -745,7 +745,7 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
                 }};
             }
             if client {
-                sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+                sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
                     fixture_root(),
                     ExecutionRole::Client,
                     |game| {

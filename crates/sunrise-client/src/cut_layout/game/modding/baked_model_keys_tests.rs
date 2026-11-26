@@ -81,7 +81,7 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
     with_mods(mods, || {
         with_client_game(|game| {
             game.publish_initial_client_models(vec![
-                crate::game::client_reload::PreparedClientReload::Vanilla(()),
+                sunrise_client_gameplay::game::client_reload::PreparedClientReload::Vanilla(()),
             ])
             .unwrap();
             let first = {

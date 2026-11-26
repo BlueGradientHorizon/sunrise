@@ -36,9 +36,9 @@ pub(in crate::game) mod boarding;
 #[path = "entities/boat_authority_fixture.rs"]
 pub(in crate::game) mod boat_authority_fixture;
 #[path = "entities/boat_leads.rs"]
-pub(in crate::game) mod boat_leads;
+pub mod boat_leads;
 #[path = "entities/boat_passengers.rs"]
-pub(in crate::game) mod boat_passengers;
+pub mod boat_passengers;
 #[path = "entities/boats/mod.rs"]
 pub mod boats;
 #[path = "interface/books_server.rs"]
@@ -94,7 +94,7 @@ pub(in crate::game) mod custom_spawners;
 #[path = "blocks/debug_stick.rs"]
 pub(in crate::game) mod debug_stick;
 #[path = "modding/decided_action.rs"]
-pub(in crate::game) mod decided_action;
+pub mod decided_action;
 #[path = "interface/dedicated/mod.rs"]
 pub mod dedicated;
 #[path = "items/deflect.rs"]
@@ -104,7 +104,7 @@ pub mod dispense_fixture;
 #[path = "blocks/dispenser.rs"]
 pub mod dispenser;
 #[path = "mobs/dragon.rs"]
-pub(in crate::game) mod dragon;
+pub mod dragon;
 #[path = "modding/dropped_item_setter.rs"]
 pub(in crate::game) mod dropped_item_setter;
 #[path = "world/dynamic_light_emission.rs"]
@@ -263,17 +263,17 @@ pub(in crate::game) mod native_block_entity_refs;
 #[path = "modding/native_book_apply.rs"]
 pub(in crate::game) mod native_book_apply;
 #[path = "modding/native_book_backings.rs"]
-pub(in crate::game) mod native_book_backings;
+pub mod native_book_backings;
 #[path = "modding/native_book_catalogue.rs"]
 pub(in crate::game) mod native_book_catalogue;
 #[path = "modding/native_book_grid.rs"]
-pub(in crate::game) mod native_book_grid;
+pub mod native_book_grid;
 #[path = "modding/native_book_invalidation.rs"]
 pub(in crate::game) mod native_book_invalidation;
 #[path = "modding/native_book_net.rs"]
 pub(in crate::game) mod native_book_net;
 #[path = "modding/native_book_scope.rs"]
-pub(in crate::game) mod native_book_scope;
+pub mod native_book_scope;
 #[path = "modding/native_book_settings.rs"]
 pub(in crate::game) mod native_book_settings;
 #[path = "modding/native_book_transport.rs"]
@@ -411,7 +411,7 @@ pub(in crate::game) mod native_mobs;
 #[path = "modding/native_mounts.rs"]
 pub(in crate::game) mod native_mounts;
 #[path = "modding/native_pending_children.rs"]
-pub(in crate::game) mod native_pending_children;
+pub mod native_pending_children;
 #[path = "modding/native_place_feature.rs"]
 pub(in crate::game) mod native_place_feature;
 #[path = "modding/native_player_break.rs"]
@@ -469,7 +469,7 @@ pub mod native_unspawned_mob;
 #[path = "modding/native_world_edit.rs"]
 pub(in crate::game) mod native_world_edit;
 #[path = "mobs/natural_spawning.rs"]
-pub(in crate::game) mod natural_spawning;
+pub mod natural_spawning;
 #[path = "modding/neoforge_block_maps.rs"]
 pub(in crate::game) mod neoforge_block_maps;
 #[path = "modding/neoforge_mob_maps.rs"]

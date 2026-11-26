@@ -2,8 +2,8 @@
 //! scoped threads each step runs on, and the core, gameplay and pack tables
 //! read from the prepared resources.
 use super::{resource_tables::PackParts, *};
-use std::path::Path;
-use sunrise_assets::{item_model::ItemModels, resource_source::ResourceRoot};
+pub use std::path::Path;
+pub use sunrise_assets::{item_model::ItemModels, resource_source::ResourceRoot};
 use sunrise_world::{
     block_render::FaceVisibility,
     item_defaults::{ItemData, ItemDefaults},

@@ -1,6 +1,7 @@
 
 
 #![cfg(test)]
+use sunrise_gameplay_common::game::Dim;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;

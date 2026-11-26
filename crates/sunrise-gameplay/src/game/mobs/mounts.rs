@@ -66,7 +66,7 @@ pub(in crate::game::server_side) fn eating(
 }
 /// `EntityTypeTags.DISMOUNTS_UNDERWATER` (`Entity.dismountsUnderwater`): the mounts that throw their
 /// riders off when the rider's eyes are in water.
-pub(in crate::game::server_side) fn dismounts_underwater(
+pub fn dismounts_underwater(
     tags: &EntityTypeTags,
     mount: &Mob,
 ) -> bool {
@@ -910,7 +910,7 @@ impl ServerGame<'_> {
 
 /// The mount a rider gets off: its kind, where it stands, its box,
 /// `getBbWidth` and body yaw.
-pub(in crate::game) struct Mount {
+pub struct Mount {
     pub(in crate::game) species: Species,
     pub(in crate::game) position: Vec3,
     pub(in crate::game) bounds: Aabb,
@@ -938,14 +938,14 @@ pub(in crate::game) fn on_top(m: &Mob) -> Vec3 {
 }
 /// The rider getting off: `getYRot`, `getBbWidth`, and
 /// `getLocalBoundsForPose` for each of `Player.getDismountPoses`.
-pub(in crate::game) struct Rider {
+pub struct Rider {
     pub(in crate::game) yaw: f32,
     pub(in crate::game) width: f32,
     pub(in crate::game) poses: Vec<(Pose, Dimensions)>,
     pub(in crate::game) main_arm_left: bool,
 }
 /// `Player.getDismountPoses`: standing, crouching, then crawling.
-pub(in crate::game) const DISMOUNT_POSES: [Pose; 3] =
+pub const DISMOUNT_POSES: [Pose; 3] =
     [Pose::Standing, Pose::Crouching, Pose::Swimming];
 /// The rider's box in each dismount pose, at their `minecraft:scale`.
 pub(in crate::game::server_side) fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, Dimensions)> {
@@ -958,7 +958,7 @@ pub(in crate::game::server_side) fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, 
         .collect()
 }
 /// The level queries a dismount makes.
-pub(in crate::game) trait DismountWorld {
+pub trait DismountWorld {
     /// `getFluidState(pos).is(FluidTags.LAVA)`.
     fn lava(&self, p: [i32; 3]) -> bool;
     /// `BlockGetter.getBlockFloorHeight(pos)`.
@@ -987,7 +987,7 @@ impl DismountWorld for GameDismountWorld<'_, '_> {
 }
 /// `getDismountLocationForPassenger`, and the pose the rider takes there: each
 /// vehicle class's own rule, and `Entity`'s on top of the mount for the rest.
-pub(in crate::game::server_side) fn dismount_location(
+pub fn dismount_location(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,

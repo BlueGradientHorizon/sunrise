@@ -66,7 +66,7 @@ use super::*;
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 let name = Tag::compound([("text", Tag::String(BASE_NAME.into()))]);
                 let mut stack = sunrise_items::items::ItemStack::new("minecraft:iron_sword", 1);
                 stack

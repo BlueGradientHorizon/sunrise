@@ -22,7 +22,7 @@ use {
     sunrise_gameplay_common::game::resource_load::write_prepared_files,
 };
 
-pub(in crate::game) type UiPublishArg = UiResources;
+pub type UiPublishArg = UiResources;
 pub(in crate::game) struct ClientCorePresentation;
 pub(in crate::game) struct ClientCoreEarly {
     models: Option<sunrise_client::model_library::ParsedModels>,
@@ -187,7 +187,7 @@ pub fn load_resources_sync(
 /// content roots and reload data. Recovery clears the settings owner's selection
 /// before reopening the required resource packs over the accepted content root.
 #[allow(clippy::too_many_arguments)]
-pub(in crate::game) fn load_resources_for_mods(
+pub fn load_resources_for_mods(
     roots: packs::PackRoots,
     additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
     launch_world: Option<&str>,

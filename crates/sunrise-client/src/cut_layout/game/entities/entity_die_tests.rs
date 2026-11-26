@@ -10,7 +10,7 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 use sunrise_sim::mobs::{Mob, Who, warden};
 
 fn deaths() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
         events
             .borrow_mut()
             .take()
@@ -21,7 +21,7 @@ fn deaths() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     })
 }
 fn capture() {
-    sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 fn with_game(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {

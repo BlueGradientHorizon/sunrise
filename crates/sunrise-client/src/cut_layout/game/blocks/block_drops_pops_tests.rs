@@ -183,7 +183,7 @@ fn harvest_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     table: serde_json::Value,
 ) -> (
-    sunrise_gameplay::game::game_tests::tests::Published,
+    crate::game::game_tests::tests::Published,
     sunrise_gameplay::game::ServerGame<'a>,
 ) {
     let (published, mut game) = isolated_server_game(resources);

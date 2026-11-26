@@ -90,7 +90,7 @@ pub(in crate::game) mod sleep;
 pub mod tick;
 
 #[path = "turns.rs"]
-pub(in crate::game) mod turn_state;
+pub mod turn_state;
 #[path = "turns_server.rs"]
 pub(in crate::game) mod turns;
 pub(in crate::game) use turn_state::{CombatPlayer, DisplacedPlayer};

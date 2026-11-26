@@ -5,7 +5,8 @@
 //! vanilla 26.3).
 use super::*;
 use std::sync::Arc;
-use sunrise_gameplay_common::game::{Options, Resources, load_resources};
+use sunrise_gameplay_common::game::{Options, Resources};
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use crate::settings::Settings;
 

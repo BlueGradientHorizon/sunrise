@@ -69,7 +69,7 @@ pub fn run_event_loop(
 
 /// The loading screen's state while the worker loads the resources.
 #[cfg(feature = "client")]
-pub(in crate::game) struct Loading {
+pub struct Loading {
     pub(in crate::game) serve_integrated: Serve,
     pub(in crate::game) run_component_harness: RunComponentHarness,
     pub(in crate::game) profile_resolver: ProfileResolverFactory,

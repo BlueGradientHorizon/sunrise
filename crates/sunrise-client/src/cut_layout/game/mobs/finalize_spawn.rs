@@ -105,7 +105,7 @@ mod tests {
             game.world.random =
                 sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(42_i64));
             let outcome = game.finalize_with(&mut with, Reason::Natural, None);
-            assert_eq!(outcome, crate::game::creatures::Finalized::Done);
+            assert_eq!(outcome, sunrise_gameplay_common::game::creatures::Finalized::Done);
             // The same stream for the plain path: same seed, same draws.
             game.world.random =
                 sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(42_i64));

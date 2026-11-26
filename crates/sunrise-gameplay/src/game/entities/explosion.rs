@@ -29,7 +29,7 @@ use {
 /// The causing entity of an explicit explosion damage source. Minecart ignition
 /// keeps this in memory only, just like `MinecartTNT.ignitionSource`.
 #[derive(Clone, Debug)]
-pub(in crate::game) struct ExplosionCause {
+pub struct ExplosionCause {
     pub entity: (u32, Text),
     pub player: bool,
     pub guest: Option<u32>,
@@ -86,7 +86,7 @@ pub struct ExplosionSource {
 
 /// An explicit blast `DamageSource` (`ServerLevel.explode(source, damageSource, ...)`): its own
 /// direct entity (id, type for its name, class) and causing entity, apart from the exploding one.
-pub(in crate::game) struct ExplicitBlastSource {
+pub struct ExplicitBlastSource {
     pub direct: (u32, &'static str, sunrise_sim::health::DirectEntity),
     /// `None` is an explicitly ownerless source.
     pub cause: Option<ExplosionCause>,

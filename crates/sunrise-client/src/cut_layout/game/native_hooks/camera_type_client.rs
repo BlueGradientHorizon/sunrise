@@ -16,7 +16,7 @@ pub(crate) mod camera_type_tests {
     #[test]
     #[ignore = "daily"]
     fn a_client_mod_picks_the_camera_type_f5_cycles_to() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let mut seen = Vec::new();
             for _ in 0..3 {
                 game.cycle_camera();
@@ -32,7 +32,7 @@ pub(crate) mod camera_type_tests {
         )]
         .into();
         with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 use CameraType::*;
                 game.cycle_camera();
                 assert_eq!(game.camera_type(), ThirdPersonBack);
@@ -72,7 +72,7 @@ pub(crate) mod camera_type_tests {
         )]
         .into();
         with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 game.side.title.0 = None;
                 game.side.spectated_post_effect = Some("minecraft:creeper");

@@ -2,7 +2,7 @@
 //! entity selectors resolved against the game, vanilla feedback and errors.
 pub(in crate::game) mod admin;
 pub(in crate::game) mod clone_payload;
-pub(in crate::game) mod compute;
+pub mod compute;
 pub mod data;
 pub(in crate::game) mod difficulty;
 pub(in crate::game) mod display_names;
@@ -47,7 +47,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
 
 #[allow(unused_imports)]
-pub(in crate::game) use {sunrise_gameplay_common::game::commands_common::*};
+pub use {sunrise_gameplay_common::game::commands_common::*};
 
 macro_rules! target_entity_mut {
     ($game:expr, $target:expr, $e:ident => $body:expr) => {{

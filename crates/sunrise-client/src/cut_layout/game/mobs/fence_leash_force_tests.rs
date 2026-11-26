@@ -13,7 +13,7 @@ use crate::settings::Settings;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::Options;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

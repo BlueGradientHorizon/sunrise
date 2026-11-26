@@ -322,6 +322,8 @@ mod added_test_summary_context_tests;
 mod registered_game_test_tests {
     use super::*;
     use mod_api::{GameTestContext, GameTestFunction, GameTestResult, GameTests};
+    use sunrise_gameplay::game::test_instances::TestDef;
+    use sunrise_gameplay::game_tests::TestError;
     use std::sync::Arc;
 
     struct ChangeBlock(mod_api::BlockState);

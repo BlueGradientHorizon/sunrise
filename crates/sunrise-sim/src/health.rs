@@ -29,7 +29,7 @@ pub(crate) type State = HurtState<DamageTypeId>;
 
 pub use crate::world::HealthRules;
 mod accepted_hit;
-mod attack;
+pub mod attack;
 mod kill_credit;
 use kill_credit::Credit;
 pub use kill_credit::{KnockbackCredit, PlayerMemory, PlayerResolver};

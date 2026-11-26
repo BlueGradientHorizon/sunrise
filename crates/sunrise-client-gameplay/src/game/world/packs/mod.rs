@@ -954,23 +954,23 @@ pub(in crate::game) const RELOAD_LINES: [&str; 4] = [
 /// Whether a reload asked for now waits: for the world's resources, or for
 /// the reload already under its overlay (`Minecraft.reloadResourcePacks`
 /// hands back `pendingReload` while a `LoadingOverlay` is up).
-pub(in crate::game::client_side) fn reload_waits(world_loading: bool, in_flight: bool) -> bool {
+pub fn reload_waits(world_loading: bool, in_flight: bool) -> bool {
     world_loading || in_flight
 }
 /// Who asked for a pack reload: its outcome goes back there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum ReloadKind {
+pub enum ReloadKind {
     /// The player's own selection (`Minecraft.reloadResourcePacks`).
     Selection,
     /// A server's packs (`DownloadedPackSource.startReload`).
     Server,
 }
 #[cfg(feature = "client")]
-pub(in crate::game) type StageResult = std::result::Result<StagedPack, String>;
+pub type StageResult = std::result::Result<StagedPack, String>;
 /// A pack reload whose CPU half runs on a worker while `progress` feeds the
 /// loading overlay; `Game::drive_pack_reload` applies it on the render thread.
 #[cfg(feature = "client")]
-pub(in crate::game) struct PackReload {
+pub struct PackReload {
     pub(in crate::game) progress: super::Progress,
     pub(in crate::game) kind: ReloadKind,
     pub(in crate::game) handle: Option<std::thread::JoinHandle<StageResult>>,
@@ -996,7 +996,7 @@ pub(in crate::game) struct ReloadOverlay {
 /// (`fadeIn`) is not ready while `Util.getMillis() - fadeInStart < 1000L`, so
 /// a pack that stages in a few frames still shows its overlay for a second
 /// instead of flashing.
-pub(in crate::game) const OVERLAY_HOLD: Duration = Duration::from_millis(1000);
+pub const OVERLAY_HOLD: Duration = Duration::from_millis(1000);
 #[cfg(feature = "client")]
 impl PackReload {
     /// Starts `stage` on its own thread and returns at once.

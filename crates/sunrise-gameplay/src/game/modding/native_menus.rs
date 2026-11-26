@@ -334,7 +334,7 @@ impl GuestMenus {
 /// The menu `conn` has open, whichever way the game keeps it: a block's
 /// container, a trade, a crafting table, a workstation, a lectern or a
 /// mount's inventory. Not the player's own inventory menu.
-pub(in crate::game) fn open_menu_of(
+pub fn open_menu_of(
     host: &LanHost,
     conn: u32,
 ) -> Option<(i32, &str, Option<[i32; 3]>)> {

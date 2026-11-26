@@ -8,7 +8,9 @@ use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::{Options, load_resources};
+use sunrise_gameplay_common::game::Options;
+#[cfg(test)]
+use crate::game::load_resources;
 #[cfg(test)]
 use sunrise_gameplay_common::game::execution_role;
 

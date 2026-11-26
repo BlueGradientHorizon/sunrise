@@ -1,6 +1,8 @@
 //! Special item renderers in the real game: dropped-item draw and outline submission, and when
 //! the renderer is called (on the client's frame, outside lifted passes and action transactions).
 //! Each test runs in its own process and changes the game's stick into a special model.
+#[cfg(test)]
+use bytemuck;
 use mod_api::{
     ClientHost, SpecialModelCollector, SpecialModelContext, SpecialModelFactory,
     SpecialModelGeometry, SpecialModelQuad, SpecialModelRenderer, SpecialModelStack,

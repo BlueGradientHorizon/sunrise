@@ -7,7 +7,7 @@ use sunrise_gameplay_common::game::execution_role;
 use sunrise_client::settings::Settings;
 use sunrise_gameplay_common::game::launch_options::Options;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::Resources;
 use super::*;
 use std::sync::Arc;

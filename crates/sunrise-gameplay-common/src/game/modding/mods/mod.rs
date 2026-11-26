@@ -388,7 +388,7 @@ impl ModsState {
     }
 }
 
-pub(in crate::game) mod item_data_load;
+pub mod item_data_load;
 #[allow(unused_imports)]
 pub use item_data_load::{LoadRole, load_item_data};
 
@@ -2118,7 +2118,7 @@ pub fn register_cauldron_fluid_contents(
 /// vanilla's contents, in registration order: a block or fluid already in the table, an
 /// unknown block or fluid, a level property the block lacks or that isn't an integer, and a
 /// total of 0 or one the levels don't divide evenly are refused, with their reasons.
-pub(in crate::game) fn collect_cauldron_fluid_contents(
+pub fn collect_cauldron_fluid_contents(
     registry: &sunrise_world::registry::BlockRegistry,
 ) -> (
     sunrise_gameplay_common::cauldron_contents::CauldronContents,

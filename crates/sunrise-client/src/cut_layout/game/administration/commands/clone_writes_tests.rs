@@ -4,7 +4,7 @@
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::Options;
-use sunrise_gameplay_common::game::load_resources;
+use sunrise_gameplay_common::game::resource_load::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use super::super::*;
 use std::sync::Arc;

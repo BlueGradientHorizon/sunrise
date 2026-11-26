@@ -15,7 +15,7 @@ mod tests {
         with_game(|game| {
             let key = |name: &str| mod_api::__private::block_key(name).unwrap();
             let (ore, emerald) = (key("minecraft:diamond_ore"), key("minecraft:emerald_ore"));
-            let id = |block| crate::game::api_values::default_state(block).unwrap().0;
+            let id = |block| sunrise_gameplay_common::game::api_values::default_state(block).unwrap().0;
             let mut column = sunrise_level::chunk::Chunk::empty(3, 4);
             // The vanilla column starts at Y -64: section index 2 is section Y -2, 5 is 1.
             std::sync::Arc::make_mut(&mut column.sections[2]).set(0, id(ore));

@@ -70,7 +70,7 @@ pub struct Serving {
 /// The part of `LevelLoadListener` after `prepareLevels`: `PrepareSpawnTask`'s
 /// `LOAD_PLAYER_CHUNKS`.
 #[derive(Default)]
-pub(in crate::game) struct LoadPhase {
+pub struct LoadPhase {
     /// `updateFocus`: the spawn chunk, once the stage started.
     pub(in crate::game) focus: Option<(i32, i32)>,
     /// `finish(LOAD_PLAYER_CHUNKS)`.
@@ -946,7 +946,7 @@ pub fn run_component_harness_on_server(
     result.map_err(Into::into)
 }
 
-pub(in crate::game::server_side) fn server_game(
+pub fn server_game(
     res: &Arc<Resources>,
     pack: PackResources,
     options: Options,

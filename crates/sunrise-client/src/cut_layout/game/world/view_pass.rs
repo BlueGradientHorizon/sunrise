@@ -81,7 +81,7 @@ use sunrise_protocol::{
         game.build_registries();
         let folder = home.join("saves/viewed").to_string_lossy().into_owned();
         game.load_world(
-            crate::game::world_loading::WorldRequest::new(
+            sunrise_gameplay::game::world_loading::WorldRequest::new(
                 &folder,
                 Some("viewed"),
                 Some(3716),

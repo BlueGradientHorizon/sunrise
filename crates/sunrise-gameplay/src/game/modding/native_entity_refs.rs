@@ -685,7 +685,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 /// A saved UUID's four ints (`UUIDUtil.uuidFromIntArray`) as one number.
-pub(in crate::game::server_side) fn uuid_from_words(words: [i32; 4]) -> u128 {
+pub fn uuid_from_words(words: [i32; 4]) -> u128 {
     words
         .iter()
         .fold(0, |uuid, w| (uuid << 32) | u128::from(*w as u32))

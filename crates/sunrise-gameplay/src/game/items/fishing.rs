@@ -96,7 +96,7 @@ pub(in crate::game::server_side) fn lure_wait(
     (min + random.next_int_bound(span).unwrap_or(0)).saturating_sub(lure)
 }
 /// Mods' table ids already warned about, so each malformed or missing one warns once.
-pub(in crate::game) static WARNED_TABLES: std::sync::Mutex<Vec<(&'static str, String)>> =
+pub static WARNED_TABLES: std::sync::Mutex<Vec<(&'static str, String)>> =
     std::sync::Mutex::new(Vec::new());
 /// A player a hook can catch (`canHitEntity`): their entity id, which
 /// guest they are (none: the host) and their box.

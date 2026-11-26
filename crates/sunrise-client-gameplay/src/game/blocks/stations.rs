@@ -9,7 +9,7 @@ pub(in crate::game) mod anvil;
 #[path = "stations/draw.rs"]
 pub(in crate::game) mod draw;
 #[path = "stations/tooltip.rs"]
-pub(in crate::game) mod tooltip;
+pub mod tooltip;
 use super::smithing_icons::smithing_slot_icons;
 pub(in crate::game) struct EngineTooltipLines<'a>(
     pub(in crate::game) &'a mut Vec<(sunrise_game_data::text::Text, u32)>,

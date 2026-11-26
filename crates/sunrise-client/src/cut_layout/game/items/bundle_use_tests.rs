@@ -1,5 +1,5 @@
 use {crate::game::*, sunrise_gameplay_common::game::{ItemStack, mods}};
-use {crate::game::item_use::interact_vibration_tests::EVENTS, sunrise_gameplay::game::item_use::interact_vibration_tests::with_game};
+use {sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::EVENTS, crate::game::server_side::item_use::interact_vibration_tests::with_game};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},

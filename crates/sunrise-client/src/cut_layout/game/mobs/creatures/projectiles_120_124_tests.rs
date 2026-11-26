@@ -336,7 +336,7 @@ pub(crate) fn adv_done(game: &sunrise_gameplay::game::ServerGame<'_>, id: &str) 
 }
 
 #[allow(unused_imports)]
-pub(crate) use sunrise_gameplay::game::client_side::creatures_client::projectiles_120_124_tests::step_recording;
+pub(crate) use sunrise_client_gameplay::game::client_side::creatures_client::projectiles_120_124_tests::step_recording;
 
 pub(crate) fn land_positions_match(
     events: &[(&'static str, [f64; 3], Option<Who>)],

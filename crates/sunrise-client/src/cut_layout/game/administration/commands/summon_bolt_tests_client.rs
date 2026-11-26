@@ -23,7 +23,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
         game.update_chunk_tickets();
 
         let take_strike_events = || {
-            sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+            sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
                 let mut guard = events.borrow_mut();
                 let list = guard.get_or_insert_with(Vec::new);
                 let count = list
@@ -37,7 +37,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
 
         // Silent bolt: no event on spawn; strikes rod + posts event on tick 1 without playing audio on server.
         assert!(game.run_command("setblock 4 209 4 minecraft:lightning_rod"));
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
         game.side.audio_capture_active = true;
         game.side.pending_sounds.clear();
         assert!(game.run_command(
@@ -80,7 +80,7 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
             1,
             "lightning_strike event posted on first server tick"
         );
-        sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
     });
 
     // Client bolt tick plays thunder + impact once for audible bolts and suppresses both for Silent:1b.

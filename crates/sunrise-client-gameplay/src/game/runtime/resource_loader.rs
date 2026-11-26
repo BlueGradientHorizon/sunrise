@@ -457,7 +457,7 @@ pub struct Loaded {
 
 /// What the background loader publishes: the menu bundle as soon as it is
 /// ready, then the core bundle with a handle to the rest worker.
-pub(in crate::game) enum LoaderMsg {
+pub enum LoaderMsg {
     #[cfg(feature = "client")]
     Ui(UiResources, PathBuf),
     /// Clear the failed revision on the thread that owns settings, then acknowledge.
@@ -494,7 +494,7 @@ impl From<LoaderFailure> for Box<dyn std::error::Error> {
     }
 }
 
-pub(in crate::game) enum PendingWorldEntry {
+pub enum PendingWorldEntry {
     Local {
         folder: String,
         name: Option<String>,

@@ -98,7 +98,7 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     );
     // Unavailable claims remain unknown rather than becoming known air.
     let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
-    assert!(crate::game::ServerGame::is_village(
+    assert!(sunrise_gameplay::game::ServerGame::is_village(
         &game.village_centers(),
         [2, 200, 1]
     ));

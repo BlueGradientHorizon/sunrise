@@ -240,7 +240,7 @@ pub(in crate::game::client_side) fn active_pack<'a>(picked: &'a str, mods: &ModL
 }
 
 /// A selected pack may read resource-pack material maps, whether native or GLSL.
-pub(in crate::game) fn picks_material_pack(settings: &sunrise_client::settings::Settings) -> bool {
+pub fn picks_material_pack(settings: &sunrise_client::settings::Settings) -> bool {
     let dev = std::env::var("SUNRISE_SHADER_PACK").ok();
     let picked = active_pack(
         dev.as_deref().unwrap_or(&settings.sunrise.shader_pack),

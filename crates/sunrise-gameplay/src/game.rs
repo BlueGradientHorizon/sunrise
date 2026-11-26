@@ -242,7 +242,7 @@ pub(in crate::game) use server_side::level_tick;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::levels;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::living_attributes;
+pub use server_side::living_attributes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::llamas;
 #[allow(unused_imports)]
@@ -588,7 +588,7 @@ pub use server_side::server_travel;
 #[allow(unused_imports)]
 pub use server_side::shield;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::shoulders;
+pub use server_side::shoulders;
 #[allow(unused_imports)]
 pub use server_side::slot_changes;
 #[cfg(any(test, feature = "test-support"))]
@@ -597,7 +597,7 @@ pub mod slot_rules_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::slot_takes;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::spawner;
+pub use server_side::spawner;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::spear_players;
 #[allow(unused_imports)]
@@ -657,7 +657,7 @@ pub(in crate::game) use server_side::test_blocks;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::test_environments;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::test_instances;
+pub use server_side::test_instances;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::tnt;
 #[allow(unused_imports)]

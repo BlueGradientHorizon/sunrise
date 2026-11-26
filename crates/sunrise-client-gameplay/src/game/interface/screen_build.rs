@@ -333,7 +333,7 @@ pub(in crate::game) struct LastScreenClick {
 /// What the game knows about the screen showing: the snapshot the native hooks
 /// see (`ObservedScreen`) and the build the screen's drawing will read.
 #[derive(Default)]
-pub(in crate::game) struct ScreenState {
+pub struct ScreenState {
     pub(in crate::game) observed: Option<ObservedScreen>,
     pub(in crate::game) build: ScreenBuildState,
     /// The last draw's regions and the screen they are of (`ScreenView::regions`).

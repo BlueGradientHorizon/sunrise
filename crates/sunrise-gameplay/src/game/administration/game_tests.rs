@@ -45,7 +45,7 @@ enum Action {
 }
 
 /// `GameTestInfo`.
-pub(in crate::game) struct Info {
+pub struct Info {
     id: u32,
     /// `id()`: the test's registry id.
     key: String,
@@ -184,7 +184,7 @@ pub(in crate::game) struct Batch {
 }
 
 /// What `GameTestRunner.Builder` is given.
-pub(in crate::game) struct RunnerOptions {
+pub struct RunnerOptions {
     halt_on_error: bool,
     batch_size: usize,
     clear_between_batches: bool,
@@ -264,7 +264,7 @@ fn batch_infos(infos: Vec<Info>, size: usize) -> Vec<Batch> {
 /// `/test verify`'s batches: each test in each rotation 100 times, with
 /// `RetryOptions(1, true)`, at the test's block if it has one; the batch
 /// index is the rotation's ordinal.
-pub(in crate::game) fn verify_batches(
+pub fn verify_batches(
     infos: &[Info],
     mut next_id: impl FnMut() -> u32,
 ) -> Vec<Batch> {
@@ -372,7 +372,7 @@ impl DimGrid {
 
 /// `StructureGridSpawner`: a grid per dimension, made when the first test of
 /// that dimension is placed (`firstTestNorthWestCorner.apply(dimension)`).
-pub(in crate::game) struct Grid {
+pub struct Grid {
     /// The column `createTestPositionAround` starts from: the source's.
     around: (i32, i32),
     per_row: i32,
@@ -417,7 +417,7 @@ enum Out {
     Coordinates(SummarySource, Vec<Dim>),
 }
 
-fn summary_line(context: Option<SummarySource>, text: Text, broadcast: bool) -> Out {
+pub fn summary_line(context: Option<SummarySource>, text: Text, broadcast: bool) -> Out {
     match context {
         Some(context) => Out::Source {
             context,

@@ -20,7 +20,7 @@ pub(in crate::game) struct SlotCandidate {
 }
 /// Whose slots a command addresses.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) enum Owner {
+pub enum Owner {
     Entity(Target),
     Block([i32; 3]),
 }

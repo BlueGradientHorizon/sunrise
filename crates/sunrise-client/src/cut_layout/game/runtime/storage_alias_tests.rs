@@ -6,7 +6,8 @@
 use sunrise_client::settings::Settings;
 use sunrise_gameplay_common::game::launch_options::Options;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::{Resources, load_resources};
+use sunrise_gameplay_common::game::Resources;
+use crate::game::load_resources;
 use super::*;
 use sunrise_core::nbt::{Tag, parse_snbt};
 

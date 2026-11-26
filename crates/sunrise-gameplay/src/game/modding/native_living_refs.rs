@@ -53,7 +53,7 @@ pub(in crate::game::server_side) fn player_slot<'a>(
 }
 
 /// The `/item` slot name of an equipment slot.
-pub(in crate::game::server_side) fn slot_name(slot: EquipmentSlot) -> &'static str {
+pub fn slot_name(slot: EquipmentSlot) -> &'static str {
     match slot {
         EquipmentSlot::MainHand => "weapon.mainhand",
         EquipmentSlot::OffHand => "weapon.offhand",

@@ -9,6 +9,6 @@ pub fn name(game: &crate::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     game.common.res.facts().get(state).name.to_string()
 }
 
-pub(in crate::game) fn set_sneak(game: &mut crate::game::ServerGame<'_>, held: bool) {
+pub fn set_sneak(game: &mut crate::game::ServerGame<'_>, held: bool) {
     game.server_set_acting_sneak(held);
 }

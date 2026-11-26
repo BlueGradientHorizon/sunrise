@@ -11,7 +11,7 @@ use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::execution_role;
-use sunrise_gameplay_common::game::load_resources;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

@@ -69,7 +69,7 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
                 .spawn_mob_spawned(
                     "minecraft:ender_dragon",
                     [8.5, 70.0, 8.5],
-                    crate::game::creatures::SpawnSite::Finalizing(
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                         sunrise_sim::mobs::spawn_rules::Reason::SpawnItemUse,
                     ),
                 )

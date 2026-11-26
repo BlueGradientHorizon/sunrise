@@ -6,11 +6,11 @@ pub(crate) mod tests {
 
 use sunrise_client_gameplay::game::client_side::remote_tags::{Probe, Seen};
 
-use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
+use sunrise_gameplay_common::game::client_side::remote_tags::login;
 
-use sunrise_gameplay_common::game::client_side::remote_tags::tests::power_update;
+use sunrise_gameplay_common::game::client_side::remote_tags::power_update;
 
-use sunrise_gameplay_common::game::client_side::remote_tags::tests::update;
+use sunrise_gameplay_common::game::client_side::remote_tags::update;
 
 use sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES;
 

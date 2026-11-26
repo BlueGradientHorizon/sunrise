@@ -71,7 +71,7 @@ impl PortalSide<'_> {
 
 /// Where in its portal a traveller stood, and where its exit is to be found.
 #[derive(Clone, Copy, Debug)]
-pub(in crate::game) struct Plan {
+pub struct Plan {
     pub(in crate::game) dim: Dim,
     /// The border-clamped, scaled position (`approximateExitPos`).
     pub(in crate::game) approximate: BlockPos,
@@ -120,7 +120,7 @@ impl Plan {
 
 /// An entity on its way to a dimension that isn't loaded.
 #[derive(Debug)]
-pub(in crate::game) enum TransferredArrivalState {
+pub enum TransferredArrivalState {
     Entity(super::entity_initialization::TransferredEntityState),
     VehicleTree(super::persist::TransferredVehicleTree),
 }
@@ -237,7 +237,7 @@ pub(in crate::game::server_side) fn move_passengers(tag: &mut Tag, by: Vec3, tur
         move_passengers(rider, by, turn);
     }
 }
-pub(in crate::game::server_side) fn doubles(values: [f64; 3]) -> Tag {
+pub fn doubles(values: [f64; 3]) -> Tag {
     Tag::List(values.iter().map(|v| Tag::Double(v.to_bits())).collect())
 }
 /// Whether a `width` by `height` box moving from `from` to `to` meets the End
@@ -303,7 +303,7 @@ pub(in crate::game::server_side) fn set_arrival_pose(
 }
 
 /// A waiting entity as `sunrise_portal_arrivals.dat` keeps it.
-pub(in crate::game::server_side) fn arrival_tag(a: &Arrival) -> Tag {
+pub fn arrival_tag(a: &Arrival) -> Tag {
     let p = &a.plan;
     Tag::compound([
         ("dimension", Tag::String(p.dim.id().into())),
@@ -322,7 +322,7 @@ pub(in crate::game::server_side) fn arrival_tag(a: &Arrival) -> Tag {
     ])
 }
 /// The waiting entity `arrival_tag` wrote.
-pub(in crate::game::server_side) fn arrival_from_tag(a: &Tag) -> Option<Arrival> {
+pub fn arrival_from_tag(a: &Tag) -> Option<Arrival> {
     let int = |k: &str| match a.get(k) {
         Some(Tag::Int(v)) => Some(*v),
         _ => None,

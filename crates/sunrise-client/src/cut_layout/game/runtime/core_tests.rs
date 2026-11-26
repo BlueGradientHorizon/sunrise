@@ -7,7 +7,7 @@ use sunrise_gameplay::game::server_side::autosave_server::autosave_interval;
 #[test]
 #[ignore = "daily"]
 fn client_option_snapshots_follow_settings() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         game.side.settings.fov = 90.0;
         game.side.settings.render_distance = 12;
         game.side.settings.gamma = 0.75;
@@ -42,7 +42,7 @@ fn client_option_snapshots_follow_settings() {
 #[test]
 #[ignore = "daily"]
 fn client_input_options_follow_settings() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         game.side.settings.sensitivity = 0.25;
         game.side.settings.invert_x = true;
         game.side.settings.invert_y = false;
@@ -315,15 +315,15 @@ fn the_block_outline_stays_off_the_panorama() {
 #[test]
 fn a_snuffed_candle_and_candle_cake_smoke_at_vanillas_offsets() {
     assert_eq!(
-        crate::game::ServerGame::candle_offsets("minecraft:candle", Some(1)),
+        sunrise_gameplay::game::ServerGame::candle_offsets("minecraft:candle", Some(1)),
         [[8u8, 8, 8]].as_slice()
     );
     assert_eq!(
-        crate::game::ServerGame::candle_offsets("minecraft:red_candle", Some(3)),
+        sunrise_gameplay::game::ServerGame::candle_offsets("minecraft:red_candle", Some(3)),
         [[8u8, 5, 10], [6, 7, 8], [9, 8, 7]].as_slice()
     );
     assert_eq!(
-        crate::game::ServerGame::candle_offsets("minecraft:candle_cake", None),
+        sunrise_gameplay::game::ServerGame::candle_offsets("minecraft:candle_cake", None),
         [[8u8, 16, 8]].as_slice()
     );
 }
@@ -406,21 +406,21 @@ fn a_mod_screen_on_a_machine_menu_takes_the_stock_layout_out() {
     let stock = Some((8.0, 109.0));
     // A mod screen is open: the stock grid does not answer.
     assert_eq!(
-        crate::game::ServerGame::stock_machine_slot(stock, true),
+        sunrise_gameplay::game::ServerGame::stock_machine_slot(stock, true),
         None
     );
     // No mod screen: the hopper and dispenser layouts are untouched.
     assert_eq!(
-        crate::game::ServerGame::stock_machine_slot(stock, false),
+        sunrise_gameplay::game::ServerGame::stock_machine_slot(stock, false),
         stock
     );
     // Other menus have no stock layout to stand back from.
     assert_eq!(
-        crate::game::ServerGame::stock_machine_slot(None, true),
+        sunrise_gameplay::game::ServerGame::stock_machine_slot(None, true),
         None
     );
     assert_eq!(
-        crate::game::ServerGame::stock_machine_slot(None, false),
+        sunrise_gameplay::game::ServerGame::stock_machine_slot(None, false),
         None
     );
 }
