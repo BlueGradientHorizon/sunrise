@@ -475,8 +475,18 @@ pub fn pipeline_shaders(
                 .iter()
                 .map(|(n, t)| (n.as_str(), t.as_str()))
                 .collect();
-            let (extracted_bindings, pc_size) =
-                sunrise_mod_pipeline::extract_program_bindings(&sources, textured, &[], &include);
+            let (extracted_bindings, pc_size) = match sunrise_mod_pipeline::extract_program_bindings(
+                &sources,
+                textured,
+                &[],
+                &include,
+            ) {
+                Ok(found) => found,
+                Err(problem) => {
+                    refused.push(problem.to_string());
+                    continue;
+                }
+            };
             let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = extracted_bindings
                 .iter()
                 .map(|(name, kind)| sunrise_mod_pipeline::ModBinding {
@@ -581,8 +591,18 @@ pub fn pipeline_shaders(
             .iter()
             .map(|(n, t)| (n.as_str(), t.as_str()))
             .collect();
-        let (extracted_bindings, pc_size) =
-            sunrise_mod_pipeline::extract_program_bindings(&sources, textured, &[], &include);
+        let (extracted_bindings, pc_size) = match sunrise_mod_pipeline::extract_program_bindings(
+            &sources,
+            textured,
+            &[],
+            &include,
+        ) {
+            Ok(found) => found,
+            Err(problem) => {
+                refused.push(problem.to_string());
+                continue;
+            }
+        };
         let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = extracted_bindings
             .iter()
             .map(|(name, kind)| sunrise_mod_pipeline::ModBinding {
