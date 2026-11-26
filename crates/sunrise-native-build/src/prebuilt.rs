@@ -647,13 +647,13 @@ pub struct Built {
     pub catalog: internals::Catalog,
 }
 
-/// Compiles the mods (`resolution`'s order, each with its installed mod dependencies) and the
-/// launcher's executable against the prebuilt game `package`, by `route` ([`Route::of`] the same
-/// `projects`), under `builds` (`native/prebuilt-build`), in folders keyed by the SDK's inputs
-/// ([`kept_build`]): the API route in `api-<key>`, the engine route in `rustc-<key>`, each mod's
-/// library reused only while its own inputs are unchanged, and the registry route's cargo build in
-/// `<key>`, staged per mods folder (`mods`). Returns the executable, its dynamic libraries and
-/// the build's validated internals catalog.
+/// Compiles the mods (`resolution`'s order, each with its installed mod dependencies) against
+/// the prebuilt game `package`, by `route` ([`Route::of`] the same `projects`), under `builds`
+/// (`native/prebuilt-build`), in folders keyed by the SDK's inputs ([`kept_build`]): the API route
+/// in `api-<key>`, the engine route in `rustc-<key>`, each mod's library reused only while its own
+/// inputs are unchanged, and the registry route's cargo build in `<key>`, staged per mods folder
+/// (`mods`). Returns the SDK's unchanged game executable, the runtime and compiled mod libraries
+/// to install beside it, and the build's validated internals catalog.
 // Unlike the source workspace, this route invokes rustc with only selected --extern
 // libraries; it does not resolve or compile arbitrary transitive Cargo dependencies.
 #[allow(clippy::too_many_arguments)]
