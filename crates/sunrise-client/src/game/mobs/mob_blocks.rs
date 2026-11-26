@@ -634,7 +634,9 @@ impl Game<'_> {
         let Some(head) = render::part_transform(mob, alpha as f32, camera, self, "head") else {
             return;
         };
-        if let Some(kind) = super::armor_stands::skull_kind(&stack.item) {
+        if let Some(kind) =
+            super::armor_stands::skull_kind(&self.pack.item_renderer.models, &stack.item)
+        {
             // Only the renderers that add a `CustomHeadLayer` draw a skull:
             // the humanoid mobs, the illagers, the villagers, the copper golem
             // and the avatars.
