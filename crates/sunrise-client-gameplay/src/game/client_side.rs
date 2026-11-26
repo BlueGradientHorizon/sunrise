@@ -1533,7 +1533,7 @@ pub struct ClientState {
     pub(in crate::game::client_side) name_tag_layouts: names::NameTagLayouts,
     pub see_through_collector: text_displays::SeeThroughCollector,
     pub(in crate::game::client_side) translucent_display_collector:
-        pub text_displays::TranslucentDisplayCollector,
+        text_displays::TranslucentDisplayCollector,
     pub(in crate::game::client_side) display_visible_scratch: Vec<(i32, f64)>,
     pub(in crate::game::client_side) block_display_parts_scratch: Vec<u32>,
     pub(in crate::game::client_side) display_inline_profiles_scratch:
