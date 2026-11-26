@@ -62,12 +62,14 @@ pub trait RenderDataSource {
 
 /// What a draw tells the game at the RETURN of `EntityModel.setupAnim` for each model it poses.
 pub trait ModelPosed {
-    /// `layer` is the model's key in `Mob::kind`'s layers (`main`, `zombie#chestplate`);
+    /// `layer` is the model's `ModelLayerLocation` (`minecraft:zombie#chestplate`); `camera` is
+    /// the draw's camera position (`None` for a draw placed without one, such as a screen's);
     /// `model` lends the posed hierarchy.
     fn posed(
         &self,
         mob: &Mob,
         partial: f32,
+        camera: Option<glam::DVec3>,
         layer: &str,
         model: &mut dyn mod_api::FrameModelPoseEdit,
     );
@@ -93,6 +95,7 @@ pub fn native_living_model_posed(
 fn model_posed(
     m: &Mob,
     partial: f32,
+    camera: Option<glam::DVec3>,
     data: &dyn RenderDataSource,
     key: &str,
     layout: Option<&BakedFrameModel>,
@@ -101,21 +104,23 @@ fn model_posed(
     let (Some(observer), Some(layout)) = (data.model_posed(), layout) else {
         return;
     };
+    // Interned: a listener is asked for every posed model of every draw.
     let location: Cow<'_, str> = if key == "main" {
-        format!("{}#main", m.kind.id).into()
+        interned(format_args!("{}#main", m.kind.id))
     } else if !key.contains('#') {
-        format!("minecraft:{key}#main").into()
+        interned(format_args!("minecraft:{key}#main"))
     } else if key
         .split_once('#')
         .is_some_and(|(model, _)| model.contains(':'))
     {
-        key.into()
+        Cow::Borrowed(key)
     } else {
-        format!("minecraft:{key}").into()
+        interned(format_args!("minecraft:{key}"))
     };
     observer.posed(
         m,
         partial,
+        camera,
         &location,
         &mut frame_model::PosedEdit::new(layout, poses),
     );
@@ -1797,7 +1802,18 @@ pub fn render_with_frame(
                     base_transform(m, alpha, shifted)
                 });
             render_visible(
-                m, alpha, bases, atlas, light, data, extra, paint, frame, out, None,
+                m,
+                alpha,
+                Some(camera),
+                bases,
+                atlas,
+                light,
+                data,
+                extra,
+                paint,
+                frame,
+                out,
+                None,
             );
         } else {
             frame.model = None;
@@ -1808,6 +1824,7 @@ pub fn render_with_frame(
     render_visible(
         m,
         alpha,
+        Some(camera),
         [base_transform(m, alpha, camera)],
         atlas,
         light,
@@ -1841,6 +1858,7 @@ pub fn render_skinned(
     render_visible(
         m,
         alpha,
+        Some(camera),
         [base_transform(m, alpha, camera)],
         atlas,
         light,
@@ -2112,6 +2130,7 @@ pub fn render_layers(
     render_visible(
         m,
         alpha,
+        Some(camera),
         [base],
         atlas,
         light,
@@ -2138,6 +2157,7 @@ pub fn render_posed(
     render_visible(
         m,
         alpha,
+        None,
         [base],
         atlas,
         light,
@@ -2323,6 +2343,7 @@ pub fn render_extra_layers(
     model_posed(
         m,
         alpha,
+        Some(camera),
         data,
         body.keys()[0],
         body.layout(data.mob_data()).map(|l| &**l),
@@ -2434,6 +2455,7 @@ pub fn render_equipment_layers(
     model_posed(
         m,
         alpha,
+        Some(camera),
         data,
         body.keys()[0],
         body.layout(data.mob_data()).map(|l| &**l),
@@ -2488,6 +2510,7 @@ pub fn render_equipment_layers(
                 model_posed(
                     m,
                     alpha,
+                    Some(camera),
                     data,
                     &layer.model,
                     custom
@@ -2538,6 +2561,7 @@ pub fn render_equipment_layers(
 fn render_visible(
     m: &Mob,
     alpha: f32,
+    camera: Option<glam::DVec3>,
     bases: impl IntoIterator<Item = glam::Mat4>,
     atlas: Atlas,
     light: u32,
@@ -2571,6 +2595,7 @@ fn render_visible(
         render_selected(
             m,
             alpha,
+            camera,
             base,
             atlas,
             light,
@@ -2602,6 +2627,7 @@ fn render_visible(
 fn render_selected(
     m: &Mob,
     alpha: f32,
+    camera: Option<glam::DVec3>,
     base: glam::Mat4,
     atlas: Atlas,
     light: u32,
@@ -2678,6 +2704,7 @@ fn render_selected(
     model_posed(
         m,
         alpha,
+        camera,
         data,
         body.keys()[0],
         body.layout(data.mob_data()).map(|l| &**l),
@@ -2882,6 +2909,7 @@ fn render_selected(
                 model_posed(
                     m,
                     alpha,
+                    camera,
                     data,
                     &layer.model,
                     custom
@@ -2991,6 +3019,7 @@ fn render_selected(
         model_posed(
             m,
             alpha,
+            camera,
             data,
             model,
             data.mob_data().frame_models.get(part).map(|l| &**l),

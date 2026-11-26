@@ -12,8 +12,11 @@ pub trait Hooks {
     /// `EquipmentLayerRenderer`), so a worn chestplate's model gets a call of its own. `entity` is
     /// the draw's render state. `layer` names the model by vanilla's `ModelLayerLocation`
     /// (`minecraft:player#main`, `minecraft:zombie#chestplate`; a mod-registered layer is
-    /// `mymod:golem#main`), so a mod-registered layer or renderer is covered too. `model` lends the
-    /// posed hierarchy as a [`crate::FrameModelPoseEdit`], addressed by the part indices
+    /// `mymod:golem#main`), so a mod-registered layer or renderer is covered too; a model the
+    /// game names without a namespace reads as `minecraft:`. A mod layer that redraws stock layers
+    /// (`StockLayerDraw::draw_stock_layer`) poses the body and those layers again, and the hook
+    /// fires again for each of them, so keep a listener's edit a function of its inputs. `model`
+    /// lends the posed hierarchy as a [`crate::FrameModelPoseEdit`], addressed by the part indices
     /// [`crate::FrameModel::part`] resolves: `set_pose(index, pose)` writes position, rotation and
     /// scale, and `reset_pose(index)` returns a part to its bind pose. There is no `hide`: hide
     /// in `render_living_pre`, and use a zero scale here if a part must vanish mid-pose. A

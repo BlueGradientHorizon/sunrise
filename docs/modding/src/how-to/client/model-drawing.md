@@ -592,7 +592,9 @@ One living draw runs four phases, in order:
 
 `living_model_posed(entity, layer, model)` fires once for each model that gets posed, the body and
 each armour or equipment model that runs its own setup. `layer` is the model's `ModelLayerLocation`
-(`minecraft:player#main`). `model` is a `&mut dyn FrameModelPoseEdit`: find a part's index as in
+(`minecraft:player#main`, `minecraft:zombie#chestplate`); a model the game names without a namespace reads as
+`minecraft:`. A mod layer that redraws stock layers (`StockLayerDraw::draw_stock_layer`) poses the body and those
+layers again, and the hook fires again for each, so keep an edit a function of its inputs. `model` is a `&mut dyn FrameModelPoseEdit`: find a part's index as in
 [the final model](#read-the-final-body-model), then `set_pose(index, PartPose)` writes position,
 rotation and scale, and `reset_pose(index)` returns the part to its bind pose. A non-finite write
 returns `false` and the part keeps its pose. Hiding stays in Select. With no listener, no event is built.

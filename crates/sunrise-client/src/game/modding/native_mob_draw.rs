@@ -477,13 +477,18 @@ impl render::ModelPosed for Game<'_> {
         &self,
         mob: &Mob,
         partial: f32,
+        camera: Option<DVec3>,
         layer: &str,
         model: &mut dyn mod_api::FrameModelPoseEdit,
     ) {
-        let camera = self.eye_position().map_or_else(
-            || DVec3::new(mob.position.x, mob.position.y, mob.position.z),
-            DVec3::from,
-        );
+        // The draw's own camera, as its Pre and Post hooks see it; a draw placed without one
+        // (a screen's) measures from the eye.
+        let camera = camera.unwrap_or_else(|| {
+            self.eye_position().map_or_else(
+                || DVec3::new(mob.position.x, mob.position.y, mob.position.z),
+                DVec3::from,
+            )
+        });
         // This window's own player is drawn from a model made for the frame (id 0).
         let id = render_id(mob.id, mob.id == 0, self.own_entity_id());
         let entity = entity_render_state(mob, id, partial, camera);
