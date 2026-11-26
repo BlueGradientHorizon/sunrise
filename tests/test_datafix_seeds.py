@@ -330,6 +330,14 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
         self.assertGreater((keep / key).stat().st_mtime, old_time + 3600)
         self.assertEqual((dest2 / 'worlds' / '1.19' / 'level.dat').read_bytes(), b'modern-119')
 
+    def test_prepare_keeps_the_content_of_the_lock_file(self):
+        keep = self.base / 'keep'
+        keep.mkdir()
+        (keep / datafix_seeds.LOCK_NAME).write_text('held', encoding='utf-8')
+        datafix_seeds.prepare(self.base / 'job' / 'datafix', keep, key='6' * 64, expected=self.expected,
+                              generate=lambda scratch, _m: self.populate(scratch))
+        self.assertEqual((keep / datafix_seeds.LOCK_NAME).read_text(encoding='utf-8'), 'held')
+
     def test_incomplete_generation_publishes_nothing(self):
         keep = self.base / 'keep'
         dest = self.base / 'job' / 'datafix'

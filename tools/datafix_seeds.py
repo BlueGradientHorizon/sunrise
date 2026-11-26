@@ -354,7 +354,7 @@ def prepare(dest_root, keep_dir, *, key=None, manifest=None, expected=None, gene
     started = time.monotonic()
     keep.mkdir(parents=True, exist_ok=True)
     dest.mkdir(parents=True, exist_ok=True)
-    with open(keep / LOCK_NAME, 'w') as handle:
+    with open(keep / LOCK_NAME, 'a') as handle:
         file_lock.lock(handle)
         snapshot_dir = keep / key
         if snapshot_dir.exists() and snapshot_complete(snapshot_dir, expected, strict_top=True):
