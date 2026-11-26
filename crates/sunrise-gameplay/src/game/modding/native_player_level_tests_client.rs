@@ -1,6 +1,6 @@
 use super::Dim;
 use super::native_entity_refs::tests::run_fresh_cases;
-use super::native_guest_turn_tests::with_guests;
+use crate::game::native_guest_turn_tests::with_guests;
 use crate::game::server_side::native_player_level_tests::diamonds;
 use crate::game::server_side::native_player_level_tests::dropped;
 use crate::game::server_side::native_player_level_tests::in_the_nether;

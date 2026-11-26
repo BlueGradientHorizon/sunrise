@@ -136,7 +136,7 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
         (first, counts[0])
     }
     let mut unregistered = None;
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         unregistered = Some(scene(game))
     });
     assert!(install_special_model_factories(BTreeMap::from([(
@@ -146,7 +146,7 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
             SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched)),
         ),
     )])));
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         assert_eq!(scene(game), unregistered.unwrap());
     });
     assert!(!UNMATCHED_ASKED.load(Ordering::Relaxed));
@@ -188,7 +188,7 @@ fn special_item_draw_cost() {
             ),
         ),
     )]);
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         // Dirt becomes a special model drawing stone's cube under stone's display transforms.
         let special = game.side.client_pack.item_renderer.decode_definition(
             r#"{"model":{"type":"minecraft:special","base":"minecraft:block/stone","model":{"type":"test:stone"}}}"#,

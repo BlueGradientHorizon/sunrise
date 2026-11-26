@@ -7,7 +7,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn synced_selector_tokens_survive_client_registry_refresh() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "SelectorSyncTest").unwrap();
             let tokens = vec![SelectorToken {

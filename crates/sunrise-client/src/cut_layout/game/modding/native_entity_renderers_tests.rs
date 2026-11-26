@@ -238,7 +238,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::C
         sunrise_client_gameplay::game::client_side::mods_client::register_entity_renderers(
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
         );
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.resolve_entity_renderers();
             check(game, &scene);
         });

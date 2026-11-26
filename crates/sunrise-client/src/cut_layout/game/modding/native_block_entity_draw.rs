@@ -57,7 +57,7 @@ use super::*;
         ];
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("golem_mod", Box::new(Golem))].into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 sunrise_client_gameplay::game::client_side::mods_client::register_layer_definitions(
                     sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
                     &game.vanilla_root(),

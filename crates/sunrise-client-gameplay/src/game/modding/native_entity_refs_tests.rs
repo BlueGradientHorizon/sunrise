@@ -1,10 +1,10 @@
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_gameplay_common::game::test_fixtures::{
-    acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, resolve_parts, tempfile,
+    acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, tempfile,
 };
 pub use sunrise_gameplay_common::game::test_fixtures::{
     FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
-    run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+    resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
 };
 
 /// Create a hidden desktop window during winit's initial `Resumed` callback.

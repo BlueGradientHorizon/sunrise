@@ -66,7 +66,7 @@ fn a_mods_paint_draws_hotbar_items_and_blits_and_refuses_what_it_cannot_draw() {
     let mods: mod_api::Mods = vec![ModEntry::new("painter", Box::new(Painter))].into();
     let (mut scaled, mut plain) = (HudBatch::scratch([320, 240]), HudBatch::scratch([320, 240]));
     with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.inventory[0] = Some(ItemStack::new("minecraft:stone", 5));
             game.component_hover_effect(&mut scaled, &style, (40.0, 30.0));
             // The same stack as `DrawContext::item_stack` would draw it, unscaled, for comparison.

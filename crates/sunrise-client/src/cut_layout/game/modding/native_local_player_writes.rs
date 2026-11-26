@@ -120,7 +120,7 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 loaded_client(game);
                 let stone = game
                     .pack
@@ -230,7 +230,7 @@ mod tests {
         };
         use sunrise_world::moving_colliders::{Placed, Prepared, Scope};
 
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             loaded_client(game);
             let start = game.player.as_ref().unwrap().position;
             let player_id = game.own_entity_id() as u32;
@@ -328,7 +328,7 @@ mod tests {
         let crossings = Arc::clone(&walk.0);
         let mods = vec![mod_api::ModEntry::new("walk", Box::new(walk))].into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 loaded_client(game);
                 // Keep the tick's normal gravity away from a section boundary.
                 game.player.as_mut().unwrap().position.y = 64.5;
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn local_displacements_refuse_bad_deltas_and_players_held_in_place() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             loaded_client(game);
             let before = game.player.as_ref().unwrap().position;
             for x in [f64::NAN, f64::INFINITY, -f64::INFINITY, 64.5, -64.5] {

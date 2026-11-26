@@ -1131,7 +1131,7 @@ pub(in crate::game) mod mod_capability_tests {
     #[test]
     #[ignore = "daily"]
     fn a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::declared_part_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
+        use {crate::game::server_side::native_entity_refs::tests::declared_part_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
         let Some(root) = declared_part_root(
             "game::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
         ) else {

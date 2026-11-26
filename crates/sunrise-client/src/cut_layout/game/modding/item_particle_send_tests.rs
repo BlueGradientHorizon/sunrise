@@ -50,7 +50,7 @@ fn stack_particle_crosses_server_packet_and_resolves_apple() {
         transfer = Some((packet, sync));
     });
     let (packet, sync) = transfer.unwrap();
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         use sunrise_protocol::packets::play::Clientbound;
         let mut reader = sunrise_protocol::buf::Reader::new(&packet);
         let id = reader.varint().unwrap();

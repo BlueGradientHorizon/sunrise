@@ -11,8 +11,6 @@ pub(in crate::game) use server_side::ahead;
 pub(in crate::game) use server_side::allays;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::api_values_server;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::armor_stands;
 #[allow(unused_imports)]
@@ -23,22 +21,16 @@ pub(in crate::game) use server_side::attachment_sync;
 pub(in crate::game) use server_side::beds;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::beehives;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_edits;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_entity_anims;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_entity_ticks;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_ticks;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_use_completion;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::boarding;
 #[allow(unused_imports)]
@@ -65,12 +57,8 @@ pub(in crate::game) use server_side::campfire;
 pub(in crate::game) use server_side::carrier_transfers;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::cat_spawner;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::chiseled_bookshelf;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::combat;
 #[allow(unused_imports)]
@@ -93,10 +81,6 @@ pub(crate) use server_side::cushions;
 pub(in crate::game) use server_side::custom_spawner_level;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::custom_spawners;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::debug_stick;
 #[allow(unused_imports)]
@@ -105,8 +89,6 @@ pub(in crate::game) use server_side::decided_action;
 pub use server_side::dedicated;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::deflect;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::dispense_bucket;
 #[allow(unused_imports)]
@@ -115,8 +97,6 @@ pub(in crate::game) use server_side::dispense_fixture;
 pub(in crate::game) use server_side::dispenser;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::dragon;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::dropped_item_setter;
 #[allow(unused_imports)]
@@ -125,20 +105,12 @@ pub(in crate::game) use server_side::dynamic_light_emission;
 pub(in crate::game) use server_side::early_game_rules;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::enchant_effects;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::end;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::enderman;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::entity_initialization;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::entity_residency;
 #[allow(unused_imports)]
@@ -183,12 +155,8 @@ pub(in crate::game) use server_side::falling_save;
 pub(in crate::game) use server_side::falling_tick;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::fangs;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::finalize_spawn;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::fishing;
 #[allow(unused_imports)]
@@ -203,56 +171,26 @@ pub(in crate::game) use server_side::game_mode;
 pub use server_side::game_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ghasts;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::golems;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::hot_paths;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::infiniburn;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::initial_spawn;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::integrated;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::item_durability;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::item_entities;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::item_hurt;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::item_use;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::journal_level_write;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan;
 #[allow(unused_imports)]
@@ -271,8 +209,6 @@ pub(in crate::game) use server_side::lan_entities;
 pub(in crate::game) use server_side::lan_far;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_menus;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_mobs;
 #[allow(unused_imports)]
@@ -289,8 +225,6 @@ pub(in crate::game) use server_side::lan_quiet;
 pub(in crate::game) use server_side::lan_stations;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_trade_decisions;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_trading;
 #[allow(unused_imports)]
@@ -311,8 +245,6 @@ pub(in crate::game) use server_side::levels;
 pub(in crate::game) use server_side::living_attributes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::llamas;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::loot_rolls;
 #[allow(unused_imports)]
@@ -323,12 +255,8 @@ pub(in crate::game) use server_side::machines;
 pub(in crate::game) use server_side::melee;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::memory;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::minecart_moves;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mob_gear;
 #[allow(unused_imports)]
@@ -339,8 +267,6 @@ pub(in crate::game) use server_side::mob_looting;
 pub(in crate::game) use server_side::mod_api_host_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mod_container_openers;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::modapi_server;
 #[allow(unused_imports)]
@@ -349,10 +275,6 @@ pub(in crate::game) use server_side::mounts;
 pub(in crate::game) use server_side::native_ai_pause;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_biome_keys;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_block_entity_refs;
 #[cfg(test)]
@@ -382,8 +304,6 @@ pub(in crate::game) use server_side::native_boss_bar_refs;
 pub(in crate::game) use server_side::native_bots;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_chat_recipients;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_chunk_areas;
 #[allow(unused_imports)]
@@ -392,8 +312,6 @@ pub(in crate::game) use server_side::native_chunk_queries;
 pub(in crate::game) use server_side::native_chunk_save;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_colliders;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_collision_exclusions;
 #[allow(unused_imports)]
@@ -402,12 +320,8 @@ pub(in crate::game) use server_side::native_command_reads;
 pub(in crate::game) use server_side::native_config_files;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_console;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_criteria;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_data_maps;
 #[allow(unused_imports)]
@@ -424,22 +338,12 @@ pub(in crate::game) use server_side::native_entity_commands;
 pub(in crate::game) use server_side::native_entity_data;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_extinguish;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_invulnerable;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_kind;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_motion;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_entity_moves;
 #[allow(unused_imports)]
@@ -460,44 +364,22 @@ pub(in crate::game) use server_side::native_explosion_destroy;
 pub(in crate::game) use server_side::native_explosion_resistance;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_explosions;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_falling;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_fishing_hook_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_game_event_context;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_goal_ticks;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_hanging;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_harvest_queries;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_inventories;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_item_places;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_border;
 #[allow(unused_imports)]
@@ -506,8 +388,6 @@ pub(in crate::game) use server_side::native_level_effects;
 pub(in crate::game) use server_side::native_level_events;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_items;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_level_players;
 #[allow(unused_imports)]
@@ -535,8 +415,6 @@ pub(in crate::game) use server_side::native_living_position;
 pub(in crate::game) use server_side::native_living_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_living_writes;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_menu_places;
 #[allow(unused_imports)]
@@ -553,44 +431,28 @@ pub(in crate::game) use server_side::native_mob_navigation;
 pub(in crate::game) use server_side::native_mob_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_wanted_position;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mobs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mounts;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_pending_children;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_place_feature;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_attack;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_break;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_cooldowns;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_disconnect;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_ender_chest;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_inventory;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_modes;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_moves;
 #[allow(unused_imports)]
@@ -599,22 +461,16 @@ pub(in crate::game) use server_side::native_player_persistent_data;
 pub(in crate::game) use server_side::native_player_place;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_respawn;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_stats;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_player_visibility;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_portal_destination;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_profiles;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_projectile_launch;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_projectile_refs;
 #[allow(unused_imports)]
@@ -625,10 +481,6 @@ pub(in crate::game) use server_side::native_quick_move;
 pub(in crate::game) use server_side::native_raid_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_recipe_sync;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_ride_player;
 #[allow(unused_imports)]
@@ -637,20 +489,14 @@ pub(in crate::game) use server_side::native_scoreboard;
 pub(in crate::game) use server_side::native_scoreboard_teams;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_server_distances;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_singleplayer_owner;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_sound_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_structure_placement;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_structures;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_tick_time;
 #[allow(unused_imports)]
@@ -667,8 +513,6 @@ pub(in crate::game) use server_side::neoforge_mob_maps;
 pub(in crate::game) use server_side::nether_portal;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ominous_item_spawner;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ordered_tick;
 #[allow(unused_imports)]
@@ -689,30 +533,16 @@ pub(in crate::game) use server_side::perf_remote;
 pub(in crate::game) use server_side::persist;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::pick_hotbar;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::piglins;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::piston_carry_state;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::player_destroy;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::player_hit_sources;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::player_residency;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::player_spawn;
 #[allow(unused_imports)]
@@ -724,18 +554,10 @@ pub(in crate::game) use server_side::profile_capture_server;
 pub(in crate::game) use server_side::projectile_block_impacts;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::projectile_spawned;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::pumpkin;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::raids;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::respawn_anchor;
 #[allow(unused_imports)]
@@ -749,10 +571,6 @@ pub(in crate::game) use server_side::runtime_levels;
 mod runtime_reset_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side as server_state;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::scoreboard;
 #[allow(unused_imports)]
@@ -767,8 +585,6 @@ pub(in crate::game) use server_side::server_lifecycle;
 pub(in crate::game) use server_side::server_reload;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_travel;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::shield;
 #[allow(unused_imports)]
@@ -778,12 +594,8 @@ pub(in crate::game) use server_side::slot_changes;
 #[cfg(any(test, feature = "test-support"))]
 #[path = "game/modding/slot_rules_tests.rs"]
 pub mod slot_rules_tests;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::slot_takes;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::spawner;
 #[allow(unused_imports)]
@@ -827,17 +639,13 @@ pub(in crate::game) use server_side::player_server;
 pub(in crate::game) use server_side::sign_edit_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::spawner_server;
-#[cfg(test)]
 #[allow(unused_imports)]
-#[cfg(test)]
 #[allow(unused_imports)]
 #[cfg(feature = "state-digest")]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::state_digest;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::stats;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::structure_blocks;
 #[allow(unused_imports)]
@@ -850,8 +658,6 @@ pub(in crate::game) use server_side::test_blocks;
 pub(in crate::game) use server_side::test_environments;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::test_instances;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::tnt;
 #[allow(unused_imports)]
@@ -867,28 +673,18 @@ pub(in crate::game) use server_side::trial_spawner;
 pub(in crate::game) use server_side::trident;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::use_hand;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::using_item;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::vault;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::vehicle_teleport;
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::view_pass;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::villager_professions;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::villagers;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::wake_time;
 #[allow(unused_imports)]
@@ -897,20 +693,14 @@ pub(in crate::game) use server_side::wandering_trader;
 pub(in crate::game) use server_side::wind;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::wither;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_fluids;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_loading;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_update_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::xp_orb_targeting;
-#[cfg(test)]
-#[allow(unused_imports)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::zombie_reinforcements;
 #[allow(unused_imports)]
@@ -1038,7 +828,11 @@ pub(in crate::game) mod native_registry_entries;
 
 #[path = "game/modding/native_resources.rs"]
 pub(in crate::game) mod native_resources;
-pub(in crate::game) use server_side::{entity_server, lan_op, minecarts_server};
+#[cfg(any(test, feature = "test-support"))]
+pub use server_side::entity_server;
+#[cfg(not(any(test, feature = "test-support")))]
+pub(in crate::game) use server_side::entity_server;
+pub(in crate::game) use server_side::{lan_op, minecarts_server};
 use sunrise_gameplay_common::game::SideGame;
 impl<'g> SideGame<'g> for ServerGame<'g> {
     type State = server_side::ServerState;

@@ -632,7 +632,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
     let mut fixture = Fixture::new(true);
     let mut ran = false;
     with_finder(|| {
-        sunrise_gameplay::game::native_entity_refs::tests::with_uncached_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_uncached_client_game(|game| {
             ran = true;
             game.mods = fixture.sources();
             let staged = sunrise_client_gameplay::game::client_side::packs::stage_pack(

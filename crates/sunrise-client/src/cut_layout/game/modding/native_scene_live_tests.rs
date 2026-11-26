@@ -208,7 +208,7 @@ fn run(
 #[test]
 #[ignore = "daily"]
 fn a_scene_of_blocks_alone_keeps_no_state_and_reads_no_clock() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let blocks = vec![mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None)];
         let alone = Scene::new(blocks.clone());
         let (result, drawn) = draw(game, &alone, view());
@@ -230,7 +230,7 @@ fn a_scene_of_blocks_alone_keeps_no_state_and_reads_no_clock() {
 #[test]
 #[ignore = "daily"]
 fn a_scene_accepts_4096_blocks_and_refuses_4097_without_drawing_or_changing_state() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let furnace = mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None);
         // Literal boundary counts keep the expectation independent of the cap constant.
         let blocks = (0..4096)
@@ -280,7 +280,7 @@ fn a_scene_accepts_4096_blocks_and_refuses_4097_without_drawing_or_changing_stat
 #[test]
 #[ignore = "daily"]
 fn a_furnaces_particles_replay_pause_step_and_start_over_from_the_last_twenty_ticks() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let blocks = vec![mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None)];
         let scene = Scene::new(blocks).with_clock(SceneClock::new(11, 0, 0.0));
         // Forty ticks of flames and smoke, then the same forty from a fresh start.
@@ -334,7 +334,7 @@ fn a_furnaces_particles_replay_pause_step_and_start_over_from_the_last_twenty_ti
 #[test]
 #[ignore = "daily"]
 fn a_scene_holds_at_most_512_live_particles_the_blocks_own_counted() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let blocks = vec![mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None)];
         let puffs = |n| vec![smoke([0.5, 1.5, 0.5], [0.0; 3]); n];
         let scene = Scene::new(blocks).with_clock(SceneClock::new(21, 0, 0.0));
@@ -355,7 +355,7 @@ fn a_scene_holds_at_most_512_live_particles_the_blocks_own_counted() {
 #[test]
 #[ignore = "daily"]
 fn a_fifth_animating_scene_draws_its_last_state_and_is_refused_by_name() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let blocks = vec![mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None)];
         let scene = |id| Scene::new(blocks.clone()).with_clock(SceneClock::new(id, 0, 0.0));
         run(game, &scene(4), 0..=30);
@@ -386,7 +386,7 @@ fn a_fifth_animating_scene_draws_its_last_state_and_is_refused_by_name() {
 #[test]
 #[ignore = "daily"]
 fn scene_entities_are_drawn_and_refused_as_draw_context_entity_refuses_them() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let blocks = vec![mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None)];
         let clock = SceneClock::new(31, 0, 0.0).animate_blocks(false);
         let bare = draw(game, &Scene::new(blocks.clone()), view()).1;
@@ -427,7 +427,7 @@ fn scene_entities_are_drawn_and_refused_as_draw_context_entity_refuses_them() {
 #[ignore = "daily"]
 fn two_mods_scenes_of_the_same_id_keep_their_own_state() {
     use mod_api::content::crash::{ModCall, enter_native_mod};
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let blocks = vec![mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None)];
         let scene = Scene::new(blocks.clone()).with_clock(SceneClock::new(1, 0, 0.0));
         let as_mod = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: &'static str, ticks: Vec<u64>| {

@@ -7,11 +7,11 @@ use sunrise_gameplay_common::game::{
     native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
     player_identity::PlayerIdentityGameExt1 as _,
     resource_load::Progress,
-    test_fixtures::{acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, resolve_parts, tempfile},
+    test_fixtures::{acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, tempfile},
 };
 pub use sunrise_gameplay_common::game::test_fixtures::{
     FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
-    run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+    resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
 };
 
 pub fn collect_all_entities(

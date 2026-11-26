@@ -211,7 +211,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::C
         sunrise_client_gameplay::game::client_side::mods_client::register_entity_renderers(
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
         );
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.resolve_entity_renderers();
             check(game, &heard, &skeleton);
         });
@@ -331,7 +331,7 @@ fn a_failed_renderer_draws_the_types_model_until_a_resource_reload() {
 #[test]
 #[ignore = "daily"]
 fn a_sleeping_or_baby_frame_reads_as_the_model_lays_it() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let kind = game
             .res
             .mob_types()
@@ -355,7 +355,7 @@ fn a_sleeping_or_baby_frame_reads_as_the_model_lays_it() {
 #[test]
 #[ignore = "daily"]
 fn own_yaw_is_independent_of_body_rotation_across_a_wrap() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let kind = game
             .res
             .mob_types()
@@ -383,7 +383,7 @@ fn own_yaw_is_independent_of_body_rotation_across_a_wrap() {
 #[test]
 #[ignore = "daily"]
 fn extracted_living_signs_death_time_and_hurt_overlay_are_literal() {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let kind = game
             .res
             .mob_types()

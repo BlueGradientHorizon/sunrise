@@ -343,7 +343,7 @@ fn in_scene(
             sunrise_client_gameplay::game::client_side::mods_client::register_entity_renderers(
                 sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
             );
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 game.resolve_entity_renderers();
                 check(game, &heard, &flaky);
             });
@@ -359,7 +359,7 @@ fn in_scene(
         sunrise_client_gameplay::game::client_side::mods_client::register_entity_renderers(
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
         );
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.resolve_entity_renderers();
             check(game, &heard, &flaky);
         });
@@ -441,7 +441,7 @@ fn an_unregistered_tnt_is_byte_identical_to_the_vanilla_route() {
         assert!(status.success());
         return;
     }
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         game.resolve_entity_renderers();
         // fuse 79 + partial 0.5 → remaining 79.5: scale 1, not flashing.
         // fuse 80 + partial 0.5 → remaining 80.5: scale 1, flashing.

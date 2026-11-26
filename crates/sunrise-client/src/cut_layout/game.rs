@@ -801,6 +801,9 @@ mod sign_use_tests;
 #[path = "game/server_side.rs"]
 pub(crate) mod server_side;
 
+#[cfg(test)]
+pub(crate) use server_side::{entity_server, game_tests, native_entity_refs, native_guest_turn_tests};
+
 #[path = "game/runtime/transactions.rs"]
 pub(crate) mod transactions;
 

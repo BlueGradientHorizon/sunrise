@@ -27,7 +27,7 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
     sunrise_gameplay_common::game::in_own_process(
         "game::client_side::native_special_renderers::frame_tests::a_special_dropped_item_outlines_only_its_committed_world_vertices",
         || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 const ID: u32 = 1_900_000_101;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "SpecialOutlineTest").unwrap();
@@ -226,7 +226,7 @@ fn a_special_renderer_is_never_asked_inside_a_lifted_pass_isolated() {
         *ASKED_IN_PASS.lock().unwrap() = Some(asked(COUNT));
     }
     let mut stick_definition = None;
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
         install_special_stick(client);
         stick_definition = client
             .pack

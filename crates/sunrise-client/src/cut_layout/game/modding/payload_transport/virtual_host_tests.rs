@@ -43,7 +43,7 @@ fn virtual_host_is_the_rewritten_handshake_host() {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![ModEntry::new("rewrite", Box::new(Rewrite(seen.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 game.side.settings.render_distance = 2;
                 game.side.settings.simulation_distance = 2;
                 let options = sunrise_sim::world_options::WorldOptions {

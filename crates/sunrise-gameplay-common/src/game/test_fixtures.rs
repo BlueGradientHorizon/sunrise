@@ -290,6 +290,8 @@ pub fn resolve_parts<'g>(game: &impl super::SideGame<'g>) -> Result<(), String> 
     game.resolve_parts().map_err(|error| error.to_string())
 }
 
-pub fn fixture_facts_mut(resources: &mut std::sync::Arc<super::Resources>) -> &mut sunrise_items::blocks::BlockFacts {
+pub fn fixture_facts_mut(
+    resources: &mut std::sync::Arc<super::Resources>,
+) -> &mut sunrise_items::blocks::BlockFacts {
     &mut std::sync::Arc::get_mut(resources).unwrap().core.facts
 }

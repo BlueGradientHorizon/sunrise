@@ -565,7 +565,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
 
         // Run the real client click path and apply those authoritative packets. Both sides
         // know the declared caps; only the server executes the part's override.
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let _peer = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
             game.side.remote.as_mut().unwrap().builtin = std::sync::Arc::new(builtin);
             for packet in opening {

@@ -1000,7 +1000,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_applies_connection_group_payloads_and_refuses_client_writes() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "ConnGroupsClient").unwrap();
             game.side.remote.as_mut().unwrap().logged_in = true;

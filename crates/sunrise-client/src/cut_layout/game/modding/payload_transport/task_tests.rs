@@ -496,7 +496,7 @@ fn serving_game_drives_configuration_tasks() {
         )]
         .into(),
         || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 let port = publish_task_server(game);
                 use sunrise_protocol::packets::{Empty, configuration as cfg, play};
                 let (mut c, known) = if matches!(
@@ -749,7 +749,7 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
     ]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let port = publish_task_server(game);
             for name in PEER_NAMES {
                 let (mut peer, _, packs) = super::config_tests::configuration_peer(port, name);
@@ -837,7 +837,7 @@ fn peer_completion_rejects_other_connections() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let port = publish_task_server(game);
             let [(mut a, _, packs_a), (mut b, _, packs_b)] =
                 PEER_NAMES.map(|name| super::config_tests::configuration_peer(port, name));
@@ -941,7 +941,7 @@ fn retained_configuration_host_send_refuses_play_while_session_is_registered() {
         )]
         .into(),
         || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 let port = publish_task_server(game);
                 let (mut peer, _, known) =
                     super::config_tests::configuration_peer(port, "ConfigPeer");

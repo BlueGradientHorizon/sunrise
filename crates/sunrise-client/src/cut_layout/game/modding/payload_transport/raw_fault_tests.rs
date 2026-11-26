@@ -105,7 +105,7 @@ fn a_failing_raw_handler_rolls_back_alone_and_the_next_one_commits() {
     ]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.side.settings.render_distance = 2;
             game.side.settings.simulation_distance = 2;
             let options = sunrise_sim::world_options::WorldOptions {

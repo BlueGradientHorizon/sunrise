@@ -81,7 +81,7 @@ use sunrise_protocol::packets::{
                 let prepared = game.prepare_early_game_rules(loader).unwrap();
                 game.finish_open_world(prepared).unwrap();
             });
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 game.announce_data_bound(TagsUpdateCause::ClientPacketReceived {
                     integrated_server: true,
                 });
@@ -151,7 +151,7 @@ use sunrise_protocol::packets::{
         let heard = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![ModEntry::new("login_probe", Box::new(Both(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 // A client's view of a server's tags: the login applies them.
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "BoundLogin").unwrap();

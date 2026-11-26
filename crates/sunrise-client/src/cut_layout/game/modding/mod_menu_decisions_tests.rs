@@ -1030,7 +1030,7 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
             assert_eq!(depot(game), (1, 4, 5, 0));
 
             // The normal toast collector names the failing mod and hook once.
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
                 client.add_hook_panic_toasts();
                 assert_eq!(client.side.toast_manager.queued.len(), 1);
                 let Some(sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic { toast, .. }) =

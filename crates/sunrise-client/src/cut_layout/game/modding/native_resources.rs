@@ -186,7 +186,7 @@ mod tests {
                         .is_empty()
                 );
             }),
-            "client" => sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+            "client" => crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
                 let mut index = files("assets");
                 let model = "assets/demo/models/gem.json".to_owned();
                 let copies = vec![
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_assets_read_the_winning_pack_file() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let bytes = game
                 .resource(
                     PackType::ClientResources,

@@ -446,7 +446,7 @@ mod tests {
     #[ignore = "daily"]
     fn fluid_definitions_and_constraints_use_the_loaded_registry() {
         use mod_api::{Host, HostFluidStates};
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let host: &dyn Host = game;
             let water = host.fluid_key("minecraft:water").unwrap();
             let flowing = host.fluid_key("minecraft:flowing_water").unwrap();
@@ -1061,7 +1061,7 @@ mod crafting_remainder_tests {
                 client_fuel = grid[0].clone();
             });
             let client_fuel = client_fuel.unwrap();
-            sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|client| {
+            crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
                 sunrise_gameplay::game::native_entity_refs::tests::resolve_parts(client).unwrap();
                 assert!(mod_api::__private::item_listens(
                     mod_api::HookId::CraftingRemainder,

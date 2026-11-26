@@ -23,7 +23,7 @@ use sunrise_gameplay_common::game::client_side::native_panel::tests::stack;
     fn a_queued_search_is_heard_by_its_owner_when_its_box_draws() {
         use sunrise_gameplay_common::game::Screen;
         const WINDOW: [u32; 2] = [854, 480];
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let mods: mod_api::Mods =
                 vec![mod_api::ModEntry::new("jei", Box::new(Listener))].into();
             mod_platform::testing::with_mods(mods, || {

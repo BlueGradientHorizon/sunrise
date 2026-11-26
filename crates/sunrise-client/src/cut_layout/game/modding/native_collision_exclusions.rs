@@ -74,7 +74,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_client_sets_its_own_players_and_a_respawn_or_another_level_clears_them() {
         use sunrise_protocol::packets::play::{self, Clientbound as C};
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "Steve").unwrap();
             let spawn = |dimension: &str| play::SpawnInfo {

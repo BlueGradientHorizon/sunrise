@@ -5,7 +5,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn opening_and_closing_a_direct_screen_discards_pending_clicks() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.side.title.0 = None;
             game.player = Some(
                 sunrise_sim::motion::PlayerMotion::new(

@@ -8,7 +8,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn host_resolves_stack_particle_sprites() {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             // The game fixture resolves the particle providers, as content_root does.
             let stack = ItemStack::new("minecraft:apple", 1);
             let api_stack = stack.try_into_api().unwrap();

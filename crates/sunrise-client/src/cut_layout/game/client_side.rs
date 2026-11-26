@@ -1,4 +1,7 @@
 
+#[cfg(test)]
+pub(crate) use super::server_side::native_entity_refs;
+
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "blocks/beacon_cull_tests.rs"]

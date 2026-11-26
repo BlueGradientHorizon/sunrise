@@ -56,7 +56,7 @@ fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
 fn a_mods_dynamic_texture_draws_under_its_id_until_it_is_freed() {
     let mods = vec![ModEntry::new("api-only", Box::new(ApiOnly))];
     with_mods(mods.into(), || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             assert!(game.side.gui.atlas.dynamic_texture_pool.is_some());
             let id = Identifier::parse("api-only:dynamic/panel").unwrap();
             let name = "api-only:dynamic/panel";
@@ -92,7 +92,7 @@ fn a_mods_dynamic_texture_draws_under_its_id_until_it_is_freed() {
 fn a_foreign_id_is_not_owned_before_the_gui_atlas_is_asked() {
     let mods = vec![ModEntry::new("api-only", Box::new(ApiOnly))];
     with_mods(mods.into(), || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let green = GREEN.repeat(16 * 16);
             let make = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: &str| {
                 let id = Identifier::parse(id).unwrap();

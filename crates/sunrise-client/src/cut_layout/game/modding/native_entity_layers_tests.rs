@@ -271,7 +271,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::C
     ]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             game.resolve_entity_renderers();
             check(game, &scene);
         });

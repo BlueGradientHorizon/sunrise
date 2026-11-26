@@ -410,7 +410,7 @@ mod tests {
         }
         use mod_api::Host;
         use sunrise_protocol::connection::Pipe;
-        sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "EntitiesInTest").unwrap();
             let remote = game.side.remote.as_mut().unwrap();
