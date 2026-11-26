@@ -383,7 +383,7 @@ impl PreparedWorld {
         level.dimension = dim.id().to_owned();
         let shape = shapes.get(dim.id());
         let streaming_step = startup::step("world.make_streaming");
-        let (mut streaming, save, locator) = make_streaming(
+        let (mut streaming, save, locator, generator_type) = make_streaming(
             res,
             pack,
             options,
@@ -404,6 +404,7 @@ impl PreparedWorld {
         let mut world = Game::authoritative_world_for_mods(res, level.seed);
         world.attachments = save.load_attachments();
         world.shape = shape;
+        world.generator_type = Some(generator_type);
         world.fast_lava = sunrise_world::dimension_type::DimensionFacts::of_level(
             sunrise_core::LevelKey::parse(dim.id()).unwrap_or(sunrise_core::LevelKey::OVERWORLD),
         )
@@ -1082,6 +1083,10 @@ pub(in crate::game) struct ModStem {
 }
 
 impl ModStem {
+    /// The generator its stem names (`generator.type`): the mod's registered name.
+    fn generator_type(&self) -> Option<&str> {
+        self.json["generator"]["type"].as_str()
+    }
     pub(super) fn bind(
         biomes: &BiomeSourceData,
         json: serde_json::Value,
@@ -1112,7 +1117,8 @@ enum ModLevel {
     Staged(VanillaTerrain),
 }
 
-/// Resolve the world's pack or saved custom stem, or reuse the runtime stem bound at admission.
+/// Resolve the world's pack or saved custom stem, or reuse the runtime stem bound at admission,
+/// with the name of the registered generator that builds it.
 fn mod_terrain(
     overrides: &sunrise_world::worldgen::overrides::WorldgenOverrides,
     terrain_resources: TerrainResources<'_>,
@@ -1123,7 +1129,7 @@ fn mod_terrain(
     structures: bool,
     runtime_stem: Option<&ModStem>,
     saved_stem: Option<&sunrise_core::nbt::Tag>,
-) -> Option<std::result::Result<ModLevel, String>> {
+) -> Option<std::result::Result<(ModLevel, String), String>> {
     let bound;
     let stem = if let Some(stem) = runtime_stem {
         stem
@@ -1158,7 +1164,8 @@ fn mod_terrain(
         };
         &bound
     };
-    if stem.generator.vanilla_stages().any() {
+    let name = stem.generator_type().unwrap_or_default().to_owned();
+    let level = if stem.generator.vanilla_stages().any() {
         let Some(data) = stem.data.clone() else {
             return Some(Err(format!(
                 "{}: missing worldgen data for vanilla stages",
@@ -1193,7 +1200,8 @@ fn mod_terrain(
             )
             .map(ModLevel::Terrain),
         )
-    }
+    };
+    level.map(|level| level.map(|level| (level, name)))
 }
 
 /// The file beside the world that keeps the structure references of the level `id`. An id with a
@@ -1238,7 +1246,7 @@ pub(super) fn make_streaming(
     runtime: Option<&super::runtime_levels::Generate>,
     chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
     save_reporter: Arc<sunrise_client::chunk_io::SaveFailureReporter>,
-) -> Result<(Streaming, Arc<SaveDir>, Option<Arc<VanillaTerrain>>)> {
+) -> Result<(Streaming, Arc<SaveDir>, Option<Arc<VanillaTerrain>>, String)> {
     use sunrise_client::save::WorldGen;
     let generator = level.generator.as_ref().map(|g| g.settings());
     let saved_stem = generator.and_then(|s| s.get("dimensions")?.get(dim.id()));
@@ -1271,6 +1279,9 @@ pub(super) fn make_streaming(
         item_data: &res.core.item_data,
     };
     let mut locator = None;
+    // The generator the branch below builds the level with, as `BuiltInRegistries.CHUNK_GENERATOR`
+    // names its codec: what `LevelRef::generator_type` reads.
+    let mut generator_type = "minecraft:noise".to_owned();
     let overworld_settings = generator.filter(|_| dim == Dim::Overworld);
     use sunrise_client::flatgen::FlatTerrain;
     let flat = if runtime.is_none() {
@@ -1327,6 +1338,7 @@ pub(super) fn make_streaming(
         )
         .ok_or("a runtime level's layers use a block the game lacks")?;
         register_sea_level(-63);
+        generator_type = "minecraft:flat".to_owned();
         Streaming::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
@@ -1358,6 +1370,7 @@ pub(super) fn make_streaming(
             .transpose()
             .map_err(|e| format!("{}: cannot build flat dimension: {e}", dim.id()))?;
         register_sea_level(-63);
+        generator_type = "minecraft:flat".to_owned();
         locator = staged.clone();
         if let Some(inner) = staged.filter(|_| automatic_structures || flat.features || flat.lakes)
         {
@@ -1390,6 +1403,7 @@ pub(super) fn make_streaming(
             )
         }
     } else if let Some(inner) = debug {
+        generator_type = "minecraft:debug".to_owned();
         Streaming::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
@@ -1401,6 +1415,7 @@ pub(super) fn make_streaming(
             res.threads(),
         )
     } else if options.test_terrain && dim == Dim::Overworld {
+        // The test terrain stands in for the noise generator its stem names.
         let inner = Arc::new(TestTerrain::new(pack.assets.registry, &biomes)?);
         Streaming::new(
             Arc::new(Persistent {
@@ -1428,6 +1443,8 @@ pub(super) fn make_streaming(
     )
     .transpose()?
     {
+        let (level, name) = level;
+        generator_type = name;
         match level {
             ModLevel::Terrain(inner) => Streaming::new(
                 Arc::new(Persistent {
@@ -1539,7 +1556,7 @@ pub(super) fn make_streaming(
     // A server draws nothing: neither the integrated server nor the
     // dedicated one meshes sections.
     streaming.mesh = options.execution_role.is_client();
-    Ok((streaming, save, locator))
+    Ok((streaming, save, locator, generator_type))
 }
 
 #[cfg(test)]
@@ -1822,7 +1839,8 @@ mod tests {
                 );
                 return;
             }
-            let (mut streaming, _, locator) = built.unwrap();
+            let (mut streaming, _, locator, generator_type) = built.unwrap();
+            assert_eq!(generator_type, "minecraft:flat");
             assert_eq!(
                 locator.unwrap().noise_biomes(&[[0, 0, 0]]),
                 [Some("test:glade".into())]
@@ -1846,6 +1864,125 @@ mod tests {
             assert_eq!(chunk.get(0, 0, 0), bedrock.0);
             assert_eq!(chunk.get(0, 4, 0), gold.0);
             assert_eq!(biomes.saved_name(chunk.biome(0, 4, 0)), "test:glade");
+        });
+    }
+
+    /// `LevelRef::generator_type` (#6032) reads the generator `make_streaming` built the level
+    /// with: a saved Debug overworld under a pack's noise stem builds and reports the debug
+    /// generator, and a stem naming a generator no mod registered builds no level, so no level
+    /// ever reports that name.
+    #[test]
+    #[ignore = "daily"]
+    fn a_level_reports_the_generator_it_was_built_with() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use std::fs;
+        use sunrise_client::chunk::LevelShape;
+        use sunrise_client::save::{WorldGen, WorldGenerator, WorldPreset};
+
+        const CASE: &str = "SUNRISE_LEVEL_GENERATOR_TYPE_CASE";
+        if run_fresh_cases(
+            "game::world_loading::tests::a_level_reports_the_generator_it_was_built_with",
+            CASE,
+            &["debug", "unregistered"],
+        ) {
+            return;
+        }
+        let debug = std::env::var(CASE).unwrap() == "debug";
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let pack = root.join("datapacks/stems");
+        let write = |path: &str, text: &str| {
+            let path = pack.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        };
+        write(
+            "pack.mcmeta",
+            r#"{"pack":{"description":"Generator stem fixture","min_format":[121,0],"max_format":[121,0]}}"#,
+        );
+        fs::write(
+            root.join("datapacks.json"),
+            r#"{"enabled":["vanilla","file/stems"],"disabled":[]}"#,
+        )
+        .unwrap();
+        write(
+            "data/minecraft/dimension/overworld.json",
+            r#"{"type":"minecraft:overworld","generator":{"type":"minecraft:noise","settings":"minecraft:overworld",
+            "biome_source":{"type":"minecraft:fixed","biome":"minecraft:plains"}}}"#,
+        );
+        write(
+            "data/test/dimension/odd.json",
+            r#"{"type":"minecraft:overworld","generator":{"type":"test:missing",
+            "biome_source":{"type":"minecraft:fixed","biome":"minecraft:plains"}}}"#,
+        );
+
+        with_game(|game| {
+            let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
+            let empty =
+                sunrise_assets::resource_source::ResourceSource::indexed(Default::default());
+            let stack = super::functions::pack_stack(
+                root,
+                &game.options.resources,
+                &empty,
+                &empty,
+                false,
+                &game.level.enabled_features,
+                &game.pack.additional_data,
+            );
+            let data = stack.data_packs(Vec::new());
+            let enabled: Vec<_> = stack.enabled_packs().collect();
+            let conditions = super::load_conditions::worldgen_load_conditions(
+                &base_conditions,
+                &game.options.resources,
+                &enabled,
+            );
+            let (overrides, _) = worldgen_overrides_of(&data, &conditions).unwrap();
+            let settings = tempfile::tempdir().unwrap();
+            let preset = if debug {
+                WorldPreset::Debug
+            } else {
+                WorldPreset::Normal
+            };
+            let options = WorldGen {
+                preset,
+                ..WorldGen::default()
+            };
+            sunrise_client::save::write_world_gen_settings(settings.path(), 1, options).unwrap();
+            game.level.generator = WorldGenerator::read_new(settings.path());
+            assert!(game.level.generator.is_some());
+            let dim = if debug {
+                Dim::Overworld
+            } else {
+                Dim::Extra(mod_api::__private::dimension_key("test:odd"))
+            };
+            let built = make_streaming(
+                &game.res,
+                &game.pack,
+                &game.options,
+                &game.settings,
+                root,
+                dim,
+                LevelShape::OVERWORLD,
+                29,
+                &game.level,
+                game.res.biomes().clone(),
+                &overrides,
+                None,
+                game.save.chunk_reports().clone(),
+                game.save.save_failure_reporter().clone(),
+            );
+            if debug {
+                let (_, _, _, generator_type) = built.unwrap();
+                assert_eq!(generator_type, "minecraft:debug");
+            } else {
+                let Err(error) = built else {
+                    panic!("no registered generator builds test:missing");
+                };
+                assert!(
+                    error.to_string().contains("is not a noise generator"),
+                    "{error}"
+                );
+            }
         });
     }
 
@@ -1933,7 +2070,7 @@ mod tests {
             assert_eq!(biomes.name(id), "test:new_biome");
 
             let shape = LevelShape::OVERWORLD;
-            let (mut streaming, _, locator) = make_streaming(
+            let (mut streaming, _, locator, _) = make_streaming(
                 &game.res,
                 &game.pack,
                 &game.options,
@@ -2025,7 +2162,7 @@ mod tests {
                     .unwrap(),
             );
             let shape = LevelShape::OVERWORLD;
-            let (mut streaming, _, _) = make_streaming(
+            let (mut streaming, _, _, _) = make_streaming(
                 &game.res,
                 &game.pack,
                 &game.options,
@@ -2844,9 +2981,13 @@ mod tests {
             )
         };
         let pocket = Dim::Extra(mod_api::__private::dimension_key("test:pocket"));
-        let Some(Ok(ModLevel::Terrain(terrain))) = open(pocket) else {
+        let Some(Ok((ModLevel::Terrain(terrain), generator))) = open(pocket) else {
             panic!("the pack's checkerboard needs no noise settings");
         };
+        assert_eq!(
+            generator, "test:floor",
+            "the read names the generator that built it"
+        );
         let chunk = terrain.finish(terrain.proto(&mut (), 0, 0).unwrap());
         assert_eq!(
             chunk.block(0, -64, 0),
@@ -2963,7 +3104,7 @@ mod tests {
         let (overrides, _) =
             worldgen_overrides_in_world(&world, &resources_root, &[], &[], &base_conditions)
                 .unwrap();
-        let Some(Ok(ModLevel::Terrain(terrain))) = mod_terrain(
+        let Some(Ok((ModLevel::Terrain(terrain), generator))) = mod_terrain(
             &overrides,
             resources,
             &generators,
@@ -2976,6 +3117,7 @@ mod tests {
         ) else {
             panic!("no-stage checkerboard must open without noise-settings bundle");
         };
+        assert_eq!(generator, "test:floor");
         let chunk0 = terrain.finish(terrain.proto(&mut (), 0, 0).unwrap());
         assert_eq!(
             chunk0.block(0, -64, 0),
