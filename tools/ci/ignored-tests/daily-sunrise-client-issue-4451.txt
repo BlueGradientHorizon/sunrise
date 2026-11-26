@@ -208,7 +208,6 @@ sunrise-client game::client_reload::tests::client_completion_reads_published_res
 sunrise-client game::client_reload::tests::client_reload_reads_real_assets_with_pack_overrides lib daily resources
 sunrise-client game::client_reload::tests::client_setup_reaches_each_listener_once_per_firing lib daily resources
 sunrise-client game::client_reload::tests::client_startup_finishes_configs_before_the_first_runtime_callback lib daily resources
-sunrise-client game::client_reload::tests::custom_arm_pose_tests::held_arm_pose_reads_the_active_swing_on_every_draw lib daily resources
 sunrise-client game::client_reload::tests::custom_arm_pose_tests::registered_angles_reach_local_remote_and_humanoid_before_species_animation lib daily resources
 sunrise-client game::client_reload::tests::custom_arm_pose_tests::suppressed_custom_offhand_never_calls_its_transformer lib daily resources
 sunrise-client game::client_reload::tests::humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model lib daily resources

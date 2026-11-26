@@ -47,7 +47,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   command text. Integer, number and boolean values retain the dispatcher's types; word and greedy text are strings. Player selectors resolve
   to a single live `PlayerRef`, items become component-bearing stacks of one, and block positions resolve source-relative/local
   coordinates without requiring loaded chunks. `mod_id` is a loaded package id as a string; `resource:<registry>`
-  is `CommandArgumentValue::Id`, an id that registry holds. A custom argument is `CommandArgumentValue::Custom
+  is `CommandArgumentValue::Id`, an id that registry holds; `resource_or_tag:<registry>` is `CommandArgumentValue::ResourceOrTag { tag, id }`, unchecked against the registry. A custom argument is `CommandArgumentValue::Custom
   { kind, value }`: its registered type's id and what its parser returned. Missing optional arguments are absent.
   Parsing, permission and resolution failures produce feedback without calling the executor. The console resolves from the world spawn's
   block corner, in the level the spawn is in, with zero rotation and no source entity (`@s` fails).

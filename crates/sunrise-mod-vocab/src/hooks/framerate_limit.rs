@@ -8,7 +8,8 @@ pub trait Hooks {
     /// in the background: lower it, or raise it above the game's own throttles for menus and
     /// idle windows, up to unlimited (260; anything above counts as 260). Set 0 to skip the
     /// frame's render: nothing is drawn or presented, and the loop waits as it would at 10
-    /// frames a second, so the game goes on ticking. Below 0 keeps the game's limit.
+    /// frames a second, so the game goes on ticking. A skipped frame fires neither
+    /// `render_frame_pre` nor `render_frame_post`. Below 0 keeps the game's limit.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_framerate_limit",
         receiver = "read",

@@ -983,6 +983,7 @@ fn a_controllers_focus_at_a_page_lists_end_scrolls_the_next_page_in() {
 /// those out of view too, each scrolled into view where the returned tab is, and wrap: RB from
 /// the first round to it, LB the other way.
 #[test]
+#[ignore = "daily"]
 fn the_bumpers_walk_every_page_of_a_scrolling_list_and_wrap() {
     let s = Settings::default();
     let mut shell = Shell::<Flat>::default();
