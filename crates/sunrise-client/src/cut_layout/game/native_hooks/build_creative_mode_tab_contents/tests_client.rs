@@ -47,18 +47,18 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
     ]
     .into();
     let check_catalog = Creative::from_json(&catalog).unwrap().catalog().clone();
-    fn check<'g, S: sunrise_gameplay_common::game::Side>(
-        game: &mut sunrise_gameplay_common::game::Game<'g, S>,
+    fn check<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+        game: &mut G,
         side: LogicalSide,
         seen: &Arc<Mutex<Seen>>,
-        set_features: impl Fn(&mut sunrise_gameplay_common::game::Game<'g, S>, [String; 2]),
-        mut before_build: impl FnMut(&mut sunrise_gameplay_common::game::Game<'g, S>),
-        mut after_build: impl FnMut(&mut sunrise_gameplay_common::game::Game<'g, S>),
+        set_features: impl Fn(&mut G, [String; 2]),
+        mut before_build: impl FnMut(&mut G),
+        mut after_build: impl FnMut(&mut G),
     ) -> Arc<CreativeModeTabs>
     where
-        sunrise_gameplay_common::game::Game<'g, S>: mod_api::Host + ItemsHost,
+        G: mod_api::Host + ItemsHost,
     {
-        let flags = |game: &mut sunrise_gameplay_common::game::Game<'g, S>, ids: [&str; 2]| {
+        let flags = |game: &mut G, ids: [&str; 2]| {
             set_features(game, ids.map(str::to_owned));
         };
         flags(game, ["test:alpha", "test:beta"]);
@@ -70,7 +70,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             assert_eq!(reader.built_creative_tabs(), Ok(None));
             assert!(seen.lock().unwrap().events.is_empty());
         }
-        game.build_creative(CreativeTabPermissions::Normal).unwrap();
+        sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks::build_creative(game, CreativeTabPermissions::Normal).unwrap();
         let built_events = seen.lock().unwrap().events.len();
         let reader: &dyn mod_api::Host = game;
         let normal = reader.built_creative_tabs().unwrap().unwrap();
@@ -171,12 +171,12 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         assert_eq!(book_level(&normal), 2);
         normal
     }
-    fn check_replacement<'g, S: sunrise_gameplay_common::game::Side>(
-        game: &mut sunrise_gameplay_common::game::Game<'g, S>,
+    fn check_replacement<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+        game: &mut G,
         old: &CreativeModeTabs,
         seen: &Arc<Mutex<Seen>>,
     ) where
-        sunrise_gameplay_common::game::Game<'g, S>: ItemsHost,
+        G: ItemsHost,
     {
         // Registry installation must not dispatch; the next demand uses the changed definition.
         assert!(seen.lock().unwrap().events.is_empty());
@@ -217,7 +217,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
                 LogicalSide::Client,
                 &seen,
                 |game, flags| {
-                    if let Some(remote) = &mut game.side.remote {
+                    if let Some(remote) = &mut game.client.remote {
                         remote.features = flags.into();
                     } else {
                         game.level.enabled_features = flags.into();

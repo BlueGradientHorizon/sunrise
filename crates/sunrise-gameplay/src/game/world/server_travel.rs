@@ -101,9 +101,9 @@ pub(in crate::game) enum SpawnAction {
     EndExit,
 }
 
-struct SpawnTrip {
+pub struct SpawnTrip {
     action: SpawnAction,
-    waiting_for: Option<(i32, i32)>,
+    pub waiting_for: Option<(i32, i32)>,
     /// A saved personal column without a block respawn config. An End exit lands on
     /// its surface after it loads and retains the player's facing.
     legacy_personal_point: bool,
@@ -1697,8 +1697,8 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The hub's view of the server for packets sent outside its own tick.
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn server_ctx(&mut self) -> TickCtx<'_> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn server_ctx(&mut self) -> TickCtx<'_> {
         let spawn = self.world_spawn_position();
         let clock_rate = self.network_clock_rate();
         TickCtx {

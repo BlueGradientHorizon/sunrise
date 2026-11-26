@@ -48,7 +48,7 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
         remote.entity_id = 42;
         remote.loaded_sent = true;
         let mut player = sunrise_sim::motion::PlayerMotion::new(
-            game.motion,
+            game.common.motion,
             sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
         )
         .unwrap();
@@ -56,7 +56,7 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
         game.player = Some(player);
         game.client
             .streaming
-            .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
         sunrise_protocol::connection::Connection::local(server)
             .split()
             .0
@@ -336,7 +336,7 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
                 game.player.as_mut().unwrap().position.y = 64.5;
                 game.client
                     .streaming
-                    .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(1, 0));
+                    .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(1, 0));
                 game.tick_remote().unwrap();
                 assert_eq!(
                     *crossings.lock().unwrap(),
@@ -370,7 +370,7 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
         let remote = game.client.remote.as_mut().unwrap();
         remote.loaded_sent = true;
         let mut player = sunrise_sim::motion::PlayerMotion::new(
-            game.motion,
+            game.common.motion,
             sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
         )
         .unwrap();
@@ -378,7 +378,7 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
         game.player = Some(player);
         game.client
             .streaming
-            .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
         peer
     }
 
@@ -432,11 +432,8 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
         use sunrise_sim::motion::PlayerMotion;
         use sunrise_world::entity_move::MoverType;
 
-        fn check<S: sunrise_gameplay_common::game::Side>(game: &mut sunrise_gameplay_common::game::Game<'_, S>)
-        where
-            for<'a> sunrise_gameplay_common::game::Game<'a, S>: mod_api::Host,
-        {
-            let player = game.player(456).unwrap();
+        fn check<'g, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(game: &mut G) {
+            let player = sunrise_gameplay_common::game::native_server::NativeServerGameExt1::player(game, 456).unwrap();
             let stone = game
                 .pack
                 .assets
@@ -476,7 +473,7 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
             bind_local_player(game, 42, 456);
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
             check(game);
         });
     }

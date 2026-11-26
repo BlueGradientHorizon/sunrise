@@ -279,9 +279,9 @@ impl ClientGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl ClientGame<'_> {
-    pub(in crate::game) fn test_conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
+    pub fn test_conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
         self.client_conduit_target(pos)
     }
 }

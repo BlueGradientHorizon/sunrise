@@ -198,9 +198,7 @@ pub(crate) fn cases(hand: Hand) -> Vec<Case> {
     cases
 }
 
-pub(crate) fn advancement_tree<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>)
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
+pub(crate) fn advancement_tree(game: &mut sunrise_gameplay_common::game::CommonGame<'_>)
 {
     use sunrise_sim::advancements as a;
     let mut tree = a::Tree::default();

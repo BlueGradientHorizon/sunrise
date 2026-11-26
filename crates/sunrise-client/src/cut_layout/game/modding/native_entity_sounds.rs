@@ -77,7 +77,7 @@ use sunrise_gameplay::game::server_side::dispense_fixture;
             game.as_guest(12, |game| {
                 let player = game.entity(12).unwrap();
                 assert!(game.entity_play_sound(player, "minecraft:entity.player.burp", 1.0, 1.0));
-                let sound = &game.side.pending_native_sounds[1];
+                let sound = &game.server.pending_native_sounds[1];
                 assert_eq!(sound.source as usize, SoundSource::Players.index());
                 assert_eq!(sound.except, Some(12));
             })

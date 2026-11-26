@@ -159,7 +159,7 @@ pub fn friction(
     true
 }
 
-pub struct FrictionView<'a>(pub(in crate::game) FrictionLevel<'a>);
+pub struct FrictionView<'a>(pub FrictionLevel<'a>);
 
 impl FrictionView<'_> {
     fn state_fluid(&self, state: BlockStateId) -> Option<FluidState> {

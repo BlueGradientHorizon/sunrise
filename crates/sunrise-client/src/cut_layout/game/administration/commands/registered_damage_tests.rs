@@ -201,12 +201,12 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
         attacker: 7,
         ..Default::default()
     };
-    sunrise_gameplay::game::ServerGame::set_projectile_attack(&mut large_attack, &large);
+    sunrise_gameplay_common::game::CommonGame::set_projectile_attack(&mut large_attack, &large);
     let mut small_attack = Attack {
         attacker: 7,
         ..Default::default()
     };
-    sunrise_gameplay::game::ServerGame::set_projectile_attack(&mut small_attack, &small);
+    sunrise_gameplay_common::game::CommonGame::set_projectile_attack(&mut small_attack, &small);
     let fireball = Damage {
         kind: DamageKind::Fireball,
         attacker: Some(Who::Player),
@@ -224,51 +224,51 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
     // `/damage` target classification matches vanilla entity class families.
     let projectiles = [large, small, arrow, trident, snowball];
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Player), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Player), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Mob(5)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Mob(5)), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Stand(6)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Stand(6)), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Dragon(7)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Dragon(7)), &projectiles),
         DirectEntity::Living
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(10)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(10)), &projectiles),
         DirectEntity::LargeFireball
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(11)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(11)), &projectiles),
         DirectEntity::Projectile
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(12)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(12)), &projectiles),
         DirectEntity::Arrow
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(13)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(13)), &projectiles),
         DirectEntity::Arrow
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Projectile(14)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(14)), &projectiles),
         DirectEntity::Projectile
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Trident(20)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Trident(20)), &projectiles),
         DirectEntity::Arrow
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Rocket(21)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Rocket(21)), &projectiles),
         DirectEntity::Projectile
     );
     assert_eq!(
-        crate::game::ServerGame::target_direct_entity(Some(Target::Hook(22)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Hook(22)), &projectiles),
         DirectEntity::Projectile
     );
     for other in [
@@ -281,7 +281,7 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
         Some(Target::Crystal(35)),
     ] {
         assert_eq!(
-            crate::game::ServerGame::target_direct_entity(other, &projectiles),
+            sunrise_gameplay::game::ServerGame::target_direct_entity(other, &projectiles),
             DirectEntity::Other,
             "{other:?}"
         );
@@ -370,9 +370,9 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
             game.run_command("summon wolf 6.5 64 5.5 {UUID:[I;85,0,0,5],NoAI:1b,NoGravity:1b}")
         );
         {
-            let wolf = game.mobs.last_mut().unwrap();
+            let wolf = game.common.mobs.last_mut().unwrap();
             wolf.extra.tame = true;
-            wolf.extra.owner = game.level.player_uuid;
+            wolf.extra.owner = game.common.level.player_uuid;
         }
         assert!(
             game.run_command("summon wolf 6.5 64 6.5 {UUID:[I;85,0,0,6],NoAI:1b,NoGravity:1b}")

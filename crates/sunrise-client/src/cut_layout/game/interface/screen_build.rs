@@ -160,8 +160,8 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             check(game);
             game.craft_size = 3;
             check(game);
-            game.open_station_client(sunrise_client_gameplay::game::client_side::stations::Station::new_kind(
-                sunrise_client_gameplay::game::client_side::stations::Kind::Merchant,
+            game.open_station_client(sunrise_gameplay_common::game::stations_common::Station::new_kind(
+                sunrise_gameplay_common::game::stations_common::Kind::Merchant,
                 [0, 0, 0],
             ));
             check(game);
@@ -571,7 +571,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 game.remote_open_station(
                     1,
                     "minecraft:anvil".into(),
-                    sunrise_client_gameplay::game::client_side::stations::Kind::Anvil,
+                    sunrise_gameplay_common::game::stations_common::Kind::Anvil,
                     sunrise_game_data::text::Text::literal("Anvil"),
                     [0; 3],
                 );

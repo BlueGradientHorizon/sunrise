@@ -101,7 +101,7 @@ pub(in crate::game) mod commands_client;
 pub(in crate::game) mod composter_client;
 #[cfg(feature = "client")]
 #[path = "interface/container_hooks.rs"]
-pub(in crate::game) mod container_hooks;
+pub mod container_hooks;
 #[path = "interface/container_layout.rs"]
 pub mod container_layout;
 #[cfg(feature = "client")]
@@ -120,7 +120,7 @@ pub(in crate::game) mod custom_sky;
 pub(in crate::game) mod debug_keys;
 #[cfg(feature = "client")]
 #[path = "interface/debug_options.rs"]
-pub(in crate::game) mod debug_options;
+pub mod debug_options;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/debug_renderer_tests.rs"]
@@ -166,7 +166,7 @@ pub mod event_loop;
 pub(in crate::game) mod events;
 #[cfg(feature = "client")]
 #[path = "interface/extras.rs"]
-pub(in crate::game) mod extras;
+pub mod extras;
 #[cfg(feature = "client")]
 #[path = "mobs/fangs_client.rs"]
 pub mod fangs_client;
@@ -216,7 +216,7 @@ pub(in crate::game) mod growth;
 pub(in crate::game) mod gui_clips;
 #[cfg(feature = "client")]
 #[path = "interface/gui_entity.rs"]
-pub(in crate::game) mod gui_entity;
+pub mod gui_entity;
 #[cfg(feature = "client")]
 #[path = "modding/gui_paint_items.rs"]
 pub(in crate::game) mod gui_paint_items;
@@ -531,7 +531,7 @@ pub(in crate::game) mod pack_sources_tests;
 pub mod packs;
 #[cfg(feature = "client")]
 #[path = "interface/pad/mod.rs"]
-pub(in crate::game) mod pad;
+pub mod pad;
 #[cfg(feature = "client")]
 #[path = "interface/pad_actions.rs"]
 pub(in crate::game) mod pad_actions;
@@ -666,7 +666,7 @@ pub mod sculk;
 pub(in crate::game) mod server_links;
 #[cfg(feature = "client")]
 #[path = "world/server_packs.rs"]
-pub(in crate::game) mod server_packs;
+pub mod server_packs;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/shader_pack_switch_tests.rs"]
@@ -1706,7 +1706,7 @@ pub struct ClientState {
     pub command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
     pub(in crate::game::client_side) dialogs: ClientOnly<dialogs::DialogState>,
     /// This game's resource packs (`reload_packs` replaces them).
-    pub(in crate::game::client_side) pending_initial_models:
+    pub pending_initial_models:
         ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
     pub(in crate::game::client_side) stitching_block_atlas: ClientOnly<Option<Arc<RenderAssets>>>,
     pub lod: ClientOnly<Option<sunrise_client::lod::Lod>>,
@@ -2233,7 +2233,7 @@ impl ClientState {
 #[cfg(feature = "client")]
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ClientOnly<T>(pub T);
+pub struct ClientOnly<T>(pub T);
 
 #[cfg(feature = "client")]
 #[allow(dead_code)]
@@ -2247,7 +2247,7 @@ impl<T> ClientOnly<T> {
 #[cfg(feature = "client")]
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ClientShared<T>(pub T);
+pub struct ClientShared<T>(pub T);
 
 #[cfg(feature = "client")]
 #[allow(dead_code)]

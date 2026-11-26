@@ -3,10 +3,10 @@
 use super::world_loading;
 use sunrise_game_data::Result;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
-    #[cfg(test)]
-    pub(in crate::game) fn load_world(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn load_world(
         &mut self,
         request: world_loading::WorldRequest,
     ) -> Result<()> {

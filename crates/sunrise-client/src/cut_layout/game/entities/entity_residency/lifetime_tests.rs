@@ -76,9 +76,10 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         check_list!(game, tnts);
 
         game.server.next_entity += 1;
-        game.resident_entities.knots.push(sunrise_gameplay::game::leads::Knot {
+        let id = game.server.next_entity;
+        game.resident_entities.knots.push(sunrise_gameplay_common::leash_knot::Knot {
             attachment_lifetime: Default::default(),
-            id: game.server.next_entity,
+            id,
             join: Default::default(),
             fence: [0, 70, 0],
         });

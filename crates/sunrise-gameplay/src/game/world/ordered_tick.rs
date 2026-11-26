@@ -519,8 +519,8 @@ impl crate::game::ServerGame<'_> {
 }
 
 impl crate::game::ServerGame<'_> {
-    #[cfg(test)]
-    pub(in crate::game) fn orb_moved(&mut self, i: usize, step: sunrise_sim::entities::OrbMove) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn orb_moved(&mut self, i: usize, step: sunrise_sim::entities::OrbMove) {
         let o = &self.common.orbs[i];
         let effect = self
             .common.body_motion(&game_side!(self))

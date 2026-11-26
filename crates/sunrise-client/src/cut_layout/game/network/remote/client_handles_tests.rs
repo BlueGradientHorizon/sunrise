@@ -1,4 +1,4 @@
-use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 
 /// A client names the level it shows by the server's key, even where `Dim` has
 /// no name for it.

@@ -276,12 +276,14 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
                 game.remote_set_passengers(32, vec![7, 31]);
 
                 // AttackRange uses its own geometry, with no root-vehicle filter.
-                game.inventory[game.selected] = Some(ranged_stack());
+                let selected = game.selected;
+                game.inventory[selected] = Some(ranged_stack());
                 game.refresh_client_pick(1.0);
                 assert!(matches!(game.crosshair_target(),
                     Some(CrosshairTarget::Entity { entity, .. }) if entity.id() == 31));
                 assert_eq!(*calls.lock().unwrap(), 2 * usize::from(subscribed));
-                game.inventory[game.selected] = None;
+                let selected = game.selected;
+                game.inventory[selected] = None;
 
                 // Put the root vehicle's box around the camera. Inside hits are
                 // pickable without asking any part; remove the later passenger.

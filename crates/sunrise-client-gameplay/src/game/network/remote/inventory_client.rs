@@ -4,7 +4,7 @@ use sunrise_gameplay_common::game::remote::inventory::creative_sync_slot;
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Find a game slot in the menu's complete, contiguous slot mapping.
-    pub(in crate::game) fn menu_slot_index(menu: &str, internal: usize) -> Option<usize> {
+    pub fn menu_slot_index(menu: &str, internal: usize) -> Option<usize> {
         (0..)
             .map_while(|slot| sunrise_gameplay_common::game::inventory_screen_slot(menu, slot))
             .position(|slot| slot == internal)

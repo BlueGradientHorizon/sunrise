@@ -237,7 +237,7 @@ include!("predicted_block_notice_tests.rs");
                 );
                 for id in [66, 67] {
                     remote.level_players.insert(id, id as u128);
-                    game.mobs.push(sunrise_sim::mobs::Mob::new(
+                    game.common.mobs.push(sunrise_sim::mobs::Mob::new(
                         id as u32,
                         kind.clone(),
                         sunrise_core::geometry::Vec3::ZERO,
@@ -389,7 +389,7 @@ include!("predicted_block_notice_tests.rs");
     pub(crate) fn spawn_menu_test(
         game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     ) -> sunrise_protocol::packets::play::SpawnInfo {
-        use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+        use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
         use sunrise_client::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;
         let spawn = SpawnInfo {

@@ -326,19 +326,20 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 for y in 64..=66 {
                     game.world.set(2, y, 2, water).unwrap();
                 }
-                let player = game.player.as_mut().unwrap();
+                let common = &mut game.common;
+                let player = common.player.as_mut().unwrap();
                 MotionWorld {
                     entities: &[],
                     player,
-                    scene: &mut game.world,
-                    assets: &game.pack.assets,
-                    collision_binding: game.collision,
-                    resources: game.motion,
-                    health: &game.health_resources,
+                    scene: &mut common.world,
+                    assets: &common.pack.assets,
+                    collision_binding: common.collision,
+                    resources: common.motion,
+                    health: &common.health_resources,
                     tag_items: None,
-                    loop_context: &game.loop_context,
+                    loop_context: &common.loop_context,
                     side: dry_side(),
-                    damage_hooks: &game.damage_hooks,
+                    damage_hooks: &common.damage_hooks,
                     block_registries: None,
                 }
                 .update_fluids()
@@ -606,7 +607,7 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                 let start = batch.vertices.len();
                 let color = [green, yellow][paint_calls];
                 paint_calls += 1;
-                batch.fill(&g.side.gui.atlas, 0.0, 0.0, 4.0, 4.0, color);
+                batch.fill(&g.client.gui.atlas, 0.0, 0.0, 4.0, 4.0, color);
                 batch.invert_since(start);
             });
             assert_eq!(

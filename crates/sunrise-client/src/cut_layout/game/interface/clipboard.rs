@@ -65,7 +65,7 @@ mod tests {
                         state: winit::event::ElementState::Pressed,
                         button: winit::event::MouseButton::Left,
                     },
-                    sunrise_client_gameplay::game::input_trace::InputOrigin::User,
+                    sunrise_client_gameplay::input_trace::InputOrigin::User,
                 );
                 game.native_client_tick_pre();
                 let got = reads.0.lock().unwrap().clone();

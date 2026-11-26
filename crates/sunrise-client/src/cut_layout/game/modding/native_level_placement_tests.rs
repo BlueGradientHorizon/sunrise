@@ -222,11 +222,11 @@ fn a_command_block_placement_callback_saves_updated_entity_data() {
             Ok(true)
         );
         let key = (pos[0], pos[1], pos[2]);
-        let Some(BlockEntity::CommandBlock(entity)) = game.world.block_entities.get_mut(&key)
+        let Some(BlockEntity::CommandBlock(entity)) = game.common.world.block_entities.get_mut(&key)
         else {
             panic!("placement must create a command block entity");
         };
-        let feedback = game
+        let feedback = game.common
             .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);

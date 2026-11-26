@@ -29,10 +29,10 @@ pub(in crate::game) struct Scheduled {
 #[derive(Default)]
 pub(in crate::game) struct FnState {
     pub store: DataStore,
-    packs: Vec<Arc<DataPack>>,
+    pub packs: Vec<Arc<DataPack>>,
     /// Enabled pack ids, in load order (later overrides earlier).
-    enabled: Vec<String>,
-    loaded: bool,
+    pub enabled: Vec<String>,
+    pub loaded: bool,
     /// Run the `minecraft:load` tag on the next tick.
     load_pending: bool,
     pub schedule: Vec<Scheduled>,
@@ -161,7 +161,7 @@ impl FnState {
     }
 
     /// The highest enabled world pack providing this data resource.
-    pub(in crate::game::server_side) fn data_resource(
+    pub fn data_resource(
         &self,
         name: &str,
     ) -> Option<sunrise_assets::resource_source::Resource> {
@@ -173,8 +173,8 @@ impl FnState {
     }
 
     /// Enabled pack ids, in load order (later overrides earlier).
-    #[cfg(test)]
-    pub(in crate::game) fn enabled(&self) -> &[String] {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn enabled(&self) -> &[String] {
         &self.enabled
     }
     /// The level function files compile at (`ServerFunctionLibrary`'s

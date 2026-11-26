@@ -56,7 +56,7 @@ pub(in crate::game) mod building_players;
 #[path = "blocks/campfire.rs"]
 pub(in crate::game) mod campfire;
 #[path = "world/carrier_transfers.rs"]
-pub(in crate::game) mod carrier_transfers;
+pub mod carrier_transfers;
 #[path = "mobs/cat_spawner.rs"]
 pub(in crate::game) mod cat_spawner;
 #[path = "interface/chat_server.rs"]
@@ -221,7 +221,7 @@ pub(in crate::game) mod level_sounds;
 pub(in crate::game) mod level_tick;
 #[path = "world/levels.rs"]
 pub mod levels;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "world/world_session.rs"]
 mod world_session;
 #[path = "entities/lightning_server.rs"]
@@ -1220,7 +1220,7 @@ pub struct ServerState {
     /// `Player.playSound` of the acting guest (event, position, volume,
     /// pitch): `level.playSound(player, ...)` leaves the guest out, whose
     /// own client plays it.
-    pub(in crate::game::server_side) guest_player_sounds: Vec<(String, [f64; 3], f32, f32)>,
+    pub guest_player_sounds: Vec<(String, [f64; 3], f32, f32)>,
     /// Sounds bound to an entity this tick, for the players (`game/interface/level_sounds.rs`).
     pub bound_sounds: Vec<level_sounds::BoundSound>,
     /// `broadcastToAdmins` lines for the other operators that a command queued,
@@ -1528,7 +1528,7 @@ impl ServerState {
 
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ServerOnly<T>(pub T);
+pub struct ServerOnly<T>(pub T);
 
 #[allow(dead_code)]
 impl<T> ServerOnly<T> {
@@ -1540,7 +1540,7 @@ impl<T> ServerOnly<T> {
 
 #[allow(dead_code)]
 #[repr(transparent)]
-pub(in crate::game) struct ServerShared<T>(pub T);
+pub struct ServerShared<T>(pub T);
 
 #[allow(dead_code)]
 impl<T> ServerShared<T> {

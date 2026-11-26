@@ -273,7 +273,7 @@ fn rejected_passenger_does_not_destroy_its_resident_duplicates_scores() {
                 )])
             ));
             let root = mob_tagged(game, "score_root")[0];
-            let holder = sunrise_gameplay::game::server_side::persist::uuid_text([160, 0, 0, 240]);
+            let holder = sunrise_core::uuid::uuid_text([160, 0, 0, 240]);
             assert!(game.run_command("scoreboard objectives add retained_uuid dummy"));
             assert!(game.run_command(&format!("scoreboard players set {holder} retained_uuid 7")));
             assert!(game.run_command("team add retained_uuid"));

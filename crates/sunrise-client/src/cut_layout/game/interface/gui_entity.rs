@@ -31,7 +31,7 @@ use sunrise_core::nbt::Compound;
                 game.native_draw_entity(&mut batch, &zombie, view).unwrap();
                 game.native_draw_entity(&mut batch, &baby, view).unwrap();
             }
-            assert_eq!(SCRATCH.with_borrow(|s| s.made.len()), 2);
+            assert_eq!(sunrise_client_gameplay::game::client_side::gui_entity::test_cached_entity_count(), 2);
             let spin = GuiEntityLook::Turned {
                 yaw: 90.0,
                 pitch: 0.0,

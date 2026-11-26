@@ -152,7 +152,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
             // Now target a block with the registered kind in the main hand. Two presses in one
             // input drain both reach start-use handling, but only the first can capture it.
             let previous_use = game.use_start.item.clone();
-            game.inventory[game.selected] = game.offhand.take();
+            game.common.inventory[game.common.selected] = game.offhand.take();
             let stone = game
                 .pack
                 .assets

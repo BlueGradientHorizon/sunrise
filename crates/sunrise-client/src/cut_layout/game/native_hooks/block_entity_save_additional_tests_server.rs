@@ -82,7 +82,8 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
                         ),
                     ] {
                         game.set_mode(mode);
-                        game.inventory[game.selected] = tool;
+                        let selected = game.selected;
+                        game.inventory[selected] = tool;
                         place(game, name);
                         assert!(game.break_block_as_player([7, 64, 4]).unwrap());
                         assert_eq!(count.load(Ordering::Relaxed), serials, "{mode:?}, {name}");

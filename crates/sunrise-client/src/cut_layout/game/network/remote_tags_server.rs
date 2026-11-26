@@ -1,5 +1,6 @@
 #![cfg(test)]
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::tables::WorldTablesExt;

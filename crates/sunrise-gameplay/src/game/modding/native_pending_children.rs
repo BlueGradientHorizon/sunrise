@@ -15,12 +15,12 @@ use sunrise_sim::mobs::{Mob, Species, finalize};
 
 /// All unpublished per-object data travels with its actual Mob. A route must move its
 /// existing UUID and attachments here, then install them only at residency commit.
-pub(in crate::game) struct PendingMob {
-    pub(in crate::game) mob: Mob,
+pub struct PendingMob {
+    pub mob: Mob,
     /// Set for a child a mod constructed; an engine-made child already owns its published UUID.
-    pub(in crate::game) uuid: Option<[i32; 4]>,
-    pub(in crate::game) attachments: Attachments,
-    pub(in crate::game) dimension: super::Dim,
+    pub uuid: Option<[i32; 4]>,
+    pub attachments: Attachments,
+    pub dimension: super::Dim,
 }
 
 pub(in crate::game::server_side) fn pending_error(error: Error) -> UnspawnedMobError {
@@ -68,7 +68,7 @@ fn handle(key: Borrow) -> UnspawnedMobRef {
 
 /// One callback's collection editor. It takes short arena borrows per operation; the
 /// dispatcher must never keep a RefMut across guest code. Renew before each listener.
-pub(in crate::game) struct Children {
+pub struct Children {
     resources: std::sync::Arc<super::Resources>,
     arena: Rc<RefCell<PendingChildren<PendingMob>>>,
     action: Action,
@@ -82,7 +82,7 @@ impl Children {
     /// Capture only shared resources and action ownership, leaving Game available as a
     /// mutable ServerHost during dispatch. The caller must still recheck the live world,
     /// parent and read-set versions before accepting the frozen output.
-    pub(in crate::game::server_side) fn new(
+    pub fn new(
         game: &crate::game::ServerGame<'_>,
         action: Action,
         breeding: bool,
@@ -99,7 +99,7 @@ impl Children {
         }
     }
 
-    pub(in crate::game::server_side) fn receiver(
+    pub fn receiver(
         &self,
     ) -> Result<PendingChildrenRef, UnspawnedMobError> {
         sync_listener(&self.arena, &self.hook);
@@ -146,8 +146,8 @@ impl Children {
 
     /// Object invariants in addition to the caller's authoritative parent/read-set check.
     /// In particular this validates the complete list before any insertion consumer runs.
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn valid_child(&self, child: &PendingMob) -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn valid_child(&self, child: &PendingMob) -> bool {
         valid_child(&self.resources, self.dimension, self.breeding, child)
     }
 

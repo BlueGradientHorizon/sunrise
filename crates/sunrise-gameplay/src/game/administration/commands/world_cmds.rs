@@ -286,7 +286,7 @@ impl crate::game::ServerGame<'_> {
         attack
     }
     /// Classify an explicit `/damage` or `EntityRef::hurt` direct entity target.
-    pub(in crate::game) fn target_direct_entity(
+    pub fn target_direct_entity(
         direct: Option<Target>,
         projectiles: &[sunrise_sim::projectiles::Projectile],
     ) -> sunrise_sim::health::DirectEntity {

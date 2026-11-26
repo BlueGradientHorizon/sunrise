@@ -141,7 +141,7 @@ use super::*;
                             )
                             .unwrap();
                         stack.set_damage(251);
-                        assert!(stack.try_into_engine(game.items()).is_err());
+                        assert!(stack.try_into_engine(sunrise_gameplay_common::game::tables::GameItems::items(game)).is_err());
                         draw(game, &sunrise_gameplay_common::game::api_values::stack_value(&stack).unwrap());
                     }
                 });

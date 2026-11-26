@@ -99,7 +99,8 @@ fn death_weapon_refused_crossbow_cannot_replace_accepted_longbow() {
         bow.data_mut()
             .set_loot_name("minecraft:custom_name", &serde_json::json!("Longbow"));
         fixture(Some(bow.clone()), |game| {
-            game.mobs.push(victim(game));
+            let new_victim = victim(game);
+            game.mobs.push(new_victim);
             let first = arrow(Some(bow));
             assert!(hit(game, &first, 100.0));
             let victim = game.mobs.iter().find(|mob| mob.id == 70).unwrap();
@@ -124,7 +125,8 @@ fn death_weapon_dispenser_arrow_without_recorded_weapon_is_none() {
         return;
     }
     fixture(None, |game| {
-        game.mobs.push(victim(game));
+        let new_victim = victim(game);
+        game.mobs.push(new_victim);
         // First accept a recorded weapon, then accept an unrecorded arrow after cooldown.
         assert!(hit(
             game,
@@ -156,7 +158,7 @@ fn death_weapon_riptide_iii_uses_spin_trident() {
         trident.enchant("minecraft:riptide", 3);
         fixture(Some(trident.clone()), |game| {
             player(game);
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
             let motion = game.player.as_mut().unwrap();
             motion.auto_spin_attack_ticks = 20;
             motion.auto_spin_attack_item = Some(trident);
@@ -182,7 +184,7 @@ fn death_weapon_harming_potion_does_not_read_thrower_sword() {
     }
     fixture_with_source(None, Some(("minecraft:indirect_magic", 11)), |game| {
         player(game);
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
         let mut target = victim(game);
         target.health = 1.0;
         let at = target.position;
@@ -204,7 +206,8 @@ fn death_weapon_different_killing_source_discards_projectile() {
         return;
     }
     fixture(None, |game| {
-        game.mobs.push(victim(game));
+        let new_victim = victim(game);
+        game.mobs.push(new_victim);
         assert!(hit(
             game,
             &arrow(Some(ItemStack::new("minecraft:bow", 1))),
@@ -227,7 +230,8 @@ fn death_weapon_without_subscriber_does_not_capture() {
     }
     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
         mod_platform::testing::with_mods(Vec::<mod_api::ModEntry>::new().into(), || {
-            game.mobs.push(victim(game));
+            let new_victim = victim(game);
+            game.mobs.push(new_victim);
             assert!(hit(
                 game,
                 &arrow(Some(ItemStack::new("minecraft:bow", 1))),
@@ -247,7 +251,8 @@ fn death_weapon_removal_clears_capture_and_vehicle_transfer_keeps_its_owner() {
     fixture(None, |game| {
         for transfer in [false, true] {
             game.mobs.clear();
-            game.mobs.push(victim(game));
+            let new_victim = victim(game);
+            game.mobs.push(new_victim);
             assert!(hit(
                 game,
                 &arrow(Some(ItemStack::new("minecraft:bow", 1))),
@@ -291,7 +296,8 @@ fn death_weapon_same_tick_stronger_arrow_replaces_weapon() {
         }
         let expected = ItemStack::new("minecraft:bow", 1);
         fixture(Some(expected.clone()), |game| {
-            game.mobs.push(victim(game));
+            let new_victim = victim(game);
+            game.mobs.push(new_victim);
             assert!(hit(
                 game,
                 &arrow(Some(ItemStack::new("minecraft:crossbow", 1))),

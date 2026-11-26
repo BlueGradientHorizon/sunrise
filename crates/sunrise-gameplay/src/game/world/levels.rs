@@ -217,9 +217,9 @@ fn custom_close_still_eligible(
 }
 
 /// A level that is not in place: every per-level field of `Game`.
-pub(in crate::game) struct Parked {
-    pub(in crate::game) world: World,
-    streaming: ChunkStreamer,
+pub struct Parked {
+    pub world: World,
+    pub streaming: ChunkStreamer,
     locator: Option<Arc<VanillaTerrain>>,
     save: Arc<SaveDir>,
     block_ticks: Ticks,
@@ -228,7 +228,7 @@ pub(in crate::game) struct Parked {
     random_tick_sections: RandomTickSections,
     level_events: Vec<LevelEvent>,
     /// Entity portal processes and cooldowns belong to this level's entities.
-    pub(in crate::game) portal_states: HashMap<u32, sunrise_sim::nether_portal::PortalState>,
+    pub portal_states: HashMap<u32, sunrise_sim::nether_portal::PortalState>,
     falling: sunrise_sim::join_seq::JoinList<FallingBlock, false>,
     paintings: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Painting>,
     item_frames: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::ItemFrame>,
@@ -236,8 +236,8 @@ pub(in crate::game) struct Parked {
     cushions: sunrise_sim::join_seq::JoinList<sunrise_sim::entities::Cushion>,
     others: sunrise_sim::join_seq::ResidentList<OtherEntity>,
     fangs: sunrise_gameplay_common::game::fangs_common::FangState,
-    pub(in crate::game) boats: sunrise_sim::join_seq::JoinList<Boat, false>,
-    pub(in crate::game) carts: sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
+    pub boats: sunrise_sim::join_seq::JoinList<Boat, false>,
+    pub carts: sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
     bolts: sunrise_sim::join_seq::ResidentList<Bolt>,
     crystals: sunrise_sim::join_seq::JoinList<dragon_common::Crystal>,
     dragon: DragonSlot,
@@ -274,7 +274,7 @@ pub(in crate::game) struct Parked {
     /// Natural spawning's candidate cache: each level keeps its own players' squares.
     spawn_scratch: super::natural_spawning::SpawnScratch,
     /// Server ticks since a player was last in the level.
-    pub(in crate::game) idle: u32,
+    pub idle: u32,
     /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
     /// last told of it (`LanHost::border_sent`).
     border: sunrise_level::worldborder::WorldBorder,
@@ -578,7 +578,7 @@ pub(in crate::game) struct TickTiming {
 /// The levels not in place, by dimension.
 #[derive(Default)]
 pub struct Levels {
-    pub(in crate::game) parked: HashMap<Dim, Box<Parked>>,
+    pub parked: HashMap<Dim, Box<Parked>>,
     /// The levels whose open the mods heard (`native_level_load`), each to
     /// be told closed once.
     heard_open: Vec<Dim>,
@@ -586,7 +586,7 @@ pub struct Levels {
     /// of the next server tick.
     pub requested_saves: Vec<Dim>,
     /// The levels mods opened while the server runs, and the requests waiting to be applied.
-    pub(in crate::game) runtime: super::runtime_levels::RuntimeTable,
+    pub runtime: super::runtime_levels::RuntimeTable,
     /// The entities that travelled to another level lately: the id each had, to the id it
     /// arrived with and when. A kill credit recorded under the old id follows it there.
     travels: HashMap<u32, (u32, i64)>,
@@ -624,7 +624,7 @@ impl Levels {
     /// Whether a save of `dim` is still waiting for a tick that admits
     /// saves (the #2488 gate holds it back).
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(in crate::game::server_side) fn save_pending(&self, dim: Dim) -> bool {
+    pub fn save_pending(&self, dim: Dim) -> bool {
         self.requested_saves.contains(&dim)
     }
 
@@ -726,13 +726,13 @@ impl Levels {
     }
 
     /// A parked level, without opening or loading it.
-    pub(in crate::game::server_side) fn parked_world(&self, dim: Dim) -> Option<&World> {
+    pub fn parked_world(&self, dim: Dim) -> Option<&World> {
         self.parked.get(&dim).map(|level| &level.world)
     }
 
     /// The world of the level not in place whose dimension is `dimension`
     /// (`minecraft:the_nether`), found without collecting the parked levels.
-    pub(in crate::game) fn parked_world_of(&self, dimension: &str) -> Option<&World> {
+    pub fn parked_world_of(&self, dimension: &str) -> Option<&World> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
@@ -752,7 +752,7 @@ impl Levels {
     }
 
     /// The streaming of the level not in place whose dimension is `dimension`.
-    pub(in crate::game) fn parked_streaming_of(&self, dimension: &str) -> Option<&ChunkStreamer> {
+    pub fn parked_streaming_of(&self, dimension: &str) -> Option<&ChunkStreamer> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)
@@ -819,7 +819,7 @@ impl Levels {
 
     /// The worlds of the levels not in place.
     /// A parked level's world border.
-    pub(in crate::game::server_side) fn parked_border(
+    pub fn parked_border(
         &self,
         dim: Dim,
     ) -> Option<&sunrise_level::worldborder::WorldBorder> {
@@ -856,12 +856,12 @@ impl Levels {
     }
 
     /// The level not in place, in `dim`.
-    pub(in crate::game::server_side) fn parked_mut(&mut self, dim: Dim) -> Option<&mut Parked> {
+    pub fn parked_mut(&mut self, dim: Dim) -> Option<&mut Parked> {
         self.parked.get_mut(&dim).map(Box::as_mut)
     }
 
     /// A parked level by its exact dimension identity, without swapping it in.
-    pub(in crate::game::server_side) fn parked_of(&self, dimension: &str) -> Option<&Parked> {
+    pub fn parked_of(&self, dimension: &str) -> Option<&Parked> {
         self.parked
             .iter()
             .find(|(dim, _)| dim.id() == dimension)

@@ -65,7 +65,7 @@ fn interaction_key_literal_matrix_preserves_actions_and_swing_independently() {
                         }
                     } else {
                         // Enter the off-hand turn after the main-hand item has passed.
-                        game.inventory[game.selected] = None;
+                        game.common.inventory[game.common.selected] = None;
                         game.offhand = Some(ItemStack::new("minecraft:stone", 1));
                         game.world.set(0, 64, 0, stone).unwrap();
                         game.remote_use(attempt);
@@ -128,7 +128,7 @@ fn no_interaction_listener_attack_mining_offhand_and_pick() {
                     }
                     1 => game.remote_continue_attack(true),
                     2 => {
-                        game.inventory[game.selected] = None;
+                        game.common.inventory[game.common.selected] = None;
                         game.offhand = Some(ItemStack::new("minecraft:stone", 1));
                         game.remote_use(InteractionAttempt::Press);
                     }
@@ -205,7 +205,7 @@ fn no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_client_game(|game| {
-            game.inventory[game.selected] = None;
+            game.common.inventory[game.common.selected] = None;
             game.offhand = None;
             game.set_test_forced_hit(None);
             game.remote_use(InteractionAttempt::Press);

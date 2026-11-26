@@ -18,7 +18,7 @@ use sunrise_gameplay_common::game::pack_discovery::discover;
 use winit::{event::KeyEvent, keyboard::ModifiersState};
 
 #[derive(Default)]
-pub(in crate::game) struct StartupMenu {
+pub struct StartupMenu {
     pub title: Option<Title>,
     pub options: OptionsUi,
     pub options_open: bool,

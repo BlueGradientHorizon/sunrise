@@ -50,6 +50,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "book_screen/lifecycle_tests.rs"]
-pub(crate) mod lifecycle_tests_shared;
+pub mod lifecycle_tests_shared;

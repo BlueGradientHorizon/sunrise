@@ -66,7 +66,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The built-in sorter is only a reader. A cold sort previews stock order
     /// without publishing anything or giving mods a creative callback.
-    pub(crate) fn stock_sort_order(&self) -> Vec<ItemStack> {
+    pub fn stock_sort_order(&self) -> Vec<ItemStack> {
         let preview;
         let lists = if let Some(published) = &self.common.creative_contents.published {
             &published.lists

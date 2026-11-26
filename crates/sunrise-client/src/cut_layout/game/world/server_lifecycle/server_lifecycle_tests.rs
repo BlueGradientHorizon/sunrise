@@ -388,7 +388,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "save-error" => {
                                     let file = root.join("not-a-directory");
                                     std::fs::write(&file, b"occupied").unwrap();
-                                    game.side.world_root = file;
+                                    game.server.world_root = file;
                                     Ok(())
                                 }
                                 _ => Ok(()),

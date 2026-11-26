@@ -1,8 +1,8 @@
 //! Exercise both owning player tick routes, not the standalone swim oracle.
 use sunrise_gameplay_common::game::native_hooks::can_start_swimming::SprintGameExt;
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Chunk, Game, ItemStack, Keys, PlayerMotion, S, Vec3, motion, play, tick}};
+use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Chunk, ItemStack, Keys, PlayerMotion, S, Vec3, motion, play, tick}};
 use std::sync::Arc;
-use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{CanStartSwimmingEvent, EquipmentSlot, Hooks, Host, LogicalSide, SwimmingCheck};
 use std::sync::Mutex;
@@ -47,9 +47,7 @@ impl Hooks for MutatesQuery {
     }
 }
 
-fn water_column<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>)
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
+fn water_column(game: &mut sunrise_gameplay_common::game::CommonGame<'_>)
 {
     let water = game
         .pack
@@ -102,7 +100,7 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                     remote.level_load.finish();
                     game.client
                         .streaming
-                        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                        .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
                     water_column(game);
                     let mut player =
                         PlayerMotion::new(game.motion, Vec3::new(4.5, 64.5, 4.5)).unwrap();
@@ -204,7 +202,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
                     open_to_lan(game);
                     game.server
                         .streaming
-                        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                        .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
                     water_column(game);
                     let mut ids = Vec::new();
                     for (conn, position, boots) in [

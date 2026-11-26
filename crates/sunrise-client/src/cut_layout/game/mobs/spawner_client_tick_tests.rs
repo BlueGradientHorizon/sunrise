@@ -17,7 +17,7 @@ use sunrise_world::registry::BlockStateId;
 
 /// The committed cases and the SHA-256 of the log vanilla made of each (`--write` of the harness
 /// makes them).
-const COMMITTED: &str = include_str!("../../../../../docs/parity/block-entity-client-ticks.jsonl");
+const COMMITTED: &str = include_str!("../../../../../../docs/parity/block-entity-client-ticks.jsonl");
 /// The packets' block entity type ids: their index here.
 const TYPES: [&str; 12] = [
     "minecraft:mob_spawner",

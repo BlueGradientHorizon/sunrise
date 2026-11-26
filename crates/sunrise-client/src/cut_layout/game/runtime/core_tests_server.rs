@@ -263,6 +263,7 @@ fn right_click_block_controls_cauldron_use() {
             game.level_set_block(level, hit.pos, campfire, BlockUpdateFlags::NEIGHBORS),
             Ok(true)
         );
+        use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
         let entity = game.new_block_entity("minecraft:campfire").unwrap();
         game.world.block_entities.insert((0, 64, 0), entity);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:beef", 2));

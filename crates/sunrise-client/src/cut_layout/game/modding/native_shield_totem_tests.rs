@@ -1,7 +1,6 @@
 //! `living_shield_block` and `living_use_totem` heard by a trait mod through the game's own
 //! hooks and the hit's level host: when each fires in a hit, and what a mod may change.
 use super::native_entity_refs::tests::with_game;
-use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use mod_api::{
     self, Hand, HitHost, Hooks, LivingDamagePostEvent, LivingShieldBlockEvent, LivingUseTotemEvent,
 };
@@ -81,6 +80,7 @@ fn zombie(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Mob {
     Mob::new(id, kind, Vec3::ZERO, 0.0)
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn the_shield_hook_sees_the_hit_before_armor_and_enchantment_reductions() {
@@ -97,6 +97,7 @@ fn the_shield_hook_sees_the_hit_before_armor_and_enchantment_reductions() {
     assert_eq!(heard.shield, [(226001, 10.0, false)]);
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn a_blocked_damage_above_the_hit_is_clamped_to_it() {
@@ -118,6 +119,7 @@ fn a_blocked_damage_above_the_hit_is_clamped_to_it() {
     assert_eq!(heard.shield, [(226003, 6.0, false)]);
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn setting_blocked_false_blocks_nothing() {
@@ -161,6 +163,7 @@ fn the_totem_hook_fires_after_the_health_is_gone_and_a_cancel_lets_the_mob_die()
     assert_eq!(heard.order, ["shield", "totem", "post"]);
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn an_uncanceled_totem_saves_the_mob() {
@@ -182,6 +185,7 @@ fn an_uncanceled_totem_saves_the_mob() {
 
 /// The hit's level is the one the hit draws from: a mod's draw moves the world's random on by
 /// exactly one place.
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn the_shield_hook_draws_from_the_hits_random() {

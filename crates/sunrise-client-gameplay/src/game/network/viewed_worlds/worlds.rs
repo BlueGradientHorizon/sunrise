@@ -31,7 +31,7 @@ use sunrise_protocol::{
 use sunrise_world::registry::BlockStateId;
 
 /// Another level's world, kept while the server sends it.
-pub(in crate::game) struct ViewedWorld {
+pub struct ViewedWorld {
     /// This world's own id, which its meshed sections go by (`meshing`): a level opened again
     /// has another.
     pub(super) id: u64,
@@ -48,7 +48,7 @@ pub(in crate::game) struct ViewedWorld {
     /// That clock as the server last told it, moved on with the game time since
     /// (`ClientClockManager`).
     clock: Option<ClockState>,
-    pub(in crate::game) world: World,
+    pub world: World,
     pub(in crate::game) entities: ViewedEntities,
     /// The block entities of each column as its chunk packet carried them, with the data sent
     /// since: what a travel into the level loads (`switch`). A world that was the player's keeps
@@ -276,7 +276,7 @@ pub(super) fn stored_state(state: i32) -> BlockStateId {
 /// The worlds a connection views (`Remote::viewed`), by the slot an `open` bound each level to
 /// (`sunrise_protocol::viewed_levels`, revision 4).
 #[derive(Default)]
-pub(in crate::game) struct ViewedWorlds {
+pub struct ViewedWorlds {
     /// Each bound slot's world, with the epoch of the `open` or travel swap that bound it.
     pub(super) worlds: FxHashMap<i32, (i32, ViewedWorld)>,
     pub(in crate::game) wanted: FxHashSet<mod_api::DimensionKey>,
@@ -317,8 +317,8 @@ impl ViewedWorlds {
         self.latest.is_none_or(|latest| epoch > latest)
     }
     /// How many levels it views.
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn len(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn len(&self) -> usize {
         self.worlds.len()
     }
     pub(in crate::game::client_side) fn get_mut(&mut self, level: i32) -> Option<&mut ViewedWorld> {
@@ -354,7 +354,7 @@ impl ViewedWorlds {
             .map(|(&slot, _)| slot)
     }
     /// The world of `slot`, if one is bound to it.
-    pub(in crate::game::client_side) fn get(&self, slot: i32) -> Option<&ViewedWorld> {
+    pub fn get(&self, slot: i32) -> Option<&ViewedWorld> {
         self.worlds.get(&slot).map(|(_, world)| world)
     }
     /// Binds `slot` to `world` at `epoch`, replacing any world it held: an `open` starts afresh.

@@ -79,8 +79,8 @@ impl LiveScenes {
         self.animating.clear();
     }
     /// How many scenes are kept.
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn len(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn len(&self) -> usize {
         self.live.len()
     }
     /// Whether scene (`owner`, `id`) may animate in `frame`: the first
@@ -530,7 +530,7 @@ fn entity_quads(verts: &[Vertex], quads: &mut Vec<SceneQuad>) {
 #[cfg(test)]
 impl crate::game::ClientGame<'_> {
     /// The live particles of the mod's scene `id`: positions, previous positions and ages.
-    pub(in crate::game::client_side) fn scene_particles(
+    pub fn scene_particles(
         &self,
         owner: &str,
         id: u32,
@@ -549,7 +549,7 @@ impl crate::game::ClientGame<'_> {
             .unwrap_or_default()
     }
     /// The tick the mod's scene `id` last ran, when it is kept.
-    pub(in crate::game::client_side) fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
+    pub fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
         let scenes = self.client.live_scenes.0.borrow();
         scenes
             .live

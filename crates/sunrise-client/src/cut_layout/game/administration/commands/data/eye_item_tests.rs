@@ -1,4 +1,4 @@
-use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay::game::server_side::commands::data::Target};
+use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay_common::game::commands_common::Target};
 use std::path::PathBuf;
 use sunrise_core::nbt::{Tag, parse_snbt};
 

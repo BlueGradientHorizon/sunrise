@@ -11,8 +11,8 @@ impl crate::game::ServerGame<'_> {
         &self.server.creative_catalog.0
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn test_set_creative_catalog(&mut self, catalog: Arc<Catalog>) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_set_creative_catalog(&mut self, catalog: Arc<Catalog>) {
         self.server.creative_catalog.0 = catalog;
     }
 }

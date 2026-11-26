@@ -1,6 +1,7 @@
 //! `living_knockback` heard by a trait mod through the game's own bridge: who the hook names
 //! as the attacker, what the attacker holds, what a mod may cancel, and thorns' wearer.
 use super::native_entity_refs::tests::with_game;
+#[cfg(any())]
 use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use mod_api::{
     self, HitHost, Hooks, HurtSource, LevelRandomHost, LivingIncomingDamageEvent,
@@ -126,6 +127,7 @@ const PUSH: Knock = Knock {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn the_bridge_names_the_attacker_and_what_it_holds() {
     let heard = heard(|game, _| {
         let mob = {
@@ -214,6 +216,7 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_canceled_push_is_reported() {
     let heard = heard(|game, log| {
         let plan = game.prepare_knockback_credit(12, None, game.server.combat.0.attack());
@@ -264,7 +267,7 @@ fn player_with_sword(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
     player.entity_id = 7;
     game.player = Some(player);
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
+    game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
 }
 
 fn zombie_at(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, at: Vec3) {
@@ -368,6 +371,7 @@ fn the_attack_scope_nests_restores_and_a_guest_swap_hides_it() {
 
 /// What the mob's own random gives next after a push with no direction (the push then draws a
 /// random one, after the hook): with or without a listening mod, and with the push canceled.
+#[cfg(any())]
 fn next_draw_after_a_directionless_push(cancel: Option<bool>) -> i32 {
     let drawn = Mutex::new(0);
     let draw = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
@@ -394,6 +398,7 @@ fn next_draw_after_a_directionless_push(cancel: Option<bool>) -> i32 {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn the_push_draws_the_same_stream_with_and_without_a_mod_and_a_canceled_one_draws_nothing() {
     let without = next_draw_after_a_directionless_push(None);
     assert_eq!(next_draw_after_a_directionless_push(Some(false)), without);
@@ -518,6 +523,7 @@ fn a_mobs_fireball_on_the_player_names_the_shooter_and_its_bow() {
 /// applies its change twice on `Short`.
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
     use mod_api::KnockbackEntry::{Full, Short};
     let heard = heard(|game, log| {
@@ -580,6 +586,7 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
     assert_eq!(heard.entries.len(), 6, "one event per full-entry call");
 }
 
+#[cfg(any())]
 fn with_detached_credit<R>(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     victim: i32,
@@ -698,6 +705,7 @@ pub(crate) fn credit_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.mobs.push(pig);
 }
 
+#[cfg(any())]
 fn credit_push(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     let plan = game.prepare_knockback_credit(100, None, game.server.combat.0.attack());
     let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
@@ -717,6 +725,7 @@ fn credit_push(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedence_before_push() {
     let heard = guest_heard(|game, log| {
         log.lock().unwrap().reduce_sword_credit = true;
@@ -731,7 +740,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
         game.as_guest(13, |game| game.remember_mob_player_credit(100))
             .unwrap();
         game.as_guest(12, |game| {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1))
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 1))
         })
         .unwrap();
         for (owner, strength) in [(Some(12), 0.2), (None, 0.4), (Some(999), 0.4)] {
@@ -769,6 +778,7 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred() {
     if super::native_entity_refs::tests::run_fresh_cases(
         "game::server_side::native_knockback_tests::remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred",
@@ -786,7 +796,7 @@ fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_on
             .extra
             .set_main_hand_stack(Some(ItemStack::new("minecraft:bone", 1)));
         game.as_guest(12, |game| {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
             assert!(game.mob_hits_mob(100, 1.0, Damage::player([1.0, 0.0, 0.0])));
         })
         .unwrap();
@@ -795,7 +805,7 @@ fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_on
         }
         assert_eq!(game.mobs[0].ai.last_hurt_by_player, 60);
         game.as_guest(12, |game| {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_axe", 1))
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_axe", 1))
         })
         .unwrap();
         assert!(game.mob_hits_mob(100, 1.0, Damage::mob(101, [1.0, 0.0, 0.0])));

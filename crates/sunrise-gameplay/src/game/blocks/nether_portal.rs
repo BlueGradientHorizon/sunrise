@@ -72,9 +72,9 @@ impl PortalSide<'_> {
 /// Where in its portal a traveller stood, and where its exit is to be found.
 #[derive(Clone, Copy, Debug)]
 pub struct Plan {
-    pub(in crate::game) dim: Dim,
+    pub dim: Dim,
     /// The border-clamped, scaled position (`approximateExitPos`).
-    pub(in crate::game) approximate: BlockPos,
+    pub approximate: BlockPos,
     pub(in crate::game) entry_x_axis: bool,
     pub(in crate::game) offset: Vec3,
     pub(in crate::game) width: f32,
@@ -126,12 +126,12 @@ pub enum TransferredArrivalState {
 }
 
 #[derive(Debug)]
-pub(in crate::game) struct Arrival {
+pub struct Arrival {
     /// Teleport-only state; deliberately absent from arrival_tag.
     pub(in crate::game) tnt_used_portal: bool,
-    pub(in crate::game) plan: Plan,
+    pub plan: Plan,
     pub tag: Tag,
-    pub(in crate::game) transferred: Option<TransferredArrivalState>,
+    pub transferred: Option<TransferredArrivalState>,
 }
 
 /// The server's entity portal state.

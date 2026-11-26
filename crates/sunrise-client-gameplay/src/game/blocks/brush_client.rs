@@ -134,11 +134,11 @@ impl crate::game::ClientGame<'_> {
                 key.2 + adjacent[2],
             );
             draw(BlockItemDraw {
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 stack,
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 display: DisplayContext::Fixed,
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 seed: 0,
                 state: &item,
                 pose: pose.to_glam(),

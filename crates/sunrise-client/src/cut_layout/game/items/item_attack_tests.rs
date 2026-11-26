@@ -187,7 +187,7 @@ fn a_part_keeps_the_swing_from_starting() {
             let mut player = PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap();
             player.entity_id = 7;
             game.player = Some(player);
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
             game.offhand = Some(ItemStack::new("minecraft:stone", 1));
 
             // Not canceled: the swing starts as before.

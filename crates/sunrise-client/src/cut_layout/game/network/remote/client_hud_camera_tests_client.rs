@@ -1,4 +1,4 @@
-use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use crate::game::remote::tests::client_hud_camera_tests::LOCAL;
 use crate::game::remote::tests::client_hud_camera_tests::MOB;
 use crate::game::remote::tests::client_hud_camera_tests::WATCHED;
@@ -9,7 +9,7 @@ use crate::game::remote::tests::client_hud_camera_tests::id;
 use crate::game::remote::tests::client_hud_camera_tests::mount;
 use crate::game::remote::tests::client_hud_camera_tests::num;
 use crate::game::remote::tests::client_hud_camera_tests::spawn;
-use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use sunrise_client::level_loading::Reason;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
@@ -120,7 +120,7 @@ fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() 
 
 /// The server-side scene of one recorded case, delivered as the packets a client gets.
 pub(in crate::game) fn set_up(
-    game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     case: &serde_json::Value,
 ) {
     let game_type = match case["gameMode"].as_str().unwrap() {
@@ -146,7 +146,7 @@ pub(in crate::game) fn set_up(
         sea_level: 63,
     };
     game.enter_remote_dimension(&spawn_info, RemoteDimensionEntry::Login, Reason::Other);
-    let remote = game.side.remote.as_mut().unwrap();
+    let remote = game.client.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = LOCAL;
     remote.level_load.finish();
@@ -154,11 +154,11 @@ pub(in crate::game) fn set_up(
 
     // The viewer's own state: what the local hotbar and bars would show.
     game.selected = case["selected"].as_u64().unwrap() as usize;
-    game.side.settings.main_hand_left = !case["rightHanded"].as_bool().unwrap();
+    game.client.settings.main_hand_left = !case["rightHanded"].as_bool().unwrap();
     for (i, pop) in case["slots"].as_array().unwrap().iter().enumerate() {
         if let Some(pop) = pop.as_u64() {
             game.inventory[i] = Some(ItemStack::new("minecraft:stone", 1));
-            game.side.hotbar_pop[i] = pop as u8;
+            game.client.hotbar_pop[i] = pop as u8;
         }
     }
     game.handle_packet(C::SetHealth(play::SetHealth {
@@ -255,6 +255,6 @@ pub(in crate::game) fn set_up(
         other => panic!("camera kind {other}"),
     }
     if case["attackIndicator"] == "HOTBAR" {
-        game.side.settings.attack_indicator = 2;
+        game.client.settings.attack_indicator = 2;
     }
 }

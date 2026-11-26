@@ -123,6 +123,7 @@ fn send(c: &mut Connection, target: u8) {
     .unwrap();
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {

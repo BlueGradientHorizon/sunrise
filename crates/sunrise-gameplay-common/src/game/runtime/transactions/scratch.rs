@@ -79,14 +79,14 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Number of currently live lent scratch slots on this game's transaction journal.
-    #[cfg(test)]
-    pub(in crate::game) fn live_scratch_count(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn live_scratch_count(&self) -> usize {
         self.transactions.scratch.len()
     }
 
     /// Number of scratch rollback snapshots recorded on the innermost open transaction frame.
-    #[cfg(test)]
-    pub(in crate::game) fn current_scratch_kept_count(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn current_scratch_kept_count(&self) -> usize {
         self.transactions
             .levels
             .last()

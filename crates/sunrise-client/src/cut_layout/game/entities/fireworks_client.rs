@@ -109,14 +109,15 @@ pub(crate) mod tests {
             }
             game.client.particles.0.sounds.clear();
             for _ in 0..20 {
+                let (common, client) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
                 let level = ParticleLevel {
-                    world: &game.world,
-                    facts: game.res.facts(),
-                    collision: game.collision,
+                    world: &common.world,
+                    facts: common.res.facts(),
+                    collision: common.collision,
                     player: None,
                     cached_chunk: std::cell::Cell::new(None),
                 };
-                game.client.particles.0.tick(&level);
+                client.particles.0.tick(&level);
             }
             let bursts: Vec<(&str, [f64; 3])> = game
                 .client

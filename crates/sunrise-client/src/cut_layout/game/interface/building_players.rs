@@ -113,9 +113,9 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(g.dim, Dim::Nether);
             // for_player already switched the level before entering the guest.
             // The host's body must not become a phantom blocker in the Nether.
-            assert!(g.side.lan_building_boxes.0.boxes(Dim::Nether).is_empty());
+            assert!(g.server.lan_building_boxes.0.boxes(Dim::Nether).is_empty());
             assert_eq!(
-                g.side.lan_building_boxes.0.boxes(Dim::Overworld),
+                g.server.lan_building_boxes.0.boxes(Dim::Overworld),
                 vec![(
                     original.min_position().components(),
                     original.max_position().components()

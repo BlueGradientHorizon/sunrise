@@ -26,7 +26,7 @@ use sunrise_sim::server_perf::{
 use sunrise_world::level::BlockId;
 
 /// What a capture is asked to record, and how it was asked.
-pub(super) struct Plan {
+pub struct Plan {
     pub seconds: u32,
     pub samples: bool,
     pub timeline: bool,

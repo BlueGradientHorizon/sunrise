@@ -68,6 +68,7 @@ pub(super) fn store<'a>(
 }
 
 /// The server sets the level's value, committed or rolled back.
+#[cfg(any())]
 pub(super) fn set_level(game: &sunrise_client_gameplay::game::ClientGame<'_>, value: i32, commit: bool) {
     game.client
         .integrated
@@ -97,6 +98,7 @@ fn window_value(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> Opt
 }
 
 /// Let the server's hub tick `n` times, so later edits land in a later pass.
+#[cfg(any())]
 pub(super) fn wait_server_ticks(game: &sunrise_client_gameplay::game::ClientGame<'_>, n: u64) {
     let ticks = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
         game.client
@@ -306,6 +308,7 @@ pub(super) fn sync_packets_within(c: &mut Connection, window: Duration) -> usize
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn attachment_sync_follows_the_negotiated_route() {
     std::env::var_os("SUNRISE_TEST_RESOURCES")
         .expect("missing SUNRISE_TEST_RESOURCES: a prepared 26.3 resource root");

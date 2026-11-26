@@ -274,8 +274,8 @@ impl ServerGame<'_> {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn test_begin_server_control_save(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_begin_server_control_save(
         &mut self,
         all: bool,
         reply: std::sync::mpsc::Sender<String>,
@@ -283,8 +283,8 @@ impl ServerGame<'_> {
         self.begin_server_control_save(all, reply)
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn test_poll_server_closing_save(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_poll_server_closing_save(
         &mut self,
         save: &mut ClosingSave,
     ) -> Result<bool> {

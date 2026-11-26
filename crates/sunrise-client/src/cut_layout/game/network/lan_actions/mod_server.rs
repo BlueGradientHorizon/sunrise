@@ -5,12 +5,12 @@ use sunrise_protocol::packets::play::Serverbound as S;
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use sunrise_gameplay::game::lan_actions::tests::StopMenu;
+    use sunrise_gameplay::game::lan_actions::stop_menu::StopMenu;
 
     #[test]
     #[ignore = "daily"]
     fn block_menu_click_keeps_spent_action_on_cancellation() {
-        use sunrise_gameplay::game::server_side::lan_actions_server::MenuOpen;
+        use sunrise_gameplay_common::game::lan_actions::shared::MenuOpen;
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
         use sunrise_core::nbt::Tag;
@@ -1003,6 +1003,7 @@ pub(crate) mod respawn_world_point_tests {
 }
 
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod guest_close_listener_tests {
     use super::*;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::close;

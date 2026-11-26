@@ -57,8 +57,8 @@ pub(in crate::game::server_side) fn can_spawn_entities_in_chunk(
 /// positions, kept between ticks. A chunk crossing rebuilds only the squares
 /// it can change, and proximity to players is checked live on every pass.
 #[derive(Default)]
-pub(in crate::game) struct SpawnScratch {
-    pub(in crate::game) candidates: Vec<(i32, i32)>,
+pub struct SpawnScratch {
+    pub candidates: Vec<(i32, i32)>,
     /// Each player's chunk at the last pass.
     chunks: Vec<(i32, i32)>,
     /// For each player, the others whose squares overlap its own, in order.
@@ -331,8 +331,8 @@ impl<'p> NearestPlayers<'p> {
 /// Up to this many players, a spawn start measures to every one.
 const PLAYERS_SCANNED: usize = 8;
 /// The game level as natural spawning reads it.
-pub(in crate::game) struct GameLevel<'g, 'a> {
-    pub(in crate::game) game: &'g crate::game::ServerGame<'a>,
+pub struct GameLevel<'g, 'a> {
+    pub game: &'g crate::game::ServerGame<'a>,
     pub(in crate::game) w: MobWorld<'g>,
     /// Every player in the level ([`Game::level_players`]).
     pub(in crate::game) players: Vec<LevelPlayer>,
@@ -381,7 +381,7 @@ struct Checked {
     mob: Mob,
     provisional: u32,
 }
-const SCANNED_QUERIES: u32 = 8;
+pub const SCANNED_QUERIES: u32 = 8;
 struct PendingMob {
     kind: std::sync::Arc<MobType>,
     bounds: Aabb,
@@ -610,11 +610,11 @@ impl<'g> GameLevel<'g, '_> {
 /// A spawning pass's [`finalize::FinalizeLevel`]: the game's mobs and
 /// conditions read-only, what finalizeSpawn makes (jockeys, mounts) recorded
 /// for [`Game::add_spawned`], as the pass holds the game immutably.
-pub(in crate::game) struct PassLevel<'a, 'g, 'h> {
+pub struct PassLevel<'a, 'g, 'h> {
     l: &'a GameLevel<'g, 'h>,
 }
 impl<'a, 'g, 'h> PassLevel<'a, 'g, 'h> {
-    pub(in crate::game) fn new(l: &'a GameLevel<'g, 'h>) -> Self {
+    pub fn new(l: &'a GameLevel<'g, 'h>) -> Self {
         Self { l }
     }
 }

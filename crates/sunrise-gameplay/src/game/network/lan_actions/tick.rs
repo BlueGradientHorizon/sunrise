@@ -1,9 +1,9 @@
 
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
-    #[cfg(test)]
-    pub(in crate::game) fn tick_guests(&mut self) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn tick_guests(&mut self) {
         use crate::game::server_side::lan_actions_server::building_cache;
         building_cache(self.server.lan.as_ref());
         self.tick_guests_inner();
@@ -11,6 +11,6 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "tests/dig_tick_order_tests.rs"]
 pub mod dig_tick_order_tests;

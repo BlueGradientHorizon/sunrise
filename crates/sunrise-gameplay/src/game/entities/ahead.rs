@@ -193,17 +193,17 @@ fn move_alone(
     Some((no_physics, alive, false, splashes))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     /// A test's choice of the path, over the parallel tick's switch.
-    static AHEAD: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+    pub static AHEAD: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
     /// The moves a test's tick put in place, and those a merge made it refuse.
-    static TAKEN: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
+    pub static TAKEN: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
 }
 
 /// Whether the moves are worked out ahead: while the parallel tick is on.
 fn ahead() -> bool {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if let Some(ahead) = AHEAD.with(std::cell::Cell::get) {
         return ahead;
     }
@@ -269,7 +269,7 @@ impl Moves {
     ) -> Option<Moved> {
         let a = self.0.get_mut(i)?.take()?;
         let fits = a.started == started(item);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         TAKEN.with(|t| {
             let (taken, refused) = t.get();
             t.set((taken + usize::from(fits), refused + usize::from(!fits)));

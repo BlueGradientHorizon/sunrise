@@ -15,14 +15,11 @@ fn id(text: &str) -> Identifier {
     Identifier::parse_namespaced(text).unwrap()
 }
 
-fn lookup<S: sunrise_gameplay_common::game::Side>(
-    game: &super::Game<'_, S>,
+fn lookup<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &G,
     registry: &str,
     name: &str,
-) -> Option<i32>
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+) -> Option<i32> {
     game.registry_protocol_id(&id(registry), &id(name))
 }
 

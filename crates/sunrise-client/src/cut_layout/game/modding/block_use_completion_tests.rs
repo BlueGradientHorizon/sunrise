@@ -112,9 +112,9 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                     assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                 } else {
                     g.as_guest(12, |g| {
-                        g.side.forced_hit = Some(hit);
+                        g.server.forced_hit = Some(hit);
                         g.use_hand(Some(&hit)).unwrap();
-                        g.side.forced_hit = None;
+                        g.server.forced_hit = None;
                     })
                     .unwrap();
                 }
@@ -154,9 +154,9 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                     assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                 } else {
                     g.as_guest(12, |g| {
-                        g.side.forced_hit = Some(hit);
+                        g.server.forced_hit = Some(hit);
                         g.use_hand(Some(&hit)).unwrap();
-                        g.side.forced_hit = None;
+                        g.server.forced_hit = None;
                     })
                     .unwrap();
                 }
@@ -205,9 +205,9 @@ fn consuming_cancellation_has_one_outer_on_local_and_packet_routes() {
                     assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                 } else {
                     g.as_guest(12, |g| {
-                        g.side.forced_hit = Some(hit);
+                        g.server.forced_hit = Some(hit);
                         g.use_hand(Some(&hit)).unwrap();
-                        g.side.forced_hit = None;
+                        g.server.forced_hit = None;
                     })
                     .unwrap();
                 }
@@ -293,7 +293,7 @@ fn resource_gated_block_use_order_and_stacks_on_server_and_guest() {
                 // Exercise the local server's outer use_target_then_item route,
                 // not another call through guest_use_item_on.
                 g.set_mode_id(0);
-                g.inventory[g.selected] = Some(before.clone());
+                g.common.inventory[g.common.selected] = Some(before.clone());
                 g.offhand = None;
                 g.server.forced_hit = Some(hit);
                 assert_eq!(g.use_item_as_player().unwrap(), Some(Hand::Main));
@@ -424,7 +424,7 @@ fn block_use_original_shrink_and_damage_values() {
     let _recording = Recording::start();
     sunrise_gameplay::game::native_guest_turn_tests::with_guests(|g| {
         g.set_mode_id(0);
-        g.inventory[g.selected] = Some(ItemStack::new("minecraft:glowstone", 5));
+        g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:glowstone", 5));
         g.with_block_use_original(Hand::Main, |g| {
             g.consume_held();
             g.finish_block_use([3, 64, 4], Hand::Main);
@@ -434,7 +434,7 @@ fn block_use_original_shrink_and_damage_values() {
             [ItemStack::new("minecraft:glowstone", 4)]
         );
         SEEN.with_borrow_mut(Vec::clear);
-        g.inventory[g.selected] = Some(ItemStack::new("minecraft:iron_shovel", 1));
+        g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:iron_shovel", 1));
         g.with_block_use_original(Hand::Main, |g| {
             g.damage_held(1);
             g.finish_block_use([3, 64, 4], Hand::Main);
@@ -534,9 +534,9 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                         assert!(g.guest_use_item_on(12, gi, hit, Hand::Main, None).is_ok());
                     } else {
                         g.as_guest(12, |g| {
-                            g.side.forced_hit = Some(hit);
+                            g.server.forced_hit = Some(hit);
                             g.use_hand(Some(&hit)).unwrap();
-                            g.side.forced_hit = None;
+                            g.server.forced_hit = None;
                         })
                         .unwrap();
                     }
@@ -583,7 +583,7 @@ fn block_use_nested_originals_and_replacements_are_isolated() {
     let _recording = Recording::start();
     sunrise_gameplay::game::native_guest_turn_tests::with_guests(|g| {
         g.set_mode_id(0);
-        g.inventory[g.selected] = Some(ItemStack::new("minecraft:glowstone", 5));
+        g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:glowstone", 5));
         g.with_block_use_original(Hand::Main, |g| {
             g.consume_held();
             *g.held_mut() = Some(ItemStack::new("minecraft:bucket", 1));
@@ -639,7 +639,7 @@ fn block_use_registry_guard_final_hand_matches_original() {
         for item in items {
             g.world.set(3, 64, 4, stone).unwrap();
             g.world.set(3, 65, 4, air).unwrap();
-            g.inventory[g.selected] = Some(ItemStack::new(&item, 5));
+            g.common.inventory[g.common.selected] = Some(ItemStack::new(&item, 5));
             g.offhand = None;
             SEEN.with_borrow_mut(Vec::clear);
             g.server.forced_hit = Some(hit);
@@ -700,9 +700,9 @@ fn run_block_use_regression(g: &mut sunrise_gameplay::game::ServerGame<'_>, pack
     } else {
         g.as_guest(12, |g| {
             g.set_mode_id(0);
-            g.side.forced_hit = Some(hit);
+            g.server.forced_hit = Some(hit);
             assert!(g.use_hand(Some(&hit)).unwrap());
-            g.side.forced_hit = None;
+            g.server.forced_hit = None;
         })
         .unwrap();
     }

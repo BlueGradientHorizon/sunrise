@@ -150,7 +150,8 @@ fn the_melee_knockback_scales_with_the_attackers_attack_knockback() {
     summon_pig(&mut game, "");
     // A held item, so `getKnockback` runs `EnchantmentHelper.modifyKnockback` over the
     // attribute value (no Knockback enchantment: it returns that value unchanged).
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:wooden_shovel", 1));
+    let selected = game.selected;
+    game.inventory[selected] = Some(ItemStack::new("minecraft:wooden_shovel", 1));
     aim_at_mob(&mut game);
     // A fully charged hit at 0 ATTACK_KNOCKBACK: only the hit's own 0.4 knockback.
     assert!(game.attack(), "the attack reached the pig");

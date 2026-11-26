@@ -176,7 +176,7 @@ fn client_game<'a>(
     game
 }
 
-fn spawn<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>, kind: &str, id: u32, at: [f64; 3]) -> usize {
+fn spawn(game: &mut sunrise_gameplay_common::game::CommonGame<'_>, kind: &str, id: u32, at: [f64; 3]) -> usize {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs
         .push(Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0));

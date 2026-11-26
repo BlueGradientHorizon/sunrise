@@ -10,7 +10,7 @@ pub fn native_register_enchantment_damage_effects(
     });
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
     use mod_api::{
@@ -54,7 +54,7 @@ pub mod tests {
             }
         }
     }
-    pub struct TestMod(pub(in crate::game) Observations);
+    pub struct TestMod(pub Observations);
     #[mod_api::__subscriptions]
     impl Hooks for TestMod {
         fn register_enchantment_damage_effects(

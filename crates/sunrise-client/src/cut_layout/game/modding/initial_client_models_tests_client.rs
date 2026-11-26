@@ -9,7 +9,7 @@ use crate::game::load_resources;
 fn a_client_start_joins_the_world_rest_worker_before_it_resolves_the_renderers() {
     with_loading_client(|game| {
         game.publish_initial_client_models(vec![
-            sunrise_client_gameplay::game::client_reload::PreparedClientReload::Vanilla(()),
+            sunrise_client_gameplay::game::client_side::client_reload::PreparedClientReload::Vanilla(()),
         ])
         .unwrap();
         assert!(game.rest_loader.is_none(), "the worker was joined");

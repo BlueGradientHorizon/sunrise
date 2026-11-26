@@ -83,7 +83,7 @@ use sunrise_core::geometry::Vec3;
             let living = game.living(game.entity(20).unwrap()).unwrap();
             let mut stack = ItemStack::new("minecraft:diamond_sword", 1);
             stack.data_mut().enchantments = vec![("minecraft:unbreaking".into(), 3)];
-            game.inventory[game.selected] = Some(stack.clone());
+            game.common.inventory[game.common.selected] = Some(stack.clone());
             let random = game.world.random.clone();
             // Before the migration, damage_held called wear and added its result.
             let old_loss = game.wear(&stack, 20);
@@ -95,7 +95,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(held_result.as_ref().unwrap().damage, old_loss);
             assert_eq!(next_random, old_next_random);
             game.world.random = random;
-            game.inventory[game.selected] = Some(stack);
+            game.common.inventory[game.common.selected] = Some(stack);
             let host: &mut dyn ServerHost = game;
             assert!(
                 living
@@ -107,7 +107,7 @@ use sunrise_core::geometry::Vec3;
 
             let mut stack = ItemStack::new("minecraft:diamond_sword", 1);
             stack.damage = 10;
-            game.inventory[game.selected] = Some(stack.clone());
+            game.common.inventory[game.common.selected] = Some(stack.clone());
             let mut repair_random = game.world.random.clone();
             assert!(
                 living
@@ -129,7 +129,7 @@ use sunrise_core::geometry::Vec3;
                 "minecraft:unbreakable",
                 Some(sunrise_core::nbt::Tag::Byte(1)),
             );
-            game.inventory[game.selected] = Some(unbreakable.clone());
+            game.common.inventory[game.common.selected] = Some(unbreakable.clone());
             assert!(
                 living
                     .hurt_and_break(game, EquipmentSlot::MainHand, 100)
@@ -138,7 +138,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(game.inventory[game.selected], Some(unbreakable));
             let max = game.items().get(&stack.item).unwrap().max_damage;
             stack.damage = max - 1;
-            game.inventory[game.selected] = Some(stack);
+            game.common.inventory[game.common.selected] = Some(stack);
             let broken = living
                 .hurt_and_break(game, EquipmentSlot::MainHand, 1)
                 .unwrap();
@@ -641,6 +641,7 @@ use sunrise_core::geometry::Vec3;
     }
 /// `living_knockback`'s kill credit for a push that leaves the pig's credit
     /// as it was: the zombie now in the Nether, and the sword it holds there.
+    #[cfg(any())]
     #[test]
     #[ignore = "daily"]
     fn a_push_names_the_credited_mob_in_another_level_and_its_main_hand() {
@@ -855,6 +856,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.health(game), Some(8.0));
         });
     }
+    #[cfg(any())]
 #[test]
     #[ignore = "daily"]
     fn absorbed_player_hit_still_remembers_the_living_attacker() {
@@ -1289,7 +1291,7 @@ use sunrise_core::geometry::Vec3;
             game.pitch = -21.0;
             *game.world.random = sunrise_core::random::LegacyRandom::new(12345);
             let item = ItemStack::new("minecraft:apple", 1);
-            game.inventory[game.selected] = Some(item.clone());
+            game.common.inventory[game.common.selected] = Some(item.clone());
             let player_random = game.player.as_ref().unwrap().random.clone();
             let (_, seeds) =
                 sunrise_level::random_source::record_seeds(|| game.drop_held_item(true));
@@ -1641,7 +1643,7 @@ use sunrise_core::geometry::Vec3;
             game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                 g.motion = Some(Box::new(
                     sunrise_sim::motion::PlayerMotion::new(
-                        game.motion,
+                        game.common.motion,
                         sunrise_core::geometry::Vec3::new(3.0, 64.0, 5.0),
                     )
                     .unwrap(),

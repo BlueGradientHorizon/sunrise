@@ -472,7 +472,7 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> FireworksGameExt1<'__sg> for G {}
 pub fn use_on_passes(fall_flying: bool) -> bool {
     fall_flying
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "fireworks/hit_attempt_tests.rs"]
 pub mod hit_attempt_tests;
 

@@ -24,9 +24,9 @@ pub fn with_dynamic_texture_pool_override<R>(
 }
 
 #[cfg(feature = "client")]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::client_side::resource_tables_client::UiResources {
-    pub(in crate::game) fn clone_for_tests(&self) -> Self {
+    pub fn clone_for_tests(&self) -> Self {
         use crate::game::client_side::resource_tables_client::PlainTexts;
         Self {
             atlas: self.atlas.clone_for_tests(),

@@ -11,6 +11,28 @@ use sunrise_client_gameplay::game::client_side::client_attack_targets::tests::se
 
 use super::*;
 
+    #[derive(Default)]
+    struct AttackBatch {
+        targets: std::sync::Mutex<Vec<mod_api::EntityRef>>,
+        cancel: std::sync::atomic::AtomicBool,
+    }
+    struct Observer(std::sync::Arc<AttackBatch>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Observer {
+        fn client_attack_target(
+            &self,
+            _: &mut dyn mod_api::ClientHost,
+            event: &mut mod_api::ClientAttackTargetEvent<'_>,
+        ) -> mod_api::Flow {
+            *event.targets = self.0.targets.lock().unwrap().clone();
+            if self.0.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
+            }
+        }
+    }
+
 #[test]
     #[ignore = "daily"]
     fn client_attack_batch_keeps_order_deduplication_and_server_constraints() {

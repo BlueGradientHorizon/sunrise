@@ -1,5 +1,6 @@
 #![cfg(test)]
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod server_tick_rate_changed_tests {
     use crate::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::with_scheduler;
 

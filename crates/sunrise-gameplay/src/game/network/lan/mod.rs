@@ -2976,46 +2976,48 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+impl LanHost {
+    /// Install an already configured fixture hub without touching the process-wide sync cache.
+    pub fn for_test(mut hub: Hub) -> Self {
+        hub.dispatch_move_effects = true;
+        Self {
+            settings: LanSettings {
+                port: hub.lan.port,
+                guest_commands: false,
+                force_game_mode: false,
+            },
+            hub,
+            players_told_left: false,
+            spawn_joins: Vec::new(),
+            play: Default::default(),
+            menus: Default::default(),
+            broken: Default::default(),
+            mob_state: Default::default(),
+            poses: Default::default(),
+            mob_players: Default::default(),
+            owner: None,
+            waypoints: Default::default(),
+            waypoint_dead: Default::default(),
+            border_sent: None,
+            commands: Default::default(),
+            quiet: Default::default(),
+            far: None,
+            native_commands_sent: None,
+            sleep_ignored: Default::default(),
+            states: Default::default(),
+            states_next_entity: None,
+            idle_states: Default::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::{native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _, tables::{GameItems as _, WorldTablesExt as _}};
     use super::{EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags};
     use sunrise_gameplay_common::game::lan_mob_metadata::{mob_freeze_meta, mob_meta};
 
-    impl LanHost {
-        /// Install an already configured fixture hub without touching the process-wide sync cache.
-        pub(in crate::game) fn for_test(mut hub: Hub) -> Self {
-            hub.dispatch_move_effects = true;
-            Self {
-                settings: LanSettings {
-                    port: hub.lan.port,
-                    guest_commands: false,
-                    force_game_mode: false,
-                },
-                hub,
-                players_told_left: false,
-                spawn_joins: Vec::new(),
-                play: Default::default(),
-                menus: Default::default(),
-                broken: Default::default(),
-                mob_state: Default::default(),
-                poses: Default::default(),
-                mob_players: Default::default(),
-                owner: None,
-                waypoints: Default::default(),
-                waypoint_dead: Default::default(),
-                border_sent: None,
-                commands: Default::default(),
-                quiet: Default::default(),
-                far: None,
-                native_commands_sent: None,
-                sleep_ignored: Default::default(),
-                states: Default::default(),
-                states_next_entity: None,
-                idle_states: Default::default(),
-            }
-        }
-    }
 
     #[test]
     #[ignore = "daily"]

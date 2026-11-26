@@ -169,9 +169,9 @@ fn retained_stale_push_target() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.creatures
+        game.common.creatures
             .pending
-            .entry(game.dim.id())
+            .entry(game.common.dim.id())
             .or_default()
             .pushes
             .push(999, Vec3::new(0.25, 0.0, 0.0));
@@ -289,9 +289,9 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
             }
             if output == Output::Mixed {
                 // A guest action already queued in an older batch must beat the egg produced by 73.
-                game.creatures
+                game.common.creatures
                     .pending
-                    .entry(game.dim.id())
+                    .entry(game.common.dim.id())
                     .or_default()
                     .batches
                     .push_back(MobOutputBatch {

@@ -143,7 +143,7 @@ fn with_pig_and_server(
 fn command(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     line: &str,
-) -> (Result<Handled>, mpsc::Receiver<String>) {
+) -> (sunrise_game_data::Result<Handled>, mpsc::Receiver<String>) {
     let (reply, replies) = mpsc::channel();
     let words: Vec<&str> = line.split_whitespace().collect();
     (game.agent_command(&words, line, &reply, &NoLoop), replies)

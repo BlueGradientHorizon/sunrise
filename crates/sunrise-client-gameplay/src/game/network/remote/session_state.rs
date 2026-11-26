@@ -41,29 +41,29 @@ impl ChunkGenerator for NoTerrain {
 
 /// A server entity the client tracks (position as last sent).
 pub struct Tracked {
-    pub(in crate::game) kind: String,
-    pub(in crate::game) position: [f64; 3],
-    pub(in crate::game) previous: [f64; 3],
-    pub(in crate::game) yaw: f32,
-    pub(in crate::game) pitch: f32,
-    pub(in crate::game) previous_yaw: f32,
-    pub(in crate::game) previous_pitch: f32,
+    pub kind: String,
+    pub position: [f64; 3],
+    pub previous: [f64; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+    pub previous_yaw: f32,
+    pub previous_pitch: f32,
     /// `Entity.getPositionCodec`'s base: the position the server last
     /// reported (AddEntity, MoveEntity, EntityPositionSync), which a move
     /// packet's delta counts from. A TeleportEntity moves the entity but not
     /// this base, so the server's next delta still lands where it means.
-    pub(in crate::game) codec_base: [f64; 3],
-    pub(in crate::game) on_fire: bool,
-    pub(in crate::game) mod_fire_immune: bool,
-    pub(in crate::game) silent: bool,
+    pub codec_base: [f64; 3],
+    pub on_fire: bool,
+    pub mod_fire_immune: bool,
+    pub silent: bool,
     /// `Entity.vehicle`: the entity it rides (`SetPassengers`), whatever either one's type.
-    pub(in crate::game) vehicle: Option<u32>,
+    pub vehicle: Option<u32>,
     /// `Entity.tickCount` of this client's copy: the ticks the client level gave it since the
     /// server added it (`Entity.commonTick`), counted in `tick_remote_entities`.
-    pub(in crate::game) tick_count: i32,
+    pub tick_count: i32,
     /// What `entity_size` answered at this copy's last size refresh, with the synced pose it
     /// was asked for, unless the copy is a mob, which keeps its own (`Mob::size_answer`).
-    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
+    pub size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 
 /// An item has joined the client level, but has no stack to draw yet.
@@ -80,7 +80,7 @@ pub(in crate::game) struct PendingItem {
 /// listed got off. Every tracked entity counts, whatever its type, so a
 /// server's item display or marker on a player hides that player's name tag
 /// as vanilla's `isVehicle` does (#5666).
-pub(in crate::game) fn seat_passengers(
+pub fn seat_passengers(
     entities: &mut HashMap<i32, Tracked>,
     vehicle: u32,
     passengers: &[i32],
@@ -94,13 +94,13 @@ pub(in crate::game) fn seat_passengers(
     }
 }
 /// `Minecraft.services()` trust keys, fetched once per connection off the game thread.
-pub(in crate::game) enum ServicesKeys {
+pub enum ServicesKeys {
     Pending,
     Ready(ServicesKeySet),
 }
 
 /// One `PlayerInfo` property, shared by the list entry and the entities that kept it.
-pub(in crate::game) struct PlayerTextures {
+pub struct PlayerTextures {
     pub(in crate::game) property: AccountProperty,
     pub(in crate::game) unpacked: std::sync::OnceLock<sunrise_client_render::skins::Textures>,
 }
@@ -109,7 +109,7 @@ impl PlayerTextures {
     /// `SkinManager.createLookup(profile, requireSecure)`: a secure lookup shows
     /// only textures whose signature the keys verified, so it waits for keys that
     /// are still pending; the local player's shows its textures unverified.
-    pub(in crate::game) fn unpack(
+    pub fn unpack(
         &self,
         services_keys: &ServicesKeys,
         valid_uris: &[impl AsRef<str>],
@@ -168,7 +168,7 @@ pub enum RemoteDimensionEntry {
     DeathRespawn,
 }
 
-pub(in crate::game) struct Remote {
+pub struct Remote {
     pub(in crate::game) professions: Arc<sunrise_sim::mobs::villager::ResolvedProfessions>,
     pub session: Session,
     /// Display-only address computed at connection setup. Never holds the raw friend invite.
@@ -543,7 +543,7 @@ pub(in crate::game) const BACKLOG_LIMIT: Duration = Duration::from_millis(50);
 /// past it the column, and what came after it, wait for the next frame.
 pub(in crate::game) const TICK_DECODE_WAIT: Duration = Duration::from_millis(250);
 #[derive(Default)]
-pub(in crate::game) struct ClientMenu {
+pub struct ClientMenu {
     pub(in crate::game) current: Option<(i32, String)>,
     pub generation: u64,
 }
@@ -566,7 +566,7 @@ impl ClientMenu {
 /// entity whose entry is gone the profile it kept. `kept` first takes, for each
 /// player entity without one, its entry's textures (`AbstractClientPlayer.getPlayerInfo`
 /// looks the PlayerInfo up once and holds it, removed from the list or not).
-pub(in crate::game) fn skin_entries(
+pub fn skin_entries(
     level_players: &HashMap<i32, u128>,
     listed: &HashMap<u128, Arc<PlayerTextures>>,
     kept: &mut HashMap<i32, Arc<PlayerTextures>>,

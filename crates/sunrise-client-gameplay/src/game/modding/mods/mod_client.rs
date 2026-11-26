@@ -124,13 +124,13 @@ impl ClientGame<'_> {
         self.reload_packs();
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn test_add_hook_panic_toasts(&mut self) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_add_hook_panic_toasts(&mut self) {
         self.add_hook_panic_toasts();
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn test_open_title(&mut self, saves: std::path::PathBuf) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_open_title(&mut self, saves: std::path::PathBuf) {
         self.client.title.0 = Some(self.new_title(saves));
     }
 }

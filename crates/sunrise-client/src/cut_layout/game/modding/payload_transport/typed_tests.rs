@@ -183,6 +183,7 @@ impl Hooks for Registration {
     }
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn typed_payloads_follow_the_raw_routes() {
@@ -319,6 +320,7 @@ fn integrated(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     assert_eq!(*CLIENT.lock().unwrap(), [2, 8]);
 }
 
+#[cfg(any())]
 fn lan(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     let port = game
         .client

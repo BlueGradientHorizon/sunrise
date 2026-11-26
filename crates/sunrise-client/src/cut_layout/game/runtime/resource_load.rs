@@ -2,6 +2,7 @@
 
 #![cfg(test)]
 use std::sync::Arc;
+use sunrise_game_data::Result;
 use std::time::Instant;
 use crate::settings::Settings;
 use sunrise_gameplay_common::game::resource_load::{Progress, with_skip_facts_memo};

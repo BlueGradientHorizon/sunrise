@@ -1140,7 +1140,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "data/fire_tests_server.rs"]
 pub mod fire_tests;
 

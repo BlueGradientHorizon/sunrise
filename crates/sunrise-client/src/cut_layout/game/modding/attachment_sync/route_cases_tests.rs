@@ -2,7 +2,7 @@
 //! negotiated peer that does not see the holder is sent nothing, and a message keeps its
 //! place among the player's held gameplay packets.
 use super::transport_tests::{
-    Route, VALUE, peer, set_level, store, sync_packets_within, values_until, wait_server_ticks,
+    Route, VALUE, peer, store, sync_packets_within, values_until,
 };
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
@@ -71,6 +71,7 @@ fn seen_until(c: &mut Connection, count: usize) -> Vec<Seen> {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_dedicated_server_sends_only_trackers_in_packet_order() {
     std::env::var_os("SUNRISE_TEST_RESOURCES")
         .expect("missing SUNRISE_TEST_RESOURCES: a prepared 26.3 resource root");

@@ -145,8 +145,8 @@ impl OpenNativeScreen {
         self.screen.layout()
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn layout_mut(&mut self) -> &mut mod_api::MenuScreenLayout {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn layout_mut(&mut self) -> &mut mod_api::MenuScreenLayout {
         self.screen.layout_mut()
     }
 

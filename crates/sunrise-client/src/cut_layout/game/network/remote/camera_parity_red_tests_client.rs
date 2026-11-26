@@ -1,4 +1,4 @@
-use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use crate::game::remote::tests::camera_parity_red_tests::add_entity;
 use crate::game::remote::tests::camera_parity_red_tests::add_entity_with_data;
 use crate::game::remote::tests::camera_parity_red_tests::hex_f32;
@@ -7,7 +7,7 @@ use crate::game::remote::tests::camera_parity_red_tests::make_chunk;
 use crate::game::remote::tests::camera_parity_red_tests::parity_witness;
 use crate::game::remote::tests::camera_parity_red_tests::sync_interaction_size;
 use crate::game::remote::tests::camera_parity_red_tests::vec3_bits_expected;
-use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use std::sync::Arc;
 use sunrise_gameplay_common::world_biomes;
 use sunrise_client::{
@@ -830,8 +830,8 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             .find(|c| c["name"] == name)
             .unwrap_or_else(|| panic!("missing fov case {name}"))
     };
-    let item_id = |game: &Game<'_, sunrise_client_gameplay::game::client_side::ClientState>, name: &str| {
-        game.side
+    let item_id = |game: &sunrise_client_gameplay::game::ClientGame<'_>, name: &str| {
+        game.client
             .remote
             .as_ref()
             .unwrap()
@@ -841,7 +841,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             .id(name)
             .unwrap()
     };
-    let speed_attr_id = |game: &Game<'_, sunrise_client_gameplay::game::client_side::ClientState>| {
+    let speed_attr_id = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
         game.motion
             .attributes
             .id("minecraft:movement_speed")
@@ -1337,9 +1337,9 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
     let after_reset = &w["after_camera_reset_before_next_frame"];
 
     let accepted =
-        |game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>, pos: [f64; 3]| -> bool {
-            game.side.particles.0.clear();
-            game.side
+        |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, pos: [f64; 3]| -> bool {
+            game.client.particles.0.clear();
+            game.client
                 .particles
                 .0
                 .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
@@ -1351,8 +1351,8 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
                 player: None,
                 cached_chunk: std::cell::Cell::new(None),
             };
-            game.side.particles.0.tick(&level);
-            game.side.particles.0.len() == 1
+            game.client.particles.0.tick(&level);
+            game.client.particles.0.len() == 1
         };
 
     with_client_game(|game| {
@@ -2176,7 +2176,7 @@ pub(in crate::game) fn run_sleeping_spectated_living_entity_bed_view_and_visibil
 
 #[must_use]
 pub(in crate::game) fn setup_remote_overworld(
-    game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     player_id: i32,
     player_pos: [f64; 3],
     flat: bool,
@@ -2197,7 +2197,7 @@ pub(in crate::game) fn setup_remote_overworld(
         sea_level: 63,
     };
     game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
-    let remote = game.side.remote.as_mut().unwrap();
+    let remote = game.client.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = player_id;
     remote.view_distance = 8;
@@ -2209,9 +2209,9 @@ pub(in crate::game) fn setup_remote_overworld(
         )
         .unwrap(),
     );
-    game.side.camera_type = CameraType::FirstPerson;
-    game.side.settings.fov = 70.0;
-    game.side.settings.render_distance = 8;
+    game.client.camera_type = CameraType::FirstPerson;
+    game.client.settings.fov = 70.0;
+    game.client.settings.render_distance = 8;
     server
 }
 

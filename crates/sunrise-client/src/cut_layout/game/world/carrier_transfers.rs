@@ -9,7 +9,7 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::carrier_store::Store;
 
-use sunrise_sim::menu::place::TransferError;
+use sunrise_gameplay::game::server_side::carrier_transfers::TransferError;
 
 use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::copy_dir;
 

@@ -188,7 +188,7 @@ impl EntitySections {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::game) struct SectionWriter {
+pub struct SectionWriter {
     pub(in crate::game) entity: EntityRef,
     pub(in crate::game) position: [f64; 3],
     pub(in crate::game) player: Option<PlayerMoveState>,
@@ -203,7 +203,7 @@ pub(in crate::game) struct PlayerMoveState {
 
 /// The Host used while the entity's world view is borrowed. It answers only
 /// reads from the current write; other operations retain their typed refusal.
-pub struct LiveSectionHost(pub(in crate::game) Option<SectionWriter>);
+pub struct LiveSectionHost(pub Option<SectionWriter>);
 
 mod_api::impl_host_areas!(LiveSectionHost, except(datafix));
 mod_api::impl_server_host_areas!(LiveSectionHost);

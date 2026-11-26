@@ -52,7 +52,7 @@ pub(crate) mod eye_item_tests;
 #[cfg(test)]
 pub(crate) mod wolf_live_anger_tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::game::server_side::commands::data::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
 
@@ -498,7 +498,7 @@ pub(crate) mod arrow_reload_tests;
 #[cfg(test)]
 pub(crate) mod arrow_owner_tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::game::server_side::commands::data::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
 
@@ -942,12 +942,12 @@ pub(crate) mod vehicle_container_tests {
                     // The model, not a stale loaded Items list, owns the inventory.
                     match target {
                         Target::Boat(_) => {
-                            game.boats.update(game.boats.len() - 1, |boat| {
+                            game.common.boats.update(game.common.boats.len() - 1, |boat| {
                                 boat.items[0].as_mut().unwrap().count = 4
                             });
                         }
                         Target::Cart(_) => {
-                            game.carts.update(game.carts.len() - 1, |cart| {
+                            game.common.carts.update(game.common.carts.len() - 1, |cart| {
                                 cart.items[0].as_mut().unwrap().count = 4
                             });
                         }

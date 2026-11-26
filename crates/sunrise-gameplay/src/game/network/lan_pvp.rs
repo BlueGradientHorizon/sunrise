@@ -85,10 +85,10 @@ const PVP_SOURCE: HurtSource<'static> = HurtSource {
     position: None,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Strike {
     /// A plain blow by guest `attacker`, for the tests that land one.
-    pub(in crate::game::server_side) fn test_blow(attacker: u32) -> Self {
+    pub fn test_blow(attacker: u32) -> Self {
         Self {
             attacker: Some(attacker),
             creative: false,

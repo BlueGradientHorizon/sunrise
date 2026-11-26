@@ -3,16 +3,17 @@ use super::*;
 #[test]
 #[ignore = "daily"]
 fn failed_item_part_still_tries_the_off_hand() {
-    fn check<S: sunrise_gameplay_common::game::Side>(
+    fn check<'g, S: sunrise_gameplay_common::game::SideGame<'g>>(
         observer: &Observer,
-        game: &mut Game<'_, S>,
-        trigger: impl FnOnce(&mut Game<'_, S>),
+        game: &mut S,
+        trigger: impl FnOnce(&mut S),
     ) {
         *observer.0.lock().unwrap() = Controls {
             part_answer: Some(Answer::Fail),
             ..Controls::default()
         };
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
+        let selected = game.selected;
+        game.inventory[selected] = Some(ItemStack::new("minecraft:shield", 1));
         game.offhand = Some(ItemStack::new("minecraft:shield", 1));
         game.set_test_forced_hit(None);
         game.swing = Default::default();
@@ -39,7 +40,7 @@ fn failed_item_part_still_tries_the_off_hand() {
     mod_platform::testing::with_mods(mods, || {
         with_interaction_server_game(|game| {
             check(&observer, game, |game| {
-                game.side.guest_use = None;
+                game.server.guest_use = None;
                 assert_eq!(game.use_item_as_player().unwrap(), None);
             });
         });
@@ -54,11 +55,11 @@ fn failed_item_part_still_tries_the_off_hand() {
 #[test]
 #[ignore = "daily"]
 fn item_part_results_control_real_server_and_client_use() {
-    fn check_answers<S: InteractionSide>(
+    fn check_answers<'g, S: InteractionSide<'g>>(
         observer: &Observer,
-        game: &mut Game<'_, S>,
+        game: &mut S,
         label: &str,
-        mut before_use: impl FnMut(&mut Game<'_, S>),
+        mut before_use: impl FnMut(&mut S),
     ) {
         let client = S::IS_CLIENT;
         for (answer, handled, using, swing) in [
@@ -73,7 +74,8 @@ fn item_part_results_control_real_server_and_client_use() {
                 part_answer: Some(answer),
                 ..Controls::default()
             };
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
+            let selected = game.selected;
+            game.inventory[selected] = Some(ItemStack::new("minecraft:shield", 1));
             game.offhand = None;
             game.using = None;
             game.swing = Default::default();
@@ -102,8 +104,8 @@ fn item_part_results_control_real_server_and_client_use() {
                     game,
                     &format!("client=false, guest={guest}"),
                     |game| {
-                        game.side.use_failed = false;
-                        game.side.guest_use =
+                        game.server.use_failed = false;
+                        game.server.guest_use =
                             guest.then_some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Main));
                     },
                 );

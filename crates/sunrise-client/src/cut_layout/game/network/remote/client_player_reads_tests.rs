@@ -3,7 +3,7 @@
 #[test]
 #[ignore = "daily"]
 fn client_player_reads_answer_from_the_local_players_copy() {
-    use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{EntityRef, GameMode};
     use sunrise_client::level_loading::Reason;

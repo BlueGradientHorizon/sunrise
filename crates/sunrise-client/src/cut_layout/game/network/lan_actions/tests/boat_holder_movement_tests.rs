@@ -1,5 +1,5 @@
 #![cfg(test)]
-use {crate::game::lan_actions::*, sunrise_gameplay_common::game::lan_actions::{ItemStack, S, movement, packets, play, tick}};
+use {crate::game::lan_actions::*, sunrise_items::items::ItemStack, sunrise_gameplay_common::game::lan_actions::{S, movement, packets, play, tick}};
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::lan_actions_server::boat_holder_movement_tests::scene;

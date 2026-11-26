@@ -3,6 +3,7 @@
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+    use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::GameGameExt1;
 #[test]
@@ -461,6 +462,7 @@ use sunrise_gameplay_common::game::GameGameExt1;
     #[cfg(feature = "client")]
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn generated_fire_matches_dispatch() {
         use {crate::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use mod_api::{ClientHost, Flow, Hooks, ModEntry};

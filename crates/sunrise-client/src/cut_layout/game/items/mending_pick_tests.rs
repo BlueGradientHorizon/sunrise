@@ -71,7 +71,7 @@ fn repair(id: &str, chest: bool, table: &Enchantments) -> (u32, u32) {
             if chest {
                 game.armor[1] = Some(stack);
             } else {
-                game.inventory[game.selected] = Some(stack);
+                game.common.inventory[game.common.selected] = Some(stack);
             }
             let remaining = game.mending(7);
             let damage = if chest {
@@ -154,7 +154,7 @@ fn mending_pick_uses_hook_granted_enchantment() {
             let mut stack = ItemStack::new("minecraft:diamond_pickaxe", 1);
             stack.damage = 20;
             assert!(stack.enchantments().is_empty());
-            game.inventory[game.selected] = Some(stack);
+            game.common.inventory[game.common.selected] = Some(stack);
             assert_eq!(game.mending(7), 0);
             let current = game.inventory[game.selected].as_ref().unwrap();
             assert_eq!(current.damage, 6);

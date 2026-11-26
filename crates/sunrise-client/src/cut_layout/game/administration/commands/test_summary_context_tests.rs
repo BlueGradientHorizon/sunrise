@@ -4,7 +4,7 @@ use sunrise_gameplay::game::game_tests::{Grid, Info, RunnerOptions, summary_line
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::Dim;
-use sunrise_sim::lan::Out;
+use sunrise_gameplay::game::game_tests::Out;
 use sunrise_sim::lan::data::component_nbt;
 use sunrise_world::worldgen::structure::Rotation;
 use super::*;

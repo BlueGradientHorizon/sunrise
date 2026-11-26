@@ -85,7 +85,7 @@ use std::sync::{
                 for x in (target.x >> 4) - 1..=(target.x >> 4) + 1 {
                     game.server
                         .streaming
-                        .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(x, z));
+                        .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(x, z));
                 }
             }
             game.resolve_arrivals();

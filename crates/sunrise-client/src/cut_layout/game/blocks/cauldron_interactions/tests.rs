@@ -1,5 +1,4 @@
 use {crate::game::cauldron_interactions::*, sunrise_gameplay_common::game::cauldron_interactions::{Arc, Items, Registrar, clear, install, snapshot}};
-use sunrise_gameplay_common::game::Game;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::__private::game::RegistrationContextNew;
 use mod_api::{
@@ -343,8 +342,8 @@ pub(crate) fn fixture(
         test(game, &seen);
     });
 }
-pub(crate) fn setup_common<S>(
-    game: &mut Game<'_, S>,
+pub(crate) fn setup_common<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &mut G,
     block: &str,
     level: Option<&str>,
     item: &str,
@@ -386,7 +385,7 @@ pub(crate) fn setup(
     game.server.audio_capture_active = true;
     game.server.pending_sounds.clear();
 }
-pub(crate) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) {
+pub(crate) fn state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G) -> (String, Option<String>) {
     let state = game
         .pack
         .assets
@@ -398,7 +397,7 @@ pub(crate) fn state<S>(game: &Game<'_, S>) -> (String, Option<String>) {
 pub(crate) fn events() -> usize {
     sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
 }
-pub(crate) fn unchanged<S>(game: &Game<'_, S>, seen: &Seen) {
+pub(crate) fn unchanged<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G, seen: &Seen) {
     assert_eq!(state(game), ("minecraft:cauldron".into(), None));
     let held = game.inventory[0].as_ref().unwrap();
     assert_eq!((&*held.item, held.count), ("test:syrup_bottle", 2));
@@ -1683,7 +1682,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         let aim = (35.0, -12.0);
         (client.yaw, client.pitch) = aim;
         if sneaking {
-            client.set_sent_sneak_for_test();
+            client.client.remote.as_mut().unwrap().last_input |= sunrise_gameplay_common::game::remote::SHIFT_INPUT;
         }
         // The client has no local registration. Selection must come from the server.
         clear();

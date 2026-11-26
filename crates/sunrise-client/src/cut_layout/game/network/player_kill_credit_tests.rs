@@ -138,7 +138,7 @@ fn kill(game: &mut sunrise_gameplay::game::ServerGame<'_>, attacker: Attacker, t
             "the guest is hurt"
         );
         assert_eq!(g.player.as_ref().unwrap().health.health(), 0.0);
-        assert!(g.side.lan.as_ref().unwrap().hub.guest(CONN).unwrap().dead);
+        assert!(g.server.lan.as_ref().unwrap().hub.guest(CONN).unwrap().dead);
     })
     .unwrap();
 }
@@ -251,7 +251,7 @@ fn a_local_player_sweep_credits_the_secondary_kill() {
     let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
     guests.update(victim, |g| g.health = 1.0);
     guests.update(primary, |g| g.position = [21.5, 100.0, 9.5]);
-    let target = sunrise_gameplay::game::lan_mobs::guest_bounds(&guests[primary]);
+    let target = sunrise_gameplay::lan::mob_players::guest_bounds(&guests[primary]);
     game.sweep_damage(target, sunrise_gameplay::game::server_side::mace::Spared::Player(KILLER_ID as i32), 1.0);
 
     assert!(

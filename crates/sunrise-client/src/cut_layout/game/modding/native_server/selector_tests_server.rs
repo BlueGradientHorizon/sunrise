@@ -130,13 +130,13 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                             for line in
                                 ["heal @a", "selectone @r", "selectall @e", "selectplayer @s"]
                             {
-                                game.side.chat_capture = Some(Vec::new());
+                                game.server.chat_capture = Some(Vec::new());
                                 assert_eq!(
                                     game.perform_native_command(12, 0, line, false),
                                     Some(false),
                                     "{line}"
                                 );
-                                let output = game.side.chat_capture.take().unwrap();
+                                let output = game.server.chat_capture.take().unwrap();
                                 assert_eq!(
                                     output[0].plain(),
                                     Text::translate("argument.entity.selector.not_allowed", &[])

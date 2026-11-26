@@ -62,11 +62,11 @@ impl crate::game::ClientGame<'_> {
                 seed,
             ) {
                 draw(BlockItemDraw {
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     stack,
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     display: DisplayContext::Ground,
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     seed: 0,
                     state: &state,
                     pose: copy,

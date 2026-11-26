@@ -137,7 +137,7 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
 #[test]
 #[ignore = "daily"]
 fn client_level_transitions_stop_streams_opened_during_unload() {
-    use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
+    use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{
         AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost,
         ClientLevelUnloadEvent, Hooks, ModEntry, SoundSource, StreamSpec,

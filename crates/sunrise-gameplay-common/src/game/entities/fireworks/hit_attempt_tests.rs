@@ -7,7 +7,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-pub struct Probe(pub(in crate::game) Arc<AtomicUsize>);
+pub struct Probe(pub Arc<AtomicUsize>);
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn entity_invulnerability_check(

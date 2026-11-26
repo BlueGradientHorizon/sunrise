@@ -18,7 +18,7 @@ pub(in crate::game) struct NativeMenuSlot {
 
 // no wire: server-local state compared before publishing a detached placement.
 #[derive(Clone, PartialEq)]
-pub(in crate::game) struct MenuSnapshot {
+pub struct MenuSnapshot {
     pub(in crate::game) conn: u32,
     pub uuid: u128,
     pub(in crate::game) entity_id: i32,
@@ -26,7 +26,7 @@ pub(in crate::game) struct MenuSnapshot {
     pub(in crate::game) dimension: String,
     pub(in crate::game) instance: u64,
     pub(in crate::game) window: i32,
-    pub(in crate::game) kind: &'static ModMenuType,
+    pub kind: &'static ModMenuType,
     pub(in crate::game) slots: Slots,
     pub(in crate::game) pos: Option<(i32, i32, i32)>,
     pub(in crate::game) size: usize,

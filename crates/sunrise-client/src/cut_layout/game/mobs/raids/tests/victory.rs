@@ -1,4 +1,4 @@
-use {sunrise_gameplay::game::server_side::raids::Action, sunrise_gameplay::game::server_side::raids::raid};
+use sunrise_sim::raid::{self, Action};
 use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{Flow, Hooks, ModEntry, Mods, PlayerStatAwardEvent, ServerHost};
 use std::sync::{Arc, Mutex};

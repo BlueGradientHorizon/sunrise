@@ -42,7 +42,7 @@ pub use missing_mods::is_missing_mods_refusal;
 pub(in crate::game) mod events;
 mod management;
 use sunrise_gameplay::dedicated::predicate_graph;
-pub(in crate::game) mod report;
+pub mod report;
 mod status;
 mod transfer;
 

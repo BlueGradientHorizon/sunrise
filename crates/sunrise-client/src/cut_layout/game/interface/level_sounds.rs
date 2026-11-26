@@ -277,7 +277,7 @@ use sunrise_gameplay::game::server_side::lan::LanSettings;
                 // `Player.playSound` for the first guest (eating): the other
                 // guest hears it, and the mods were asked first.
                 game.as_guest(21, |game| {
-                    game.side.guest_player_sounds.push((
+                    game.server.guest_player_sounds.push((
                         "minecraft:entity.generic.eat".into(),
                         at,
                         1.0,

@@ -20,20 +20,32 @@ fn a_ground_jump_awards_the_jump_statistic() {
     let mut player = PlayerMotion::new(game.motion, Vec3::new(2.5, 64.0, 2.5)).unwrap();
     player.ground.on_ground = true;
     {
-        let side = game_side!(game);
+        let meta = sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt::side_game_side_meta(&game);
+        let side = game_side!(
+            game.common,
+            meta,
+            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(
+                &game.server,
+                game.common.level.enabled_features.as_arc(),
+            ),
+            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(
+                &game.server,
+                &game.common.res,
+            )
+        );
         let mut world = MotionWorld {
             side: &side,
             entities: &[],
             player: &mut player,
-            scene: &mut game.world,
-            assets: &game.pack.assets,
-            collision_binding: game.collision,
-            resources: game.motion,
-            health: &game.health_resources,
+            scene: &mut game.common.world,
+            assets: &game.common.pack.assets,
+            collision_binding: game.common.collision,
+            resources: game.common.motion,
+            health: &game.common.health_resources,
             tag_items: None,
-            loop_context: &game.loop_context,
-            damage_hooks: &game.damage_hooks,
-            block_registries: Some(&game.pack.block_registries),
+            loop_context: &game.common.loop_context,
+            damage_hooks: &game.common.damage_hooks,
+            block_registries: Some(&game.common.pack.block_registries),
         };
         world.jump_from_ground().unwrap();
     }

@@ -352,7 +352,8 @@ fn a_declared_type_ticks_once_whichever_path_named_it() {
             assert!(!game.native_ticks(BARE_BLOCK));
             // The level's ticking list carries exactly the ticker's answer:
             // one slot for the press, none for the bare declaration.
-            game.world.block_entities.set_states(game.ticking_states());
+            let states = game.ticking_states();
+        game.world.block_entities.set_states(states);
             let tickers = game.world.block_entity_tickers();
             assert_eq!(
                 tickers.iter().filter(|(pos, _)| *pos == (1, 64, 1)).count(),

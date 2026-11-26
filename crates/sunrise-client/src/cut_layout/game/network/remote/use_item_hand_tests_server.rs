@@ -14,7 +14,7 @@ fn identical_instant_stacks_report_the_selected_interaction_hand() {
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_server_game(|game| {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));
             for hand in [Hand::Main, Hand::Off] {
                 *observer.0.lock().unwrap() = Controls {
@@ -81,7 +81,7 @@ fn the_item_event_names_the_host_player_on_its_own_click() {
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let _guest = setup_interaction_guest(game);
             observer.0.lock().unwrap().host_click = true;
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
             game.server.guest_use = Some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Main));
             game.use_item_as_player().unwrap();
             assert_eq!(

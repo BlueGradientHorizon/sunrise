@@ -44,7 +44,6 @@ pub(crate) mod riptide_tests;
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_client_gameplay::game::client_side::remote_client::Game;
     pub(crate) use crate::game::remote::tests::connect_menu_test;
     pub(crate) use crate::game::remote::tests::connect_play_test;
     pub(crate) use crate::game::remote::tests::spawn_menu_test;
@@ -200,13 +199,13 @@ include!("client_level_lifecycle_tests_client.rs");
             point: [3.5, 64.875, 4.5],
             inside: false,
         };
-        fn open<S>(game: &sunrise_gameplay_common::game::Game<'_, S>, x: i32, y: i32, z: i32) -> bool {
+        fn open(game: &sunrise_gameplay_common::game::CommonGame<'_>, x: i32, y: i32, z: i32) -> bool {
             let b = game.res.behaviours();
             b.table.bool(game.world.block(x, y, z), b.props.open)
         }
         let blocks = mod_api::SoundSource::Blocks.index();
 
-        sunrise_gameplay::game::native_entity_refs::tests::with_game_role_client(
+        crate::game::server_side::native_entity_refs::tests::with_game_role_client(
             root.clone(),
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
             |game| {
@@ -230,7 +229,7 @@ include!("client_level_lifecycle_tests_client.rs");
                     (gate, use_sound),
                 ] {
                     game.world.set(x, y, z, state).unwrap();
-                    game.side.audio.0.capture = Some(Vec::new());
+                    game.client.audio.0.capture = Some(Vec::new());
                     let (answer, dry) = game.remote_block_reacts(&hit, None, true);
                     assert!(answer.consumes_action());
                     game.predict_use(&dry, 1);
@@ -238,7 +237,7 @@ include!("client_level_lifecycle_tests_client.rs");
                         open(game, x, y, z),
                         "the gate opens without a server round trip"
                     );
-                    let capture = game.side.audio.0.capture.as_mut().unwrap();
+                    let capture = game.client.audio.0.capture.as_mut().unwrap();
                     assert_eq!(capture.len(), 1);
                     let predicted = capture.pop().unwrap();
                     assert_eq!((predicted.event.as_str(), predicted.source), (name, blocks));

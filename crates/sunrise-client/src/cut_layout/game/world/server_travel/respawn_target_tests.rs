@@ -1,6 +1,6 @@
 //! `PlayerRef::respawn_target`: where a player would respawn, as
 //! `ServerPlayer.findRespawnPositionAndUseSpawnBlock(false, DO_NOTHING)` finds it, with no respawn.
-use {sunrise_gameplay::game::server_side::server_travel::Dim, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks, crate::game::server_side::server_travel::credits_respawn_tests::server_with_a_nether_anchor};
+use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks, crate::game::server_side::server_travel::credits_respawn_tests::server_with_a_nether_anchor};
 use mod_api::{RespawnTarget, RespawnTargetUnavailable, ServerHost};
 
 /// Guest 2's answer, asked through its handle from the Overworld, which stays in place.

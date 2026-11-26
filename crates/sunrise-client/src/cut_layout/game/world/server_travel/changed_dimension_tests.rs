@@ -2,7 +2,7 @@
 //! single player and the LAN world opened from it, and a dedicated server (#3250).
 //! These prepared tests also exercise menu retirement during travel.
 use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::server_side::server_travel::Dim;
+use sunrise_gameplay_common::game::Dim;
 use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay_common::game::lan_actions::GuestCommand, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use mod_api::{
     Hooks, LevelDimension, ModEntry, PlayerChangedDimensionEvent, PlayerRespawnPositionEvent,
@@ -145,7 +145,7 @@ fn light(game: &mut sunrise_gameplay::game::ServerGame<'_>, cx: i32, cz: i32) {
         for z in cz - 2..=cz + 2 {
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(x, z));
+                .insert_remote(&mut game.common.world, Chunk::empty(x, z));
         }
     }
 }
@@ -220,7 +220,7 @@ fn prepare_end_exit(game: &mut sunrise_gameplay::game::ServerGame<'_>, credits: 
     game.enter_level(Dim::End).unwrap();
     game.server
         .streaming
-        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+        .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
     assert!(
         game.set_state_named([3, 64, 5], "minecraft:end_portal", &[])
             .unwrap()

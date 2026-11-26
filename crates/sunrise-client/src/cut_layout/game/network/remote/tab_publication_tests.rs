@@ -1,4 +1,4 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::PlayerTextures, sunrise_client_gameplay::game::client_side::remote_client::ServicesKeys, sunrise_client_gameplay::game::client_side::remote_client::skin_entries};
+use {sunrise_client_gameplay::game::client_side::remote_client::session_state::PlayerTextures, sunrise_client_gameplay::game::client_side::remote_client::session_state::ServicesKeys, sunrise_client_gameplay::game::client_side::remote_client::session_state::skin_entries};
 use sunrise_gameplay_common::game::remote::object_skin_changed;
 use std::{collections::HashMap, sync::Arc};
 use sunrise_client::skins;

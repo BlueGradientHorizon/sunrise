@@ -244,7 +244,7 @@ fn cancelling_opening_keeps_an_overlay_shut() {
         assert!(game.client.sign_edit.is_none());
         assert_eq!(take(log), ["opening playing->sign_editor"]);
         let opened = game.open_screen_overlay("link_prompt", |game| {
-            game.side.link_prompt = Some("https://example.com".into())
+            game.client.link_prompt = Some("https://example.com".into())
         });
         assert!(!opened);
         assert!(game.client.link_prompt.is_none());
@@ -338,7 +338,7 @@ fn client_gui_state_matches_screen_init_hook() {
                 "inventory"
             );
             game.open_screen_overlay("link_prompt", |game| {
-                game.side.link_prompt = Some("https://example.com".into());
+                game.client.link_prompt = Some("https://example.com".into());
             });
             assert_eq!(
                 mod_api::prelude::ScreensClientHost::observed_screen_id(game)

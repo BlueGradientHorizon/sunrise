@@ -591,12 +591,12 @@ impl crate::game::ClientGame<'_> {
             o.server_difficulty(difficulty, locked);
         }
     }
-    #[cfg(test)]
-    pub(in crate::game) fn test_open_remote_rules(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_open_remote_rules(
         &mut self,
         entries: Vec<play::GameRuleEntry>,
     ) -> bool {
-        self.client.world_options.0 = Some(tests::options(true, false));
+        self.client.world_options.0 = Some(options(true, false));
         self.client.world_options.0.as_mut().unwrap().view = View::GameRules;
         self.remote_world_options_rules(entries);
         self.client.world_options.0.as_ref().unwrap().rules.is_some()
@@ -718,8 +718,8 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn world_options_personal_state(&self) -> Option<(i32, i32, u8)> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn world_options_personal_state(&self) -> Option<(i32, i32, u8)> {
         self.client
             .world_options
             .0
@@ -727,8 +727,8 @@ impl crate::game::ClientGame<'_> {
             .map(|o| (o.personal_mode, o.initial.personal_mode, o.difficulty))
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn set_world_options_difficulty_for_test(&mut self, difficulty: u8) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_world_options_difficulty_for_test(&mut self, difficulty: u8) {
         if let Some(o) = self.client.world_options.0.as_mut() {
             o.difficulty = difficulty;
         }
@@ -1778,6 +1778,44 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+fn options(cheats: bool, hardcore: bool) -> WorldOptions {
+    let mut o = WorldOptions {
+        remote: false,
+        gamemaster: cheats,
+        default_mode: 1,
+        personal_mode: 1,
+        cheats,
+        difficulty: 2,
+        lan: false,
+        port: EditBox::new(0.0, 0.0, 150.0, 20.0),
+        hint: 25565,
+        guest_commands: false,
+        force: true,
+        hardcore,
+        difficulty_locked: false,
+        locked: hardcore,
+        scroll: 0.0,
+        view: View::Options,
+        rules: None,
+        focused_button: None,
+        popup_focus: None,
+        initial: Snapshot {
+            default_mode: 0,
+            personal_mode: 0,
+            cheats: false,
+            difficulty: 0,
+            locked: false,
+            lan: false,
+            port: 0,
+            guest_commands: false,
+            force: false,
+        },
+    };
+    o.initial = o.snapshot();
+    o
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1837,43 +1875,6 @@ mod tests {
             }
         );
         assert!(matches!(what(Button::Apply), What::Button { .. }));
-    }
-
-    pub(super) fn options(cheats: bool, hardcore: bool) -> WorldOptions {
-        let mut o = WorldOptions {
-            remote: false,
-            gamemaster: cheats,
-            default_mode: 1,
-            personal_mode: 1,
-            cheats,
-            difficulty: 2,
-            lan: false,
-            port: EditBox::new(0.0, 0.0, 150.0, 20.0),
-            hint: 25565,
-            guest_commands: false,
-            force: true,
-            hardcore,
-            difficulty_locked: false,
-            locked: hardcore,
-            scroll: 0.0,
-            view: View::Options,
-            rules: None,
-            focused_button: None,
-            popup_focus: None,
-            initial: Snapshot {
-                default_mode: 0,
-                personal_mode: 0,
-                cheats: false,
-                difficulty: 0,
-                locked: false,
-                lan: false,
-                port: 0,
-                guest_commands: false,
-                force: false,
-            },
-        };
-        o.initial = o.snapshot();
-        o
     }
 
     #[test]

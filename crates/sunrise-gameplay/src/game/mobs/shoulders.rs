@@ -17,7 +17,7 @@ fn occupied(extra: &Tag, key: &str) -> bool {
 /// `ServerPlayer.extractParrotVariant` for both slots: the variant of the
 /// parrot kept there (`Parrot.Variant.byId` clamps the saved `Variant`, 0
 /// when absent), `None` for an empty slot or another entity.
-pub(in crate::game) fn shoulder_variants(extra: Option<&Tag>) -> [Option<i32>; 2] {
+pub fn shoulder_variants(extra: Option<&Tag>) -> [Option<i32>; 2] {
     KEYS.map(|key| {
         let parrot = extra?.get(key)?;
         match parrot.get("id") {

@@ -1,5 +1,5 @@
 // Same logical test module, kept in its own file.
-use sunrise_gameplay::game::server_side::commands::data::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::settings::Settings;
 use crate::game::load_resources;

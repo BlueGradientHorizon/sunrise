@@ -14,17 +14,14 @@ mod tests {
     fn piston_reaction_and_hanging_class_follow_server_and_client_entities() {
         use mod_api::PushReaction::{IgnoreEntity, PushPull};
 
-        fn read<S: sunrise_gameplay_common::game::Side>(
-            game: &sunrise_gameplay_common::game::Game<'_, S>,
+        fn read<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+            game: &G,
             id: u32,
-        ) -> (mod_api::PushReaction, bool)
-        where
-            for<'a> sunrise_gameplay_common::game::Game<'a, S>: mod_api::Host,
-        {
+        ) -> (mod_api::PushReaction, bool) {
             let entity = game.entity(id).unwrap();
             (
-                entity.piston_push_reaction(game).unwrap().unwrap(),
-                entity.is_hanging(game).unwrap().unwrap(),
+                entity.piston_push_reaction(game.as_host()).unwrap().unwrap(),
+                entity.is_hanging(game.as_host()).unwrap().unwrap(),
             )
         }
         with_game(|game| {

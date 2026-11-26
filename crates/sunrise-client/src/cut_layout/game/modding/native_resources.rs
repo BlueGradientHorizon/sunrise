@@ -5,6 +5,7 @@ use mod_api::Identifier;
 use mod_api::PackType;
 #[cfg(test)]
 mod tests {
+    use sunrise_gameplay_common::game::native_resources::NativeResourceReads as _;
     use super::*;
 
     fn id(value: &str) -> Identifier {

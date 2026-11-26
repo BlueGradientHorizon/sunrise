@@ -77,7 +77,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn closing_window_during_pending_save_discards_pending_and_late_client_tasks() {
-        use sunrise_client_gameplay::game::input_trace::InputOrigin;
+        use sunrise_client_gameplay::input_trace::InputOrigin;
         use winit::{event::WindowEvent, event_loop::ControlFlow, window::WindowId};
         struct TestLoop;
         impl EventLoopCtl for TestLoop {

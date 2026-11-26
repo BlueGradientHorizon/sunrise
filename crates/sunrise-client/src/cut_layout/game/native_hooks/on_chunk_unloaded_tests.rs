@@ -126,9 +126,8 @@ fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
         game.client.remote.as_mut().unwrap().logged_in = true;
         let other = [1620, 64, 1600];
         for (x, z) in [CHUNK, (101, 100)] {
-            game.client
-                .streaming
-                .insert_remote(&mut game.world, Chunk::empty(x, z));
+            let (common, client) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+            client.streaming.insert_remote(&mut common.world, Chunk::empty(x, z));
         }
         for [x, y, z] in POTS.into_iter().chain([other]) {
             let pot = ModBlockEntity::new(POT.into(), Default::default());

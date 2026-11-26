@@ -189,8 +189,8 @@ fn an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block
         .default_state("minecraft:stone")
         .unwrap();
     game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
-    game.world
-        .set(pos[0], pos[1] + 1, pos[2], game.res.facts().air)
+    game.common.world
+        .set(pos[0], pos[1] + 1, pos[2], game.common.res.facts().air)
         .unwrap();
     game.mode = GameMode::Adventure;
     let hit = hit(pos);

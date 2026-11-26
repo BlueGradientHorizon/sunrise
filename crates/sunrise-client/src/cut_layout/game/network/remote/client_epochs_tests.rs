@@ -1,7 +1,7 @@
 #[test]
 #[ignore = "daily"]
 fn client_epochs_follow_level_replacement_and_logout() {
-    use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
     use mod_api::{CrosshairTarget, EntityRef};
     use sunrise_client::level_loading::Reason;

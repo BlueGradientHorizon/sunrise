@@ -100,7 +100,7 @@ mod tests {
             false
         ));
         assert_eq!(pick.hovered.unwrap().id, 2);
-        assert_eq!(pick.nearest_sq(), 0.0);
+        assert_eq!(pick.nearest_sq, 0.0);
         assert!(pick.accept(
             PickCandidate {
                 id: 3,
@@ -111,7 +111,7 @@ mod tests {
             false,
             false
         ));
-        assert_eq!(pick.nearest_sq(), 16.0);
+        assert_eq!(pick.nearest_sq, 16.0);
         assert!(!pick.accept(
             PickCandidate {
                 id: 4,

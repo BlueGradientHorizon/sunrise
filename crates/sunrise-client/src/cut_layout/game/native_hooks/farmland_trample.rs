@@ -272,9 +272,8 @@ pub(crate) mod tests {
                 } else {
                     game.options.dedicated = Some(Vec::new());
                 }
-                game.server
-                    .streaming
-                    .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
                 let reg = game.pack.assets.registry;
                 let [farmland, dirt, wheat, air] = [
                     "minecraft:farmland",

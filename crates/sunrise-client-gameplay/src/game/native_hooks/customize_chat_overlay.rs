@@ -23,14 +23,12 @@ pub mod customize_chat_overlay_tests {
     use std::sync::{Arc, Mutex};
     use sunrise_client::hud::HudBatch;
 
-    #[cfg(test)]
-pub(in crate::game) type Seen = Arc<Mutex<Vec<(i32, i32, bool, i32, i32)>>>;
+    pub type Seen = Arc<Mutex<Vec<(i32, i32, bool, i32, i32)>>>;
 
-    #[cfg(test)]
-/// Lifts the chat 100 GUI pixels, logging what it was told.
-    pub(in crate::game) struct Lift(pub(in crate::game) Seen);
-    #[cfg(test)]
-#[mod_api::__subscriptions]
+    /// Lifts the chat 100 GUI pixels, logging what it was told.
+    pub struct Lift(pub Seen);
+
+    #[mod_api::__subscriptions]
     impl Hooks for Lift {
         fn customize_chat_overlay(
             &self,

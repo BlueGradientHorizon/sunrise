@@ -9,13 +9,13 @@ use sunrise_client::{
 use sunrise_items::items::ItemStack;
 use sunrise_sim::api_text::to_engine;
 
-pub(in crate::game) struct Pending {
+pub struct Pending {
     pub toast: SystemToast,
     kind: Option<Identifier>,
     icon: Option<Icon>,
 }
 
-pub(in crate::game) struct Entry {
+pub struct Entry {
     pub request: Pending,
     pub(in crate::game) layout: SystemToastLayout,
 }

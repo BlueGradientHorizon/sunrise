@@ -6,12 +6,12 @@ use sunrise_client::tooltip_components::TooltipComponentPrepareError;
 
 /// Single integer anchor quantization shared by Gather wrapping, `render_tooltip_pre`
 /// (`TooltipPlace`), and the active positioner. Vanilla GUI extraction truncates toward zero.
-pub(in crate::game::client_side) fn quantize_tooltip_anchor(at: (f32, f32)) -> [i32; 2] {
+pub fn quantize_tooltip_anchor(at: (f32, f32)) -> [i32; 2] {
     [at.0 as i32, at.1 as i32]
 }
 
 /// Widget-relative tooltip placement. The rectangle is `[left, top, width, height]` in GUI pixels.
-pub(in crate::game) enum WidgetTooltipPositioner {
+pub enum WidgetTooltipPositioner {
     Menu([i32; 4]),
     BelowOrAbove([i32; 4]),
 }
@@ -69,7 +69,7 @@ impl ClientTooltipPositioner for WidgetTooltipPositioner {
 
 /// Internal prepared tooltip item retaining engine text and prepared bundle contents so the
 /// engine never round-trips original text or bundles through the mod-API boundary on render.
-pub(in crate::game) enum PreparedTooltipItem {
+pub enum PreparedTooltipItem {
     Text {
         text: sunrise_game_data::text::Text,
         color: u32,
@@ -82,8 +82,8 @@ pub(in crate::game) enum PreparedTooltipItem {
 }
 
 impl PreparedTooltipItem {
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn as_text(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn as_text(
         &self,
     ) -> Option<(&sunrise_game_data::text::Text, u32)> {
         match self {
@@ -92,16 +92,16 @@ impl PreparedTooltipItem {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn as_bundle(&self) -> Option<&ItemStack> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn as_bundle(&self) -> Option<&ItemStack> {
         match self {
             Self::Bundle { stack, .. } => Some(stack),
             _ => None,
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn as_custom(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn as_custom(
         &self,
     ) -> Option<&mod_api::PreparedTooltipComponent> {
         match self {
@@ -110,8 +110,8 @@ impl PreparedTooltipItem {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn downcast_ref<
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn downcast_ref<
         C: mod_api::ClientTooltipComponent + 'static,
     >(
         &self,
@@ -121,7 +121,7 @@ impl PreparedTooltipItem {
 }
 
 /// Outcome of gathering and preparing an item's tooltip components before `render_tooltip_pre`.
-pub(in crate::game) enum GatheredTooltip {
+pub enum GatheredTooltip {
     /// Gathered and prepared components, with any Gather text wrapping already applied.
     Ready(Vec<PreparedTooltipItem>),
     /// A `render_tooltip_gather_components` listener explicitly returned `Flow::Cancel`.
@@ -132,9 +132,9 @@ pub(in crate::game) enum GatheredTooltip {
     PrepareError(TooltipComponentPrepareError),
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl GatheredTooltip {
-    pub(in crate::game::client_side) fn unwrap_ready(self) -> Vec<PreparedTooltipItem> {
+    pub fn unwrap_ready(self) -> Vec<PreparedTooltipItem> {
         match self {
             Self::Ready(components) => components,
             Self::Cancelled => panic!("expected GatheredTooltip::Ready, got Cancelled"),

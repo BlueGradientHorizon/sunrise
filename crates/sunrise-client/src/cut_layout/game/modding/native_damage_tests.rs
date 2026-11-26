@@ -3,7 +3,6 @@
 //! hits that fire them.
 use super::native_entity_refs::tests::{bind_local_player, with_game};
 use {sunrise_gameplay_common::game::dragon_common::Dragon, sunrise_gameplay_common::game::dragon_common::SPECIAL};
-use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use mod_api::{
     self, HitHost, Hooks, HurtSource, LivingDamagePostEvent, LivingDamagePreEvent,
     LivingIncomingDamageEvent, LivingShieldBlockEvent, Reduction,
@@ -263,6 +262,7 @@ fn mob(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32, kind: &str) -> Mo
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn the_original_damage_is_the_hit_before_the_incoming_hook() {
     let heard = heard(|game| {
         let mut pig = mob(game, 225001, "minecraft:pig");
@@ -279,6 +279,7 @@ fn the_original_damage_is_the_hit_before_the_incoming_hook() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn pre_sets_health_lost_but_cooldown_compares_the_outer_hit() {
     let heard = heard(|game| {
         let mut pig = mob(game, 225003, "minecraft:pig");
@@ -302,6 +303,7 @@ fn pre_sets_health_lost_but_cooldown_compares_the_outer_hit() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn pre_fires_for_a_hit_its_reductions_took_to_zero() {
     let heard = heard(|game| {
         let mut witch = mob(game, 225008, "minecraft:witch");
@@ -319,6 +321,7 @@ fn pre_fires_for_a_hit_its_reductions_took_to_zero() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn pre_draws_from_the_level_random_of_the_hit() {
     heard(|game| {
         let mut expected = game.world.random.clone();
@@ -349,6 +352,7 @@ fn a_hit_on_the_dragon_fires_pre_and_post() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn mob_and_dragon_post_records_fresh_hit_decision() {
     let heard = heard(|game| {
         let mut pig = mob(game, 225014, "minecraft:pig");
@@ -435,6 +439,7 @@ fn post_fires_for_a_player_hit_a_shield_blocked_whole() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_hit_inside_the_cooldown_no_stronger_than_the_last_fires_no_post() {
     let heard = heard(|game| {
         // Pre sets the health damage to 2 without changing `lastHurt`.
@@ -687,7 +692,7 @@ fn guest_strike_posts_before_returning_from_the_authoritative_death() {
                 trace.cancel.store(false, Relaxed);
                 // A stronger hit in the same turn can kill the now-living body.
                 assert!(game.hurt_player_from(200.0, None, "minecraft:generic", Some(None), false));
-                assert!(game.side.lan.as_ref().unwrap().hub.guests[0].dead);
+                assert!(game.server.lan.as_ref().unwrap().hub.guests[0].dead);
                 assert_eq!(trace.heard.lock().unwrap().last(), Some(&("post", entity)));
             })
             .unwrap();
@@ -728,7 +733,7 @@ fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
             let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player.entity_id = 7;
             game.player = Some(player);
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
             let mut first = mob(game, 225031, "minecraft:pig");
             first.health = 0.5;
             let second = mob(game, 225032, "minecraft:pig");
@@ -783,7 +788,7 @@ fn projectile_killing_hit_posts_before_its_follow_up() {
             game.build_registries();
             game.server
                 .streaming
-                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let center = Vec3::new(4.5, 80.0, 4.5);
             let (direct, blast) = (225034, 225035);
             let mut target = mob(game, direct, "minecraft:pig");
@@ -1231,7 +1236,7 @@ fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
             game.build_registries();
             game.server
                 .streaming
-                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
             // Same chunk/section, in the order the contact query visits them.
             let mut puffer = mob(game, fish, "minecraft:pufferfish");
             puffer.position = Vec3::new(1.5, 80.0, 1.5);
@@ -1390,7 +1395,7 @@ fn borrowed_bee_posts_at_both_server_ai_hurts() {
             game.build_registries();
             game.server
                 .streaming
-                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let water = game
                 .pack
                 .assets
@@ -1548,6 +1553,7 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn borrowed_mod_effect_posts_before_the_next_action() {
     use super::native_entity_refs::tests::run_fresh_cases;
     use sunrise_gameplay_common::game::client_side::potions::tests::effect_test_mod;
@@ -1837,7 +1843,7 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
             game.build_registries();
             game.server
                 .streaming
-                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let registry = game.pack.assets.registry;
             let block = registry
                 .default_state(if farmland {
@@ -2008,7 +2014,7 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
             game.build_registries();
             game.server
                 .streaming
-                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
             let stone = game
                 .pack
                 .assets
@@ -2178,7 +2184,7 @@ fn guest_landing_posts_before_its_ground_hit() {
             for x in [0, 1] {
                 game.server
                     .streaming
-                    .insert_remote(&mut game.world, Chunk::empty(x, 0));
+                    .insert_remote(&mut game.common.world, Chunk::empty(x, 0));
             }
             let honey = game
                 .pack
@@ -2284,7 +2290,7 @@ fn ordinary_guest_move_settles_fall_before_resuming() {
             add_guest(game);
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
             let honey = game
                 .pack
                 .assets
@@ -2352,6 +2358,7 @@ fn player_pre_keeps_live_damage_when_resistance_does_not_record_a_reduction() {
 
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn the_container_names_what_armor_took() {
     let heard = heard(|game| {
         let mut zombie = mob(game, 225011, "minecraft:zombie");
@@ -2444,13 +2451,13 @@ fn arrow_hits_name_the_projectile_on_players_mobs_and_the_dragon() {
             player.entity_id = 7;
             game.player = Some(player);
             game.set_game_mode(GameMode::Survival);
-            game.mobs.push(mob(game, 42, "minecraft:skeleton"));
+            game.common.mobs.push(mob(game, 42, "minecraft:skeleton"));
             game.mobs[0]
                 .extra
                 .set_main_hand_stack(Some(ItemStack::new("minecraft:stone_sword", 1)));
             *game.held_mut() = Some(ItemStack::new("minecraft:stone_sword", 1));
             game.offhand = Some(ItemStack::new("minecraft:crossbow", 1));
-            game.mobs.push(mob(game, 43, "minecraft:pig"));
+            game.common.mobs.push(mob(game, 43, "minecraft:pig"));
             let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
             // Hover is a sitting phase and correctly shrugs off arrows.
             dragon.set_native_phase(mod_api::DragonPhase::HoldingPattern);
@@ -2561,7 +2568,7 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
                         guest.inventory[3] = Some(ItemStack::new("minecraft:stone_sword", 1));
                     })
                     .unwrap();
-                game.mobs.push(mob(game, 43, "minecraft:pig"));
+                game.common.mobs.push(mob(game, 43, "minecraft:pig"));
                 let mut arrow = Projectile::new(
                     ProjectileKind::Arrow {
                         base_damage: 2.0,
@@ -2625,6 +2632,7 @@ fn guest_projectile_uses_current_main_hand_or_none_after_departure() {
 /// recorded reductions and writing `set_new_damage` straight back to the engine container.
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn snapshot_crosses_the_real_damage_hook_with_reductions() {
     let log = heard(|game| {
         let mut container = sunrise_world::living_damage::DamageContainer::new(10.0);

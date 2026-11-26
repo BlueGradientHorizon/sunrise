@@ -87,8 +87,8 @@ impl crate::game::ClientGame<'_> {
         self.capture(false);
         Ok(())
     }
-    #[cfg(test)]
-    pub(in crate::game) fn test_seed_pending_server_save(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_seed_pending_server_save(
         &mut self,
         reply: std::sync::mpsc::Sender<String>,
     ) {

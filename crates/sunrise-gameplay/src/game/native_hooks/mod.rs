@@ -1,7 +1,7 @@
 
 #[cfg(test)]
 pub(in crate::game) mod item_picked_up_tests;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod on_block_placed_by_tests;
 pub(in crate::game) mod xp_repair_ratio;
 

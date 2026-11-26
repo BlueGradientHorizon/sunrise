@@ -14,7 +14,7 @@ fn a_creative_drop_sends_no_creative_slot() {
     with_pressing_game(|game, packets, _| {
         game.set_local_mode(sunrise_command::args::GameMode::Creative);
         game.set_test_forced_hit(None);
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stone", 16));
         // The setup's stack is the server's as well.
         game.remote_synced();
         game.key_pressed(
@@ -34,7 +34,7 @@ fn a_creative_drop_sends_no_creative_slot() {
             "{sent:?}"
         );
         assert_eq!(
-            game.inventory[game.selected].as_ref().map(|s| s.count),
+            game.common.inventory[game.common.selected].as_ref().map(|s| s.count),
             Some(15)
         );
     });
@@ -49,10 +49,10 @@ fn a_toolbar_load_goes_out_before_a_drop_in_its_tick() {
     with_pressing_game(|game, packets, _| {
         game.set_local_mode(sunrise_command::args::GameMode::Creative);
         game.set_test_forced_hit(None);
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stone", 16));
         game.remote_synced();
         // handleHotbarLoadOrSave puts the saved stack in the slot and sends it.
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:dirt", 16));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:dirt", 16));
         game.remote_creative_slot_add(game.selected);
         game.key_pressed(
             winit::keyboard::KeyCode::KeyQ,
@@ -75,7 +75,7 @@ fn a_toolbar_load_goes_out_before_a_drop_in_its_tick() {
             "{sent:?}"
         );
         assert_eq!(
-            game.inventory[game.selected]
+            game.common.inventory[game.common.selected]
                 .as_ref()
                 .map(|s| (s.item.as_ref(), s.count)),
             Some(("minecraft:dirt", 15))

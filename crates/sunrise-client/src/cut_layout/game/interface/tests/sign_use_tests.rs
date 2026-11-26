@@ -46,7 +46,7 @@ fn click_sign(
     let registry = game.pack.assets.registry;
     let sign_state = registry.default_state("minecraft:oak_sign").unwrap();
     game.world.set(2, 4, 3, sign_state).unwrap();
-    game.world.set(2, 4, 4, game.res.facts().air).unwrap();
+    game.common.world.set(2, 4, 4, game.common.res.facts().air).unwrap();
     game.world
         .block_entities
         .insert((2, 4, 3), BlockEntity::Sign(sign));

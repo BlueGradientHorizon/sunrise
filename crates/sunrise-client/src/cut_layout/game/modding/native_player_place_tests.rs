@@ -5,10 +5,7 @@ use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{EntityRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 
 /// The API's value for a block state of the world.
-fn api_state<S: sunrise_gameplay_common::game::Side>(game: &sunrise_gameplay_common::game::Game<'_, S>, name: &str) -> mod_api::BlockState
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+fn api_state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G, name: &str) -> mod_api::BlockState {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     game.pack
         .assets

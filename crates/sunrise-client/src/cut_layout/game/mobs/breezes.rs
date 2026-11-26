@@ -81,10 +81,16 @@ pub(crate) mod tests {
         let fence = registry.default_state("minecraft:oak_fence").unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
         game.world.set(8, 64, 8, fence).unwrap();
-        let _ = game.mobs[0].update_retained_ground(
-            &game.world,
-            game.collision,
-            &world_items!(game).entity_type_tags,
+        let (common, side) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut game);
+        let items = match (&common.server_items, sunrise_gameplay_common::game::Side::world_tables(side)) {
+            (Some(items), _) => &**items,
+            (None, Some(tables)) => &tables.items,
+            (None, None) => common.res.items(),
+        };
+        let _ = common.mobs[0].update_retained_ground(
+            &common.world,
+            common.collision,
+            &items.entity_type_tags,
             true,
             None,
         );
@@ -124,10 +130,16 @@ pub(crate) mod tests {
             .default_state("minecraft:stone")
             .unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
-        let _ = game.mobs[0].update_retained_ground(
-            &game.world,
-            game.collision,
-            &world_items!(game).entity_type_tags,
+        let (common, side) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut game);
+        let items = match (&common.server_items, sunrise_gameplay_common::game::Side::world_tables(side)) {
+            (Some(items), _) => &**items,
+            (None, Some(tables)) => &tables.items,
+            (None, None) => common.res.items(),
+        };
+        let _ = common.mobs[0].update_retained_ground(
+            &common.world,
+            common.collision,
+            &items.entity_type_tags,
             true,
             None,
         );

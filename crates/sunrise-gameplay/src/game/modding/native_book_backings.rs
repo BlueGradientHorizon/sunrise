@@ -42,7 +42,7 @@ pub(in crate::game) struct Changes {
     pub(in crate::game) blocks: BTreeMap<Key, Option<ItemStack>>,
     pub(in crate::game) native: Vec<NativeChange>,
 }
-pub(in crate::game) struct Backings {
+pub struct Backings {
     dimension: &'static str,
     blocks: BTreeMap<Pos, Block>,
     pub main: Vec<Option<ItemStack>>,

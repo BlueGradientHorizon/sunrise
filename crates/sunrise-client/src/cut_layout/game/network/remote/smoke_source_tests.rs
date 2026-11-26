@@ -119,7 +119,7 @@ fn client_placement_predicts_signal_fire_from_a_block_part() {
                         .default_state("minecraft:stone")
                         .unwrap();
                     game.world.set(x, 63, 0, ground).unwrap();
-                    game.world.set(x, 64, 0, game.res.facts().air).unwrap();
+                    game.common.world.set(x, 64, 0, game.common.res.facts().air).unwrap();
                     game.world.set(x, 65, 0, campfire).unwrap();
                     let hit = sunrise_gameplay_common::game::Hit {
                         pos: [x, 63, 0],

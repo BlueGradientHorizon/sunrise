@@ -7,10 +7,7 @@ use mod_api::{EntityRef, PlayerRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 use sunrise_protocol::packets::play::Clientbound as C;
 
 /// The API's value for a block state of the world.
-fn api_state<S: sunrise_gameplay_common::game::Side>(game: &super::Game<'_, S>, name: &str) -> mod_api::BlockState
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+fn api_state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G, name: &str) -> mod_api::BlockState {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     game.pack
         .assets
@@ -322,7 +319,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     use sunrise_sim::motion::PlayerMotion;
     use sunrise_world::entity_move::MoverType::SelfMovement;
 
-    fn setup<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S>) {
+    fn setup<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &mut G) {
         let slab = game
             .pack
             .assets
@@ -331,7 +328,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
             .unwrap();
         game.world.set(0, 64, 0, slab).unwrap();
     }
-    fn land<S: sunrise_gameplay_common::game::Side>(game: &mut sunrise_gameplay_common::game::Game<'_, S>) {
+    fn land<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &mut G) {
         // The player's centre is over air. Only the edge overlaps the slab.
         game.player.as_mut().unwrap().position = Vec3::new(1.125, 65.0, 0.5);
         game.move_local_player(SelfMovement, Vec3::new(0.0, -1.0, 0.0), false)
@@ -341,7 +338,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     with_guests(|game| {
         game.server
             .streaming
-            .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
         setup(game);
         let player = game.player(12).unwrap();
         assert!(game.command_guest(12).unwrap().motion.is_none());
@@ -407,7 +404,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
         game.player = Some(body);
         game.client
             .streaming
-            .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
         setup(game);
         land(game);
 

@@ -8,9 +8,7 @@ use mod_api::ServerHost;
 use sunrise_sim::lan::menu::NativeMenuEvent;
 #[cfg(test)]
 mod tests {
-    use mod_vocab::__private::game::Fields;
-use mod_vocab::__private::game::Fields;
-use mod_vocab::__private::game::Fields;
+    use mod_api::__private::game::Fields;
 use super::super::native_entity_refs::tests::with_game as with_base_game;
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use super::*;

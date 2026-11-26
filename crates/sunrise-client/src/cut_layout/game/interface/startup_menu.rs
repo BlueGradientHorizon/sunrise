@@ -21,9 +21,33 @@ use winit::event::WindowEvent;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::client_side::startup_menu::tests::gui;
+use std::sync::Arc;
+use sunrise_client::hud::HudAtlas;
+use sunrise_client_gameplay::game::client_side::resource_tables_client::UiResources;
 
-use sunrise_gameplay_common::game::client_side::startup_menu::tests::saved_pack_options;
+    pub fn gui(root: &std::path::Path) -> UiResources {
+        let atlas = if root.exists() {
+            HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
+                root.to_path_buf(),
+            ))
+            .unwrap()
+        } else {
+            HudAtlas::boot()
+        };
+        UiResources {
+            atlas,
+            panorama: Arc::new(sunrise_client::gfx::panorama::Faces::colour([
+                96, 110, 111, 255,
+            ])),
+            splashes: Arc::from(""),
+            plain_texts: Default::default(),
+        }
+    }
+    pub fn saved_pack_options() -> sunrise_client::options_file::OptionsFile {
+        sunrise_client::options_file::OptionsFile::parse(
+            &std::fs::read_to_string(crate::game::options_path()).unwrap(),
+        )
+    }
 
 use super::*;
 use sunrise_client_gameplay::game::packs;

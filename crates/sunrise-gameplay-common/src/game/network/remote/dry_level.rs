@@ -83,7 +83,7 @@ pub trait DryLevelGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 impl<'__sg, G: crate::game::SideGame<'__sg>> DryLevelGameExt1<'__sg> for G {}
 
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub trait DryLevelGameExt2<'__sg>: crate::game::SideGame<'__sg> {
      fn check_dry_fire_odds_view(
         &mut self,
@@ -101,7 +101,7 @@ pub trait DryLevelGameExt2<'__sg>: crate::game::SideGame<'__sg> {
         });
     }
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl<'__sg, G: crate::game::SideGame<'__sg>> DryLevelGameExt2<'__sg> for G {}
 
 

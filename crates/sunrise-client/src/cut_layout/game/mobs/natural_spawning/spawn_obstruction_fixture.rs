@@ -1,5 +1,4 @@
 use sunrise_client_lib::mobs::spawn_selection::NaturalLevel;
-use sunrise_world::level::LevelAccess;
 #[cfg(test)]
 use sunrise_sim::mobs::spawn_selection;
 use sunrise_gameplay::game::server_side::natural_spawning::{PassLevel, SCANNED_QUERIES};
@@ -9,7 +8,7 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::LegacyRandom;
 use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::GameLevel;
+use sunrise_gameplay::game::server_side::natural_spawning::GameLevel;
 use sunrise_sim::mobs::Species;
 use super::*;
 use std::fmt::Write;

@@ -315,15 +315,15 @@ fn the_block_outline_stays_off_the_panorama() {
 #[test]
 fn a_snuffed_candle_and_candle_cake_smoke_at_vanillas_offsets() {
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::candle_offsets("minecraft:candle", Some(1)),
+        sunrise_gameplay_common::game::CommonGame::candle_offsets("minecraft:candle", Some(1)),
         [[8u8, 8, 8]].as_slice()
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::candle_offsets("minecraft:red_candle", Some(3)),
+        sunrise_gameplay_common::game::CommonGame::candle_offsets("minecraft:red_candle", Some(3)),
         [[8u8, 5, 10], [6, 7, 8], [9, 8, 7]].as_slice()
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::candle_offsets("minecraft:candle_cake", None),
+        sunrise_gameplay_common::game::CommonGame::candle_offsets("minecraft:candle_cake", None),
         [[8u8, 16, 8]].as_slice()
     );
 }
@@ -406,21 +406,21 @@ fn a_mod_screen_on_a_machine_menu_takes_the_stock_layout_out() {
     let stock = Some((8.0, 109.0));
     // A mod screen is open: the stock grid does not answer.
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::stock_machine_slot(stock, true),
+        sunrise_gameplay_common::game::CommonGame::stock_machine_slot(stock, true),
         None
     );
     // No mod screen: the hopper and dispenser layouts are untouched.
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::stock_machine_slot(stock, false),
+        sunrise_gameplay_common::game::CommonGame::stock_machine_slot(stock, false),
         stock
     );
     // Other menus have no stock layout to stand back from.
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::stock_machine_slot(None, true),
+        sunrise_gameplay_common::game::CommonGame::stock_machine_slot(None, true),
         None
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::stock_machine_slot(None, false),
+        sunrise_gameplay_common::game::CommonGame::stock_machine_slot(None, false),
         None
     );
 }

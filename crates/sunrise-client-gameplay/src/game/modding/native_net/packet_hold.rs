@@ -12,7 +12,7 @@ const BYTES: usize = 1_048_576;
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
-pub(in crate::game) struct HeldPlay {
+pub struct HeldPlay {
     body: Vec<u8>,
     cauldron: Option<(i64, PendingCauldron)>,
 }
@@ -34,7 +34,7 @@ impl HeldPlay {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct Holds<T = HeldPlay> {
+pub struct Holds<T = HeldPlay> {
     incarnation: Option<(u64, u64)>,
     active: Option<(HoldId, Vec<T>, usize)>,
     overflowed: HashSet<HoldId>,
@@ -52,13 +52,13 @@ impl<T: AsRef<[u8]> + Default> Holds<T> {
     pub(in crate::game::client_side) fn clear(&mut self) {
         *self = Self::default();
     }
-    fn sync(&mut self, incarnation: Option<(u64, u64)>) {
+    pub fn sync(&mut self, incarnation: Option<(u64, u64)>) {
         if self.incarnation != incarnation {
             self.clear();
             self.incarnation = incarnation;
         }
     }
-    fn start(&mut self) -> Result<HoldId, HoldError> {
+    pub fn start(&mut self) -> Result<HoldId, HoldError> {
         if self.incarnation.is_none() {
             return Err(HoldError::NoWorld);
         }
@@ -69,7 +69,7 @@ impl<T: AsRef<[u8]> + Default> Holds<T> {
         self.active = Some((id, Vec::new(), 0));
         Ok(id)
     }
-    fn take(&mut self, id: HoldId) -> Result<Vec<T>, HoldError> {
+    pub fn take(&mut self, id: HoldId) -> Result<Vec<T>, HoldError> {
         if self.overflowed.remove(&id) {
             return Err(Self::limit());
         }
@@ -85,7 +85,7 @@ impl<T: AsRef<[u8]> + Default> Holds<T> {
         }
     }
     // Overflow policy: end and flush, then report Limit on the id once.
-    fn queue(
+    pub fn queue(
         &mut self,
         packet: T,
         send: impl FnMut(T) -> Result<(), SendPacketError>,
@@ -115,7 +115,7 @@ impl<T: AsRef<[u8]> + Default> Holds<T> {
         result
     }
     // Send refusal policy: discard the tail and report the published prefix.
-    fn publish(
+    pub fn publish(
         packets: impl IntoIterator<Item = T>,
         mut send: impl FnMut(T) -> Result<(), SendPacketError>,
     ) -> Result<usize, HoldError> {

@@ -1,4 +1,5 @@
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::native_item_bundle::NativeItemBundleGameExt1 as _;
 use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use sunrise_items::items::ItemStack;
 
@@ -886,5 +887,3 @@ use super::*;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_item_bundle::NativeItemBundleGameExt1 as _;

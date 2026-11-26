@@ -5,7 +5,6 @@
 mod tests {
     use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1;
 use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::world_items;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use {crate::game::native_world_read_common::*, sunrise_gameplay_common::game::native_world_read_common::{BlockRegistry, BlockStateId, EngineFluidState, FluidKind, Items, World, api_fluid_state, block_in_tag, can_see_sky, fluid_in_tag, fluid_shape, install_block_tags, prepare_block_tags}};
     use mod_api::LevelHost;
@@ -485,14 +484,25 @@ use sunrise_gameplay_common::world_items;
             });
             {
                 use mod_api::LevelHost;
-                let hit =
-                    sunrise_gameplay_common::game::native_hooks::HitLevel(sunrise_sim::health::DamageLevel::of(
-                        &mut game.world,
-                        game.pack.assets.registry,
-                        Some(world_items!(game)),
-                        Some(&game.pack.block_registries),
-                        &game.damage_hooks,
-                    ));
+                let (common, state) =
+                    sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                let items = match (
+                    &common.server_items,
+                    sunrise_gameplay_common::game::Side::world_tables(state),
+                ) {
+                    (Some(items), _) => &**items,
+                    (None, Some(tables)) => &tables.items,
+                    (None, None) => common.res.items(),
+                };
+                let hit = sunrise_gameplay_common::game::native_hooks::HitLevel(
+                    sunrise_sim::health::DamageLevel::of(
+                        &mut common.world,
+                        common.pack.assets.registry,
+                        Some(items),
+                        Some(&common.pack.block_registries),
+                        &common.damage_hooks,
+                    ),
+                );
                 assert_eq!(
                     hit.block_state_id("minecraft:oak_slab[waterlogged=true]"),
                     parsed
@@ -525,11 +535,11 @@ use sunrise_gameplay_common::world_items;
                 use mod_api::LevelHost;
                 let hit =
                     sunrise_gameplay_common::game::native_hooks::HitLevel(sunrise_sim::health::DamageLevel::of(
-                        &mut game.world,
-                        game.pack.assets.registry,
+                        &mut game.common.world,
+                        game.common.pack.assets.registry,
                         None,
                         None,
-                        &game.damage_hooks,
+                        &game.common.damage_hooks,
                     ));
                 assert_eq!(hit.block_state_id("minecraft:stone"), None);
                 assert_eq!(

@@ -18,7 +18,7 @@ fn ordinary_entity_attacks_check_both_range_edges_and_set_only_instabuild_delay(
         || {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
-                game.inventory[game.selected] = Some(ranged_stick(1.5, 2.5, 0.125));
+                game.common.inventory[game.common.selected] = Some(ranged_stick(1.5, 2.5, 0.125));
                 let min = 1.375_f64;
                 let max = 2.625_f64;
                 for (id, kind) in [
@@ -95,7 +95,7 @@ fn out_of_range_entity_click_still_swings_without_attacking_or_resetting() {
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 add_entity(game, 101, "minecraft:armor_stand", [0.5, 65.0, 2.0]);
-                game.inventory[game.selected] = Some(ranged_stick(2.0, 3.0, 0.0));
+                game.common.inventory[game.common.selected] = Some(ranged_stick(2.0, 3.0, 0.0));
                 game.refresh_client_pick(1.0);
                 assert_eq!(game.crosshair_entity_id(), Some(101));
                 game.client.hand_strength.ticker = 100;
@@ -142,7 +142,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                 add_entity(game, 101, "minecraft:horse", [0.5, 66.1, 2.5]);
                 game.mobs[0].extra.age = -24000;
                 let wheat = Some(ItemStack::new("minecraft:wheat", 3));
-                game.inventory[game.selected] = wheat.clone();
+                game.common.inventory[game.common.selected] = wheat.clone();
                 game.offhand = wheat.clone();
                 game.client.particles.0.requested = Some(Vec::new());
                 game.refresh_client_pick(1.0);
@@ -235,7 +235,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                     );
                     assert!(game.client.particles.0.requested.as_ref().unwrap().is_empty());
                     assert_eq!(game.swings_started, swings);
-                    assert_eq!(game.inventory[game.selected], wheat);
+                    assert_eq!(game.common.inventory[game.common.selected], wheat);
                     assert_eq!(game.offhand, wheat);
                     assert!(game.using.is_none());
                     if let Some(expected) = expected_loc {
@@ -278,7 +278,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                     .unwrap();
                 // Border spans [-1.0, 1.0); entity 103's blockPosition is (0, 66, 1) -> outside.
                 let snowball = Some(ItemStack::new("minecraft:snowball", 2));
-                game.inventory[game.selected] = snowball.clone();
+                game.common.inventory[game.common.selected] = snowball.clone();
                 game.offhand = snowball;
                 for mode in [3.0_f32, 0.0_f32] {
                     game.handle_packet(C::GameEvent(play::GameEvent {

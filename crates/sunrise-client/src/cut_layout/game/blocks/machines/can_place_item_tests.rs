@@ -308,7 +308,7 @@ fn refusing_a_capability_insert_does_not_journal_the_slot() {
         let before = (target(game).revision(), game.transactions.writes());
         let aborted = game.storage_transaction(|game, tx| {
             assert_eq!(handler.insert_at(game, tx, 0, &resource, 1), Ok(0));
-            assert_eq!(game.journal_kept(), (0, 0));
+            assert_eq!(sunrise_gameplay_common::game::transactions::TransactionsGameExt::journal_kept(game), (0, 0));
             Err::<(), ()>(())
         });
         assert_eq!(aborted, Err(()));

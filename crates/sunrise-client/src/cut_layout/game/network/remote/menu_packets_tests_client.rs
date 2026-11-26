@@ -1,6 +1,6 @@
 use super::{connect_menu_test, spawn_menu_test};
 use crate::game::remote::tests::menu_packets_tests::packets_through_pong;
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::mount_menu::CHEST, crate::game::server_side::native_entity_refs::tests::with_client_game};
+use {sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, sunrise_gameplay_common::mount_rules::CHEST, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
 use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -182,7 +182,7 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                     }))
                     .unwrap();
                     game.client.remote.as_mut().unwrap().level_load.finish();
-                    let open = |game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+                    let open = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
                                 container,
                                 entity,
                                 species,
@@ -195,8 +195,8 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                             entity,
                         }))
                         .unwrap();
-                        assert_eq!(game.side.screen, Screen::Inventory);
-                        assert_eq!(game.side.mount_menu.opened_mob(), Some(entity as u32));
+                        assert_eq!(game.client.screen, Screen::Inventory);
+                        assert_eq!(game.client.mount_menu.opened_mob(), Some(entity as u32));
                     };
                     open(game, 8, 41, "minecraft:horse", 6);
                     assert_eq!(

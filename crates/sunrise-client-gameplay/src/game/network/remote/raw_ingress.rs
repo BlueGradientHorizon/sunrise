@@ -25,9 +25,9 @@ pub(in crate::game) fn packet_error_notice() -> Event {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct ListenerTurn {
+pub struct ListenerTurn {
     pub(in crate::game) opening: Option<RemoteOpening>,
-    pub(in crate::game) end: Option<Event>,
+    pub end: Option<Event>,
     pub(in crate::game) packet_error: bool,
 }
 
@@ -66,7 +66,7 @@ impl crate::game::ClientGame<'_> {
 
 /// Protocol error raised while handling a play packet (`ClientCommonPacketListenerImpl.onPacketError`).
 #[derive(Debug)]
-pub(in crate::game) struct PacketError(pub(in crate::game) &'static str);
+pub struct PacketError(pub &'static str);
 
 impl std::fmt::Display for PacketError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

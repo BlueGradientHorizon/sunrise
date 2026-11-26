@@ -4,7 +4,7 @@ fn tracking_emitters_follow_the_packet_target() {
     use sunrise_client_lib::audio::Audio;
     use crate::game::load_resources;
     use crate::settings::Settings;
-    use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::totem_common::TOTEM_EVENT};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::totem_common::TOTEM_EVENT};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::particle_options::ParticleType;
     use sunrise_protocol::{
@@ -57,12 +57,12 @@ fn tracking_emitters_follow_the_packet_target() {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap());
     game.client.particles.0.seed_randoms(42, 43, 44);
 
-    let check = |game: &Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+    let check = |game: &sunrise_client_gameplay::game::ClientGame<'_>,
                  ty,
                  feet: [f64; 3],
                  height: f32| {
         let mut seen = false;
-        for (options, at, velocity) in game.side.particles.0.requested.as_ref().unwrap() {
+        for (options, at, velocity) in game.client.particles.0.requested.as_ref().unwrap() {
             if options.ty != ty {
                 continue;
             }

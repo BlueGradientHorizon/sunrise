@@ -259,8 +259,8 @@ impl ClientGame<'_> {
         Some((s, ui))
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn station_rename_box_for_test(&self) -> (String, bool) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn station_rename_box_for_test(&self) -> (String, bool) {
         let ui = self
             .client
             .station_ui

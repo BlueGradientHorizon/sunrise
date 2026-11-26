@@ -1,7 +1,7 @@
 //! `grindstone_place` and `grindstone_take` through real listeners: inline dispatch matching
 //! NeoForge `CommonHooks.onGrindstoneChange` and `CommonHooks.onGrindstoneTake`.
 //! The fixtures need prepared resources.
-use {sunrise_gameplay::game::native_guest_turn_tests::with_guests, sunrise_client_gameplay::game::stations::Kind as StationKind, sunrise_client_gameplay::game::stations::Station};
+use {sunrise_gameplay::game::native_guest_turn_tests::with_guests, sunrise_gameplay_common::game::stations_common::{Kind as StationKind, Station}};
 use mod_api::{
     Flow, GrindstonePlaceEvent, GrindstoneTakeEvent, Hooks, HostTransaction, ItemPlace,
     ItemResource, ModEntry, Mods, Registrar, ServerHost,

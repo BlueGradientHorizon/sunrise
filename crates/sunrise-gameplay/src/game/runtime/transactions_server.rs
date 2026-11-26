@@ -888,7 +888,7 @@ impl crate::game::ServerGame<'_> {
         slots: &HashMap<(Pos, usize), KeptSlot>,
         pos: Pos,
     ) -> Option<Vec<Option<ItemStack>>> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         super::slot_changes::probe::snapshot();
         if let Some(kept) = block_entities.get(&pos) {
             return match kept.entity.as_ref() {
@@ -2155,18 +2155,18 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn test_ender_items(&self) -> &[Option<sunrise_items::items::ItemStack>] {
+    pub fn test_ender_items(&self) -> &[Option<sunrise_items::items::ItemStack>] {
         &self.server.ender_items
     }
-    pub(in crate::game) fn test_lan_guest_swaps(&self) -> &[u32] {
+    pub fn test_lan_guest_swaps(&self) -> &[u32] {
         &self.server.lan_guest_swaps
     }
-    pub(in crate::game) fn test_clear_hopper(&mut self, pos: (i32, i32, i32)) {
+    pub fn test_clear_hopper(&mut self, pos: (i32, i32, i32)) {
         self.server.hoppers.remove(&pos);
     }
-    pub(in crate::game) fn test_attachment_slot(
+    pub fn test_attachment_slot(
         &mut self,
         holder: mod_api::Holder,
         access: mod_api::AttachmentAccess,

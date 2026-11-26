@@ -784,8 +784,9 @@ fn declining_liquid_part_writes_never_reach_the_next_part_or_commit() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_level(|game, level| {
+            let dandelion = state(game, "minecraft:dandelion");
             game.world
-                .set(AT[0], AT[1], AT[2], state(game, "minecraft:dandelion"))
+                .set(AT[0], AT[1], AT[2], dandelion)
                 .unwrap();
             game.storage_transaction(|game, tx| {
                 assert_eq!(
@@ -854,8 +855,9 @@ fn liquid_hosts_read_the_same_comparator_signal_without_unpacking_loot() {
                 .as_ref(),
             Some(&pending)
         );
+        let dandelion = state(game, "minecraft:dandelion");
         game.world
-            .set(AT[0], AT[1], AT[2], state(game, "minecraft:dandelion"))
+            .set(AT[0], AT[1], AT[2], dandelion)
             .unwrap();
         let _ = game.storage_transaction(|game, tx| {
             assert_eq!(

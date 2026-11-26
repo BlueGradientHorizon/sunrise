@@ -1916,7 +1916,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "enchant_tests_server.rs"]
 pub mod enchant_tests;
 

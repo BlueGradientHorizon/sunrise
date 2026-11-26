@@ -529,7 +529,7 @@ impl crate::game::ServerGame<'_> {
         self.tick_armor_stands_before(first_shulker.unwrap_or(JoinSeq::MAX))
     }
 
-    pub(in crate::game::server_side) fn tick_armor_stands_before(
+    pub fn tick_armor_stands_before(
         &mut self,
         cut: JoinSeq,
     ) -> Result<()> {
@@ -551,8 +551,8 @@ impl crate::game::ServerGame<'_> {
         result
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn tick_armor_stands(&mut self) -> Result<()> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn tick_armor_stands(&mut self) -> Result<()> {
         let joins: Vec<_> = self.common.armor_stands.iter().map(|stand| stand.join).collect();
         self.tick_armor_stand_turns(joins)
     }

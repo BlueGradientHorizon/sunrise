@@ -2,10 +2,10 @@
 
 use sunrise_gameplay_common::game::Mining;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::server_side::lan_actions_server::GuestPlay {
-    #[cfg(test)]
-    pub(in crate::game) fn arm_mining_for_test(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn arm_mining_for_test(
         &mut self,
         pos: [i32; 3],
         start: u64,
@@ -29,21 +29,7 @@ pub mod tests {
     use sunrise_gameplay_common::game::lan_actions::{eye_columns, reset_use_attack_strength};
     use sunrise_sim::pose::Pose;
 
-    pub struct StopMenu(pub(in crate::game) Option<mod_api::GameMode>);
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for StopMenu {
-        fn container_opened(
-            &self,
-            host: &mut dyn mod_api::ServerHost,
-            _: &mut mod_api::ContainerOpenedEvent<'_>,
-        ) -> mod_api::Flow {
-            if let Some(mode) = self.0 {
-                let player = host.players().acting_player().unwrap();
-                assert!(player.set_game_mode(host, mode));
-            }
-            mod_api::Flow::Cancel
-        }
-    }
+    use super::stop_menu::StopMenu;
 
     #[test]
     fn use_swing_resets_attack_charge_only_when_started() {
@@ -1219,3 +1205,7 @@ pub(in crate::game) mod player_entity_tick_tests;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "tests/stop_menu.rs"]
+pub mod stop_menu;

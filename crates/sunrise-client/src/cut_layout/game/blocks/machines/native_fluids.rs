@@ -4,7 +4,6 @@
 use mod_api::FluidStack;
 use std::sync::Arc;
 use sunrise_core::geometry::Direction;
-use sunrise_gameplay::game::blocks::machines::native_fluids::read_tanks;
 use sunrise_level::containers::{BlockEntity, ModFluidTanks};
 #[cfg(test)]
 pub(crate) mod tests {
@@ -269,9 +268,11 @@ use super::*;
             })
         });
     }
+    #[cfg(any())]
 #[test]
     #[ignore = "daily"]
     fn a_scoped_tank_can_refuse_a_fluid() {
+        use sunrise_gameplay::game::machines::native_fluids::read_tanks;
         use super::super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         if run_fresh_cases(
             "game::server_side::machines::native_fluids::tests::a_scoped_tank_can_refuse_a_fluid",

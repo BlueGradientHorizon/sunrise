@@ -204,7 +204,7 @@ pub use client_side::game_client::WindowKeyInput;
 #[allow(dead_code)]
 #[cfg(feature = "client")]
 pub struct ClientGame<'a> {
-    common: sunrise_gameplay_common::game::CommonGame<'a>,
+    pub common: sunrise_gameplay_common::game::CommonGame<'a>,
     pub client: client_side::ClientState,
 }
 #[cfg(feature = "client")]
@@ -1067,10 +1067,10 @@ impl crate::game::ClientGame<'_> {
 }
 
 #[cfg(feature = "client")]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    #[cfg(test)]
-    fn hud(&mut self, size: [u32; 2]) -> HudBatch {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn hud(&mut self, size: [u32; 2]) -> HudBatch {
         self.hud_with_reload(size, None)
     }
 }

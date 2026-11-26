@@ -1,4 +1,4 @@
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Game, Mob, MobEvent, MobWorld, Species, Vec3, breeding, breeding_credit, seen}};
+use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Mob, MobEvent, MobWorld, Species, Vec3, breeding, breeding_credit, seen}};
 
 use sunrise_core::random::LegacyRandom;
 use sunrise_sim::mobs::{

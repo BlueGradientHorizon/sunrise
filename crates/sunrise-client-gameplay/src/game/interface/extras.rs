@@ -2,7 +2,7 @@
 //! camera; clicks and frame times for mods (`native_clicks`, `native_frame_rate`).
 //! Each hook does nothing while its extra is off and no mod uses it.
 #[path = "extras/mouse_tweaks.rs"]
-pub(in crate::game) mod mouse_tweaks;
+pub mod mouse_tweaks;
 #[path = "extras/sorting.rs"]
 mod sorting;
 

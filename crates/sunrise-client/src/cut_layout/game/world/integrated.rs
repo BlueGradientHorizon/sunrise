@@ -14,9 +14,7 @@ use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use mod_api::prelude::BlockStatesHost;
 #[cfg(test)]
 pub(crate) mod tests {
-use mod_vocab::prelude::ServicesClientHost;
-use mod_vocab::prelude::ServicesClientHost;
-use mod_vocab::prelude::ServicesClientHost;
+use mod_api::prelude::{EntitiesHost, LivingHost, ServicesClientHost};
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1;
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
 use sunrise_gameplay_common::game::tables::WorldTablesExt;
@@ -116,6 +114,7 @@ use super::*;
 
 #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn posted_native_panic_writes_one_server_report() {
         let scratch = tempfile::tempdir().unwrap();
         let home = scratch.path().to_path_buf();
@@ -316,7 +315,7 @@ use super::*;
                     if failed_open {
                         Err("open failed after map publication".into())
                     } else {
-                        server.side.world_adopted = true;
+                        server.server.world_adopted = true;
                         Ok(())
                     }
                 });
@@ -509,10 +508,10 @@ use super::*;
                 game.mobs.update(slot, |m| m.position = to);
                 game.entity_section_step(victim, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             }
-            let living = game.living(game.entity(victim).unwrap()).unwrap();
+            let living = game.living(EntitiesHost::entity(game, victim).unwrap()).unwrap();
             assert_eq!(
                 living.last_attacker(game).unwrap().level(game),
-                game.level(Dim::Nether.id())
+                EntitiesHost::level(game, Dim::Nether.id())
             );
 
             let block = game

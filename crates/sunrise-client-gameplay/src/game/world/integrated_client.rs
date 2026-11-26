@@ -22,16 +22,29 @@ use sunrise_sim::world_options::WorldOptions;
 
 /// The window's handle on its server thread.
 pub struct Integrated {
-    pub(in crate::game) flags: Arc<Flags>,
+    pub flags: Arc<Flags>,
     pub thread: Option<JoinHandle<()>>,
-    pub(in crate::game) emergency_save: Option<sunrise_level::crash::EmergencySave>,
-    pub(in crate::game) tasks: Sender<OwnerRequest>,
+    pub emergency_save: Option<sunrise_level::crash::EmergencySave>,
+    pub tasks: Sender<OwnerRequest>,
     /// The world's name (`level.dat`'s `LevelName`), for the pause menu.
     pub world_name: String,
     pub save_folder: String,
     pub rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
 }
 impl Integrated {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn stopped_for_test() -> Self {
+        Self {
+            flags: Arc::new(Flags::default()),
+            thread: None,
+            emergency_save: None,
+            tasks: channel().0,
+            world_name: "Test world".into(),
+            save_folder: "test_world".into(),
+            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
+        }
+    }
+
     /// Queue every change, even if the currently published tree still has the requested state:
     /// an earlier update may be waiting for a busy server thread.
     pub(in crate::game) fn queue_pregen_option(&self, enabled: bool) {
@@ -175,14 +188,14 @@ impl Drop for Integrated {
 /// does while its server prepares (`Minecraft.doWorldLoad`), instead of
 /// waiting for it frozen for the whole load.
 pub struct Starting {
-    pub(in crate::game) handle: Integrated,
-    pub(in crate::game) ready: Receiver<Ready>,
-    pub(in crate::game) player: String,
+    pub handle: Integrated,
+    pub ready: Receiver<Ready>,
+    pub player: String,
     /// The save's folder in `saves/`, for the world icon once joined.
-    pub(in crate::game) folder: String,
+    pub folder: String,
     /// `Minecraft.doWorldLoad`'s `newWorld`: the loading screen stays 500 ms
     /// once the level is ready.
-    pub(in crate::game) new_world: bool,
+    pub new_world: bool,
 }
 
 impl crate::game::ClientGame<'_> {

@@ -86,13 +86,13 @@ impl DemoIntro {
     }
 }
 
-struct Layout {
+pub struct Layout {
     sections: [Vec<Text>; 3],
     panel: [f32; 4],
     center: f32,
     top: f32,
-    button_y: f32,
-    button_x: [f32; 2],
+    pub button_y: f32,
+    pub button_x: [f32; 2],
 }
 
 impl crate::game::ClientGame<'_> {

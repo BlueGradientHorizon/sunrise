@@ -44,15 +44,15 @@ impl MenuRemoval {
 /// The guest's menus the game runs: kept between clicks, so a drag (quick
 /// craft) spans them as in vanilla.
 #[derive(Default)]
-pub(in crate::game) struct GuestCrafting {
+pub struct GuestCrafting {
     /// The inventory menu; its grid lives in the hub's guest.
-    pub(in crate::game) inventory: MenuOwner<Option<Box<Menu>>>,
+    pub inventory: MenuOwner<Option<Box<Menu>>>,
     /// The open crafting table: its window, state id, menu and block.
-    pub(in crate::game) table: MenuOwner<Option<(i32, i32, Box<Menu>, [i32; 3])>>,
+    pub table: MenuOwner<Option<(i32, i32, Box<Menu>, [i32; 3])>>,
     /// The open furnace's or brewing stand's window and menu (`AbstractFurnaceMenu`,
     /// `BrewingStandMenu`); its slots live in the block entity and the hub's
     /// container menu keeps the client in sync.
-    pub(in crate::game) machine: MenuOwner<Option<(i32, Box<Menu>)>>,
+    pub machine: MenuOwner<Option<(i32, Box<Menu>)>>,
 }
 
 /// The most containers `native_recipe_sources` adds to one placement.

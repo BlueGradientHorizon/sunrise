@@ -166,7 +166,7 @@ fn refused_use_preserves_the_moved_stack(
     observer: &Observer,
 ) {
     let book = named_stack("minecraft:knowledge_book", 1);
-    game.inventory[game.selected] = Some(book.clone());
+    game.common.inventory[game.common.selected] = Some(book.clone());
     game.offhand = None;
     observer.0.lock().unwrap().refuse_use = true;
     assert!(!game.use_hand(None).unwrap());
@@ -195,7 +195,7 @@ fn mining_reports_after_the_drop_hook(game: &mut sunrise_gameplay::game::ServerG
     game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
     let mut tool = named_stack("minecraft:iron_pickaxe", 1);
     tool.damage = 249;
-    game.inventory[game.selected] = Some(tool);
+    game.common.inventory[game.common.selected] = Some(tool);
     observer.0.lock().unwrap().mining_order.clear();
     assert!(game.player_break_block(pos).unwrap());
     assert!(game.held().is_none());
@@ -223,7 +223,7 @@ fn continuations_preserve_listener_hand_writes(
     game.riding = Some(21);
     let mut stick = named_stack("minecraft:carrot_on_a_stick", 1);
     stick.damage = 24;
-    game.inventory[game.selected] = Some(stick);
+    game.common.inventory[game.common.selected] = Some(stick);
     observer.0.lock().unwrap().hand_write = Some(HandWrite::Replace(
         Hand::Main,
         ItemStack::new("minecraft:apple", 1),
@@ -258,7 +258,7 @@ fn continuations_preserve_listener_hand_writes(
     game.inventory[slot] = Some(bow.clone());
     game.offhand = Some(named_stack("minecraft:arrow", 1));
     observer.0.lock().unwrap().hand_write = Some(HandWrite::MoveBowAndReplace(replacement));
-    game.tick_crossbow(slot, sunrise_gameplay::game::ServerGame::charge_ticks(&bow), &bow);
+    game.tick_crossbow(slot, sunrise_gameplay::game::sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
     let notice = take_notice(observer, Some(Hand::Off), "minecraft:arrow", 0);
     assert!(
         notice.in_hand.is_none(),
@@ -292,7 +292,7 @@ fn continuations_preserve_listener_hand_writes(
     game.inventory[slot] = Some(bow.clone());
     game.offhand = None;
     game.using = None;
-    game.tick_crossbow(slot, sunrise_gameplay::game::ServerGame::charge_ticks(&bow), &bow);
+    game.tick_crossbow(slot, sunrise_gameplay::game::sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
     assert!(game.stack_in(slot).is_none());
     let notice = take_notice(observer, Some(Hand::Main), "minecraft:crossbow", 0);
     assert_eq!(notice.original, bow.try_into_api().unwrap());
@@ -372,7 +372,7 @@ fn run_isolated() {
             game.server.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
             game.server.lan_acting_entity = Some(123);
             game.offhand = Some(named_stack("minecraft:apple", 1));
-            game.with_hand(Hand::Off, Game::consume_held);
+            game.with_hand(Hand::Off, |game| game.consume_held());
             let guest = take_notice(&observer, Some(Hand::Off), "minecraft:apple", 0);
             assert_eq!(guest.player, 0x1111_2222_3333_4444_5555_6666_7777_8888);
             assert_eq!(guest.entity, 123);

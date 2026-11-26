@@ -6,6 +6,7 @@ pub(crate) mod tests {
 
 use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1;
 use sunrise_gameplay_common::game::native_data_bound::tests::dirt_stack_size;
+use sunrise_gameplay_common::game::native_data_bound::tests::{DefaultsProbe, Probe};
 
 use sunrise_gameplay_common::game::native_data_bound::tests::install_default_component_loads;
 

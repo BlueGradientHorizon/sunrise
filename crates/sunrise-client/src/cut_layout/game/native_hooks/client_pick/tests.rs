@@ -401,7 +401,7 @@ fn a_click_on_a_cushion_with_a_synced_passenger_passes_to_the_item() {
 #[ignore = "daily"]
 fn a_click_on_a_free_cushion_while_sneaking_passes_to_the_item() {
     with_picked_cushion(|game, server, target| {
-        game.set_sent_sneak_for_test();
+        game.client.remote.as_mut().unwrap().last_input |= sunrise_gameplay_common::game::remote::SHIFT_INPUT;
         game.refresh_client_pick(1.0);
         assert_eq!(game.crosshair_target(), Some(target));
         game.remote_use(mod_api::InteractionAttempt::Press);

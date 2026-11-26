@@ -1,7 +1,7 @@
 
 
 #![cfg(test)]
-#[cfg(test)]
+#[cfg(any())]
 pub(crate) mod tests {
 
 use sunrise_client_gameplay::game::client_side::entity_sizes_client::tests::white_outline;

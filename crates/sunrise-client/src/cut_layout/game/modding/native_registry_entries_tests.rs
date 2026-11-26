@@ -45,10 +45,7 @@ pub fn request(root: &Path) -> sunrise_gameplay::game::world_loading::WorldReque
     request.save_root = root.to_owned();
     request
 }
-fn host<'a, S: sunrise_gameplay_common::game::Side>(game: &'a sunrise_gameplay_common::game::Game<'_, S>) -> &'a dyn mod_api::Host
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+fn host<'g, 'a, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(game: &'a G) -> &'a dyn mod_api::Host {
     game
 }
 fn id(value: &str) -> mod_api::Identifier {
@@ -56,10 +53,7 @@ fn id(value: &str) -> mod_api::Identifier {
 }
 
 // Feed the same server-built snapshot to both Host implementations.
-fn check_rejected_sync_tags<S: sunrise_gameplay_common::game::Side>(game: &sunrise_gameplay_common::game::Game<'_, S>)
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+fn check_rejected_sync_tags<'g, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(game: &G) {
     for (registry, name) in [
         ("minecraft:enchantment", "minecraft:sharpness"),
         ("minecraft:entity_type", "minecraft:zombie"),

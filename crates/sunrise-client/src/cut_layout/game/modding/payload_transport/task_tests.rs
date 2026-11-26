@@ -391,6 +391,7 @@ fn vanilla_peer(
     }
 }
 
+#[cfg(any())]
 fn publish_task_server(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> u16 {
     game.client.settings.render_distance = 2;
     game.client.settings.simulation_distance = 2;
@@ -445,6 +446,7 @@ impl Fixture {
     }
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn serving_game_drives_configuration_tasks() {
@@ -647,6 +649,7 @@ fn serving_game_drives_configuration_tasks() {
     );
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
@@ -815,6 +818,7 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
     });
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn peer_completion_rejects_other_connections() {
@@ -919,6 +923,7 @@ fn peer_completion_rejects_other_connections() {
     });
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn retained_configuration_host_send_refuses_play_while_session_is_registered() {

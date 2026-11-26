@@ -1,6 +1,6 @@
 //! Production residency regressions for projectile ownership.
 #![cfg(test)]
-use sunrise_gameplay_common::game::Game;
+use sunrise_gameplay_common::game::SideGame;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_mod_runtime::attachments::{
@@ -34,10 +34,10 @@ static VALUE: AttachmentType<i32> = AttachmentType {
     sync: false,
 };
 
-fn exercise_restore<S: sunrise_gameplay_common::game::Side>(
-    game: &mut Game<'_, S>,
+fn exercise_restore<'g, G: SideGame<'g>>(
+    game: &mut G,
     path: usize,
-    step: impl FnOnce(&mut Game<'_, S>, [f64; 3]),
+    step: impl FnOnce(&mut G, [f64; 3]),
 ) {
     let at = [3.0, 64.0, 5.0];
     game.world

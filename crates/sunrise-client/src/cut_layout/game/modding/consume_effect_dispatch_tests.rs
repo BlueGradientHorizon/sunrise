@@ -145,7 +145,7 @@ fn consuming_player_is_supplied_outside_a_guest_action() {
                     registered: None,
                 }];
                 game.creative = false;
-                game.inventory[game.selected] = Some(stack.clone());
+                game.common.inventory[game.common.selected] = Some(stack.clone());
                 game.finish_consuming(&info, &consumable, &stack);
                 assert_eq!(*heard.lock().unwrap(), [(user, 4)]);
                 assert_eq!(game.held().unwrap().count, 3);
@@ -197,7 +197,7 @@ fn replacing_the_consumed_hand_keeps_the_new_item_and_emits_no_remainder() {
             );
             let info = game.items().get(&stack.item).unwrap().clone();
             let consumable = game.consumable(&stack).unwrap();
-            game.inventory[game.selected] = Some(stack.clone());
+            game.common.inventory[game.common.selected] = Some(stack.clone());
             game.finish_consuming(&info, &consumable, &stack);
             assert_eq!(game.held(), Some(&ItemStack::new("minecraft:stick", 1)));
             assert_eq!(game.inventory.iter().flatten().count(), 1);

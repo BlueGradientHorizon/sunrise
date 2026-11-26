@@ -33,14 +33,14 @@ pub(in crate::game) const EXPORT: i32 = 5;
 pub(in crate::game) const RUN: i32 = 6;
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::test_instances::{TestDef, parse_test_def};
+pub use sunrise_gameplay::test_instances::{TestDef, parse_test_def};
 
-#[cfg(test)]
-pub(in crate::game) trait TestDefSample {
+#[cfg(any(test, feature = "test-support"))]
+pub trait TestDefSample {
     fn sample(block_based: bool, max_ticks: i32, setup_ticks: i32) -> Self;
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl TestDefSample for TestDef {
     /// A test with the timing and type a runner test needs.
     fn sample(block_based: bool, max_ticks: i32, setup_ticks: i32) -> Self {

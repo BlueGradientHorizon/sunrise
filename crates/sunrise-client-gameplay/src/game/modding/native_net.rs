@@ -1,7 +1,7 @@
 //! Private custom-book connection state and client network services.
 use crate::game::ClientGame;
 #[path = "native_net/packet_hold.rs"]
-pub(in crate::game) mod packet_hold;
+pub mod packet_hold;
 use mod_api::{SendPacketError, ServerboundPlayPacket};
 
 #[cfg(feature = "client")]

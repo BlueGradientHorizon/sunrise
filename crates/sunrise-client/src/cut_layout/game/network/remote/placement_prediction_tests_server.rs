@@ -45,7 +45,7 @@ fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
             (Hand::Off, &[(0, 1), (1, 2)][..]),
         ] {
             for item in ["minecraft:trial_key", "minecraft:stick"] {
-                game.inventory[game.selected] =
+                game.common.inventory[game.common.selected] =
                     (hand == Hand::Main).then(|| ItemStack::new(item, 1));
                 game.offhand = (hand == Hand::Off).then(|| ItemStack::new(item, 1));
                 let sequence = game.client.remote.as_ref().unwrap().sequence;

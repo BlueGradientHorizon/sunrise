@@ -377,12 +377,13 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
                     });
                 assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
 
-                game.server
+                let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                server
                     .lan
                     .as_mut()
                     .unwrap()
                     .hub
-                    .broadcast_changes(&mut game.world);
+                    .broadcast_changes(&mut common.world);
                 assert_eq!(
                     received_tags(),
                     [Tag::Compound(waiting)],
@@ -391,12 +392,13 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
 
                 // A later sync of the restored entity must not replay either batch.
                 game.block_entity_sync(AT);
-                game.server
+                let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                server
                     .lan
                     .as_mut()
                     .unwrap()
                     .hub
-                    .broadcast_changes(&mut game.world);
+                    .broadcast_changes(&mut common.world);
                 assert!(received_tags().is_empty(), "replace={replace}");
             }
         });

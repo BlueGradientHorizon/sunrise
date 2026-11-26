@@ -27,7 +27,7 @@ pub(crate) fn assert_block_item_before_fallthrough(
             game.world.set(0, 63, 0, dirt).unwrap();
             game.world.set(0, 64, 0, state).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            game.inventory[game.selected] = Some(ItemStack::new(item, 2));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new(item, 2));
             *observer.0.lock().unwrap() = Controls {
                 air_answer: Some(Answer::Fail),
                 ..Controls::default()
@@ -73,7 +73,8 @@ fn block_pass_falls_through_but_fail_and_success_stop_the_apple() {
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
             for (answer, expected) in [(Answer::Pass, 1), (Answer::Fail, 0), (Answer::Success, 0)] {
-                game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 1));
+                let selected = game.selected;
+                game.inventory[selected] = Some(ItemStack::new("minecraft:apple", 1));
                 *observer.0.lock().unwrap() = Controls {
                     hands: Some(Vec::new()),
                     block_answer: Some(Answer::Pass),
@@ -120,7 +121,7 @@ fn server_use_item_packet_fires_once_after_use_item_on_with_block_crosshair() {
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
             game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                g.inventory[g.selected] = Some(ItemStack::new("minecraft:apple", 1));
+                g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:apple", 1));
             });
             *observer.0.lock().unwrap() = Controls {
                 item_on_answer: Some(Answer::Pass),
@@ -184,7 +185,7 @@ fn server_use_item_packet_fires_once_after_use_item_on_with_block_crosshair() {
 #[test]
 #[ignore = "daily"]
 fn targeted_item_fallthrough_keeps_hand_and_fail_vetoes_item_action() {
-    fn run<S: InteractionSide>(observer: &Observer, game: &mut Game<'_, S>) {
+    fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
         let side = S::LOGICAL_SIDE;
         game.set_test_forced_hit(Some(hit()));
         for hand in [Hand::Main, Hand::Off] {
@@ -192,7 +193,8 @@ fn targeted_item_fallthrough_keeps_hand_and_fail_vetoes_item_action() {
                 air_answer: Some(Answer::Fail),
                 ..Controls::default()
             };
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 1));
+            let selected = game.selected;
+            game.inventory[selected] = Some(ItemStack::new("minecraft:apple", 1));
             game.offhand = Some(ItemStack::new("minecraft:apple", 1));
             assert!(!S::interaction_use_air_hand(game, hand));
             assert_eq!(observer.0.lock().unwrap().steps, [Step::Air(side, hand)]);

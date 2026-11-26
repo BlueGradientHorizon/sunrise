@@ -4,9 +4,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_vocab::__private::game::Fields;
-use mod_vocab::__private::game::Fields;
-use mod_vocab::__private::game::Fields;
+use mod_api::__private::game::Fields;
 use sunrise_gameplay_common::game::native_player_death::tests::at;
 
 use sunrise_gameplay_common::game::native_player_death::tests::new_guest;

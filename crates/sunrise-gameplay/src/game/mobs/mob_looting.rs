@@ -51,8 +51,8 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Mob.equipItemIfPossible`, as the tests ask it.
-    #[cfg(test)]
-    fn equip_item_if_possible(&mut self, index: usize, stack: &ItemStack) -> Option<u32> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn equip_item_if_possible(&mut self, index: usize, stack: &ItemStack) -> Option<u32> {
         sunrise_gameplay::mob_looting::equip_item_if_possible(self, index, stack)
     }
 

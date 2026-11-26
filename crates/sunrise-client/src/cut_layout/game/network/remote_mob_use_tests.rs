@@ -28,16 +28,16 @@ fn remote_mob_takes_only_adult_piglin_currency_with_free_offhand() {
                 .extra
                 .set_slot_stack(sunrise_items::equipment::OFFHAND, None);
             g.mobs[0].extra.age = 0;
-            g.inventory[g.selected] = Some(ItemStack::new("minecraft:gold_ingot", 1));
+            g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:gold_ingot", 1));
             assert!(g.remote_mob_takes(0, Hand::Main));
             g.mobs[0].extra.age = -24000;
             assert!(!g.remote_mob_takes(0, Hand::Main));
             g.mobs[0].extra.age = 0;
-            g.inventory[g.selected] = Some(ItemStack::new("minecraft:golden_apple", 1));
+            g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:golden_apple", 1));
             assert!(!g.remote_mob_takes(0, Hand::Main));
             g.remote_use_item(Hand::Main);
             assert!(g.using.is_some());
-            g.inventory[g.selected] = Some(ItemStack::new("minecraft:gold_ingot", 1));
+            g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:gold_ingot", 1));
             g.mobs[0].extra.set_slot_stack(
                 sunrise_items::equipment::OFFHAND,
                 Some(ItemStack::new("minecraft:gold_ingot", 1)),

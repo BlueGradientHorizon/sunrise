@@ -222,7 +222,7 @@ pub(crate) mod furnace_fuel_transfer_tests {
         let mut game = server_game(&mut resources);
         let hopper = (8, 64, 8);
         let furnace = (9, 64, 8);
-        let registry = &game.pack.assets.registry;
+        let registry = &game.common.pack.assets.registry;
         let mut hopper_state = registry
             .state(registry.default_state("minecraft:hopper").unwrap())
             .unwrap()
@@ -230,7 +230,7 @@ pub(crate) mod furnace_fuel_transfer_tests {
         hopper_state
             .properties
             .insert("facing".into(), "east".into());
-        game.world
+        game.common.world
             .set(
                 hopper.0,
                 hopper.1,
@@ -238,7 +238,7 @@ pub(crate) mod furnace_fuel_transfer_tests {
                 registry.resolve(&hopper_state).unwrap(),
             )
             .unwrap();
-        game.world
+        game.common.world
             .set(
                 furnace.0,
                 furnace.1,
@@ -979,7 +979,7 @@ use super::*;
         facing: &str,
         enabled: bool,
     ) -> BlockStateId {
-        let registry = &game.pack.assets.registry;
+        let registry = &game.common.pack.assets.registry;
         let mut state = registry
             .state(registry.default_state("minecraft:hopper").unwrap())
             .unwrap()
@@ -1133,10 +1133,10 @@ pub(crate) mod can_take_tests {
             .registry
             .default_state("minecraft:hopper")
             .unwrap();
-        game.world
+        game.common.world
             .set(shelf_pos.0, shelf_pos.1, shelf_pos.2, shelf_state)
             .unwrap();
-        game.world
+        game.common.world
             .set(hopper_pos.0, hopper_pos.1, hopper_pos.2, hopper_state)
             .unwrap();
         let book = ItemStack::new("minecraft:book", 1);
@@ -1190,10 +1190,10 @@ pub(crate) mod can_take_tests {
             .registry
             .default_state("minecraft:oak_sign")
             .unwrap();
-        game.world
+        game.common.world
             .set(hopper_pos.0, hopper_pos.1, hopper_pos.2, hopper_state)
             .unwrap();
-        game.world
+        game.common.world
             .set(sign_pos.0, sign_pos.1, sign_pos.2, sign_state)
             .unwrap();
         game.world

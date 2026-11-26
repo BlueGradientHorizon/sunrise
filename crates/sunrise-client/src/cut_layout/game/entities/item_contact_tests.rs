@@ -245,12 +245,12 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
                 sunrise_gameplay_common::game::native_hooks::install_block_contact_hooks();
-                fn run<S: sunrise_gameplay_common::game::Side>(
-                    game: &mut sunrise_gameplay_common::game::Game<'_, S>,
+                fn run<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+                    game: &mut G,
                     client: bool,
                     part: &BounceProbe,
                     mut make_item: impl FnMut(
-                        &mut sunrise_gameplay_common::game::Game<'_, S>,
+                        &mut G,
                         [f64; 3],
                         [f64; 3],
                     ) -> ItemEntity,
@@ -661,11 +661,11 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
                 sunrise_gameplay_common::game::native_hooks::install_block_contact_hooks();
-                fn run_common<S: sunrise_gameplay_common::game::Side>(
-                    game: &mut sunrise_gameplay_common::game::Game<'_, S>,
+                fn run_common<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+                    game: &mut G,
                     client: bool,
                     part: &StepProbe,
-                    mut spawn: impl FnMut(&mut sunrise_gameplay_common::game::Game<'_, S>, u32, f64) -> ItemEntity,
+                    mut spawn: impl FnMut(&mut G, u32, f64) -> ItemEntity,
                 ) {
                     let registry = game.pack.assets.registry;
                     let stone = registry.default_state("minecraft:stone").unwrap();
@@ -681,7 +681,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         game.world.set(4, 64, 4, web).unwrap();
                     }
                     let tick =
-                        |game: &mut sunrise_gameplay_common::game::Game<'_, S>, item: &mut ItemEntity, escape| {
+                        |game: &mut G, item: &mut ItemEntity, escape| {
                             sunrise_sim::block_contact::in_level(
                                 sunrise_sim::parallel::TickThread::mint(),
                                 Some("minecraft:overworld"),
@@ -733,20 +733,33 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     player.entity_id = 77;
                     player.ground.on_ground = true;
                     player.shift_key_down = true;
-                    let side = game_side!(game);
+                    let (common, state) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                    let level = common.native_lifecycle.epoch().and_then(|epoch| {
+                        let key = common.dim.key();
+                        let id = mod_api::__private::dimension_id(key)?;
+                        Some(mod_api::LevelRef::with_generation(
+                            epoch, key, sunrise_gameplay_common::game::Side::levels_generation(state, id),
+                        ))
+                    });
+                    let side = sunrise_gameplay_common::game_side!(
+                        common,
+                        (sunrise_gameplay_common::game::Side::lan_acting_uuid(state), level, false),
+                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(state, common.level.enabled_features.as_arc()),
+                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res)
+                    );
                     let mut motion = MotionWorld {
                         side: &side,
                         entities: &[],
                         player: &mut player,
-                        scene: &mut game.world,
-                        assets: &game.pack.assets,
-                        collision_binding: game.collision,
-                        resources: game.motion,
-                        health: &game.health_resources,
-                        loop_context: &game.loop_context,
-                        damage_hooks: &game.damage_hooks,
+                        scene: &mut common.world,
+                        assets: &common.pack.assets,
+                        collision_binding: common.collision,
+                        resources: common.motion,
+                        health: &common.health_resources,
+                        loop_context: &common.loop_context,
+                        damage_hooks: &common.damage_hooks,
                         tag_items: None,
-                        block_registries: Some(&game.pack.block_registries),
+                        block_registries: Some(&common.pack.block_registries),
                     };
                     if client {
                         motion.apply_effects_from_blocks().unwrap();
@@ -1451,24 +1464,41 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                         "direct hit, boots: {wears_boots}, bypass tag: {bypass}"
                     );
                     game.player = Some(new_player());
-                    let items = world_items!(game);
-                    let side = game_side!(game);
+                    let (common, state) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                    let items = match (&common.server_items, sunrise_gameplay_common::game::Side::world_tables(state)) {
+                        (Some(items), _) => &**items,
+                        (None, Some(tables)) => &tables.items,
+                        (None, None) => common.res.items(),
+                    };
+                    let level = common.native_lifecycle.epoch().and_then(|epoch| {
+                        let key = common.dim.key();
+                        let id = mod_api::__private::dimension_id(key)?;
+                        Some(mod_api::LevelRef::with_generation(
+                            epoch, key, sunrise_gameplay_common::game::Side::levels_generation(state, id),
+                        ))
+                    });
+                    let side = sunrise_gameplay_common::game_side!(
+                        common,
+                        (sunrise_gameplay_common::game::Side::lan_acting_uuid(state), level, false),
+                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(state, common.level.enabled_features.as_arc()),
+                        sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res)
+                    );
                     let mut world = MotionWorld {
-                        player: game.player.as_mut().unwrap(),
-                        scene: &mut game.world,
-                        assets: &game.pack.assets,
-                        collision_binding: game.collision,
-                        resources: game.motion,
-                        health: &game.health_resources,
+                        player: common.player.as_mut().unwrap(),
+                        scene: &mut common.world,
+                        assets: &common.pack.assets,
+                        collision_binding: common.collision,
+                        resources: common.motion,
+                        health: &common.health_resources,
                         tag_items: Some(items),
-                        loop_context: &game.loop_context,
+                        loop_context: &common.loop_context,
                         side: &side,
-                        damage_hooks: &game.damage_hooks,
-                        block_registries: Some(&game.pack.block_registries),
+                        damage_hooks: &common.damage_hooks,
+                        block_registries: Some(&common.pack.block_registries),
                         entities: &[],
                     };
                     sunrise_sim::block_contact::in_level(
-                        game.tick,
+                        common.tick,
                         Some("minecraft:overworld"),
                         || {
                             world.apply_effects_from_blocks().unwrap();

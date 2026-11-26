@@ -11,7 +11,7 @@ fn forgetting_and_closing_remote_columns_clear_their_data() {
                 for x in 0..2 {
                     game.client
                         .streaming
-                        .insert_remote(&mut game.world, Chunk::empty(x, 0));
+                        .insert_remote(&mut game.common.world, Chunk::empty(x, 0));
                     game.world
                         .block_entities
                         .insert((x * 16, 64, 0), BlockEntity::Chest(vec![]));
@@ -19,7 +19,7 @@ fn forgetting_and_closing_remote_columns_clear_their_data() {
                 // A same-position resend replaces the data without removing the column.
                 game.client
                     .streaming
-                    .replace_remote(&mut game.world, Chunk::empty(0, 0));
+                    .replace_remote(&mut game.common.world, Chunk::empty(0, 0));
                 assert_eq!(game.world.chunks.len(), 2);
                 assert!(game.world.chunks.contains_key(&(0, 0)));
                 assert!(game.client.streaming.is_lit(0, 0));
@@ -50,7 +50,7 @@ fn every_free_route_returns_the_columns_it_freed_once() {
                 for x in [0, 1] {
                     game.client
                         .streaming
-                        .insert_remote(&mut game.world, Chunk::empty(x, 0));
+                        .insert_remote(&mut game.common.world, Chunk::empty(x, 0));
                 }
                 let mut gone = [(0, 0)].into_iter().collect();
                 assert_eq!(game.forget_remote_columns(&mut gone, true), [(0, 0)]);
@@ -74,11 +74,11 @@ fn streaming_adoption_and_resend_stay_resident_until_the_forget() {
     with_client_game(|game| {
         game.client
             .streaming
-            .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
         // A re-send of a resident, lit column takes replace_remote.
         game.client
             .streaming
-            .replace_remote(&mut game.world, Chunk::empty(0, 0));
+            .replace_remote(&mut game.common.world, Chunk::empty(0, 0));
         assert!(game.world.chunks.contains_key(&(0, 0)));
         let mut gone = [(0, 0)].into_iter().collect();
         assert_eq!(game.forget_remote_columns(&mut gone, true), [(0, 0)]);
@@ -99,7 +99,7 @@ fn a_forget_packet_keeps_published_light_beside_a_loaded_column() {
             let mut layers = vec![(None, None); SECTIONS + 2];
             layers[s + 1] = (Some(vec![0x66; 2048]), Some(vec![0x99; 2048]));
             sunrise_level::light::light_from_layers(&mut chunk, &layers, true);
-            game.client.streaming.insert_remote(&mut game.world, chunk);
+            game.client.streaming.insert_remote(&mut game.common.world, chunk);
         }
         game.apply_packet(Clientbound::ForgetLevelChunk(ForgetLevelChunk {
             pos: [1, 0],

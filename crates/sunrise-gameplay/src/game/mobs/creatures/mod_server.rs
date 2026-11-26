@@ -5243,8 +5243,8 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a mob, through the
     /// hit's credit loan (a tame wolf's hit is its owner's; an ownerless tame wolf clears it):
     /// what an accepted hit's site commits, for tests that set up the credit without a hit.
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn resolve_player_responsible(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn resolve_player_responsible(
         &mut self,
         victim: u32,
         source: Damage,

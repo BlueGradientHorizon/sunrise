@@ -4,9 +4,38 @@
 #[cfg(test)]
 pub(crate) mod player_status_tests {
 
-use sunrise_gameplay_common::game::client_side::shader_packs::player_status_tests::rain_on_the_player;
+    use std::sync::Arc;
+    use sunrise_core::geometry::Vec3;
+    use sunrise_sim::motion::PlayerMotion;
 
-use sunrise_gameplay_common::game::client_side::shader_packs::player_status_tests::stand_player;
+    pub(crate) fn stand_player(game: &mut sunrise_gameplay_common::game::CommonGame<'_>)
+    {
+        for chunk in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
+            game.world
+                .chunks
+                .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
+        }
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+    }
+
+    pub(crate) fn rain_on_the_player(
+        game: &mut sunrise_gameplay_common::game::CommonGame<'_>,
+        raining: bool,
+    )
+    {
+        let plains = game.res.biomes().id("minecraft:plains");
+        let bottom = game.world.bottom_y() >> 2;
+        for x in [-1, 0] {
+            for y in [15, 16] {
+                for z in [-1, 0] {
+                    let chunk = game.world.chunks.get_mut(&(x >> 2, z >> 2)).unwrap();
+                    Arc::make_mut(chunk).set_biome_cell(x, y - bottom, z, plains);
+                }
+            }
+        }
+        game.world.weather.raining = raining;
+        game.world.weather.settle_levels();
+    }
 
 use sunrise_level::{chunk::Chunk, effects::EffectInstance};
 

@@ -113,8 +113,9 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
             let old_ticker = if case == "furnace" {
                 let states = game.ticking_states();
                 game.world.block_entities.set_states(states);
-                let chunks = &game.world.chunks;
-                let tickers = game.world.block_entities.tickers(|p| {
+                let world = &mut game.world;
+                let chunks = &world.chunks;
+                let tickers = world.block_entities.tickers(|p| {
                     chunks
                         .get(&(p.0 >> 4, p.2 >> 4))
                         .unwrap()
@@ -263,8 +264,9 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 );
                 let states = game.ticking_states();
                 game.world.block_entities.set_states(states);
-                let chunks = &game.world.chunks;
-                let slots = game.world.block_entities.tickers(|p| {
+                let world = &mut game.world;
+                let chunks = &world.chunks;
+                let slots = world.block_entities.tickers(|p| {
                     chunks
                         .get(&(p.0 >> 4, p.2 >> 4))
                         .unwrap()

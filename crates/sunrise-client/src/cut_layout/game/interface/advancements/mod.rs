@@ -410,7 +410,7 @@ use super::*;
         )
         .unwrap();
         let rows: Vec<Value> =
-            include_str!("../../../../../../docs/parity/random-chance-seeded.jsonl")
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/parity/random-chance-seeded.jsonl"))
                 .lines()
                 .map(|s| serde_json::from_str(s).unwrap())
                 .collect();

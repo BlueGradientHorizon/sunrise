@@ -1109,7 +1109,7 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
             .count()
     }
     /// Pending item-stat effects in the innermost transaction (before publication).
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn pending_transaction_item_stats(&self) -> usize {
         self.transactions
             .last()
@@ -1400,7 +1400,7 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
     }
     /// How many block entities the open transactions keep whole, and how many single slots:
     /// what a test reads to tell a slot journal from a whole capture without timing it.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn journal_kept(&self) -> (usize, usize) {
         self.transactions
             .iter()

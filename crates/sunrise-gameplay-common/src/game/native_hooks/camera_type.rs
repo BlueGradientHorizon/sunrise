@@ -1,13 +1,13 @@
 use super::*;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod camera_type_tests {
     use mod_api::{CameraType, CameraTypeCycleEvent, ClientHost, Hooks};
     use std::sync::{Arc, Mutex};
 
     /// Skips the front view: F5 goes first person, behind, first person.
     pub struct NoFront(
-        pub(in crate::game) Arc<Mutex<Vec<(CameraType, CameraType)>>>,
+        pub Arc<Mutex<Vec<(CameraType, CameraType)>>>,
     );
     #[mod_api::__subscriptions]
     impl Hooks for NoFront {
@@ -26,10 +26,10 @@ pub mod camera_type_tests {
 
     #[derive(Default)]
     pub struct Calls {
-        pub(in crate::game) poses: std::sync::atomic::AtomicUsize,
-        pub(in crate::game) cycles: std::sync::atomic::AtomicUsize,
+        pub poses: std::sync::atomic::AtomicUsize,
+        pub cycles: std::sync::atomic::AtomicUsize,
     }
-    pub struct SharedCamera(pub(in crate::game) Arc<Calls>);
+    pub struct SharedCamera(pub Arc<Calls>);
     #[mod_api::__subscriptions]
     impl Hooks for SharedCamera {
         fn camera_pose(&self, host: &dyn ClientHost, event: &mut mod_api::CameraPoseEvent<'_>) {

@@ -252,15 +252,15 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
-        fn check<'g, S: sunrise_gameplay_common::game::Side>(
-            game: &mut sunrise_gameplay_common::game::Game<'g, S>,
+        fn check<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+            game: &mut G,
             client: bool,
             parts: bool,
             enabled: &Arc<AtomicBool>,
             unbreakable: &Arc<AtomicU8>,
             mods: &Mods,
         ) where
-            sunrise_gameplay_common::game::Game<'g, S>: Host,
+            G: Host,
         {
             let host = &*game as &dyn Host;
             let registry = game.pack.assets.registry;

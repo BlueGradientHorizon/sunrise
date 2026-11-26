@@ -89,7 +89,7 @@ pub(in crate::game) mod explosion_notice_containment;
 
 
 #[path = "general_entity_tick_server.rs"]
-pub(in crate::game) mod general_entity_tick;
+pub mod general_entity_tick;
 
 #[path = "incoming_tests_server.rs"]
 pub(in crate::game) mod incoming_tests;
@@ -892,9 +892,9 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn test_save(&self) -> &std::sync::Arc<sunrise_sim::save::SaveDir> {
+    pub fn test_save(&self) -> &std::sync::Arc<sunrise_sim::save::SaveDir> {
         &self.server.save.0
     }
 }

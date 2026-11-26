@@ -266,9 +266,9 @@ use sunrise_gameplay_common::game::Dim;
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let y = game.world.bottom_y() + 1;
-            let registry = &game.pack.assets.registry;
+            let registry = &game.common.pack.assets.registry;
             let redstone = registry.default_state("minecraft:redstone_block").unwrap();
-            game.world.set(1, y, 1, redstone).unwrap();
+            game.common.world.set(1, y, 1, redstone).unwrap();
             let comparator = registry.default_state("minecraft:comparator").unwrap();
             let mut comparator_state = registry.state(comparator).unwrap().clone();
             comparator_state
@@ -531,7 +531,7 @@ use sunrise_gameplay_common::game::Dim;
             let level = game.level(game.dim.id()).unwrap();
             let bottom = game.world.bottom_y();
             let top = game.world.top_y();
-            let registry = &game.pack.assets.registry;
+            let registry = &game.common.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let stairs = registry.default_state("minecraft:oak_stairs").unwrap();
             let air = registry.default_state("minecraft:air").unwrap();
@@ -567,7 +567,7 @@ use sunrise_gameplay_common::game::Dim;
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level(game.dim.id()).unwrap();
-            let registry = &game.pack.assets.registry;
+            let registry = &game.common.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
             let mut state = registry.state(water).unwrap().clone();
@@ -2218,7 +2218,7 @@ use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity
     use sunrise_level::chunk::Chunk;
     use sunrise_gameplay_common::world_biomes;
 
-    fn paint_biome<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S>, name: &str) {
+    fn paint_biome(game: &mut sunrise_gameplay_common::game::CommonGame<'_>, name: &str) {
         let biome = world_biomes!(game).id(name);
         let mut chunk = Chunk::empty(0, 0);
         for y in 0..chunk.sections.len() as i32 * 4 {

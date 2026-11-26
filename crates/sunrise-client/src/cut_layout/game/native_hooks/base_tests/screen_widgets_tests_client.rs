@@ -2,7 +2,7 @@ use sunrise_client::hud::HudBatch;
 use sunrise_gameplay_common::game::Screen;
 use mod_api::ScreenOpening;
 use super::*;
-use sunrise_client_gameplay::game::input_trace::InputOrigin;
+use sunrise_client_gameplay::input_trace::InputOrigin;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use crate::game::native_hooks::base::screen_widgets_tests::DropCounter;
 use crate::game::native_hooks::base::screen_widgets_tests::NoLoop;
@@ -2146,7 +2146,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             // Two mounted fields at identical bounds still have distinct focus identities.
             game.set_screen(Screen::Chat);
             game.open_screen_overlay("link_prompt", |game| {
-                game.side.link_prompt = Some("https://example.com".into())
+                game.client.link_prompt = Some("https://example.com".into())
             });
             assert_eq!(game.client.screen_state.0.widgets.focused_index(), Some(0));
             game.ime_preedit("old", Some((0, 3)));
@@ -2182,7 +2182,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             // Closing a confirmation exposes the Chat child before any intervening frame.
             game.set_screen(Screen::Chat);
             game.open_screen_overlay("link_prompt", |game| {
-                game.side.link_prompt = Some("https://example.com".into())
+                game.client.link_prompt = Some("https://example.com".into())
             });
             let prompt = game.client.screen_state.0.widgets.focused_id();
             game.answer_link_prompt(false);

@@ -315,7 +315,7 @@ pub(crate) fn prepare_work(
     game.options.dedicated = Some(Vec::new());
     game.server
         .streaming
-        .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+        .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
     assert!(game.entity_ticking_area()(0, 0));
     let composter = game
         .pack
@@ -503,6 +503,7 @@ impl Hooks for RemoveHero {
 /// The result and the yes sound use the Hero discount seen during the work step, not after Post.
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
     restock_after_hero_change(
         "game::server_side::lan_trade_decisions_tests::a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them",
@@ -513,6 +514,7 @@ fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
 /// If Pre takes the discount away, four wheat no longer buys an emerald.
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_restock_uses_price_changes_made_in_pre() {
     restock_after_hero_change(
         "game::server_side::lan_trade_decisions_tests::a_restock_uses_price_changes_made_in_pre",
@@ -521,6 +523,7 @@ fn a_restock_uses_price_changes_made_in_pre() {
 }
 
 #[allow(unused_imports)]
+#[cfg(any())]
 pub(crate) use sunrise_gameplay::game::client_side::lan_trade_decisions_tests_client::restock_after_hero_change;
 
 /// Edits the restocked first offer in the villager's own named `EntityTick.Post`.

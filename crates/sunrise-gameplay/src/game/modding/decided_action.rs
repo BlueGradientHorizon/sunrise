@@ -35,10 +35,10 @@ pub(in crate::game) struct DecidedTarget {
     pub(in crate::game) identity: Identity,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     /// How many times `decided_action` was entered: the no-listener tests prove it stays zero.
-    pub(in crate::game) static DECIDED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub static DECIDED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 type Fresh<'p, G> = Box<dyn Fn(&G) -> bool + 'p>;
@@ -164,7 +164,7 @@ impl crate::game::ServerGame<'_> {
         perform: impl FnOnce(&mut crate::game::ServerGame<'_>) + 'p,
     ) -> bool {
         let DecidedTarget { route, identity } = target;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         DECIDED.set(DECIDED.get() + 1);
         let target = Action {
             id: route,

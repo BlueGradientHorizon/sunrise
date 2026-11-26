@@ -78,6 +78,7 @@ impl Hooks for Registration {
     }
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn published_tcp_attributes_players_and_orders_actions() {

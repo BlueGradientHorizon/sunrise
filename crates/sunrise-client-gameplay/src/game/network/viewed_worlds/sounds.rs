@@ -11,16 +11,16 @@ use sunrise_protocol::{
     viewed_levels::ViewedLevelsError,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     /// How many times this thread asked whether `viewed_level_sound` has a listener.
-    pub(super) static LISTENED_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub static LISTENED_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Whether a mod listens to `viewed_level_sound`, asked once per payload before it is decoded:
 /// without one, the decoder skips a run's sounds unread (`Message::decode_with`).
 pub(super) fn listened() -> bool {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     LISTENED_CHECKS.with(|n| n.set(n.get() + 1));
     mod_api::__private::listened(HookId::ViewedLevelSound)
 }

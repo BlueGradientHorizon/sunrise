@@ -867,9 +867,9 @@ pub fn stack_read_metadata(stack: &EngineStack) -> Result<StackReadMetadata, Sta
     Ok((key, count, damage))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
-    pub(in crate::game) static STACK_PROJECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub static STACK_PROJECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Encode and normalize the patch using the scalars already read from this same stack.
@@ -877,7 +877,7 @@ pub fn project_stack(
     stack: &EngineStack,
     metadata: StackReadMetadata,
 ) -> Result<ApiStack, StackReadError> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     STACK_PROJECTIONS.set(STACK_PROJECTIONS.get() + 1);
     let patch = sunrise_items::item_data::encode_extra_components(stack);
     projected_stack(metadata, patch)

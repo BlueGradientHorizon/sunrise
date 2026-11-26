@@ -89,7 +89,7 @@ fn the_frame_reads_the_eye_light_in_first_and_third_person() {
         let pack = packs.path().join("eye_light");
         std::fs::create_dir_all(&pack).unwrap();
         std::fs::write(
-            pack.join(sunrise_shader_api::MANIFEST),
+            pack.join("sunrise-shaders.toml"),
             "schema = 1\nid = \"eye_light\"\nname = \"Eye light\"\nversion = \"1\"\napi = \"0.1\"\n",
         )
         .unwrap();

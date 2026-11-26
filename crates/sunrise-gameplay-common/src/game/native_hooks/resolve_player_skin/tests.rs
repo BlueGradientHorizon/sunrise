@@ -4,11 +4,11 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 pub struct Choice {
-    pub(in crate::game) selection: Option<PlayerSkinOverride>,
-    pub(in crate::game) calls: usize,
+    pub selection: Option<PlayerSkinOverride>,
+    pub calls: usize,
 }
 
-pub struct SkinPicker(pub(in crate::game) Arc<Mutex<Choice>>);
+pub struct SkinPicker(pub Arc<Mutex<Choice>>);
 
 #[mod_api::__subscriptions]
 impl Hooks for SkinPicker {

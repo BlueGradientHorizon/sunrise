@@ -29,9 +29,9 @@ fn block_crumble_draws_the_block_it_names() {
             .0
             .create(&options, [0.5, 100.5, 0.5], [0.0; 3]);
         let level = ParticleLevel {
-            world: &client.world,
-            facts: client.res.facts(),
-            collision: client.collision,
+            world: &client.common.world,
+            facts: client.common.res.facts(),
+            collision: client.common.collision,
             player: None,
             cached_chunk: std::cell::Cell::new(None),
         };

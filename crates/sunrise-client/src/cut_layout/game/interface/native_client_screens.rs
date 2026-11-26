@@ -431,7 +431,7 @@ pub(crate) mod client_screen_tests {
             // The player's keys act once the client told the server it loaded.
             game.client
                 .streaming
-                .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
             game.poll_stationary_client().unwrap();
             sent(&mut reader); // PlayerLoaded precedes the inventory action.
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();

@@ -1,7 +1,7 @@
 
 
-#[cfg(test)]
-mod tests {
+#[cfg(any(test, feature = "test-support"))]
+pub mod tests {
     use mod_api::__private::game::*;
     use mod_api::{
         CanHarvestBlockEvent, Flow, Hooks, HostSide, PlayerBreakSpeedEvent,
@@ -15,7 +15,7 @@ mod tests {
     
 
     /// Asks the player query for a different state from a `player_harvest_check` listener.
-    struct Asker(Arc<Mutex<Vec<(PlayerRef, Option<bool>)>>>);
+    pub struct Asker(pub Arc<Mutex<Vec<(PlayerRef, Option<bool>)>>>);
 
     #[mod_api::__subscriptions]
     impl Hooks for Asker {
@@ -63,7 +63,7 @@ mod tests {
 
     /// The global half: the harvest check and the break speed, and the stone part above.
     #[derive(Default)]
-    struct RecursiveAsker(Arc<Mutex<Vec<(&'static str, Option<f32>)>>>);
+    pub struct RecursiveAsker(pub Arc<Mutex<Vec<(&'static str, Option<f32>)>>>);
 
     #[mod_api::__subscriptions]
     impl Hooks for RecursiveAsker {

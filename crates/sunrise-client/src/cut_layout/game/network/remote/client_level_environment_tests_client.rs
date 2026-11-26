@@ -4,7 +4,7 @@ use crate::game::remote::tests::client_level_environment_tests::respawn;
 use crate::game::remote::tests::client_level_environment_tests::send_types;
 use crate::game::remote::tests::client_level_environment_tests::spawn;
 use crate::game::remote::tests::client_level_environment_tests::with_height;
-use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game as with_client_game};
+use {crate::game::server_side::native_entity_refs::tests::with_uncached_client_game as with_client_game};
 use std::sync::Arc;
 use sunrise_gameplay_common::world_biomes;
 use sunrise_protocol::connection::Pipe;
@@ -19,11 +19,11 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
     use sunrise_core::position::BlockPos;
     use sunrise_level::chunk::Chunk;
 
-    let precipitation_at = |game: &Game<'_, sunrise_client_gameplay::game::client_side::ClientState>, x, y, z| {
+    let precipitation_at = |game: &sunrise_client_gameplay::game::ClientGame<'_>, x, y, z| {
         sunrise_gameplay_common::game::weather::precipitation_at(
             &game.world,
             world_biomes!(game),
-            game.side.streaming.biome_zoom,
+            game.client.streaming.biome_zoom,
             BlockPos::new(x, y, z),
             game.weather_sea_level(),
         )

@@ -1,4 +1,4 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::C, sunrise_client_gameplay::game::client_side::remote_client::play};
+use {sunrise_protocol::packets::play::Clientbound as C, sunrise_protocol::packets::play};
 use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in;
 use crate::game::remote::tests::client_admission_tests::add_entity;
 use crate::game::remote::tests::client_admission_tests::deliver;

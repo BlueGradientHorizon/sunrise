@@ -53,27 +53,40 @@ pub(crate) fn burn_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i
     game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
     game.player.as_mut().unwrap().fire_ticks = 100;
     let events = {
-        let player = game.player.as_mut().unwrap();
+        let (common, state) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+        let player = common.player.as_mut().unwrap();
         // The move the client sent: standing still, inside the block.
         player.history.add(MovementRecord {
             from: at,
             to: at,
             original: None,
         });
-        let side = game_side!(game);
+        let level = common.native_lifecycle.epoch().and_then(|epoch| {
+            let key = common.dim.key();
+            let id = mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(
+                epoch, key, sunrise_gameplay_common::game::Side::levels_generation(state, id),
+            ))
+        });
+        let side = sunrise_gameplay_common::game_side!(
+            common,
+            (sunrise_gameplay_common::game::Side::lan_acting_uuid(state), level, false),
+            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(state, common.level.enabled_features.as_arc()),
+            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res)
+        );
         let mut w = MotionWorld {
             side: &side,
             entities: &[],
             player,
-            scene: &mut game.world,
-            assets: &game.pack.assets,
-            collision_binding: game.collision,
-            resources: game.motion,
-            health: &game.health_resources,
-            tag_items: Some(game.res.items()),
-            loop_context: &game.loop_context,
-            damage_hooks: &game.damage_hooks,
-            block_registries: Some(&game.pack.block_registries),
+            scene: &mut common.world,
+            assets: &common.pack.assets,
+            collision_binding: common.collision,
+            resources: common.motion,
+            health: &common.health_resources,
+            tag_items: Some(common.res.items()),
+            loop_context: &common.loop_context,
+            damage_hooks: &common.damage_hooks,
+            block_registries: Some(&common.pack.block_registries),
         };
         w.server_block_damage(at).unwrap();
         std::mem::take(&mut w.player.events)

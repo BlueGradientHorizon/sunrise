@@ -21,7 +21,7 @@ type Column = (i32, i32);
 /// entry with no layers still enables lighting (`setLightEnabled(true)`).
 #[derive(Default)]
 pub(in crate::game) struct RemoteLight {
-    columns: FxHashMap<Column, Option<Vec<SectionLight>>>,
+    pub columns: FxHashMap<Column, Option<Vec<SectionLight>>>,
     queue: VecDeque<(Column, LightTask)>,
     queued_counts: FxHashMap<Column, usize>,
 }

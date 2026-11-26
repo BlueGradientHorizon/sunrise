@@ -370,12 +370,12 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
 
         // Establish what the client sees through a full menu sync, not a click prediction.
         let hub = &mut game.server.lan.as_mut().unwrap().hub;
-        hub.resend_menu(1, window, &game.world);
+        hub.resend_menu(1, window, &game.common.world);
         assert!(sent(&rx).iter().any(|p| matches!(p,
             C::ContainerSetContent(content) if content.container == window
                 && content.carried.as_ref().map(|item| item.count) == Some(3)
         )));
-        hub.sync_containers(&game.world);
+        hub.sync_containers(&game.common.world);
         assert!(
             sent(&rx).is_empty(),
             "the full sync already sent the cursor"
@@ -393,7 +393,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         hub.send_inventory(0);
         assert!(matches!(&sent(&rx)[..], [C::ContainerSetContent(content)]
             if content.container == 0 && content.carried.as_ref().map(|item| item.count) == Some(2)));
-        hub.sync_containers(&game.world);
+        hub.sync_containers(&game.common.world);
         let packets = sent(&rx);
         assert!(
             matches!(
@@ -402,7 +402,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
             ),
             "{packets:?}"
         );
-        hub.sync_containers(&game.world);
+        hub.sync_containers(&game.common.world);
         assert!(sent(&rx).is_empty(), "the empty cursor was already sent");
     });
 }
@@ -813,7 +813,7 @@ fn scoped_owned_clicks_replace_or_continue_each_input_mode() {
                         .then(|| stone(2))
                         .flatten();
                 });
-                hub.resend_menu(1, window, &game.world);
+                hub.resend_menu(1, window, &game.common.world);
                 sent(&rx);
                 let before = game.dropped.len();
                 send_scoped_click(game, flow, window, slot, button, input);
@@ -978,7 +978,7 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
                 g.native_menu[1] = Some(stored.clone());
                 g.carried = Some(carried.clone());
             });
-            hub.resend_menu(1, window, &game.world);
+            hub.resend_menu(1, window, &game.common.world);
             sent(&rx);
             CLOSE_NOTICES.set(0);
             WINDOW_REQUEST.set(Some((key, by_handle)));
@@ -1470,7 +1470,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
             sent(&rx)
                 .iter()
@@ -1482,7 +1482,7 @@ fn owned_menu_slot_changed_fires_on_item_place_writes_and_deduplicates_per_trans
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
             !sent(&rx)
                 .iter()
@@ -1996,7 +1996,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
                         sent(&rx12)
                             .iter()
@@ -2012,7 +2012,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
             !sent(&rx12)
                 .iter()
@@ -2050,7 +2050,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
                         sent(&rx12)
                             .iter()
@@ -2066,7 +2066,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
             !sent(&rx12)
                 .iter()
@@ -2093,7 +2093,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
                         sent(&rx12)
                             .iter()
@@ -2109,7 +2109,7 @@ fn block_menu_slot_changed_fires_on_external_container_writes_and_syncs_lan_view
             .as_mut()
             .unwrap()
             .hub
-            .sync_containers(&game.world);
+            .sync_containers(&game.common.world);
         assert!(
             !sent(&rx12)
                 .iter()

@@ -17,7 +17,7 @@ use sunrise_client::settings::Settings;
 use sunrise_level::datapack::DataPack;
 
 /// One client reload step: a mod's apply action or model publication.
-pub(in crate::game) type PreparedClientReload = PreparedStep<()>;
+pub type PreparedClientReload = PreparedStep<()>;
 
 /// The registration context of the first load: no game or published assets
 /// exist yet, so [`published`](ClientReloadListenerContext::published) is
@@ -89,7 +89,7 @@ impl ClientGame<'_> {
 /// Registers the first load's client listeners: no game exists yet, so
 /// [`StartupReloadContext`] answers the process/mod/settings facts known on
 /// the loader thread and leaves `published()` as `None`.
-pub(in crate::game) fn register_startup_client_reload_listeners(
+pub fn register_startup_client_reload_listeners(
     settings: Option<&Settings>,
 ) -> mod_api::ClientListenerRegistry {
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
@@ -105,7 +105,7 @@ pub(in crate::game) fn register_startup_client_reload_listeners(
 /// Prepare listeners against the merged asset view, running the model build
 /// at the model manager's position in their order. The models travel separately
 /// so renderer preflight can use them without publishing them.
-pub(in crate::game) fn stage_client_reload<V, E: From<ReloadStageError>>(
+pub fn stage_client_reload<V, E: From<ReloadStageError>>(
     root: &sunrise_assets::resource_source::ResourceSource,
     listeners: mod_api::ClientListenerRegistry,
     build_models: impl FnOnce() -> Result<V, E>,
@@ -128,9 +128,9 @@ pub(in crate::game) fn stage_client_reload<V, E: From<ReloadStageError>>(
     Ok((models.expect("model manager is always registered"), steps))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
-    static APPLY_GENERATIONS: std::cell::RefCell<Option<Vec<u64>>> = const { std::cell::RefCell::new(None) };
+    pub static APPLY_GENERATIONS: std::cell::RefCell<Option<Vec<u64>>> = const { std::cell::RefCell::new(None) };
 }
 
 impl ClientGame<'_> {
@@ -143,7 +143,7 @@ impl ClientGame<'_> {
     ) {
         let mut publish_models = Some(publish_models);
         for step in prepared {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             if matches!(step, PreparedStep::Mod { .. }) {
                 APPLY_GENERATIONS.with_borrow_mut(|trace| {
                     if let Some(trace) = trace {

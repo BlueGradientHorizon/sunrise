@@ -5,6 +5,14 @@ use sunrise_core::nbt::Tag;
 use sunrise_sim::lan::entity::EntityState;
 #[cfg(test)]
 pub(crate) mod tests {
+macro_rules! pending {
+        ($list:expr) => {{
+            let list = &mut $list;
+            let mut owner = list.remove(list.len() - 1);
+            owner.id = 0;
+            list.push(owner);
+        }};
+    }
 
 use super::*;
 

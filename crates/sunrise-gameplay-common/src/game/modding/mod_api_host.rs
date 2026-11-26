@@ -821,7 +821,7 @@ impl<'b, L, T> LevelTicks<'b, L, T> {
     }
 
     /// This level as the preview that changed `preview` sees it (`None`: as it is).
-    pub(in crate::game) fn previewing(
+    pub fn previewing(
         mut self,
         preview: Option<&'b sunrise_world::level::PreviewBlocks>,
     ) -> Self {

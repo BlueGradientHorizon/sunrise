@@ -1,5 +1,5 @@
 use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay::game::server_side::commands::data::Target};
+use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay_common::game::commands_common::Target};
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::collections::HashSet;
 use sunrise_core::geometry::Vec3;

@@ -41,7 +41,7 @@ pub(crate) fn with_spectator(test: impl FnOnce(&mut sunrise_client_gameplay::gam
         game.connect_local(client, "CameraViewTest").unwrap();
         game.enter_remote_dimension(
             &spawn("minecraft:overworld"),
-            sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry::Login,
+            sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry::Login,
             Reason::Other,
         );
         let remote = game.client.remote.as_mut().unwrap();
@@ -448,7 +448,7 @@ fn effects_count_down_on_the_ticks_their_entity_ticks() {
         ride(game, PIG, vec![OTHER]);
         ride(game, OTHER, vec![RIDER]);
         ride(game, STAND, vec![OWN]);
-        (game.client.streaming).insert_remote(&mut game.world, Chunk::empty(0, 0));
+        (game.client.streaming).insert_remote(&mut game.common.world, Chunk::empty(0, 0));
         let water = game.pack.assets.registry.default_state("minecraft:water");
         game.world.set(3, 64, 3, water.unwrap()).unwrap();
         game.tick_remote_entities(false);

@@ -383,7 +383,7 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 #[test]
 #[ignore = "daily"]
 fn initial_load_stages_and_applies_client_reload_listeners() {
-    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_client_gameplay::game::load_resources_for_mods, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_client_gameplay::game::start_client_game};
+    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_for_mods, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_client_gameplay::game::client_side::loading_window::start_client_game};
     use mod_api::{
         __private::game::RegistrationContextNew, AddClientReloadListenersEvent, ClientHost,
         ClientItemExtensionsRegistrar, ClientReloadListenerContext, Hooks, ModEntry,
@@ -619,15 +619,15 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     )
                     .unwrap()
                     .unwrap();
-                    assert_eq!(game.side.client_pack.render.generation, 0);
+                    assert_eq!(game.client.client_pack.render.generation, 0);
                     assert_eq!(
-                        game.side
+                        game.client
                             .client_pack
                             .render
                             .model(&id("startup_anchor:stone")),
                         Err(mod_api::ModelError::UnknownModel)
                     );
-                    let pending = game.side.pending_initial_models.0.take().unwrap();
+                    let pending = game.client.pending_initial_models.0.take().unwrap();
                     let candidate = pending.models.client_pack.render.generation;
                     let renderer = if refusal == Some("renderer") {
                         Err("renderer validation refused".into())
@@ -644,7 +644,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         } else {
                             "unknown armour texture startup_anchor:missing"
                         }));
-                        assert_eq!(game.side.client_pack.render.generation, 0);
+                        assert_eq!(game.client.client_pack.render.generation, 0);
                         assert!(generations.is_empty());
                         assert_eq!(
                             *trace.lock().unwrap(),
@@ -653,7 +653,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         continue;
                     }
                     assert!(result.unwrap());
-                    assert_eq!(game.side.client_pack.render.generation, candidate);
+                    assert_eq!(game.client.client_pack.render.generation, candidate);
                     assert_ne!(candidate, 0);
                     assert_eq!(
                         generations,
@@ -1352,7 +1352,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
         .name("client-startup-fixture".into())
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
-            use {sunrise_client_lib::audio::Audio, sunrise_client_gameplay::game::UiResources, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::start_client_game};
+            use {sunrise_client_lib::audio::Audio, sunrise_client_gameplay::game::UiResources, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::client_side::loading_window::start_client_game};
             use mod_api::{
                 ClientHost, ClientSetupContext, ClientSetupEvent, ClientTickPreEvent,
                 ConfigContext, ConfigLoadingEvent, Hooks, ModEntry, RegisterConfigsEvent,
@@ -1563,7 +1563,7 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
     with_client_game(|game| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.player.as_mut().unwrap().entity_id = 7;
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
         game.offhand = Some(ItemStack::new("minecraft:brush", 3));
         game.offhand.as_mut().unwrap().damage = 9;
         game.tick_player_model();

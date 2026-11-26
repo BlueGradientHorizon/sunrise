@@ -39,9 +39,8 @@ pub(crate) mod tests {
                     || {
                         with_game(|game| {
                             game.options.dedicated = Some(Vec::new());
-                            game.server
-                                .streaming
-                                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                            let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                            server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
                             let registry = game.pack.assets.registry;
                             let farmland = registry.default_state("minecraft:farmland").unwrap();
                             let [x, y, z] = FIELD;
@@ -54,7 +53,7 @@ pub(crate) mod tests {
                                     &game.world,
                                     registry,
                                     &mut lent,
-                                    Some(game.items()),
+                                    Some(sunrise_gameplay_common::game::tables::GameItems::items(&*game)),
                                     Some(&game.pack.block_registries),
                                     &game.damage_hooks,
                                 );

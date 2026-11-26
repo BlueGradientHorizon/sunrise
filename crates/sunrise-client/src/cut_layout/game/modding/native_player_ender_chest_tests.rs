@@ -46,7 +46,7 @@ fn ender_chest_slots_are_read_and_written() {
             );
 
             game.open_ender_chest((1, 64, 1));
-            game.side.ender_items[0] = None; // Only the open copy is authoritative now.
+            game.server.ender_items[0] = None; // Only the open copy is authoritative now.
             assert_eq!(
                 a.with_ender_chest(game, contents),
                 Some(vec![(0, pearls.clone())])

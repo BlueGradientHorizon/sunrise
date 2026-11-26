@@ -17,7 +17,7 @@ mod owned_slots_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_vocab::__private::game::Fields;
+use mod_api::__private::game::Fields;
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
@@ -38,7 +38,7 @@ use sunrise_gameplay::game::server_side::native_menus::tests::watched_guest;
 
 use super::super::native_entity_refs::tests::with_game;
 
-use super::super::native_item_places::tests::{guest, open_to_lan};
+use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
 
 use super::*;
 
@@ -384,7 +384,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             if case == "mount" {
                 game.mobs.push(sunrise_sim::mobs::Mob::new(
                     31,
-                    game.res.mob_types().get("minecraft:horse").unwrap().clone(),
+                    game.common.res.mob_types().get("minecraft:horse").unwrap().clone(),
                     sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),
                     0.0,
                 ));
@@ -486,7 +486,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                 .as_mut()
                 .unwrap()
                 .hub
-                .sync_containers(&game.world);
+                .sync_containers(&game.common.world);
             let packets = sent(&rx);
             assert_eq!(packets.len(), 1, "{packets:?}");
             let C::ContainerSetSlot(set) = &packets[0] else {
@@ -500,7 +500,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                 .as_mut()
                 .unwrap()
                 .hub
-                .sync_containers(&game.world);
+                .sync_containers(&game.common.world);
             assert!(sent(&rx).is_empty(), "sent once");
 
             // Closed, the menu answers nothing.
@@ -1717,7 +1717,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                             assert_eq!(g.menu_sent[36], None);
                             g.inventory[0] = Some(ItemStack::new("minecraft:stone", 1));
                         });
-                        hub.resend_menu(1, window, &game.world);
+                        hub.resend_menu(1, window, &game.common.world);
                         assert_eq!(hub.guests[0].menu_sent[36], None);
                         let packets = sent(&rx);
                         assert!(matches!(packets.first(), Some(C::ContainerSetContent(p))
@@ -1753,7 +1753,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                                 .as_mut()
                                 .unwrap()
                                 .hub
-                                .resend_menu(1, window, &game.world);
+                                .resend_menu(1, window, &game.common.world);
                         };
                         game.storage_scope(|game, _| {
                             assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
@@ -2004,7 +2004,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                     let hub = &mut game.server.lan.as_mut().unwrap().hub;
                     let open = hub.guests[0].menu.as_ref().unwrap();
                     assert_eq!(open.blockless_data[OVERFLOW], i32::MIN);
-                    hub.resend_menu(1, window, &game.world);
+                    hub.resend_menu(1, window, &game.common.world);
                     assert_snapshot("explicit resend", i32::MAX);
                     let state = hub.guests[0].menu.as_ref().unwrap().state;
                     // The live native click route resends in prepare_click -> answer_click.

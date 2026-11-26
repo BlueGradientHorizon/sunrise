@@ -1,15 +1,15 @@
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Screen};
+use {sunrise_gameplay_common::game::Screen};
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// The server's teleport that makes the local player, on a stone floor, with the level loaded.
 pub(in crate::game) fn stand(
-    game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     teleport: i32,
 ) {
-    game.side
+    game.client
         .streaming
-        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+        .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
     let stone = game
         .pack
         .assets
@@ -30,8 +30,8 @@ pub(in crate::game) fn stand(
         relatives: 0,
     }))
     .unwrap();
-    let remote = game.side.remote.as_mut().unwrap();
+    let remote = game.client.remote.as_mut().unwrap();
     remote.loaded_sent = true;
     remote.level_load.finish();
-    game.side.screen = Screen::Playing;
+    game.client.screen = Screen::Playing;
 }

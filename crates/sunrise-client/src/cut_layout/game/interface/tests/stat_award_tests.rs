@@ -257,7 +257,7 @@ fn prepare_breaker(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
     game.set_mode(GameMode::Survival);
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
+    game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
 }
 
 fn break_stone(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
@@ -318,22 +318,40 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
             );
             mode.store(1, Ordering::Relaxed);
             {
-                let player = game.player.as_mut().unwrap();
+                use sunrise_gameplay_common::game::{
+                    Side as _, SideGame as _, side_ops::tables::SideOps as _,
+                };
+                let (common, state) = game.common_and_state_mut();
+                let player = common.player.as_mut().unwrap();
                 player.ground.on_ground = true;
-                let side = game_side!(game);
+                let level = common.native_lifecycle.epoch().and_then(|epoch| {
+                    let key = common.dim.key();
+                    let id = mod_api::__private::dimension_id(key)?;
+                    Some(mod_api::LevelRef::with_generation(
+                        epoch,
+                        key,
+                        state.levels_generation(id),
+                    ))
+                });
+                let side = sunrise_gameplay_common::game_side!(
+                    common,
+                    (state.lan_acting_uuid(), level, state.session_lock_active()),
+                    state.side_level_features(common.level.enabled_features.as_arc()),
+                    state.side_game_tag_items(&common.res)
+                );
                 let mut world = sunrise_sim::motion::MotionWorld {
                     side: &side,
                     entities: &[],
                     player,
-                    scene: &mut game.world,
-                    assets: &game.pack.assets,
-                    collision_binding: game.collision,
-                    resources: game.motion,
-                    health: &game.health_resources,
+                    scene: &mut common.world,
+                    assets: &common.pack.assets,
+                    collision_binding: common.collision,
+                    resources: common.motion,
+                    health: &common.health_resources,
                     tag_items: None,
-                    loop_context: &game.loop_context,
-                    damage_hooks: &game.damage_hooks,
-                    block_registries: Some(&game.pack.block_registries),
+                    loop_context: &common.loop_context,
+                    damage_hooks: &common.damage_hooks,
+                    block_registries: Some(&common.pack.block_registries),
                 };
                 world.jump_from_ground().unwrap();
             }

@@ -11,7 +11,7 @@ pub(in crate::game) type AddSlot =
     fn(&[Option<ItemStack>], Option<&ItemStack>, usize, &ItemStack, u32) -> Option<usize>;
 
 thread_local! {
-    pub(in crate::game) static HARM: Cell<Option<Harm>> = const { Cell::new(None) };
+    pub static HARM: Cell<Option<Harm>> = const { Cell::new(None) };
     pub(in crate::game) static ADD_SLOT: Cell<Option<AddSlot>> = const { Cell::new(None) };
 }
 

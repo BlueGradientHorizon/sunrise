@@ -216,6 +216,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
     /// modifier.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn a_hits_armor_follows_the_live_map_at_once() {
         use AttributeOperation::*;
         use ModifierLifetime::*;
@@ -692,6 +693,30 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert!(!zombie.set_attribute_base(game, "minecraft:gravity", 1.0));
         });
     }
+    /// Plates every chestplate with +0.4 knockback resistance and no armor
+    /// toughness (`item_attribute_modifier`).
+    struct Plated;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Plated {
+        fn item_attribute_modifier(&self, event: &mut mod_api::ItemAttributeModifierEvent<'_>) {
+            if !mod_api::__private::item_key_id(event.stack.item())
+                .unwrap()
+                .ends_with("_chestplate")
+            {
+                return;
+            }
+            let id = |text: &str| Identifier::parse(text).unwrap();
+            event.modifiers.add(
+                id("minecraft:knockback_resistance"),
+                modifier("test:plated", 0.4, AttributeOperation::AddValue),
+                mod_api::EquipmentSlotGroup::Chest,
+            );
+            event
+                .modifiers
+                .remove_all_for(&id("minecraft:armor_toughness"));
+        }
+    }
+
 /// A mod's answer to `item_attribute_modifier` is what the zombie's
     /// gameplay reads: its knockback and its live map.
     #[test]

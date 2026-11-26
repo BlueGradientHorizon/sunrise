@@ -4,7 +4,7 @@ use super::*;
 
 /// Q throws the whole stack with Control down: the same modifier word the
 /// screens read (`has_control_down`), never a latched sprint toggle.
-pub(in crate::game) fn drop_whole_stack(modifiers: winit::keyboard::ModifiersState) -> bool {
+pub fn drop_whole_stack(modifiers: winit::keyboard::ModifiersState) -> bool {
     modifiers.control_key()
 }
 

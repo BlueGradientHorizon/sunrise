@@ -669,7 +669,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
 
             game.set_screen(Screen::Playing);
             game.open_screen_overlay("link_prompt", |game| {
-                game.side.link_prompt = Some("https://example.com".into());
+                game.client.link_prompt = Some("https://example.com".into());
             });
             assert!(game.screen_over_playing());
             take(&log);

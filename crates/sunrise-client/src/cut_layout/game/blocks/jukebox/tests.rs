@@ -187,7 +187,7 @@ fn a_saved_song_comes_back_without_its_sound() {
         place_jukebox(game, true);
         let signal = |game: &sunrise_gameplay::game::ServerGame<'_>| {
             let p = sunrise_core::position::BlockPos::new(0, 64, 0);
-            sunrise_gameplay::game::server_side::jukebox_server::jukebox_signals(&game.world, game.items(), p)
+            sunrise_gameplay_common::game::jukebox_common::jukebox_signals(&game.world, game.items(), p)
                 .unwrap()
                 .0
         };

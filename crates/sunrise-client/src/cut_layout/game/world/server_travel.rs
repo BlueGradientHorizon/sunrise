@@ -46,7 +46,7 @@ use std::sync::Arc;
                     g.motion = body.then(|| {
                         Box::new(
                             sunrise_sim::motion::PlayerMotion::new(
-                                game.motion,
+                                game.common.motion,
                                 Vec3::new(3.5, 64.0, 5.5),
                             )
                             .unwrap(),
@@ -327,7 +327,7 @@ use std::sync::Arc;
     fn natural_portal_schedules_a_player_on_a_retained_indirect_vehicle() {
         super::super::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
-            crate::game::native_player_death::tests::add_guest(game);
+            sunrise_gameplay::game::native_player_death::tests::add_guest(game);
             let source = game.dim;
             let tag = sunrise_core::nbt::parse_snbt(
                 r#"{
@@ -758,7 +758,7 @@ use sunrise_sim::lan::{
         game.enter_level(Dim::End).unwrap();
         game.server
             .streaming
-            .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
         let portal = [0, 100, 0];
         assert!(
             game.set_state_named(portal, "minecraft:end_portal", &[])

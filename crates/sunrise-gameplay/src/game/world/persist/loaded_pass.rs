@@ -18,8 +18,8 @@ impl crate::game::ServerGame<'_> {
 
     /// Install one fixture record or explicitly owned live transfer through the same
     /// metadata and join boundary. The transfer token belongs only to this call.
-    #[cfg(test)]
-    pub(in crate::game) fn spawn_loaded_entity(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn spawn_loaded_entity(
         &mut self,
         key: ChunkKey,
         tag: Tag,
@@ -33,7 +33,7 @@ impl crate::game::ServerGame<'_> {
         );
     }
 
-    pub(in crate::game::server_side) fn spawn_loaded_entity_reason(
+    pub fn spawn_loaded_entity_reason(
         &mut self,
         key: ChunkKey,
         mut tag: Tag,

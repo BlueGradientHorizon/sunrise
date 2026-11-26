@@ -893,7 +893,7 @@ use super::*;
 pub(crate) mod lid_push_tests {
     use sunrise_gameplay_common::game::creatures::ModGameExt1;
 use super::h255_mob_piston_ground_tests::with_game;
-    use {sunrise_gameplay::game::server_side::piston_push_server::EntityHandle, sunrise_gameplay::game::server_side::piston_push_server::Lid};
+    use {sunrise_gameplay_common::game::entity::EntityHandle, sunrise_gameplay_common::game::piston_push::Lid};
 
     use sunrise_core::geometry::{Aabb, Vec3};
     use sunrise_sim::mobs::{MobEvent, Species};

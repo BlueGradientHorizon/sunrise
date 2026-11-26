@@ -1,4 +1,4 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::C, sunrise_client_gameplay::game::client_side::remote_client::play, sunrise_client_gameplay::game::client_side::remote_client::secure_chat};
+use {sunrise_protocol::packets::play::Clientbound as C, sunrise_protocol::packets::play, sunrise_protocol::secure_chat};
 use crate::game::remote::chat_audit_tests::ALICE;
 use crate::game::remote::chat_audit_tests::BOB;
 use crate::game::remote::chat_audit_tests::add_signed_sender;

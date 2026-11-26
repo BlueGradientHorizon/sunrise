@@ -67,7 +67,7 @@ impl ObservedScreen {
 /// Built once per open and per resize, never per frame. A screen bumps its own
 /// revision when one of its layout inputs moves (Options' page or scroll, a
 /// book opening), and the build is remade then.
-pub(in crate::game) struct ScreenBuild {
+pub struct ScreenBuild {
     /// Which screen this was built for.
     pub(in crate::game) screen: Screen,
     identity: Option<&'static str>,
@@ -80,7 +80,7 @@ pub(in crate::game) struct ScreenBuild {
     /// The panel's `leftPos`/`topPos`.
     pub(in crate::game) origin: (f32, f32),
     /// The screen's own widgets, as rectangles.
-    pub(in crate::game) layout: BuildLayout,
+    pub layout: BuildLayout,
     /// Panels drawn outside `rect`.
     pub(in crate::game) exclusion: Vec<[f32; 4]>,
 }
@@ -435,8 +435,8 @@ pub struct ScreenBuildState {
     effects: std::cell::Cell<Option<EffectsMemo>>,
     /// The frame's `screen_room` answer, while this frame asked for one.
     room: std::cell::Cell<Option<RoomMemo>>,
-    #[cfg(test)]
-    builds: u32,
+    #[cfg(any(test, feature = "test-support"))]
+    pub builds: u32,
 }
 
 impl ScreenBuildState {
@@ -542,7 +542,7 @@ impl ScreenBuildState {
         }
         if self.needs_build(screen, shown, identity, gui) {
             self.current = Some(ScreenBuild::new(screen, identity, gui, layout));
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             {
                 self.builds += 1;
             }
@@ -577,7 +577,7 @@ impl ScreenBuildState {
         build.origin = origin;
         build.layout = built;
         build.exclusion = exclusion;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         {
             self.builds += 1;
         }

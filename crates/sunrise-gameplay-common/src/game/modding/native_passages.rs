@@ -370,13 +370,13 @@ pub mod tests {
         );
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     /// Removes the passage in the second `chunk_sent` it hears.
-    struct RemoveOnSecondSent {
-        heard: std::sync::Mutex<u32>,
-        id: PassageId,
+    pub struct RemoveOnSecondSent {
+        pub heard: std::sync::Mutex<u32>,
+        pub id: PassageId,
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for RemoveOnSecondSent {
         fn chunk_sent(&self, host: &mut dyn mod_api::ServerHost, e: &mut mod_api::ChunkSentEvent) {

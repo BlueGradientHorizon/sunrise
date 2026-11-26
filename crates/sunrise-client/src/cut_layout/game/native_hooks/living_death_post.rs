@@ -166,7 +166,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::living_
                 mob.health = 20.0;
                 game.mobs.last_mut().unwrap().health = 20.0;
                 // `/kill` replaces the earlier damage source with generic_kill.
-                game.kill_target(crate::game::server_side::commands::Target::Mob(mob.id));
+                game.kill_target(sunrise_gameplay_common::game::commands_common::Target::Mob(mob.id));
                 assert_eq!(*heard.lock().unwrap(), ["death", "loot", "post"]);
                 assert_eq!(
                     post.lock().unwrap().damage_type.as_deref(),

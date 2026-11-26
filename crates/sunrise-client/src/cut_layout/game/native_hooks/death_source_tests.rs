@@ -207,7 +207,8 @@ pub(crate) fn player_arrow(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     weapon: &ItemStack,
 ) -> u32 {
-    game.inventory[game.selected] = Some(weapon.clone());
+    let selected = game.selected;
+    game.inventory[selected] = Some(weapon.clone());
     game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 8));
     game.release_bow(weapon, 20);
     assert_eq!(
@@ -243,7 +244,8 @@ fn player_bow_death_retains_the_incoming_source_and_full_weapon() {
                 let expected = weapon.try_into_api().unwrap();
                 let arrow = player_arrow(game, &weapon);
                 // Death must not reconstruct the bow from the shooter's current hand.
-                game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+                let selected = game.selected;
+                game.inventory[selected] = Some(ItemStack::new("minecraft:stick", 1));
                 finish_projectile_death(game, 41);
                 let seen = seen.lock().unwrap();
                 assert_eq!(seen.deaths.len(), 1);

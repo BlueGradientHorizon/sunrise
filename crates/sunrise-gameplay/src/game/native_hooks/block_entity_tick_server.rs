@@ -31,7 +31,7 @@ pub(in crate::game) fn valid_tick_subject(block: &str, entity: &EngineBlockEntit
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::game) enum Loan {
+pub enum Loan {
     // Reuse the ticker's validity result for this instance and state.
     Tick(Option<BlockStateId>),
     Menu(BlockStateId),

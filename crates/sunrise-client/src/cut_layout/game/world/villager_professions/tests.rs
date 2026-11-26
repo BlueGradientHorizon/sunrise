@@ -329,12 +329,12 @@ fn assert_engineer_acquisition(game: &mut sunrise_gameplay::game::ServerGame<'_>
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     for x in 0..4 {
         for z in 0..4 {
-            game.world
+            game.common.world
                 .set(x, 63, z, registry.default_state("minecraft:stone").unwrap())
                 .unwrap();
         }
     }
-    game.world
+    game.common.world
         .set(1, 64, 0, registry.default_state("test:assembler").unwrap())
         .unwrap();
     let save_tables = sunrise_sim::save::SaveTables::new(&game.pack.assets);
@@ -560,12 +560,12 @@ fn villager_load_world_save_dir_preserves_custom_workstation() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-            game.world
+            game.common.world
                 .set(
                     1,
                     64,
                     0,
-                    game.pack
+                    game.common.pack
                         .assets
                         .registry
                         .default_state("test:assembler")

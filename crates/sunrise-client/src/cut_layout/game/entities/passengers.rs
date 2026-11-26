@@ -1026,7 +1026,7 @@ fn with_vehicle_tree(
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
                     game.mobs.clear();
-                    crate::game::native_player_death::tests::add_guest(game);
+                    sunrise_gameplay::game::native_player_death::tests::add_guest(game);
                     game.server
                         .lan
                         .as_mut()
@@ -1068,7 +1068,7 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
-                    crate::game::native_player_death::tests::add_guest(game);
+                    sunrise_gameplay::game::native_player_death::tests::add_guest(game);
                     game.build_registries();
                     game.set_allow_commands(true);
                     game.persist.uuids.insert(72, [160, 0, 0, 72]);
@@ -1126,7 +1126,7 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, true, |game| {
-                    crate::game::native_player_death::tests::add_guest(game);
+                    sunrise_gameplay::game::native_player_death::tests::add_guest(game);
                     game.native_level_opened(sunrise_gameplay_common::game::Dim::Overworld);
                     game.build_registries();
                     game.set_allow_commands(true);
@@ -1327,7 +1327,7 @@ fn with_vehicle_tree(
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
-                    crate::game::native_player_death::tests::add_guest(game);
+                    sunrise_gameplay::game::native_player_death::tests::add_guest(game);
                     game.native_level_opened(sunrise_gameplay_common::game::Dim::Overworld);
                     game.build_registries();
                     game.set_allow_commands(true);
@@ -1652,7 +1652,7 @@ fn live_cancels(cross_level: bool) {
             with_vehicle_tree(false, false, |game| {
                 if cross_level {
                     // The console service requires an active server hub.
-                    crate::game::native_player_death::tests::add_guest(game);
+                    sunrise_gameplay::game::native_player_death::tests::add_guest(game);
                     game.build_registries();
                     game.set_allow_commands(true);
                     assert!(game.run_command("worldborder set 1000"));

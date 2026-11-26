@@ -2,7 +2,7 @@ use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests:
 use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::hex_bytes;
 use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::wait_pong_in_game;
 use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::witness_json;
-use {sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry, crate::game::server_side::native_entity_refs::tests::with_client_game};
+use {sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::time::{Duration, Instant};
 use sunrise_client::{level_loading::Reason, multiplayer, net::Session, title::Mode};
 use sunrise_core::{geometry::Vec3, nbt::Tag};

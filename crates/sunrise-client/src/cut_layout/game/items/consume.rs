@@ -61,7 +61,7 @@ pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_s
                     &serde_json::json!("Captured fruit"),
                 );
                 let snapshot = test_snapshot(&consumed);
-                game.inventory[game.selected] = Some(consumed.clone());
+                game.common.inventory[game.common.selected] = Some(consumed.clone());
                 let info = game.items().get(&consumed.item).unwrap().clone();
                 let consumable = consumed.consumable(Some(&info)).unwrap().clone();
                 game.finish_consuming(&info, &consumable, &consumed);
@@ -77,7 +77,7 @@ pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_s
                 assert_eq!(game.player.as_ref().unwrap().position, at);
 
                 // The source stack is explicit, even if the hand has since changed.
-                game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 1));
+                game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stone", 1));
                 let mut expected_random = game.world.random.clone();
                 for _ in 0..3 {
                     expected_random.next_double();

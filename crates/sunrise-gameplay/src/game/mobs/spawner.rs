@@ -22,7 +22,7 @@ use sunrise_sim::mobs::{
 pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// What a spawner tick decided to add, created once the level is free.
-pub(in crate::game) enum Planned {
+pub enum Planned {
     /// `finalizeSpawn` ran on a fresh mob (its provisional id in `Mob::id`);
     /// the spawn data's `equipment`.
     Finalized(Mob, Option<Tag>),

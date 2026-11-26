@@ -1,8 +1,11 @@
+#![cfg(test)]
+
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt as _;
 use sunrise_gameplay_common::game_side;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
@@ -53,20 +56,26 @@ fn replayed_landing_reads_restitution_again_and_moves_identically() {
                 let mut player =
                     PlayerMotion::new(game.motion, Vec3::new(3.5, 65.25, 5.5)).unwrap();
                 player.velocity.y = -1.0;
-                let side = game_side!(game);
+                let meta = game.side_game_side_meta();
+                let side = game_side!(
+                    game.common,
+                    meta,
+                    game.common.level.enabled_features.as_arc(),
+                    meta.2.then(|| game.common.res.items())
+                );
                 let mut world = MotionWorld {
                     side: &side,
                     entities: &[],
                     player: &mut player,
-                    scene: &mut game.world,
-                    assets: &game.pack.assets,
-                    collision_binding: game.collision,
-                    resources: game.motion,
-                    health: &game.health_resources,
-                    loop_context: &game.loop_context,
-                    damage_hooks: &game.damage_hooks,
-                    tag_items: Some(game.res.items()),
-                    block_registries: Some(&game.pack.block_registries),
+                    scene: &mut game.common.world,
+                    assets: &game.common.pack.assets,
+                    collision_binding: game.common.collision,
+                    resources: game.common.motion,
+                    health: &game.common.health_resources,
+                    loop_context: &game.common.loop_context,
+                    damage_hooks: &game.common.damage_hooks,
+                    tag_items: Some(game.common.res.items()),
+                    block_registries: Some(&game.common.pack.block_registries),
                 };
                 if replay {
                     world.replayed_tick(Default::default(), false).unwrap();

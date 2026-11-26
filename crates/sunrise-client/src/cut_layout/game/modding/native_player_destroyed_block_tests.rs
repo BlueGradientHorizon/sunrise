@@ -103,7 +103,7 @@ fn with_player(
     game.server.lan_acting_name = Some("Breaker".into());
     game.server.lan_acting_permission = Some(0);
     game.set_mode(mode);
-    game.inventory[game.selected] = held;
+    game.common.inventory[game.common.selected] = held;
     // The acting player as a hook would name them: this server's entity 20.
     let epoch = game.native_lifecycle.epoch().unwrap();
     mod_api::__private::game::player_ref(mod_api::EntityRef::new(epoch, 20), 123)
@@ -322,7 +322,7 @@ fn with_order_probe(
 ) -> Vec<Seen> {
     let seen = Arc::new(Mutex::new(Vec::new()));
     with_game(|game| {
-        let (player, ..) = crate::game::native_server::fake_action_tests::fake(game, Some(item), 0);
+        let (player, ..) = sunrise_gameplay::game::native_server::fake_action_tests::fake(game, Some(item), 0);
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "order",
             Box::new(OrderProbe {

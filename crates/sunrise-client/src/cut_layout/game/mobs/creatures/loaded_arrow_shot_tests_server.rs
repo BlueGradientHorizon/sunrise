@@ -64,7 +64,7 @@ fn finish_hit_uses_registered_guest_context_and_restores_the_host() {
         game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         let host_uuid = game.acting_player_uuid();
         game.as_guest(2,|g| {
-            assert_eq!(g.side.lan_acting,Some(2));
+            assert_eq!(g.server.lan_acting,Some(2));
             assert_eq!(g.acting_player_uuid(),[0,0,0,114]);
             assert!(g.run_command("item replace entity @s weapon.mainhand with crossbow[charged_projectiles=[{id:\"minecraft:arrow\",count:1}]]"));
             let bow=g.held().unwrap().clone();assert!(g.use_crossbow(&bow));

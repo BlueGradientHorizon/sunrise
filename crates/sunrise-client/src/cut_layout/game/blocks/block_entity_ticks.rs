@@ -978,7 +978,7 @@ use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, s
                     // The nested pass ticked the spawner; the outer one has not yet.
                     assert_eq!(tick.game.spawner_tick_positions, []);
                     assert!(
-                        tick.game.side.item_columns.is_some(),
+                        tick.game.server.item_columns.is_some(),
                         "the outer pass's columns"
                     );
                     stone_above(tick.game, C);
@@ -1020,10 +1020,10 @@ use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, s
                     assert!(nested.is_err());
                     assert_eq!(tick.game.spawner_tick_positions, [A]);
                     assert!(
-                        tick.game.side.item_columns.is_some(),
+                        tick.game.server.item_columns.is_some(),
                         "the outer pass's columns"
                     );
-                    assert!(tick.game.side.pass_mobs.is_some(), "the outer pass's mobs");
+                    assert!(tick.game.server.pass_mobs.is_some(), "the outer pass's mobs");
                     stone_above(tick.game, C);
                 }
                 LoopFlow::Continue

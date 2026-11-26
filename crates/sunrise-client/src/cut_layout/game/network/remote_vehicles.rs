@@ -59,7 +59,7 @@ pub(crate) mod tests {
             m.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
             game.mobs.clear();
             game.mobs.push(m);
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:carrot_on_a_stick", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:carrot_on_a_stick", 1));
             game.riding = Some(7);
             game.client.remote.as_mut().unwrap().first_passenger = true;
             assert!(game.driven_mount().is_some());
@@ -177,7 +177,7 @@ pub(crate) mod tests {
                 "minecraft:carrot_on_a_stick"
             };
             let hand = row["hand"].as_str().unwrap();
-            game.inventory[game.selected] = match hand {
+            game.common.inventory[game.common.selected] = match hand {
                 "main" => Some(ItemStack::new(stick, 1)),
                 "wrong" => Some(ItemStack::new(wrong, 1)),
                 _ => None,

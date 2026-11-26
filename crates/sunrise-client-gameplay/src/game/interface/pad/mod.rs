@@ -47,7 +47,7 @@ pub(in crate::game::client_side) fn style_named(name: &str) -> Result<GlyphStyle
 
 /// The controllers and the state the game last acted on.
 #[derive(Default)]
-pub(in crate::game) struct Pads {
+pub struct Pads {
     /// The real controllers and the DualSense's output.
     #[cfg(feature = "controllers")]
     pub(in crate::game) devices: hardware::Devices,

@@ -145,7 +145,7 @@ fn singleton_lifecycle_commands_unload_and_parked_owners() {
             }
         },
         ids: |game| game.dragon.as_ref().map(|d| vec![d.id]).unwrap_or_default(),
-        target: crate::game::server_side::commands::Target::Dragon,
+        target: sunrise_gameplay_common::game::commands_common::Target::Dragon,
         unloads_with_chunk: true,
         remote: None,
     }

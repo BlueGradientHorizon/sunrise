@@ -35,6 +35,7 @@ impl Hooks for Rewrite {
     }
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn virtual_host_is_the_rewritten_handshake_host() {

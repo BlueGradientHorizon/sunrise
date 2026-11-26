@@ -20,8 +20,71 @@ pub(crate) mod tests {
     use sunrise_gameplay::game::server_side::potions_server::potion_cloud_to_nbt;
     use sunrise_gameplay_common::game::client_side::potions::tests::FoodEffectMod;
     use sunrise_gameplay_common::game::client_side::potions::tests::OtherEffectMod;
-    use sunrise_gameplay_common::game::client_side::potions::tests::effect_test_mod;
     use sunrise_sim::motion::PlayerMotion;
+
+    pub(in crate::game) fn effect_test_mod(
+        extra: impl IntoIterator<Item = mod_api::ModEntry>,
+    ) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
+        use mod_api::{self, *};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering::Relaxed},
+        };
+
+        struct TestMod(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl Hooks for TestMod {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let key = r.effect_key("test:effect");
+                r.mob_effect_part(&key, TestMod(self.0.clone())).unwrap();
+            }
+        }
+        #[mod_api::sunrise_part]
+        impl MobEffectPart for TestMod {
+            fn should_apply_effect_tick_this_tick(
+                &self,
+                _: &dyn Host,
+                event: &mut ShouldApplyEffectTickThisTickEvent,
+            ) {
+                event.apply = true;
+            }
+            fn apply_effect_tick(&self, _: &dyn Host, event: &mut ApplyEffectTickEvent<'_>) {
+                self.0.fetch_add(1, Relaxed);
+                match event.amplifier {
+                    0 => {
+                        event.heal(10.0);
+                        event.eat(4, 0.5);
+                        event.add_exhaustion(1.5);
+                    }
+                    1 => event.hurt("minecraft:magic", 3.0),
+                    3 if event.health > 1.0 => event.hurt("minecraft:magic", 1.0),
+                    3 => {}
+                    4 => {
+                        event.hurt("minecraft:wither", 1.0);
+                        event.hurt("minecraft:indirect_magic", 2.0);
+                        event.heal(1.0);
+                    }
+                    _ => event.hurt("minecraft:wither", 100.0),
+                }
+            }
+        }
+        let applied = Arc::new(AtomicUsize::new(0));
+        let effects = ModEntry::new("test-potions", Box::new(TestMod(applied.clone())));
+        mod_platform::__private::install(
+            std::iter::once(effects)
+                .chain(extra)
+                .collect::<Vec<_>>()
+                .into(),
+        );
+        assert!(brewing::register_mod_effects([(
+            "test:effect".into(),
+            0,
+            brewing::Category::Neutral,
+            None,
+            "test-potions".into(),
+        )]));
+        applied
+    }
 
     pub(crate) fn cloud_spawns_during_pass(potion_pass: bool) {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {

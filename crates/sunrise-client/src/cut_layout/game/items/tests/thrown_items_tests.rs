@@ -53,7 +53,7 @@ fn a_thrown_item_takes_the_throwers_random_not_the_levels() {
     let mut game = standing_game(&mut resources);
     game.yaw = 0.0;
     game.pitch = 0.0;
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 4));
+    game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stone", 4));
     let level = game.world.random.state();
     game.drop_held_item(false);
     let thrown = game.dropped.last().expect("the drop key threw the stack");

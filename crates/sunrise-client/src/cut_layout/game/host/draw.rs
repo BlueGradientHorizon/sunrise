@@ -2,16 +2,11 @@
 
 #![cfg(test)]
 use sunrise_client_gameplay::game::host::draw::GameDrawContext;
-use sunrise_core::nbt::Tag;
-use sunrise_game_data::text::Text;
+use mod_api::Tag;
+use mod_api::Text;
 #[cfg(test)]
 pub(crate) mod tests {
-    use mod_vocab::DrawContext;
-use mod_vocab::TooltipFont;
-use mod_vocab::DrawContext;
-use mod_vocab::TooltipFont;
-use mod_vocab::DrawContext;
-use mod_vocab::TooltipFont;
+    use mod_api::{DrawContext, TooltipFont};
 use sunrise_client_gameplay::game::native_hooks::TryIntoEngine;
 use {crate::game::host::draw::*, sunrise_client_gameplay::game::host::draw::{EngineTooltipFont, label_layout, label_layout_with}};
     use std::collections::BTreeMap;

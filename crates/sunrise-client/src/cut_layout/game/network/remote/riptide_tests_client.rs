@@ -37,10 +37,10 @@ fn riptide_ground_release_keeps_launch_velocity() {
                     stack.enchant("minecraft:riptide", 3);
                     for (grounded, roof) in [(true, false), (false, false), (true, true)] {
                         arena(server, roof, |g, c| {
-                            g.server.streaming.insert_remote(&mut g.world, c);
+                            g.server.streaming.insert_remote(&mut g.common.world, c);
                         });
                         arena(client, roof, |g, c| {
-                            g.client.streaming.insert_remote(&mut g.world, c);
+                            g.client.streaming.insert_remote(&mut g.common.world, c);
                         });
                         let start = if grounded {
                             START

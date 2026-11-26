@@ -697,9 +697,9 @@ impl mod_api::Hooks for Consumer {
 pub(crate) use crate::game::server_side::creatures_server::borrowed_panic_tests::with_consumer_game;
 
 pub(crate) fn queue_egg(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    game.creatures
+    game.common.creatures
         .pending
-        .entry(game.dim.id())
+        .entry(game.common.dim.id())
         .or_default()
         .batches
         .push_back(MobOutputBatch {
@@ -832,7 +832,7 @@ pub(crate) fn run_conditional(test: &str, nested: bool) {
             events.extend([egg, conditional()]);
         }
         // The same frame keeps its completed breaks; a new batch does not inherit them.
-        let batch = game.creatures.pending.entry(game.dim.id()).or_default();
+        let batch = game.common.creatures.pending.entry(game.common.dim.id()).or_default();
         batch.batches.push_back(MobOutputBatch {
             normal: NormalMobActions::new(events),
             guests: Vec::new(),

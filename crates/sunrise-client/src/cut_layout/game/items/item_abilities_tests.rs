@@ -64,7 +64,7 @@ fn block_name(game: &sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) -> S
 fn add_sheep(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: f64) -> usize {
     let kind = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
     game.server.next_entity += 1;
-    game.mobs.push(Mob::new(
+    game.common.mobs.push(Mob::new(
         game.server.next_entity,
         kind,
         Vec3::new(x, 64.0, 0.5),
@@ -75,7 +75,7 @@ fn add_sheep(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: f64) -> usize
 
 /// Right click on the sheep at `index` holding `stack`.
 fn click_sheep(game: &mut sunrise_gameplay::game::ServerGame<'_>, index: usize, stack: &ItemStack) -> bool {
-    game.inventory[game.selected] = Some(stack.clone());
+    game.common.inventory[game.common.selected] = Some(stack.clone());
     let id = game.mobs[index].id as i32;
     game.interact_mob(Some(sunrise_gameplay_common::game::InteractTarget {
         id,
@@ -159,9 +159,9 @@ fn parts_grant_and_deny_the_abilities_vanilla_asks_of_an_item_isolated() {
             // A shield whose part denies the ability no longer blocks nor is raised.
             assert!(game.blocks_attacks(&shield).is_none());
             assert_eq!(game.use_duration(&shield), 0);
-            game.inventory[game.selected] = Some(shield.clone());
+            game.common.inventory[game.common.selected] = Some(shield.clone());
             assert!(!game.raise_shield(game.selected));
-            game.inventory[game.selected] = Some(sword.clone());
+            game.common.inventory[game.common.selected] = Some(sword.clone());
             assert!(game.raise_shield(game.selected));
 
             // Shears carve a pumpkin only when the ability is not denied: a stick the part lets

@@ -671,8 +671,8 @@ impl ClientGame<'_> {
     }
 
     /// `camera.entity().isSpectator()`: for lava and powdered-snow fog (`setupFog`).
-    #[cfg(test)]
-    pub(in crate::game) fn camera_entity_is_spectator(&self) -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn camera_entity_is_spectator(&self) -> bool {
         self.camera_subject()
             .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator)
     }
@@ -687,8 +687,8 @@ impl ClientGame<'_> {
     }
 
     /// `GameRenderer.shouldRenderBlockOutline`: player camera entity, HUD shown, and build or target gate.
-    #[cfg(test)]
-    pub(in crate::game) fn should_render_block_outline(&self) -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn should_render_block_outline(&self) -> bool {
         let hit = (!self.entity_targeted()).then(|| self.pick()).flatten();
         self.should_render_block_outline_for_hit(hit.as_ref())
     }

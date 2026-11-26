@@ -838,7 +838,7 @@ pub fn mob_effect_instance(
     Some(instance)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "mob_griefing_tests.rs"]
 pub mod mob_griefing_tests;
 

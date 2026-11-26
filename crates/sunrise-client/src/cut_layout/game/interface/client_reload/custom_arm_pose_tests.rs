@@ -50,7 +50,7 @@ fn arms(mob: &Mob, models: &sunrise_client::mobs_render::ClientMobModels) -> [[f
 fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() {
     with_client_game(|game| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
         game.tick_player_model();
         for (id, kind) in [
             (60, game.client_res().player_type().clone().unwrap()),
@@ -178,7 +178,7 @@ fn suppressed_custom_offhand_never_calls_its_transformer() {
     }
     with_client_game(|game| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
         game.offhand = Some(ItemStack::new("minecraft:stick", 1));
         let calls = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(

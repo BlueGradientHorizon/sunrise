@@ -6,7 +6,7 @@ use sunrise_protocol::{
 };
 
 #[derive(Clone, Copy)]
-pub(in crate::game) struct ReceivedGroup(pub Option<u64>);
+pub struct ReceivedGroup(pub Option<u64>);
 
 impl ReceivedGroup {
     pub(in crate::game) fn apply(self, world: &mut World, [x, y, z]: [i32; 3]) {

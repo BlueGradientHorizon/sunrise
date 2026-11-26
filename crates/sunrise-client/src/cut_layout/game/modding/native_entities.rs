@@ -8,6 +8,14 @@ pub(crate) mod tests {
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use super::*;
 
+macro_rules! pending {
+    ($list:expr) => {{
+        let mut owner = $list.pop().unwrap();
+        owner.id = 0;
+        $list.push(owner);
+    }};
+}
+
 use crate::game::native_entity_refs::tests::collect_entities_in;
 
 use mod_api::ServerHost;

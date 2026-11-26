@@ -1,4 +1,7 @@
-use {crate::game::entity_sections::*, sunrise_gameplay_common::game::entity_sections::{Crossing, EntityRef, EntitySections, LiveSectionHost, Scope, WorldEpoch, player, section_coord, section_of}};
+#![cfg(test)]
+
+use mod_api::{EntityRef, WorldEpoch};
+use {crate::game::entity_sections::*, sunrise_gameplay_common::game::entity_sections::{Crossing, EntitySections, LiveSectionHost, Scope, player, section_coord, section_of}};
 use {sunrise_gameplay_common::game::commands_common::Target, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

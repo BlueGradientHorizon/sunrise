@@ -261,7 +261,7 @@ pub fn picks_material_pack(settings: &sunrise_client::settings::Settings) -> boo
 
 /// The ids a pack gives entities and block entities (4.1, 5.3), for the spans of the entity
 /// geometry.
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(any(test, feature = "test-support"), derive(Default))]
 pub struct PackIds {
     pub(in crate::game) entities: HashMap<String, i32>,
     pub(in crate::game) blocks: BlockIds,
@@ -289,9 +289,9 @@ pub struct PackIds {
     pub(in crate::game) separate_ao: bool,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl PackIds {
-    pub(in crate::game::client_side) fn with_entity_ids<'a>(
+    pub fn with_entity_ids<'a>(
         ids: impl IntoIterator<Item = (&'a str, i32)>,
     ) -> Self {
         Self {

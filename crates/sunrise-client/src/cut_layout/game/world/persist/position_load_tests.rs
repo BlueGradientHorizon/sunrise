@@ -1,9 +1,3 @@
-use std::collections::HashSet;
-use std::sync::Arc;
-use sunrise_core::geometry::Vec3;
-use sunrise_core::nbt::Tag;
-use sunrise_level::chunk::Chunk;
-use sunrise_sim::entity_nbt;
 // Included in persist::tests to keep existing test paths stable.
 #[test]
 #[ignore = "daily"]

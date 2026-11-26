@@ -52,7 +52,7 @@ pub mod native_living_refs;
 pub mod native_item_places;
 
 #[path = "modding/native_harvest_queries.rs"]
-pub(in crate::game) mod native_harvest_queries;
+pub mod native_harvest_queries;
 
 #[path = "modding/native_entity_riding.rs"]
 pub(in crate::game) mod native_entity_riding;

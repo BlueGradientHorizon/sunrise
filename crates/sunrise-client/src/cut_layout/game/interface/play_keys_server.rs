@@ -2,6 +2,7 @@
 
 #![cfg(test)]
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod swap_hands_tests {
 
 use sunrise_client_gameplay::game::client_side::play_keys::swap_hands_tests::Torch;

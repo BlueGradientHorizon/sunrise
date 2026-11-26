@@ -3,7 +3,7 @@
 pub mod item_fall_on_tests;
 #[path = "shared/level_helpers.rs"]
 pub mod level_helpers;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use level_helpers::block_entity_for_block;
 #[cfg(test)]
 #[path = "shared/block_property_tests.rs"]
@@ -837,8 +837,8 @@ pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// native mod's, made as a write of the level creates it
     /// (`GameLevel::new_block_entity`). Only a declared mod type builds the
     /// level.
-    #[cfg(test)]
-     fn new_block_entity(&mut self, name: &str) -> Option<BlockEntity> {
+    #[cfg(any(test, feature = "test-support"))]
+    fn new_block_entity(&mut self, name: &str) -> Option<BlockEntity> {
         if sunrise_game_data::block_entity_types::type_for(name).is_none() {
             return block_entity_for_block(
                 self.pack.assets.registry,

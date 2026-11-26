@@ -3,9 +3,9 @@ use super::screen_build::ContainerLayout;
 use super::{Creative, Screen};
 use sunrise_client::inventory_effects::EffectsLayout;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
-    pub(in crate::game) static LAYOUT_CONSTRUCTIONS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    pub static LAYOUT_CONSTRUCTIONS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// Selectors read by slot_position; item contents and scroll do not move slots.
@@ -46,7 +46,7 @@ impl crate::game::ClientGame<'_> {
         batch: &sunrise_client::hud::HudBatch,
         mut inputs: ContainerLayout,
     ) -> ContainerLayout {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         LAYOUT_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
         // Slot moves made since the last build apply from this one, to the
         // boxes below and to everything drawn until the next.

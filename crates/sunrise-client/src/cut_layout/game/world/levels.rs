@@ -381,7 +381,7 @@ use super::*;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
             game.level.dimension = "minecraft:the_nether".into();
             game.level.position = Some([0.0, 64.0, 0.0]);
-            game.level.write(&world, game.res.items()).unwrap();
+            game.common.level.write(&world, game.common.res.items()).unwrap();
         }
 
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -1018,7 +1018,7 @@ use super::*;
 
 #[cfg(test)]
 mod request_save_tests {
-    use {sunrise_gameplay::game::server_side::levels::Dim, sunrise_gameplay::game::server_side::levels::Levels};
+    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::server_side::levels::Levels};
 
     #[test]
     #[ignore = "daily"]

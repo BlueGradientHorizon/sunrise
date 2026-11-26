@@ -38,8 +38,8 @@ use sunrise_core::use_animation::UseAnimation;
                         r.item_part(stick, Part);
                     }
                 }
-                fn check<S: sunrise_gameplay_common::game::Side>(
-                    game: &sunrise_gameplay_common::game::Game<'_, S>,
+                fn check<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+                    game: &G,
                     host: &dyn Host,
                     side: &str,
                 ) {

@@ -41,7 +41,7 @@ fn client_menu_close_and_button_click_reach_the_server() {
             .unwrap()
             .id("minecraft:loom")
             .unwrap();
-        let open = |game: &mut super::Game<'_, sunrise_client_gameplay::game::client_side::ClientState>| {
+        let open = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
             game.handle_packet(C::OpenScreen(play::OpenScreen {
                 container: 5,
                 menu: loom,
@@ -96,7 +96,7 @@ fn client_menu_close_and_button_click_reach_the_server() {
 #[ignore = "daily"]
 fn client_menu_reads_follow_packets_and_lifetimes() {
     use sunrise_gameplay_common::game::Screen;
-    use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_client::level_loading::Reason;
     use sunrise_core::nbt::Tag;

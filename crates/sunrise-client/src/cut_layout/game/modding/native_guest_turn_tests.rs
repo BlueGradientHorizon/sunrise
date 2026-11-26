@@ -1,5 +1,7 @@
 //! Real-game regressions for native handles used during a guest's turn.
 
+#![cfg(test)]
+
 use sunrise_gameplay::game::server_side::lan::LanSettings;
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
@@ -44,8 +46,8 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
                     guest.dimension = "minecraft:overworld".to_owned();
                 })
                 .unwrap();
-            let player = game.player(12).unwrap();
-            let other = game.player(13).unwrap();
+            let player = NativeServerGameExt1::player(game, 12).unwrap();
+            let other = NativeServerGameExt1::player(game, 13).unwrap();
             let epoch = player.entity().epoch();
             let unknown = mod_api::__private::game::player_ref(player.entity(), 999);
             let stale = mod_api::__private::game::player_ref(
@@ -57,21 +59,21 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
             );
             let replaced = mod_api::__private::game::player_ref(other.entity(), player.uuid());
             for invalid in [unknown, stale, replaced] {
-                assert_eq!(game.player_level(invalid), None, "{role:?}");
-                assert_eq!(game.player_dimension(invalid), None, "{role:?}");
+                assert_eq!(NativeServerGameExt1::player_level(game, invalid), None, "{role:?}");
+                assert_eq!(NativeServerGameExt1::player_dimension(game, invalid), None, "{role:?}");
             }
             assert_eq!(
-                game.player_level(player).unwrap().dimension_id(),
+                NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
                 "minecraft:overworld"
             );
             game.as_guest(12, |game| {
                 assert_eq!(
-                    game.player_dimension(player).unwrap().to_string(),
+                    NativeServerGameExt1::player_dimension(game, player).unwrap().to_string(),
                     "minecraft:overworld"
                 );
                 game.as_guest(13, |game| {
                     assert_eq!(
-                        game.player_level(player).unwrap().dimension_id(),
+                        NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
                         "minecraft:overworld"
                     );
                 })
@@ -88,11 +90,11 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
                 })
                 .unwrap();
             assert_eq!(
-                game.player_dimension(player).unwrap().to_string(),
+                NativeServerGameExt1::player_dimension(game, player).unwrap().to_string(),
                 "minecraft:the_nether"
             );
             assert_eq!(
-                game.player_level(player).unwrap().dimension_id(),
+                NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
                 "minecraft:the_nether"
             );
             game.server
@@ -105,11 +107,11 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
                 })
                 .unwrap();
             assert_eq!(
-                game.player_dimension(player).unwrap().to_string(),
+                NativeServerGameExt1::player_dimension(game, player).unwrap().to_string(),
                 "test:pocket"
             );
             assert_eq!(
-                game.player_level(player).unwrap().dimension_id(),
+                NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
                 "test:pocket"
             );
         }
@@ -208,7 +210,7 @@ fn refused_wire_reload_preserves_hub_and_engine_generation() {
 #[ignore = "daily"]
 fn another_guest_and_online_players_are_visible_during_a_turn() {
     with_guests(|game| {
-        let rider = game.entity(13).unwrap();
+        let rider = NativeEntityRefsCommonGameExt1::entity(game, 13).unwrap();
         game.as_guest(12, |game| {
             assert_eq!(rider.position(game), Some([3.0, 64.0, 5.0]));
             let online = game.native_server_players();
@@ -233,8 +235,8 @@ fn move_by_moves_a_player_and_refuses_what_it_cannot() {
         for conn in [12, 13] {
             game.as_guest(conn, |_| {}).unwrap();
         }
-        let a = game.player(12).unwrap();
-        let b = game.player(13).unwrap();
+        let a = NativeServerGameExt1::player(game, 12).unwrap();
+        let b = NativeServerGameExt1::player(game, 13).unwrap();
         let before = b.entity().position(game).unwrap();
         let by = game
             .entity_move_by(b.entity(), [0.5, 0.0, 0.25], MoveCause::SelfMovement)
@@ -302,7 +304,7 @@ fn a_players_move_by_is_heard_once_and_a_cancel_moves_nothing() {
     mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
             game.as_guest(13, |_| {}).unwrap();
-            let b = game.player(13).unwrap();
+            let b = NativeServerGameExt1::player(game, 13).unwrap();
             let before = b.entity().position(game);
             let moved = game.entity_move_by(b.entity(), [1.0, 0.0, 0.0], MoveCause::Piston);
             assert_eq!(moved, Some([0.0; 3]));
@@ -333,7 +335,7 @@ fn a_players_move_by_is_heard_once_and_a_cancel_moves_nothing() {
 fn a_players_move_by_stops_at_a_boat() {
     with_guests(|game| {
         game.as_guest(13, |_| {}).unwrap();
-        let b = game.player(13).unwrap();
+        let b = NativeServerGameExt1::player(game, 13).unwrap();
         let [x, y, z] = b.entity().position(game).unwrap();
         let free = game
             .entity_move_by(b.entity(), [4.0, 0.0, 0.0], MoveCause::SelfMovement)
@@ -372,7 +374,7 @@ fn a_players_move_by_is_the_mover_a_colliders_stack_exempts() {
     use sunrise_world::moving_colliders::{Placed, Prepared, Scope};
     with_guests(|game| {
         game.as_guest(13, |_| {}).unwrap();
-        let b = game.player(13).unwrap();
+        let b = NativeServerGameExt1::player(game, 13).unwrap();
         let [x, y, z] = b.entity().position(game).unwrap();
         let player = game
             .server
@@ -419,7 +421,7 @@ fn a_players_move_by_is_the_mover_a_colliders_stack_exempts() {
 fn a_players_move_by_falls_through_a_happy_ghast_that_is_not_held_still() {
     with_guests(|game| {
         game.as_guest(13, |_| {}).unwrap();
-        let b = game.player(13).unwrap();
+        let b = NativeServerGameExt1::player(game, 13).unwrap();
         let [x, y, z] = b.entity().position(game).unwrap();
         game.server.next_entity += 1;
         let id = game.server.next_entity;
@@ -455,10 +457,10 @@ fn another_guests_menu_and_push_work_during_a_turn() {
             })
             .unwrap();
         }
-        let a = game.player(12).unwrap();
-        let b = game.player(13).unwrap();
-        let a_menu = game.player_container_menu(a).unwrap();
-        let b_menu = game.player_container_menu(b).unwrap();
+        let a = NativeServerGameExt1::player(game, 12).unwrap();
+        let b = NativeServerGameExt1::player(game, 13).unwrap();
+        let a_menu = NativeMenuRefsCommonGameExt1::player_container_menu(game, a).unwrap();
+        let b_menu = NativeMenuRefsCommonGameExt1::player_container_menu(game, b).unwrap();
         let stone = ItemStack::new("minecraft:stone", 4);
         game.server
             .lan
@@ -468,9 +470,9 @@ fn another_guests_menu_and_push_work_during_a_turn() {
             .update_guest(13, |guest| guest.inventory[0] = Some(stone.clone()))
             .unwrap();
         game.as_guest(12, |game| {
-            assert_eq!(game.player_container_menu(a), Some(a_menu));
+            assert_eq!(NativeMenuRefsCommonGameExt1::player_container_menu(game, a), Some(a_menu));
             assert_eq!(a_menu.slot_count(game), Some(46));
-            assert_eq!(game.player_container_menu(b), Some(b_menu));
+            assert_eq!(NativeMenuRefsCommonGameExt1::player_container_menu(game, b), Some(b_menu));
             assert_eq!(b_menu.slot_count(game), Some(46));
             assert_eq!(
                 b_menu.slot(game, 36),
@@ -486,8 +488,8 @@ fn another_guests_menu_and_push_work_during_a_turn() {
                     game.player.as_ref().unwrap().velocity,
                     Vec3::new(0.25, 0.5, -0.25)
                 );
-                assert!(game.player_container_menu(a).is_none());
-                assert_eq!(game.player_container_menu(b), Some(b_menu));
+                assert!(NativeMenuRefsCommonGameExt1::player_container_menu(game, a).is_none());
+                assert_eq!(NativeMenuRefsCommonGameExt1::player_container_menu(game, b), Some(b_menu));
                 assert_eq!(b_menu.slot_count(game), Some(46));
                 assert!(!game.entity_push(a.entity(), [1.0, 0.0, 0.0]));
             })
@@ -570,8 +572,8 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
                 })
                 .collect()
         };
-        let a = game.player(12).unwrap().entity();
-        let b = game.player(13).unwrap().entity();
+        let a = NativeServerGameExt1::player(game, 12).unwrap().entity();
+        let b = NativeServerGameExt1::player(game, 13).unwrap().entity();
         let stale = mod_api::EntityRef::new(mod_api::WorldEpoch::new(a.epoch().get() + 1), a.id());
         game.as_guest(12, |game| {
             assert!(!a.set_velocity(game, [0.0, f64::INFINITY, 0.0]));
@@ -603,7 +605,7 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
         .unwrap();
         // The player's own level can be parked while the mod runs in another one.
         game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
-        let living = game.living(b).unwrap();
+        let living = NativeEntityRefsCommonGameExt1::living(game, b).unwrap();
         assert!(living.knockback(game, 1.0, [0.0, 1.0]));
         let b_body = game.command_guest(13).unwrap().motion.as_ref().unwrap();
         assert_eq!(b_body.velocity, Vec3::new(-1.0, 0.0, 0.0));
@@ -722,8 +724,8 @@ fn another_guests_services_work_during_a_turn() {
             .hub
             .update_guest(13, |guest| guest.inventory[0] = Some(stone.clone()))
             .unwrap();
-        let a = game.player(12).unwrap();
-        let b = game.player(13).unwrap();
+        let a = NativeServerGameExt1::player(game, 12).unwrap();
+        let b = NativeServerGameExt1::player(game, 13).unwrap();
         game.as_guest(12, |game| {
             assert_eq!(game.native_entity_target(a.entity()), Some(Target::Player));
             assert_eq!(
@@ -948,8 +950,8 @@ fn another_guest_follows_a_vehicle_teleported_during_a_turn() {
             .push(Mob::new(42, horse, Vec3::new(3.0, 64.0, 5.0), 0.0));
         // Boarding publishes the seat back to the hub after positioning the body.
         game.guest_boarded(13, None);
-        let vehicle = game.entity(42).unwrap();
-        let rider = game.entity(13).unwrap();
+        let vehicle = NativeEntityRefsCommonGameExt1::entity(game, 42).unwrap();
+        let rider = NativeEntityRefsCommonGameExt1::entity(game, 13).unwrap();
         // EntityTypes stores the horse's passenger attachment as a float.
         let before = [3.0, 64.0 + (f64::from(1.44375_f32) - 0.6), 5.0];
         let after = [10.0, 70.0 + (f64::from(1.44375_f32) - 0.6), -4.0];
@@ -959,7 +961,7 @@ fn another_guest_follows_a_vehicle_teleported_during_a_turn() {
             assert_eq!(vehicle.position(game), Some([10.0, 70.0, -4.0]));
             assert_eq!(rider.position(game), Some(after));
             assert_eq!(
-                game.side
+                game.server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -1137,7 +1139,7 @@ fn server_services_preserve_identity_and_message_delivery() {
                 a.tab_list(game, &Text::literal("header"), &Text::literal("footer"))
                     .unwrap()
             );
-            let packets = &game.side.guest_packets;
+            let packets = &game.server.guest_packets;
             assert!(matches!(&packets[packets.len() - 3], C::SystemChat(p) if !p.overlay));
             assert!(matches!(&packets[packets.len() - 2], C::SystemChat(p) if p.overlay));
             assert!(matches!(&packets[packets.len() - 1], C::TabList(_)));
@@ -1203,7 +1205,7 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
         body.entity_id = 99;
         game.player = Some(body);
         game.set_mode(sunrise_command::args::GameMode::Creative);
-        let owner = game.player(99).unwrap();
+        let owner = NativeServerGameExt1::player(game, 99).unwrap();
         for (allow, permission) in [(false, 0), (true, 4)] {
             game.set_allow_commands(allow);
             assert_eq!(owner.permission_level(game), Some(permission));
@@ -1214,7 +1216,7 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
         assert_eq!(owner.can_use_game_master_blocks(game), Some(false));
 
         game.server.next_entity = 100;
-        let level = game.level(game.dim.id()).unwrap();
+        let level = NativeEntityRefsCommonGameExt1::level(game, game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();
         assert!(!game.players().server_players().contains(&fake));
         assert_eq!(game.players().player_by_name("machine"), None);
@@ -1303,7 +1305,7 @@ fn level_players_exclude_fake_players() {
         let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
         place_host(game);
         game.server.next_entity = 100;
-        let level = game.level(game.dim.id()).unwrap();
+        let level = NativeEntityRefsCommonGameExt1::level(game, game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();
         let conn = game
             .server
@@ -1418,7 +1420,7 @@ fn set_selected_slot_tells_an_acting_guests_client() {
             guest.sender = PlayerSender::new(tx, Arc::default())
         });
         game.as_guest(13, |game| {
-            let player = game.player(13).unwrap();
+            let player = NativeServerGameExt1::player(game, 13).unwrap();
             while rx.try_recv().is_ok() {}
             assert!(player.set_selected_slot(game, 8));
             assert!(
@@ -1433,7 +1435,7 @@ fn set_selected_slot_tells_an_acting_guests_client() {
             8
         );
         // Parked again: the write goes to the guest record and is sent the same way.
-        let player = game.player(13).unwrap();
+        let player = NativeServerGameExt1::player(game, 13).unwrap();
         while rx.try_recv().is_ok() {}
         assert!(player.set_selected_slot(game, 0));
         assert!(
@@ -1467,7 +1469,7 @@ fn a_vetoed_drop_gives_the_stack_back() {
     let mods = vec![ModEntry::new("veto", Box::new(Veto))];
     with_mods(mods.into(), || {
         with_guests(|game| {
-            let player = game.player(13).unwrap();
+            let player = NativeServerGameExt1::player(game, 13).unwrap();
             let stone = ItemStack::new("minecraft:stone", 3);
             let before = game.dropped.len();
             assert_eq!(
@@ -1639,7 +1641,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
 
             let panic = catch_unwind(AssertUnwindSafe(|| {
                 game.as_guest_messaged(13, |game| {
-                    game.side
+                    game.server
                         .chat_capture
                         .as_mut()
                         .unwrap()
@@ -1767,7 +1769,7 @@ fn run_command_checks_the_line_at_the_level_given() {
 
     with_command_guests("run_command_checks_the_line_at_the_level_given", |game| {
         game.build_registries();
-        let a = game.player(12).unwrap().entity();
+        let a = NativeServerGameExt1::player(game, 12).unwrap().entity();
         assert!(!a.run_command(game, "give @s minecraft:diamond 1", All, false));
         assert!(a.run_command(game, "give @s minecraft:diamond 1", Gamemasters, false));
         assert!(!a.run_command(game, "tick query", Gamemasters, false));
@@ -1791,8 +1793,8 @@ fn run_command_runs_as_the_entity_from_where_it_is() {
 
     with_command_guests("run_command_runs_as_the_entity_from_where_it_is", |game| {
         game.build_registries();
-        let a = game.player(12).unwrap().entity();
-        let b = game.player(13).unwrap().entity();
+        let a = NativeServerGameExt1::player(game, 12).unwrap().entity();
+        let b = NativeServerGameExt1::player(game, 13).unwrap().entity();
         let holds = |game: &sunrise_gameplay::game::ServerGame<'_>, uuid: u128, item: &str| {
             let stack = ItemStack::new(item, 1);
             let slots = game.native_inventory(uuid, Player).unwrap().slots;
@@ -1840,14 +1842,14 @@ fn run_command_answers_a_player_and_no_one_for_another_entity() {
     let name = "run_command_answers_a_player_and_no_one_for_another_entity";
     with_command_guests(name, |game| {
         game.build_registries();
-        let a = game.player(12).unwrap().entity();
+        let a = NativeServerGameExt1::player(game, 12).unwrap().entity();
         let stand = summon_stand(game);
         game.as_guest(12, |game| {
             for (line, ran) in [("tick query", true), ("kill @e[type=minecraft:pig]", false)] {
-                let before = game.side.guest_packets.len();
+                let before = game.server.guest_packets.len();
                 assert_eq!(a.run_command(game, line, Admins, false), ran, "{line}");
                 assert!(told_since(game, before), "the player is told: {line}");
-                let before = game.side.guest_packets.len();
+                let before = game.server.guest_packets.len();
                 assert_eq!(stand.run_command(game, line, Admins, false), ran, "{line}");
                 assert!(!told_since(game, before), "no one is told: {line}");
             }
@@ -1866,7 +1868,7 @@ fn run_command_answers_false_for_a_bad_line_or_a_stale_handle() {
     let name = "run_command_answers_false_for_a_bad_line_or_a_stale_handle";
     with_command_guests(name, |game| {
         game.build_registries();
-        let a = game.player(12).unwrap().entity();
+        let a = NativeServerGameExt1::player(game, 12).unwrap().entity();
         let stand = summon_stand(game);
         for entity in [a, stand] {
             for line in [
@@ -1902,7 +1904,7 @@ fn run_command_refuses_a_player_whose_level_is_parked() {
     let name = "run_command_refuses_a_player_whose_level_is_parked";
     with_command_guests(name, |game| {
         game.build_registries();
-        let b = game.player(13).unwrap().entity();
+        let b = NativeServerGameExt1::player(game, 13).unwrap().entity();
         let move_to = |game: &mut sunrise_gameplay::game::ServerGame<'_>, dimension: &str| {
             game.server
                 .lan
@@ -1945,8 +1947,8 @@ fn run_command_runs_from_the_players_own_place_inside_an_outer_command() {
     let name = "run_command_runs_from_the_players_own_place_inside_an_outer_command";
     with_command_guests(name, |game| {
         game.build_registries();
-        let a = game.player(12).unwrap().entity();
-        let b = game.player(13).unwrap().entity();
+        let a = NativeServerGameExt1::player(game, 12).unwrap().entity();
+        let b = NativeServerGameExt1::player(game, 13).unwrap().entity();
         let place = |game: &sunrise_gameplay::game::ServerGame<'_>, conn: u32| {
             let g = game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             (g.position, [g.yaw, g.pitch])
@@ -1979,10 +1981,10 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
-use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;

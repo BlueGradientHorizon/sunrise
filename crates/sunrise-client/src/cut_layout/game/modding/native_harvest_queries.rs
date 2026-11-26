@@ -3,8 +3,9 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
+    use sunrise_gameplay_common::game::server_side::native_harvest_queries::tests::{Asker, RecursiveAsker};
 
-use mod_vocab::__private::game::Fields;
+use mod_api::__private::game::Fields;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::native_harvest_queries_common::NativeHarvestQueriesCommonGameExt1;
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;

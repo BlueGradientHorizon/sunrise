@@ -4,9 +4,8 @@ use crate::game::remote::interaction_event_tests::interaction_matrix_tests::case
 use crate::game::remote::interaction_event_tests::interaction_matrix_tests::*;
 
 pub(crate) fn matrix(mods: mod_api::Mods) {
-    fn run<S: InteractionSide>(game: &mut Game<'_, S>)
-    where
-        for<'__g> Game<'__g, S>: mod_api::Host,
+    fn run<'g, S: InteractionSide<'g>>(game: &mut S)
+
     {
         let client = S::IS_CLIENT;
         let registry = game.pack.assets.registry;
@@ -27,7 +26,8 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
                 let other = case
                     .other_held
                     .then(|| ItemStack::new("minecraft:stick", 1));
-                (game.inventory[game.selected], game.offhand) = if hand == Hand::Main {
+                let common = game.common_mut();
+                (common.inventory[common.selected], common.offhand) = if hand == Hand::Main {
                     (held, other)
                 } else {
                     (other, held)

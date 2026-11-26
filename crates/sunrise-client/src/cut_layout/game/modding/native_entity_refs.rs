@@ -1558,7 +1558,7 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 let mut held = ItemStack::new(item, 3);
                 held.damage = 7;
                 held.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("kept".into()));
-                game.inventory[game.selected] = Some(held.clone());
+                game.common.inventory[game.common.selected] = Some(held.clone());
                 let index = game.mobs.len();
                 game.mobs.push(mob);
                 let used = match id {
@@ -1592,7 +1592,7 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             let item = kind.tempt.first().expect("a swallowable item").to_string();
             let mut held = ItemStack::new(&item, 3);
             held.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("kept".into()));
-            game.inventory[game.selected] = Some(held.clone());
+            game.common.inventory[game.common.selected] = Some(held.clone());
             game.mobs.push(Mob::new(12, kind.clone(), Vec3::ZERO, 0.0));
             assert!(game.interact_sulfur_cube(0, &item));
             assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 2);
@@ -1944,7 +1944,7 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 assert_eq!(player.game_mode(game), Some(GameMode::Survival));
                 assert!(game.player_set_game_mode(player, GameMode::Creative));
                 assert_eq!(player.game_mode(game), Some(GameMode::Creative));
-                assert_eq!(game.side.lan_acting, Some(12));
+                assert_eq!(game.server.lan_acting, Some(12));
                 let acting = game.player(12).unwrap();
                 assert!(game.player_set_game_mode(acting, GameMode::Adventure));
                 assert_eq!(game.player_game_mode(acting), Some(GameMode::Adventure));
@@ -1953,7 +1953,7 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                         game.with_guest_swap(12, game.dim, |_| panic!("active guest re-entered"))
                             .is_none()
                     );
-                    assert_eq!(game.side.lan_acting, Some(13));
+                    assert_eq!(game.server.lan_acting, Some(13));
                     assert!(game.entity(12).is_none());
                     assert!(game.player(12).is_none());
                     assert!(
@@ -1963,7 +1963,7 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                     assert!(game.entity(13).is_some());
                 })
                 .unwrap();
-                assert_eq!(game.side.lan_acting, Some(12));
+                assert_eq!(game.server.lan_acting, Some(12));
             })
             .unwrap();
             assert!(game.server.lan_guest_swaps.is_empty());
@@ -2496,7 +2496,7 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 .guest_packets
                 .push(Clientbound::SetSimulationDistance(Distance { distance: 4 }));
             game.as_guest(fake_id, |game| {
-                assert!(game.side.lan_acting_fake);
+                assert!(game.server.lan_acting_fake);
                 assert!(game.player.as_ref().is_some_and(|p| p.client_loaded));
                 assert!(game.player_view().is_none());
                 let mut visited = 0;
@@ -2526,13 +2526,13 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                     ..Default::default()
                 };
                 assert!(game.select(&uuid).is_empty());
-                game.side
+                game.server
                     .guest_packets
                     .push(Clientbound::SetSimulationDistance(Distance {
                         distance: 12,
                     }));
-                game.side.guest_entity_events.push(3);
-                game.side
+                game.server.guest_entity_events.push(3);
+                game.server
                     .guest_cooldowns
                     .push(("minecraft:test".into(), 20));
             })
@@ -2550,23 +2550,23 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             );
             assert!(rx.try_recv().is_err());
             game.with_guest_swap(real_id, game.dim, |game| {
-                assert!(!game.side.lan_acting_fake);
-                game.side.guest_cooldowns.push(("minecraft:real".into(), 7));
-                game.side
+                assert!(!game.server.lan_acting_fake);
+                game.server.guest_cooldowns.push(("minecraft:real".into(), 7));
+                game.server
                     .guest_player_sounds
                     .push(("outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(fake_id, |game| {
-                    assert!(game.side.lan_acting_fake);
-                    game.side
+                    assert!(game.server.lan_acting_fake);
+                    game.server
                         .guest_cooldowns
                         .push(("minecraft:fake".into(), 20));
                 })
                 .unwrap();
-                assert!(!game.side.lan_acting_fake);
-                assert_eq!(game.side.guest_cooldowns.len(), 1);
-                assert_eq!(&*game.side.guest_cooldowns[0].0, "minecraft:real");
-                assert_eq!(game.side.guest_player_sounds[0].0, "outer");
-                game.side.guest_player_sounds.clear();
+                assert!(!game.server.lan_acting_fake);
+                assert_eq!(game.server.guest_cooldowns.len(), 1);
+                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:real");
+                assert_eq!(game.server.guest_player_sounds[0].0, "outer");
+                game.server.guest_player_sounds.clear();
             })
             .unwrap();
             let out = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
@@ -2585,27 +2585,27 @@ use sunrise_gameplay_common::{game_side, world_biomes};
 
             // A real turn nested in a fake must not receive the fake's cooldown.
             game.with_guest_swap(fake_id, game.dim, |game| {
-                assert!(game.side.lan_acting_fake);
-                game.side
+                assert!(game.server.lan_acting_fake);
+                game.server
                     .guest_cooldowns
                     .push(("minecraft:fake_outer".into(), 8));
-                game.side
+                game.server
                     .guest_player_sounds
                     .push(("fake_outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(real_id, |game| {
-                    assert!(!game.side.lan_acting_fake);
+                    assert!(!game.server.lan_acting_fake);
                     let before = game.stats.get("custom", "minecraft:jump");
                     game.award_stat("custom", "minecraft:jump", 1);
                     assert_eq!(game.stats.get("custom", "minecraft:jump"), before + 1);
-                    game.side
+                    game.server
                         .guest_cooldowns
                         .push(("minecraft:real_inner".into(), 9));
                 })
                 .unwrap();
-                assert!(game.side.lan_acting_fake);
-                assert_eq!(&*game.side.guest_cooldowns[0].0, "minecraft:fake_outer");
-                assert_eq!(game.side.guest_player_sounds[0].0, "fake_outer");
-                game.side.guest_player_sounds.clear();
+                assert!(game.server.lan_acting_fake);
+                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:fake_outer");
+                assert_eq!(game.server.guest_player_sounds[0].0, "fake_outer");
+                game.server.guest_player_sounds.clear();
             })
             .unwrap();
             let sunrise_sim::lan::Out::Packet(body) =
@@ -2644,27 +2644,27 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             second.placed = true;
             game.server.lan.as_mut().unwrap().hub.guests.push(second);
             game.with_guest_swap(real_id, game.dim, |game| {
-                game.side
+                game.server
                     .guest_cooldowns
                     .push(("minecraft:real_outer".into(), 10));
-                game.side
+                game.server
                     .guest_player_sounds
                     .push(("real_outer".into(), [0.0; 3], 1.0, 1.0));
                 game.as_guest(3, |game| {
-                    assert_eq!(game.side.lan_acting, Some(3));
+                    assert_eq!(game.server.lan_acting, Some(3));
                     assert!(
                         game.as_guest(real_id, |_| panic!("active guest re-entered"))
                             .is_none()
                     );
-                    assert_eq!(game.side.lan_acting, Some(3));
-                    game.side
+                    assert_eq!(game.server.lan_acting, Some(3));
+                    game.server
                         .guest_cooldowns
                         .push(("minecraft:real_second".into(), 11))
                 })
                 .unwrap();
-                assert_eq!(&*game.side.guest_cooldowns[0].0, "minecraft:real_outer");
-                assert_eq!(game.side.guest_player_sounds[0].0, "real_outer");
-                game.side.guest_player_sounds.clear();
+                assert_eq!(&*game.server.guest_cooldowns[0].0, "minecraft:real_outer");
+                assert_eq!(game.server.guest_player_sounds[0].0, "real_outer");
+                game.server.guest_player_sounds.clear();
             })
             .unwrap();
             for (receiver, expected) in [
@@ -3313,7 +3313,7 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             game.level_block_shape(level, state, [0, 64, 0], kind)
                 .unwrap()
         };
-        game.inventory[game.selected] = Some(sunrise_items::items::ItemStack {
+        game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack {
             item: "minecraft:light".into(),
             count: 1,
             damage: 0,

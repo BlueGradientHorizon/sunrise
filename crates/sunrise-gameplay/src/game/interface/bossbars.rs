@@ -29,8 +29,8 @@ pub(in crate::game) struct BossState {
 impl BossState {
     /// What a viewer was last sent for a bar: progress, color, overlay and
     /// the darken, music and fog flags.
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn sent_state(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn sent_state(
         &self,
         viewer: u128,
         bar: u128,

@@ -158,7 +158,7 @@ use super::*;
             check(game, "some removed");
             // A geyser's own write leaves the boxes as they were.
             game.mobs[3].velocity.y += 0.2;
-            game.server.pass_mobs.as_mut().unwrap().wrote(&game.mobs);
+            game.server.pass_mobs.as_mut().unwrap().wrote(&game.common.mobs);
             check(game, "a push");
         });
     }

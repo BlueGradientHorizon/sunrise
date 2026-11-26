@@ -19,7 +19,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
     );
     let settings = Settings::default();
-    let loaded = load_resources(
+    let loaded = crate::game::load_resources(
         sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
         Vec::new(),
         None,

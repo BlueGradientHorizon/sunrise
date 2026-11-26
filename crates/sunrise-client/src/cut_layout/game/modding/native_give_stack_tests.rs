@@ -1,5 +1,7 @@
 //! `player_give_stack` against a real LAN guest and `item_from_snbt` on the public host.
 
+#![cfg(test)]
+
 use sunrise_gameplay_common::game::tables::GameItems;
 use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
@@ -22,8 +24,7 @@ fn an_snbt_item_goes_through_the_api_unchanged() {
             r#"{id:"minecraft:potion",count:1,components:{"minecraft:potion_contents":{potion:"minecraft:strong_healing"}}}"#,
             r#"{id:"minecraft:written_book",count:1,components:{"minecraft:written_book_content":{title:{raw:"Log"},author:"guest13",pages:[{raw:"one"}]}}}"#,
         ] {
-            let engine = game
-                .item_from_snbt(snbt)
+            let engine = NativeGiveStackGameExt1::item_from_snbt(game, snbt)
                 .unwrap_or_else(|| panic!("{snbt}"));
             let api = api_item(game, snbt).unwrap();
             assert_eq!(
@@ -126,7 +127,7 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
         let b = game.players().server_players()[1];
         let rock = r#"{id:"minecraft:stone",count:10,components:{"minecraft:custom_name":"Rock"}}"#;
         let named = api_item(game, rock).unwrap();
-        let engine = game.item_from_snbt(rock).unwrap();
+        let engine = NativeGiveStackGameExt1::item_from_snbt(game, rock).unwrap();
         game.server
             .lan
             .as_mut()
@@ -200,4 +201,4 @@ fn a_dead_player_is_given_nothing() {
 }
 
 
-use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1 as _;
+use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1;

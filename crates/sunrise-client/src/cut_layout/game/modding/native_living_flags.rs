@@ -327,7 +327,7 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
     pub(crate) fn sync_guests(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         use sunrise_sim::lan::hub::TickCtx;
         let mut ctx = TickCtx {
-            world: &mut game.world,
+            world: &mut game.common.world,
             entities: &[],
             next_entity: &mut game.server.next_entity,
             spawn: [0.0, 64.0, 0.0],
@@ -340,8 +340,8 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
             tick_rate: 20.0,
             tick_frozen: false,
             tick_steps: Default::default(),
-            collision: Some(game.collision),
-            border: &game.border,
+            collision: Some(game.common.collision),
+            border: &game.common.border,
             streaming: None,
         };
         game.server
@@ -603,8 +603,8 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
                             let _ = packets(&outer_rx);
                             let _ = packets(&foreign_rx);
                             refuse(game);
-                            assert_eq!(game.side.lan_acting, Some(12));
-                            assert!(!game.side.lan_acting_fake);
+                            assert_eq!(game.server.lan_acting, Some(12));
+                            assert!(!game.server.lan_acting_fake);
                         })
                         .unwrap();
                     } else {
@@ -785,7 +785,7 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
                 let outer_pos = game.player.as_ref().unwrap().position;
                 assert!(game.living_set_sleeping_pos(outer, [7, 64, 7]));
                 game.as_guest(14, |game| {
-                    assert!(game.side.lan_acting_fake);
+                    assert!(game.server.lan_acting_fake);
                     assert_eq!(game.living_gliding_ticks(outer), None);
                     assert!(!game.living_stop_gliding(outer));
                     assert!(!game.living_clear_sleeping_pos(outer));
@@ -794,18 +794,18 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
                     assert!(!game.living_clear_sleeping_pos(fake));
                     assert!(!game.living_stop_sleeping(fake));
                     game.as_guest(13, |game| {
-                        assert!(!game.side.lan_acting_fake);
+                        assert!(!game.server.lan_acting_fake);
                         assert!(game.living_stop_gliding(inner));
                         assert!(game.living_start_sleeping(inner, [5, 64, 5]));
                     })
                     .unwrap();
-                    assert!(game.side.lan_acting_fake);
+                    assert!(game.server.lan_acting_fake);
                     assert_eq!(game.living_is_gliding(fake), Some(true));
                     assert_eq!(game.living_gliding_ticks(fake), Some(14));
                     assert!(game.living_stop_gliding(fake));
                 })
                 .unwrap();
-                assert!(!game.side.lan_acting_fake);
+                assert!(!game.server.lan_acting_fake);
                 assert_eq!(game.living_is_gliding(outer), Some(true));
                 assert_eq!(game.living_gliding_ticks(outer), Some(12));
                 assert_eq!(game.living_sleeping_pos(outer), Some([7, 64, 7]));
@@ -992,20 +992,27 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
     fn player_climbs(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: i32) -> (bool, Option<BlockPos>) {
         let mut player = PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5)).unwrap();
         player.entity_id = id;
-        let side = game_side!(game);
+        use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt as _;
+        let meta = game.side_game_side_meta();
+        let side = game_side!(
+            game.common,
+            meta,
+            game.common.level.enabled_features.as_arc(),
+            meta.2.then(|| game.common.res.items())
+        );
         let mut world = MotionWorld {
             side: &side,
             entities: &[],
             player: &mut player,
-            scene: &mut game.world,
-            assets: &game.pack.assets,
-            collision_binding: game.collision,
-            resources: game.motion,
-            health: &game.health_resources,
-            tag_items: Some(game.res.items()),
-            loop_context: &game.loop_context,
-            damage_hooks: &game.damage_hooks,
-            block_registries: Some(&game.ui.registries),
+            scene: &mut game.common.world,
+            assets: &game.common.pack.assets,
+            collision_binding: game.common.collision,
+            resources: game.common.motion,
+            health: &game.common.health_resources,
+            tag_items: Some(game.common.res.items()),
+            loop_context: &game.common.loop_context,
+            damage_hooks: &game.common.damage_hooks,
+            block_registries: Some(&game.common.ui.registries),
         };
         let climbing = world.climbable().unwrap();
         (climbing, player.last_climbable)

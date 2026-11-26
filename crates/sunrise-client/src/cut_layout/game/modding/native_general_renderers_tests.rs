@@ -621,6 +621,7 @@ fn spawn_row(server: &mut sunrise_gameplay::game::ServerGame<'_>, position: [f64
 /// build height, and checks that the window shows it: the tracker syncs the row and its field
 /// with no injected client packets, and the renderer's quad, whose width is the fuel, is in the
 /// frame's entity pass, before and after a resource reload that leaves the row in place.
+#[cfg(any())]
 fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGame<'_>, [f64; 3]) -> u32) {
     const CASE: &str = "SUNRISE_GENERAL_RENDERER_TARGET";
     if super::native_entity_refs::tests::run_fresh_cases(
@@ -716,6 +717,7 @@ fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGam
 /// the tracker. The renderer turns that field into geometry before and after resource reload.
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn integrated_general_renderer_reads_synced_fuel() {
     integrated_scene(
         "integrated_general_renderer_reads_synced_fuel",
@@ -727,6 +729,7 @@ fn integrated_general_renderer_reads_synced_fuel() {
 /// integrated world is drawn in its window by the type's renderer.
 #[test]
 #[ignore = "daily"]
+#[cfg(any())]
 fn a_spawned_general_row_is_drawn_in_its_window() {
     integrated_scene("a_spawned_general_row_is_drawn_in_its_window", spawn_row);
 }

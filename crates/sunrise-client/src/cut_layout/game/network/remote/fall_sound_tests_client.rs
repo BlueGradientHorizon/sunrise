@@ -15,7 +15,7 @@ pub(crate) fn heard_stone_fall(silent: bool) -> Vec<(f32, f32)> {
             game.client.remote.as_mut().unwrap().local_entity_silent = silent;
             game.client
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
             let stone = game
                 .pack
                 .assets

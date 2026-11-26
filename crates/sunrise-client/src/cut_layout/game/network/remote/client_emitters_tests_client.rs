@@ -1,4 +1,3 @@
-use sunrise_client_gameplay::game::client_side::remote_client::Game;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_level::particle_options::ParticleType::{self};
 
@@ -6,7 +5,7 @@ use sunrise_level::particle_options::ParticleType::{self};
 // draws. The expected sequence uses the 26.3 TrackingEmitter sampling contract
 // and independent feet/dimensions, never the packet handler's body lookup.
 pub(in crate::game) fn assert_bursts(
-    game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     random: &mut LegacyRandom,
     bodies: &[(ParticleType, [f64; 3], f32, f32)],
 ) {
@@ -29,7 +28,7 @@ pub(in crate::game) fn assert_bursts(
         }
     }
     let actual: Vec<_> = game
-        .side
+        .client
         .particles
         .0
         .requested
@@ -42,10 +41,10 @@ pub(in crate::game) fn assert_bursts(
 }
 
 pub(in crate::game) fn capture_requests(
-    game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> LegacyRandom {
     const SEED: i64 = 719;
-    game.side.particles.0.seed_randoms(SEED, 11, 12);
-    game.side.particles.0.requested = Some(Vec::new());
+    game.client.particles.0.seed_randoms(SEED, 11, 12);
+    game.client.particles.0.requested = Some(Vec::new());
     LegacyRandom::new(SEED)
 }

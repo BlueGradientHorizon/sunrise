@@ -81,7 +81,7 @@ fn button_xs(content_x: f32) -> [f32; 3] {
     [start, start + BUTTON, start + 2.0 * BUTTON]
 }
 /// The footer buttons' left edges and their row's top.
-fn footer(w: f32, h: f32) -> ([f32; 4], f32) {
+pub fn footer(w: f32, h: f32) -> ([f32; 4], f32) {
     let total: f32 = FOOTER_BUTTONS.iter().sum::<f32>() + 3.0 * 4.0;
     let mut x = ((w - total) / 2.0).floor();
     let mut xs = [0.0; 4];

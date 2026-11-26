@@ -15,7 +15,7 @@ fn light(game: &mut sunrise_gameplay::game::ServerGame<'_>, around: i32) {
         for z in around - 2..=around + 2 {
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(x, z));
+                .insert_remote(&mut game.common.world, Chunk::empty(x, z));
         }
     }
 }
@@ -244,7 +244,7 @@ fn a_command_arrival_holds_movement_until_lit_then_ticks_damage_again() {
         for z in chunk - 1..=chunk + 1 {
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(x, z));
+                .insert_remote(&mut game.common.world, Chunk::empty(x, z));
         }
     }
     // Exercise the queued command arrival without opening a second saved level.
@@ -384,7 +384,7 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
                 for z in chunk - 1..=chunk + 1 {
                     game.server
                         .streaming
-                        .insert_remote(&mut game.world, Chunk::empty(x, z));
+                        .insert_remote(&mut game.common.world, Chunk::empty(x, z));
                 }
             }
             game.guest_respawn(CONN);
@@ -524,7 +524,7 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
             for z in -3..=5 {
                 game.server
                     .streaming
-                    .insert_remote(&mut game.world, Chunk::empty(x, z));
+                    .insert_remote(&mut game.common.world, Chunk::empty(x, z));
             }
         }
         game.tick_server_travel();

@@ -53,7 +53,8 @@ use super::*;
                     .1
                     .is_none()
             );
-            game.inventory[game.selected] = Some(stick);
+            let selected = game.selected;
+            game.inventory[selected] = Some(stick);
             assert!(game.use_steering_stick("minecraft:carrot_on_a_stick"));
             let rod = game.inventory[game.selected].as_ref().unwrap();
             assert_eq!(&*rod.item, "minecraft:fishing_rod");
@@ -134,7 +135,8 @@ use super::*;
             ("minecraft:mule", "minecraft:entity.mule.chest"),
         ] {
             mount(&mut game, kind, 5, [2.5, 64.0, 2.5], 7);
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:chest", 1));
+            let selected = game.selected;
+            game.inventory[selected] = Some(ItemStack::new("minecraft:chest", 1));
             game.start_audio_capture();
             sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
                 .with(|events| *events.borrow_mut() = Some(Vec::new()));

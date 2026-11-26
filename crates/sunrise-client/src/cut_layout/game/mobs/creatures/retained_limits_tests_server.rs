@@ -80,7 +80,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
                         })
                         .unwrap();
                 }
-                let kind = game
+                let kind = game.common
                     .res
                     .mob_types()
                     .get("minecraft:zombie")
@@ -90,7 +90,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
                 mob.ground.on_ground = true;
                 mob.ai.speed = 0.2;
                 mob.ai.target = Some(Who::Player);
-                game.mobs.push(mob);
+                game.common.mobs.push(mob);
                 // Who::Player names the selected player, so bind it to the nearby guest.
                 host.mob_players.insert(ZOMBIE, TARGET_GUEST);
 

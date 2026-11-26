@@ -247,9 +247,9 @@ impl crate::game::ServerGame<'_> {
             datapack_registries,
         })
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[inline(always)]
-    pub(in crate::game) fn resolve_block_paths(&self) {
+    pub fn resolve_block_paths(&self) {
         self.server_resolve_block_paths();
     }
     #[inline(always)]

@@ -83,7 +83,7 @@ fn caster(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.player =
         Some(PlayerMotion::new(game.motion, Vec3::new(FEET[0], FEET[1], FEET[2])).unwrap());
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
+    game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
     game.server.lan_acting_uuid = Some(7);
     game.server.lan_acting_entity = Some(20);
     let loot = sunrise_world::loot::LootData::load(

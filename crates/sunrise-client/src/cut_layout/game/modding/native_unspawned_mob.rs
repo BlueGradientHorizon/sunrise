@@ -1,14 +1,13 @@
 
 
 #![cfg(test)]
-use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
 
 use mod_api::{AgeableGroup, EquipmentSlot, Identifier, SpawnGroup, UnspawnedMobError, UnspawnedMobRef};
 
-use sunrise_gameplay_common::game::server_side::native_unspawned_mob::{KeptGoalMod, pumpkin};
+use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::{KeptGoalMod, pumpkin};
 
 use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
 
@@ -56,7 +55,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
         type Seen = (
             Result<Identifier, UnspawnedMobError>,
             Result<f64, UnspawnedMobError>,
-            Result<Option<ItemStack>, UnspawnedMobError>,
+            Result<Option<mod_api::ItemStack>, UnspawnedMobError>,
         );
         let seen: Arc<Mutex<Option<Seen>>> = Arc::new(Mutex::new(None));
         let saw = seen.clone();
@@ -284,7 +283,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
                 }));
                 assert!(panicked.is_err());
                 assert!(
-                    game.server.lent_mobs.0.borrow().lends.is_empty(),
+                    game.server.lent_mobs.0.borrow().is_empty(),
                     "the lend is withdrawn"
                 );
                 let kept = kept.expect("the call ran");

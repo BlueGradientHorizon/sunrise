@@ -26,7 +26,7 @@ mod tests {
             let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
             sword.damage = 1000;
             sword.enchant("minecraft:mending", 1);
-            game.inventory[game.selected] = Some(sword);
+            game.common.inventory[game.common.selected] = Some(sword);
             assert!(game.player_give_experience_points(player, 10));
             let sword = game.inventory[game.selected].as_ref().unwrap();
             assert!(
@@ -34,7 +34,7 @@ mod tests {
                 "Mending repaired the item before any point became experience"
             );
             assert_eq!(game.experience.total, 0);
-            game.inventory[game.selected] = None;
+            game.common.inventory[game.common.selected] = None;
             assert!(game.player_give_experience_points(player, 10));
             assert_eq!(game.experience.total, 10);
         });
@@ -89,7 +89,7 @@ mod tests {
             let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
             sword.damage = 1000;
             sword.enchant("minecraft:mending", 1);
-            game.inventory[game.selected] = Some(sword);
+            game.common.inventory[game.common.selected] = Some(sword);
             assert!(!game.player_give_experience_points(player, i32::MAX as u32 + 1));
             let sword = game.inventory[game.selected].as_ref().unwrap();
             assert_eq!(sword.damage, 1000, "a refused give repairs nothing");

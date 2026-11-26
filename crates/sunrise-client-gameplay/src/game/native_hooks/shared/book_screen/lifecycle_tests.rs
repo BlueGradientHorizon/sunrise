@@ -2,8 +2,8 @@ use super::*;
 use std::sync::{Mutex, OnceLock};
 use sunrise_sim::recipe_book::{settings_codec, settings_sync::Message};
 
-pub(in crate::game) static KEY: OnceLock<mod_api::RecipeBookTypeKey> = OnceLock::new();
-pub(in crate::game) struct BookMod;
+pub static KEY: OnceLock<mod_api::RecipeBookTypeKey> = OnceLock::new();
+pub struct BookMod;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for BookMod {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -29,15 +29,15 @@ impl mod_api::Hooks for BookMod {
         });
     }
 }
-pub(in crate::game) fn receive(game: &mut crate::game::ClientGame<'_>, message: Message) {
+pub fn receive(game: &mut crate::game::ClientGame<'_>, message: Message) {
     game.remote_book_settings(&settings_codec::encode(&message).unwrap());
 }
-pub(in crate::game) type BoundLayoutEdit = fn(&mut mod_api::MenuScreenLayout);
+pub type BoundLayoutEdit = fn(&mut mod_api::MenuScreenLayout);
 
 #[derive(Default)]
-pub(in crate::game) struct BoundBookMod {
-    pub(in crate::game) edit: Arc<Mutex<Option<BoundLayoutEdit>>>,
-    pub(in crate::game) no_factory: bool,
+pub struct BoundBookMod {
+    pub edit: Arc<Mutex<Option<BoundLayoutEdit>>>,
+    pub no_factory: bool,
 }
 
 pub(in crate::game) struct BoundBookScreen {
@@ -110,7 +110,7 @@ impl mod_api::MenuScreenFactory for BoundBookScreen {
         Some(mod_api::MenuScreen::new(layout))
     }
 }
-pub(in crate::game) fn with_bound_menu_type(test: impl FnOnce()) {
+pub fn with_bound_menu_type(test: impl FnOnce()) {
     sunrise_level::containers::with_mod_menu_types(
         [(
             "bound:menu".into(),
@@ -128,9 +128,9 @@ pub(in crate::game) fn with_bound_menu_type(test: impl FnOnce()) {
     );
 }
 
-pub(in crate::game) const STONE: &str = "minecraft:stone";
-pub(in crate::game) const MENU: &str = "minecraft:generic_9x1";
-pub(in crate::game) fn geometry(
+pub const STONE: &str = "minecraft:stone";
+pub const MENU: &str = "minecraft:generic_9x1";
+pub fn geometry(
     game: &crate::game::ClientGame<'_>,
 ) -> ((f32, f32), Vec<(usize, [f32; 4])>) {
     let batch =
@@ -139,8 +139,8 @@ pub(in crate::game) fn geometry(
     (layout.origin, layout.slots.clone())
 }
 
-pub(in crate::game) const REOPENED_MENU: &str = "reopened:menu";
-pub(in crate::game) type ScreenTrace = Arc<Mutex<Vec<(&'static str, i32, i32)>>>;
+pub const REOPENED_MENU: &str = "reopened:menu";
+pub type ScreenTrace = Arc<Mutex<Vec<(&'static str, i32, i32)>>>;
 
 pub(in crate::game) struct OpeningProbe {
     pub(in crate::game) trace: ScreenTrace,
@@ -161,7 +161,7 @@ impl Drop for OpeningProbe {
     }
 }
 
-pub(in crate::game) struct ReopenedMod(pub(in crate::game) ScreenTrace);
+pub struct ReopenedMod(pub ScreenTrace);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ReopenedMod {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {

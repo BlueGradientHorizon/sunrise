@@ -317,8 +317,8 @@ fn log_unreportable(menu: &SlotChangedMenu, refusal: &UnreportableSlot) {
 
 /// What the block-backed fast path costs, counted on the production path for the dailies: the
 /// container snapshots taken and the menu contexts built for `menu_slot_changed`.
-#[cfg(test)]
-pub(in crate::game) mod probe {
+#[cfg(any(test, feature = "test-support"))]
+pub mod probe {
     use std::cell::Cell;
 
     thread_local! {
@@ -335,7 +335,7 @@ pub(in crate::game) mod probe {
     }
 
     /// `(snapshots, contexts)` since the last call, which starts the count again.
-    pub(in crate::game::server_side) fn take() -> (usize, usize) {
+    pub fn take() -> (usize, usize) {
         (SNAPSHOTS.replace(0), CONTEXTS.replace(0))
     }
 }
@@ -390,7 +390,7 @@ impl crate::game::ServerGame<'_> {
         items: &[Option<ItemStack>],
         live: Option<&Menu>,
     ) -> Result<SlotChangedSnapshot, UnreportableSlot> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         probe::context();
         if let Some(live) = live {
             return context_from_menu(live, menu.uuid, menu.pos());
@@ -828,7 +828,7 @@ impl crate::game::ServerGame<'_> {
         let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get(&pos) else {
             return;
         };
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         probe::snapshot();
         let after = resized_items(&entity.items, rep.layout.slots);
         let before = match &rep.seen {

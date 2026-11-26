@@ -17,6 +17,6 @@ pub(crate) fn connect(
     game.client.screen = Screen::Playing;
     game.client
         .streaming
-        .insert_remote(&mut game.world, sunrise_level::chunk::Chunk::empty(0, 0));
+        .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
     server
 }

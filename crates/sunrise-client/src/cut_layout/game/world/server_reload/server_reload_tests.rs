@@ -1367,7 +1367,7 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
         #[cfg(feature = "client")]
         crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
             assert_eq!(
-                client.data_map_value("minecraft:item", "minecraft:coal", "probe:fuel"),
+                sunrise_gameplay_common::game::tables::WorldTablesExt::data_map_value(client, "minecraft:item", "minecraft:coal", "probe:fuel"),
                 Err(DataMapError::Unavailable)
             );
         });

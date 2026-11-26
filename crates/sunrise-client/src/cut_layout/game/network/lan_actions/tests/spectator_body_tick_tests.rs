@@ -234,7 +234,7 @@ fn guest_body_projects_spectator_flags_on_init_and_hub_mode_change() {
                 let p = g.player.as_ref().unwrap();
                 assert!(!p.spectator && !p.local_spectator);
             });
-            let world = &game.world;
+            let world = &game.common.world;
             let collision = game.collision;
             game.server
                 .lan
@@ -246,7 +246,7 @@ fn guest_body_projects_spectator_flags_on_init_and_hub_mode_change() {
                 let p = g.player.as_ref().unwrap();
                 assert!(p.spectator && p.local_spectator);
             });
-            let world = &game.world;
+            let world = &game.common.world;
             let collision = game.collision;
             game.server
                 .lan

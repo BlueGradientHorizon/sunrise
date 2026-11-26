@@ -83,39 +83,39 @@ impl ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
-    pub(in crate::game) fn test_save_root(&self) -> std::path::PathBuf {
+    pub fn test_save_root(&self) -> std::path::PathBuf {
         self.server.save.0.root.clone()
     }
 
-    pub(in crate::game) fn test_acquire_session_lock(&mut self, root: &std::path::Path) {
+    pub fn test_acquire_session_lock(&mut self, root: &std::path::Path) {
         self.server.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(root).unwrap());
     }
 
-    pub(in crate::game) fn test_clear_session_lock(&mut self) {
+    pub fn test_clear_session_lock(&mut self) {
         self.server.session_lock.0 = None;
     }
 
-    pub(in crate::game) fn test_set_world_recipes(
+    pub fn test_set_world_recipes(
         &mut self,
         recipes: sunrise_sim::crafting::Recipes,
     ) {
         self.server.world_tables.0.as_mut().unwrap().recipes = recipes;
     }
 
-    pub(in crate::game) fn test_update_tickets(
+    pub fn test_update_tickets(
         &mut self,
         sources: Option<sunrise_sim::ticket_levels::Sources>,
     ) {
         self.server.tickets.0.update(sources);
     }
 
-    pub(in crate::game) fn test_block_ticking(&self, cx: i32, cz: i32) -> bool {
+    pub fn test_block_ticking(&self, cx: i32, cz: i32) -> bool {
         self.server.tickets.0.levels().block_ticking(cx, cz)
     }
 
-    pub(in crate::game) fn test_last_other_id(&self) -> u32 {
+    pub fn test_last_other_id(&self) -> u32 {
         self.server.others.0.last().unwrap().id
     }
 }

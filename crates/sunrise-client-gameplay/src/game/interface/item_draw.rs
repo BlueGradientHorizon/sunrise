@@ -412,12 +412,12 @@ impl SpecialHost for Host<'_> {
 /// `stack`, `display` and `seed` are what the parity test compares with vanilla's renderers;
 /// drawing reads only the resolved `state`.
 pub struct BlockItemDraw<'a> {
-    #[cfg(test)]
-    pub(in crate::game) stack: &'a ItemStack,
-    #[cfg(test)]
-    pub(in crate::game) display: DisplayContext,
-    #[cfg(test)]
-    pub(in crate::game) seed: i32,
+    #[cfg(any(test, feature = "test-support"))]
+    pub stack: &'a ItemStack,
+    #[cfg(any(test, feature = "test-support"))]
+    pub display: DisplayContext,
+    #[cfg(any(test, feature = "test-support"))]
+    pub seed: i32,
     pub(in crate::game) state: &'a ItemRenderState,
     pub pose: glam::Mat4,
     pub light: u32,

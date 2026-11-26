@@ -1,14 +1,18 @@
 
 
 #![cfg(test)]
-use sunrise_gameplay_common::game::server_side::native_item_places::Bin;
 
 #[cfg(test)]
 pub(crate) mod tests {
+use sunrise_gameplay_common::game::server_side::native_item_places::tests::Bin;
+use mod_api::HostTransaction as _;
+use sunrise_gameplay_common::game::{
+    native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+    native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _,
+    native_server::NativeServerGameExt1 as _,
+    tables::GameItems as _,
+};
 
-use mod_vocab::HostTransaction;
-use mod_vocab::HostTransaction;
-use mod_vocab::HostTransaction;
 use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::in_own_process;
@@ -2267,7 +2271,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
 #[test]
     #[ignore = "daily"]
     fn crafted_by_map_reservations_follow_nested_commit_and_abort() {
-        use sunrise_gameplay::game::server_side::native_item_places::Menu;
+        use sunrise_sim::menu::Menu;
         use {sunrise_gameplay_common::game::maps::MapData, sunrise_gameplay_common::game::maps::map_id};
         use sunrise_core::nbt::Tag;
         use sunrise_sim::save::read_dat;

@@ -281,8 +281,8 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The history the level keeps of its colliders, if it has any.
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn level_collider_history(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn level_collider_history(
         &self,
     ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_world::moving_colliders::History>>> {
         self.server.collider_histories.0.get(&self.common.dim).cloned()

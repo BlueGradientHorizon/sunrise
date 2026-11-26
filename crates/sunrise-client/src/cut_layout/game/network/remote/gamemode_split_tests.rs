@@ -1,7 +1,7 @@
 //! Parity tests for Minecraft 26.3 client local-game-mode vs `PlayerInfo` split (Item 3).
 //! Witness recorded into `.local` by `tools/test_gamemode_split_parity.py` (`VanillaClientGameModeSplitOracle`, JDK 25).
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{C, Chunk, Empty, ItemStack, Path, S, Screen, Tag, Vec3, abilities, inventory, motion, movement, passengers, play, status, tick}};
-use sunrise_gameplay::game::game_mode::mode_from_id;
+use sunrise_gameplay_common::game_modes::mode_from_id;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use serde_json::Value as JsonValue;
 use sunrise_command::args::GameMode;
@@ -129,7 +129,7 @@ pub(crate) fn player_info_mode(uuid: u128, game_mode: i32) -> C {
 pub(crate) fn install_stone_floor(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
     game.client
         .streaming
-        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+        .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
     let stone = game
         .pack
         .assets
@@ -895,7 +895,7 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 for (cx, cz) in [(-1, -1), (-1, 0), (0, -1)] {
                     game.client
                         .streaming
-                        .insert_remote(&mut game.world, Chunk::empty(cx, cz));
+                        .insert_remote(&mut game.common.world, Chunk::empty(cx, cz));
                 }
                 game.client.remote.as_mut().unwrap().camera = Some(99);
                 assert_eq!(

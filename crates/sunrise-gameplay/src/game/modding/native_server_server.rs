@@ -1056,7 +1056,7 @@ impl crate::game::ServerGame<'_> {
         }) && changed
     }
 
-    pub(in crate::game) fn player_drop_stack(
+    pub fn player_drop_stack(
         &mut self,
         player: PlayerRef,
         stack: ItemStack,

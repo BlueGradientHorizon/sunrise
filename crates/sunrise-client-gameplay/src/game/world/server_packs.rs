@@ -121,7 +121,7 @@ impl ServerPackState {
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
-struct PackNotifier {
+pub struct PackNotifier {
     progress: Receiver<download::Progress>,
     total: usize,
     /// `count`: the requests started.
@@ -138,7 +138,7 @@ struct PackNotifier {
     toast_cancelled: bool,
 }
 impl PackNotifier {
-    fn new(progress: Receiver<download::Progress>, total: usize, id: usize) -> Self {
+    pub fn new(progress: Receiver<download::Progress>, total: usize, id: usize) -> Self {
         Self {
             progress,
             total,
@@ -153,7 +153,7 @@ impl PackNotifier {
     }
     /// Update once for the accumulated events. Returns whether to keep polling
     /// the channel and whether a successful download should hide its toast.
-    fn poll(&mut self, update: impl FnOnce(SystemToast) -> bool) -> (bool, bool) {
+    pub fn poll(&mut self, update: impl FnOnce(SystemToast) -> bool) -> (bool, bool) {
         let (mut changed, mut hide) = (false, false);
         let ended = loop {
             let event = match self.progress.try_recv() {
@@ -190,7 +190,7 @@ impl PackNotifier {
         (!ended, hide)
     }
     /// The toast's title and message.
-    fn text(&self) -> (Text, Option<Text>) {
+    pub fn text(&self) -> (Text, Option<Text>) {
         if self.done && self.failed > 0 {
             let failed = Text::tr("download.pack.failed", &[&self.failed, &self.total]);
             return (failed, None);

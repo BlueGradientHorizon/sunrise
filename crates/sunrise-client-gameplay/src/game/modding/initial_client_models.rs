@@ -3,15 +3,15 @@ use super::{PackResources, Renderer, UiResources, client_reload};
 use std::sync::Arc;
 use sunrise_client::gfx::PreparedModels;
 
-pub(in crate::game) struct InitialModelGeneration {
+pub struct InitialModelGeneration {
     pub(in crate::game) pack: PackResources,
-    pub(in crate::game) client_pack:
+    pub client_pack:
         crate::game::client_side::resource_tables_client::ClientPackResources,
     pub(in crate::game) gui: UiResources,
 }
 
-pub(in crate::game) struct PendingClientStart {
-    pub(in crate::game) models: InitialModelGeneration,
+pub struct PendingClientStart {
+    pub models: InitialModelGeneration,
     pub(in crate::game) applies: Vec<client_reload::PreparedClientReload>,
     pub(in crate::game) pack_error: Option<String>,
     pub(in crate::game) handoff: bool,
@@ -90,8 +90,8 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Fixtures with an already constructed Game drive the same application path.
-    #[cfg(test)]
-    pub(in crate::game) fn publish_initial_client_models(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn publish_initial_client_models(
         &mut self,
         client_applies: Vec<client_reload::PreparedClientReload>,
     ) -> sunrise_game_data::Result<()> {

@@ -255,7 +255,7 @@ pub(in crate::game) enum CrystalDamage {
 }
 /// What `EnderDragon.hurt` made of a hit.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::game) enum Hurt {
+pub enum Hurt {
     /// It returned true; `full` when it was a new hit, not just the excess
     /// over the last one (the hurt sound and animation).
     Landed { full: bool },
@@ -267,11 +267,11 @@ pub(in crate::game) enum Hurt {
 }
 /// The dragon's body among its parts (head, neck, body, ...).
 pub(in crate::game) const BODY: usize = 2;
-pub(in crate::game) struct DragonHitOrigin<'a> {
-    pub(in crate::game) direct: Option<&'a ProjectileKind>,
-    pub(in crate::game) entity_id: Option<i32>,
-    pub(in crate::game) from: Option<Vec3>,
-    pub(in crate::game) invulnerability_checked: bool,
+pub struct DragonHitOrigin<'a> {
+    pub direct: Option<&'a ProjectileKind>,
+    pub entity_id: Option<i32>,
+    pub from: Option<Vec3>,
+    pub invulnerability_checked: bool,
 }
 /// A direct `AbstractArrow` or `WindCharge`, which a perched dragon shrugs off
 /// (`AbstractDragonSittingPhase.onHurt`); a breeze's `BreezeWindCharge` is neither.

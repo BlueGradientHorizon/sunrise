@@ -3,9 +3,10 @@
 //! state's light, an answer above 15 is stored as 15, a bulk replacement and a reload of the
 //! chunk keep or ask again as the cells' states say, and `check_light` and a server's light
 //! update ask again.
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::LevelDimension};
+use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::SideGame, sunrise_gameplay_common::game::LevelDimension};
 use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::*;
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU8, Ordering},
@@ -148,7 +149,7 @@ fn prepare_lights_root() -> (std::path::PathBuf, Depth, Arc<AtomicU8>) {
     (root, depth, proxy_calls)
 }
 
-fn init_lights_world<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>) -> States {
+fn init_lights_world<'g, G: SideGame<'g>>(game: &mut G) -> States {
     let registry = &game.pack.assets.registry;
     let states = States {
         lamp: registry.default_state(LAMP).unwrap(),
@@ -259,16 +260,14 @@ fn light_query_uses_the_supplied_state_and_its_declared_default() {
     );
 }
 
-fn assert_live_answers<S: sunrise_gameplay_common::game::Side>(
-    game: &mut Game<'_, S>,
+fn assert_live_answers<'g, G: SideGame<'g> + Host>(
+    game: &mut G,
     level: LevelRef,
     depth: &Depth,
     expected_dimension: &str,
-    before_query: impl FnOnce(&mut Game<'_, S>),
-    after_query: impl FnOnce(&mut Game<'_, S>),
-) where
-    for<'g> Game<'g, S>: Host,
-{
+    before_query: impl FnOnce(&mut G),
+    after_query: impl FnOnce(&mut G),
+) {
     let fixed = game.pack.assets.registry.default_state(FIXED).unwrap();
     let pos = [1, 70, 2];
     game.world
@@ -372,7 +371,7 @@ fn light_providers_can_delegate_but_an_active_cycle_refuses() {
 }
 
 /// The stored answer of the cell at (1, y, 2) of chunk (0, 0).
-fn answer<S>(game: &Game<'_, S>, y: i32) -> Option<u8> {
+fn answer(game: &sunrise_gameplay_common::game::CommonGame<'_>, y: i32) -> Option<u8> {
     let chunk = game.world.chunks.get(&(0, 0)).unwrap();
     let cell = chunk.dynamic_cell(1, y, 2).unwrap();
     chunk.dynamic_emission.get(&cell).copied()

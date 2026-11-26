@@ -17,10 +17,10 @@ pub(in crate::game) struct ResidentGeneralRow<'a> {
     pub(in crate::game) kind: &'a str,
 }
 
-pub(in crate::game) struct GeneralTickAccess<'g, 'w, 'k> {
-    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
-    pub(in crate::game) subject: EntityRef,
-    pub(in crate::game) kind: &'k str,
+pub struct GeneralTickAccess<'g, 'w, 'k> {
+    pub game: &'g mut crate::game::ServerGame<'w>,
+    pub subject: EntityRef,
+    pub kind: &'k str,
 }
 
 /// The authoritative tick of one general entity row of type `kind`

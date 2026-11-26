@@ -54,15 +54,15 @@ pub fn offers() -> ([Offer; 1], [Offer; 1]) {
             [(0, ItemStack::new("minecraft:emerald", 5))],
         )
     }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 /// A mod's `ENTITY_AUTOMATION` handler: one slot of up to 64 items, with the sides it was
     /// asked for.
     #[derive(Clone, Default)]
-    pub(in crate::game) struct Bin {
-        pub(in crate::game) held: Arc<std::sync::Mutex<Option<(String, u32)>>>,
-        pub(in crate::game) sides: Arc<std::sync::Mutex<Vec<Option<Direction>>>>,
+    pub struct Bin {
+        pub held: Arc<std::sync::Mutex<Option<(String, u32)>>>,
+        pub sides: Arc<std::sync::Mutex<Vec<Option<Direction>>>>,
     }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl mod_api::ResourceHandler<ItemResource> for Bin {
         fn size(&self, _: &mut dyn ServerHost) -> usize {
             1

@@ -36,10 +36,10 @@ pub struct Script {
 thread_local! {
     pub(in crate::game) static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     /// What the listener saw each time: the cursor's and the clicked slot's counts.
-    pub(in crate::game) static SEEN: RefCell<Vec<(u32, u32)>> = const { RefCell::new(Vec::new()) };
-    pub(in crate::game) static PLAYER: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    pub static SEEN: RefCell<Vec<(u32, u32)>> = const { RefCell::new(Vec::new()) };
+    pub static PLAYER: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
     /// How often the menu type's `menu_slot_rules` part was asked.
-    pub(in crate::game) static ASKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub static ASKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 pub(in crate::game) struct Rules;
@@ -1481,7 +1481,7 @@ pub mod item_part_tests {
         mod_platform::testing::with_mods(mods, test);
     }
 
-    pub struct GlobalAndPartMod(pub(in crate::game) bool);
+    pub struct GlobalAndPartMod(pub bool);
     #[mod_api::__subscriptions]
     impl Hooks for GlobalAndPartMod {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {

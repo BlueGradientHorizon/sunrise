@@ -3,14 +3,14 @@
 #![cfg(test)]
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::Dim;
-use sunrise_sim::lan::Out;
+use sunrise_gameplay::game::game_tests::Out;
 use sunrise_world::worldgen::structure::Rotation;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use mod_api::GameTests;
-    use sunrise_gameplay::game::game_tests::{Grid, verify_batches};
-    use sunrise_gameplay::game::test_instances::TestDef;
+    use sunrise_gameplay::game::game_tests::{Action, DimGrid, GameTests, Grid, Info, report_of, retry_line, verify_batches};
+    use sunrise_gameplay::game::server_side::test_instances::TestDef;
+    use sunrise_gameplay::game::server_side::test_instances::TestDefSample as _;
     use sunrise_gameplay::game_tests::{Retry, TestError};
 
     pub use sunrise_gameplay::game::game_tests::tests::server_game;
@@ -322,7 +322,8 @@ mod added_test_summary_context_tests;
 mod registered_game_test_tests {
     use super::*;
     use mod_api::{GameTestContext, GameTestFunction, GameTestResult, GameTests};
-    use sunrise_gameplay::game::test_instances::TestDef;
+    use sunrise_gameplay::game::game_tests::{Info, Runner, Tracked};
+    use sunrise_gameplay::game::server_side::test_instances::TestDef;
     use sunrise_gameplay::game_tests::TestError;
     use std::sync::Arc;
 

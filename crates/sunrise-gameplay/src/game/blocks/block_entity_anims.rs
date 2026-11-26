@@ -760,7 +760,6 @@ pub mod conduit_target_tests {
         id
     }
 
-    #[cfg(feature = "client")]
     pub fn attack_conduit_for_test(
         game: &mut crate::game::ServerGame<'_>,
         pos: [i32; 3],

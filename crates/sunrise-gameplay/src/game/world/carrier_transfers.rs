@@ -31,7 +31,7 @@ use sunrise_world::level::data::state_flags::REPLACEABLE;
 /// Why a transfer refused. Refusals leave no partial transfer.
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug)]
-pub(crate) enum TransferError {
+pub enum TransferError {
     /// A cell's chunk is not loaded and ticking.
     CellNotLoaded([i32; 3]),
     /// More cells than the carrier model allows (4,096).

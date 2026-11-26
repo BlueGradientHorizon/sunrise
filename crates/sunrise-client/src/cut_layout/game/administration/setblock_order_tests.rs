@@ -126,7 +126,7 @@ fn editing_a_command_block_marks_its_chunk() {
     if let Some(log) = game.world.block_log.as_mut() {
         log.clear();
     }
-    game.apply_command_block(&sunrise_client_gameplay::game::command_blocks::CommandBlockEdit {
+    game.apply_command_block(&sunrise_gameplay_common::command_blocks::CommandBlockEdit {
         pos: (5, 100, 2),
         command: "say hi".into(),
         track_output: false,

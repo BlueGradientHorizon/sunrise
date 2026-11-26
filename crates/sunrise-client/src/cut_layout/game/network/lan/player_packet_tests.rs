@@ -133,7 +133,7 @@ fn credits(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Str
     game.enter_level(Dim::End).unwrap();
     game.server
         .streaming
-        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+        .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
     assert!(
         game.set_state_named([0, 100, 0], "minecraft:end_portal", &[])
             .unwrap()
@@ -704,7 +704,7 @@ fn crystal_round_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &
     let key = (1, 0);
     game.server
         .streaming
-        .insert_remote(&mut game.world, Chunk::empty(key.0, key.1));
+        .insert_remote(&mut game.common.world, Chunk::empty(key.0, key.1));
     let tag = nbt::parse_snbt(
         r#"{id:"minecraft:end_crystal",UUID:[I;0,0,0,130],Pos:[18.5d,100d,0.5d],Rotation:[-132.25f,31.5f],Invulnerable:1b,beam_target:[I;0,128,0],Fire:120s,data:{marker:42}}"#,
     ).unwrap().0;
@@ -832,7 +832,7 @@ fn run_witness() {
             .unwrap();
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
             let rx = join(game, VIEWER, true);
             let mut rows = Map::new();
             credits(game, &mut rows);

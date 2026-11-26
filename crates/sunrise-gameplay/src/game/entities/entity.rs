@@ -24,7 +24,7 @@ pub(in crate::game) use super::pick_entity_server::visit_server_section_members;
 
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
-pub(in crate::game::server_side) fn assign_stored_id(
+pub fn assign_stored_id(
     next: &mut u32,
     id: &mut u32,
     lifetime: Option<&sunrise_mod_runtime::attachments::AttachmentLifetime>,
@@ -594,19 +594,19 @@ macro_rules! define_server_entity_handles {
 
         /// Every list moved out of `Game`, for [`for_each_entity_mut`]: the
         /// world stays readable while the entities change.
-        pub(in crate::game) struct TakenEntities {
+        pub struct TakenEntities {
             $(pub(in crate::game) $field: sunrise_sim::join_seq::JoinList<$ty, { sunrise_gameplay_common::game::entity::direct_entity_edit!($kind) }>,)*
         }
 
 
         impl $crate::game::ServerGame<'_> {
             /// Moves every list out; give it back with `restore_entities`.
-            pub(in crate::game::server_side) fn take_entities(&mut self) -> TakenEntities {
+            pub fn take_entities(&mut self) -> TakenEntities {
                 TakenEntities {
                     $($field: self.common$(.$list)+.lift(),)*
                 }
             }
-            pub(in crate::game::server_side) fn restore_entities(&mut self, taken: TakenEntities) {
+            pub fn restore_entities(&mut self, taken: TakenEntities) {
                 $({
                     let expected = self.common$(.$list)+.len() + taken.$field.len();
                     self.common$(.$list)+.restore(taken.$field, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);

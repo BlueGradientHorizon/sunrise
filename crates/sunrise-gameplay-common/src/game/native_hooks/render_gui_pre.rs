@@ -1,6 +1,6 @@
 use super::*;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod local_sound_tests {
     use mod_api::{ClientHost, Flow, Hooks, RenderGuiPreEvent, SoundPlay};
 

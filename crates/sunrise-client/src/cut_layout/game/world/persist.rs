@@ -1069,7 +1069,7 @@ mod attribute_instance_save_tests {
             // Before any tick, without the load's compound.
             for (kind, n) in [("pig", 1), ("allay", 2)] {
                 let i = mob(game, n);
-                game.persist.raw.remove(&game.mobs[i].id);
+                game.common.persist.raw.remove(&game.common.mobs[i].id);
                 if !saved_ids(game, i).is_empty() {
                     failures.push(format!("{kind} before a tick: {:?}", saved_ids(game, i)));
                 }
@@ -1077,7 +1077,7 @@ mod attribute_instance_save_tests {
             game.tick_world(true).unwrap();
             for (kind, n) in [("pig", 1), ("allay", 2)] {
                 let i = mob(game, n);
-                game.persist.raw.remove(&game.mobs[i].id);
+                game.common.persist.raw.remove(&game.common.mobs[i].id);
                 if saved_ids(game, i) != speed() {
                     failures.push(format!("{kind} after a tick: {:?}", saved_ids(game, i)));
                 }
@@ -1355,7 +1355,7 @@ mod mob_inventory_merge_tests {
                     )));
                     let i = mob(game, n);
                     // No raw echo: the load's compound is gone, only the model is left.
-                    game.persist.raw.remove(&game.mobs[i].id);
+                    game.common.persist.raw.remove(&game.common.mobs[i].id);
                     if &live(game, i) != want {
                         failures.push(format!("{kind} {name}: live {:?}", live(game, i)));
                     }

@@ -23,7 +23,7 @@ pub(in crate::game) const WIDTH: f32 = 1.375;
 pub(in crate::game) const HEIGHT: f32 = 0.5625;
 
 /// Where the other end of a boat's lead is.
-pub(in crate::game) enum Held {
+pub enum Held {
     /// The holder is gone: the lead comes off (`canInteractWithLevel`).
     Gone,
     /// In another level or not loaded: nothing happens (`level() ==`).

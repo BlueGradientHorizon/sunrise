@@ -3,7 +3,7 @@ pub(in crate::game) use sunrise_gameplay::cauldron_contents::{
     vanilla_block_has_fluids,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn without_built_table(test: impl FnOnce()) {
     struct Restore(bool);
     impl Drop for Restore {

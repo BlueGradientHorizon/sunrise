@@ -88,7 +88,7 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     .expect("prepared command registries");
                 game.ui.registries.fill_from_exported(&registries);
                 game.reload_datapacks(true, &[]).unwrap();
-                let loaded = |game: &Game<'_, sunrise_gameplay::game::server_side::ServerState>, id: &str| {
+                let loaded = |game: &sunrise_gameplay::game::ServerGame<'_>, id: &str| {
                     let items = game.items();
                     (
                         items.has_loot_table(id),
@@ -108,10 +108,10 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     (false, false, false, false, false, false)
                 );
                 let old_songs = game.items().songs.clone();
-                let read_tags = |game: &Game<'_, sunrise_gameplay::game::server_side::ServerState>| {
+                let read_tags = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                     game.items().item_tags.clone()
                 };
-                let read = |game: &Game<'_, sunrise_gameplay::game::server_side::ServerState>| {
+                let read = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                     sunrise_gameplay::game::server_side::lan::sync::server_sources(
                         &game.options.resources,
                         &game.res.core.item_data,

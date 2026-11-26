@@ -1767,7 +1767,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
     ) {
         return;
     }
-    use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use sunrise_client::level_loading::Reason;
     use sunrise_protocol::{
         connection::Pipe,

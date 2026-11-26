@@ -854,7 +854,7 @@ pub mod tests {
     }
 
     thread_local! {
-        pub(in crate::game) static PARTICLE_MAP_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        pub static PARTICLE_MAP_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     }
 
     pub struct MeasuredParticle;

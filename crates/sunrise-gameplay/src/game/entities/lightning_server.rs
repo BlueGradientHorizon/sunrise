@@ -615,8 +615,8 @@ impl crate::game::ServerGame<'_> {
     /// `CHANNELED_LIGHTNING` counts them. Boats, minecarts and experience
     /// orbs are hit too (`VehicleEntity.hurtServer` adds 5 x 10 > 40 and
     /// destroys them; an orb has 5 health).
-    #[cfg(test)]
-    pub(in crate::game) fn thunder_hit(&mut self, b: &mut Bolt) -> Vec<EntityView> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn thunder_hit(&mut self, b: &mut Bolt) -> Vec<EntityView> {
         self.thunder_hit_state(b.id, b.at, &mut b.strike)
     }
     /// `EntityStruckByLightningEvent`, before `thunderHit` on entity `entity`

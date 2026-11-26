@@ -49,16 +49,16 @@ pub(in crate::game::client_side) fn tweak_menu(name: &str) -> bool {
 }
 /// A drag the tweaks follow.
 #[derive(Clone, Debug)]
-struct Drag {
-    right: bool,
+pub struct Drag {
+    pub right: bool,
     /// The stack in hand at the press and its count since, as the drag's
     /// own clicks change it (a server answers them later).
-    held: Option<ItemStack>,
+    pub held: Option<ItemStack>,
     /// The drag replaced vanilla's: its release clicks nothing.
-    active: bool,
+    pub active: bool,
     /// `physical_presses` at the press that started it: a later press is another drag.
-    press: u64,
-    visited: Vec<usize>,
+    pub press: u64,
+    pub visited: Vec<usize>,
 }
 
 impl crate::game::ClientGame<'_> {

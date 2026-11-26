@@ -724,7 +724,7 @@ pub(crate) mod vehicle_kill_tests;
 pub(crate) mod global_selector_order_tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use {sunrise_gameplay::game::server_side::commands::Selector, sunrise_gameplay_common::game::commands_common::Target};
+use {sunrise_command::args::Selector, sunrise_gameplay_common::game::commands_common::Target};
     use sunrise_command::args::Sort;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;

@@ -580,8 +580,8 @@ impl crate::game::ServerGame<'_> {
             |id| self.mob_uuid(id),
         );
     }
-    #[cfg(test)]
-    pub(in crate::game) fn interact_leash(&mut self, index: usize, item: &str) -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn interact_leash(&mut self, index: usize, item: &str) -> bool {
         self.interact_leash_with_item_context(index, item).is_some()
     }
     /// `LeadItem.useOn` on the fence the crosshair hits.
@@ -612,7 +612,7 @@ impl crate::game::ServerGame<'_> {
 
 impl crate::game::ServerGame<'_> {
     /// `Entity.interact`: retain the holder-detach success's item context.
-    pub(in crate::game) fn interact_leash_with_item_context(
+    pub fn interact_leash_with_item_context(
         &mut self,
         index: usize,
         item: &str,

@@ -149,7 +149,8 @@ fn launching_from_a_block_and_while_gliding_use_the_rocket_up() {
             point: [2.5, 200.0, 2.5],
         };
         for used in 1..=5 {
-            game.inventory[game.selected] = Some(stack.clone());
+            let selected = game.selected;
+            game.inventory[selected] = Some(stack.clone());
             assert!(game.launch_firework(&hit, &stack), "a rocket goes up");
             assert_eq!(
                 game.stats.get("used", "minecraft:firework_rocket"),
@@ -158,7 +159,8 @@ fn launching_from_a_block_and_while_gliding_use_the_rocket_up() {
             );
         }
         game.player.as_mut().unwrap().fall_flying = true;
-        game.inventory[game.selected] = Some(stack.clone());
+        let selected = game.selected;
+        game.inventory[selected] = Some(stack.clone());
         assert!(game.boost_firework(&stack), "the gliding boost launches");
         assert_eq!(game.stats.get("used", "minecraft:firework_rocket"), 6);
     });

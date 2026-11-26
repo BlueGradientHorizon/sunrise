@@ -433,8 +433,8 @@ impl<'r> crate::game::ServerGame<'r> {
         )
     }
     /// All non-mob pickable entities (`Entity::can_be_hit_by_projectile` plus `BlockAttachedEntity`).
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn pickable_object_targets(&self) -> Vec<(Who, Aabb)> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn pickable_object_targets(&self) -> Vec<(Who, Aabb)> {
         let mut out = Vec::new();
         for b in self.common.boats.iter() {
             if b.can_be_hit_by_projectile() {

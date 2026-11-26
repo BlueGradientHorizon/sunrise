@@ -11,7 +11,8 @@ fn flint_and_steel_passes_on_a_tnt_cart_without_lighting_it() {
         return;
     };
     tnt_cart(&mut game, 42, false);
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:flint_and_steel", 1));
+    let selected = game.selected;
+    game.inventory[selected] = Some(ItemStack::new("minecraft:flint_and_steel", 1));
     game.start_audio_capture();
     let used = game.interact_cart(Some(InteractTarget {
         id: 42,

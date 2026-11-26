@@ -299,19 +299,17 @@ mod tests {
         )
     }
 
-    fn place_parts<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S>) {
+    fn place_parts(game: &mut sunrise_gameplay_common::game::CommonGame<'_>) {
         for i in 0..8 {
             let [x, y, z] = part_fixture(i).0;
             game.dragon.as_mut().unwrap().parts[i].0 = Vec3::new(x, y, z);
         }
     }
 
-    fn assert_parts_are_the_dragons_own<S: sunrise_gameplay_common::game::Side>(
-        game: &sunrise_gameplay_common::game::Game<'_, S>,
+    fn assert_parts_are_the_dragons_own<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+        game: &G,
         dragon: EntityRef,
-    ) where
-        for<'a> sunrise_gameplay_common::game::Game<'a, S>: mod_api::Host,
-    {
+    ) {
         let parts = game.entity_parts(dragon).unwrap();
         let ids: Vec<u32> = parts.iter().map(|part| part.id()).collect();
         assert_eq!(ids, (dragon.id() + 1..=dragon.id() + 8).collect::<Vec<_>>());
@@ -331,7 +329,7 @@ mod tests {
             );
             assert_eq!(
                 game.entity_kind(*part)
-                    .and_then(|kind| kind.id(game))
+                    .and_then(|kind| kind.id(game.as_host()))
                     .as_deref(),
                 Some("minecraft:ender_dragon")
             );

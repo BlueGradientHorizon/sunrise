@@ -108,8 +108,8 @@ impl SecureChat {
     pub(in crate::game::client_side) fn signed(&self) -> bool {
         self.session.is_some()
     }
-    #[cfg(test)]
-    pub(in crate::game) fn tracker_mut(&mut self) -> &mut LastSeenTracker {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn tracker_mut(&mut self) -> &mut LastSeenTracker {
         &mut self.tracker
     }
     /// handleDeleteChat: a deleted message that is still pending is not

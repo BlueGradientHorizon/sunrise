@@ -59,10 +59,10 @@ pub struct RuntimeTable {
     /// The last generation given; never reset, so no two opens of an id share one.
     last_generation: u32,
     cap: usize,
-    #[cfg(test)]
-    pub(in crate::game) fail_open_after_publication: bool,
-    #[cfg(test)]
-    pub(in crate::game) fail_erase: bool,
+    #[cfg(any(test, feature = "test-support"))]
+    pub fail_open_after_publication: bool,
+    #[cfg(any(test, feature = "test-support"))]
+    pub fail_erase: bool,
 }
 
 impl Default for RuntimeTable {
@@ -73,9 +73,9 @@ impl Default for RuntimeTable {
             queue: Vec::new(),
             last_generation: 0,
             cap: DEFAULT_CAP,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             fail_open_after_publication: false,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             fail_erase: false,
         }
     }
@@ -217,7 +217,7 @@ impl RuntimeTable {
     }
 
     /// The own seed of each level in the table, by id: what the hub tells a joining client.
-    pub(in crate::game) fn seeds(&self) -> BTreeMap<String, i64> {
+    pub fn seeds(&self) -> BTreeMap<String, i64> {
         self.entries
             .iter()
             .map(|(id, entry)| (id.clone(), entry.level.seed))
@@ -811,7 +811,7 @@ impl crate::game::ServerGame<'_> {
         }
         Dim::add_extra(id);
         let dim = Dim::extra(id).ok_or("the level was not added")?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.server.levels.0.runtime.fail_open_after_publication {
             return Err("injected level construction failure".into());
         }
@@ -887,7 +887,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     fn erase_runtime_files(&self, id: &str) -> std::io::Result<()> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.server.levels.0.runtime.fail_erase {
             return Err(std::io::Error::other("injected removal failure"));
         }

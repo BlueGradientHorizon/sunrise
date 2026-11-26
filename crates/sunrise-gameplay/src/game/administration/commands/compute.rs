@@ -12,7 +12,7 @@ use sunrise_sim::advancements::{self as adv, EntityView};
 
 /// The loot context parameters of `LootContextSources`.
 #[derive(Clone, Copy, Default)]
-pub(in crate::game) struct ComputeContext {
+pub struct ComputeContext {
     /// `BLOCK_STATE` (`compute block <pos>`).
     pub block: Option<[i32; 3]>,
     /// `TARGET_ENTITY` (`compute entity <target>`).

@@ -1319,7 +1319,7 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
             game.open_storage_transaction();
             game.server.lan_acting_uuid = Some(guest);
             std::mem::swap(
-                &mut game.player_state.attachments,
+                &mut game.common.player_state.attachments,
                 game.server
                     .lan
                     .as_mut()
@@ -1332,7 +1332,7 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
             let host: &mut dyn ServerHost = game;
             ENERGY.set(host, player, 70).unwrap();
             std::mem::swap(
-                &mut game.player_state.attachments,
+                &mut game.common.player_state.attachments,
                 game.server
                     .lan
                     .as_mut()

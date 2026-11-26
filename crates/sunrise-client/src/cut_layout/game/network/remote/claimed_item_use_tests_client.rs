@@ -1,4 +1,4 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::C, sunrise_client_gameplay::game::client_side::remote_client::PlayerMotion, sunrise_client_gameplay::game::client_side::remote_client::Vec3, sunrise_client_gameplay::game::client_side::remote_client::play};
+use {sunrise_protocol::packets::play::Clientbound as C, sunrise_sim::motion::PlayerMotion, sunrise_core::geometry::Vec3, sunrise_protocol::packets::play};
 use crate::game::remote::claimed_item_use_tests::CUSTOM_DATA;
 use crate::game::remote::claimed_item_use_tests::Call;
 use crate::game::remote::claimed_item_use_tests::OWNER;
@@ -207,7 +207,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
 
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5)).unwrap());
-            game.inventory[game.selected] = Some(marked(SHIELD, 1, Tag::Byte(23)));
+            game.common.inventory[game.common.selected] = Some(marked(SHIELD, 1, Tag::Byte(23)));
             assert!(game.use_hand(None).unwrap());
             assert_eq!(game.using, Some((game.selected, 0)));
             assert!(

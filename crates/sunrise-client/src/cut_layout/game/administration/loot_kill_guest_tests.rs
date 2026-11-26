@@ -10,7 +10,7 @@ use crate::settings::Settings;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::execution_role;
 use sunrise_gameplay_common::game::Resources;
-use crate::game::runtime::resource_load::load_resources;
+use crate::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_items::items::ItemStack;
@@ -236,7 +236,7 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
         .guests
         .update_connection(2, |guest| guest.inventory[0] = None)
         .unwrap();
-    first.inventory[first.selected] = Some(looting.clone());
+    first.common.inventory[first.common.selected] = Some(looting.clone());
     let as_guest = loot_stacks(&mut first, &format!("execute as {GUEST} run {insert}"));
     assert!(
         as_guest.iter().any(|s| s.0 == "minecraft:wet_sponge"),
@@ -245,14 +245,14 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
     // The host's own kill with an empty hand, from the same sequence state.
     let mut other_resources = None;
     let mut other = game(&mut other_resources);
-    other.inventory[other.selected] = None;
+    other.common.inventory[other.common.selected] = None;
     let as_host = loot_stacks(&mut other, &insert);
     assert_eq!(
         as_guest, as_host,
         "the guest's empty hand, and no extra draw"
     );
     // Everyone is as before.
-    let held = first.inventory[first.selected].as_ref().unwrap();
+    let held = first.common.inventory[first.common.selected].as_ref().unwrap();
     assert_eq!(
         (&*held.item, held.count, held.data().is_some()),
         ("minecraft:diamond_sword", 1, true)

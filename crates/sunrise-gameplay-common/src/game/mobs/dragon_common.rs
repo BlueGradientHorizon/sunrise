@@ -580,7 +580,7 @@ pub(in crate::game) struct DragonResidency {
 pub struct DragonPart(
     pub Vec3,
     pub Vec3,
-    pub(in crate::game) sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub [i32; 4],
 );
 impl Default for DragonPart {

@@ -667,14 +667,6 @@ use sunrise_gameplay_common::game::native_server::Acting;
 
 use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
 
-use crate::game::native_server::fake_action_tests::fake;
-
-use crate::game::native_server::fake_action_tests::held;
-
-use crate::game::native_server::fake_action_tests::on_top;
-
-use crate::game::native_server::fake_action_tests::place;
-
 use mod_api::{BlockHit, Hand};
 
 use sunrise_items::items::ItemStack;

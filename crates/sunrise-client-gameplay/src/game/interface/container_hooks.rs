@@ -18,9 +18,9 @@ use sunrise_sim::menu::Input;
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 // Views built since the test began: none without a registrant.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
-    pub(in crate::game) static BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub static BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// The game a view reads, and writes through when it was built for input.
@@ -357,7 +357,7 @@ impl<'g> crate::game::ClientGame<'g> {
             return None;
         }
         let menu = self.container_menu_id()?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         BUILT.with(|n| n.set(n.get() + 1));
         let slots = self.slots();
         let (origin, panel) = match self.client.renderer.0.as_ref() {
@@ -483,7 +483,7 @@ impl<'g> crate::game::ClientGame<'g> {
         let Some(menu) = self.container_menu_id() else {
             return;
         };
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         BUILT.with(|n| n.set(n.get() + 1));
         let (origin, panel) = self.container_frame(batch);
         let open = Open {

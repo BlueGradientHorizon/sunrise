@@ -477,7 +477,7 @@ impl crate::game::ClientGame<'_> {
         server.stop()
     }
 
-    pub(in crate::game::client_side) fn apply_pending_client_start(
+    pub fn apply_pending_client_start(
         &mut self,
         pending: initial_client_models::PendingClientStart,
         renderer: Result<Option<Box<Renderer>>>,

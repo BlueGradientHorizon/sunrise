@@ -1004,7 +1004,7 @@ pub mod datapack_damage_tests {
     
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "attribute_tests_server.rs"]
 pub mod attribute_tests;
 

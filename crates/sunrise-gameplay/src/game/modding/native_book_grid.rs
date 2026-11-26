@@ -13,17 +13,17 @@ use sunrise_sim::{
 };
 
 // no wire: the detached placement a part is answering, alive only while its hook runs.
-pub(in crate::game) struct Session {
-    pub(in crate::game) recipe: String,
-    pub(in crate::game) plan: MenuPlacement,
-    pub(in crate::game) menu: Box<Menu>,
-    pub(in crate::game) graph: Backings,
-    pub(in crate::game) before: MenuSnapshot,
-    pub(in crate::game) known: Settings,
-    pub(in crate::game) limited: bool,
-    pub(in crate::game) use_max: bool,
+pub struct Session {
+    pub recipe: String,
+    pub plan: MenuPlacement,
+    pub menu: Box<Menu>,
+    pub graph: Backings,
+    pub before: MenuSnapshot,
+    pub known: Settings,
+    pub limited: bool,
+    pub use_max: bool,
     /// `place_recipe_in_grid` has placed this click's recipe: it places once.
-    pub(in crate::game) placed: bool,
+    pub placed: bool,
 }
 
 fn reason(refusal: PlacementRefusal) -> &'static str {

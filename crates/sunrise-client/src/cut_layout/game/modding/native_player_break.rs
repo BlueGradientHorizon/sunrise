@@ -26,7 +26,7 @@ mod tests {
         game.server.lan_acting_name = Some("Breaker".into());
         game.server.lan_acting_permission = Some(0);
         game.set_mode(GameMode::Survival);
-        game.inventory[game.selected] = Some(held);
+        game.common.inventory[game.common.selected] = Some(held);
         game.native_acting_player().unwrap()
     }
     fn place(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3], block: &str) {
@@ -87,7 +87,7 @@ mod tests {
                 "selected pickaxe harvests"
             );
             game.dropped.clear();
-            game.inventory[game.selected] = None;
+            game.common.inventory[game.common.selected] = None;
             game.offhand = Some(pickaxe.clone());
             game.hand = sunrise_sim::first_person_sim::Hand::Off;
             place(game, iron, "minecraft:iron_block");
@@ -96,7 +96,7 @@ mod tests {
                 !popped(game, "minecraft:iron_block"),
                 "offhand cannot harvest"
             );
-            game.inventory[game.selected] = Some(pickaxe.clone());
+            game.common.inventory[game.common.selected] = Some(pickaxe.clone());
             game.offhand = None;
             game.hand = sunrise_sim::first_person_sim::Hand::Main;
             let (lower, upper) = ([6, 64, 4], [6, 65, 4]);
@@ -135,7 +135,7 @@ mod tests {
             assert!(popped(game, "minecraft:iron_door"));
 
             game.dropped.clear();
-            game.inventory[game.selected] = None;
+            game.common.inventory[game.common.selected] = None;
             game.offhand = Some(pickaxe);
             game.hand = sunrise_sim::first_person_sim::Hand::Off;
             door(game, "lower", lower);
@@ -171,7 +171,7 @@ mod tests {
             assert_eq!(carried(game, "minecraft:stone"), 1);
             assert!(!popped(game, "minecraft:stone"));
 
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
             place(game, ore, "minecraft:diamond_ore");
             assert!(game.player_destroy_block(player, ore, true));
             assert_eq!(carried(game, "minecraft:diamond"), 1);

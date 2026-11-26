@@ -30,7 +30,7 @@ pub(crate) mod tests {
             );
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
-            game.server.others.0.push(sunrise_gameplay::game::server_side::commands_server::OtherEntity {
+            game.server.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
@@ -216,7 +216,7 @@ pub(crate) mod modern_literal_tests {
 #[cfg(test)]
 pub(crate) mod falling_live_adoption_tests {
     use sunrise_gameplay_common::game::commands_common::Target;
-    use crate::game::administration::commands::data::falling_live_adoption_tests::with_game;
+    use crate::game::server_side::commands::data::falling_live_adoption_tests::with_game;
     use sunrise_core::nbt::Tag;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
 

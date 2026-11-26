@@ -25,9 +25,7 @@ pub mod tests {
         play::{self, Clientbound as C},
     };
 
-    #[cfg(test)]
-struct Probe(Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
-    #[cfg(test)]
+pub struct Probe(pub Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
 #[mod_api::__subscriptions]
     impl Hooks for Probe {
         fn default_components_bound(
@@ -71,11 +69,9 @@ struct Probe(Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
         );
     }
 
-    #[cfg(test)]
 /// A mod that raises dirt's default stack size to 99 at its load, and
     /// records, per bound notice, the cause and the stack size it reads.
-    struct DefaultsProbe(Arc<Mutex<Vec<(TagsUpdateCause, Option<mod_api::Tag>)>>>);
-    #[cfg(test)]
+    pub struct DefaultsProbe(pub Arc<Mutex<Vec<(TagsUpdateCause, Option<mod_api::Tag>)>>>);
 #[mod_api::__subscriptions]
     impl Hooks for DefaultsProbe {
         fn modify_default_components(

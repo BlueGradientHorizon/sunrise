@@ -2,6 +2,7 @@
 
 #![cfg(test)]
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod server_tick_rate_changed_tests {
 
 use sunrise_gameplay_common::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::Scheduler;

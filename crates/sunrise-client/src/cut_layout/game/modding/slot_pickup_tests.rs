@@ -283,7 +283,7 @@ fn serve(game: &mut sunrise_gameplay::game::ServerGame<'_>, menu: &Menu) {
         }
         guest.carried = menu.carried.clone();
     });
-    hub.resend_menu(12, window, &game.world);
+    hub.resend_menu(12, window, &game.common.world);
 }
 
 /// A client's claim that a slot or the cursor holds `count` stone.

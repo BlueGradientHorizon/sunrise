@@ -51,9 +51,9 @@ pub(crate) mod hatch_tests {
                 ("minecraft:dried_ghast", "spawn_ghastling"),
                 ("minecraft:frogspawn", "hatch"),
             ] {
-                game.level_events.push(LevelEvent::BlockEvent {
+                game.common.level_events.push(LevelEvent::BlockEvent {
                     pos: BlockPos::new(4, 64, 4),
-                    state: game.pack.assets.registry.default_state(block).unwrap(),
+                    state: game.common.pack.assets.registry.default_state(block).unwrap(),
                     kind,
                 });
             }

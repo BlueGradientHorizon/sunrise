@@ -44,14 +44,14 @@ fn menu_owners_stay_reachable_through_nested_guest_turns() {
         let inside = game
             .as_guest(12, |game| {
                 // The turn lifted the guest's play state, as before...
-                assert!(!game.side.lan.as_ref().unwrap().play.contains_key(&12));
+                assert!(!game.server.lan.as_ref().unwrap().play.contains_key(&12));
                 // ...but not the menu: the owner is found, with the same identity, and its
                 // content is the guest's own.
                 let found = ServerDecisionTarget::admit(game, 12).unwrap();
                 assert_eq!(carried(game, 12), Some(3));
                 // A nested turn of another guest sees both guests' owners.
                 let nested = game.as_guest(13, |game| {
-                    assert!(!game.side.lan.as_ref().unwrap().play.contains_key(&13));
+                    assert!(!game.server.lan.as_ref().unwrap().play.contains_key(&13));
                     assert!(ServerDecisionTarget::admit(game, 13).is_ok());
                     assert!(ServerDecisionTarget::admit(game, 12).is_ok());
                     (carried(game, 12), carried(game, 13))
@@ -80,7 +80,7 @@ fn a_panicking_turn_leaves_play_state_and_menus_restored() {
         let before = ServerDecisionTarget::admit(game, 12).unwrap();
         let panicked = catch_unwind(AssertUnwindSafe(|| {
             game.as_guest(12, |game| {
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 host.menus
                     .get_mut(&12)
                     .unwrap()
@@ -116,7 +116,7 @@ fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
             .with_lan_lifted(|game, host| {
                 let nested = game.with_lan_lifted(|_, _| ());
                 (
-                    game.side.lan.is_none(),
+                    game.server.lan.is_none(),
                     nested.is_none(),
                     host.hub.guests.len(),
                 )

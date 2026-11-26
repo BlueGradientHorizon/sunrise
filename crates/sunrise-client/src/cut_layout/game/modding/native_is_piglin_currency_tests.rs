@@ -135,7 +135,7 @@ fn index(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> usize {
 
 /// Right click on the piglin `id` holding `held`; whether the click was taken.
 fn click(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, held: ItemStack) -> bool {
-    game.inventory[game.selected] = Some(held);
+    game.common.inventory[game.common.selected] = Some(held);
     game.interact_mob(Some(sunrise_gameplay_common::game::InteractTarget {
         id: id as i32,
         location: [0.0; 3],
@@ -197,14 +197,14 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
             // A plain emerald isn't currency: the click passes and the player keeps 3.
             let p = add_piglin(game, -24.5, -24.5, None, false);
             assert!(!click(game, p, ItemStack::new(EMERALD, 3)));
-            assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 3);
+            assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 3);
             assert_eq!(off_hand(game, p), None);
 
             // Hand-over of a coin: the click is taken, one coin, data and all, leaves the hand for
             // the off hand. It is admired for 119 ticks, then bartered in the 120th: gone,
             // barter thrown.
             assert!(click(game, p, coins(3)));
-            let held = game.inventory[game.selected].as_ref().unwrap();
+            let held = game.common.inventory[game.common.selected].as_ref().unwrap();
             assert_eq!((&*held.item, held.count), (EMERALD, 2));
             let admired = off_hand(game, p).unwrap();
             assert_eq!((&*admired.item, admired.count), (EMERALD, 1));
@@ -235,7 +235,7 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
             // Refusing gold: a piglin with a golden sword doesn't take the ingot from the hand.
             let p = add_piglin(game, 24.5, 24.5, Some(GOLDEN_SWORD), false);
             assert!(!click(game, p, ItemStack::new(GOLD_INGOT, 1)));
-            assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 1);
+            assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 1);
             assert_eq!(off_hand(game, p), None);
             // A dropped ingot is still picked up and admired (`#piglin_loved`), then kept: the
             // sword stays in the main hand, the ingot goes to the inventory, nothing bartered.
@@ -273,10 +273,10 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
             baby.extra.age = -24000;
             client.mobs.push(adult);
             client.mobs.push(baby);
-            client.inventory[client.selected] = Some(coins(1));
+            client.common.inventory[client.common.selected] = Some(coins(1));
             assert!(client.remote_mob_would_take(0, Hand::Main));
             assert!(!client.remote_mob_would_take(1, Hand::Main));
-            client.inventory[client.selected] = Some(ItemStack::new(EMERALD, 1));
+            client.common.inventory[client.common.selected] = Some(ItemStack::new(EMERALD, 1));
             assert!(!client.remote_mob_would_take(0, Hand::Main));
         });
     });
@@ -297,13 +297,13 @@ fn without_parts_only_the_gold_ingot_is_currency_isolated() {
         // A coin is just an emerald: the click passes and the player keeps 3.
         let p = add_piglin(game, -24.5, -24.5, None, false);
         assert!(!click(game, p, coins(3)));
-        assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 3);
+        assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 3);
         assert_eq!(off_hand(game, p), None);
 
         // A gold ingot is taken, and lost to a hit: an adult keeps nothing.
         let p = add_piglin(game, 24.5, -24.5, None, false);
         assert!(click(game, p, ItemStack::new(GOLD_INGOT, 1)));
-        assert_eq!(game.inventory[game.selected], None);
+        assert_eq!(game.common.inventory[game.common.selected], None);
         hit(game, p);
         assert_eq!(off_hand(game, p), None);
         assert_eq!(mob(game, p).extra.main_hand_id(), None);
@@ -349,7 +349,7 @@ fn without_parts_only_the_gold_ingot_is_currency_isolated() {
         client
             .mobs
             .push(Mob::new(101, kind, sunrise_core::geometry::Vec3::ZERO, 0.0));
-        client.inventory[client.selected] = Some(coins(1));
+        client.common.inventory[client.common.selected] = Some(coins(1));
         assert!(!client.remote_mob_would_take(0, Hand::Main));
     });
 }

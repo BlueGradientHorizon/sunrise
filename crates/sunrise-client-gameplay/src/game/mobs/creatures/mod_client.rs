@@ -811,8 +811,8 @@ impl crate::game::ClientGame<'_> {
             .as_ref()
             .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())
     }
-    #[cfg(test)]
-    pub(in crate::game) fn mob_geometry(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn mob_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,

@@ -55,7 +55,7 @@ pub(crate) mod connected_spawnpoint_rotation_tests {
             for z in -2..=2 {
                 game.server
                     .streaming
-                    .insert_remote(&mut game.world, Chunk::empty(x, z));
+                    .insert_remote(&mut game.common.world, Chunk::empty(x, z));
                 assert!(game.server.streaming.is_lit(x, z));
             }
         }

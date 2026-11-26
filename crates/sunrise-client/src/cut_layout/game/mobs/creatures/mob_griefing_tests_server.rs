@@ -1,6 +1,6 @@
 use super::super::native_entity_refs::tests::with_game;
 use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
-use sunrise_gameplay_common::game::mobs::creatures::mob_griefing_tests::Deny;
+use sunrise_gameplay_common::game::creatures::mob_griefing_tests::Deny;
 use std::sync::Arc;
 
 /// `EntityMobGriefingEvent`: the mod's answer for one entity reaches the
@@ -41,7 +41,7 @@ fn a_mod_denies_one_entity_griefing() {
             // lights no fire and another ghast's does; a fireball sent back
             // by the guest the mod denies lights none and another guest's
             // does. A gone owner, or none, reads the rule without asking.
-            use sunrise_gameplay::game::server_side::creatures_server::Who;
+            use sunrise_sim::mobs::Who;
             let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.guests.push(guest(5));
             hub.guests.push(guest(6));

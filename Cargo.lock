@@ -4581,6 +4581,7 @@ dependencies = [
 name = "sunrise-client"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "cap-fs-ext",
  "cap-std",
  "chrono",

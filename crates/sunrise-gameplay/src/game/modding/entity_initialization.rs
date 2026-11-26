@@ -86,7 +86,7 @@ impl ServerGame<'_> {
 /// Explicit ownership passed alongside one travelling object's NBT, never encoded in NBT.
 /// Not Clone: a transfer cannot install the same runtime state twice.
 #[derive(Debug)]
-pub(in crate::game) struct TransferredEntityState {
+pub struct TransferredEntityState {
     pub(in crate::game) attachments: Option<sunrise_mod_runtime::attachments::Attachments>,
     pub(in crate::game) initialized: bool,
     pub(in crate::game) accepted_hit: Option<std::sync::Arc<sunrise_sim::health::AcceptedHit>>,

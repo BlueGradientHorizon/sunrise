@@ -1,3 +1,6 @@
+#![cfg(test)]
+
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi};
 use crate::game::native_live_holder_tests::{mod_holder, with_mod_parts};
 use mod_api::{

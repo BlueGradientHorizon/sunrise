@@ -2044,10 +2044,10 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
     /// Exercise the real explosion entity walk on an empty, headless world.
-    pub(in crate::game::server_side) fn run_explosion_items_fixture(
+    pub fn run_explosion_items_fixture(
         &mut self,
         directory: &std::path::Path,
     ) -> Result<()> {

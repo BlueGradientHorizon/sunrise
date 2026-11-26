@@ -70,11 +70,11 @@ impl crate::game::ClientGame<'_> {
                 pose.translate(-0.3125, -0.3125, 0.0);
                 pose.scale(0.375, 0.375, 0.375);
                 draw(BlockItemDraw {
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     stack,
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     display: DisplayContext::Fixed,
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-support"))]
                     seed,
                     state: &item,
                     pose: pose.to_glam(),

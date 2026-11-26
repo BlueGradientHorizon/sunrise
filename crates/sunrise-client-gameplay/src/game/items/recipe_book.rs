@@ -78,10 +78,10 @@ pub(in crate::game) struct View {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct RecipeUi {
+pub struct RecipeUi {
     /// Explicit viewport for renderer-less resource-backed fixtures.
-    #[cfg(test)]
-    pub(in crate::game) test_viewport: Option<[u32; 2]>,
+    #[cfg(any(test, feature = "test-support"))]
+    pub test_viewport: Option<[u32; 2]>,
     pub(in crate::game) custom: mod_screen::ModRecipeUi,
     pub(in crate::game) book: Option<Book>,
     pub(in crate::game) tab: Option<Tab>,
@@ -129,7 +129,7 @@ pub(in crate::game) struct TransferChecks {
     pub(in crate::game) seen: Option<(i32, i32, Vec<Option<ItemStack>>)>,
     pub(in crate::game) answers: Vec<CheckAnswer>,
     /// The one request out: its tag, its recipe and when it went.
-    pub(in crate::game) asked: Option<(i32, String, Instant)>,
+    pub asked: Option<(i32, String, Instant)>,
 }
 
 impl TransferChecks {
@@ -176,7 +176,7 @@ pub(in crate::game) struct CheckAnswer {
     pub(in crate::game) recipe: String,
     /// When this answer becomes eligible to refresh.
     pub(in crate::game) refreshes: Instant,
-    pub(in crate::game) check: RecipeTransferCheck,
+    pub check: RecipeTransferCheck,
 }
 
 /// How long an answer stays fresh (chests beside a station change without
@@ -847,7 +847,7 @@ impl crate::game::ClientGame<'_> {
         (self.client.recipe_ui.0.time / SWAP_TICKS).floor() as usize
     }
     pub(in crate::game) fn batch_for_size(&self) -> Option<HudBatch> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(size) = self.client.recipe_ui.0.test_viewport {
             return Some(HudBatch::new(size, self.client.settings.gui_scale_inputs()));
         }

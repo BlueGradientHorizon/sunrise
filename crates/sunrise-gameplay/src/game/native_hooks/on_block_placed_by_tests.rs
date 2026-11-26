@@ -14,18 +14,18 @@ pub const SKULL: &str = "minecraft:wither_skeleton_skull";
 
 #[derive(Debug, PartialEq)]
 pub struct Notice {
-    pub(in crate::game) item: String,
-    pub(in crate::game) count: u32,
-    pub(in crate::game) placer: Option<u128>,
-    pub(in crate::game) pos: [i32; 3],
-    pub(in crate::game) face: mod_api::BlockFace,
-    pub(in crate::game) click: [f64; 3],
+    pub item: String,
+    pub count: u32,
+    pub placer: Option<u128>,
+    pub pos: [i32; 3],
+    pub face: mod_api::BlockFace,
+    pub click: [f64; 3],
 }
 
 #[derive(Clone, Default)]
 pub struct Probe {
-    pub(in crate::game) notices: Arc<Mutex<Vec<Notice>>>,
-    pub(in crate::game) cancel: Arc<AtomicBool>,
+    pub notices: Arc<Mutex<Vec<Notice>>>,
+    pub cancel: Arc<AtomicBool>,
 }
 
 pub(in crate::game) struct Crate;

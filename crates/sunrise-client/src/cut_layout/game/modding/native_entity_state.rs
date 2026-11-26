@@ -6,6 +6,7 @@ use mod_api::EntityRef;
 pub(crate) mod tests {
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityStateCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
 use sunrise_gameplay::game::server_side::native_entity_state::tests::with_player;
@@ -451,8 +452,8 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 #[test]
     #[ignore = "daily"]
     fn under_water_reads_previous_eye_sample_and_current_contact_on_both_sides() {
-        fn check_under_water<S: sunrise_gameplay_common::game::Side>(
-            g: &mut sunrise_gameplay_common::game::Game<'_, S>,
+        fn check_under_water<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+            g: &mut G,
             client: bool,
             player: EntityRef,
             mob: EntityRef,

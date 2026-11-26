@@ -164,7 +164,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         assert!(preedit::should_suppress_key());
         assert!(take(state).is_empty());
         assert!(game.open_screen_overlay("link_prompt", |game| {
-            game.side.link_prompt = Some("https://example.com".into());
+            game.client.link_prompt = Some("https://example.com".into());
         }));
         assert!(game.mounted_widget_targets().is_empty());
         send(

@@ -1,5 +1,6 @@
 //! Process-wide cache of immutable loaded test resources, keyed by every load-affecting input.
 use std::time::Instant;
+use sunrise_game_data::Result;
 use sunrise_gameplay_common::game::{PackResources, Resources};
 use crate::settings::Settings;
 use sunrise_level::assets::Assets;
@@ -9,7 +10,7 @@ use sunrise_client_gameplay::game::client_side::resource_load_client::{UiPublish
 use sunrise_client_gameplay::game::client_side::{packs, shader_packs};
 use sunrise_client_gameplay::game::resource_tables;
 use sunrise_gameplay_common::game::{api_values, execution_role, mods};
-use {crate::game::resource_load::*, sunrise_gameplay_common::game::resource_load::{BlockRegistry, Path, Progress, ResourceRoot, launch_world, publish_entity_type_defaults, with_skip_facts_memo}};
+use {crate::game::resource_load::*, sunrise_gameplay_common::game::resource_load::{Progress, ResourceRoot, launch_world, publish_entity_type_defaults, with_skip_facts_memo}};
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use std::{
@@ -435,8 +436,8 @@ fn hydrate_hit(
     sunrise_sim::save::level_mods::set_block_namespaces(Some(cached.mod_namespaces.clone()));
     let registry = crate::game::api_values::resolve_cached_block_definitions(cached.pack.assets.registry)?;
     let _ = sunrise_world::poi::extend(Vec::new());
-    sunrise_gameplay::game::machines::cauldron_contents::install(
-        sunrise_gameplay::game::machines::cauldron_contents::CauldronContents::vanilla(),
+    sunrise_gameplay_common::cauldron_contents::install(
+        sunrise_gameplay_common::cauldron_contents::CauldronContents::vanilla(),
     );
     #[cfg(feature = "client")]
     if let Some(client_pack) = &client_pack {

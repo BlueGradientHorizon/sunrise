@@ -1,6 +1,6 @@
 //! #3720: real Game ticks, Parts storage and transaction close/restore traces.
 use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::server_side::machines::Pos;
+use sunrise_gameplay_common::hoppers::Pos;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_gameplay_common::game::spill_common as spill;
 use mod_api::*;
@@ -407,7 +407,7 @@ fn default_fixture(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::Se
     });
 }
 
-fn place<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S>, pos: Pos, block: &str) {
+fn place(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: Pos, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(pos.0, pos.1, pos.2, state).unwrap();
 }

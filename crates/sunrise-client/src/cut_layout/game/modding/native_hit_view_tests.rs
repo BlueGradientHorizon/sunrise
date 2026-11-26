@@ -212,7 +212,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             let pig = summon_mob(game, "minecraft:pig", "{NoAI:1b}");
             let cow = summon_mob(game, "minecraft:cow", "{}");
             let zombie = summon_mob(game, "minecraft:zombie", "{}");
-            game.inventory[game.selected] =
+            game.common.inventory[game.common.selected] =
                 Some(sunrise_items::items::ItemStack::new("minecraft:stick", 5));
             for (id, amplifier) in [(7, 1), (zombie, 2)] {
                 let living = game.living(game.entity(id).unwrap()).unwrap();
@@ -245,7 +245,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                 .unwrap()
                 .unwrap()
             {
-                crate::game::server_side::commands::Target::Stand(id) => id,
+                sunrise_gameplay_common::game::commands_common::Target::Stand(id) => id,
                 other => panic!("an armor stand summoned as {other:?}"),
             };
             let stand = game.entity(stand).unwrap();

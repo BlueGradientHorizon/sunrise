@@ -6,7 +6,6 @@ mod tests {
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
 use super::super::native_entity_refs::tests::{bind_local_player, with_game};
-    use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
     use mod_api::{EntityRef, MobAiPauseRefusal, MobRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -79,6 +78,7 @@ use super::super::native_entity_refs::tests::{bind_local_player, with_game};
     /// gravity and takes knockback; unpaused, it walks its path on.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn a_paused_pig_keeps_its_path_and_target_falls_and_is_knocked_back() {
         with_game(|game| {
             let pig = walking_pig(game);

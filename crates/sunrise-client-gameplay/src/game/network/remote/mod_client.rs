@@ -1308,9 +1308,9 @@ pub struct RemoteInputWorld<'g, 'a>(
 );
 
 #[cfg(feature = "client")]
-pub(in crate::game) struct RemoteUseWorld<'g, 'a>(
-    pub(in crate::game) &'g mut crate::game::ClientGame<'a>,
-    pub(in crate::game) mod_api::InteractionAttempt,
+pub struct RemoteUseWorld<'g, 'a>(
+    pub &'g mut crate::game::ClientGame<'a>,
+    pub mod_api::InteractionAttempt,
 );
 
 #[cfg(feature = "client")]
@@ -1327,32 +1327,33 @@ impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_
 }
 
 #[cfg(feature = "client")]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn test_remote_pick_click(&mut self) {
+    pub fn test_audio_mut(&mut self) -> &mut sunrise_client_render::audio::Audio {
+        &mut self.client.audio.0
+    }
+
+    pub fn test_remote_pick_click(&mut self) {
         use sunrise_client::interaction_input::InteractionWorld as _;
         RemoteInputWorld(self).pick();
     }
-    pub(in crate::game) fn test_has_client_item_use(&self) -> bool {
+    pub fn test_has_client_item_use(&self) -> bool {
         self.client.client_item_use.0.is_some()
     }
-    pub(in crate::game) fn test_audio_mut(&mut self) -> &mut sunrise_client_render::audio::Audio {
-        &mut self.client.audio.0
-    }
-    pub(in crate::game) fn test_show_title_screen(&mut self) {
+    pub fn test_show_title_screen(&mut self) {
         let saves = std::env::current_dir().unwrap_or_default().join("saves");
         self.client.title.0 = Some(self.new_title(saves));
     }
-    pub(in crate::game) fn test_hand_strength_ticker(&self) -> i32 {
+    pub fn test_hand_strength_ticker(&self) -> i32 {
         self.client.hand_strength.ticker
     }
-    pub(in crate::game) fn test_set_hand_strength_ticker(&mut self, ticker: i32) {
+    pub fn test_set_hand_strength_ticker(&mut self, ticker: i32) {
         self.client.hand_strength.ticker = ticker;
     }
 }
 
 impl PlayerTextures {
-    pub(in crate::game) fn new(property: AccountProperty) -> Self {
+    pub fn new(property: AccountProperty) -> Self {
         Self {
             property,
             unpacked: std::sync::OnceLock::new(),

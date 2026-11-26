@@ -1,4 +1,4 @@
-use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::client_side::native_hooks_client::particle_count_tests::fill};
 use sunrise_client::level_loading::Reason;
 use sunrise_protocol::{connection::Pipe, packets::play::SpawnInfo};

@@ -18,10 +18,7 @@ const PLAYER: u32 = 42;
 const CONN: u32 = 1;
 const PIG_Y: f64 = 73.0;
 
-fn empty_chunk<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>)
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+fn empty_chunk<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &mut G) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

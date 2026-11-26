@@ -154,12 +154,20 @@ pub(crate) fn run_chunk_loaded_families_keep_vanilla_lookup_and_save_order() {
         );
         game.creatures.projectiles.push(arrow);
         game.restore_vehicle_tree_state(tag, state).unwrap();
-        sunrise_gameplay::game::entity_residency::assign_resident_ids!(
-            game.creatures.projectiles,
-            p,
-            &mut game.side.next_entity,
-            Some(&p.attachment_lifetime)
-        );
+        let projectiles = &mut game.common.creatures.projectiles;
+        let next = &mut game.server.next_entity;
+        for index in 0..projectiles.len() {
+            if projectiles[index].id == 0 {
+                projectiles.update(index, |p| {
+                    sunrise_gameplay::game::entity_server::assign_stored_id(
+                        next,
+                        &mut p.id,
+                        Some(&p.attachment_lifetime),
+                    )
+                });
+                projectiles.id_assigned(index);
+            }
+        }
         let arrow = game.creatures.projectiles.last().unwrap().id;
         game.persist.uuids.insert(arrow, [2703, 0, 0, 14]);
         lookup.push(snapshot(game));

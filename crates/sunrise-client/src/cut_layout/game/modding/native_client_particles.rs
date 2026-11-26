@@ -50,9 +50,9 @@ use sunrise_client::particles::ParticleLevel;
                 assert!(host.create_fireworks(&request(audible)));
                 for _ in 0..20 {
                     let level = ParticleLevel {
-                        world: &game.world,
-                        facts: game.res.facts(),
-                        collision: game.collision,
+                        world: &game.common.world,
+                        facts: game.common.res.facts(),
+                        collision: game.common.collision,
                         player: None,
                         cached_chunk: std::cell::Cell::new(None),
                     };

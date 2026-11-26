@@ -1,4 +1,3 @@
-use sunrise_gameplay::game::server_side::composter::Game;
 use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{BlockUpdateFlags, Flow, Hooks, ItemResource, ServerHost};
 use std::sync::{Arc, Mutex};
@@ -16,10 +15,7 @@ fn resource(item: &str) -> ItemResource {
     ItemResource::of(&ItemStack::new(item, 1).try_into_api().unwrap())
 }
 
-fn composter<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>, level: i32)
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+fn composter(game: &mut sunrise_gameplay::game::ServerGame<'_>, level: i32) {
     let state = game
         .pack
         .assets

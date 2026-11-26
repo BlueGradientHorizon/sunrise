@@ -465,8 +465,8 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(())
     }
-    #[cfg(test)]
-    pub(in crate::game) fn tick_guests_inner(&mut self) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn tick_guests_inner(&mut self) {
         self.tick_level_guests_inner();
         self.tick_guest_connections_inner(false).unwrap();
         self.server.pickup_columns = None;

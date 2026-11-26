@@ -1,5 +1,5 @@
 use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::server_side::machines::BlockEntity;
+use sunrise_level::containers::BlockEntity;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::*;
 use std::sync::{Arc, Mutex};

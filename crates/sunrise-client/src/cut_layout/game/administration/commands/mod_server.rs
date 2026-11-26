@@ -135,7 +135,7 @@ pub(crate) mod query_feedback_tests {
     #[test]
     #[ignore = "daily"]
     fn gamerule_feedback_uses_short_ids_without_changing_registry_identity() {
-        use {sunrise_gameplay::game::server_side::commands_server::Arg, sunrise_gameplay::game::server_side::commands_server::Context};
+        use {sunrise_command::Arg, sunrise_command::Context};
         use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
         use sunrise_command::ParsedArg;

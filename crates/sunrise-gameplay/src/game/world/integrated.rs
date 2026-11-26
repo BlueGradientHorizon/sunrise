@@ -31,7 +31,9 @@ use sunrise_gameplay_common::game::{
     },
 };
 #[cfg(test)]
-use std::sync::{Mutex, mpsc::channel};
+use std::sync::Mutex;
+#[cfg(any(test, feature = "test-support"))]
+use std::sync::mpsc::channel;
 use std::{
     net::TcpListener,
     sync::{
@@ -57,15 +59,15 @@ pub(in crate::game) mod capture;
 
 /// The server thread's side of the window's handle (`Game::serving`).
 pub struct Serving {
-    pub(in crate::game) flags: Arc<Flags>,
-    pub(in crate::game) tasks: Receiver<OwnerRequest>,
+    pub flags: Arc<Flags>,
+    pub tasks: Receiver<OwnerRequest>,
     /// The window's profile.
-    pub(in crate::game) owner: u128,
+    pub owner: u128,
     /// Open to LAN or closed from inside a player's command, while the hub
     /// is out of its place: applied after the tick.
-    pub(in crate::game) pending: Option<Publish>,
+    pub pending: Option<Publish>,
     /// Where the load focus is and how far the player's chunks are.
-    pub(in crate::game) load: LoadPhase,
+    pub load: LoadPhase,
 }
 /// The part of `LevelLoadListener` after `prepareLevels`: `PrepareSpawnTask`'s
 /// `LOAD_PLAYER_CHUNKS`.
@@ -78,12 +80,12 @@ pub struct LoadPhase {
 }
 impl Serving {
     /// A server thread's handle with no thread behind it, published on `port` (0: not).
-    #[cfg(test)]
-    pub(in crate::game) fn fixture(port: u16) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn fixture(port: u16) -> Self {
         Self::fixture_with_reports(port, Arc::default())
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game) fn fixture_with_reports(port: u16, reports: Arc<Reports>) -> Self {
         let flags = Arc::new(Flags {
             reports,
@@ -109,7 +111,7 @@ impl Serving {
         self.flags.saving.store(saving, Ordering::Relaxed);
     }
 }
-pub(in crate::game) enum Publish {
+pub enum Publish {
     Open(TcpListener, LanSettings),
     Close,
 }
@@ -1001,8 +1003,8 @@ impl Integrated {
         self.tell(OwnerRequest::InTest(Box::new(f)))
     }
     /// An integrated server whose thread already finished, just before the window disconnects.
-    #[cfg(test)]
-    pub(in crate::game) fn stopped_for_test() -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn stopped_for_test() -> Self {
         Self {
             flags: Arc::new(Flags::default()),
             thread: None,

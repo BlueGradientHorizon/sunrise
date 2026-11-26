@@ -126,14 +126,14 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert_eq!(shown.custom_name().as_deref(), Some("Diary"));
 
             // EnchantCommand's refusal names the held stack by `getHoverName().getString()`.
-            game.inventory[game.selected] = Some(named.clone());
+            game.common.inventory[game.common.selected] = Some(named.clone());
             let refusal = game
                 .execute_line("enchant @s minecraft:sharpness", game.player_source())
                 .unwrap_err();
             let message = refusal.message.component();
             assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
             assert!(refusal.message.plain().contains(KEY), "{message}");
-            game.inventory[game.selected] = None;
+            game.common.inventory[game.common.selected] = None;
 
             // ItemEntity.getName: the dropped item takes its name from the Part, not the
             // stack's custom hover name. Command feedback and `name=` selectors agree.
@@ -253,7 +253,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
 #[test]
 #[ignore = "daily"]
 fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
-    use {sunrise_client_gameplay::game::stations::INPUT, sunrise_client_gameplay::game::stations::Kind, sunrise_client_gameplay::game::stations::Station};
+    use {sunrise_gameplay_common::game::stations_common::INPUT, sunrise_gameplay_common::game::stations_common::Kind, sunrise_gameplay_common::game::stations_common::Station};
     use sunrise_sim::menu::Input;
     if run_fresh_cases(RENAME_BOX, "SUNRISE_ITEM_NAME_RENAME_BOX_CHILD", &["names"]) {
         return;

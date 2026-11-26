@@ -1,7 +1,7 @@
 //! `/data merge entity` (and a mod's `EntityRef::merge_nbt`) on an arrow, a spectral arrow
 //! and a trident: `Entity.load` with `AbstractArrow.readAdditionalSaveData` over the
 //! resident entity.
-use sunrise_gameplay::game::server_side::commands::data::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::resource_load::load_resources;
 use crate::settings::Settings;

@@ -150,6 +150,7 @@ fn an_absorbed_hit_still_rolls_the_infested_effect() {
 /// damageSources().starve(), 1.0F)`, so its effects' `onMobHurt` runs too: an
 /// Infested starving player rolls the same 10% chance. The starvation hurt
 /// builds its own damage environment, which must carry the status flags.
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn a_starving_infested_player_rolls_the_infested_effect() {

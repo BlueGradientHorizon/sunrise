@@ -391,7 +391,7 @@ fn pick_asks_each_hotbar_stack_until_one_may_be_replaced() {
 #[ignore = "daily"]
 fn support_snapshot_reaches_both_anvils_and_enchant_without_dispatching_inside_them() {
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-    use {sunrise_client_gameplay::game::stations::Kind as StationKind, sunrise_client_gameplay::game::stations::Station};
+    use {sunrise_gameplay_common::game::stations_common::Kind as StationKind, sunrise_gameplay_common::game::stations_common::Station};
     use sunrise_sim::menu::{Kind as MenuKind, Menu};
     with_parts(|game, answers| {
         let registered = game.stations().enchantments.list.len();
@@ -625,7 +625,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
         }])),
     )]
     .into();
-    fn supports<S: sunrise_gameplay_common::game::Side>(game: &sunrise_gameplay_common::game::Game<'_, S>) -> bool {
+    fn supports<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G) -> bool {
         game.item_enchantments()
             .can_enchant(game.items(), SHARPNESS, "minecraft:stick")
     }

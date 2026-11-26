@@ -137,7 +137,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                 game.dropped.bind_residency(
                     &table.producer(),
                     Owner {
-                        dimension: game.dim.key(),
+                        dimension: game.common.dim.key(),
                         kind: Kind::Item,
                     },
                     |item| (item.id, item.join),

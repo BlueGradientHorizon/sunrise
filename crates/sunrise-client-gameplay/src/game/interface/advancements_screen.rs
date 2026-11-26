@@ -96,11 +96,11 @@ fn box_sprite(obtained: bool) -> &'static str {
     }
 }
 /// The layout of the loaded tree, cached per tree.
-struct Cache {
+pub struct Cache {
     tree: Arc<Tree>,
     kids: Vec<Vec<usize>>,
     /// Widget pixel position (`x * 28`, `y * 27`).
-    pos: Vec<Option<(i32, i32)>>,
+    pub pos: Vec<Option<(i32, i32)>>,
     remote: Option<RemoteWidgets>,
 }
 struct RemoteWidgets {
@@ -115,7 +115,7 @@ fn displayed_roots(tree: &Tree) -> impl Iterator<Item = usize> + '_ {
     })
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct TabBounds(i32, i32, i32, i32);
+pub struct TabBounds(pub i32, pub i32, pub i32, pub i32);
 impl Default for TabBounds {
     fn default() -> Self {
         Self(i32::MAX, i32::MAX, i32::MIN, i32::MIN)
@@ -138,12 +138,12 @@ impl TabBounds {
     }
 }
 #[derive(Default)]
-struct TabState {
-    bounds: TabBounds,
+pub struct TabState {
+    pub bounds: TabBounds,
     /// Scroll of this tab; `None` until centred.
-    scroll: Option<(f64, f64)>,
-    fade: f32,
-    hovered: Option<usize>,
+    pub scroll: Option<(f64, f64)>,
+    pub fade: f32,
+    pub hovered: Option<usize>,
 }
 #[derive(Default)]
 pub(in crate::game) struct AdvUi {
@@ -172,7 +172,7 @@ struct View {
     pub widgets: Vec<usize>,
     parent: Vec<Option<usize>>,
 }
-fn window(w: f32, h: f32) -> (f32, f32) {
+pub fn window(w: f32, h: f32) -> (f32, f32) {
     (((w - 252.0) / 2.0).floor(), ((h - 140.0) / 2.0).floor())
 }
 /// `ServerboundSeenAdvancementsPacket.openedTab`: `ClientAdvancements.setSelectedTab`

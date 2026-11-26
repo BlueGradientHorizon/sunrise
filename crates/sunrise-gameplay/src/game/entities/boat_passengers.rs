@@ -23,7 +23,7 @@ use sunrise_sim::{
 };
 
 /// `Entity.boardingCooldown` once a mob leaves its boat.
-pub(in crate::game) const BOARDING_COOLDOWN: i32 = 60;
+pub const BOARDING_COOLDOWN: i32 = 60;
 /// How many box queries the walk over every mob answers, once a write to the mob list has
 /// made the grid stale, before a new grid is built: about what building one costs (with
 /// 25,000 mobs, six to eight walks). It doubles with each grid of a stretch, so vehicles
@@ -44,10 +44,10 @@ pub(in crate::game) struct VehicleMobs {
     riders: RefCell<Option<(ListStamp, FxHashMap<u32, Vec<usize>>)>>,
 }
 #[derive(Default)]
-struct MobGrid {
+pub struct MobGrid {
     /// The mobs' boxes by column and the list they were read from: they hold until that
     /// list's next write ([`ListStamp`]), which every push, pick-up, death and join is.
-    built: Option<(ListStamp, SeenGrid)>,
+    pub built: Option<(ListStamp, SeenGrid)>,
     /// The queries walked since the grid went stale, and how many are before the next grid.
     walked: u32,
     patience: u32,

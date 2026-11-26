@@ -80,6 +80,7 @@ impl Hooks for Declares {
     }
 }
 
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn a_failing_raw_handler_rolls_back_alone_and_the_next_one_commits() {

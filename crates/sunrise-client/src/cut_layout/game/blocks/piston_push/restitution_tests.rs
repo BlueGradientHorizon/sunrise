@@ -1,4 +1,4 @@
-use {crate::game::piston_push::*, sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Game, Lid, Vec3, tests}};
+use {crate::game::piston_push::*, sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Lid, Vec3}};
 use sunrise_gameplay_common::game::boats_common::Boat;
 use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
 use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
@@ -61,10 +61,7 @@ impl Hooks for RemoveLaterBoat {
     }
 }
 
-fn boats_over_glass<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>, boats: &[(u32, i32)])
-where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+fn boats_over_glass<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &mut G, boats: &[(u32, i32)]) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

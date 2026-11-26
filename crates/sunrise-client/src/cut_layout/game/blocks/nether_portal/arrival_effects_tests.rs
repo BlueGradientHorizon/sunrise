@@ -45,7 +45,7 @@ fn depart(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, restart_wa
         for x in cx - 1..=cx + 1 {
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(x, z));
+                .insert_remote(&mut game.common.world, Chunk::empty(x, z));
         }
     }
     let exit = game.nether_exit_portal(&plan).expect("exit portal built");

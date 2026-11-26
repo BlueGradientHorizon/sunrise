@@ -32,7 +32,7 @@ fn update_attributes_answers_the_local_players_living_reads() {
         remote.logged_in = true;
         remote.entities.insert(
             60,
-            sunrise_client_gameplay::game::client_side::remote_client::Tracked {
+            sunrise_client_gameplay::game::client_side::remote_client::session_state::Tracked {
                 kind: "minecraft:zombie".into(),
                 position: [0.0; 3],
                 previous: [0.0; 3],

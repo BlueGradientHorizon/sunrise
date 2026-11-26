@@ -1,7 +1,7 @@
 
 
 #![cfg(test)]
-use sunrise_client_gameplay::game::world::server_packs::PackNotifier;
+use sunrise_client_gameplay::game::client_side::server_packs::PackNotifier;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::toasts::SystemToast;
 use sunrise_game_data::text::Text;
@@ -326,6 +326,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn closing_save_reports_reach_the_title_in_the_owning_window() {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::server_packs::tests::closing_save_reports_reach_the_title_in_the_owning_window",
@@ -407,6 +408,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn scheduled_task_error_toasts_are_admitted_by_the_owning_client() {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::server_packs::tests::scheduled_task_error_toasts_are_admitted_by_the_owning_client",

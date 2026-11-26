@@ -17,7 +17,7 @@ fn with_hanging(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) 
     });
 }
 
-fn with_hanging_entities<S>(game: &mut sunrise_gameplay_common::game::Game<'_, S>) {
+fn with_hanging_entities(game: &mut sunrise_gameplay_common::game::CommonGame<'_>) {
     game.item_frames.push(ItemFrame {
         attachment_lifetime: Default::default(),
         join: Default::default(),

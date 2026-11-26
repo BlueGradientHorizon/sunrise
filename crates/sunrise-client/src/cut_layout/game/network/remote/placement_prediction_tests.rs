@@ -1,9 +1,9 @@
 use sunrise_gameplay_common::game::GameGameExt1;
 use std::sync::Arc;
-use sunrise_gameplay_common::game::remote::dry_level::DryLevel;
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{BlockEntity, BlockStateId, Builtin, C, Chunk, Game, Hit, Holder, ItemStack, S, Tag, Vec3, block_entity_data, dry_level, play}};
+use sunrise_gameplay_common::game::remote::dry_level::{DryLevel, DryLevelGameExt2 as _};
+use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{BlockEntity, BlockStateId, Builtin, C, Chunk, Hit, Holder, ItemStack, S, Tag, Vec3, block_entity_data, dry_level, play}};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use {sunrise_client_gameplay::game::native_connection_groups::ReceivedGroup, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::{
     BlockPart, BlockState, CanSurviveEvent, CanSustainPlantEvent, FenceGateInWallEvent, Hooks,
@@ -252,8 +252,8 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
         .unwrap();
     };
     let server_state = std::cell::Cell::new(None);
-    fn setup<S>(
-        game: &mut sunrise_gameplay_common::game::Game<'_, S>,
+    fn setup(
+        game: &mut sunrise_gameplay_common::game::CommonGame<'_>,
         lit: bool,
     ) -> sunrise_world::registry::BlockStateId {
         let registry = game.pack.assets.registry;
@@ -520,13 +520,11 @@ fn a_neighbour_s_survival_part_reads_the_prediction_s_blocks() {
             game.pack.assets.registry.default_state(name).unwrap()
         };
         for x in [0, 1] {
-            game.world
-                .set(x, 64, 0, state(game, "minecraft:stone"))
-                .unwrap();
+            let stone = state(game, "minecraft:stone");
+            game.world.set(x, 64, 0, stone).unwrap();
         }
-        game.world
-            .set(0, 65, 0, state(game, "minecraft:dandelion"))
-            .unwrap();
+        let dandelion = state(game, "minecraft:dandelion");
+        game.world.set(0, 65, 0, dandelion).unwrap();
         let placed = game
             .remote_can_place(&top_of(1, 0), &ItemStack::new("minecraft:cobblestone", 1))
             .expect("the cobblestone is placed");

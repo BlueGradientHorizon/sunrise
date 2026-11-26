@@ -144,7 +144,7 @@ use sunrise_gameplay_common::game::LevelDimension;
                     let events = game.level_events.clone();
                     game.lan_record_events(&events);
                     assert_eq!(
-                        game.side.lan_events[1],
+                        game.server.lan_events[1],
                         sunrise_gameplay_common::game::QueuedLevelEvent {
                             kind: 1500,
                             pos: [1, 64, 1],
@@ -153,7 +153,7 @@ use sunrise_gameplay_common::game::LevelDimension;
                         }
                     );
                     assert_eq!(
-                        game.side.lan_events[2],
+                        game.server.lan_events[2],
                         sunrise_gameplay_common::game::QueuedLevelEvent {
                             kind: 2005,
                             pos: [2, 64, 2],

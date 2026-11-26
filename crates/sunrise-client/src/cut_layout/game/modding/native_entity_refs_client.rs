@@ -146,11 +146,11 @@ use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
                 let culling_only_hi = [16.75, 68.0, 3.5];
                 assert!(ids(game, level, culling_only_lo, culling_only_hi).is_empty());
                 let (lo, hi) = game.client.text_displays.0[&92].interpolated_bounding_box(1.0);
-                let culling = sunrise_client_gameplay::game::client_side::native_entity_refs_client::aabb_extents((lo.to_array(), hi.to_array()));
-                let culling_only = sunrise_client_gameplay::game::client_side::native_entity_refs_client::aabb_extents((culling_only_lo, culling_only_hi));
+                let culling = sunrise_gameplay_common::game::pick_entity_common::aabb_extents((lo.to_array(), hi.to_array()));
+                let culling_only = sunrise_gameplay_common::game::pick_entity_common::aabb_extents((culling_only_lo, culling_only_hi));
                 assert!(culling.intersects(culling_only));
                 let mut picked = Vec::new();
-                game.for_each_pickable_in_bounds(sunrise_client_gameplay::game::client_side::native_entity_refs_client::aabb_extents((LO, HI)), |id, _, _| {
+                game.for_each_pickable_in_bounds(sunrise_gameplay_common::game::pick_entity_common::aabb_extents((LO, HI)), |id, _, _| {
                     picked.push(id)
                 });
                 assert_eq!(picked, [55]);

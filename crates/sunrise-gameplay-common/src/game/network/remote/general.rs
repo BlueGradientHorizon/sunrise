@@ -35,9 +35,9 @@ pub mod tests {
     };
 
     
-    #[cfg(test)]
-pub(in crate::game) struct Declare;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
+pub struct Declare;
+    #[cfg(any(test, feature = "test-support"))]
 #[mod_api::__subscriptions]
     impl mod_api::Hooks for Declare {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {

@@ -24,7 +24,7 @@ pub(in crate::game) struct DisplacedPlayer {
     pub(in crate::game) stats: Stats,
 }
 
-pub(in crate::game) enum CombatPlayer<'a> {
+pub enum CombatPlayer<'a> {
     InPlace,
     Displaced(usize, &'a PlayerMotion),
     Parked(&'a Guest),

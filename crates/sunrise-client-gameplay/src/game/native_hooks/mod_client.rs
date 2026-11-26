@@ -1640,8 +1640,8 @@ impl crate::game::ClientGame<'_> {
             s.shown && self.client.screen == Screen::Inventory && self.common.container == Some(s.menu.key)
         })
     }
-    #[cfg(test)]
-    pub(in crate::game) fn test_observed_title(&self) -> Option<std::sync::Arc<mod_api::Text>> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_observed_title(&self) -> Option<std::sync::Arc<mod_api::Text>> {
         self.observe_view(self.screen_change_view(self.client.screen))
             .title
     }
@@ -2139,26 +2139,26 @@ pub(in crate::game) fn posed_camera(
     )
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn test_title(&self) -> Option<&sunrise_client::title::Title> {
+    pub fn test_title(&self) -> Option<&sunrise_client::title::Title> {
         self.client.title.0.as_ref()
     }
-    pub(in crate::game) fn test_title_mut(&mut self) -> &mut Option<sunrise_client::title::Title> {
+    pub fn test_title_mut(&mut self) -> &mut Option<sunrise_client::title::Title> {
         &mut self.client.title.0
     }
-    pub(in crate::game) fn test_renderer(&self) -> Option<&sunrise_client_render::gfx::Renderer> {
+    pub fn test_renderer(&self) -> Option<&sunrise_client_render::gfx::Renderer> {
         self.client.renderer.0.as_deref()
     }
-    pub(in crate::game) fn test_renderer_mut(&mut self) -> &mut Option<Box<sunrise_client_render::gfx::Renderer>> {
+    pub fn test_renderer_mut(&mut self) -> &mut Option<Box<sunrise_client_render::gfx::Renderer>> {
         &mut self.client.renderer.0
     }
-    pub(in crate::game) fn test_window_mut(
+    pub fn test_window_mut(
         &mut self,
     ) -> &mut Option<std::sync::Arc<winit::window::Window>> {
         &mut self.client.window.0
     }
-    pub(in crate::game) fn test_pad(&self) -> &crate::game::pad::Pads {
+    pub fn test_pad(&self) -> &crate::game::pad::Pads {
         &self.client.pad.0
     }
 }

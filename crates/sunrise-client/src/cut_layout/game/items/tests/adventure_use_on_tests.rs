@@ -3,7 +3,7 @@
 //! the clicked block. Tools (an axe), honeycomb, bone meal, shears, a water
 //! bottle and a spawn egg used on a block pass in adventure mode otherwise.
 use sunrise_gameplay::game::game_tests::tests::server_game;
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit};
+use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit};
 use sunrise_command::args::GameMode;
 use sunrise_core::nbt::Tag;
 use sunrise_items::items::ItemStack;
@@ -34,8 +34,8 @@ fn placeable(name: &str, count: u32, block: &str) -> ItemStack {
 }
 
 /// Puts `name` at `pos` with `properties` overridden, returning its state.
-fn place<S: sunrise_gameplay_common::game::Side>(
-    game: &mut Game<'_, S>,
+fn place<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &mut G,
     pos: [i32; 3],
     name: &str,
     properties: &[(&str, &str)],

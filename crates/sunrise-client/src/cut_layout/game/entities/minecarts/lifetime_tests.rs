@@ -1,5 +1,6 @@
-use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, InteractTarget, ItemStack, Keys, Minecart, SEAT, Vec3}};
+use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, InteractTarget, Keys, Minecart, SEAT, Vec3}};
 use std::sync::Mutex;
+use sunrise_items::items::ItemStack;
 use sunrise_core::nbt::Tag;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
@@ -33,9 +34,10 @@ fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() 
         remote: None,
     }
     .run_with(|game| {
+        let epoch = game.native_lifecycle.epoch().unwrap();
         identities.observe(
             &mut game.carts,
-            game.native_lifecycle.epoch().unwrap(),
+            epoch,
             |cart| cart.id,
         )
     });

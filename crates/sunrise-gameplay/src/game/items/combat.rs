@@ -25,9 +25,9 @@ pub(in crate::game) struct Entry {
     /// (`DamageSource.directEntity`: a potion with no thrower, a cloud).
     pub(in crate::game) direct: Option<Text>,
 }
-pub(in crate::game) struct PendingAttacker {
+pub struct PendingAttacker {
     pub(in crate::game) damage_type: String,
-    pub(in crate::game) attacker: (u32, Text),
+    pub attacker: (u32, Text),
     pub(in crate::game) item: Option<Text>,
     pub(in crate::game) living: bool,
     pub(in crate::game) credit: bool,
@@ -64,15 +64,15 @@ impl CombatTracker {
     }
 }
 #[derive(Default)]
-pub(in crate::game) struct CombatTracker {
+pub struct CombatTracker {
     /// The arrows and bee stingers stuck in the body.
-    pub(in crate::game) stuck: Stuck,
+    pub stuck: Stuck,
     pub(in crate::game) entries: Vec<Entry>,
     pub(in crate::game) last_damage: i64,
     pub(in crate::game) in_combat: bool,
     /// Attackers of damage dealt this tick, claimed by the matching
     /// `RecordedDamage` event.
-    pub(in crate::game) pending: Vec<PendingAttacker>,
+    pub pending: Vec<PendingAttacker>,
     /// `pending` for a direct entity with no causing entity: only its name.
     pub(in crate::game) pending_direct: Vec<(String, Text)>,
     /// The lengths of `pending` and `pending_direct` before the first
@@ -81,7 +81,7 @@ pub(in crate::game) struct CombatTracker {
     /// `LivingEntity.lastHurtByMob` and its timestamp (the kill credit).
     pub(in crate::game) last_hurt_by: Option<((u32, Text), i64)>,
     /// `LivingEntity.lastHurtByPlayer` and its timestamp.
-    pub(in crate::game) last_hurt_by_player: Option<(PlayerCredit, i64)>,
+    pub last_hurt_by_player: Option<(PlayerCredit, i64)>,
     /// The attack the hits on the player land in now: who attacks and what they hold. Set only
     /// by [`Game::with_attack`], which restores the previous one on return.
     pub(in crate::game) attack: Attack,
@@ -94,16 +94,16 @@ pub(in crate::game) struct CombatTracker {
     pub(in crate::game) projectile_direct: Option<Text>,
     /// The player whose primed TNT is going off now (`PrimedTnt.getOwner`):
     /// its entity id and display name, the blast's causing entity.
-    pub(in crate::game) blast_owner: Option<(u32, Text)>,
+    pub blast_owner: Option<(u32, Text)>,
     /// `Some(None)` is an explicitly ownerless crystal/cart DamageSource.
-    pub(in crate::game) explicit_explosion_cause: Option<Option<super::explosion::ExplosionCause>>,
-    pub(in crate::game) explicit_explosion_direct: Option<Text>,
+    pub explicit_explosion_cause: Option<Option<super::explosion::ExplosionCause>>,
+    pub explicit_explosion_direct: Option<Text>,
     /// The guest behind `blast_owner`, when that player is a LAN guest; the
     /// host's own blast leaves it None.
-    pub(in crate::game) blast_guest: Option<u32>,
+    pub blast_guest: Option<u32>,
     /// `blast_owner` is a player (`getIndirectSourceEntity() instanceof
     /// Player`), not a mob whose UUID the TNT's `owner` names.
-    pub(in crate::game) blast_owner_player: bool,
+    pub blast_owner_player: bool,
     pub(in crate::game) projectile_attacker: Option<(u32, Text)>,
     pub(in crate::game) enchantment_projectile_attacker: Option<u32>,
     /// The projectile hitting the player now is another player's that
@@ -115,12 +115,12 @@ pub(in crate::game) struct CombatTracker {
     /// The mob whose swing is being applied, when the caller knows it. Without
     /// it the attacker is the mob nearest to where the hit came from, which
     /// walks every mob.
-    pub(in crate::game) melee_mob: Option<u32>,
+    pub melee_mob: Option<u32>,
     /// The attack event handled last hurt its target (`doHurtTarget` returned
     /// true). The events of one blow read it: `Zombie.doHurtTarget` burns only
     /// once `super.doHurtTarget` did (`MobEvent::ZombieIgnite` follows the
     /// attack it rides).
-    pub(in crate::game) hit_landed: bool,
+    pub hit_landed: bool,
     /// A firework rocket's burst is hurting the player now: the rocket is
     /// the direct entity (`rocket_hurt_player`).
     pub(in crate::game) rocket_hit: bool,
@@ -130,17 +130,17 @@ pub(in crate::game) struct CombatTracker {
     /// The player whose melee hit is landing on the player now: where they
     /// stand and the seconds their weapon disables a shield for
     /// (`getSecondsToDisableBlocking`).
-    pub(in crate::game) player_attacker: Option<([f64; 3], f32)>,
+    pub player_attacker: Option<([f64; 3], f32)>,
     /// While set, a sweep attack's reach to the other players is kept here
     /// instead of landing, for the caller that holds the LAN host.
     pub(in crate::game) sweeps: Option<Vec<super::lan_pvp::Sweep>>,
     /// The mob exploding now (`ServerExplosion.source`): its team's friendly
     /// fire decides whom the blast may hurt.
-    pub(in crate::game) explosion_source: Option<u32>,
+    pub explosion_source: Option<u32>,
     /// The primed TNT, TNT cart, fireball, wither skull or end crystal
     /// exploding now, by entity id (`Explosion.getDirectSourceEntity`; a
     /// mob's is `explosion_source`).
-    pub(in crate::game) explosion_direct: Option<u32>,
+    pub explosion_direct: Option<u32>,
     /// The exploding mob as predicates see it (`ServerExplosion.source`,
     /// `ServerPlayer.currentExplosionCause`), for a mob already out of the list.
     pub(in crate::game) explosion_cause: Option<sunrise_sim::advancements::EntityView>,
@@ -152,7 +152,7 @@ pub(in crate::game) struct CombatTracker {
     /// order the blast visits it: the listeners took the spared entities out
     /// and may have added others. `None` when no mod listened, and the walks
     /// visit every entity as before (`explosion_detonate.rs`).
-    pub(in crate::game) blast_hit_list: Option<Vec<u32>>,
+    pub blast_hit_list: Option<Vec<u32>>,
     /// `blast_hit_list`'s ids as a set, so a walk's membership check stays
     /// constant time however large the list is.
     pub(in crate::game) blast_hit_ids: std::collections::HashSet<u32>,
@@ -167,13 +167,13 @@ pub(in crate::game) struct CombatTracker {
     /// The blast now going off comes from a primed TNT minecart, which
     /// neither resists on nor breaks a rail or the block under one
     /// (`MinecartTNT.getBlockExplosionResistance`, `shouldBlockExplode`).
-    pub(in crate::game) rail_proof_blast: bool,
+    pub rail_proof_blast: bool,
     /// The mob that owns the projectile exploding now (`getIndirectSourceEntity`):
     /// the mobs the blast hurts record it as their attacker.
-    pub(in crate::game) explosion_owner: Option<u32>,
+    pub explosion_owner: Option<u32>,
     /// `WitherSkull.getBlockExplosionResistance`: a dangerous skull's blast
     /// caps every destroyable block's resistance at this value.
-    pub(in crate::game) blast_resistance_cap: Option<f32>,
+    pub blast_resistance_cap: Option<f32>,
     /// A mod blast's own damage type, calculator and effects
     /// (`level_explode`'s settings), while it goes off.
     pub(in crate::game) blast_settings: super::explosion_settings::BlastSettings,
@@ -184,7 +184,7 @@ pub(in crate::game) struct CombatTracker {
     /// The mobs whose blast went off this tick and that left the mob list
     /// (`MobEvent::ExplosionSource`): their names, for the death messages of
     /// the mobs the blast killed.
-    pub(in crate::game) exploded: Vec<(u32, Text)>,
+    pub exploded: Vec<(u32, Text)>,
     /// The entity types of `exploded`: a player their blast killed is still
     /// credited to them (`LivingEntity.getKillCredit` during the explosion).
     pub(in crate::game) exploded_kinds: Vec<(u32, String)>,
@@ -196,7 +196,7 @@ impl CombatTracker {
     /// Whether the blast now hurting entities visits `id`: the storages are
     /// the walk, unless a listening `explosion_detonate` left a list, and
     /// then only what that list names is.
-    pub(in crate::game::server_side) fn visits(&self, id: u32) -> bool {
+    pub fn visits(&self, id: u32) -> bool {
         self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id)
     }
 
@@ -206,7 +206,7 @@ impl CombatTracker {
     }
 
     /// The scalar death-tail/death-message fallback, not the full accepted killing source.
-    pub(in crate::game::server_side) fn last_blow(&self) -> Option<(&str, u32)> {
+    pub fn last_blow(&self) -> Option<(&str, u32)> {
         let e = self.entries.last()?;
         Some((&e.damage_type, e.attacker.as_ref().map_or(0, |a| a.0)))
     }
@@ -216,7 +216,7 @@ impl CombatTracker {
     }
     /// `CombatTracker.getKiller`'s credited attacker: the entity that last
     /// hurt the body, within a hundred ticks of the hurt.
-    pub(in crate::game) fn kill_credit(&self, now: i64) -> Option<u32> {
+    pub fn kill_credit(&self, now: i64) -> Option<u32> {
         let ((id, _), at) = self.last_hurt_by.as_ref()?;
         (now - at <= 100).then_some(*id)
     }

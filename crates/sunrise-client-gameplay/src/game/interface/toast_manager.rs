@@ -25,8 +25,8 @@ pub enum Toast {
 }
 
 pub struct VisibleToast {
-    pub(in crate::game) toast: Toast,
-    pub(in crate::game) slot: usize,
+    pub toast: Toast,
+    pub slot: usize,
     // A reset can resize the content, but the instance keeps its original slots.
     pub(in crate::game) slots: u32,
 }

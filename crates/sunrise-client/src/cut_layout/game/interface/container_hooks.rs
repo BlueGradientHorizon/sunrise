@@ -11,23 +11,74 @@ pub(crate) mod tests {
 
 use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
 
-use sunrise_gameplay_common::game::client_side::container_hooks::tests::PASS;
-
-use sunrise_gameplay_common::game::client_side::container_hooks::tests::PICK_NINE;
-
-use sunrise_gameplay_common::game::client_side::container_hooks::tests::READ_FAR;
-
-use sunrise_gameplay_common::game::client_side::container_hooks::tests::TAKE;
-
-use sunrise_gameplay_common::game::client_side::container_hooks::tests::TAKE_RELEASE;
-
 use super::*;
 
 use sunrise_gameplay_common::game::Screen;
 
 use crate::game::native_entity_refs::tests::with_client_game;
 
-use sunrise_hooks::containers::{ContainerHooks, engine::with_registrants};
+use sunrise_hooks::containers::{Button, Click, Container, ContainerHooks, SlotId, engine::with_registrants};
+use sunrise_hooks::hud;
+
+    /// Takes every press, drag and key.
+    struct Take;
+    impl ContainerHooks for Take {
+        fn press(&self, _: &mut dyn Container, _: Option<SlotId>, _: Button) -> bool {
+            true
+        }
+        fn drag(&self, _: &mut dyn Container, _: Option<SlotId>, _: Button) -> bool {
+            true
+        }
+        fn key(&self, _: &mut dyn Container, _: Option<SlotId>, _: &str) -> bool {
+            true
+        }
+    }
+    static TAKE: Take = Take;
+    /// Picks up slot 9 on every press.
+    struct PickNine;
+    impl ContainerHooks for PickNine {
+        fn press(&self, c: &mut dyn Container, _: Option<SlotId>, _: Button) -> bool {
+            c.click(SlotId(9), Click::Pick { right: false })
+        }
+    }
+    static PICK_NINE: PickNine = PickNine;
+    /// Takes every release.
+    struct TakeRelease;
+    impl ContainerHooks for TakeRelease {
+        fn release(&self, _: &mut dyn Container, _: Option<SlotId>, _: Button) -> bool {
+            true
+        }
+    }
+    static TAKE_RELEASE: TakeRelease = TakeRelease;
+    /// Reads slots no menu has, counting each call whose reads all come back empty.
+    struct ReadFar(std::sync::atomic::AtomicUsize);
+    impl ReadFar {
+        fn read(&self, c: &dyn Container) -> bool {
+            // None of these is a slot of the player's inventory screen (500 to 504, its armour, are).
+            let far = [SlotId(36), SlotId(600), SlotId(9999)];
+            let empty = far
+                .iter()
+                .all(|&s| c.stack(s).is_none() && c.name(s).is_none());
+            if empty {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            empty
+        }
+    }
+    impl ContainerHooks for ReadFar {
+        fn press(&self, c: &mut dyn Container, _: Option<SlotId>, _: Button) -> bool {
+            self.read(c)
+        }
+        fn draw(&self, c: &dyn Container, _: &mut dyn hud::Canvas) {
+            self.read(c);
+        }
+    }
+    static READ_FAR: ReadFar = ReadFar(std::sync::atomic::AtomicUsize::new(0));
+    /// Takes nothing.
+    struct Pass;
+    impl ContainerHooks for Pass {}
+    static PASS: Pass = Pass;
+
 
 #[test]
     #[ignore = "daily"]

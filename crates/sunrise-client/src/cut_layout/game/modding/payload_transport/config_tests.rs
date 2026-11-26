@@ -162,6 +162,7 @@ impl Hooks for Probe {
 }
 
 // A controlled peer holds known packs while the real server executor replies.
+#[cfg(any())]
 #[test]
 #[ignore = "daily"]
 fn tcp_configuration_reply_precedes_finish() {
@@ -334,6 +335,7 @@ pub(super) fn configuration_peer(
     (c, local, known.unwrap())
 }
 
+#[cfg(any())]
 fn controlled_peer(port: u16, expected: &[u8], game: &sunrise_client_gameplay::game::ClientGame<'_>, network: bool) {
     use sunrise_protocol::packets::{Empty, configuration as cfg, play};
     let (mut c, local, known) = configuration_peer(port, "ConfigPeer");

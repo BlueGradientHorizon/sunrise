@@ -41,7 +41,7 @@ mod tests {
                 if Some((x, z)) != skip && !game.world.chunks.contains_key(&(x, z)) {
                     game.server
                         .streaming
-                        .insert_remote(&mut game.world, Chunk::empty(x, z));
+                        .insert_remote(&mut game.common.world, Chunk::empty(x, z));
                 }
             }
         }
@@ -149,7 +149,7 @@ mod tests {
             );
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(1, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(1, 0));
             for y in 70..73 {
                 set(game, "minecraft:nether_portal", [16, y, 8]);
             }

@@ -246,8 +246,8 @@ impl ClientGame<'_> {
         self.pick_entity_hit_at().map(|hit| hit.1)
     }
     /// Returns the wire entity id under the crosshair before any block.
-    #[cfg(test)]
-    pub(in crate::game) fn crosshair_entity_id(&self) -> Option<i32> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn crosshair_entity_id(&self) -> Option<i32> {
         self.crosshair_entity_hit().map(|hit| hit.id)
     }
 

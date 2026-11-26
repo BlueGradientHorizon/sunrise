@@ -20,7 +20,7 @@ pub(crate) mod spawn_placement_tests;
 #[cfg(test)]
 pub(crate) mod entity_ticking_tests {
     use sunrise_client_lib::raid::RaidLevel;
-use {sunrise_gameplay::game::server_side::raids::Lvl, sunrise_gameplay::game::server_side::raids::RaidLevel};
+use sunrise_gameplay::game::server_side::raids::Lvl;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use std::{collections::HashSet, sync::Arc};
     use sunrise_level::chunk::Chunk;

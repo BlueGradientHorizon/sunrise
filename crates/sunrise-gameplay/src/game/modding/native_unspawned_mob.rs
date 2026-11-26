@@ -35,18 +35,18 @@ static NEXT_LEND: AtomicU64 = AtomicU64::new(1);
 
 /// The mobs lent to the hook calls running now, the latest last.
 #[derive(Default)]
-pub(in crate::game) struct LentMobs {
+pub struct LentMobs {
     lends: Vec<Lent>,
-    pub(in crate::game) pending:
+    pub pending:
         Rc<RefCell<PendingChildren<super::native_pending_children::PendingMob>>>,
     /// The hook whose listeners the innermost pending action is dispatching to, if any.
     pub(in crate::game) hook: Rc<std::cell::Cell<Option<mod_api::HookId>>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl LentMobs {
     /// Whether no lend is open.
-    pub(in crate::game::server_side) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.lends.is_empty()
     }
 }

@@ -1,6 +1,9 @@
 //! `fire_odds` answered by a block Part with the asked block's position and face (#3185): the
 //! Part's answer for one face makes the fire beside that face valid, and the other faces keep
 //! vanilla's table.
+#![cfg(test)]
+
+use sunrise_gameplay_common::game::remote::dry_level::DryLevelGameExt2 as _;
 use sunrise_gameplay_common::game::GameGameExt1;
 use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{self, BlockPart, FireOddsEvent, Hooks, LevelSide, Registrar};

@@ -78,7 +78,7 @@ fn a_kills_loot_uses_the_level_a_mod_answers() {
             game.as_guest(5, |g| {
                 let mut sword = sunrise_items::items::ItemStack::new("minecraft:iron_sword", 1);
                 sword.enchant("minecraft:looting", 2);
-                g.inventory[g.selected] = Some(sword);
+                g.common.inventory[g.common.selected] = Some(sword);
             })
             .unwrap();
             let by_player = Damage {
@@ -235,7 +235,7 @@ fn loot_kill_asks_with_the_commands_source_as_the_attacker() {
             game.as_guest(5, |g| {
                 let mut sword = sunrise_items::items::ItemStack::new("minecraft:iron_sword", 1);
                 sword.enchant("minecraft:looting", 2);
-                g.inventory[g.selected] = Some(sword);
+                g.common.inventory[g.common.selected] = Some(sword);
                 g.ui.registries.permission = 4;
                 assert!(g.run_command("loot spawn 0 64 0 kill @e[type=minecraft:zombie,limit=1]"));
             })

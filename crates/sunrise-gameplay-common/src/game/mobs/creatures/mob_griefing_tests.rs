@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 
 /// Denies griefing to the entities in `self.0`, and logs who was asked.
 pub struct Deny(
-    pub(in crate::game) Vec<u32>,
-    pub(in crate::game) Arc<Mutex<Vec<(u32, bool)>>>,
+    pub Vec<u32>,
+    pub Arc<Mutex<Vec<(u32, bool)>>>,
 );
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Deny {

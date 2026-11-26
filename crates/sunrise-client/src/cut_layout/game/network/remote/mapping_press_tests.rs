@@ -71,7 +71,7 @@ pub(crate) use crate::game::server_side::remote_server::interaction_event_tests:
 #[ignore = "daily"]
 fn holding_use_draws_a_bow_once_and_letting_go_releases_it() {
     with_pressing_game(|game, packets, triggered| {
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:bow", 1));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:bow", 1));
         let use_mapping = game.vanilla_key_mapping("key.use").unwrap();
         game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 64));
         let sequence = game.client.remote.as_ref().unwrap().sequence;

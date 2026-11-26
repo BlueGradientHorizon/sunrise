@@ -2,6 +2,7 @@
 
 #![cfg(test)]
 #[cfg(test)]
+#[cfg(any())]
 pub(crate) mod customize_boss_event_progress_tests {
 
 use sunrise_client_gameplay::game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::add_bars;

@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+use {sunrise_gameplay::game::ServerGame, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::settings::Settings;
 use crate::game::load_resources;
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use sunrise_level::chunk::Chunk;
 
 fn end_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
-) -> Game<'a, sunrise_gameplay::game::server_side::ServerState> {
+) -> ServerGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -65,7 +65,7 @@ fn end_game<'a>(
 
 /// The level's dragon fireballs: its projectiles of that kind.
 fn dragon_fireballs<'a>(
-    game: &'a Game<'_, sunrise_gameplay::game::server_side::ServerState>,
+    game: &'a ServerGame<'_>,
 ) -> Vec<&'a sunrise_sim::projectiles::Projectile> {
     game.creatures
         .projectiles

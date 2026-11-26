@@ -39,35 +39,35 @@ type Pos = (i32, i32, i32);
 
 /// What `runAtTickTime` runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Action {
+pub enum Action {
     /// `BlockBasedTestInstance.run`'s `onEachTick` body.
     BlockBasedTick,
 }
 
 /// `GameTestInfo`.
 pub struct Info {
-    id: u32,
+    pub id: u32,
     /// `id()`: the test's registry id.
-    key: String,
+    pub key: String,
     def: TestDef,
     /// The test instance block (`getTestBlockPos`), once there is one.
-    pos: Pos,
-    has_pos: bool,
-    dim: Dim,
+    pub pos: Pos,
+    pub has_pos: bool,
+    pub dim: Dim,
     pub extra_rotation: Rotation,
-    tick_count: i32,
+    pub tick_count: i32,
     started: bool,
     placed: bool,
-    done: bool,
-    error: Option<TestError>,
-    run_at: Vec<(i64, Action)>,
+    pub done: bool,
+    pub error: Option<TestError>,
+    pub run_at: Vec<(i64, Action)>,
     started_at: Option<Instant>,
     run_ms: u128,
-    retry: Retry,
+    pub retry: Retry,
     /// The test whose `ReportGameListener` counts this run: its own id, or
     /// the original's for a rerun (`copyReset`).
-    origin: u32,
-    rerun: bool,
+    pub origin: u32,
+    pub rerun: bool,
     /// `succeed` removes the entities around the structure; the game does it.
     discard_entities: bool,
 }
@@ -110,7 +110,7 @@ impl Info {
     }
 
     /// `copyReset`: the same test, level and block, as a new run.
-    fn copy_reset(&self, id: u32) -> Self {
+    pub fn copy_reset(&self, id: u32) -> Self {
         let pos = self.has_pos.then_some(self.pos);
         let mut copy = Self::new(
             id,
@@ -140,7 +140,7 @@ impl Info {
     }
 
     /// `fail(Component)`.
-    fn fail(&mut self, message: Text) {
+    pub fn fail(&mut self, message: Text) {
         self.error = Some(self.assertion(message));
     }
 
@@ -155,7 +155,7 @@ impl Info {
     }
 
     /// `succeed`: finishes unless a failure is set.
-    fn succeed(&mut self) {
+    pub fn succeed(&mut self) {
         if self.error.is_none() {
             self.finish();
             self.discard_entities = true;
@@ -163,12 +163,12 @@ impl Info {
     }
 
     /// `startExecution(tickDelay)`.
-    fn start_execution(&mut self, tick_delay: i32) {
+    pub fn start_execution(&mut self, tick_delay: i32) {
         self.tick_count = -(self.def.setup_ticks + tick_delay + 1);
     }
 
     /// `onEachTick`: the action on every tick from now to the timeout.
-    fn on_each_tick(&mut self, action: Action) {
+    pub fn on_each_tick(&mut self, action: Action) {
         for i in i64::from(self.tick_count)..i64::from(self.def.max_ticks) {
             self.run_at.push((i, action));
         }
@@ -229,11 +229,11 @@ impl RunnerOptions {
 }
 
 /// What `MultipleTestTracker` knows of a test.
-struct Tracked {
-    id: u32,
-    required: bool,
-    done: bool,
-    failed: bool,
+pub struct Tracked {
+    pub id: u32,
+    pub required: bool,
+    pub done: bool,
+    pub failed: bool,
 }
 
 /// `GameTestBatchFactory.fromGameTestInfo(size)`: partition each environment
@@ -297,7 +297,7 @@ pub fn verify_batches(
 }
 
 /// A listener's counters, (origin, attempts, successes): its attempts and successes.
-fn report_of(reports: &mut Vec<(u32, i32, i32)>, origin: u32) -> (&mut i32, &mut i32) {
+pub fn report_of(reports: &mut Vec<(u32, i32, i32)>, origin: u32) -> (&mut i32, &mut i32) {
     let at = reports
         .iter()
         .position(|r| r.0 == origin)
@@ -310,45 +310,45 @@ fn report_of(reports: &mut Vec<(u32, i32, i32)>, origin: u32) -> (&mut i32, &mut
 }
 
 /// `GameTestRunner`.
-struct Runner {
-    batches: Vec<Batch>,
-    current: usize,
+pub struct Runner {
+    pub batches: Vec<Batch>,
+    pub current: usize,
     /// `currentBatchTracker`: the tests of the batch still to finish.
-    batch_pending: usize,
-    tracked: Vec<Tracked>,
-    halt_on_error: bool,
+    pub batch_pending: usize,
+    pub tracked: Vec<Tracked>,
+    pub halt_on_error: bool,
     /// `GameTestBatchFactory.fromGameTestInfo(maxTestsPerBatch)`, for reruns.
-    batch_size: usize,
+    pub batch_size: usize,
     /// `clearBetweenBatches`.
-    clear_between_batches: bool,
+    pub clear_between_batches: bool,
     /// The grid is also `existingStructureSpawner` (`/test verify`): a test
     /// with a block is moved onto it.
-    grid_for_existing: bool,
+    pub grid_for_existing: bool,
     /// The tests of the batch before: their levels and blocks, for
     /// `clearBetweenBatches`.
-    last_batch: Vec<(Dim, Pos)>,
+    pub last_batch: Vec<(Dim, Pos)>,
     /// `newStructureSpawner`: where the tests without a block go.
-    grid: Option<Grid>,
+    pub grid: Option<Grid>,
     /// `ReportGameListener`'s (attempts, successes), by original test.
-    reports: Vec<(u32, i32, i32)>,
+    pub reports: Vec<(u32, i32, i32)>,
     /// `scheduledForRerun`.
-    scheduled: Vec<Info>,
+    pub scheduled: Vec<Info>,
     /// `stopped`: no batch is running.
-    stopped: bool,
-    summary_source: Option<SummarySource>,
-    summary_dimensions: Vec<Dim>,
+    pub stopped: bool,
+    pub summary_source: Option<SummarySource>,
+    pub summary_dimensions: Vec<Dim>,
 }
 
 /// The command stack and its output source are different: `execute as`
 /// changes the actor, while the player who issued the command receives it.
 #[derive(Clone, Copy)]
-struct SummarySource {
-    source: Source,
-    recipient: Option<Target>,
+pub struct SummarySource {
+    pub source: Source,
+    pub recipient: Option<Target>,
 }
 
 /// `StructureGridSpawner.DimensionGridState`.
-struct DimGrid {
+pub struct DimGrid {
     first: Pos,
     pub next: Pos,
     /// The z extent of `rowBounds` (an `AABB(BlockPos)` is one block deep).
@@ -359,7 +359,7 @@ struct DimGrid {
 }
 
 impl DimGrid {
-    fn new(first: Pos) -> Self {
+    pub fn new(first: Pos) -> Self {
         Self {
             first,
             next: first,
@@ -400,7 +400,7 @@ impl Grid {
 
 /// What a runner says to the server, sent on the next tick (a test's
 /// messages come from the server's console, not a player's command).
-enum Out {
+pub enum Out {
     /// `sendSuccess(.., broadcast)`, `sendFailure` or `sendSystemMessage` of
     /// the server's command source.
     Console {
@@ -454,15 +454,15 @@ fn summary_coordinates(key: &str, at: [i32; 3], dim: Dim, rotation: [i32; 2], co
 
 /// `GameTestTicker.SINGLETON` and the runner it holds, `FailedTestTracker`.
 #[derive(Default)]
-pub(in crate::game) struct GameTests {
-    ticker: Vec<Info>,
-    runner: Option<Runner>,
+pub struct GameTests {
+    pub ticker: Vec<Info>,
+    pub runner: Option<Runner>,
     ticking: bool,
     halting: bool,
     next_id: u32,
     /// `FailedTestTracker.LAST_FAILED_TESTS`.
-    pub(in crate::game) failed: Vec<String>,
-    outbox: Vec<Out>,
+    pub failed: Vec<String>,
+    pub outbox: Vec<Out>,
     /// The command that starts the runner is still running: its source takes
     /// `TestBatchSummaryDisplayer`'s lines then and there.
     command_start: bool,
@@ -472,7 +472,7 @@ pub(in crate::game) struct GameTests {
 
 impl GameTests {
     /// A test of the runner (placed or still to place) is in `dim`.
-    pub(in crate::game::server_side) fn has_tests_in(&self, dim: Dim) -> bool {
+    pub fn has_tests_in(&self, dim: Dim) -> bool {
         self.ticker.iter().any(|i| i.dim == dim)
             || self.runner.as_ref().is_some_and(|r| {
                 r.batches
@@ -1655,7 +1655,7 @@ impl crate::game::ServerGame<'_> {
 
 /// `ReportGameListener.handleRetry`'s line: the counters, then the test's
 /// result.
-fn retry_line(info: &Info, retry: Retry, attempts: i32, successes: i32, passed: bool) -> String {
+pub fn retry_line(info: &Info, retry: Retry, attempts: i32, successes: i32, passed: bool) -> String {
     let mut report = format!(
         "[Run: {attempts:>4}, Ok: {successes:>4}, Fail: {:>4}",
         attempts - successes

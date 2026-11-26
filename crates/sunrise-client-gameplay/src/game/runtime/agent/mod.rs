@@ -333,11 +333,11 @@ pub(in crate::game) struct SneakClick {
     pub(in crate::game) aim: Option<([i32; 3], Option<[i32; 3]>)>,
     pub(in crate::game) hold: f64,
 }
-pub(in crate::game) struct Task {
+pub struct Task {
     pub(in crate::game) kind: TaskKind,
     pub(in crate::game) reply: Sender<String>,
-    pub(in crate::game) deadline: Instant,
-    pub(in crate::game) name: &'static str,
+    pub deadline: Instant,
+    pub name: &'static str,
 }
 
 /// Mouse motion an agent feeds over frames (`mouse-move`, `turn --over`,
@@ -368,7 +368,7 @@ pub(in crate::game) struct Agent {
     pub hold_server: bool,
 }
 
-pub(in crate::game) enum Handled {
+pub enum Handled {
     Reply(Value),
     /// The reply comes later, from the task.
     Deferred,

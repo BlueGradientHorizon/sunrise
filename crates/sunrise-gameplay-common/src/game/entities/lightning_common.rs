@@ -143,10 +143,10 @@ impl Bolt {
         self.has_visual_fire = entity_nbt::flag(tag, "HasVisualFire");
     }
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Bolt {
     /// A spent bolt at `at`, for tests that call `thunder_hit` directly.
-    pub(in crate::game) fn struck_at(id: u32, at: [f64; 3]) -> Self {
+    pub fn struck_at(id: u32, at: [f64; 3]) -> Self {
         Self {
             attachment_lifetime: Default::default(),
             join: Default::default(),

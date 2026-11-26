@@ -1099,7 +1099,7 @@ fn watch_pot(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (i32, i32, mp
         guest.sender = PlayerSender::new(tx, Arc::default())
     });
     let window = host.hub.guests[0].menu.as_ref().unwrap().window;
-    host.hub.resend_menu(12, window, &game.world);
+    host.hub.resend_menu(12, window, &game.common.world);
     rx.try_iter().for_each(drop);
     let state = host.hub.guests[0].menu.as_ref().unwrap().state;
     (window, state, rx)
@@ -1233,9 +1233,9 @@ fn a_damage_only_repair_reaches_the_open_menu_and_inventory() {
                     );
                     assert!(!old.matches(&stack, &names));
                 };
-                game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[RESULT] =
+                game.common.world.block_entities.get_mut(&POS).unwrap().slots_mut()[RESULT] =
                     Some(repaired.clone());
-                host.hub.sync_containers(&game.world);
+                host.hub.sync_containers(&game.common.world);
                 zero(
                     slot_replies(&rx)
                         .find(|set| set.container == window && set.slot == RESULT as i16)

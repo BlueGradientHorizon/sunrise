@@ -34,7 +34,7 @@ pub(in crate::game) struct MountedWidgetsInner {
 }
 
 /// Mounted widgets attached to the currently open screen during `Hooks::screen_init_post`.
-pub(in crate::game) struct MountedScreenWidgets {
+pub struct MountedScreenWidgets {
     pub(in crate::game) generation: Cell<u64>,
     pub(in crate::game) next_id: Cell<u64>,
     pub(in crate::game) inner: RefCell<MountedWidgetsInner>,
@@ -70,8 +70,8 @@ impl MountedScreenWidgets {
         self.inner.borrow().entries.is_empty()
     }
 
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn len(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn len(&self) -> usize {
         self.inner.borrow().entries.len()
     }
 
@@ -83,13 +83,13 @@ impl MountedScreenWidgets {
         self.inner.borrow().focused
     }
 
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn dragging(&self) -> Option<(usize, i32)> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn dragging(&self) -> Option<(usize, i32)> {
         self.inner.borrow().dragging
     }
 
-    #[cfg(test)]
-    pub(in crate::game::client_side) fn is_disabled(&self, idx: usize) -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn is_disabled(&self, idx: usize) -> bool {
         self.inner
             .borrow()
             .entries

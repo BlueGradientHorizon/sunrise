@@ -58,7 +58,7 @@ fn a_dead_player_is_respawned_once() {
             set_dead(game, 13, true);
             assert_eq!(b.respawn(game), Ok(()));
             assert!(!is_dead(game, 13));
-            assert_eq!(b, game.player(b.uuid()).unwrap());
+            assert_eq!(b, NativeServerGameExt1::player(game, b.uuid()).unwrap());
             assert_eq!(*heard.lock().unwrap(), [(13, "guest13".to_owned(), false)]);
             assert_eq!(b.respawn(game), Err(RespawnRefusal::Alive));
             assert_eq!(heard.lock().unwrap().len(), 1, "not respawned twice");
@@ -120,7 +120,7 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
         assert!(is_dead(game, 13), "still dead");
 
         // A fake player has no connection.
-        let level = game.level("minecraft:overworld").unwrap();
+        let level = NativeEntityRefsCommonGameExt1::level(game, "minecraft:overworld").unwrap();
         let fake = game.fake_player(level, 100, "robot").unwrap();
         assert_eq!(fake.respawn(game), Err(RespawnRefusal::NoConnection));
 
@@ -131,7 +131,7 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
             let mut body = PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
             body.entity_id = 99;
             game.player = Some(body);
-            let owner = game.player(99).unwrap();
+            let owner = NativeServerGameExt1::player(game, 99).unwrap();
             assert_eq!(owner.respawn(game), Err(RespawnRefusal::NoConnection));
             game.player = None;
             game.level.player_uuid = None;
@@ -155,6 +155,6 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
     });
 }
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;

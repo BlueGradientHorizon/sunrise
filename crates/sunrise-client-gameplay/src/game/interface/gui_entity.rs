@@ -47,6 +47,11 @@ thread_local! {
     static SCRATCH: RefCell<Scratch> = RefCell::default();
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub fn test_cached_entity_count() -> usize {
+    SCRATCH.with_borrow(|scratch| scratch.made.len())
+}
+
 /// Full bright, as `renderEntityInInventory` draws (`LightTexture.FULL_BRIGHT`).
 const FULL_BRIGHT: u32 = 240 | 240 << 8;
 

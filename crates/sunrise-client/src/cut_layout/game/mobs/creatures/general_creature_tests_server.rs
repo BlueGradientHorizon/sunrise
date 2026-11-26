@@ -1,5 +1,5 @@
 use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::server_side::creatures_server::ProjectileKind;
+use sunrise_sim::projectiles::ProjectileKind;
 use sunrise_gameplay_common::game_side;
 
 #[test]
@@ -49,7 +49,8 @@ fn conversion_transfers_tags_and_team() {
 #[test]
 #[ignore = "daily"]
 fn ender_pearl_clears_impulse_before_next_fall() {
-    use {sunrise_gameplay::game::server_side::creatures_server::Hit, sunrise_gameplay::game::server_side::creatures_server::Projectile, sunrise_gameplay::game::server_side::creatures_server::Vec3, sunrise_gameplay::game::server_side::creatures_server::Who};
+    use sunrise_sim::{mobs::Who, projectiles::{Hit, Projectile}};
+    use sunrise_core::geometry::Vec3;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 

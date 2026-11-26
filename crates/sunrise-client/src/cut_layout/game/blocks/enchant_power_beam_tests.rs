@@ -1,7 +1,7 @@
 //! Block parts answer the enchanting power an enchanting table counts (`enchant_power_bonus`)
 //! and the colour a beacon beam takes (`beacon_color_multiplier`).
 use sunrise_gameplay_common::game::beacon_common::BeaconCommonGameExt1;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
+use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::{
     BlockPart, EnchantPowerBonusEvent, Hooks, Host, LevelReadError, ModEntry, Mods, Registrar,
     RegistrationContext,
@@ -250,13 +250,11 @@ fn enchant_power_query_reads_the_logged_in_client_level() {
     );
 }
 
-pub(crate) fn place<S: sunrise_gameplay_common::game::Side>(
-    game: &mut Game<'_, S>,
+pub(crate) fn place<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &mut G,
     offset: [i32; 3],
     block: &str,
-) where
-    for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
-{
+) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     let [x, y, z] = [0, 1, 2].map(|i| TABLE[i] + offset[i]);
     game.world.set(x, y, z, state).unwrap();

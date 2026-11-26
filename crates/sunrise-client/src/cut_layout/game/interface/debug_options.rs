@@ -8,6 +8,8 @@ use winit::keyboard::KeyCode;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_client_gameplay::game::client_side::debug_options::footer;
+
 use super::*;
 use crate::game::load_resources;
 use crate::settings::Settings;

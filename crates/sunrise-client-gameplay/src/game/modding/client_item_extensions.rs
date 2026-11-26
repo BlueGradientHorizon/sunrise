@@ -15,7 +15,7 @@ use sunrise_client::mobs::Part;
 use sunrise_client::mobs::Polygon;
 use sunrise_level::fast_hash::FxHashMap;
 
-pub(in crate::game) static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> =
+pub static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> =
     LazyLock::new(|| {
         mod_api::Identifier::from_parts("minecraft", "default")
             .expect("minecraft:default is a valid identifier")

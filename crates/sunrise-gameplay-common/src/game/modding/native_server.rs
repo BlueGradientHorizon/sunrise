@@ -916,14 +916,14 @@ pub mod tests {
     use super::*;
     use sunrise_items::items::ItemStack;
 
-    #[cfg(test)]
-    pub(in crate::game) type Heard = Vec<(&'static str, u32, u128, &'static str, [i32; 2])>;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub type Heard = Vec<(&'static str, u32, u128, &'static str, [i32; 2])>;
+    #[cfg(any(test, feature = "test-support"))]
     /// Logs each of the watch trio: (hook, player id, UUID, level, chunk).
-    pub(in crate::game) struct Watcher(pub(in crate::game) std::sync::Arc<std::sync::Mutex<Heard>>);
-    #[cfg(test)]
+    pub struct Watcher(pub std::sync::Arc<std::sync::Mutex<Heard>>);
+    #[cfg(any(test, feature = "test-support"))]
     impl Watcher {
-        pub(in crate::game) fn log(
+        pub fn log(
             &self,
             hook: &'static str,
             player: PlayerRef,
@@ -938,7 +938,7 @@ pub mod tests {
             ));
         }
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Watcher {
         fn chunk_watch(&self, _: &mut dyn mod_api::ServerHost, e: &mut mod_api::ChunkWatchEvent) {

@@ -5,7 +5,7 @@
 use {crate::game::native_hooks::base::*};
 use {sunrise_client_gameplay::game::client_side::native_hooks_client::screen_view::screen_view_for_mod, sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen};
 use sunrise_client_gameplay::game::event_loop::EventLoopCtl;
-use sunrise_client_gameplay::game::input_trace::InputOrigin;
+use sunrise_client_gameplay::input_trace::InputOrigin;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::client::widgets::Button;
 use mod_api::{

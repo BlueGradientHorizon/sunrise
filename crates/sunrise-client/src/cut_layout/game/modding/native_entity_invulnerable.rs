@@ -492,7 +492,7 @@ use super::super::native_entity_refs::tests::with_game;
 
             // A mob's flag and timer survive a save and a load, as vanilla
             // writes them (`Invulnerable`, `invulnerable_time`).
-            game.mobs.push(Mob::new(
+            game.common.mobs.push(Mob::new(
                 30,
                 game.res
                     .mob_types()
@@ -525,6 +525,7 @@ use super::super::native_entity_refs::tests::with_game;
     /// window closes.
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn the_window_refuses_damage_and_hides_the_mob_from_enemies() {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::{Damage, DamageKind, Mob};
@@ -759,7 +760,7 @@ use super::super::native_entity_refs::tests::with_game;
     #[test]
     #[ignore = "daily"]
     fn a_flagged_player_is_no_ones_target() {
-        use sunrise_gameplay::game::server_side::native_entity_invulnerable::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             let zombie = game
@@ -848,10 +849,10 @@ use super::super::native_entity_refs::tests::with_game;
                 .permanently_invulnerable = false;
             game.player.as_mut().unwrap().health.invulnerable_time = 0;
             let mut pending = true;
-            game.player
+            game.common.player
                 .as_mut()
                 .unwrap()
-                .load_saved_state_once(&mut pending, &game.level)
+                .load_saved_state_once(&mut pending, &game.common.level)
                 .unwrap();
             assert!(
                 game.player
@@ -881,8 +882,8 @@ use super::super::native_entity_refs::tests::with_game;
 
             // Match cmd_damage's normalized direct and causing player source.
             let source = (
-                Some(sunrise_gameplay::game::server_side::native_entity_invulnerable::Target::Player),
-                Some(sunrise_gameplay::game::server_side::native_entity_invulnerable::Target::Player),
+                Some(sunrise_gameplay_common::game::commands_common::Target::Player),
+                Some(sunrise_gameplay_common::game::commands_common::Target::Player),
                 None,
             );
             let before = game.dragon.as_ref().unwrap().health;

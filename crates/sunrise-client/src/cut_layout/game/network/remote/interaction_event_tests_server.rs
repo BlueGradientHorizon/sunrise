@@ -1,5 +1,5 @@
 use sunrise_client_gameplay::game::native_hooks::item_fallthrough::ItemFallthroughGameExt1;
-use {crate::game::server_side::Game, sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
+use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
 use crate::game::remote::interaction_event_tests::Controls;
 use crate::game::remote::interaction_event_tests::Observer;
 use crate::game::remote::interaction_event_tests::Step;
@@ -51,7 +51,7 @@ pub(crate) mod mapping_press_tests;
 #[test]
 #[ignore = "daily"]
 fn a_placed_powder_snow_bucket_leaves_a_bucket_in_hand_on_both_sides() {
-    fn run<S: InteractionSide>(game: &mut Game<'_, S>) {
+    fn run<'g, S: InteractionSide<'g>>(game: &mut S) {
         let client = S::IS_CLIENT;
         S::set_interaction_mode(game, sunrise_command::args::GameMode::Survival);
         let stone = game
@@ -62,7 +62,8 @@ fn a_placed_powder_snow_bucket_leaves_a_bucket_in_hand_on_both_sides() {
             .unwrap();
         game.world.set(0, 64, 0, stone).unwrap();
         game.set_test_forced_hit(Some(hit()));
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:powder_snow_bucket", 1));
+        let common = game.common_mut();
+        common.inventory[common.selected] = Some(ItemStack::new("minecraft:powder_snow_bucket", 1));
         use_block(game);
         assert_eq!(
             game.inventory[game.selected].as_ref().map(|s| &*s.item),
@@ -389,7 +390,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));
 
             // An empty main hand passes, and the off hand uses its item.
-            game.inventory[game.selected] = None;
+            game.common.inventory[game.common.selected] = None;
             *observer.0.lock().unwrap() = Controls::default();
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
             assert_eq!(
@@ -398,7 +399,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             );
 
             // A main hand item nothing answers for passes too: both hands' hooks, in order.
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stone", 1));
             *observer.0.lock().unwrap() = Controls::default();
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
             assert_eq!(
@@ -411,7 +412,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             );
 
             // A guest's use packet names the off hand alone.
-            game.inventory[game.selected] = None;
+            game.common.inventory[game.common.selected] = None;
             *observer.0.lock().unwrap() = Controls::default();
             game.server.guest_use = Some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Off));
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
@@ -428,7 +429,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
             for guest in [None, Some(sunrise_gameplay_common::game::GuestUse::on_block(Hand::Off))] {
-                game.inventory[game.selected] = None;
+                game.common.inventory[game.common.selected] = None;
                 *observer.0.lock().unwrap() = Controls {
                     hands: Some(Vec::new()),
                     ..Controls::default()
@@ -454,7 +455,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
 #[test]
 #[ignore = "daily"]
 fn before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop() {
-    fn run<S: InteractionSide>(observer: &Observer, game: &mut Game<'_, S>) {
+    fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
         let client = S::IS_CLIENT;
         let side = S::LOGICAL_SIDE;
         let registry = game.pack.assets.registry;
@@ -541,10 +542,10 @@ fn before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop(
 #[test]
 #[ignore = "daily"]
 fn canceled_item_results_keep_the_stack_wrappers_side_effects() {
-    fn run<S: InteractionSide>(
+    fn run<'g, S: InteractionSide<'g>>(
         observer: &Observer,
         cooling_stack: &impl Fn(&str) -> ItemStack,
-        game: &mut Game<'_, S>,
+        game: &mut S,
     ) {
         let client = S::IS_CLIENT;
         S::set_interaction_mode(game, sunrise_command::args::GameMode::Survival);
@@ -565,7 +566,8 @@ fn canceled_item_results_keep_the_stack_wrappers_side_effects() {
             Answer::TryWithEmptyHand,
         ] {
             game.cooldowns.remove("test:item_events");
-            game.inventory[game.selected] = Some(cooling_stack("minecraft:milk_bucket"));
+            let common = game.common_mut();
+            common.inventory[common.selected] = Some(cooling_stack("minecraft:milk_bucket"));
             *observer.0.lock().unwrap() = Controls {
                 use_block: TriState::False,
                 item_on_answer: Some(answer),
@@ -600,7 +602,8 @@ fn canceled_item_results_keep_the_stack_wrappers_side_effects() {
         for item in ["minecraft:stick", "minecraft:shield"] {
             for answer in [Answer::Success, Answer::SuccessServer, Answer::Consume] {
                 game.cooldowns.remove("test:item_events");
-                game.inventory[game.selected] = Some(cooling_stack(item));
+                let common = game.common_mut();
+                common.inventory[common.selected] = Some(cooling_stack(item));
                 *observer.0.lock().unwrap() = Controls {
                     air_answer: Some(answer),
                     ..Controls::default()
@@ -678,12 +681,12 @@ fn item_use_overlap_matrix_on_the_server() {
                                 for after in
                                     [Answer::Success, Answer::Fail, Answer::Pass, Answer::Consume]
                                 {
-                                    game.inventory[game.selected] = None;
+                                    game.common.inventory[game.common.selected] = None;
                                     game.offhand = None;
                                     if held {
                                         let stack = Some(ItemStack::new("minecraft:stick", 1));
                                         if hand == Hand::Main {
-                                            game.inventory[game.selected] = stack;
+                                            game.common.inventory[game.common.selected] = stack;
                                         } else {
                                             game.offhand = stack;
                                         }
@@ -840,7 +843,7 @@ fn on_item_use_first_runs_before_the_block_and_ends_the_click() {
 #[test]
 #[ignore = "daily"]
 fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
-    fn run<S: InteractionSide>(observer: &Observer, game: &mut Game<'_, S>) {
+    fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
         let client = S::IS_CLIENT;
         let side = S::LOGICAL_SIDE;
         let registry = game.pack.assets.registry;
@@ -1004,7 +1007,8 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
         // a canceled BLOCK cannot predict it or reach ITEM_AFTER_BLOCK.
         let campfire = registry.default_state("minecraft:campfire").unwrap();
         game.world.set(0, 64, 0, campfire).unwrap();
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_shovel", 1));
+        let common = game.common_mut();
+        common.inventory[common.selected] = Some(ItemStack::new("minecraft:iron_shovel", 1));
         *observer.0.lock().unwrap() = Controls {
             block_answer: Some(Answer::Success),
             ..Controls::default()
@@ -1056,7 +1060,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
 #[test]
 #[ignore = "daily"]
 fn resource_gated_unknown_held_item_forced_use_predicts_pass_without_a_swing() {
-    fn run<S: InteractionSide>(observer: &Observer, game: &mut Game<'_, S>) {
+    fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
         let client = S::IS_CLIENT;
         let stone = game
             .pack
@@ -1075,7 +1079,8 @@ fn resource_gated_unknown_held_item_forced_use_predicts_pass_without_a_swing() {
         assert!(items.items.remove(&stack.item).is_some());
         game.server_items = Some(Arc::new(items));
         assert!(game.items().get(&stack.item).is_none());
-        game.inventory[game.selected] = Some(stack.clone());
+        let common = game.common_mut();
+        common.inventory[common.selected] = Some(stack.clone());
         game.offhand = None;
         *observer.0.lock().unwrap() = Controls {
             use_block: TriState::False,
@@ -1120,7 +1125,7 @@ fn resource_gated_unknown_held_item_forced_use_predicts_pass_without_a_swing() {
 #[test]
 #[ignore = "daily"]
 fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
-    fn run<S: InteractionSide>(observer: &Observer, game: &mut Game<'_, S>) {
+    fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
         let client = S::IS_CLIENT;
         let side = S::LOGICAL_SIDE;
         let registry = game.pack.assets.registry;
@@ -1137,7 +1142,8 @@ fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
         // Either hand being full activates the vanilla secondary-use
         // skip. TRUE overrides it; Default and FALSE skip the lever.
         for item_in_main in [true, false] {
-            game.inventory[game.selected] =
+            let common = game.common_mut();
+            common.inventory[common.selected] =
                 item_in_main.then(|| ItemStack::new("minecraft:stick", 1));
             game.offhand = (!item_in_main).then(|| ItemStack::new("minecraft:stick", 1));
             for (switch, used) in [
@@ -1182,9 +1188,10 @@ fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
 #[test]
 #[ignore = "daily"]
 fn right_click_block_forced_item_use_reaches_empty_hand_on_both_sides() {
-    fn run<S: InteractionSide>(observer: &Observer, game: &mut Game<'_, S>) {
+    fn run<'g, S: InteractionSide<'g>>(observer: &Observer, game: &mut S) {
         let side = S::LOGICAL_SIDE;
-        game.inventory[game.selected] = None;
+        let common = game.common_mut();
+        common.inventory[common.selected] = None;
         game.set_test_forced_hit(Some(hit()));
         // RightClickBlock's TRUE enters useOn even for an empty stack;
         // Default and FALSE do not. A phase listener supplies the use.
@@ -1304,10 +1311,10 @@ pub(crate) fn setup_interaction_guest(
     rx
 }
 
-impl InteractionSide for sunrise_gameplay::game::server_side::ServerState {
+impl<'g> InteractionSide<'g> for sunrise_gameplay::game::ServerGame<'g> {
     const IS_CLIENT: bool = false;
     const LOGICAL_SIDE: LogicalSide = LogicalSide::Server;
-    fn set_interaction_mode(game: &mut Game<'_, Self>, mode: sunrise_command::args::GameMode) {
+    fn set_interaction_mode(game: &mut Self, mode: sunrise_command::args::GameMode) {
         use sunrise_command::args::GameMode;
         let id = match mode {
             GameMode::Survival => 0,
@@ -1317,24 +1324,24 @@ impl InteractionSide for sunrise_gameplay::game::server_side::ServerState {
         };
         game.set_mode_id(id);
     }
-    fn interaction_use_block_hand(game: &mut Game<'_, Self>, hand: Hand) -> bool {
-        game.side.guest_use = Some(sunrise_gameplay_common::game::GuestUse::on_block(hand));
+    fn interaction_use_block_hand(game: &mut Self, hand: Hand) -> bool {
+        game.server.guest_use = Some(sunrise_gameplay_common::game::GuestUse::on_block(hand));
         game.with_hand(hand, |g| g.use_hand(Some(&hit()))).unwrap()
     }
-    fn interaction_use_air_hand(game: &mut Game<'_, Self>, hand: Hand) -> bool {
+    fn interaction_use_air_hand(game: &mut Self, hand: Hand) -> bool {
         game.with_hand(hand, |g| g.use_hand(None)).unwrap()
     }
-    fn interaction_use_item_as_player(game: &mut Game<'_, Self>) -> bool {
+    fn interaction_use_item_as_player(game: &mut Self) -> bool {
         game.use_item_as_player().unwrap().is_some()
     }
-    fn interaction_set_sneak(game: &mut Game<'_, Self>, sneak: bool) {
+    fn interaction_set_sneak(game: &mut Self, sneak: bool) {
         game.server_set_acting_sneak(sneak);
     }
-    fn interaction_clear_guest_use(game: &mut Game<'_, Self>) {
-        game.side.guest_use = None;
+    fn interaction_clear_guest_use(game: &mut Self) {
+        game.server.guest_use = None;
     }
-    fn interaction_reset_use_failed(game: &mut Game<'_, Self>) {
-        game.side.use_failed = false;
+    fn interaction_reset_use_failed(game: &mut Self) {
+        game.server.use_failed = false;
     }
 }
 

@@ -18,7 +18,7 @@ use sunrise_game_data::text::{ClickEvent, Style, Text};
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
 /// game's own, plus the commands native mods own (`chat_tree_for`).
-pub(in crate::game::client_side) fn chat_tree(
+pub fn chat_tree(
     remote: &Option<crate::game::client_side::remote_client::Remote>,
 ) -> &sunrise_command::Dispatcher {
     match remote.as_ref() {
@@ -194,7 +194,7 @@ pub struct ChatDraft {
 }
 /// `ChatScreen.ExitReason`: why the chat screen went away.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::game) enum ChatExit {
+pub enum ChatExit {
     /// Another screen replaced it (death, a container, a disconnect).
     Interrupted,
     /// The player closed it (Escape).
@@ -353,18 +353,18 @@ pub(in crate::game) mod hud_mode_tests {
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
-    #[cfg(test)]
-    pub(in crate::game) fn chat_ui_for_test(&self) -> &ChatUiState {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn chat_ui_for_test(&self) -> &ChatUiState {
         &self.client.chat_ui
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn chat_ui_mut_for_test(&mut self) -> &mut ChatUiState {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn chat_ui_mut_for_test(&mut self) -> &mut ChatUiState {
         &mut self.client.chat_ui
     }
 
-    #[cfg(test)]
-    pub(in crate::game) fn chat_ui_and_font_for_test(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn chat_ui_and_font_for_test(
         &mut self,
     ) -> (&mut ChatUiState, &sunrise_client::font::Font) {
         (&mut self.client.chat_ui, &self.client.gui.atlas.font)

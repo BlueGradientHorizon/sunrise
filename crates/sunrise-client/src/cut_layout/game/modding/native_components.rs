@@ -94,6 +94,7 @@ use sunrise_gameplay_common::game::native_components::ItemStack;
     #[test]
     #[ignore = "daily"]
     fn enchantments_compatible_follows_the_exclusive_sets() {
+        use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             assert!(!game.enchantments_compatible("minecraft:sharpness", "minecraft:smite"));
             assert!(!game.enchantments_compatible("minecraft:sharpness", "minecraft:sharpness"));
@@ -298,7 +299,7 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
             );
             game.creative = false;
             game.server_set_acting_use(true);
-            game.inventory[game.selected] = Some(stack);
+            game.common.inventory[game.common.selected] = Some(stack);
             assert!(game.server_start_eating(&info));
             assert!(game.using.is_some());
             game.tick_using_server();
@@ -404,7 +405,7 @@ pub(crate) mod combat_query_tests {
             let attacker = actor(game);
             let target = attacker.entity();
             let sword = ItemStack::new("minecraft:diamond_sword", 1);
-            game.inventory[game.selected] = Some(sword.clone());
+            game.common.inventory[game.common.selected] = Some(sword.clone());
             let plain = resource(&sword);
             assert_eq!(
                 plain.attack_damage_bonus(game, attacker, target, 7.0),
@@ -434,7 +435,7 @@ pub(crate) mod combat_query_tests {
                 0,
                 "query did not equip the weapon"
             );
-            game.inventory[game.selected] = Some(weapon.clone());
+            game.common.inventory[game.common.selected] = Some(weapon.clone());
             assert_eq!(
                 enchanted
                     .attack_damage_bonus(game, attacker, target, 7.0)
@@ -466,7 +467,7 @@ pub(crate) mod combat_query_tests {
                 (range.min, range.max, range.hitbox_margin),
                 (2.0, 4.5, 0.125)
             );
-            game.inventory[game.selected] = Some(spear.clone());
+            game.common.inventory[game.common.selected] = Some(spear.clone());
             let eye = game.eye_position().unwrap();
             for distance in [1.875, 4.625, 7.625, 7.626] {
                 let box_ = Aabb::new(
@@ -503,7 +504,7 @@ pub(crate) mod combat_query_tests {
                 preview.attack_damage_bonus(game, attacker, target, 6.0),
                 Some(18.0)
             );
-            game.inventory[game.selected] = Some(mace.clone());
+            game.common.inventory[game.common.selected] = Some(mace.clone());
             assert_eq!(game.smash_damage_bonus("minecraft:player"), 18.0);
             patch(
                 &mut mace,
@@ -514,7 +515,7 @@ pub(crate) mod combat_query_tests {
             assert_eq!(overridden.damage_type.to_string(), "minecraft:magic");
             assert_eq!(overridden.direct, Some(target));
             assert_eq!(overridden.causing, Some(target));
-            game.inventory[game.selected] = Some(mace);
+            game.common.inventory[game.common.selected] = Some(mace);
             assert_eq!(
                 sunrise_gameplay_common::game::creatures::source_damage_type(game.attack_source([0.0; 3])),
                 "minecraft:magic"
@@ -644,7 +645,7 @@ pub(crate) mod combat_query_tests {
                     .to_string(),
                 "minecraft:magic"
             );
-            game.inventory[game.selected] = Some(sword.clone());
+            game.common.inventory[game.common.selected] = Some(sword.clone());
             assert_eq!(
                 game.enchanted_damage("minecraft:player", 7.0, Some(target.id())),
                 9.0
@@ -668,7 +669,7 @@ pub(crate) mod combat_query_tests {
                     .to_string(),
                 "minecraft:player_attack"
             );
-            game.inventory[game.selected] = Some(sword);
+            game.common.inventory[game.common.selected] = Some(sword);
             assert_eq!(
                 game.enchanted_damage("minecraft:player", 7.0, Some(target.id())),
                 7.0

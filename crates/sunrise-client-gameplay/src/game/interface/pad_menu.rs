@@ -109,7 +109,7 @@ struct StickScrolled {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct MenuCursor {
+pub struct MenuCursor {
     /// Where the pad put the pointer (GUI pixels); `None` while the mouse
     /// has it.
     pub(in crate::game) pos: Option<(f32, f32)>,
@@ -146,7 +146,7 @@ pub(in crate::game) struct MenuCursor {
     /// Polls since a menu opened (its widgets are drawn after one frame).
     open_polls: u32,
     /// Focus mode: the focused target as last drawn.
-    pub(in crate::game) focus: Option<Target>,
+    pub focus: Option<Target>,
     /// The left stick's step direction last poll.
     stick: Option<Button>,
     pending: Option<Pending>,
@@ -155,7 +155,7 @@ pub(in crate::game) struct MenuCursor {
     /// Steps since the held direction went down (sliders speed up).
     repeats: u32,
     /// The on-screen keyboard, open over a text field.
-    pub(in crate::game) osk: Option<Keyboard>,
+    pub osk: Option<Keyboard>,
     /// The recipe being crafted straight into the inventory (`pad_craft`).
     pub(in crate::game) craft: Option<super::pad_craft::DirectCraft>,
     /// LT held over the crafting book: it changes the category as it comes up, unless A was
@@ -176,7 +176,7 @@ pub(in crate::game) struct MenuCursor {
     /// A shortcut put the focus here: not where the screen reopens.
     shortcut_focus: Option<Rect>,
     /// A pointer event the pad or the keyboard sends is being handled.
-    pub(in crate::game) synthetic: bool,
+    pub synthetic: bool,
     /// The real mouse's last sample, independent of the keyboard's virtual pointer.
     real_pointer: Option<PointerSample>,
     /// The screen the keyboard's focus is on (`Game::key_screen`), and the

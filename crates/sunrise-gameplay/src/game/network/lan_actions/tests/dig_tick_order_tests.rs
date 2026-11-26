@@ -60,9 +60,9 @@ pub enum Event {
 }
 
 pub struct Observe {
-    pub(in crate::game) events: Arc<Mutex<Vec<Event>>>,
-    pub(in crate::game) cancel: u32,
-    pub(in crate::game) check_delayed_destroy: bool,
+    pub events: Arc<Mutex<Vec<Event>>>,
+    pub cancel: u32,
+    pub check_delayed_destroy: bool,
 }
 
 pub const DELAYED: [i32; 3] = [9, 63, 9];

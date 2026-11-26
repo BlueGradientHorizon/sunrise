@@ -1,4 +1,4 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::C, sunrise_gameplay_common::game::Game,sunrise_client_gameplay::game::client_side::remote_client::ItemStack, sunrise_client_gameplay::game::client_side::remote_client::S, sunrise_client_gameplay::game::client_side::remote_client::Screen, sunrise_client_gameplay::game::client_side::remote_client::Tag, sunrise_client_gameplay::game::client_side::remote_client::play};
+use {sunrise_protocol::packets::play::Clientbound as C, sunrise_items::items::ItemStack, sunrise_protocol::packets::play::Serverbound as S, sunrise_gameplay_common::game::Screen, sunrise_core::nbt::Tag, sunrise_protocol::packets::play};
 use crate::game::remote::tests::client_close_tests::chest;
 use crate::game::remote::tests::client_close_tests::close;
 use crate::game::remote::tests::client_close_tests::deliver;
@@ -125,7 +125,7 @@ fn server_close_keeps_shown_native_screen_alive_for_closing_and_veto() {
                                 );
 
                             let open_native =
-                                |game: &mut Game<'_, sunrise_client_gameplay::game::client_side::ClientState>,
+                                |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
                                  window: i32| {
                                     deliver(
                                         game,

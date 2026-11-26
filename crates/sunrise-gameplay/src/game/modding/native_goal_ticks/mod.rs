@@ -932,8 +932,8 @@ impl crate::game::ServerGame<'_> {
             .native_mob_despawn(dimension, entity, kind, pos, result);
     }
     /// Run `read` against the goal view of `mob`'s tick, as a mod goal reads.
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn in_goal_view<R>(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn in_goal_view<R>(
         &self,
         mob: &mut Mob,
         read: impl FnOnce(&GoalCx<'_, '_>) -> R,

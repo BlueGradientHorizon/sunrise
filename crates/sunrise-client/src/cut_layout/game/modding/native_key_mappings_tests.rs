@@ -119,7 +119,7 @@ fn a_control_socket_key_counts_as_a_window_key() {
         // An overlay too.
         line(game, "key z tap");
         game.open_screen_overlay("link_prompt", |game| {
-            game.side.link_prompt = Some("https://example.com".into());
+            game.client.link_prompt = Some("https://example.com".into());
         });
         game.client.link_prompt = None;
         assert!(!zoom.consume_click(game).unwrap());

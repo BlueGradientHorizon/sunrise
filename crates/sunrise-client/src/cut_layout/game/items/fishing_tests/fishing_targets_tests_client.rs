@@ -1,4 +1,4 @@
-use sunrise_client_gameplay::game::client_side::fishing_client::State;
+use sunrise_gameplay_common::game::fishing_common::State;
 use sunrise_gameplay_common::game::commands_common::Target;
 use crate::game::server_side::fishing::fishing_targets_tests::FishingCase;
 use crate::game::server_side::fishing::fishing_targets_tests::FishingExtraCase;

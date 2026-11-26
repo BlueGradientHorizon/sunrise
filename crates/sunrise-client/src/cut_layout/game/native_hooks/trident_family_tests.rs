@@ -98,7 +98,8 @@ pub(crate) fn weapon() -> ItemStack {
     stack
 }
 pub(crate) fn throw_player(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (u32, ItemStack) {
-    game.inventory[game.selected] = Some(weapon());
+    let selected = game.selected;
+    game.inventory[selected] = Some(weapon());
     game.release_trident(10);
     assert_eq!(
         game.tridents.len(),
@@ -217,7 +218,8 @@ fn accepted_player_and_mob_tridents_keep_type_entities_position_and_full_weapon(
                         throw_mob(game)
                     };
                     let expected = stack.try_into_api().unwrap();
-                    game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+                    let selected = game.selected;
+                    game.inventory[selected] = Some(ItemStack::new("minecraft:stick", 1));
                     step(game, player);
                     assert!(game.mobs.iter().find(|m| m.id == 41).unwrap().health <= 0.0);
                     game.tick_creature_entities().unwrap();
@@ -279,7 +281,8 @@ fn actual_arrows_still_bounce_off_powered_wither_and_closed_shulker() {
                 fixture(|game, seen| {
                     let health = victim(game, kind);
                     let bow = ItemStack::new("minecraft:bow", 1);
-                    game.inventory[game.selected] = Some(bow.clone());
+                    let selected = game.selected;
+                    game.inventory[selected] = Some(bow.clone());
                     game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 8));
                     game.release_bow(&bow, 20);
                     game.creatures.projectiles.update(0, |shot| {
@@ -359,7 +362,8 @@ fn explicit_damage_by_actual_arrow_family_is_refused_even_with_generic_type() {
                             "minecraft:trident"
                         } else {
                             let bow = ItemStack::new("minecraft:bow", 1);
-                            game.inventory[game.selected] = Some(bow.clone());
+                            let selected = game.selected;
+                            game.inventory[selected] = Some(bow.clone());
                             game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 8));
                             game.release_bow(&bow, 20);
                             "minecraft:arrow"
@@ -387,7 +391,8 @@ fn explicit_damage_by_trident_retains_its_weapon_with_independent_causing_entity
                 game.mobs[0].health = 1.0;
                 let (id, stack) = throw_player(game);
                 let expected = stack.try_into_api().unwrap();
-                game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+                let selected = game.selected;
+                game.inventory[selected] = Some(ItemStack::new("minecraft:stick", 1));
                 assert!(game.run_command(
                 "damage @e[type=cow,limit=1] 2 minecraft:generic by @e[type=trident,limit=1] from @p",
             ));

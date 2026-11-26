@@ -1,4 +1,4 @@
-use {sunrise_client_gameplay::game::client_side::stations::Kind, sunrise_client_gameplay::game::client_side::stations::Station};
+use {sunrise_gameplay_common::game::stations_common::Kind, sunrise_gameplay_common::game::stations_common::Station};
 use std::sync::Arc;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::connection::Pipe;

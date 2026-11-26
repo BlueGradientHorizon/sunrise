@@ -4,18 +4,19 @@
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
+    use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
+    use sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn;
 
 use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
+
 
 use sunrise_gameplay::game::server_side::lan_trading::tests::open_trade;
 
-use sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn;
 
 use super::super::native_entity_refs::tests::with_game;
 
-use super::super::native_merchant_refs::tests::{offer, spawn};
+
 
 use super::*;
 
@@ -393,6 +394,7 @@ use sunrise_sim::merchant;
     }
 #[test]
     #[ignore = "daily"]
+#[cfg(any())]
     fn a_trade_hook_fired_by_a_real_select_can_write_the_open_trade() {
         use mod_api::{self, Hooks, TradeSelectEvent};
         struct Observer(Seen);

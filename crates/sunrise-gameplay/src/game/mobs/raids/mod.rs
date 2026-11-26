@@ -29,11 +29,11 @@ use sunrise_sim::{
 
 /// Patrol and raid state owned by the game.
 #[derive(Default)]
-pub(in crate::game) struct Raiding {
+pub struct Raiding {
     pub(in crate::game) patrol: PatrolSpawner,
-    pub(in crate::game) siege: VillageSiege,
+    pub siege: VillageSiege,
     /// The raids of the dimension the player is in, and that dimension.
-    pub(in crate::game) raids: Raids,
+    pub raids: Raids,
     pub(in crate::game) loaded: Option<Dim>,
     /// `ServerPlayer.raidOmenPosition` (`raid_omen_position`), read from the
     /// player data on first use.
@@ -44,7 +44,7 @@ pub(in crate::game) struct Raiding {
     pub(in crate::game) unseeded: Option<Vec<(i32, usize)>>,
     /// The last raider hurt each raid's bar has seen (`Raider.hurtServer`).
     pub(in crate::game) bar_hurts: HashMap<i32, u64>,
-    pub(in crate::game) attributes: Option<std::sync::Arc<GameplayAttributes>>,
+    pub attributes: Option<std::sync::Arc<GameplayAttributes>>,
     /// Beds near each raid's centre, rescanned now and then (`HOME` points
     /// of interest for `RaiderMoveThroughVillageGoal`).
     pub(in crate::game) homes: HashMap<i32, (i64, std::sync::Arc<Vec<[i32; 3]>>)>,
@@ -58,12 +58,12 @@ pub(in crate::game::server_side) fn members(mobs: &[Mob], id: i32) -> impl Itera
 }
 
 impl Raiding {
-    pub(in crate::game::server_side) fn raids(&self, dimension: &str) -> Option<&Raids> {
+    pub fn raids(&self, dimension: &str) -> Option<&Raids> {
         self.loaded
             .filter(|dim| dim.id() == dimension)
             .map(|_| &self.raids)
     }
-    pub(in crate::game::server_side) fn raids_mut(
+    pub fn raids_mut(
         &mut self,
         dimension: &str,
     ) -> Option<&mut Raids> {

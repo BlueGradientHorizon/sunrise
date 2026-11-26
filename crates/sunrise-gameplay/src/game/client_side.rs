@@ -25,7 +25,7 @@ pub(in crate::game) mod native_living_writes_client;
 
 #[cfg(feature = "client")]
 #[path = "mobs/creatures/mod_client.rs"]
-pub(in crate::game) mod creatures_client;
+pub mod creatures_client;
 
 #[path = "items/potions.rs"]
 pub(in crate::game) mod potions;

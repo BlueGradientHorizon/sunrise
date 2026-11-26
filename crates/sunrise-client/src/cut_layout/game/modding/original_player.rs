@@ -632,7 +632,7 @@ use super::*;
                                 for z in -2..=2 {
                                     game.server
                                         .streaming
-                                        .insert_remote(&mut game.world, Chunk::empty(x, z));
+                                        .insert_remote(&mut game.common.world, Chunk::empty(x, z));
                                 }
                             }
                         }
@@ -658,7 +658,7 @@ use super::*;
                                 for z in -2..=2 {
                                     game.server
                                         .streaming
-                                        .insert_remote(&mut game.world, Chunk::empty(x, z));
+                                        .insert_remote(&mut game.common.world, Chunk::empty(x, z));
                                 }
                             }
                             game.tick_server_travel();

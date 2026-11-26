@@ -12,7 +12,7 @@ fn run(distance: f64, expected: usize) {
             open_to_lan(game);
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
             let stone = game
                 .pack
                 .assets
