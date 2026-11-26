@@ -13,7 +13,9 @@ pub trait Hooks {
     /// whether it is looked at (`Creaking.checkCanMove`; a dormant creaking
     /// wakes whatever the player wears, so it doesn't ask). Read the worn
     /// stack with `host.living(player.entity())` and `with_equipment`.
-    /// Server-side.
+    /// Server-side: the mob AI asks through `MobWorld::mob_hooks`, set only on
+    /// an authoritative server while a mod listens, so with no listener the
+    /// check is the tag test alone.
     #[hook(
         receiver = "read",
         dispatch = "flat",
