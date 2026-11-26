@@ -3140,8 +3140,9 @@ impl ModPipelines {
         let texel_base = texel_base.unwrap_or(0);
 
         let mut prepared_draws = Vec::with_capacity(ready.len());
-        for (submitted_index, ((cmd, key), meta)) in ready.iter().zip(staged_meta).enumerate() {
-            let compiled = self.variants[key]
+        for (submitted_index, ((cmd, key), meta)) in ready.into_iter().zip(staged_meta).enumerate()
+        {
+            let compiled = self.variants[&key]
                 .as_ref()
                 .expect("prepared offscreen variant");
             let set1_bind_group = if let Some(ref set1_layout) = compiled.set1_layout {
