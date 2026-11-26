@@ -392,6 +392,8 @@ fn file_order<T>(entries: &mut [((String, String), T, bool)]) {
     entries.sort_by_cached_key(|((ns, path), ..)| (format!("{path}.json"), ns.clone()));
 }
 
+/// NbtOps conversion now lives with the prepared resources in
+/// `sunrise_client_core::json_nbt`; the pack loaders keep reading it here.
 pub use sunrise_client_core::json_nbt::{component_nbt, json_to_nbt};
 
 impl SyncData {
@@ -2519,15 +2521,6 @@ mod tests {
     }
 
     #[test]
-    fn json_becomes_nbt() {
-        let v: Value = serde_json::from_str(r#"{"a":1,"b":[true,2.5],"c":"x"}"#).unwrap();
-        let t = json_to_nbt(&v);
-        assert!(matches!(t.get("a"), Some(Tag::Int(1))));
-        assert!(matches!(t.get("c"), Some(Tag::String(_))));
-        assert!(matches!(t.get("b"), Some(Tag::List(l)) if l.len() == 2));
-    }
-
-    #[test]
     fn a_mods_dimension_type_is_the_overworlds_under_the_packs() {
         use sunrise_world::{loot::PackOverlay, worldgen::overrides::ModDimension};
         let overworld = serde_json::json!({
@@ -2625,30 +2618,6 @@ mod tests {
             changed_dimension_type("minecraft:overworld_caves", &vanilla, &levels),
             None
         );
-    }
-}
-
-#[cfg(test)]
-mod component_tests {
-    use super::*;
-    use sunrise_core::nbt::{Limits, read_network, write_network};
-
-    /// `/give`'s reply: a count, then components. On the wire each element is wrapped
-    /// once, and read back (ListTag.addAndUnwrap) it is the number again.
-    #[test]
-    fn mixed_translation_arguments_are_wrapped_once() {
-        let json = serde_json::json!({
-            "translate": "commands.give.success.single",
-            "with": [1, {"text": "Raw Iron"}, {"text": "Tester"}],
-        });
-        let tag = component_nbt(&json);
-        let Some(Tag::List(args)) = tag.get("with") else {
-            panic!("no arguments: {tag:?}");
-        };
-        assert_eq!(args[0], Tag::Int(1));
-        // Read back as ListTag.addAndUnwrap does: a wrapper wrapped twice stays a compound.
-        let bytes = write_network(&tag, Limits::default()).unwrap();
-        assert_eq!(read_network(&bytes, Limits::default()).unwrap().0, tag);
     }
 }
 

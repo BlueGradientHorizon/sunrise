@@ -1,7 +1,10 @@
 //! The clientbound item stack: `ItemStack.STREAM_CODEC` as the host writes it into
 //! menus, entity data, slot updates and saved templates, with the component codecs
-//! and the sync registry ids the connection resolved.
+//! and the sync registry ids the connection resolved. `lan::guest` re-exports the
+//! public entry points under their old paths; scalar NBT reads come straight from
+//! `sunrise_client_core::nbt_value`, not through the host's `save` module.
 use crate::items::ItemStack;
+use sunrise_client_core::nbt_value::{float, number, text};
 use sunrise_protocol::item::Stack;
 use sunrise_world::component_value::consume_effects::Admitted;
 
@@ -653,7 +656,7 @@ pub(crate) fn network_stack_projecting(
                 Some(sunrise_core::nbt::Tag::List(entries)) => entries
                     .iter()
                     .filter_map(|tag| {
-                        let name = crate::save::text(Some(tag))?;
+                        let name = text(Some(tag))?;
                         let name = sunrise_core::identifier::Identifier::parse(&name).ok()?;
                         synced_id("minecraft:data_component_type", &name.to_string())
                     })
@@ -673,7 +676,7 @@ pub(crate) fn network_stack_projecting(
             ));
         }
         // `painting/variant`: a reference into the synced registry.
-        if let Some(id) = crate::save::text(d.other("minecraft:painting/variant")).and_then(|v| {
+        if let Some(id) = text(d.other("minecraft:painting/variant")).and_then(|v| {
             synced_id(
                 "minecraft:painting_variant",
                 &sunrise_world::datafix::dynamic::namespaced(&v),
@@ -740,10 +743,10 @@ pub(crate) fn network_stack_projecting(
                 let Some(sunrise_core::nbt::Tag::IntArray(pos)) = g.get("pos") else {
                     return None;
                 };
-                let dimension = crate::save::text(g.get("dimension"))?;
+                let dimension = text(g.get("dimension"))?;
                 Some((dimension, [*pos.first()?, *pos.get(1)?, *pos.get(2)?]))
             });
-            let tracked = crate::save::number(t.get("tracked")).is_none_or(|v| v != 0);
+            let tracked = number(t.get("tracked")).is_none_or(|v| v != 0);
             stack.added.push((
                 sunrise_protocol::item::component::LODESTONE_TRACKER,
                 sunrise_protocol::item::Component::LodestoneTracker { target, tracked },
@@ -940,10 +943,7 @@ pub(crate) fn network_stack_projecting(
         ));
     }
     // The model a pack or mod picks for this stack, which the client's item model reads.
-    if let Some(model) = s
-        .data()
-        .and_then(|d| crate::save::text(d.other("minecraft:item_model")))
-    {
+    if let Some(model) = s.data().and_then(|d| text(d.other("minecraft:item_model"))) {
         stack.added.push((
             sunrise_protocol::item::component::ITEM_MODEL,
             sunrise_protocol::item::Component::Ident(model),
@@ -1094,27 +1094,27 @@ fn custom_model_data(t: &sunrise_core::nbt::Tag) -> sunrise_protocol::item::Comp
     sunrise_protocol::item::Component::CustomModelData {
         floats: entries("floats")
             .iter()
-            .filter_map(|v| crate::save::float(Some(v)))
+            .filter_map(|v| float(Some(v)))
             .map(|v| v as f32)
             .collect(),
         flags: entries("flags")
             .iter()
-            .filter_map(|v| crate::save::number(Some(v)))
+            .filter_map(|v| number(Some(v)))
             .map(|v| v != 0)
             .collect(),
         strings: entries("strings")
             .iter()
-            .filter_map(|v| crate::save::text(Some(v)))
+            .filter_map(|v| text(Some(v)))
             .collect(),
         // `ExtraCodecs.RGB_COLOR_CODEC`: an int, or an opaque colour from three floats.
         colors: entries("colors")
             .iter()
             .filter_map(|v| match v {
                 Tag::List(rgb) if rgb.len() == 3 => {
-                    let c = |i: usize| crate::save::float(rgb.get(i)).map(channel);
+                    let c = |i: usize| float(rgb.get(i)).map(channel);
                     Some(0xFF << 24 | c(0)? << 16 | c(1)? << 8 | c(2)?)
                 }
-                v => crate::save::number(Some(v)).map(|v| v as i32),
+                v => number(Some(v)).map(|v| v as i32),
             })
             .collect(),
     }

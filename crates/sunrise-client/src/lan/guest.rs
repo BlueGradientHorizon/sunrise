@@ -4,7 +4,7 @@
 use super::{Joined, PlayerSender, entity::Tracker};
 use crate::item_sync::net_stack::network_stack_projecting;
 pub use crate::item_sync::net_stack::{
-    canonicalize_stack_patch, stack_to_network, stack_to_network_projecting,
+    canonicalize_stack_patch, firework_components, stack_to_network, stack_to_network_projecting,
 };
 use crate::{
     items::ItemStack,

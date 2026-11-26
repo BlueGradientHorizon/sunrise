@@ -2,7 +2,8 @@
 //! patch read back as vanilla's `components` compound, so the decoder the saved
 //! and command item NBT use fills every field. Both sides use it: a client for
 //! what its server sends, a server for a creative client's
-//! `SetCreativeModeSlot`. The other direction is `lan::guest::stack_to_network`.
+//! `SetCreativeModeSlot`. The other direction is `item_sync::net_stack::stack_to_network`,
+//! still re-exported as `lan::guest::stack_to_network` for the host's callers.
 use crate::items::{ItemInfo, ItemStack};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
