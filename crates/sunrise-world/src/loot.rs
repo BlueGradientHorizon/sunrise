@@ -22,6 +22,7 @@ use component_validation::{refuse, refused_entries};
 pub use component_validation::{
     validate_entity_predicate, validate_item_modifier, validate_item_predicate,
     validate_loot_condition, validate_loot_table, validate_slot_source,
+    validate_typed_loot_condition,
 };
 mod component_validation_nbt;
 pub use component_validation_nbt::{
@@ -890,7 +891,7 @@ impl LootData {
         refused.extend(refused_entries(
             "predicate",
             &predicates,
-            validate_loot_condition,
+            validate_typed_loot_condition,
         ));
         refused.extend(refused_entries(
             "slot source",

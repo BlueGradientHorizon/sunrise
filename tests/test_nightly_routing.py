@@ -11,7 +11,7 @@ import tempfile
 import textwrap
 import unittest
 
-from tests.test_ci_runners import jobs
+from tests.os_support import needs_runner_shell
 from tests.test_ci_concurrency import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,9 +56,8 @@ console.log(JSON.stringify(eval(expression)));
         def evaluate(expression, matrix, trusted, repository="sunrise-org/sunrise"):
             result = subprocess.run(["node", "-e", script], input=json.dumps({"expression": expression, "matrix": matrix, "inputs": {"trusted": trusted}, "vars": variables, "github": {"repository": repository}}), text=True, capture_output=True, check=True)
             return json.loads(result.stdout)
-        bookkeeping = next(expression for expression in re.findall(r"^\s*runs-on:\s*\$\{\{(.*?)\}\}\s*$",
-                                                                  NIGHTLY.read_text(), re.M)
-                           if "NIGHTLY_BOOKKEEPING_RUNNER" in expression)
+        bookkeeping = next(job["runs-on"][3:-2] for job in yaml.safe_load(NIGHTLY.read_text())["jobs"].values()
+                           if "NIGHTLY_BOOKKEEPING_RUNNER" in job.get("runs-on", ""))
         for configured, disabled, trusted, dyna, blacksmith in itertools.product(
             [False, True], [False, True], [False, True], [None, "false", "true"], [None, "off"]
         ):
@@ -139,10 +138,9 @@ console.log(JSON.stringify(eval(state.expression)));
                         expected = row["os"]
                     self.assertEqual(runs_on(job, row, variables, dev), expected)
 
+    @needs_runner_shell
     def test_any_missing_leg_holds_the_build(self):
-        workflow_jobs = dict(jobs(GAME.read_text()))
-        decide = workflow_jobs["legs"].split("        run: |\n", 1)[1].split("\n      # ", 1)[0].split("\n      - ", 1)[0]
-        decide = textwrap.dedent(decide)
+        decide = next(step["run"] for step in yaml.safe_load(GAME.read_text())["jobs"]["legs"]["steps"] if "run" in step)
         legs = ("linux", "windows", "macos")
         for absent in [None, *legs]:
             with self.subTest(absent=absent), tempfile.TemporaryDirectory() as folder:
@@ -184,18 +182,19 @@ console.log(JSON.stringify(eval(state.expression)));
 
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):
         text = GAME.read_text()
-        commands = re.findall(r"check_glibc.py ([^\n]+)", text.replace("\\\n", " "))
+        steps = [step for job in yaml.safe_load(text)["jobs"].values() for step in job.get("steps", [])]
+        commands = re.findall(r"check_glibc.py ([^\n]+)", "\n".join(step.get("run", "") for step in steps).replace("\\\n", " "))
         checked = [{Path(argument).name for argument in shlex.split(command)} for command in commands]
         # Every program each release folder takes (the SDK's input list), and the game program itself.
         routes = json.loads((ROOT / "crates/sunrise-mod-package/src/sdk/inputs.json").read_text())["routes"]
         programs = {route: {name for name in routes[route]["program"] if "." not in name} for route in ["package", "package-server"]}
         self.assertEqual(checked, [programs["package"] | {"sunrise-client"},
                                    programs["package-server"] | {"sunrise-engine"}])
-        tools = [step for step in text.split("\n      - ") if "path: .workflow-tools" in step]
+        tools = [step for step in steps if step.get("with", {}).get("path") == ".workflow-tools"]
         self.assertTrue(tools)
         for checkout in tools:
-            self.assertIn("ref: ${{ github.workflow_sha }}", checkout,
-                          "older build candidates may lack the new workflow's validator/smoke helpers")
+            self.assertEqual(checkout["with"]["ref"], "${{ github.workflow_sha }}",
+                             "older build candidates may lack the new workflow's validator/smoke helpers")
 
     def test_build_stages_the_workflows_rust_pin(self):
         game = yaml.safe_load(GAME.read_text())["jobs"]
@@ -209,17 +208,18 @@ console.log(JSON.stringify(eval(state.expression)));
     def test_hosted_runners_never_use_machine_specific_tool_setup(self):
         # Only the exporters can run on a self-hosted (Dyna) runner; the build legs are fresh machines and take none.
         self.assertNotIn("runner-env.sh", GAME.read_text())
-        steps = [block for block in dict(jobs(EXPORTERS.read_text()))["exporters"].split("\n      - ") if "bash tools/ci/runner-env.sh" in block]
+        steps = [step for step in yaml.safe_load(EXPORTERS.read_text())["jobs"]["exporters"]["steps"]
+                 if "bash tools/ci/runner-env.sh" in step.get("run", "")]
         self.assertEqual(len(steps), 1)
-        condition = re.search(r"^\s*if:\s*(.*)$", steps[0], re.M).group(1)
+        condition = steps[0]["if"]
         for environment in ["github-hosted", "self-hosted"]:
             expression = condition.replace("runner.environment", repr(environment))
             self.assertEqual(eval(expression, {"__builtins__": {}}), environment == "self-hosted")
 
     @unittest.skipUnless(os.name == "posix", "The pick step runs in Bash on Linux")
     def test_pick_failure_preserves_its_error_without_missing_notes_noise(self):
-        block = NIGHTLY.read_text().split("      - id: pick\n", 1)[1].split("      - name:", 1)[0]
-        shell = textwrap.dedent(block.split("        run: |\n", 1)[1])
+        shell, = [step["run"] for job in yaml.safe_load(NIGHTLY.read_text())["jobs"].values()
+                  for step in job.get("steps", []) if step.get("id") == "pick"]
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             python = root / "python3"
@@ -276,9 +276,8 @@ console.log(JSON.stringify(eval(state.expression)));
 
     @unittest.skipUnless(os.name == "posix", "The signing gate runs in Bash on Linux")
     def test_fork_dry_run_cannot_pass_without_real_smoke_report(self):
-        text = NIGHTLY.read_text().split("      - name: Ready to publish", 1)[1].split("      - name:", 1)[0]
-        shell = text.split("        run: |\n", 1)[1]
-        shell = "\n".join(line[10:] for line in shell.splitlines())
+        shell, = [step["run"] for job in yaml.safe_load(NIGHTLY.read_text())["jobs"].values()
+                  for step in job.get("steps", []) if step.get("name", "").startswith("Ready to publish")]
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / "tools").symlink_to(ROOT / "tools", target_is_directory=True)

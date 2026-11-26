@@ -50,7 +50,8 @@ pub trait EntityPhysicsBackend {
     fn entity_dimensions(&self, entity: EntityRef) -> Option<[f64; 2]>;
     /// Side: server.
     /// `Entity.noPhysics`: a player's is whether it spectates (`Player.tick`
-    /// sets it from `isSpectator`); a mob's is false (a vex sets it only for
+    /// sets it from `isSpectator`); a mob's or a general entity row's is false until written (a
+    /// vex sets it only for
     /// the length of its own tick); an arrow's or a trident's is its
     /// `AbstractArrow.noPhysics`, set once a loyal trident turns back. The
     /// ender dragon, an area-effect cloud, an ominous item spawner and a

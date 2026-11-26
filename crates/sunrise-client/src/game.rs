@@ -1092,6 +1092,9 @@ mod native_block_entity_transform;
 mod native_block_entity_transform_tests;
 #[path = "game/modding/native_block_extra_models.rs"]
 mod native_block_extra_models;
+#[cfg(test)]
+#[path = "game/modding/native_block_metadata_reads_tests.rs"]
+mod native_block_metadata_reads_tests;
 #[path = "game/modding/native_block_sounds.rs"]
 pub(crate) mod native_block_sounds;
 #[path = "game/modding/native_block_sprites.rs"]
@@ -1490,6 +1493,9 @@ mod native_living_body;
 mod native_living_effects;
 #[path = "game/modding/native_living_flags.rs"]
 mod native_living_flags;
+#[cfg(test)]
+#[path = "game/modding/native_living_model_posed_tests.rs"]
+mod native_living_model_posed_tests;
 #[path = "game/modding/native_living_position.rs"]
 mod native_living_position;
 #[path = "game/modding/native_living_refs.rs"]
@@ -1497,6 +1503,9 @@ mod native_living_refs;
 #[cfg(test)]
 #[path = "game/modding/native_living_renderers_tests.rs"]
 mod native_living_renderers_tests;
+#[cfg(test)]
+#[path = "game/modding/native_living_travel_moved_tests.rs"]
+mod native_living_travel_moved_tests;
 #[cfg(test)]
 #[path = "game/modding/native_living_travel_sweep_tests.rs"]
 mod native_living_travel_sweep_tests;
@@ -9109,13 +9118,14 @@ impl Game<'_> {
                         r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
                     )
                 });
-                self.mod_block_entity_geometry(
+                let mod_cracks = self.mod_block_entity_geometry(
                     mods.chain(untemplated_eye),
                     camera,
                     alpha as f32,
                     &mut out,
                 );
                 self.mark_stage(out.len(), "DESTROY");
+                out.extend(mod_cracks);
                 for &(pos, stage) in &cracks {
                     let state = self.world.block(pos[0], pos[1], pos[2]);
                     self.res

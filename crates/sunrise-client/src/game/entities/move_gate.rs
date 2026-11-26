@@ -56,7 +56,7 @@ impl Game<'_> {
             }
             MoveWho::Entity(EntityHandle::Boat(i)) => {
                 let id = self.boats[i].id;
-                (self.riding == Some(id) && self.controls_boat(id)) || self.ridden_by_guest(id)
+                self.controls_boat(id) || self.ridden_by_guest(id)
             }
             MoveWho::Entity(_) => false,
         }

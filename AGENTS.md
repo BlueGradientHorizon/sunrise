@@ -265,7 +265,7 @@ python3 tools/check_layers.py --base origin/main             # verify-static loc
 bash tools/ci/check_hook_wiring.sh                           # verify-static (all target cfgs without building sunrise-client)
 python3 tools/ci/check_ignored_test_rows.py                  # verify-static
 python3 tools/ci/check_unreached_sources.py                  # verify-static (sunrise-game-discovery)
-python3 tools/ci/check_process_tests.py && python3 tools/ci/check_nested_locks.py && python3 tools/ci/check_extras_features.py
+python3 tools/ci/check_process_tests.py && python3 tools/ci/check_nested_locks.py && python3 tools/ci/check_extras_features.py && python3 tools/ci/check_parity_harness_builds.py
 ```
 
 - **PR merge flag (`--pull-request-merge`):** CI passes `--base "$BASE_SHA" --pull-request-merge` to `check_addresses.py`, `check_guards.py` and `check_layers.py` when `BASE_SHA` is set from the PR event (otherwise `--base` is omitted). This flag requires a two-parent `HEAD` whose first parent is at or descended from `--base`. For a local topic branch, use `--base origin/main`.

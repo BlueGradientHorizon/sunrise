@@ -323,7 +323,9 @@ For anything else set the public fields of the descriptor: `address_u`, `address
 `max_lod: Option<f32>`. Like vanilla's, a sampler has no separate mipmap filter and no minimum level of
 detail: a `max_lod` above `0.25` blends linearly between the two nearest mip levels (vanilla's
 `NEAREST_MIPMAP_LINEAR` and `LINEAR_MIPMAP_LINEAR`, and Vulkan's linear mipmap mode for `maxLod > 0.25`), and
-`Some(0.0)` reads only the base level. `None` is what `Sampler::new` gives: no limit, the one nearest level.
+`Some(0.0)` reads only the base level. `None` is what `Sampler::new` gives: vanilla's absent `maxLod` (1000),
+so it blends between levels too. A sampler that blends is a filtering one: to sample a depth target, or an
+`R32Float` target where `float32_filterable` is false, set `max_lod = Some(0.0)` with `SamplerFilter::Nearest`.
 A negative or non-finite `max_lod` is `BindGroupLayoutError::BadMaxLod`. Anisotropy is not offered.
 
 A dynamic texture (see [Textures made at run time](dynamic-textures.md)) made with `mip_levels` above 1 is
@@ -676,7 +678,8 @@ offset is a multiple of 4 with the count's 4 bytes inside the buffer, or the dra
 `PipelineDrawError::InvalidIndirect`. Where the capability is false (no
 `MULTI_DRAW_INDIRECT_COUNT`, or DirectX 12, whose count draws drop an indexed command's
 `base_vertex`), a draw with a count buffer is refused with
-`PipelineDrawError::UnsupportedIndirectCount`.
+`PipelineDrawError::UnsupportedIndirectCount`. A draw with a count buffer in a translated shader
+pack's slot, where the pack's program is linked to the pipeline, counts the same way.
 
 - **Layout.** With a `MeshRef` that has an index buffer, each command is five 4-byte words
   (`index_count, instance_count, first_index, base_vertex, first_instance`; `INDIRECT_INDEXED_DRAW_SIZE`
