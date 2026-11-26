@@ -17,6 +17,7 @@
 //! of its own.
 use super::event_loop::EventLoopCtl;
 use super::{Game, Screen};
+use crate::game::client_side::key_codes::glfw_modifiers;
 use crate::game::client_side::key_focus::{self, Act, Nav};
 use std::time::Instant;
 use sunrise_client::actions::Action;

@@ -613,7 +613,7 @@ impl crate::game::ServerGame<'_> {
             let params = hook_params(luck, Some(self.killer_loot_entity(None)));
             let caller = self.caller_loot(
                 Some([hook.position.x, hook.position.y, hook.position.z]),
-                Some(super::creatures::to_loot(rod)),
+                Some(sunrise_gameplay_common::game::creatures::to_loot(rod)),
             );
             let items = caller.with(|| {
                 fishing_loot(
@@ -1003,7 +1003,7 @@ impl crate::game::ServerGame<'_> {
                     .expand_towards(h.velocity)
                     .inflate(Vec3::new(1.0, 1.0, 1.0));
                 let mut best = sunrise_sim::projectiles::NearestHit::new();
-                let query = super::creatures::TargetQuery {
+                let query = sunrise_gameplay_common::game::creatures::TargetQuery {
                     include_guests: true,
                     include_items: true,
                     ..Default::default()

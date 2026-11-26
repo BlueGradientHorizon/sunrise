@@ -131,7 +131,7 @@ impl crate::game::ServerGame<'_> {
                 let Some(other) = self.common.mobs.iter().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
-                let seen = [super::creatures::seen(
+                let seen = [sunrise_gameplay_common::game::creatures::seen(
                     other,
                     self.common.level.player_uuid,
                     self.items(),
@@ -391,7 +391,7 @@ impl crate::game::ServerGame<'_> {
         }
         let mut new_target = original_target;
         let mut cancel = false;
-        super::native_hooks::NativeHookHost { host: self }.native_living_change_target(
+        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: self }.native_living_change_target(
             mod_api::__private::LivingChangeTargetCall {
                 mob,
                 original_target,

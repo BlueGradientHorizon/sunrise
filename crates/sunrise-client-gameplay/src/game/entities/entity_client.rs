@@ -221,7 +221,7 @@ impl ClientGame<'_> {
             .player_model_shown()
             .then(|| self.common.resident_entities.local_player.join());
         draw_runs(
-            crate::game::entity::entity_lists_of!(self),
+            sunrise_gameplay_common::game::entity::entity_lists_of!(self),
             DrawExtras {
                 local_player,
                 dragon: self.common.dragon.as_ref().map(|dragon| dragon.join),

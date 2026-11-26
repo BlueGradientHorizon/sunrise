@@ -141,8 +141,8 @@ pub struct MobDrawFrame<'a> {
 #[derive(Default)]
 pub struct NormalActionFrame {
     pub events: std::collections::VecDeque<MobEvent>,
-    pub(in crate::game) broke: Vec<u32>,
-    pub(in crate::game) actor: Option<u32>,
+    pub broke: Vec<u32>,
+    pub actor: Option<u32>,
 }
 #[derive(Default)]
 pub struct NormalMobActions {
@@ -163,7 +163,7 @@ impl NormalMobActions {
 }
 pub struct MobOutputBatch {
     pub normal: NormalMobActions,
-    pub(in crate::game) guests: Vec<(u32, u32, MobEvent)>,
+    pub guests: Vec<(u32, u32, MobEvent)>,
 }
 #[derive(Default)]
 pub struct PendingMobBatch {

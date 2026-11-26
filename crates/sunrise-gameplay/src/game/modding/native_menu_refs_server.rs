@@ -342,7 +342,7 @@ impl crate::game::ServerGame<'_> {
                     return false;
                 };
                 *held = Some(stack);
-                self.after_commit(super::transactions::After::Changed(pos));
+                self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(pos));
                 true
             }
             Some(
@@ -366,8 +366,8 @@ impl crate::game::ServerGame<'_> {
     /// equipment, cursor and ender contents are swapped into Game.
     pub(in crate::game) fn native_menu_player(&self, player: PlayerRef) -> Option<&Guest> {
         match self.player_handle_read(player)? {
-            super::native_server::PlayerRead::Guest(guest) => Some(guest),
-            super::native_server::PlayerRead::Acting { .. } => {
+            sunrise_gameplay_common::game::native_server::PlayerRead::Guest(guest) => Some(guest),
+            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => {
                 self.server.lan.as_ref()?.hub.guest(self.server.lan_acting?)
             }
         }

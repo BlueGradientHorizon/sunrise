@@ -127,7 +127,7 @@ impl ServerGame<'_> {
                 .common.mobs
                 .iter()
                 .find(|m| m.id == id)
-                .map(super::native_hooks::mob_kind)
+                .map(sunrise_gameplay_common::game::native_hooks::mob_kind)
                 .unwrap_or_default();
             self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
             // Animal.setInLove: entity event 18, the love hearts.

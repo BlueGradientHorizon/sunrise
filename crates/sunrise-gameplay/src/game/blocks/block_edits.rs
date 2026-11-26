@@ -32,8 +32,8 @@ impl ServerGame<'_> {
     /// or filter past the end, or more than 65536 filters, and nothing is
     /// made.
     pub(in crate::game) fn apply_block_edit(&mut self, edit: &BlockEdit) -> Result<u64, String> {
-        let super::api_values::block_edit::PreparedBlockEdit { palette, filters } =
-            super::api_values::block_edit::prepare(edit)?;
+        let sunrise_gameplay_common::game::api_values::block_edit::PreparedBlockEdit { palette, filters } =
+            sunrise_gameplay_common::game::api_values::block_edit::prepare(edit)?;
         let runs = resolve_runs(edit, &palette, filters.len(), |h, x, z| {
             self.common.edit_height(h, x, z)
         })?;
@@ -138,7 +138,7 @@ impl ServerGame<'_> {
             publication.as_ref().map(|_| &mut steps),
         );
         if let Some(publication) = publication {
-            self.after_commit(super::transactions::After::BulkBlocks(
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::BulkBlocks(
                 publication,
                 out.tracked,
                 removed,
@@ -197,7 +197,7 @@ impl ServerGame<'_> {
             water_colors.push(water);
         }
         Ok(ColumnBlocks {
-            palette: super::api_values::block_edit::column_palette(palette)?,
+            palette: sunrise_gameplay_common::game::api_values::block_edit::column_palette(palette)?,
             bases,
             blocks,
             water_colors,

@@ -115,7 +115,7 @@ impl ServerGame<'_> {
         a: i32,
         b: i32,
     ) -> bool {
-        let Some(block) = super::api_values::behavior_block(block, self.common.res.behaviours()) else {
+        let Some(block) = sunrise_gameplay_common::game::api_values::behavior_block(block, self.common.res.behaviours()) else {
             return false;
         };
         if !self.level_in_place(level) || !self.common.world.shape.contains_y(pos[1]) {

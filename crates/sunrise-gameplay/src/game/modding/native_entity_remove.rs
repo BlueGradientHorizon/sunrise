@@ -180,7 +180,7 @@ impl crate::game::ServerGame<'_> {
         {
             let vehicle = sunrise_gameplay_common::game::entity_memory::RemovedVehicle::Mob {
                 position,
-                kind: super::native_hooks::mob_kind(mob),
+                kind: crate::game::native_hooks::mob_kind(mob),
             };
             self.retain_removed_vehicle(id, vehicle);
         }

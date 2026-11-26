@@ -12,8 +12,8 @@ pub(in crate::game) struct State {
 }
 // no wire: source ordinals actually published to this connection.
 pub struct Server {
-    pub(in crate::game) peer: sync::Authority,
-    pub(in crate::game) displays: BTreeMap<String, u32>,
+    pub peer: sync::Authority,
+    pub displays: BTreeMap<String, u32>,
 }
 impl Server {
     pub fn new(epoch: u64) -> Self {
@@ -23,7 +23,7 @@ impl Server {
         }
     }
 
-    pub(in crate::game) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.peer.clear();
         self.displays.clear();
     }

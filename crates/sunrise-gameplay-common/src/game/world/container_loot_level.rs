@@ -221,7 +221,7 @@ impl super::GameLevel<'_> {
 
 impl super::GameLevel<'_> {
     /// The other lists stay shared while carts can be mutated by inventory reads.
-    pub(in crate::game) fn entities(&self) -> super::entity::EntityLists<'_> {
+    pub fn entities(&self) -> super::entity::EntityLists<'_> {
         super::entity::EntityLists {
             carts: &*self.carts,
             ..self.other_entities

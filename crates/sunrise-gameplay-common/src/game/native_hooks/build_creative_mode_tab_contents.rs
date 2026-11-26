@@ -66,7 +66,7 @@ pub struct CreativeCache {
 
 impl crate::game::CommonGame<'_> {
 
-    pub(in crate::game) fn creative_tab_entries(
+    pub fn creative_tab_entries(
         &self,
         edit: CreativeTabEdit,
         list: CreativeTabList,
@@ -74,7 +74,7 @@ impl crate::game::CommonGame<'_> {
         self.edit_creative(edit, |contents, _| Ok(list_items(contents, list).clone()))
     }
 
-    pub(in crate::game) fn creative_tab_change(
+    pub fn creative_tab_change(
         &self,
         edit: CreativeTabEdit,
         change: CreativeTabChange,

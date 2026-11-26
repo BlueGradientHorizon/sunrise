@@ -2,7 +2,7 @@
 //! mined, items used/crafted/broken/picked up/dropped and mobs killed or
 //! killed by, saved to `players/stats/<uuid>.json`, plus the phantom
 //! spawner that reads the time since rest (`PhantomSpawner`).
-use super::native_hooks::PhantomSpawnResult;
+use sunrise_gameplay_common::game::PhantomSpawnResult;
 use super::{Dim, Game};
 use std::path::PathBuf;
 use sunrise_core::{geometry::Vec3, identifier::Identifier, random::RandomSource};
@@ -471,7 +471,7 @@ impl crate::game::ServerGame<'_> {
                     f64::from(at[2]) + 0.5,
                 ],
                 false,
-                super::creatures::SpawnSite::Finalizing(
+                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::Natural,
                 ),
             );

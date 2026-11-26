@@ -9,7 +9,7 @@
 //! only slots whose stack changed are written. A menu no mod backed never reaches this module's
 //! work: `GuestMenus::slot_places` stays `None` and every path below returns first.
 use crate::game::ServerGame;
-use super::api_values::TryIntoEngine;
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use super::native_menus::native_menu_inventory_slot;
 use sunrise_gameplay_common::game::native_menu_values::MenuSlotPlaces;
 use mod_api::__private::game::*;
@@ -156,14 +156,14 @@ impl ServerGame<'_> {
             }
         }
         if transactional && !acting {
-            self.after_commit(super::transactions::After::BackedMenuClick(
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::BackedMenuClick(
                 conn, uuid, menu, window,
             ));
             return Ok(());
         }
         if acting {
             // Slots cleared above reach the client through the container sync after the turn.
-            self.after_commit(super::transactions::After::MenuPlacesNotice(
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::MenuPlacesNotice(
                 conn, uuid, window,
             ));
             return Ok(());
@@ -313,7 +313,7 @@ impl ServerGame<'_> {
         if let Some(conn) = self.native_conn(uuid)
             && let Some(window) = self.menu_places_of(conn).map(|(window, ..)| window)
         {
-            self.after_commit(super::transactions::After::MenuPlacesNotice(
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::MenuPlacesNotice(
                 conn, uuid, window,
             ));
         }
@@ -463,7 +463,7 @@ impl ServerGame<'_> {
             true
         };
         if applied {
-            self.after_commit(super::transactions::After::BackedMenuClick(
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::BackedMenuClick(
                 conn, uuid, menu, window,
             ));
         } else {

@@ -389,7 +389,7 @@ impl crate::game::ClientGame<'_> {
             .name("Registries preload".into())
             .spawn(move || {
                 sunrise_threads::behind_server();
-                super::remote::builtin_registries(&dirs[0]);
+                sunrise_gameplay_common::game::villager_client::builtin_registries(&dirs[0]);
                 resource_ids(&dirs[0]);
                 block_properties(registry);
                 for dir in &dirs {
@@ -1404,7 +1404,7 @@ impl crate::game::ClientGame<'_> {
             return false;
         };
         let mut cancel = false;
-        let mut draw = super::host::draw::GameDrawContext::new(self, batch);
+        let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
         self.native_component_hover(mod_api::__private::ComponentHoverCall {
             draw: &mut draw,
             hover: &hover,

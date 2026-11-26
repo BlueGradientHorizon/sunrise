@@ -1,6 +1,11 @@
 
 #[cfg(feature = "client")]
 use super::ClientGame;
+use mod_api::prelude;
+use mod_api::{
+    CameraType, ClientModifiers, HudMode, MappingError, ModKeyMappingRef, ModKeyRefusal, ScreenId,
+    Text, *,
+};
 #[cfg(feature = "client")]
 impl_shared_phase_contexts!(ClientGame<'_>);
 

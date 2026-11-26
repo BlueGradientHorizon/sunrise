@@ -675,7 +675,7 @@ impl crate::game::ServerGame<'_> {
         use sunrise_sim::projectiles::{NearestHit, compute_margin};
         let from = r.position;
         let to = from.add_vector(motion);
-        let query = super::creatures::TargetQuery {
+        let query = sunrise_gameplay_common::game::creatures::TargetQuery {
             include_guests: true,
             ..Default::default()
         };
@@ -800,7 +800,7 @@ impl crate::game::ServerGame<'_> {
                     }
                     ProjectileHit::Block { pos, face, at } => {
                         if face != [0; 3] {
-                            let hitter = super::creatures::ProjectileHitter {
+                            let hitter = sunrise_gameplay_common::game::creatures::ProjectileHitter {
                                 owner: r.owner,
                                 guest: r.guest,
                                 arrow: false,

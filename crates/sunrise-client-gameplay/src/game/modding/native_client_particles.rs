@@ -109,7 +109,7 @@ impl ClientGame<'_> {
     /// True means queued; false on a server, without a client player/level, for non-finite
     /// input or for more than [`MAX_FIREWORK_EXPLOSIONS`] explosions. API @API:client_fireworks@.
     pub(in crate::game) fn create_fireworks(&mut self, request: &FireworksRequest) -> bool {
-        use super::api_values::TryIntoEngine;
+        use sunrise_gameplay_common::game::api_values::TryIntoEngine;
         if !self.common.native_window()
             || self.common.player.is_none()
             || !request
@@ -142,7 +142,7 @@ impl ClientGame<'_> {
 }
 
 pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particles::BlockStates> {
-    super::api_values::block_state::current()
+    sunrise_gameplay_common::game::api_values::block_state::current()
         .ok()
         .map(|states| -> sunrise_client::particles::BlockStates { states })
 }

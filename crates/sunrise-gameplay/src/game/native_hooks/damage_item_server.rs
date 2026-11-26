@@ -5,7 +5,7 @@ impl crate::game::ServerGame<'_> {
     /// The parts' answer for `loss` points of wear on `stack`, worn or used by
     /// `wearer`: the points it takes, or all the durability it has left when a
     /// part breaks it now (the vanilla break then runs where the wear lands).
-    pub(in crate::game::server_side) fn damage_item_loss(
+    pub(crate) fn damage_item_loss(
         &mut self,
         stack: &ItemStack,
         loss: u32,

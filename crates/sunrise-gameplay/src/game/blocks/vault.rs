@@ -194,7 +194,7 @@ impl ServerGame<'_> {
         let player = self.acting_uuid();
         let eject = VaultEject {
             player: self.killer_loot_entity(None),
-            tool: super::creatures::to_loot(&stack),
+            tool: sunrise_gameplay_common::game::creatures::to_loot(&stack),
             luck: self.acting_luck(),
         };
         let used = self.with_vault(

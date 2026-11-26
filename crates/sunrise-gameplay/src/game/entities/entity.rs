@@ -986,7 +986,7 @@ pub(crate) use walk_lists_mut;
 /// [`for_each_entity`] over [`TakenEntities`], with the entity mutable.
 macro_rules! for_each_entity_mut {
     ($lists:expr, $entity:ident => $body:block) => {
-        $crate::game::entity::entity_lists!(
+        sunrise_gameplay_common::game::entity::entity_lists!(
             $crate::game::entity_server::walk_lists_mut,
             $lists,
             $entity,
@@ -1023,7 +1023,7 @@ pub(crate) use save_lists;
 /// out, since `save_nbt` has no default.
 macro_rules! save_entities_of_every_kind {
     ($game:expr, $keys:expr, $out:expr, $include_transient:expr) => {
-        $crate::game::entity::entity_lists!(
+        sunrise_gameplay_common::game::entity::entity_lists!(
             $crate::game::entity_server::save_lists,
             $game,
             $keys,
@@ -1070,7 +1070,7 @@ pub(crate) use load_lists;
 /// has no default.
 macro_rules! load_entity_of_any_kind {
     ($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr, $transferred:expr) => {
-        $crate::game::entity::entity_lists!(
+        sunrise_gameplay_common::game::entity::entity_lists!(
             $crate::game::entity_server::load_lists,
             $game,
             $kind,

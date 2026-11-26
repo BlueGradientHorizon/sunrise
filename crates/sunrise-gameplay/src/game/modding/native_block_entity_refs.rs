@@ -84,8 +84,8 @@ impl ServerGame<'_> {
         }
         let [x, y, z] = entity.fields().position;
         match self.open_block_menu(conn, (x, y, z)) {
-            super::lan_actions::MenuOpen::Stale => Err(BlockEntityError::Stale),
-            opened => Ok(opened == super::lan_actions::MenuOpen::Opened),
+            sunrise_gameplay_common::game::lan_actions::MenuOpen::Stale => Err(BlockEntityError::Stale),
+            opened => Ok(opened == sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened),
         }
     }
 
@@ -284,7 +284,7 @@ impl ServerGame<'_> {
         }
         self.journal_chunk_save(
             (key.0 >> 4, key.2 >> 4),
-            super::transactions::SaveChunkScope::Level,
+            sunrise_gameplay_common::game::transactions::SaveChunkScope::Level,
         );
         Ok(true)
     }

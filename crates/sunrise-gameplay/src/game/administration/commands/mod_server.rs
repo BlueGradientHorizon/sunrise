@@ -791,7 +791,7 @@ impl crate::game::ServerGame<'_> {
                 .spawn_mob_spawned(
                     &short,
                     pos,
-                    super::creatures::SpawnSite::Finalizing(
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                         sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 )

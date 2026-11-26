@@ -37,7 +37,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<mod_api::Difficulty> {
         let world = self.native_level_world(level)?;
         let at = pos.map(f64::from);
-        Some(super::creatures::local_difficulty_in(world, at).into())
+        Some(sunrise_gameplay_common::game::creatures::local_difficulty_in(world, at).into())
     }
     /// Read a registered boolean game rule.
     pub(in crate::game) fn level_game_rule_bool(

@@ -269,13 +269,13 @@ impl crate::game::ServerGame<'_> {
         if let Some(Slots::Block(key) | Slots::Double(key, _)) = slots
             && slots.and_then(|s| s.read(&self.common.world, &host.hub.guests[gi])) != before
         {
-            self.after_commit(super::super::transactions::After::Changed(key));
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(key));
         }
         if let Some(Slots::Block(key)) = slots {
-            self.after_commit(super::super::transactions::After::StoreCartItems(key));
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::StoreCartItems(key));
         }
         if !drops.is_empty() {
-            self.after_commit(super::super::transactions::After::GuestMenu(
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::GuestMenu(
                 conn,
                 Box::new(sunrise_gameplay_common::game::lan_menu_data::GuestMenuEffects::dropped(drops)),
             ));

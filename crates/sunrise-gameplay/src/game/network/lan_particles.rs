@@ -391,8 +391,8 @@ impl crate::game::ServerGame<'_> {
     /// canceled/dropped.
     pub(in crate::game::server_side) fn resolve_native_sound(
         &mut self,
-        mut sound: super::creatures::NativeSound,
-    ) -> Option<super::creatures::NativeSound> {
+        mut sound: sunrise_gameplay_common::game::creatures::NativeSound,
+    ) -> Option<sunrise_gameplay_common::game::creatures::NativeSound> {
         let sound_known = |game: &Self, name: &str| {
             !name.starts_with("minecraft:")
                 || game.server.lan.as_ref().is_some_and(|host| {
@@ -439,7 +439,7 @@ impl crate::game::ServerGame<'_> {
     /// (runs no mod hooks and does not touch `self.creatures.lan_sounds`).
     pub(in crate::game::server_side) fn send_resolved_native_sound(
         &self,
-        sound: &super::creatures::NativeSound,
+        sound: &sunrise_gameplay_common::game::creatures::NativeSound,
     ) {
         let Some(host) = &self.server.lan else { return };
         let packet = host.hub.sound_packet(

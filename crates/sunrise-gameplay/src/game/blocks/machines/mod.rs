@@ -265,7 +265,7 @@ impl ServerGame<'_> {
                 self.journal_block_loot_random();
                 if let Some(tag) = self.pot_tag(at) {
                     spill::put_saved_entity(&mut self.common.world, at, tag);
-                    self.after_commit(super::transactions::After::Changed(pos));
+                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(pos));
                 }
             }
         }
@@ -835,7 +835,7 @@ impl ServerGame<'_> {
         stack: &ItemStack,
         take: impl FnOnce(&mut Self, u32) -> Option<()>,
     ) -> u32 {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         let Ok(snapshot) = stack.try_into_api() else {
             return 0;
         };
@@ -877,7 +877,7 @@ impl ServerGame<'_> {
         }
         let from = self.container_world_pos(hopper);
         self.storage_transaction(|game, tx| {
-            use super::api_values::TryIntoApi;
+            use sunrise_gameplay_common::game::api_values::TryIntoApi;
             for slot in 0..hopper.len() {
                 let Some(snapshot) = game
                     .containers()
@@ -923,7 +923,7 @@ impl ServerGame<'_> {
             let Some(resource) = part.resource(self, slot) else {
                 continue;
             };
-            use super::api_values::TryIntoEngine;
+            use sunrise_gameplay_common::game::api_values::TryIntoEngine;
             let Ok(one) = resource.as_stack().try_into_engine(self.items()) else {
                 continue;
             };
@@ -1647,7 +1647,7 @@ impl ServerGame<'_> {
             if let Some(entry) = self.slot_mut_at(&view, slot) {
                 *entry = remaining;
                 if dropper {
-                    self.after_commit(super::transactions::After::Changed(key));
+                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(key));
                 } else {
                     self.after_holder_changed(holder);
                 }

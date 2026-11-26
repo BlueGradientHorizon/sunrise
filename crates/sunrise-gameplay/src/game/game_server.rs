@@ -1,4 +1,5 @@
 use {crate::game::*, sunrise_gameplay_common::game::*};
+use crate::game::creatures;
 use std::sync::Arc;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};

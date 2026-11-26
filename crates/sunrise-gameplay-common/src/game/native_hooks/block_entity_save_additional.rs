@@ -175,7 +175,7 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> BlockEntitySaveAdditionalGameExt1<'
 
 impl GameLevel<'_> {
     /// `BlockEntity.saveAdditional` for a live block entity used in a loot roll.
-    pub(in crate::game) fn encode_live_block_entity(
+    pub fn encode_live_block_entity(
         &self,
         pos: Pos,
         entity: &BlockEntity,

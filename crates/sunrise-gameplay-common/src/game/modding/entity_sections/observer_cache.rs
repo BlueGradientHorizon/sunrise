@@ -41,7 +41,7 @@ pub(in crate::game) mod tests {
 }
 
 impl ObserverCache {
-    pub(in crate::game) fn begin(
+    pub fn begin(
         &mut self,
         sections: &mut EntitySections,
         scope: Option<Scope>,

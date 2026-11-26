@@ -224,7 +224,7 @@ impl ServerGame<'_> {
                 let hit = self.hurt_player_from(
                     amount,
                     skull.from,
-                    super::creatures::damage_type(kind, false),
+                    sunrise_gameplay_common::game::creatures::damage_type(kind, false),
                     Some(owner),
                     false,
                 );
@@ -308,7 +308,7 @@ impl ServerGame<'_> {
                         let mut skull_p = p.clone();
                         skull_p.owner = live_owner;
                         let damage_type = self.projectile_damage_type(&skull_p);
-                        let info = super::creatures::ProjectileHitInfo::from_projectile(
+                        let info = sunrise_gameplay_common::game::creatures::ProjectileHitInfo::from_projectile(
                             &skull_p,
                             damage_type,
                             amount,

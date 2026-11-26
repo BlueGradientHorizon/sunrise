@@ -9,8 +9,8 @@ use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 
 pub struct RegisteredExecutor {
-    pub(in crate::game) callback: RetainedCallback,
-    pub(in crate::game) call: Arc<CommandExecutor>,
+    pub callback: RetainedCallback,
+    pub call: Arc<CommandExecutor>,
 }
 
 /// The commands the mods registered, as the session's tree holds them.

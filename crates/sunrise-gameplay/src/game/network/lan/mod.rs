@@ -78,7 +78,7 @@ pub(in crate::game) struct LanHost {
     pub border_sent: Option<lan::border::Sent>,
     /// Guests' commands waiting for the hub to be back in `self.lan`, where
     /// a command can reach every player (game/network/lan_actions/commands.rs).
-    pub commands: Vec<super::lan_actions::GuestCommand>,
+    pub commands: Vec<sunrise_gameplay_common::game::lan_actions::GuestCommand>,
     /// Mods' quiet commands waiting to run a few a tick (game/network/lan_quiet.rs).
     pub quiet: std::collections::VecDeque<super::lan_quiet::QuietBatch>,
     /// Far terrain sampled for Sunrise clients (game/network/lan_far.rs); None when
@@ -1235,7 +1235,7 @@ impl crate::game::ServerGame<'_> {
                         guest.uuid,
                     );
                     let name = guest.name.clone();
-                    self.native_player_pong(sunrise_gameplay_common::game::native_hooks::PlayerPongCall {
+                    self.native_player_pong(crate::game::native_hooks::PlayerPongCall {
                         player,
                         name: &name,
                         id,
@@ -2692,7 +2692,7 @@ impl crate::game::ServerGame<'_> {
                 && let Some((source, _)) = m.last_damage
             {
                 use sunrise_sim::mobs::Who;
-                let kind = super::creatures::source_damage_type(source);
+                let kind = sunrise_gameplay_common::game::creatures::source_damage_type(source);
                 // The player a mob sees is the guest acting.
                 let cause = source.attacker.and_then(|who| match who {
                     Who::Player => host

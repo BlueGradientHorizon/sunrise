@@ -97,7 +97,7 @@ pub(in crate::game) fn native_block_entity_data_received(
     source: BlockEntityDataSource,
     tag: &sunrise_core::nbt::Compound,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_block_entity_data_received(subject, source, tag);
+    crate::game::native_hooks::fire::fire_block_entity_data_received(subject, source, tag);
 }
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -68,7 +68,7 @@ pub enum Target {
 
 impl Target {
     /// A player, in place or not (`instanceof ServerPlayer`).
-    pub(in crate::game) fn is_player(self) -> bool {
+    pub fn is_player(self) -> bool {
         matches!(self, Target::Player | Target::Guest(_))
     }
 }
@@ -132,7 +132,7 @@ pub fn teleport_velocity(
 pub struct OtherEntity {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     pub id: u32,
     pub kind: String,
     pub position: Vec3,
@@ -146,7 +146,7 @@ pub struct OtherEntity {
     /// A summoned or loaded `minecraft:eye_of_ender`'s flight; None for every other kind.
     pub eye: Option<super::end_state::SummonedEye>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`).
-    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
+    pub size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 
 sunrise_sim::impl_joined!(OtherEntity);
@@ -154,7 +154,7 @@ sunrise_mod_runtime::impl_attachment_lifetime!(OtherEntity);
 
 impl OtherEntity {
     /// Physical query bounds, not display rendering/culling dimensions.
-    pub(in crate::game) fn display_marker_or_interaction_bounds(
+    pub fn display_marker_or_interaction_bounds(
         &self,
     ) -> Option<sunrise_core::geometry::Aabb> {
         let dimensions = self.vanilla_dimensions()?;
@@ -185,7 +185,7 @@ impl OtherEntity {
     /// `EntityDimensions.scalable(width, height)`, none for a display or a marker. None for
     /// every other kind the list keeps without simulating it (a leash knot, an eye of ender),
     /// which isn't asked.
-    pub(in crate::game) fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+    pub fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
         if !matches!(
             self.kind.as_str(),
             "minecraft:block_display"
@@ -582,7 +582,7 @@ pub enum Component {
 }
 
 impl Component {
-    pub(in crate::game) fn named(name: &str) -> Option<Self> {
+    pub fn named(name: &str) -> Option<Self> {
         match name.strip_prefix("minecraft:").unwrap_or(name) {
             "container" => Some(Self::Container),
             "bundle_contents" => Some(Self::Bundle),
@@ -590,7 +590,7 @@ impl Component {
             _ => None,
         }
     }
-    pub(in crate::game) fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
+    pub fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
         let Some(data) = stack.data() else {
             return Vec::new();
         };
@@ -614,7 +614,7 @@ impl Component {
     }
     /// ComponentSlotCollection writes a single normalized component back to
     /// its live parent; all unrelated parent components remain modeled.
-    pub(in crate::game) fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
+    pub fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
         for slot in &mut slots {
             if slot
                 .as_ref()

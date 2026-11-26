@@ -1274,7 +1274,7 @@ fn each_spawn_in_a_transaction_is_constructed_at_its_own_call_and_joins_at_the_c
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
-use sunrise_gameplay_common::game::GameGameExt2 as _;
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

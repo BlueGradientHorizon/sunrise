@@ -10,11 +10,11 @@ use sunrise_sim::mobs::Who;
 
 /// Per-cloud settings; natural lingering clouds keep their creation defaults.
 pub struct CloudSettings {
-    pub(in crate::game) wait_time: i32,
-    pub(in crate::game) reapplication_delay: i32,
-    pub(in crate::game) radius_on_use: f32,
-    pub(in crate::game) duration_on_use: i32,
-    pub(in crate::game) duration_scale: f32,
+    pub wait_time: i32,
+    pub reapplication_delay: i32,
+    pub radius_on_use: f32,
+    pub duration_on_use: i32,
+    pub duration_scale: f32,
 }
 
 /// A thrown splash or lingering potion in flight.
@@ -46,9 +46,9 @@ pub struct ThrownPotion {
 }
 
 pub struct CloudParticle {
-    pub(in crate::game) options: ParticleOptions,
+    pub options: ParticleOptions,
     /// Retain the pre-existing save representation only for built-in options.
-    pub(in crate::game) vanilla_tag: Option<Tag>,
+    pub vanilla_tag: Option<Tag>,
 }
 
 /// A potion-bearing `AreaEffectCloud`: its effects, settings and recent victims.

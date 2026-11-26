@@ -137,7 +137,7 @@ impl ServerGame<'_> {
         if xp > 0 {
             self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
         }
-        self.after_commit(super::transactions::After::GrindstoneEvent(pos));
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::GrindstoneEvent(pos));
     }
 
     pub(in crate::game) fn give_or_drop(&mut self, stack: ItemStack) {

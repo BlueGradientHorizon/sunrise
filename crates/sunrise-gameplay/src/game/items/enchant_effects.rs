@@ -294,7 +294,7 @@ impl ServerGame<'_> {
                 let Some(((attacker, victim), weapon)) = actors.zip(weapon.as_ref()) else {
                     return value;
                 };
-                let Some(effect) = super::mods::ENCHANTMENT_DAMAGE_EFFECTS
+                let Some(effect) = sunrise_gameplay_common::game::mods::ENCHANTMENT_DAMAGE_EFFECTS
                     .get()
                     .and_then(|effects| effects.get(slot))
                 else {

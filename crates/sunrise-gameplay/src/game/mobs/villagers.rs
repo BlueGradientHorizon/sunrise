@@ -456,7 +456,7 @@ impl ServerGame<'_> {
     }
 
     /// The UUID of a player by connection (None for the host).
-    pub(in crate::game::server_side) fn player_uuid_of(
+    pub fn player_uuid_of(
         &self,
         who: Option<u32>,
     ) -> Option<[i32; 4]> {
@@ -500,7 +500,7 @@ impl ServerGame<'_> {
             && let Some(host) = &self.server.lan
         {
             let direct = cause.filter(|_| super::combat::melee(source.kind));
-            let kind = super::creatures::source_damage_type(source);
+            let kind = sunrise_gameplay_common::game::creatures::source_damage_type(source);
             host.hub.damage_event(id as i32, kind, cause, direct, at);
         }
         for villager::HurtSound(name, at, volume, pitch) in sounds.into_iter().flatten() {

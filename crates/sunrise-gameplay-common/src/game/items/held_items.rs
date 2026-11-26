@@ -21,7 +21,7 @@ pub fn attack_reach(range: &serde_json::Value, creative: bool) -> (f32, f32, f32
 }
 
 /// `AttackRange.isInRange`: float bounds, then inclusive double comparison.
-pub(in crate::game) fn attack_range_contains(
+pub fn attack_range_contains(
     range: &serde_json::Value,
     distance: f64,
     creative: bool,
@@ -301,7 +301,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `Player.isWithinAttackRange(mainHandItem, box, 3.0)` for the player in place.
-    pub(in crate::game) fn within_attack_range(
+    pub fn within_attack_range(
         &mut self,
         target: &sunrise_core::geometry::Aabb,
     ) -> bool {
@@ -1371,12 +1371,12 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> HeldItemsGameExt1<'__sg> for G {}
 
 
 /// `ProjectileWeaponItem.ARROW_ONLY`: `stack.is(ItemTags.ARROWS)`.
-pub(in crate::game) fn is_arrow(items: &sunrise_items::items::Items, stack: &ItemStack) -> bool {
+pub fn is_arrow(items: &sunrise_items::items::Items, stack: &ItemStack) -> bool {
     items.item_in_tag("minecraft:arrows", &stack.item)
 }
 
 /// `Player.getProjectile`: off hand, main hand, else first arrows in inventory.
-pub(in crate::game) fn projectile_slot(
+pub fn projectile_slot(
     weapon: &str,
     hands: [(usize, Option<&ItemStack>); 2],
     inventory: &[Option<ItemStack>],

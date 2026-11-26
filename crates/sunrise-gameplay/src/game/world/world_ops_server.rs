@@ -1,6 +1,6 @@
 //! Server-side implementations of `side_ops::world` and server-only world/save/control helpers.
 use super::*;
-use sunrise_gameplay_common::game::native_hooks;
+use crate::game::native_hooks::fire;
 use serde_json::{Value, json};
 
 impl crate::game::ServerGame<'_> {
@@ -116,7 +116,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         let mut cancel = false;
-        self.native_entity_change_block_pre(native_hooks::EntityChangeBlockPreCall {
+        self.native_entity_change_block_pre(fire::EntityChangeBlockPreCall {
             player,
             entity: None,
             kind: "minecraft:player",

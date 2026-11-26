@@ -49,7 +49,7 @@ impl Journal {
     }
 
     /// Keep the oldest snapshot when a nested listener or action commits.
-    pub(in crate::game) fn merge(&mut self, child: Self) {
+    pub fn merge(&mut self, child: Self) {
         for (id, kept) in child.menus {
             self.menus.entry(id).or_insert(kept);
         }

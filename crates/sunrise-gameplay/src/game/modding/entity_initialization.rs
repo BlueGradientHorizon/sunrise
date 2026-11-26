@@ -96,7 +96,7 @@ pub(in crate::game) struct TransferredEntityState {
     /// arrival moves that keeping to the new id.
     pub(in crate::game) journaled: Option<u32>,
     /// Filled by an abort that comes before the arrival: the contents the arrival puts back.
-    pub(in crate::game) rollback: Option<super::transactions::ArrivalRollback>,
+    pub(in crate::game) rollback: Option<sunrise_gameplay_common::game::transactions::ArrivalRollback>,
     /// The id the entity had before it travelled, which a kill credit may still name.
     pub(in crate::game) source: u32,
 }

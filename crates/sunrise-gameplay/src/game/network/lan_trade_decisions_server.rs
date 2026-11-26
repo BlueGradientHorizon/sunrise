@@ -3,10 +3,10 @@ use super::{
     decided_action::{DecidedTarget, Epoch},
     lan_trading::{MerchantRun, opaque_villager},
     stacked_on_other::Pickup,
-    transactions::{
-        After,
-        decision::{Identity, Reply, Side},
-    },
+};
+use sunrise_gameplay_common::game::transactions::{
+    After,
+    decision::{Identity, Reply, Side},
 };
 use sunrise_gameplay_common::game::lan_menu_data::{
     Effect, Journal, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow,
@@ -200,7 +200,7 @@ impl crate::game::ServerGame<'_> {
         p: &play::ContainerClick,
         input: Input,
         identity: Identity,
-        route: super::transactions::decision::MenuId,
+        route: sunrise_gameplay_common::game::transactions::decision::MenuId,
     ) -> bool {
         let mob = identity.target.id();
         let button = i32::from(p.button);
@@ -366,7 +366,7 @@ impl crate::game::ServerGame<'_> {
                         .mobs
                         .iter()
                         .find(|m| m.id == mob)
-                        .map(super::native_hooks::mob_kind);
+                        .map(sunrise_gameplay_common::game::native_hooks::mob_kind);
                     let Some(kind) = kind else {
                         return Reply::Failed;
                     };

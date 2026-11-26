@@ -388,7 +388,7 @@ impl crate::game::ClientGame<'_> {
         let table = self.common.resident_entities.table.get_mut();
         table.reset();
         let journal = table.producer();
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Mob,
             self.mobs,
             &journal,
@@ -397,7 +397,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Mob
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Item,
             self.dropped,
             &journal,
@@ -406,7 +406,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Item
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Orb,
             self.orbs,
             &journal,
@@ -415,7 +415,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Orb
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Stand,
             self.armor_stands,
             &journal,
@@ -424,7 +424,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Stand
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Frame,
             self.item_frames,
             &journal,
@@ -433,7 +433,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Frame
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Painting,
             self.paintings,
             &journal,
@@ -442,7 +442,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Painting
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Boat,
             self.boats,
             &journal,
@@ -451,7 +451,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Boat
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Cart,
             self.carts,
             &journal,
@@ -460,7 +460,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Cart
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Fangs,
             self.fangs.list,
             &journal,
@@ -469,7 +469,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Fangs
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Crystal,
             self.crystals,
             &journal,
@@ -478,7 +478,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Crystal
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Tnt,
             self.tnts,
             &journal,
@@ -487,7 +487,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Tnt
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Cushion,
             self.cushions,
             &journal,
@@ -496,7 +496,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Cushion
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Knot,
             self.resident_entities.knots,
             &journal,
@@ -505,7 +505,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Knot
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Falling,
             self.falling,
             &journal,
@@ -514,7 +514,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Falling
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Rocket,
             self.rockets,
             &journal,
@@ -523,7 +523,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Rocket
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Trident,
             self.tridents,
             &journal,
@@ -532,7 +532,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Trident
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Spawner,
             self.ominous_spawners,
             &journal,
@@ -541,7 +541,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Spawner
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Cloud,
             self.breath_clouds,
             &journal,
@@ -550,7 +550,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Cloud
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             Bolt,
             self.bolts,
             &journal,
@@ -559,7 +559,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Bolt
             }
         );
-        crate::game::resident_state::bind_resident_list!(
+        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
             General,
             self.resident_entities.general.rows,
             &journal,

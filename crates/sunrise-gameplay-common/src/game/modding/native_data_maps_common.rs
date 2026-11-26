@@ -229,7 +229,7 @@ pub struct Loaded {
 }
 
 impl DataMaps {
-    pub(in crate::game) fn with_biome_keys(mut self, keys: mod_api::__private::BiomeKeys) -> Self {
+    pub fn with_biome_keys(mut self, keys: mod_api::__private::BiomeKeys) -> Self {
         self.biome_keys = std::sync::Arc::new(keys);
         self
     }

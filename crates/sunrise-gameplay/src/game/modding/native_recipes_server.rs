@@ -1,6 +1,6 @@
 //! Server-side recipe lookup (`LevelRef::recipe_for`) for native mods.
 use crate::game::ServerGame;
-use super::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use mod_api::{LevelRef, RecipeInput, RecipeLookupError, RecipeMatch};
 use sunrise_items::items::ItemStack;
 
@@ -28,7 +28,7 @@ impl ServerGame<'_> {
             )))
         };
         let read_stack = |stack: &mod_api::ItemStack| {
-            super::api_values::recipe_inputs::stack(stack, self.items()).map_err(|_| InvalidItem)
+            sunrise_gameplay_common::game::api_values::recipe_inputs::stack(stack, self.items()).map_err(|_| InvalidItem)
         };
         match kind {
             "crafting" => {

@@ -927,7 +927,7 @@ impl GameLevel<'_> {
 // Native mods use these; nothing in Sunrise does.
 impl crate::game::CommonGame<'_> {
     /// Read a loaded, light-emitting block. No implicit chunk loading.
-    pub(in crate::game) fn lit_block_name(&self, pos: [i32; 3]) -> Option<mod_api::BlockKey> {
+    pub fn lit_block_name(&self, pos: [i32; 3]) -> Option<mod_api::BlockKey> {
         self.world
             .chunks
             .contains_key(&(pos[0].div_euclid(16), pos[2].div_euclid(16)))
@@ -942,19 +942,19 @@ impl crate::game::CommonGame<'_> {
     /// The most of the item `item` one slot holds (`Item.getDefaultMaxStackSize`),
     /// or `None` for an unknown item: for a mod's container that fills or
     /// merges stacks itself.
-    pub(in crate::game) fn max_stack_size(&self, item: mod_api::ItemKey) -> Option<u32> {
+    pub fn max_stack_size(&self, item: mod_api::ItemKey) -> Option<u32> {
         self.res
             .items()
             .get(mod_api::__private::item_key_id(item)?)
             .map(|i| i.max_stack)
     }
-    pub(in crate::game) fn max_damage(&self, item: mod_api::ItemKey) -> Option<u32> {
+    pub fn max_damage(&self, item: mod_api::ItemKey) -> Option<u32> {
         self.res
             .items()
             .get(mod_api::__private::item_key_id(item)?)
             .map(|i| i.max_damage)
     }
-    pub(in crate::game) fn item_key(&self, id: &mod_api::Identifier) -> Option<mod_api::ItemKey> {
+    pub fn item_key(&self, id: &mod_api::Identifier) -> Option<mod_api::ItemKey> {
         mod_api::__private::item_key_by_identifier(id)
     }
     /// The clock of the world this window shows, for client mods: its game
@@ -973,12 +973,12 @@ impl crate::game::CommonGame<'_> {
     /// `datapacks/` is in that world's folder (`saves/<world>/datapacks`).
     /// The folder the game runs in (`--player-dir` moves a player's options
     /// and servers only, not the instance). Nothing is created.
-    pub(in crate::game) fn instance_dir(&self) -> PathBuf {
+    pub fn instance_dir(&self) -> PathBuf {
         crate::game::game_dir()
     }
     /// A mod's setting `key` (one file per key in `native_data_dir`). A mod's hook or part reads
     /// only its own mod's: another mod's id gives None.
-    pub(in crate::game) fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    pub fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
         if crate::game::another_mods(mod_id) {
             return None;
         }
@@ -988,7 +988,7 @@ impl crate::game::CommonGame<'_> {
         mod_settings::read_raw(&self.native_data_dir(mod_id), mod_id, key)
     }
     /// Keeps a mod's setting `key`. A mod's hook or part keeps only its own mod's.
-    pub(in crate::game) fn set_setting(&self, mod_id: &str, key: &str, value: &str) {
+    pub fn set_setting(&self, mod_id: &str, key: &str, value: &str) {
         if crate::game::another_mods(mod_id) {
             return;
         }

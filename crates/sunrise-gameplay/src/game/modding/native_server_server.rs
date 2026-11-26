@@ -1,4 +1,4 @@
-use super::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
 use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 use sunrise_gameplay_common::game::native_server::Acting;
@@ -1165,7 +1165,7 @@ impl crate::game::ServerGame<'_> {
                 SidebarContents::prepare(sidebar, &|item| items.contains_key(item)).map(Box::new)
             })
             .transpose()?;
-        self.after_commit(super::transactions::After::PersonalSidebar(conn, contents));
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::PersonalSidebar(conn, contents));
         Ok(true)
     }
 

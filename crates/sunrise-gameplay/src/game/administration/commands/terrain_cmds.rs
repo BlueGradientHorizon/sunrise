@@ -370,7 +370,7 @@ impl crate::game::ServerGame<'_> {
             let chunk = std::sync::Arc::make_mut(chunk);
             chunk.set_biome_cell((pos[0] & 15) >> 2, qy, (pos[2] & 15) >> 2, target as u16);
         }
-        self.after_commit(super::super::transactions::After::Biome(key));
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::Biome(key));
         true
     }
 

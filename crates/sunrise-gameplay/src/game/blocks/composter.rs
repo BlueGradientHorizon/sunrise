@@ -166,7 +166,7 @@ impl crate::game::ServerGame<'_> {
         if after != before && !self.journal_set_block(pos, after) {
             return false;
         }
-        self.after_commit(super::transactions::After::Composter(Effects::Insert {
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::Composter(Effects::Insert {
             pos,
             before,
             after,
@@ -188,7 +188,7 @@ impl crate::game::ServerGame<'_> {
         if !self.journal_set_block(pos, after) {
             return None;
         }
-        self.after_commit(super::transactions::After::Composter(Effects::Empty {
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::Composter(Effects::Empty {
             pos,
             after,
         }));

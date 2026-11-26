@@ -614,7 +614,7 @@ impl crate::game::ServerGame<'_> {
                 .inflate(Vec3::new(1.0, 1.0, 1.0));
                 let mut best = sunrise_sim::projectiles::NearestHit::new();
                 if !t.dealt_damage {
-                    let query = super::creatures::TargetQuery {
+                    let query = sunrise_gameplay_common::game::creatures::projectile_targets::TargetQuery {
                         include_guests: true,
                         arrow_friendly_fire: owner_who.map(|o| (o, t.guest)),
                         ..Default::default()
@@ -845,7 +845,7 @@ impl crate::game::ServerGame<'_> {
                                             .iter()
                                             .find(|a| a.id == id)
                                             .map(|a| a.position.components());
-                                        let info = super::creatures::ProjectileHitInfo {
+                                        let info = sunrise_gameplay_common::game::creatures::projectile_targets::ProjectileHitInfo {
                                             direct_id: t.id,
                                             owner: owner_who,
                                             guest: t.guest,
@@ -858,7 +858,7 @@ impl crate::game::ServerGame<'_> {
                                             ignite_seconds: None,
                                         };
                                         if self.projectile_hurts_non_mob(&info, id)
-                                            == super::creatures::NonMobHit::Hurt
+                                            == sunrise_gameplay_common::game::creatures::projectile_targets::NonMobHit::Hurt
                                             && let Some(pos) = stand_pos
                                         {
                                             hurt_stand = Some((id, pos));

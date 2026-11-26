@@ -624,7 +624,7 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
     }
 
     fn merchant_offers_lent(&self, mob: &Mob) -> Option<Vec<mod_api::MerchantOffer>> {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         self.merchant_read_lent(mob, |offers, _, _| offers.try_into_api().ok())
     }
 
@@ -929,7 +929,7 @@ impl crate::game::ServerGame<'_> {
             w: &world,
             host: self,
         };
-        super::native_hooks::NativeHookHost { host: &context }
+        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: &context }
             .native_mob_despawn(dimension, entity, kind, pos, result);
     }
     /// Run `read` against the goal view of `mob`'s tick, as a mod goal reads.
@@ -982,7 +982,7 @@ impl crate::game::ServerGame<'_> {
         };
         let mut new_target = original;
         let mut cancel = false;
-        super::native_hooks::NativeHookHost { host: &context }.native_living_change_target(
+        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: &context }.native_living_change_target(
             mod_api::__private::LivingChangeTargetCall {
                 mob: entity,
                 original_target: original,

@@ -1467,7 +1467,7 @@ impl ClientGame<'_> {
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
 
     /// The local player's flame vertices are tracked separately from the body run.
-    const MOTION_OWN_PLAYER_FIRE: u64 = crate::game::MOTION_OWN_PLAYER | 1;
+    const MOTION_OWN_PLAYER_FIRE: u64 = sunrise_gameplay_common::game::MOTION_OWN_PLAYER | 1;
 }
 
 impl sunrise_sim::crafting::CraftingRemainder for ClientGame<'_> {

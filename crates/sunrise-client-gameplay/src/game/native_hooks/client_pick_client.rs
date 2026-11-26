@@ -123,7 +123,7 @@ impl mod_api::EntityClientAccess for ClientPickEntityAccess<'_, '_> {
 }
 impl crate::game::ClientGame<'_> {
     /// The sole mod-output geometry boundary. Occlusion is intentionally not reapplied.
-    pub(in crate::game::client_side) fn accept_client_pick(&self, result: CrosshairTarget) -> bool {
+    pub(crate) fn accept_client_pick(&self, result: CrosshairTarget) -> bool {
         let (point, reach) = match result {
             CrosshairTarget::Block { hit, .. } => {
                 if !matches!(
@@ -143,7 +143,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// How many picks (a tick's or a frame's) have been taken: an agent command that turned
     /// waits for the count to move before it reads the target.
-    pub(in crate::game::client_side) fn client_picks(&self) -> u64 {
+    pub(crate) fn client_picks(&self) -> u64 {
         self.client.client_pick.taken
     }
     pub(in crate::game) fn pick_distance(&self, point: [f64; 3]) -> f64 {
@@ -152,7 +152,7 @@ impl crate::game::ClientGame<'_> {
             .sum::<f64>()
             .sqrt()
     }
-    pub(in crate::game::client_side) fn publish_client_pick(
+    pub(crate) fn publish_client_pick(
         &mut self,
         result: Option<CrosshairTarget>,
     ) {
@@ -599,7 +599,7 @@ impl crate::game::ClientGame<'_> {
         })
     }
 
-    pub(in crate::game::client_side) fn client_entity_interaction_kind(
+    pub(crate) fn client_entity_interaction_kind(
         &self,
         id: i32,
     ) -> Option<String> {
@@ -751,7 +751,7 @@ impl crate::game::ClientGame<'_> {
         // Supply block and entity candidates independently only when a ClientPick listener is active.
         let entity_candidate = if matches!(
             attack_result,
-            Some(crate::game::pick_entity_common::AttackRangePickResult::Entity(_))
+            Some(sunrise_gameplay_common::game::pick_entity_common::AttackRangePickResult::Entity(_))
         ) {
             original
         } else if entity_in_range.is_some() {
@@ -759,7 +759,7 @@ impl crate::game::ClientGame<'_> {
         } else if block_hit.is_some()
             || matches!(
                 attack_result,
-                Some(crate::game::pick_entity_common::AttackRangePickResult::Block(_))
+                Some(sunrise_gameplay_common::game::pick_entity_common::AttackRangePickResult::Block(_))
             )
         {
             let independent = self.pick_entity_candidate_within(

@@ -259,7 +259,7 @@ pub fn use_totem(
 /// own attachments. Not `GameLevel`, which a hit can't build: a mob's hit lands in the mob
 /// tick, where the world is read by every mob and its random is lent out, and building one
 /// per hit would allocate its entity boxes.
-pub struct HitLevel<'a>(pub(in crate::game) DamageLevel<'a>);
+pub struct HitLevel<'a>(pub DamageLevel<'a>);
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
 pub fn invulnerability_check(
@@ -301,7 +301,7 @@ pub fn engine_reduction(
 }
 
 pub struct LiveDamageRead<'a>(
-    pub(in crate::game) &'a sunrise_world::living_damage::DamageState,
+    pub &'a sunrise_world::living_damage::DamageState,
 );
 
 impl mod_api::__private::DamageContainerRead for LiveDamageRead<'_> {

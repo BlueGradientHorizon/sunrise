@@ -543,7 +543,7 @@ impl crate::game::ServerGame<'_> {
         c: RespawnConfig,
         found: Option<(Vec3, f32, f32)>,
     ) -> Option<(Vec3, f32, f32)> {
-        if !super::api_values::block_state::block_listens(mod_api::HookId::RespawnPosition, state) {
+        if !sunrise_gameplay_common::game::api_values::block_state::block_listens(mod_api::HookId::RespawnPosition, state) {
             return found;
         }
         let mut position = found.map(|(p, yaw, pitch)| ([p.x, p.y, p.z], yaw, pitch));

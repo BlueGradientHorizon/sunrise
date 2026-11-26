@@ -21,6 +21,7 @@ use mod_api::{
     self, Answered, ClientModifiers, EntityRef, PlayerRef, RecipeBookCategory, ScreenId,
     ScreenOpening, ScreenTarget,
 };
+use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
 pub use mod_api::{BlockRim, ColoredLight, PanelEvent, ScreenView};
 use mod_api::{CameraType, SoundPlay, SoundRef};
 use mod_api::{FluidStack, LogicalSide, TriState};
@@ -286,7 +287,7 @@ impl crate::game::ClientGame<'_> {
     /// `mod_screen_open` once hooks allow the transition, matching vanilla's
     /// `Gui.setScreen` / `Screen.removed` so no container menu, editor, dialog,
     /// or prompt stays open over the new screen.
-    pub(in crate::game::client_side) fn close_replaced_screen_for_mod(&mut self) {
+    pub(crate) fn close_replaced_screen_for_mod(&mut self) {
         let replacing = std::mem::replace(&mut self.client.screen_state.0.replacing, true);
         match self.client.screen {
             Screen::Inventory => self.close_container_client(),
@@ -312,10 +313,10 @@ impl crate::game::ClientGame<'_> {
     /// `LocalPlayer.clientSideCloseContainer`: restore the logical inventory
     /// menu, then `Gui.setScreen(null)`. Keep the old screen and its view for
     /// `ScreenEvent.Closing` before running its removal, not its user close.
-    pub(in crate::game::client_side) fn close_screen_to_level(
+    pub(crate) fn close_screen_to_level(
         &mut self,
         show_death_screen: bool,
-    ) -> super::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let overlay = self.observed_overlay_now();
         let inventory_screen = overlay.is_none()
             && self.client.screen == Screen::Inventory
@@ -454,7 +455,7 @@ impl crate::game::ClientGame<'_> {
     /// overlay via `close_replaced_screen_for_mod` before applying the
     /// decision, so `ScreenOpening::ModScreen` and `ScreenOpening::Vanilla`
     /// answers remain eligible even when replacing an overlay.
-    pub(in crate::game::client_side) fn decide_screen_for_mod_open(
+    pub(crate) fn decide_screen_for_mod_open(
         &self,
         current: &ScreenView<'_>,
         new: &ScreenView<'_>,
@@ -465,7 +466,7 @@ impl crate::game::ClientGame<'_> {
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
     /// none is showing.
-    pub(in crate::game::client_side) fn draw_native_screen(
+    pub(crate) fn draw_native_screen(
         &self,
         batch: &mut HudBatch,
         ox: f32,
@@ -533,7 +534,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// The open mod screen's tooltip under the cursor.
-    pub(in crate::game::client_side) fn draw_native_screen_tooltip(
+    pub(crate) fn draw_native_screen_tooltip(
         &mut self,
         batch: &mut HudBatch,
     ) {
@@ -582,7 +583,7 @@ impl crate::game::ClientGame<'_> {
     /// A mod's own screen cannot open now: over a book, a sign editor, a
     /// dialog or a prompt, with neither the title nor a player, with a
     /// world loading, or on a guest's behalf.
-    pub(in crate::game::client_side) fn mod_screen_blocked(&self) -> bool {
+    pub(crate) fn mod_screen_blocked(&self) -> bool {
         (self.common.player.is_none() && self.client.title.0.is_none())
             || self.screen_over_playing()
             || self.remote_loading()
@@ -637,7 +638,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
     /// for a `ModMenuType`, `300` for a stock menu).
-    pub(in crate::game::client_side) fn native_screen_container_slot_base(&self) -> usize {
+    pub(crate) fn native_screen_container_slot_base(&self) -> usize {
         self.shown_native_screen()
             .map_or(300, OpenNativeScreen::container_slot_base)
     }
@@ -667,7 +668,7 @@ impl crate::game::ClientGame<'_> {
         self.shown_native_screen().map(|s| s.layout().inventory_y)
     }
     /// The menu type resolved for this client's opening, including in ScreenOpening.
-    pub(in crate::game::client_side) fn native_screen_menu_type(
+    pub(crate) fn native_screen_menu_type(
         &self,
         window: i32,
         name: &str,
@@ -676,7 +677,7 @@ impl crate::game::ClientGame<'_> {
         (menu.window == window && menu.name == name).then_some(menu.mod_type)?
     }
     /// A press consumed by the shown screen goes to the server as a menu button click.
-    pub(in crate::game::client_side) fn native_screen_press(&mut self, right: bool) -> bool {
+    pub(crate) fn native_screen_press(&mut self, right: bool) -> bool {
         let Some(r) = self.client.renderer.0.as_ref() else {
             return false;
         };
@@ -687,7 +688,7 @@ impl crate::game::ClientGame<'_> {
         self.native_screen_press_at(&batch, right)
     }
     /// Dispatch a press in the given GUI viewport, with inventory slots taking priority.
-    pub(in crate::game::client_side) fn native_screen_press_at(
+    pub(crate) fn native_screen_press_at(
         &mut self,
         batch: &HudBatch,
         right: bool,
@@ -750,7 +751,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The screen-specific line override, shared by filled-slot and empty-space tooltips.
     /// Item images and component gathering remain on the stack's normal drawing path.
-    pub(in crate::game::client_side) fn native_screen_tooltip_lines(
+    pub(crate) fn native_screen_tooltip_lines(
         &self,
         batch: &HudBatch,
         slot: Option<usize>,
@@ -784,7 +785,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The pose of native mods' camera shake in this frame (`native_camera_shake`),
     /// none while not playing.
-    pub(in crate::game::client_side) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
+    pub(crate) fn native_shake_matrix(&self, partial: f32) -> glam::Mat4 {
         if !self.playing() {
             return glam::Mat4::IDENTITY;
         }
@@ -797,7 +798,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The zoom in effect while playing (a native mod's); the spyglass's own
     /// view wins.
-    pub(in crate::game::client_side) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
+    pub(crate) fn native_zoom_now(&self) -> Option<mod_api::Zoom> {
         if !self.playing() || self.scoping() {
             return None;
         }
@@ -948,7 +949,7 @@ impl crate::game::ClientGame<'_> {
         self.observed_screen_view()
             .map(|view| self.observe_view(view))
     }
-    pub(in crate::game::client_side) fn observed_overlay_now(&self) -> Option<&'static str> {
+    pub(crate) fn observed_overlay_now(&self) -> Option<&'static str> {
         let book = self.client.book.as_ref().map(super::books::BookScreen::id);
         observed_overlay_id(&[
             (self.client.command_prompt.0.is_some(), "command_prompt"),
@@ -1089,7 +1090,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `screen` as the screen hooks see it while it opens or closes: no
     /// renderer (a test, a window not yet up) leaves its rectangle empty.
-    pub(in crate::game::client_side) fn screen_change_view(
+    pub(crate) fn screen_change_view(
         &self,
         screen: Screen,
     ) -> ScreenView<'_> {
@@ -1112,7 +1113,7 @@ impl crate::game::ClientGame<'_> {
     /// `native_screen_char_typed_pre` for one character on `receiver`, with
     /// the focused box's edit: what the listeners leave of `field` goes back
     /// to the box before the character does. Whether they cancelled the character.
-    pub(in crate::game::client_side) fn screen_char_canceled_on(
+    pub(crate) fn screen_char_canceled_on(
         &mut self,
         receiver: Option<&ObservedScreen>,
         c: char,
@@ -1123,7 +1124,7 @@ impl crate::game::ClientGame<'_> {
         let Some(receiver) = receiver else {
             return false;
         };
-        let modifiers = super::glfw_modifiers(self.client.modifiers);
+        let modifiers = glfw_modifiers(self.client.modifiers);
         self.with_focused_text_edit(|game, field| {
             let screen = receiver.view();
             let mut canceled = false;
@@ -1143,7 +1144,7 @@ impl crate::game::ClientGame<'_> {
         text: &str,
         mut take: impl FnMut(&mut Self, &str) -> bool,
     ) {
-        let modifiers = super::glfw_modifiers(self.client.modifiers);
+        let modifiers = glfw_modifiers(self.client.modifiers);
         let mut encoded = [0; 4];
         for c in text.chars() {
             if c.is_control() {
@@ -1169,7 +1170,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `ScreenEvent.CharacterTyped.Post` for a character that neither mounted
     /// widgets nor any text box took, on the captured receiving screen.
-    pub(in crate::game::client_side) fn screen_chars_post_on(
+    pub(crate) fn screen_chars_post_on(
         &self,
         receiver: Option<&ObservedScreen>,
         c: char,
@@ -1180,7 +1181,7 @@ impl crate::game::ClientGame<'_> {
         let Some(receiver) = receiver else {
             return;
         };
-        let modifiers = super::glfw_modifiers(self.client.modifiers);
+        let modifiers = glfw_modifiers(self.client.modifiers);
         self.native_screen_char_typed_post(&receiver.view(), c, modifiers);
     }
     /// A key press's characters (`ScreenEvent.CharacterTyped.Pre`, vanilla's
@@ -1219,7 +1220,7 @@ impl crate::game::ClientGame<'_> {
     ) -> ScreenDecision {
         self.screen_decision_with(answer, false)
     }
-    pub(in crate::game::client_side) fn screen_decision_for_context(
+    pub(crate) fn screen_decision_for_context(
         &self,
         answer: Option<Answered<ScreenOpening>>,
         clears_overlays: bool,
@@ -1302,7 +1303,7 @@ impl crate::game::ClientGame<'_> {
     /// where the key neither mounted widgets nor screen arms took reaches the
     /// game's own key handling, which a cancel then skips. False with no
     /// subscriber, no receiving screen, or a key with no vanilla name.
-    pub(in crate::game::client_side) fn screen_key_post_on(
+    pub(crate) fn screen_key_post_on(
         &self,
         receiver: Option<&ObservedScreen>,
         key: KeyCode,
@@ -1320,7 +1321,7 @@ impl crate::game::ClientGame<'_> {
         let (Some(name), Some(receiver)) = (keybinds::key_name(key), receiver) else {
             return false;
         };
-        let modifiers = super::glfw_modifiers(self.client.modifiers);
+        let modifiers = glfw_modifiers(self.client.modifiers);
         let mut canceled = false;
         let screen = receiver.view();
         if pressed {
@@ -1334,7 +1335,7 @@ impl crate::game::ClientGame<'_> {
     /// (`native_screen_key_pressed_pre`): what `handle_window_event` and the
     /// control socket's `key` command both ask before a screen acts on a key.
     /// False when no receiving screen is open, and for a key with no vanilla name.
-    pub(in crate::game::client_side) fn screen_key_pressed_on(
+    pub(crate) fn screen_key_pressed_on(
         &self,
         receiver: Option<&ObservedScreen>,
         key: KeyCode,
@@ -1348,12 +1349,12 @@ impl crate::game::ClientGame<'_> {
             &receiver.view(),
             name,
             repeat,
-            super::glfw_modifiers(self.client.modifiers),
+            glfw_modifiers(self.client.modifiers),
             &mut canceled,
         );
         canceled
     }
-    pub(in crate::game::client_side) fn screen_key_released_on(
+    pub(crate) fn screen_key_released_on(
         &self,
         receiver: Option<&ObservedScreen>,
         key: KeyCode,
@@ -1365,12 +1366,12 @@ impl crate::game::ClientGame<'_> {
         self.native_screen_key_released_pre(
             &receiver.view(),
             name,
-            super::glfw_modifiers(self.client.modifiers),
+            glfw_modifiers(self.client.modifiers),
             &mut canceled,
         );
         canceled
     }
-    pub(in crate::game::client_side) fn screen_mouse_dragged(
+    pub(crate) fn screen_mouse_dragged(
         &self,
         delta: [f32; 2],
     ) -> ScreenMousePre {
@@ -1387,8 +1388,8 @@ impl crate::game::ClientGame<'_> {
         let Some(receiver) = self.observed_input_screen() else {
             return ScreenMousePre::NotFired;
         };
-        let button = super::glfw_button(button);
-        let modifiers = super::glfw_modifiers(self.client.modifiers);
+        let button = glfw_button(button);
+        let modifiers = glfw_modifiers(self.client.modifiers);
         let mut canceled = false;
         self.native_screen_mouse_dragged_pre(
             &receiver.view(),
@@ -1407,7 +1408,7 @@ impl crate::game::ClientGame<'_> {
             ))
         }
     }
-    pub(in crate::game::client_side) fn screen_overlay_view(
+    pub(crate) fn screen_overlay_view(
         &self,
         id: &'static str,
     ) -> ScreenView<'_> {
@@ -1451,7 +1452,7 @@ impl crate::game::ClientGame<'_> {
     /// printable one snapshots the current receiving screen, is offered to
     /// `native_screen_char_typed_pre`, and `take` gets it unless cancelled,
     /// before the next is offered. A control character goes straight to `take`.
-    pub(in crate::game::client_side) fn screen_text_each(
+    pub(crate) fn screen_text_each(
         &mut self,
         text: &str,
         mut take: impl FnMut(&mut Self, &str),
@@ -1477,7 +1478,7 @@ impl crate::game::ClientGame<'_> {
     /// `partial_tick` is the clock's fraction at this event, not a frame's.
     /// The `HudBatch` built here is only what `screen.rect` needs: the
     /// window's GUI scale, no allocation.
-    pub(in crate::game::client_side) fn screen_view_now(&self) -> Option<ScreenView<'_>> {
+    pub(crate) fn screen_view_now(&self) -> Option<ScreenView<'_>> {
         if !self.screen_hooks_open() {
             return None;
         }
@@ -1599,7 +1600,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    pub(in crate::game::client_side) fn settle_title_toasts(&mut self) {
+    pub(crate) fn settle_title_toasts(&mut self) {
         use super::toast_manager::SystemToastId;
         let pending = self
             .client
@@ -1697,7 +1698,7 @@ impl crate::game::ClientGame<'_> {
             regions: &[],
         }))
     }
-    pub(in crate::game::client_side) fn track_drag_button(
+    pub(crate) fn track_drag_button(
         &mut self,
         button: MouseButton,
         pressed: bool,
@@ -1825,7 +1826,7 @@ impl crate::game::ClientGame<'_> {
         .any(mod_api::__private::listened)
     }
     /// Whether a mod listens to one of the four screen render hooks.
-    pub(in crate::game::client_side) fn screen_render_listened(&self) -> bool {
+    pub(crate) fn screen_render_listened(&self) -> bool {
         use mod_api::HookId;
         [
             HookId::ScreenRenderPre,
@@ -1837,7 +1838,7 @@ impl crate::game::ClientGame<'_> {
         .any(mod_api::__private::listened)
     }
     /// `Render.Pre`: whether the screen draws.
-    pub(in crate::game::client_side) fn screen_render_begin(
+    pub(crate) fn screen_render_begin(
         &self,
         draw: &mut HudBatch,
         screen: &ScreenView<'_>,
@@ -1847,7 +1848,7 @@ impl crate::game::ClientGame<'_> {
         !canceled
     }
     /// `Render.Post`, including when Pre cancelled the screen's drawing.
-    pub(in crate::game::client_side) fn screen_render_end(
+    pub(crate) fn screen_render_end(
         &self,
         draw: &mut HudBatch,
         screen: &ScreenView<'_>,
@@ -2052,7 +2053,7 @@ impl crate::game::ClientGame<'_> {
             .collect()
     }
     /// Persists a changed setting on native mod `i`'s page and fires `setting_changed`.
-    pub(in crate::game::client_side) fn native_setting_event(&mut self, i: usize, j: usize) {
+    pub(crate) fn native_setting_event(&mut self, i: usize, j: usize) {
         let Some(row) = self.client.settings.mods.installed.get(i) else {
             return;
         };
@@ -2075,7 +2076,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Native mod `i`'s page opened: its settings' kept values read again.
-    pub(in crate::game::client_side) fn native_settings_refresh(&mut self, i: usize) {
+    pub(crate) fn native_settings_refresh(&mut self, i: usize) {
         let Some(id) = self
             .client
             .settings

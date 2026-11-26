@@ -1244,7 +1244,7 @@ pub struct ServerState {
     pub(in crate::game::server_side) player_autosaves:
         ServerOnly<sunrise_sim::lan::playerdata::Autosaves>,
     pub(in crate::game) session_lock: ServerShared<Option<sunrise_sim::save::SessionLock>>,
-    pub(in crate::game::server_side) paused_mob_hurt:
+    pub paused_mob_hurt:
         ServerOnly<Option<Box<sunrise_sim::mobs::PausedMobHurt>>>,
     pub(in crate::game::server_side) raiding: ServerOnly<raids::Raiding>,
     /// The world's data packs' content tables, when it has packs (`None`

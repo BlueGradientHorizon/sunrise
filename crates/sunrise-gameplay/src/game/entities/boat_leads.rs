@@ -628,7 +628,7 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::GameGameExt3 as _;
-use sunrise_gameplay_common::game::GameGameExt2 as _;
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

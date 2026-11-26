@@ -131,7 +131,7 @@ impl crate::game::ClientGame<'_> {
                             .join(format!("{path}.json"));
                         let json: serde_json::Value =
                             serde_json::from_slice(&std::fs::read(file).ok()?).ok()?;
-                        sunrise_gameplay::test_instances::parse_test_def(&json)
+                        sunrise_gameplay_common::test_instances::parse_test_def(&json)
                     })
                     .is_none_or(|t| t.required);
                 if required { 0xFF_0000 } else { 0xFF_8000 }

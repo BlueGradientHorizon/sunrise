@@ -91,7 +91,7 @@ impl ServerGame<'_> {
         if events.is_empty() {
             return;
         }
-        for (conn, mob, e) in super::creatures::RemainingActions::new(events) {
+        for (conn, mob, e) in sunrise_gameplay_common::game::creatures::RemainingActions::new(events) {
             self.guest_hit_by(conn, |g| g.guest_mob_event(mob, e));
         }
     }

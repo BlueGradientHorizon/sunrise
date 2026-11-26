@@ -877,7 +877,7 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         let generation = self.client.screen_state.0.widgets.generation();
         let mouse = [x, y];
-        let modifiers = super::glfw_modifiers(self.client.modifiers);
+        let modifiers = crate::game::client_side::key_codes::glfw_modifiers(self.client.modifiers);
         let handled = self.mounted_widget_click(Some(id), mouse, 0, modifiers, false);
         if handled && self.client.screen_state.0.widgets.generation() == generation {
             self.mounted_widget_mouse_released(mouse, 0, modifiers);

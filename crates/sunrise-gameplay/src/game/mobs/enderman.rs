@@ -63,7 +63,7 @@ impl ServerGame<'_> {
             let others: Vec<_> = if shulker {
                 self.common.mobs
                     .iter()
-                    .map(|m| super::creatures::seen(m, uuid, self.items()))
+                    .map(|m| sunrise_gameplay_common::game::creatures::seen(m, uuid, self.items()))
                     .collect()
             } else {
                 Vec::new()

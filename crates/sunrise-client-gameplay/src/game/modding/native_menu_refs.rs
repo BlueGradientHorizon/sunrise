@@ -171,7 +171,7 @@ impl ClientGame<'_> {
     pub(in crate::game) fn client_menu_kind(&self, menu: MenuRef) -> Option<Option<String>> {
         let name = self.native_client_menu_name(menu)?;
         Some(
-            (name != "inventory" && !name.starts_with(super::remote::MOUNT_MENU))
+            (name != "inventory" && !name.starts_with(sunrise_gameplay_common::game::remote::MOUNT_MENU))
                 .then(|| name.to_owned()),
         )
     }

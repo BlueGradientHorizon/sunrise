@@ -366,7 +366,7 @@ impl ServerGame<'_> {
     ) -> (Projectile, bool, Hit) {
         let include_guests =
             again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind);
-        let query = super::creatures::TargetQuery::for_projectile(&again, include_guests);
+        let query = sunrise_gameplay_common::game::creatures::projectile_targets::TargetQuery::for_projectile(&again, include_guests);
         let (keep, hit) = {
             let live = self.live_proj_world(query, &[]);
             again.tick(&live)
@@ -406,7 +406,7 @@ impl ServerGame<'_> {
             }
             // Non-mob pickable target (stand, painting, frame, knot, cushion, vehicle, falling block).
             Who::Mob(id) if !self.common.mobs.iter().any(|m| m.id == id) => {
-                let info = super::creatures::ProjectileHitInfo::from_projectile(
+                let info = sunrise_gameplay_common::game::creatures::projectile_targets::ProjectileHitInfo::from_projectile(
                     p,
                     "minecraft:wind_charge",
                     1.0,

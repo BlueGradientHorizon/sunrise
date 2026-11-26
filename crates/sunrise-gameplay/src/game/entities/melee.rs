@@ -235,7 +235,7 @@ impl crate::game::ServerGame<'_> {
             let victim = self.mob_entity(&self.common.mobs[index]);
             self.player_hit(
                 &victim,
-                creatures::damage_type(source.kind, true),
+                sunrise_gameplay_common::game::creatures::damage_type(source.kind, true),
                 None,
                 amount,
             );

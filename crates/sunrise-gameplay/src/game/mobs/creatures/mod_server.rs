@@ -1,4 +1,4 @@
-use super::api_values::{TryIntoApi, TryIntoEngine};
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use super::piston_push::Lid;
 #[allow(unused_imports)]
 use super::{Dim, Game, InteractTarget, view_vector};
@@ -945,7 +945,7 @@ impl crate::game::ServerGame<'_> {
         let mut cancel = false;
         let from_kind = (mod_api::__private::listened(mod_api::HookId::LivingConversionPre)
             || mod_api::__private::listened(mod_api::HookId::LivingConversionPost))
-        .then(|| super::native_hooks::mob_kind(from));
+        .then(|| sunrise_gameplay_common::game::native_hooks::mob_kind(from));
         if !pre_checked && let Some(from_kind) = &from_kind {
             self.native_living_conversion_pre(from.id, from_kind, kind, &mut cancel);
         }
@@ -1978,7 +1978,7 @@ impl crate::game::ServerGame<'_> {
                             target,
                             source.attacker,
                             None,
-                            Some(super::creatures::damage_type(source.kind, false)),
+                            Some(sunrise_sim::health::damage_type(source.kind, false)),
                         );
                     }
                 }
@@ -2407,7 +2407,7 @@ impl crate::game::ServerGame<'_> {
                         .common.mobs
                         .iter()
                         .find(|m| m.id == mob)
-                        .map(super::native_hooks::mob_kind)
+                        .map(sunrise_gameplay_common::game::native_hooks::mob_kind)
                         .unwrap_or_default();
                     let air = self.common.world.air;
                     let at = BlockPos::new(pos[0], pos[1], pos[2]);
@@ -2459,7 +2459,7 @@ impl crate::game::ServerGame<'_> {
                         {
                             let from = self.common.world.block(pos[0], pos[1], pos[2]);
                             self.native_entity_change_block_pre(
-                                sunrise_gameplay_common::game::native_hooks::EntityChangeBlockPreCall {
+                                crate::game::native_hooks::fire::EntityChangeBlockPreCall {
                                     player: None,
                                     entity: Some(mob),
                                     kind: &kind,
@@ -3396,7 +3396,7 @@ impl crate::game::ServerGame<'_> {
         let mut drops: Vec<(String, u32)> = Vec::new();
         // The shearing table rolled, for the mods.
         let mut drops_table = String::new();
-        let mob = (m.id, super::native_hooks::mob_kind(m));
+        let mob = (m.id, sunrise_gameplay_common::game::native_hooks::mob_kind(m));
         // `Sheep.shear` adds a spread on top of the ItemEntity's own motion.
         let mut wool = false;
         let is_food = m.kind.food.contains(&item);
@@ -6647,8 +6647,8 @@ impl crate::game::ServerGame<'_> {
             let mut entries = vec![mod_api::ArmorHurt {
                 slot: EquipmentSlot::Body,
                 stack: body_snapshot,
-                damage: crate::game::durability_damage(damage),
-                new_damage: crate::game::durability_damage(damage),
+                damage: sunrise_gameplay_common::game::durability_damage(damage),
+                new_damage: sunrise_gameplay_common::game::durability_damage(damage),
             }];
             let mut cancel = false;
             self.native_armor_hurt(None, id, &kind, source, &mut entries, &mut cancel);

@@ -47,7 +47,7 @@ impl crate::game::ServerGame<'_> {
                 "minecraft:silverfish",
                 at,
                 false,
-                super::creatures::SpawnSite::Plain,
+                sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
             ) && let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id)
             {
                 m.velocity = velocity;
@@ -553,7 +553,7 @@ impl crate::game::ServerGame<'_> {
                     p.add_vector(Vec3::new(0.125, 0.25, 0.125)),
                 )
             };
-            let query = super::creatures::TargetQuery {
+            let query = sunrise_gameplay_common::game::creatures::TargetQuery {
                 include_guests: true,
                 ..Default::default()
             };
@@ -1153,7 +1153,7 @@ impl crate::game::ServerGame<'_> {
                     "minecraft:slime",
                     [feet.x, feet.y + 0.5, feet.z],
                     false,
-                    super::creatures::SpawnSite::Plain,
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
                 ) && let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id)
                 {
                     sunrise_sim::mobs::cube::set_size(m, 2);

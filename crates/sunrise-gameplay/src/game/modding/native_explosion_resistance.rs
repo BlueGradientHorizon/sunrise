@@ -113,7 +113,7 @@ impl crate::game::ServerGame<'_> {
         // The calculator `level.explode` would have: the same selection, read the same way.
         let rules = self.blast_rules(None, false);
         let damage_type =
-            super::creatures::damage_type(DamageKind::Explosion, self.blast_attacker().is_some());
+            sunrise_gameplay_common::game::creatures::damage_type(DamageKind::Explosion, self.blast_attacker().is_some());
         let start = self.explosion_start(
             blast.center,
             blast.radius,

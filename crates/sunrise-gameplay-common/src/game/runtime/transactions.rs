@@ -913,7 +913,7 @@ pub enum DeferredEffect {
 
 impl Level {
     /// Keep the first snapshot for this stream. `None` names the frame's own level.
-    pub(in crate::game) fn keep_level_random(
+    pub fn keep_level_random(
         &mut self,
         owner: Option<LevelRef>,
         before: impl FnOnce() -> LegacyRandom,

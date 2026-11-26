@@ -213,7 +213,7 @@ impl crate::game::ServerGame<'_> {
         let loot = self.server.server_loot.0.get();
         let brusher = self.killer_loot_entity(None);
         let luck = self.acting_luck();
-        let tool = self.common.stack_in(slot).map(super::creatures::to_loot);
+        let tool = self.common.stack_in(slot).map(sunrise_gameplay_common::game::creatures::to_loot);
         let caller = self.caller_loot(Some(pos.map(|c| f64::from(c) + 0.5)), tool);
         caller.with(|| {
             decorated_pot::unpack_loot(

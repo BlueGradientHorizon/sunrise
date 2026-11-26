@@ -329,7 +329,7 @@ impl crate::game::ClientGame<'_> {
             if self.mounted_widget_key_pressed(
                 KeyCode::Backspace,
                 false,
-                super::glfw_modifiers(self.client.modifiers),
+                crate::game::client_side::key_codes::glfw_modifiers(self.client.modifiers),
             ) {
                 return Ok(());
             }

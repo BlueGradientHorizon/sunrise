@@ -614,7 +614,7 @@ impl ServerGame<'_> {
             if let Some(item) = gs
                 .menu
                 .slot(0)
-                .and_then(|item| super::api_values::TryIntoApi::try_into_api(item).ok())
+                .and_then(|item| TryIntoApi::try_into_api(item).ok())
             {
                 for (row, original) in drawn.iter().enumerate() {
                     if let Some(original_level) = *original {

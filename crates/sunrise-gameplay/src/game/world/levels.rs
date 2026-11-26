@@ -741,7 +741,7 @@ impl Levels {
 
     /// The world of the level not in place whose dimension is `dimension`, to
     /// change.
-    pub(in crate::game::server_side) fn parked_world_mut_of(
+    pub fn parked_world_mut_of(
         &mut self,
         dimension: &str,
     ) -> Option<&mut World> {
@@ -2740,7 +2740,7 @@ use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::GameGameExt3 as _;
-use sunrise_gameplay_common::game::GameGameExt2 as _;
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

@@ -63,7 +63,7 @@ impl Serializers {
         };
         Ok((decoded, instance))
     }
-    pub(super) fn prepare(
+    pub fn prepare(
         &self,
         files: Vec<ModifierFile>,
         conditions: &sunrise_world::conditions::LoadConditions,

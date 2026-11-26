@@ -789,7 +789,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let mut built = Some(self.mob_death_message(m, killer));
-        let kind = super::native_hooks::mob_kind(m);
+        let kind = sunrise_gameplay_common::game::native_hooks::mob_kind(m);
         self.native_living_death_message(m.id, &kind, &mut built);
         // A native mod may have changed the message, or set it to None to tell the owner nothing.
         let Some(message) = built else {
@@ -864,7 +864,7 @@ impl crate::game::ServerGame<'_> {
                     _ => None,
                 };
                 Entry {
-                    damage_type: super::creatures::source_damage_type(e.source).to_owned(),
+                    damage_type: sunrise_sim::health::source_damage_type(e.source).to_owned(),
                     damage: e.damage,
                     fall_location: e.in_water.then_some("water"),
                     fall_distance: e.fall_distance,
@@ -1062,7 +1062,7 @@ impl crate::game::ServerGame<'_> {
                 target,
                 source.attacker,
                 None,
-                Some(super::creatures::damage_type(source.kind, false)),
+                Some(sunrise_sim::health::damage_type(source.kind, false)),
             );
         }
         hurt

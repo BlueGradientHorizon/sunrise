@@ -153,9 +153,9 @@ impl ServerGame<'_> {
         // finalization that follows reads none.
         let (outcome, _) = self.finalize_spawn_event(mob, reason, None, &mut None);
         match outcome {
-            super::creatures::Finalized::Cancelled => finalize::SpawnEvent::Cancelled,
-            super::creatures::Finalized::Skipped => finalize::SpawnEvent::Skip,
-            super::creatures::Finalized::Done => finalize::SpawnEvent::Finalize,
+            sunrise_gameplay_common::game::creatures::Finalized::Cancelled => finalize::SpawnEvent::Cancelled,
+            sunrise_gameplay_common::game::creatures::Finalized::Skipped => finalize::SpawnEvent::Skip,
+            sunrise_gameplay_common::game::creatures::Finalized::Done => finalize::SpawnEvent::Finalize,
         }
     }
     /// The game's own finalization of a mob, with no event: the same

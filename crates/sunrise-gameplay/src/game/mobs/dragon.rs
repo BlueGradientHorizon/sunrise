@@ -15,10 +15,8 @@ pub(in crate::game) mod save_lending;
 #[path = "dragon/walls.rs"]
 pub(in crate::game) mod walls;
 use super::commands::Target;
-use super::{
-    Game,
-    creatures::{Finalized, SpawnSite},
-};
+use super::Game;
+use sunrise_gameplay_common::game::creatures::{Finalized, SpawnSite};
 use sunrise_gameplay_common::game::dragon_common::{
     BREATH_WAIT, Breath, Crystal, Dragon, FightWho, MAX_HEALTH, Path, PathBox, Phase, SPECIAL,
     breath_expired, dragon_part_id, wrap,
@@ -652,12 +650,12 @@ pub(in crate::game::server_side) fn hurt_source(
     direct: Option<i32>,
 ) -> HurtSource<'static> {
     let causing = by.unwrap_or(0);
-    let damage_type = super::creatures::damage_type(kind, by.is_some());
+    let damage_type = sunrise_sim::health::damage_type(kind, by.is_some());
     let projectile = direct.filter(|_| sunrise_sim::health::names_its_projectile(damage_type));
     HurtSource {
         damage_type,
         causing,
-        direct: projectile.unwrap_or(if super::creatures::melee(kind) {
+        direct: projectile.unwrap_or(if sunrise_sim::health::melee(kind) {
             causing
         } else {
             0
@@ -1192,7 +1190,7 @@ impl crate::game::ServerGame<'_> {
                 None => 0,
             };
             let damage_type = damage_type_override
-                .unwrap_or_else(|| super::creatures::damage_type(kind, by_player));
+                .unwrap_or_else(|| sunrise_sim::health::damage_type(kind, by_player));
             let vanilla = is_fire(kind) || (crystal.invulnerable && !(by_player && creative));
             let source = HurtSource {
                 damage_type,

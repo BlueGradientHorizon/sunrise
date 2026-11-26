@@ -1036,7 +1036,7 @@ impl crate::game::ServerGame<'_> {
             "minecraft:zombified_piglin",
             at,
             false,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Structure,
             ),
         ) {

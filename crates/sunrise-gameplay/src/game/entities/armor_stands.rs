@@ -21,9 +21,9 @@ use sunrise_sim::{
 pub(in crate::game::server_side) fn armor_stand_dying_drops<'a>(
     stand: &ArmorStand,
     mob_drops: bool,
-    dying: super::creatures::DyingDrops<'a>,
+    dying: sunrise_gameplay_common::game::creatures::DyingDrops<'a>,
     roll: impl FnOnce(&str) -> Vec<sunrise_world::loot::LootStack>,
-) -> (super::creatures::DyingDrops<'a>, Vec<(ItemStack, [f64; 3])>) {
+) -> (sunrise_gameplay_common::game::creatures::DyingDrops<'a>, Vec<(ItemStack, [f64; 3])>) {
     let stacks = if stand.small || !mob_drops {
         Vec::new()
     } else {
@@ -32,7 +32,7 @@ pub(in crate::game::server_side) fn armor_stand_dying_drops<'a>(
             .filter(|stack| !stack.is_empty())
             .map(|stack| {
                 (
-                    super::creatures::from_loot(stack),
+                    sunrise_gameplay_common::game::creatures::from_loot(stack),
                     [stand.position.x, stand.position.y, stand.position.z],
                 )
             })
@@ -50,7 +50,7 @@ pub(in crate::game) mod death_loot_tests {
         for (small, mob_drops) in [(false, true), (true, true), (false, false), (true, false)] {
             let mut stand = ArmorStand::new(42, Vec3::new(1.5, 64.0, -2.5), 0.0);
             stand.small = small;
-            let dying = super::super::creatures::DyingDrops {
+            let dying = sunrise_gameplay_common::game::creatures::DyingDrops {
                 entity: stand.id,
                 kind: "minecraft:armor_stand",
                 player: None,
@@ -1060,8 +1060,8 @@ impl crate::game::ServerGame<'_> {
         causing: u32,
     ) {
         let source = (!mod_api::__private::mods().is_empty())
-            .then(|| super::creatures::death_hurt_source(damage_type, causing));
-        let dying = super::creatures::DyingDrops {
+            .then(|| sunrise_gameplay_common::game::creatures::death_hurt_source(damage_type, causing));
+        let dying = sunrise_gameplay_common::game::creatures::DyingDrops {
             entity: stand.id,
             kind: "minecraft:armor_stand",
             player: None,

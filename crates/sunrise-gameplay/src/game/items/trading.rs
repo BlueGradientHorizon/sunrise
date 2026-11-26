@@ -559,7 +559,7 @@ impl ServerGame<'_> {
                     .common.mobs
                     .iter()
                     .find(|m| m.id == id)
-                    .map(super::native_hooks::mob_kind)
+                    .map(sunrise_gameplay_common::game::native_hooks::mob_kind)
             {
                 let _ = self.native_trade_with_villager(id, &kind, offer);
             }

@@ -224,7 +224,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Finish a lethal or totem-protected hit only once the owning level has settled it.
-    pub(in crate::game::server_side) fn finish_damage_post(
+    pub(crate) fn finish_damage_post(
         &mut self,
         entity: i32,
         kind: &str,
@@ -308,9 +308,9 @@ impl crate::game::ServerGame<'_> {
     /// `ItemStack.onItemUseFirst` for a click on a block: the broadcast
     /// event's `ItemBeforeBlock` phase, then the held item's Part. Canceling skips that Part.
     /// Only `Pass` continues to the block.
-    pub(in crate::game::server_side) fn item_use_first(
+    pub(crate) fn item_use_first(
         &mut self,
-        hit: &super::Hit,
+        hit: &sunrise_gameplay_common::game::Hit,
         hand: Hand,
         stack: &ItemStack,
     ) -> Option<mod_api::InteractionResult> {

@@ -162,7 +162,7 @@ pub enum Effect {
 }
 
 impl Journal {
-    pub(in crate::game) fn merge(&mut self, child: Self) {
+    pub fn merge(&mut self, child: Self) {
         for (conn, kept) in child.guests {
             self.guests.entry(conn).or_insert(kept);
         }

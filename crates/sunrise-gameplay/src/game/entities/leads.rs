@@ -377,7 +377,7 @@ impl crate::game::ServerGame<'_> {
             sunrise_sim::mobs::leash::remove(m)?;
             Some((
                 [m.position.x, m.position.y, m.position.z],
-                super::native_hooks::mob_kind(m),
+                sunrise_gameplay_common::game::native_hooks::mob_kind(m),
                 holder,
             ))
         }) else {

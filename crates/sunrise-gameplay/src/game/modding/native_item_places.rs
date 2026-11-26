@@ -4,9 +4,9 @@
 //! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
 //! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
 use crate::game::ServerGame;
-use super::api_values::component_edit::{GearEdits, prepare_component_edit};
-use super::native_server::PlayerRead;
-use super::transactions::{After, DeferredEffect};
+use sunrise_gameplay_common::game::api_values::component_edit::{GearEdits, prepare_component_edit};
+use sunrise_gameplay_common::game::native_server::PlayerRead;
+use sunrise_gameplay_common::game::transactions::{After, DeferredEffect};
 use mod_api::__private::game::*;
 use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
@@ -576,7 +576,7 @@ impl ServerGame<'_> {
             None
         };
         let mut held = if let Some(stack) = &handler_stack {
-            super::api_values::stack_value(stack).map_err(|_| CraftedByError::Unavailable)?
+            sunrise_gameplay_common::game::api_values::stack_value(stack).map_err(|_| CraftedByError::Unavailable)?
         } else {
             // Read engine storage directly: its API snapshot omits the transient directive.
             match slot {
@@ -601,7 +601,7 @@ impl ServerGame<'_> {
                 game.register_made_maps(maps);
                 let written = match (handler_stack, slot) {
                     (Some(mut stack), _) => {
-                        use super::api_values::TryIntoApi;
+                        use sunrise_gameplay_common::game::api_values::TryIntoApi;
                         let processed = held
                             .try_into_api()
                             .map_err(|_| CraftedByError::Unavailable)?;

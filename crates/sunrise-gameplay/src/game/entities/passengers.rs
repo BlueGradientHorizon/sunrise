@@ -528,7 +528,7 @@ impl ServerGame<'_> {
                 "minecraft:skeleton_horse",
                 at,
                 true,
-                super::creatures::SpawnSite::Finalizing(
+                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::Triggered,
                 ),
             ) else {
@@ -558,7 +558,7 @@ impl ServerGame<'_> {
             "minecraft:skeleton",
             at,
             true,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Triggered,
             ),
         )?;

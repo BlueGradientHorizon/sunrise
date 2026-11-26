@@ -223,7 +223,7 @@ impl ServerGame<'_> {
             None,
         ));
         let velocity = level.through_short_knockback(|level| {
-            super::creatures::knockback::player_knockback_velocity(
+            sunrise_gameplay_common::game::creatures::knockback::player_knockback_velocity(
                 player,
                 &mut random,
                 level,
@@ -1052,7 +1052,7 @@ impl ServerGame<'_> {
                         .flatten()
                 });
                 if defer {
-                    self.after_commit(super::transactions::After::Equip {
+                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Equip {
                         at: [at.x, at.y, at.z],
                         sound,
                         equips: equippable.is_some(),
@@ -1113,7 +1113,7 @@ impl ServerGame<'_> {
                 unreachable!("only a stand or the dragon gets here")
             };
             if defer {
-                self.after_commit(super::transactions::After::Equip {
+                self.after_commit(sunrise_gameplay_common::game::transactions::After::Equip {
                     at: [at.x, at.y, at.z],
                     sound,
                     equips: equippable.is_some(),

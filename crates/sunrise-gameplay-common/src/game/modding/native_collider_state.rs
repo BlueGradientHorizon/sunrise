@@ -103,11 +103,11 @@ impl EntityMaps {
 /// What a placed collider was made from: when all of these are as they were, so is it.
 #[derive(PartialEq)]
 pub struct PlacementKey {
-    pub(in crate::game) id: u32,
-    pub(in crate::game) serial: u64,
-    pub(in crate::game) origin: [u64; 3],
+    pub id: u32,
+    pub serial: u64,
+    pub origin: [u64; 3],
     /// The entities of its vehicle stack.
-    pub(in crate::game) stack: Vec<u32>,
+    pub stack: Vec<u32>,
 }
 
 /// The vehicle stack of `id` in a riding graph (passenger to vehicle): the root and everything

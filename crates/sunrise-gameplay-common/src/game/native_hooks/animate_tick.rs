@@ -11,7 +11,7 @@ use std::rc::Rc;
 pub type LentRandom = Rc<RefCell<mod_api::LegacyRandomSource>>;
 
 /// `event.random`: draws from the lent level random.
-pub struct LevelRandom(pub(in crate::game) LentRandom);
+pub struct LevelRandom(pub LentRandom);
 
 impl mod_api::RandomSource for LevelRandom {
     fn next_int(&mut self) -> i32 {

@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
             return Err(PlacementStateError::Unavailable);
         }
         let BlockPos { x, y, z } = context.pos;
-        let Some(source) = super::api_values::placement_source_into_engine(context.source) else {
+        let Some(source) = sunrise_gameplay_common::game::api_values::placement_source_into_engine(context.source) else {
             return Ok(None);
         };
         if !context.hit.iter().all(|n| n.is_finite())
@@ -108,7 +108,7 @@ impl crate::game::ServerGame<'_> {
         {
             return Ok(None);
         }
-        let Some(block) = super::api_values::behavior_block(block, self.common.res.behaviours()) else {
+        let Some(block) = sunrise_gameplay_common::game::api_values::behavior_block(block, self.common.res.behaviours()) else {
             return Ok(None);
         };
         let item = match context.item {
@@ -133,7 +133,7 @@ impl crate::game::ServerGame<'_> {
                 replace_clicked: context.replace_clicked,
             },
         )
-        .map_err(super::api_values::placement_refusal_into_api)
+        .map_err(sunrise_gameplay_common::game::api_values::placement_refusal_into_api)
     }
 
     /// A chosen state written as a placement writes it, then `Block.setPlacedBy`, with no

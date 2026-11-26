@@ -964,7 +964,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             return true;
         };
         let obstructs = |bounds| spawn_selection::blocks_spawn_shape(&shape, query, bounds);
-        let entities = crate::game::entity::entity_lists_of!(self.game);
+        let entities = sunrise_gameplay_common::game::entity::entity_lists_of!(self.game);
         !self
             .players
             .iter()

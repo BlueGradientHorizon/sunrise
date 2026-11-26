@@ -593,7 +593,7 @@ impl<'g> ServerGame<'g> {
         {
             return false;
         }
-        self.after_commit(super::transactions::After::Capabilities((x, y, z)));
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::Capabilities((x, y, z)));
         true
     }
     /// `LivingEntity.hasLineOfSight`'s clip between two points (collider shapes, no fluids):

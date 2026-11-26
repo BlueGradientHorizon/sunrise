@@ -192,7 +192,7 @@ impl crate::game::ServerGame<'_> {
         let snapshot: Vec<_> = self
             .common.mobs
             .iter()
-            .map(|m| super::creatures::seen(m, self.common.level.player_uuid, self.items()))
+            .map(|m| sunrise_gameplay_common::game::creatures::seen(m, self.common.level.player_uuid, self.items()))
             .collect();
         let mut mobs = self.common.mobs.lift();
         #[cfg(test)]

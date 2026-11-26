@@ -8,7 +8,7 @@ use sunrise_gameplay_common::game::native_ticks;
 pub(in crate::game) fn native_on_entity_item_update(
     call: mod_api::__private::OnEntityItemUpdateCall<'_>,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_on_entity_item_update(call);
+    crate::game::native_hooks::fire::fire_on_entity_item_update(call);
 }
 
 pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {

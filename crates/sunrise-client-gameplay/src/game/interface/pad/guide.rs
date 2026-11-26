@@ -691,7 +691,7 @@ impl crate::game::ClientGame<'_> {
             }
             // A content mod's rod casts as vanilla's does.
             _ if info.is("minecraft:fishing_rod") => Verb::Fish,
-            _ if super::super::remote::item_has_use(&info) => Verb::Use,
+            _ if sunrise_gameplay_common::game::remote::item_has_use(&info) => Verb::Use,
             _ => return None,
         })
     }

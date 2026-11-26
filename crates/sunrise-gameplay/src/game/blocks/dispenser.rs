@@ -4,7 +4,7 @@
 //! event it plays (`DefaultDispenseItemBehavior.dispense` then plays that
 //! event and the smoke animation, event 2000).
 #[allow(unused_imports)]
-use super::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
 #[allow(unused_imports)]
 use super::{Dim, Game, item_abilities::ability};
 #[allow(unused_imports)]
@@ -197,7 +197,7 @@ impl crate::game::ServerGame<'_> {
     ) {
         let spawn = self.prepared_dispensed(pos, facing, stack);
         if self.has_level_transaction() {
-            self.after_commit(super::transactions::After::DispenserDrop {
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::DispenserDrop {
                 pos,
                 facing,
                 spawn: Box::new(spawn),
@@ -320,7 +320,7 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
     ) -> Option<ItemStack> {
         let left = self.default_execute(pos, facing, stack);
-        self.after_commit(super::transactions::After::DispenserFeedback {
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::DispenserFeedback {
             pos,
             facing,
             event: CLICK,
@@ -508,7 +508,7 @@ impl crate::game::ServerGame<'_> {
             // Feedback follows the behaviour's effects. Event 0 still replaces the slot,
             // but plays neither sound nor smoke.
             if event != 0 {
-                self.after_commit(super::transactions::After::DispenserFeedback {
+                self.after_commit(sunrise_gameplay_common::game::transactions::After::DispenserFeedback {
                     pos,
                     facing,
                     event,
@@ -573,7 +573,7 @@ impl crate::game::ServerGame<'_> {
         if event == FAIL {
             self.native_block_failed_dispense(self.common.dim.id(), [pos.0, pos.1, pos.2], &item);
         }
-        self.after_commit(super::transactions::After::DispenserFeedback { pos, facing, event });
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::DispenserFeedback { pos, facing, event });
         Ok(ControlFlow::Continue(left))
     }
     /// `DispenserBlock.getDefaultDispenseMethod`: equipment, spawn eggs, or a drop.
@@ -753,7 +753,7 @@ impl crate::game::ServerGame<'_> {
             ];
             return self.spawn_dragon_spawned(
                 at,
-                super::creatures::SpawnSite::Finalizing(
+                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::Dispenser,
                 ),
             );
@@ -773,7 +773,7 @@ impl crate::game::ServerGame<'_> {
             &name,
             at,
             true,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Dispenser,
             ),
         )?;

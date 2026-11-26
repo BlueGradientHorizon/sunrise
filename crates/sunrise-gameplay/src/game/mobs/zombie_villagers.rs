@@ -65,7 +65,7 @@ impl crate::game::ServerGame<'_> {
             "minecraft:zombie_villager",
             at,
             old.persistent,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Conversion,
             ),
         ) else {
@@ -145,7 +145,7 @@ impl crate::game::ServerGame<'_> {
             "minecraft:villager",
             at,
             old.persistent,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Conversion,
             ),
         ) else {

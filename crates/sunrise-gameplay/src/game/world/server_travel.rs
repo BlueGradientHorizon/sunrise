@@ -178,7 +178,7 @@ macro_rules! server_ctx {
             next_entity: &mut $s.server.next_entity,
             spawn,
             spawn_angle: $s.common.level.world_spawn_angle,
-            spawn_dimension: crate::game::Dim::of_world_spawn(&$s.common.level).id(),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&$s.common.level).id(),
             sea_level: $s.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
             difficulty: i32::from($s.common.ui.difficulty),
             difficulty_locked: $s.common.level.difficulty_locked,

@@ -191,7 +191,7 @@ impl crate::game::ServerGame<'_> {
         // Read before this call's own announcement is held: it reaches the entities to construct.
         let held_before = self.common.held_joins_through();
         if through.is_none()
-            && self.common.hold_announcement(super::transactions::Announcement::Joins {
+            && self.common.hold_announcement(sunrise_gameplay_common::game::transactions::entities::Announcement::Joins {
                 loaded_from_disk,
                 through: sunrise_sim::join_seq::JoinSeq::latest(),
             })
@@ -439,7 +439,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Entity `id` has left the level: told once, if mods were told it joined.
     pub(in crate::game::server_side) fn native_entity_left(&mut self, id: u32) {
-        if self.common.hold_announcement(super::transactions::Announcement::Left(id)) {
+        if self.common.hold_announcement(sunrise_gameplay_common::game::transactions::entities::Announcement::Left(id)) {
             return;
         }
         self.entity_left_now(id);
@@ -462,7 +462,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_leaves_flush(&mut self) {
         self.native_removals_flush();
         if self.common.persist.live.is_empty()
-            || self.common.hold_announcement(super::transactions::Announcement::Leaves)
+            || self.common.hold_announcement(sunrise_gameplay_common::game::transactions::entities::Announcement::Leaves)
         {
             return;
         }

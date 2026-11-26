@@ -832,17 +832,17 @@ pub fn stage_pack(
             // The sound events and the language are read here too, not in
             // the frame that applies the reload (about 20 ms of it).
             let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
-                let atlas = super::resource_load::named_scope(s, "pack-assets", || {
+                let atlas = sunrise_gameplay_common::game::resource_load::named_scope(s, "pack-assets", || {
                     let game = sunrise_assets::resource_source::ResourceSource::directory(
                         vanilla_root.to_path_buf(),
                     );
                     HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
                         .map_err(|e| e.to_string())
                 });
-                let panorama = super::resource_load::named_scope(s, "pack-assets", || {
+                let panorama = sunrise_gameplay_common::game::resource_load::named_scope(s, "pack-assets", || {
                     sunrise_client::gfx::panorama::Faces::load(&source, &source)
                 });
-                let small = super::resource_load::named_scope(s, "pack-assets", || {
+                let small = sunrise_gameplay_common::game::resource_load::named_scope(s, "pack-assets", || {
                     (
                         sunrise_level::sound_events::SoundRegistry::load(&source),
                         lang::Language::load(&[&source], &lang::code()),
