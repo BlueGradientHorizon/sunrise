@@ -53,6 +53,72 @@ pub trait RenderDataSource {
     fn variants(&self) -> Option<&super::variants::VariantTables> {
         None
     }
+    /// The observer of `living_model_posed`, present only while a mod listens, so a draw with
+    /// none builds nothing and asks nothing.
+    fn model_posed(&self) -> Option<&dyn ModelPosed> {
+        None
+    }
+}
+
+/// What a draw tells the game at the RETURN of `EntityModel.setupAnim` for each model it poses.
+pub trait ModelPosed {
+    /// `layer` is the model's key in `Mob::kind`'s layers (`main`, `zombie#inner_armor`);
+    /// `model` lends the posed hierarchy.
+    fn posed(
+        &self,
+        mob: &Mob,
+        partial: f32,
+        layer: &str,
+        model: &mut dyn mod_api::FrameModelPoseEdit,
+    );
+}
+
+/// The `living_model_posed` hook, for the entity `entity` drawn with the model `layer` (its
+/// `ModelLayerLocation`, `namespace:path#layer`). It runs inside the draw, so it takes the
+/// loop context of the client and no `Host`.
+#[inline(never)]
+pub fn native_living_model_posed(
+    context: &sunrise_world::native_load_context::LoopContext,
+    entity: &mod_api::EntityRenderState,
+    layer: &str,
+    model: &mut dyn mod_api::FrameModelPoseEdit,
+) {
+    crate::native_client_hooks::living_model_posed(context, entity, layer, model);
+}
+
+/// The RETURN of `EntityModel.setupAnim` for the model `key` (a body, or an armour or equipment
+/// model that runs its own setup): the `living_model_posed` listeners edit `poses`, which the
+/// draw then uses. The model's `ModelLayerLocation` is its key under `minecraft:` unless a mod
+/// registered it under its own namespace; the default body is `<entity>#main`.
+fn model_posed(
+    m: &Mob,
+    partial: f32,
+    data: &dyn RenderDataSource,
+    key: &str,
+    layout: Option<&BakedFrameModel>,
+    poses: &mut Poses,
+) {
+    let (Some(observer), Some(layout)) = (data.model_posed(), layout) else {
+        return;
+    };
+    let location: Cow<'_, str> = if key == "main" {
+        format!("{}#main", m.kind.id).into()
+    } else if !key.contains('#') {
+        format!("minecraft:{key}#main").into()
+    } else if key
+        .split_once('#')
+        .is_some_and(|(model, _)| model.contains(':'))
+    {
+        key.into()
+    } else {
+        format!("minecraft:{key}").into()
+    };
+    observer.posed(
+        m,
+        partial,
+        &location,
+        &mut frame_model::PosedEdit::new(layout, poses),
+    );
 }
 
 impl RenderDataSource for MobData {
@@ -2276,6 +2342,14 @@ pub fn render_extra_layers(
     {
         animation.run(m, &s, &mut poses);
     }
+    model_posed(
+        m,
+        alpha,
+        data,
+        body.keys()[0],
+        body.layout(data.mob_data()).map(|l| &**l),
+        &mut poses,
+    );
     poses.apply_frame_visibility(false);
     for (part, uv, color, layer_overlay, glows) in extra {
         let light = if *glows { FULL_BRIGHT } else { light };
@@ -2379,6 +2453,14 @@ pub fn render_equipment_layers(
     {
         animation.run(m, &s, &mut poses);
     }
+    model_posed(
+        m,
+        alpha,
+        data,
+        body.keys()[0],
+        body.layout(data.mob_data()).map(|l| &**l),
+        &mut poses,
+    );
     let mut all_layers = layers(m, s.age);
     let first = all_layers.len();
     all_layers.extend(equipment);
@@ -2425,6 +2507,16 @@ pub fn render_equipment_layers(
                 if let Some(animation) = custom.and_then(|c| c.animation.as_ref()) {
                     animation.run(m, &s, &mut layer_poses);
                 }
+                model_posed(
+                    m,
+                    alpha,
+                    data,
+                    &layer.model,
+                    custom
+                        .map(|c| &*c.frame_model)
+                        .or_else(|| data.mob_data().frame_models.get(part).map(|l| &**l)),
+                    &mut layer_poses,
+                );
                 &mut layer_poses
             }
             _ => {
@@ -2605,6 +2697,14 @@ fn render_selected(
     {
         animation.run(m, &s, poses);
     }
+    model_posed(
+        m,
+        alpha,
+        data,
+        body.keys()[0],
+        body.layout(data.mob_data()).map(|l| &**l),
+        poses,
+    );
     let mut all_layers = layers(m, s.age);
     all_layers.extend(equipment);
     // WardenRenderer: the translucent emissive layers fade with the animations.
@@ -2801,6 +2901,16 @@ fn render_selected(
                 if let Some(animation) = custom.and_then(|c| c.animation.as_ref()) {
                     animation.run(m, &s, &mut layer_poses);
                 }
+                model_posed(
+                    m,
+                    alpha,
+                    data,
+                    &layer.model,
+                    custom
+                        .map(|c| &*c.frame_model)
+                        .or_else(|| data.mob_data().frame_models.get(part).map(|l| &**l)),
+                    &mut layer_poses,
+                );
                 &mut layer_poses
             }
             _ => {
@@ -2900,6 +3010,14 @@ fn render_selected(
     {
         layer_poses.reset(part);
         anim::setup(m, &s, &mut layer_poses, &data.mob_data().animations);
+        model_posed(
+            m,
+            alpha,
+            data,
+            model,
+            data.mob_data().frame_models.get(part).map(|l| &**l),
+            &mut layer_poses,
+        );
         // `RenderTypes.energySwirl`'s texture offset, as the sprite-local UV.
         let (du, dv) = (x_offset % 1.0, s.age * 0.01 % 1.0);
         let start = out.len();
