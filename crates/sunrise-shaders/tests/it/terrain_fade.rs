@@ -195,10 +195,8 @@ fn geometry_vertex_keeps_authored_fade_globals() {
         "uniform float mc_chunkFade;",
     ] {
         let [vertex, mut geometry, fragment] = geometry_probe(declaration);
-        geometry = Preprocessed::from_source(
-            "",
-            &geometry.code().replace("mc_chunkFade", "stage_bias"),
-        );
+        geometry =
+            Preprocessed::from_source("", &geometry.code().replace("mc_chunkFade", "stage_bias"));
         let (program, _) = translate_geometry(
             &vertex,
             &geometry,

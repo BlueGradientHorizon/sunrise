@@ -33,8 +33,7 @@ struct Block<'a> {
 
 /// `pp` with its buffers' `bool` members rewritten, and what could not be.
 pub(super) fn rewrite(pp: &Preprocessed) -> (Option<Preprocessed>, Vec<Error>) {
-    if !pp.code().contains("buffer")
-        || !(pp.code().contains("bool") || pp.code().contains("bvec"))
+    if !pp.code().contains("buffer") || !(pp.code().contains("bool") || pp.code().contains("bvec"))
     {
         return (None, Vec::new());
     }

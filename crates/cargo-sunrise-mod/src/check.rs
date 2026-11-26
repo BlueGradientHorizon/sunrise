@@ -838,8 +838,7 @@ mod tests {
     #[test]
     fn a_program_declaring_one_default_input_is_checked_against_that_input() {
         let body = "gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);";
-        let (count, refused) =
-            pipeline_shaders(&vertex_program("in vec3 Position;\n", body), None);
+        let (count, refused) = pipeline_shaders(&vertex_program("in vec3 Position;\n", body), None);
         assert_eq!((count, refused), (1, Vec::<String>::new()));
 
         let reads_uv0 = format!("{body} texCoord0 = UV0;");

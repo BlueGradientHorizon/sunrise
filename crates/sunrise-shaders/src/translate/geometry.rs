@@ -508,8 +508,7 @@ fn combine(
     ours(&mut code, &mut lines, &main);
     let code = code.trim_end_matches('\n').to_owned();
     lines.resize(code.split('\n').count(), crate::Origin::default());
-    let mut out = Preprocessed::new(code, lines, files)
-        .map_err(error)?;
+    let mut out = Preprocessed::new(code, lines, files).map_err(error)?;
     out.version = geometry.version.clone().or(vertex.version.clone());
     // A strip of n vertices is n - 2 triangles: at most `max_vertices - 2`, whichever of the
     // stage's paths runs.
