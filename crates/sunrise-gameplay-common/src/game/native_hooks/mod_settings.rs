@@ -17,28 +17,28 @@ impl crate::game::CommonGame<'_> {
         read_typed(&self.native_data_dir(mod_id), mod_id, key)
     }
     /// The calling mod's toggle `key`: the player's choice, else its default.
-    pub(in crate::game) fn setting_bool(&self, key: &str) -> Option<bool> {
+    pub fn setting_bool(&self, key: &str) -> Option<bool> {
         match self.own_setting(key)? {
             mod_api::SettingValue::Toggle(on) => Some(on),
             _ => None,
         }
     }
     /// The option the player picked for the calling mod's choice `key`, else its default.
-    pub(in crate::game) fn setting_choice(&self, key: &str) -> Option<u32> {
+    pub fn setting_choice(&self, key: &str) -> Option<u32> {
         match self.own_setting(key)? {
             mod_api::SettingValue::Choice(index) => u32::try_from(index).ok(),
             _ => None,
         }
     }
     /// The calling mod's range `key`, or its default.
-    pub(in crate::game) fn setting_f64(&self, key: &str) -> Option<f64> {
+    pub fn setting_f64(&self, key: &str) -> Option<f64> {
         match self.own_setting(key)? {
             mod_api::SettingValue::Range(value) => Some(value),
             _ => None,
         }
     }
     /// The calling mod's colour `key`, `0xRRGGBB`, or its default.
-    pub(in crate::game) fn setting_color(&self, key: &str) -> Option<u32> {
+    pub fn setting_color(&self, key: &str) -> Option<u32> {
         match self.own_setting(key)? {
             mod_api::SettingValue::Color(rgb) => Some(rgb),
             _ => None,

@@ -20,6 +20,13 @@ impl ClientHost for ClientGame<'_> {
 impl Backend for ClientGame<'_> {}
 #[cfg(feature = "client")]
 impl ClientBackendMut for ClientGame<'_> {}
+#[cfg(feature = "client")]
+sunrise_gameplay_common::game::native_tags::impl_tags!(
+    ClientGame<'_>,
+    game,
+    sunrise_gameplay_common::game::tables::WorldTablesExt::native_tag_items(game)
+);
+
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));
 
 pub(crate) mod services;

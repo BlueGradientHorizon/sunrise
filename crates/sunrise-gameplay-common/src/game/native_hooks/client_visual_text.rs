@@ -2,7 +2,7 @@
 use crate::game::CommonGame;
 
 impl CommonGame<'_> {
-    pub(in crate::game) fn text_visual_order(
+    pub fn text_visual_order(
         &self,
         text: &mod_api::Text,
     ) -> Vec<mod_api::VisualTextCharacter> {

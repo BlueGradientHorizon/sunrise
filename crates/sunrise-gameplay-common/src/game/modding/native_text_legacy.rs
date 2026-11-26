@@ -4,7 +4,7 @@ use sunrise_game_data::text::Text;
 
 impl crate::game::CommonGame<'_> {
     /// Legacy formatting codes read as the font draws them.
-    pub(super) fn text_from_legacy(&self, legacy: &str) -> Text {
+    pub fn text_from_legacy(&self, legacy: &str) -> Text {
         Text::legacy(legacy)
     }
 }

@@ -181,7 +181,7 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> BlockPropsGameExt2<'__sg> for G {}
 impl crate::game::CommonGame<'_> {
     /// The level in place (`minecraft:overworld`), for a hook that isn't told
     /// which it runs in.
-    pub(in crate::game) fn dimension(&self) -> &'static str {
+    pub fn dimension(&self) -> &'static str {
         self.dim.id()
     }
 }

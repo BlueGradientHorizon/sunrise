@@ -28,68 +28,68 @@ pub(super) fn engine_fluid_state(state: FluidState) -> Option<EngineFluidState> 
 
 impl crate::game::CommonGame<'_> {
     /// Resolve a registered fluid identifier.
-    pub(super) fn fluid_key(&self, id: &str) -> Option<FluidKey> {
+    pub fn fluid_key(&self, id: &str) -> Option<FluidKey> {
         mod_api::__private::fluid_key(id)
     }
     /// Borrows the canonical block id if the name is available.
-    pub(super) fn block_key_id(&self, key: BlockKey) -> Option<&str> {
+    pub fn block_key_id(&self, key: BlockKey) -> Option<&str> {
         mod_api::__private::block_key_id(key)
     }
     /// The canonical item id retained by the load-owned registration slot.
-    pub(super) fn item_key_id(&self, key: ItemKey) -> Option<&str> {
+    pub fn item_key_id(&self, key: ItemKey) -> Option<&str> {
         mod_api::__private::item_key_id(key)
     }
     /// The canonical effect id retained by the load-owned registration slot.
-    pub(super) fn effect_key_id(&self, key: EffectKey) -> Option<&str> {
+    pub fn effect_key_id(&self, key: EffectKey) -> Option<&str> {
         mod_api::__private::effect_key_id(key)
     }
 
     /// The canonical fluid id retained by the completed registry.
-    pub(super) fn fluid_key_id(&self, key: FluidKey) -> Option<&str> {
+    pub fn fluid_key_id(&self, key: FluidKey) -> Option<&str> {
         mod_api::__private::fluid_id(key)
     }
     /// The key of a block in the completed registry.
-    pub(super) fn block_key(&self, id: &str) -> Option<BlockKey> {
+    pub fn block_key(&self, id: &str) -> Option<BlockKey> {
         mod_api::__private::block_key(id)
     }
     /// The key of an effect in the completed registry.
-    pub(super) fn effect_key(&self, id: &str) -> Option<EffectKey> {
+    pub fn effect_key(&self, id: &str) -> Option<EffectKey> {
         mod_api::__private::effect_key(id)
     }
     /// The canonical block entity type id retained by the load-owned slot.
-    pub(super) fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
+    pub fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
         mod_api::__private::block_entity_type_name(key)
     }
     /// Every block key in registry order, mod blocks after vanilla's.
-    pub(super) fn block_keys(&self) -> Vec<BlockKey> {
+    pub fn block_keys(&self) -> Vec<BlockKey> {
         mod_api::__private::block_keys()
     }
     /// Every item key in registry order, mod items after vanilla's.
-    pub(super) fn item_keys(&self) -> Vec<ItemKey> {
+    pub fn item_keys(&self) -> Vec<ItemKey> {
         mod_api::__private::item_keys()
     }
     /// Every entity-type key in registry order.
-    pub(super) fn entity_type_keys(&self) -> Vec<EntityTypeKey> {
+    pub fn entity_type_keys(&self) -> Vec<EntityTypeKey> {
         mod_api::__private::entity_type_keys()
     }
     /// Every menu-type key in registry order.
-    pub(super) fn menu_keys(&self) -> Vec<MenuKey> {
+    pub fn menu_keys(&self) -> Vec<MenuKey> {
         mod_api::__private::menu_keys()
     }
     /// Every enchantment key in registry order.
-    pub(super) fn enchantment_keys(&self) -> Vec<EnchantmentKey> {
+    pub fn enchantment_keys(&self) -> Vec<EnchantmentKey> {
         mod_api::__private::enchantment_keys()
     }
     /// The canonical entity type id retained by the load-owned slot.
-    pub(super) fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName> {
+    pub fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName> {
         mod_api::__private::entity_type_key_id(key)
     }
     /// The canonical menu type id retained by the load-owned slot.
-    pub(super) fn menu_key_id(&self, key: MenuKey) -> Option<RegistryName> {
+    pub fn menu_key_id(&self, key: MenuKey) -> Option<RegistryName> {
         mod_api::__private::menu_key_id(key)
     }
     /// The canonical enchantment id retained by the load-owned slot.
-    pub(super) fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName> {
+    pub fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName> {
         mod_api::__private::enchantment_key_id(key)
     }
 
@@ -100,7 +100,7 @@ impl crate::game::CommonGame<'_> {
     /// a property it doesn't have or a value it can't take, or block NBT
     /// (`{...}`); and, as `/setblock`'s argument, for anything after the
     /// block.
-    pub(super) fn block_state_id(&self, name: &str) -> Option<BlockStateId> {
+    pub fn block_state_id(&self, name: &str) -> Option<BlockStateId> {
         parse(&self.pack.block_registries, self.pack.assets.registry, name)
     }
     /// The state `state` as `/setblock` takes it back
@@ -108,25 +108,25 @@ impl crate::game::CommonGame<'_> {
     /// name order, `minecraft:oak_stairs[facing=east,half=bottom,...]`, or
     /// the block alone for one with no properties. None for an id no state
     /// has (`Block.stateById` gives air for one).
-    pub(super) fn block_state_string(&self, state: BlockStateId) -> Option<String> {
+    pub fn block_state_string(&self, state: BlockStateId) -> Option<String> {
         self.pack.assets.registry.state(state).map(serialize)
     }
     /// The default state of `block` (`minecraft:oak_stairs`, or `oak_stairs`):
     /// `Block.defaultBlockState`, the one a block takes when nothing else
     /// says. None for an unknown block.
-    pub(super) fn block_state_default(&self, block: BlockKey) -> Option<BlockStateId> {
+    pub fn block_state_default(&self, block: BlockKey) -> Option<BlockStateId> {
         super::api_values::default_state(block)
     }
 
     /// `Item.getCraftingRemainder`: Sunrise currently stores the remainder's
     /// item id, so the result is a single plain stack.
-    pub(super) fn item_crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
+    pub fn item_crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
         sunrise_sim::crafting::CraftingRemainder::crafting_remainder(self.res.items(), stack)
     }
 
     /// `Block.asItem`: the block's item name, including air for a block with
     /// no item; None if the block name is unknown.
-    pub(super) fn block_item(&self, block: BlockKey) -> Option<mod_api::ItemKey> {
+    pub fn block_item(&self, block: BlockKey) -> Option<mod_api::ItemKey> {
         let behaviours = self.res.behaviours();
         let id = super::api_values::behavior_block(block, behaviours)?;
         mod_api::__private::item_key(&behaviours.block_data(id).item)
@@ -135,7 +135,7 @@ impl crate::game::CommonGame<'_> {
     /// `BlockItem.getBlock`: the block `item` places. The behaviour table
     /// keeps one binding per item that places a block (`wheat_seeds` to
     /// `wheat`), and the state table names it.
-    pub(super) fn item_block(&self, item: ItemKey) -> Option<BlockKey> {
+    pub fn item_block(&self, item: ItemKey) -> Option<BlockKey> {
         let behaviours = self.res.behaviours();
         let id = mod_api::__private::item_key_id(item)?;
         let block = behaviours.item_binding(id)?.block;

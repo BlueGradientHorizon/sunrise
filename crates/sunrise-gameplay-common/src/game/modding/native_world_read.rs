@@ -201,7 +201,7 @@ impl<S: crate::game::Side> FluidHeightWorld for FluidColumn<'_, '_, S> {
 
 impl crate::game::CommonGame<'_> {
     /// The saved name for an engine-issued unresolved fluid.
-    pub(in crate::game) fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
+    pub fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
         mod_api::__private::unresolved_fluid_name(fluid)
     }
 
@@ -210,7 +210,7 @@ impl crate::game::CommonGame<'_> {
     /// max x, y, z]` in the block's own space, with no random offset and none of a world's
     /// context (a state that reads its neighbours or block entity answers what its state alone
     /// gives). Empty for a state with no outline, such as air. None for an id no state has.
-    pub(in crate::game) fn state_outline(&self, state: BlockStateId) -> Option<Vec<[f64; 6]>> {
+    pub fn state_outline(&self, state: BlockStateId) -> Option<Vec<[f64; 6]>> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).outline.to_vec())
     }
@@ -225,7 +225,7 @@ impl crate::game::CommonGame<'_> {
     /// flowing form are, so `minecraft:water` and `minecraft:flowing_water` are the same, water
     /// and lava not. Names are fluid ids, with or without `minecraft:`; false when either
     /// names no fluid.
-    pub(in crate::game) fn fluid_is_same(&self, fluid: &str, other: &str) -> bool {
+    pub fn fluid_is_same(&self, fluid: &str, other: &str) -> bool {
         match (fluid_kind(fluid), fluid_kind(other)) {
             (Some(fluid), Some(other)) => fluid.same_family(other),
             _ => false,
@@ -235,21 +235,21 @@ impl crate::game::CommonGame<'_> {
     /// The bucket item that picks `fluid` up (`Fluid.getBucket`), `minecraft:water_bucket` for
     /// water and flowing water. None for `minecraft:empty`, whose bucket is air, and for a name
     /// no fluid has.
-    pub(in crate::game) fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
+    pub fn fluid_bucket(&self, fluid: &str) -> Option<mod_api::ItemKey> {
         mod_api::__private::item_key(sunrise_world::level::fluid_bucket(fluid_kind(fluid)?)?)
     }
 
     /// The sound event a bucket plays as it picks `fluid` up (`Fluid.getPickupSound`),
     /// `minecraft:item.bucket.fill_lava` for lava and flowing lava. None for
     /// `minecraft:empty`, which has none, and for a name no fluid has.
-    pub(in crate::game) fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
+    pub fn fluid_pickup_sound(&self, fluid: &str) -> Option<&'static str> {
         sunrise_world::level::fluid_pickup_sound(fluid_kind(fluid)?)
     }
 
     /// The sound event a bucket plays as it empties `fluid` (`BucketItem.playEmptySound`),
     /// `minecraft:item.bucket.empty_lava` for lava and flowing lava. None for
     /// `minecraft:empty`, for a tank-only fluid and for a name no fluid has.
-    pub(in crate::game) fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
+    pub fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
         sunrise_world::level::fluid_empty_sound(fluid_kind(fluid)?)
     }
 }

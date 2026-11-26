@@ -4,7 +4,7 @@ use super::*;
 // Native mods use these; nothing in Sunrise does.
 impl crate::game::CommonGame<'_> {
     /// The applied client pause state, not whether a pause screen is open.
-    pub(in crate::game) fn is_paused(&self) -> bool {
+    pub fn is_paused(&self) -> bool {
         self.pause
     }
 }

@@ -2,7 +2,7 @@
 use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
-    pub(super) fn item_registry_id(&self, key: mod_api::ItemKey) -> Option<u32> {
+    pub fn item_registry_id(&self, key: mod_api::ItemKey) -> Option<u32> {
         self.item_number(mod_api::__private::item_key_id(key)?)
     }
 

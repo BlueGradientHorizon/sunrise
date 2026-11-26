@@ -9,7 +9,7 @@ use sunrise_mod_runtime::attachments::{AttachmentBatch, index::AttachmentIndex};
 pub(in crate::game) type Indexes = HashMap<Dim, Arc<Mutex<AttachmentIndex<AttachmentHolder>>>>;
 
 impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn attachment_query(
+    pub fn attachment_query(
         &self,
         namespace: &str,
         name: &str,
@@ -26,7 +26,7 @@ impl crate::game::CommonGame<'_> {
             .into())
     }
 
-    pub(in crate::game) fn attachment_read_scope(
+    pub fn attachment_read_scope(
         &self,
     ) -> Result<mod_api::AttachmentReadScope<'_>, mod_api::AttachmentRowError> {
         Ok(self.attachment_frame_borrow())

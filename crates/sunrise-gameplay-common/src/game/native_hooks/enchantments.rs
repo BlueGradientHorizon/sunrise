@@ -4,7 +4,7 @@ use super::*;
 // Native mods use these; nothing in Sunrise does.
 impl crate::game::CommonGame<'_> {
     /// Registered enchantments, in registry order.
-    pub(in crate::game) fn enchantments(&self) -> Vec<EnchantmentInfo> {
+    pub fn enchantments(&self) -> Vec<EnchantmentInfo> {
         let enchantments = self.item_enchantments();
         enchantments
             .list
@@ -21,17 +21,17 @@ impl crate::game::CommonGame<'_> {
             .collect()
     }
     /// `Enchantment.getMinCost(level)`: the enchanting power needed, or None for an unknown id.
-    pub(in crate::game) fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32> {
+    pub fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32> {
         self.item_enchantments()
             .get(id)
             .map(|e| e.min_cost.calculate(level))
     }
     /// `ItemStack.getHoverName()` as a component: each viewer renders it in their language.
-    pub(in crate::game) fn hover_name(&self, stack: &ItemStack) -> sunrise_game_data::text::Text {
+    pub fn hover_name(&self, stack: &ItemStack) -> sunrise_game_data::text::Text {
         self.stack_hover_name_text(stack)
     }
     /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
-    pub(in crate::game) fn enchantment_supports(&self, id: &str, item: mod_api::ItemKey) -> bool {
+    pub fn enchantment_supports(&self, id: &str, item: mod_api::ItemKey) -> bool {
         let Some(item) = mod_api::__private::item_key_id(item) else {
             return false;
         };

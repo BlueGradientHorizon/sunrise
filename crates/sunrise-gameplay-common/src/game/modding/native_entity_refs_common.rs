@@ -17,7 +17,7 @@ use sunrise_world::registry::BlockStateId;
 impl crate::game::CommonGame<'_> {
 
     /// Whether the entity is made of parts that are entities of their own (`Entity.isMultipartEntity`).
-    pub(in crate::game) fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool> {
+    pub fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool> {
         Some(matches!(
             self.native_entity_read_target(entity)?,
             Target::Dragon(_)
@@ -25,7 +25,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The name of a dimension's key.
-    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
+    pub fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
         mod_api::__private::dimension_id(key)
     }
 }

@@ -10,7 +10,7 @@ use sunrise_sim::text_grammar::build;
 impl crate::game::CommonGame<'_> {
     /// A component read as `/tellraw` takes it; None when it isn't one (an object with no
     /// content key, an empty list, a content key of the wrong kind).
-    pub(super) fn text_from_json(&self, json: &str) -> Read {
+    pub fn text_from_json(&self, json: &str) -> Read {
         Read(component_from_json(json, &self.ui.registries))
     }
 }

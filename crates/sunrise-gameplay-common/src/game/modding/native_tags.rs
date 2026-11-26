@@ -3,7 +3,7 @@ use mod_api::{Identifier, ItemKey, TagKey, TagMembers};
 use sunrise_items::items::{Items, TagRegistry};
 use sunrise_world::loot::LootTags;
 
-pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Option<bool> {
+pub fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Option<bool> {
     let items = items.filter(|items| items.tags_loaded(TagRegistry::Item))?;
     let item = mod_api::__private::item_key_id(item)?;
     mod_api::__private::with_tag_name(tag, |name| {
@@ -17,7 +17,7 @@ pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Op
 }
 /// `DamageSource.is(TagKey)` over the damage type registry and tags `items` was bound to at
 /// its last reload. The tag's name is read on the call, so a key made after that reload resolves.
-pub(super) fn damage_type_in_tag(
+pub fn damage_type_in_tag(
     items: Option<&Items>,
     damage_type: &str,
     tag: TagKey,
@@ -25,17 +25,17 @@ pub(super) fn damage_type_in_tag(
     let items = items?;
     mod_api::__private::with_tag_name(tag, |name| items.damage_type_in_tag(damage_type, name?))
 }
-pub(super) fn item_tags(tags: &dyn LootTags, item: ItemKey) -> Option<Vec<Identifier>> {
+pub fn item_tags(tags: &dyn LootTags, item: ItemKey) -> Option<Vec<Identifier>> {
     let item = mod_api::__private::item_key_id(item)?;
     tags.item_tag_names()?
         .matching(|name| tags.contains("item", name, item))
 }
 
-pub(super) fn item_tag_names(tags: &dyn LootTags) -> Option<Vec<Identifier>> {
+pub fn item_tag_names(tags: &dyn LootTags) -> Option<Vec<Identifier>> {
     tags.item_tag_names()?.matching(|_| true)
 }
 
-pub(super) fn snapshot_members<K>(
+pub fn snapshot_members<K>(
     items: Option<&Items>,
     registry: TagRegistry,
     tag: TagKey,
@@ -73,6 +73,7 @@ where
 
 // A restricted host supplies the same authoritative item tables but cannot borrow Game.
 // Only that choice differs; key resolution, ordered reads and membership stay above.
+#[macro_export]
 macro_rules! impl_tags {
     ($ty:ty, $this:ident, $items:expr) => {
         $crate::game::native_tags::impl_tags!($ty, $this, $items; generics());
@@ -130,8 +131,7 @@ macro_rules! impl_tags {
         }
     };
 }
-pub(super) use impl_tags;
-impl_tags!(super::Game<'_, S>, game, game.native_tag_items(); generics(S: crate::game::Side));
+pub use crate::impl_tags;
 
 #[cfg(any(test, feature = "test-support"))]
 pub const PACK_BINDING_CASES: [(&str, &[u8], bool); 3] = [

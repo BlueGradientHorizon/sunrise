@@ -2,7 +2,7 @@
 use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
-    pub(super) fn effect_category(
+    pub fn effect_category(
         &self,
         key: mod_api::EffectKey,
     ) -> Option<mod_api::EffectCategory> {

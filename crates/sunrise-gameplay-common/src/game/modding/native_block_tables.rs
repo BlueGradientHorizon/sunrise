@@ -1,7 +1,7 @@
 //! The read-only tables behind `BlockStates`: the facts a block state carries, read from the
 //! game's shared resources alone. `Game` and every level view hand out this one view, so a part
 //! reads the same facts in a level callback as through a `Host`.
-use super::{Game, PackResources, Resources, WorldRest, api_values::TryIntoEngine};
+use super::{CommonGame, PackResources, Resources, WorldRest, api_values::TryIntoEngine};
 use mod_api::{
     BlockKey, BlockSoundType, BlockState, BlockStateRange, FluidDefinition, FluidKey, FluidState,
     FluidStateError, FluidTypeProperties, StateConstraint, StateMatchError, StateProperties,
@@ -25,7 +25,7 @@ impl<'a> BlockTables<'a> {
         Self { res, pack }
     }
 
-    pub fn of<__Side: crate::game::Side>(game: &'a Game<'_, __Side>) -> Self {
+    pub fn of(game: &'a CommonGame<'_>) -> Self {
         Self::new(&game.res, &game.pack)
     }
 
@@ -35,7 +35,7 @@ impl<'a> BlockTables<'a> {
     }
 
     /// The exported definition of a world fluid, or a tank-only identity.
-    pub(in crate::game) fn fluid_state_definition(
+    pub fn fluid_state_definition(
         &self,
         fluid: FluidKey,
     ) -> Option<FluidDefinition<'a>> {
@@ -96,13 +96,13 @@ impl<'a> BlockTables<'a> {
     /// fluid states with. None for a state no fluid can be in: no world form, an amount above
     /// 8, a zero amount for anything but the empty fluid, or a source that isn't full.
     /// The host forwarder converts this engine ID through the checked block-state index.
-    pub(in crate::game) fn fluid_legacy_block(&self, state: FluidState) -> Option<BlockStateId> {
+    pub fn fluid_legacy_block(&self, state: FluidState) -> Option<BlockStateId> {
         let engine = super::native_block_states::engine_fluid_state(state)?;
         Some(self.res.behaviours().legacy_block(engine))
     }
 
     /// Validate fluid constraints against the exported property definition.
-    pub(in crate::game) fn fluid_state_validate(
+    pub fn fluid_state_validate(
         &self,
         fluid: FluidKey,
         constraints: &[StateConstraint],
@@ -134,7 +134,7 @@ impl<'a> BlockTables<'a> {
         Ok(())
     }
 
-    pub(in crate::game) fn block_state_piston_push_reaction(
+    pub fn block_state_piston_push_reaction(
         &self,
         state: BlockState,
     ) -> Result<Option<mod_api::PushReaction>, mod_api::LevelReadError> {
@@ -155,7 +155,7 @@ impl<'a> BlockTables<'a> {
         Some((self.res.rest.get()?, state.try_into_engine(&()).ok()?))
     }
 
-    pub(in crate::game) fn block_weathering_age(&self, state: BlockState) -> Option<WeatheringAge> {
+    pub fn block_weathering_age(&self, state: BlockState) -> Option<WeatheringAge> {
         let (rest, state) = self.weathering_state(state)?;
         Some(match rest.behaviours.weathering_age(state)? {
             0 => WeatheringAge::Unaffected,
@@ -166,7 +166,7 @@ impl<'a> BlockTables<'a> {
         })
     }
 
-    pub(in crate::game) fn block_next_weathering_stage(
+    pub fn block_next_weathering_stage(
         &self,
         state: BlockState,
     ) -> Option<BlockStateId> {
@@ -174,7 +174,7 @@ impl<'a> BlockTables<'a> {
         rest.behaviours.weathering_next(state)
     }
 
-    pub(in crate::game) fn block_previous_weathering_stage(
+    pub fn block_previous_weathering_stage(
         &self,
         state: BlockState,
     ) -> Option<BlockStateId> {
@@ -182,12 +182,12 @@ impl<'a> BlockTables<'a> {
         rest.behaviours.weathering_previous(state)
     }
 
-    pub(in crate::game) fn block_state_waxed(&self, state: BlockState) -> Option<BlockStateId> {
+    pub fn block_state_waxed(&self, state: BlockState) -> Option<BlockStateId> {
         let (_, state) = self.weathering_state(state)?;
         self.honeycomb_waxed(state)
     }
 
-    pub(in crate::game) fn block_state_unwaxed(&self, state: BlockState) -> Option<BlockStateId> {
+    pub fn block_state_unwaxed(&self, state: BlockState) -> Option<BlockStateId> {
         let (rest, state) = self.weathering_state(state)?;
         if let Some(unwaxed) = rest.behaviours.mapped_unwaxed(state) {
             return Some(unwaxed);
@@ -204,18 +204,18 @@ impl<'a> BlockTables<'a> {
 
     /// `BlockState.canBeReplaced()`: whether placing a block where this state stands
     /// replaces it (air, grass, water, snow layers). None for an unknown state.
-    pub(in crate::game) fn block_state_replaceable(&self, state: BlockStateId) -> Option<bool> {
+    pub fn block_state_replaceable(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).replaceable)
     }
     /// `BlockBehaviour.Properties.destroyTime`, as `BlockState.getDestroySpeed` reads it:
     /// stone 1.5, obsidian 50, bedrock -1 (it can't be broken). None for an unknown state.
-    pub(in crate::game) fn block_state_destroy_speed(&self, state: BlockStateId) -> Option<f32> {
+    pub fn block_state_destroy_speed(&self, state: BlockStateId) -> Option<f32> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).hardness)
     }
     /// `BlockState.requiresCorrectToolForDrops()`. None for an unknown state.
-    pub(in crate::game) fn block_state_requires_correct_tool(
+    pub fn block_state_requires_correct_tool(
         &self,
         state: BlockStateId,
     ) -> Option<bool> {
@@ -224,7 +224,7 @@ impl<'a> BlockTables<'a> {
     }
     /// The explosion resistance the block of this state declares (`Block.getExplosionResistance`):
     /// stone 6, obsidian 1200, bedrock 3,600,000. None for an unknown state.
-    pub(in crate::game) fn block_state_explosion_resistance(
+    pub fn block_state_explosion_resistance(
         &self,
         state: BlockStateId,
     ) -> Option<f32> {
@@ -233,14 +233,14 @@ impl<'a> BlockTables<'a> {
     }
     /// `BlockState.getSoundType()`: its volume, pitch and the sound events for breaking,
     /// stepping on, placing, hitting and falling on it. None for an unknown state.
-    pub(in crate::game) fn block_state_sound(&self, state: BlockStateId) -> Option<BlockSoundType> {
+    pub fn block_state_sound(&self, state: BlockStateId) -> Option<BlockSoundType> {
         self.pack.assets.registry.state(state)?;
         Some(sunrise_sim::block_sounds::own(
             &self.res.facts().get(state).sounds,
         ))
     }
     /// `BlockState.hasBlockEntity()`. None for an unknown state.
-    pub(in crate::game) fn block_state_has_block_entity(
+    pub fn block_state_has_block_entity(
         &self,
         state: BlockStateId,
     ) -> Option<bool> {
@@ -248,31 +248,31 @@ impl<'a> BlockTables<'a> {
         Some(self.res.facts().get(state).block_entity)
     }
     /// `BlockState.getMapColor`: the state's `MapColor.id`, 0 for none. None for an unknown state.
-    pub(in crate::game) fn block_state_map_color(&self, state: BlockStateId) -> Option<u8> {
+    pub fn block_state_map_color(&self, state: BlockStateId) -> Option<u8> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).map_color)
     }
     /// Decode a packed pixel with the same palette and shade arithmetic as map rendering.
-    pub(in crate::game) fn block_state_map_color_rgba(&self, packed: u8) -> Option<[u8; 4]> {
+    pub fn block_state_map_color_rgba(&self, packed: u8) -> Option<[u8; 4]> {
         Some(crate::game::maps::packed_rgba(packed))
     }
     /// `BlockState.getLightEmission()`. None for an unknown state.
-    pub(in crate::game) fn block_state_light_emission(&self, state: BlockStateId) -> Option<u8> {
+    pub fn block_state_light_emission(&self, state: BlockStateId) -> Option<u8> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).emission)
     }
     /// `BlockBehaviour.getFriction()` of the state's block. None for an unknown state.
-    pub(in crate::game) fn block_state_friction(&self, state: BlockStateId) -> Option<f32> {
+    pub fn block_state_friction(&self, state: BlockStateId) -> Option<f32> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).friction)
     }
     /// `BlockState.isSolidRender()`. None for an unknown state.
-    pub(in crate::game) fn block_state_is_solid_render(&self, state: BlockStateId) -> Option<bool> {
+    pub fn block_state_is_solid_render(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).solid_render)
     }
     /// `BlockState.isRedstoneConductor` for a state alone, not a block in a level.
-    pub(in crate::game) fn block_state_is_redstone_conductor(
+    pub fn block_state_is_redstone_conductor(
         &self,
         state: BlockStateId,
     ) -> Option<bool> {
@@ -281,7 +281,7 @@ impl<'a> BlockTables<'a> {
     /// `instanceof` for the vanilla classes of [`mod_api::BlockClass`], from the block's exported
     /// class chain: a class and its subclasses, an interface by what the block implements. None
     /// for an unknown state.
-    pub(in crate::game) fn block_state_class(
+    pub fn block_state_class(
         &self,
         state: BlockStateId,
         class: mod_api::BlockClass,
@@ -301,12 +301,12 @@ impl<'a> BlockTables<'a> {
         }))
     }
     /// The immutable local ordinals of `block`, independent of current world ID order.
-    pub(in crate::game) fn block_states_of(&self, block: BlockKey) -> Option<BlockStateRange> {
+    pub fn block_states_of(&self, block: BlockKey) -> Option<BlockStateRange> {
         mod_api::__private::block_state_range(block).ok()
     }
 
     /// The properties of a resolved block, borrowed from the command registry.
-    pub(in crate::game) fn block_state_definition(
+    pub fn block_state_definition(
         &self,
         block: BlockKey,
     ) -> Option<StateProperties<'a>> {
@@ -317,7 +317,7 @@ impl<'a> BlockTables<'a> {
     }
 
     /// Match against the existing command registry definitions without allocating on the call.
-    pub(in crate::game) fn block_state_matches(
+    pub fn block_state_matches(
         &self,
         state: BlockStateId,
         block: BlockKey,
@@ -343,7 +343,7 @@ impl<'a> BlockTables<'a> {
 
     /// `ItemStack.isCorrectToolForDrops(state)`: the stack's own tool rules, with no block
     /// requirement, player, position or hook. None for an unknown state.
-    pub(in crate::game) fn block_state_correct_tool_for_drops(
+    pub fn block_state_correct_tool_for_drops(
         &self,
         stack: &ItemStack,
         state: BlockStateId,
@@ -356,20 +356,20 @@ impl<'a> BlockTables<'a> {
         )
     }
 
-    pub(in crate::game) fn block_metadata_name(
+    pub fn block_metadata_name(
         &self,
         block: mod_api::BlockKey,
     ) -> Result<&'static str, mod_api::BlockStateError> {
         mod_api::BlockMetadata::name(super::api_values::block_metadata_table()?, block)
     }
-    pub(in crate::game) fn block_metadata_property(
+    pub fn block_metadata_property(
         &self,
         state: BlockState,
         name: &str,
     ) -> Result<Option<&'static str>, mod_api::BlockStateError> {
         mod_api::BlockMetadata::property(super::api_values::block_metadata_table()?, state, name)
     }
-    pub(in crate::game) fn block_metadata_with(
+    pub fn block_metadata_with(
         &self,
         state: BlockState,
         name: &str,
@@ -382,7 +382,7 @@ impl<'a> BlockTables<'a> {
             value,
         )
     }
-    pub(in crate::game) fn block_metadata_of(
+    pub fn block_metadata_of(
         &self,
         block: mod_api::BlockKey,
         properties: &[mod_api::StateConstraint],

@@ -2,19 +2,19 @@
 use crate::game::CommonGame;
 
 impl CommonGame<'_> {
-    pub(in crate::game) fn dist(&self) -> mod_api::Dist {
+    pub fn dist(&self) -> mod_api::Dist {
         sunrise_level::runtime_env::runtime_environment::get().dist()
     }
-    pub(in crate::game) fn game_version(&self) -> &'static str {
+    pub fn game_version(&self) -> &'static str {
         sunrise_level::runtime_env::runtime_environment::get().game_version()
     }
-    pub(in crate::game) fn server_data_version(&self) -> i32 {
+    pub fn server_data_version(&self) -> i32 {
         sunrise_core::version::DATA_VERSION
     }
-    pub(in crate::game) fn sunrise_version(&self) -> &'static str {
+    pub fn sunrise_version(&self) -> &'static str {
         sunrise_level::runtime_env::runtime_environment::get().sunrise_version()
     }
-    pub(in crate::game) fn game_tests_enabled(&self) -> bool {
+    pub fn game_tests_enabled(&self) -> bool {
         sunrise_level::runtime_env::runtime_environment::get().game_tests_enabled()
     }
 }

@@ -4,7 +4,7 @@ use super::*;
 // Native mods use these; nothing in Sunrise does.
 impl crate::game::CommonGame<'_> {
     /// Enumerate once at publication using the engine predicate, never a second matcher.
-    pub(in crate::game) fn recipe_ingredient_item_keys(
+    pub fn recipe_ingredient_item_keys(
         &self,
         ingredient: &Ingredient,
     ) -> Result<std::sync::Arc<[mod_api::ItemKey]>, mod_api::IngredientKeysError> {
@@ -41,7 +41,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// Whether `stack` fits `ingredient` (`Ingredient.test`), matched with this
     /// game's loop context.
-    pub(in crate::game) fn recipe_ingredient_test(
+    pub fn recipe_ingredient_test(
         &self,
         ingredient: &Ingredient,
         stack: &ItemStack,

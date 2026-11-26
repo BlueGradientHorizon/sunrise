@@ -13,7 +13,7 @@ fn export(content: &CauldronContent) -> Option<mod_api::CauldronContent> {
 }
 
 impl crate::game::CommonGame<'_> {
-    pub(super) fn cauldron_content_for_block(
+    pub fn cauldron_content_for_block(
         &self,
         block: mod_api::BlockKey,
     ) -> Option<mod_api::CauldronContent> {
@@ -22,7 +22,7 @@ impl crate::game::CommonGame<'_> {
         export(contents.of_block(id)?.1)
     }
 
-    pub(super) fn cauldron_content_for_fluid(
+    pub fn cauldron_content_for_fluid(
         &self,
         fluid: mod_api::FluidKey,
     ) -> Option<mod_api::CauldronContent> {
@@ -31,7 +31,7 @@ impl crate::game::CommonGame<'_> {
         export(contents.of_fluid(id)?.1)
     }
 
-    pub(super) fn cauldron_level(
+    pub fn cauldron_level(
         &self,
         state: sunrise_world::registry::BlockStateId,
     ) -> Option<u32> {

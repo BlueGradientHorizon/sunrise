@@ -202,7 +202,7 @@ impl crate::game::CommonGame<'_> {
     /// `Capabilities.Item.ITEM`, read: the slots of one item of `stack`,
     /// empty ones included, kept in its `minecraft:container`. None for an
     /// item without slots, and for an empty stack.
-    pub(in crate::game) fn item_container_slots(
+    pub fn item_container_slots(
         &self,
         stack: &ItemStack,
     ) -> Option<Vec<Option<ItemStack>>> {
@@ -218,7 +218,7 @@ impl crate::game::CommonGame<'_> {
     /// becomes (the item itself when none did). The stack given is not
     /// changed: shrink it by one and hand out the result, or leave the result
     /// unused to simulate. None where the item has no slots.
-    pub(in crate::game) fn item_container_insert(
+    pub fn item_container_insert(
         &self,
         stack: &ItemStack,
         item: &ItemStack,
@@ -231,7 +231,7 @@ impl crate::game::CommonGame<'_> {
     /// into slot `slot` alone: topped up when it holds the same item and
     /// components, filled when empty. Nothing goes into a slot past the
     /// item's slots or holding another item.
-    pub(in crate::game) fn item_container_insert_slot(
+    pub fn item_container_insert_slot(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -252,7 +252,7 @@ impl crate::game::CommonGame<'_> {
     /// slot `slot` of one item of `stack` holds when empty. None of a stack that
     /// doesn't fit inside container items (a shulker box, unless its parts say
     /// so), nor into a slot past the item's slots.
-    pub(in crate::game) fn item_container_capacity(
+    pub fn item_container_capacity(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -273,7 +273,7 @@ impl crate::game::CommonGame<'_> {
     /// item's slots), and the single item it becomes. The stack given is not
     /// changed, as with `item_container_insert`. None where the item
     /// has no slots.
-    pub(in crate::game) fn item_container_extract(
+    pub fn item_container_extract(
         &self,
         stack: &ItemStack,
         slot: usize,

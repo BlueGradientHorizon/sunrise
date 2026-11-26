@@ -20,7 +20,7 @@ const NBT_PLAIN: &str = "plain";
 const PRIMITIVE_ARGUMENT: &str = "__sunrise_nbt_argument";
 
 impl crate::game::CommonGame<'_> {
-    pub(super) fn text_from_nbt(&self, tag: &Tag) -> Result<Option<Text>, Error> {
+    pub fn text_from_nbt(&self, tag: &Tag) -> Result<Option<Text>, Error> {
         Codec {
             registries: &self.ui.registries,
             defer_holders: false,
@@ -28,7 +28,7 @@ impl crate::game::CommonGame<'_> {
         .read(tag)
     }
 
-    pub(super) fn text_to_nbt(&self, text: &Text) -> Result<Tag, Error> {
+    pub fn text_to_nbt(&self, text: &Text) -> Result<Tag, Error> {
         Codec {
             registries: &self.ui.registries,
             defer_holders: false,

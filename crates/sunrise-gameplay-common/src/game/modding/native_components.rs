@@ -55,7 +55,7 @@ impl crate::game::CommonGame<'_> {
     /// packs' and native mods' changes included. Read from the item report's JSON, so a
     /// number is an `Int`, `Long` or `Double` and a boolean a `Byte`. None where the item
     /// hasn't the component, and for an unknown item.
-    pub(in crate::game) fn item_default_component(
+    pub fn item_default_component(
         &self,
         item: mod_api::ItemKey,
         component: &str,

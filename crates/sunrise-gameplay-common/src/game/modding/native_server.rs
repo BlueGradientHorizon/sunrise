@@ -597,7 +597,7 @@ impl PlayerRead<'_> {
 impl crate::game::CommonGame<'_> {
 
     /// The server's tick rate and average tick duration in milliseconds.
-    pub(in crate::game) fn tick_stats(&self) -> (f32, f64) {
+    pub fn tick_stats(&self) -> (f32, f64) {
         (
             self.clock.rate(),
             self.clock.average_nanos() as f64 / 1_000_000.0,
@@ -605,7 +605,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `TickRateManager.isFrozen`; None on a client, which follows its server's.
-    pub(in crate::game) fn tick_rate_is_frozen(&self) -> Option<bool> {
+    pub fn tick_rate_is_frozen(&self) -> Option<bool> {
         self.is_logical_server().then(|| self.clock.frozen())
     }
 }

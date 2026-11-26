@@ -99,6 +99,12 @@ use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;
 
+sunrise_gameplay_common::game::native_tags::impl_tags!(
+    ServerGame<'_>,
+    game,
+    sunrise_gameplay_common::game::tables::WorldTablesExt::native_tag_items(game)
+);
+
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));
 
 pub(crate) mod services;

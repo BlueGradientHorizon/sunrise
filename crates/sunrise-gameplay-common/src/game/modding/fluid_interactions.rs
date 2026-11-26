@@ -166,7 +166,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The open world's fluid interaction table, read for one neighbour and the block below.
-    pub(in crate::game) fn fluid_interaction_result(
+    pub fn fluid_interaction_result(
         &self,
         source: mod_api::FluidState,
         neighbour: sunrise_world::registry::BlockStateId,
