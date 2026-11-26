@@ -18,7 +18,7 @@ impl ServerGame<'_> {
         let tool = self.common.held().cloned();
         let table = "minecraft:brush/armadillo";
         let mut stacks = self.sequence_loot(table, table, tool.as_ref());
-        let kind = super::native_hooks::mob_kind(&self.common.mobs[index]);
+        let kind = sunrise_gameplay_common::game::native_hooks::mob_kind(&self.common.mobs[index]);
         let player = Some(self.common.native_acting_id());
         self.native_use_drops(
             table,
@@ -40,7 +40,8 @@ impl ServerGame<'_> {
             && let Some(stack) = tool
         {
             let max = self
-                .common.res
+                .common
+                .res
                 .items()
                 .get(&stack.item)
                 .map_or(0, |i| i.max_damage);

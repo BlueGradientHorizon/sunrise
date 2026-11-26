@@ -71,9 +71,7 @@ pub fn knot_bounds(block: [i32; 3]) -> Aabb {
 }
 
 /// Whether Pick Block can name an item for the entity (`Entity.getPickResult`).
-pub fn has_pick_result(
-    target: Option<crate::game::commands_common::Target>,
-) -> bool {
+pub fn has_pick_result(target: Option<crate::game::commands_common::Target>) -> bool {
     use crate::game::commands_common::Target;
     !matches!(
         target,
@@ -140,7 +138,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `Player.isWithinEntityInteractionRange(entity, 3.0)`.
-    pub(in crate::game) fn within_entity_range(&self, id: i32) -> bool {
+    pub fn within_entity_range(&self, id: i32) -> bool {
         let Some(eye) = self.eye_position() else {
             return false;
         };

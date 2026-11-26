@@ -1,4 +1,4 @@
-
+use sunrise_game_data::text::Text;
 
 impl crate::game::ServerGame<'_> {
     /// A tamed mob's owner message, after eligibility and message construction.

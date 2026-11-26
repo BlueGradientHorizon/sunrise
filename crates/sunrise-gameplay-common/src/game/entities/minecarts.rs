@@ -15,6 +15,9 @@ pub use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::LegacyRandom,
 };
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
+use sunrise_gameplay_common::minecart_seat::*;
 use sunrise_items::{
     blocks::Fluid,
     items::{ItemStack, Items},
@@ -22,9 +25,6 @@ use sunrise_items::{
 use sunrise_level::{containers::BlockEntity, random_source};
 pub use sunrise_sim::mobs::{Species, riders};
 pub use sunrise_world::registry::BlockStateId;
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
-use sunrise_gameplay_common::minecart_seat::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CartKind {
     Rideable,
@@ -85,7 +85,7 @@ impl CartKind {
             kind => kind.id(),
         }
     }
-    pub(in crate::game) fn slots(self) -> usize {
+    pub fn slots(self) -> usize {
         match self {
             Self::Chest => 27,
             Self::Hopper => 5,
@@ -95,9 +95,9 @@ impl CartKind {
 }
 #[derive(Clone, Debug)]
 pub struct Minecart {
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     pub id: u32,
     pub kind: CartKind,
     pub position: Vec3,
@@ -115,14 +115,14 @@ pub struct Minecart {
     pub lerp_steps: Vec<sunrise_protocol::packets::play::MinecartStep>,
     pub flipped: bool,
     /// `AbstractMinecart.onRails`: transitions into rails need a position snap.
-    pub(in crate::game) on_rails: bool,
-    pub(in crate::game) ground: sunrise_world::ground_support::GroundState,
-    pub(in crate::game) fall_distance: f64,
+    pub on_rails: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
+    pub fall_distance: f64,
     /// The squared speed `MinecartTNT.causeFallDamage` blows up with, set by
     /// a landing of three blocks or more and taken by the cart's next tick
     /// `Entity.stuckSpeedMultiplier`: set by a cobweb the cart's box is in,
     /// scaled into its next move.
-    pub(in crate::game) stuck: Vec3,
+    pub stuck: Vec3,
     pub hurt_time: i32,
     pub hurt_dir: i32,
     pub damage: f32,
@@ -283,11 +283,7 @@ pub const CART_KEY_Y: i32 = sunrise_sim::lan::menu::VEHICLE_KEY_Y;
 /// `OldMinecartBehavior.pushAndPickupEntities`: living entities the cart
 /// offers `startRiding` instead of `Entity.push`. Players click to board;
 /// iron golems always push; a cart that already has a rider is `isVehicle`.
-pub fn pickup_instead_of_push(
-    species: Species,
-    is_passenger: bool,
-    cart_is_vehicle: bool,
-) -> bool {
+pub fn pickup_instead_of_push(species: Species, is_passenger: bool, cart_is_vehicle: bool) -> bool {
     !cart_is_vehicle && !is_passenger && species != Species::IronGolem
 }
 
@@ -317,7 +313,7 @@ pub fn cart_seat(cart: Vec3, seat_offset: f64) -> Vec3 {
 }
 
 /// A general rider's seat on a cart: the cart's passenger attachment with no vehicle attachment of its own.
-pub(in crate::game) fn cart_general_seat(cart: Vec3) -> Vec3 {
+pub fn cart_general_seat(cart: Vec3) -> Vec3 {
     cart_seat(cart, PASSENGER_Y)
 }
 
@@ -349,14 +345,14 @@ impl Shape {
             _ => Self::NorthSouth,
         }
     }
-    pub(in crate::game) fn is_slope(self) -> bool {
+    pub fn is_slope(self) -> bool {
         matches!(
             self,
             Self::AscendingEast | Self::AscendingWest | Self::AscendingNorth | Self::AscendingSouth
         )
     }
     /// `AbstractMinecart.EXITS`.
-    pub(in crate::game) fn exits(self) -> ([i32; 3], [i32; 3]) {
+    pub fn exits(self) -> ([i32; 3], [i32; 3]) {
         let (w, e, n, s) = ([-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]);
         let below = |v: [i32; 3]| [v[0], -1, v[2]];
         match self {
@@ -374,13 +370,13 @@ impl Shape {
     }
 }
 pub struct Rail {
-    pub(in crate::game) name: Arc<str>,
-    pub(in crate::game) shape: Shape,
-    pub(in crate::game) powered: bool,
+    pub name: Arc<str>,
+    pub shape: Shape,
+    pub powered: bool,
 }
 impl Minecart {
     /// `AbstractContainerMenu.getRedstoneSignalFromContainer` of `slots`.
-    pub(in crate::game) fn container_signal(slots: &[Option<ItemStack>], items: &Items) -> i32 {
+    pub fn container_signal(slots: &[Option<ItemStack>], items: &Items) -> i32 {
         let mut total = 0.0f32;
         for s in slots.iter().flatten() {
             let max = items.get(&s.item).map_or(64, |i| i.max_stack).min(64);
@@ -392,7 +388,7 @@ impl Minecart {
     }
 
     /// Snapshot the component codec used for saved output and failure-text admission checks.
-    pub(in crate::game) fn sync_command_output(&mut self) {
+    pub fn sync_command_output(&mut self) {
         self.synced_output = self
             .command
             .last_output
@@ -400,7 +396,7 @@ impl Minecart {
             .map(|text| sunrise_game_data::scoreboard::component_tag(&text.component_view()));
     }
     /// `Entity.onGround`.
-    pub(in crate::game) fn on_ground(&self) -> bool {
+    pub fn on_ground(&self) -> bool {
         self.ground.on_ground
     }
     pub fn new(id: u32, kind: CartKind, position: Vec3) -> Self {
@@ -460,7 +456,7 @@ impl Minecart {
         self.bounds_at(self.position)
     }
     /// The box of this cart were its position `p`.
-    pub(in crate::game) fn bounds_at(&self, p: Vec3) -> Aabb {
+    pub fn bounds_at(&self, p: Vec3) -> Aabb {
         let w = WIDTH / 2.0;
         let vanilla = Aabb::new(
             Vec3::new(p.x - w, p.y, p.z - w),
@@ -500,13 +496,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// `OldMinecartBehavior.getPos`: the point on the rail under (x, y, z), on the track the
     /// rail lays for `cart`.
-    pub fn rail_pos(
-        &self,
-        cart: Option<u32>,
-        x: f64,
-        y: f64,
-        z: f64,
-    ) -> Option<[f64; 3]> {
+    pub fn rail_pos(&self, cart: Option<u32>, x: f64, y: f64, z: f64) -> Option<[f64; 3]> {
         let [xt, yt, zt] = self.rail_block(Vec3::new(x, y, z), self.minecart_improvements());
         let rail = self.rail(cart, xt, yt, zt)?;
         let (e0, e1) = rail.shape.exits();
@@ -542,10 +532,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
     /// passenger attachment, less its own vehicle attachment.
-    pub fn seat_cart_mobs(
-        &mut self,
-        riding: &crate::game::passengers_common::Riders,
-    ) {
+    pub fn seat_cart_mobs(&mut self, riding: &crate::game::passengers_common::Riders) {
         for i in 0..self.carts.len() {
             let id = self.carts[i].id;
             let Some(js) = riding.get(&id) else {
@@ -891,10 +878,7 @@ pub fn cart_is_destroyed(creative: bool, damage: f32, ignites_tnt: bool) -> bool
 
 /// `MinecartTNT.tick`'s collision detonation: a cart still moving at a tenth
 /// of a block a tick or more when a block stops it blows up.
-pub fn tnt_ignites_by_collision(
-    horizontal_collision: bool,
-    speed_sqr: f64,
-) -> bool {
+pub fn tnt_ignites_by_collision(horizontal_collision: bool, speed_sqr: f64) -> bool {
     horizontal_collision && speed_sqr >= 0.009_999_999_776_482_582
 }
 

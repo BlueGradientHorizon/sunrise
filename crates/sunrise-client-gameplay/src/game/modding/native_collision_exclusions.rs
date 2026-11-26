@@ -1,4 +1,4 @@
-
+use mod_api::CollisionExclusionsError;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -9,7 +9,8 @@ impl crate::game::ClientGame<'_> {
         boxes: &[[f64; 6]],
     ) -> Result<(), CollisionExclusionsError> {
         let body = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .ok_or(CollisionExclusionsError::Stale)?;
         body.collision_exclusions.set(boxes).map_err(refused)

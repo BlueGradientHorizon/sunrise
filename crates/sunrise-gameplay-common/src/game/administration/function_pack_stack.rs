@@ -6,7 +6,7 @@ use sunrise_level::datapack::DataPack;
 /// enabled ids from `datapacks.json` (`PackRepository.reload`).
 pub struct PackStack {
     pub builtin: Option<DataPack>,
-    pub(in crate::game) content: DataPack,
+    pub content: DataPack,
     pub packs: Vec<Arc<DataPack>>,
     pub enabled: Vec<String>,
     /// The feature flags the stack was selected for: the incoming world's, also on its first
@@ -16,7 +16,7 @@ pub struct PackStack {
 impl PackStack {
     /// The enabled packs in `enabled` (the selected) order, later overriding
     /// earlier: `PackRepository.openAllSelected` keeps the selected order.
-    pub(in crate::game) fn enabled_packs(&self) -> impl Iterator<Item = &DataPack> {
+    pub fn enabled_packs(&self) -> impl Iterator<Item = &DataPack> {
         self.enabled
             .iter()
             .filter_map(|id| self.packs.iter().find(|p| &p.id == id).map(Arc::as_ref))

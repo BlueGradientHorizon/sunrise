@@ -19,7 +19,7 @@ pub struct TargetQuery {
 
 impl TargetQuery {
     /// Build a live target query for a shared-list projectile.
-    pub(in crate::game) fn for_projectile(p: &Projectile, include_guests: bool) -> Self {
+    pub fn for_projectile(p: &Projectile, include_guests: bool) -> Self {
         let is_wind = matches!(
             p.kind,
             ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
@@ -91,7 +91,7 @@ pub struct ProjectileHitInfo {
 }
 
 impl ProjectileHitInfo {
-    pub(in crate::game) fn from_projectile(
+    pub fn from_projectile(
         p: &Projectile,
         damage_type: &'static str,
         amount: f32,

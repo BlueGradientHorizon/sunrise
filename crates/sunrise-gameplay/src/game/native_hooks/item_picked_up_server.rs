@@ -5,7 +5,7 @@ use sunrise_sim::join_seq::JoinList;
 impl crate::game::ServerGame<'_> {
     /// Whether the acting player, `player`, takes the ground `item` they
     /// touch (`ItemEntity.playerTouch`).
-    pub(in crate::game::server_side) fn native_pickup_allowed(
+    pub(crate) fn native_pickup_allowed(
         &mut self,
         item: &mut ItemEntity,
         player: [i32; 4],
@@ -35,7 +35,7 @@ impl crate::game::ServerGame<'_> {
     /// `during`, where mods reach it: the notice's answer, and the stack the
     /// item held before when a mod removed it meanwhile. An item that is still
     /// there goes back to its place in `items` holding that stack.
-    pub(in crate::game::server_side) fn native_pickup_lent(
+    pub(crate) fn native_pickup_lent(
         &mut self,
         items: &mut JoinList<ItemEntity>,
         i: usize,
@@ -47,7 +47,9 @@ impl crate::game::ServerGame<'_> {
         let join = items[i].join_seq();
         let mut lent = items.extract(join).expect("in its pass");
         let (id, original) = (lent.id, std::mem::replace(&mut lent.stack, during));
-        self.common.dropped.put_back(self.common.dropped.len(), lent);
+        self.common
+            .dropped
+            .put_back(self.common.dropped.len(), lent);
         let answer = notice(self, &original);
         let removed = self.common.persist.removals.contains(&Target::Item(id));
         if let Some(mut back) = self.common.dropped.extract(join) {
@@ -84,7 +86,7 @@ impl crate::game::ServerGame<'_> {
     /// hears is lent back to the level meanwhile, so the mod reaches it, and
     /// one that removes it keeps it removed: no take animation, the stat and
     /// criterion still run.
-    pub(in crate::game::server_side) fn native_player_pickups(
+    pub(crate) fn native_player_pickups(
         &mut self,
         items: &mut JoinList<ItemEntity>,
         (min, max): ([f64; 3], [f64; 3]),

@@ -1,4 +1,7 @@
-
+#[cfg(feature = "client")]
+use crate::game::{BlockEntityDraw, MobRender};
+#[cfg(feature = "client")]
+use mod_api::FrameModel;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

@@ -1,8 +1,26 @@
 use super::raw_backlog::Received;
 use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next, RemoteLight};
 use super::render_tick::{mob_tracking_body, player_tracking_body};
-use super::villager_client::builtin_registries;
 use super::{Dim, Game, Hit, Mining, Screen};
+use mod_api::InteractionKey;
+pub(in crate::game) use session_state::{
+    BACKLOG_LIMIT, CHUNK_PACKETS_PER_FRAME, ClientMenu, ItemUseAim, NoTerrain, OwnProfile,
+    PendingCauldron, PendingItem, PlayerTextures, Remote, RemoteDimensionEntry, ServicesKeys,
+    TICK_DECODE_WAIT, Tracked, client_millis, seat_passengers, skin_entries,
+};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+    time::{Duration, Instant},
+};
+#[allow(unused_imports)]
+use sunrise_client::{
+    hud::HudBatch, particles::TrackingTarget, screen_effects, streaming::MeshStreamer,
+};
+use sunrise_client_lib::net::{Event, Session};
+use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSource};
+#[allow(unused_imports)]
+use sunrise_game_data::{Result, text::Text};
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::remote::DryChanges;
 use sunrise_gameplay_common::game::remote::DryPlace;
@@ -48,27 +66,8 @@ use sunrise_gameplay_common::game::remote::snap_target;
 use sunrise_gameplay_common::game::remote::synced_local_use;
 use sunrise_gameplay_common::game::remote::use_ends_click;
 use sunrise_gameplay_common::game::remote::wrap_degrees;
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::*};
+use sunrise_gameplay_common::game::villager_client::builtin_registries;
 use sunrise_gameplay_common::game::{item_use_common::ticks_left, level_sounds_common::LevelSound};
-use mod_api::InteractionKey;
-pub(in crate::game) use session_state::{
-    BACKLOG_LIMIT, CHUNK_PACKETS_PER_FRAME, ClientMenu, ItemUseAim, NoTerrain, OwnProfile,
-    PendingCauldron, PendingItem, PlayerTextures, Remote, RemoteDimensionEntry, ServicesKeys,
-    TICK_DECODE_WAIT, Tracked, client_millis, seat_passengers, skin_entries,
-};
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-    time::{Duration, Instant},
-};
-#[allow(unused_imports)]
-use sunrise_client::{
-    hud::HudBatch, particles::TrackingTarget, screen_effects, streaming::MeshStreamer,
-};
-use sunrise_client_lib::net::{Event, Session};
-use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSource};
-#[allow(unused_imports)]
-use sunrise_game_data::{Result, text::Text};
 #[allow(unused_imports)]
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 #[allow(unused_imports)]
@@ -101,6 +100,7 @@ use sunrise_sim::{
     motion::{MotionWorld, PlayerMotion},
     sprint::Keys,
 };
+use {crate::game::remote::*, sunrise_gameplay_common::game::remote::*};
 use {
     sunrise_core::nbt::Tag,
     sunrise_mod_runtime::attachments::Holder,
@@ -368,14 +368,20 @@ impl crate::game::ClientGame<'_> {
             // thread, after all preceding packets (especially teleports).
             C::Ping(p) => self.send(S::Pong(p)),
             C::CustomPayload(p)
-                if p.channel == sunrise_gameplay_common::game::cauldron_prediction::ENTRIES_CHANNEL =>
+                if p.channel
+                    == sunrise_gameplay_common::game::cauldron_prediction::ENTRIES_CHANNEL =>
             {
-                let entries = sunrise_gameplay_common::game::cauldron_prediction::decode_registrations(&p.data)?;
+                let entries =
+                    sunrise_gameplay_common::game::cauldron_prediction::decode_registrations(
+                        &p.data,
+                    )?;
                 if let Some(remote) = &mut self.client.remote {
                     remote.cauldron_entries = Some(entries);
                 }
             }
-            C::CustomPayload(p) if p.channel == sunrise_gameplay_common::game::cauldron_prediction::USE_CHANNEL => {
+            C::CustomPayload(p)
+                if p.channel == sunrise_gameplay_common::game::cauldron_prediction::USE_CHANNEL =>
+            {
                 self.receive_cauldron_use(&p.data)?;
             }
             // The server's next generation of mod registries: all of it or the connection.
@@ -834,7 +840,8 @@ impl crate::game::ClientGame<'_> {
     /// The player's position, for `retainKnownServerState`'s `player.position()`.
     pub(in crate::game) fn player_position(&self) -> [f64; 3] {
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| p.position)
             .unwrap_or(Vec3::ZERO);
@@ -991,8 +998,11 @@ impl crate::game::ClientGame<'_> {
         // MultiPlayerGameMode.dropItem predicts the removal and sends only the drop: the
         // server's stack agrees, so no creative slot edit follows at the end of the tick.
         let before = self.creative_stacks();
-        let dropped =
-            sunrise_items::items::take_held_drop(&mut self.common.inventory[self.common.selected], all, false);
+        let dropped = sunrise_items::items::take_held_drop(
+            &mut self.common.inventory[self.common.selected],
+            all,
+            false,
+        );
         self.remote_synced_since(&before);
         self.send_action(if all { 4 } else { 5 });
         if dropped.is_some() {
@@ -1005,7 +1015,11 @@ impl crate::game::ClientGame<'_> {
     /// `hurt` default when the type is unknown.
     pub(in crate::game::client_side) fn remote_hurt_sound(&self, source_type: i32) -> &'static str {
         match self.client.remote.as_ref() {
-            Some(r) => hurt_sound_for(&r.registries, &self.common.health_resources.damage, source_type),
+            Some(r) => hurt_sound_for(
+                &r.registries,
+                &self.common.health_resources.damage,
+                source_type,
+            ),
             None => sunrise_sim::health::hurt_sound("hurt"),
         }
     }
@@ -1087,7 +1101,12 @@ impl crate::game::ClientGame<'_> {
     }
     pub(in crate::game::client_side) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.client.remote.as_ref()?;
-        if self.client.player_model.as_ref().is_some_and(|m| m.id == id) {
+        if self
+            .client
+            .player_model
+            .as_ref()
+            .is_some_and(|m| m.id == id)
+        {
             Some(remote.profile)
         } else {
             remote.level_players.get(&(id as i32)).copied()
@@ -1119,7 +1138,8 @@ impl crate::game::ClientGame<'_> {
     /// Whether secondary use skips a block's default interaction on this client.
     pub(in crate::game::client_side) fn remote_secondary_use_skips_block(&self) -> bool {
         self.remote_shift_down()
-            && (self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some())
+            && (self.common.stack_in(self.common.selected).is_some()
+                || self.common.offhand.is_some())
     }
     /// `handleServerData`: the server list entry of the server joined keeps
     /// the icon the server sends (`ServerList.saveSingleServer`). Single
@@ -1270,7 +1290,10 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn remote_swap_hands(&mut self) {
         self.send_action(7);
         // Equal stacks swap with no slot update to wait for.
-        let (main, off) = (self.common.stack_in(self.common.selected), self.common.offhand.as_ref());
+        let (main, off) = (
+            self.common.stack_in(self.common.selected),
+            self.common.offhand.as_ref(),
+        );
         let moves = !super::hand::matches_for_swap(main, off);
         if let Some(r) = self.client.remote.as_mut() {
             r.swap_answer = [moves; 2];

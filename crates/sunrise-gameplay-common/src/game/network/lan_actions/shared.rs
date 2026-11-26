@@ -38,14 +38,14 @@ pub fn equipment_changed(
 
 /// A guest's command waiting for the hub (`LanHost::commands`).
 pub struct GuestCommand {
-    pub(in crate::game) conn: u32,
-    pub(in crate::game) command: String,
-    pub(in crate::game) permission: u8,
+    pub conn: u32,
+    pub command: String,
+    pub permission: u8,
     /// An integrated server's: no level teleports (yet).
-    pub(in crate::game) integrated: bool,
+    pub integrated: bool,
     /// A mod's quiet command (game/network/lan_quiet.rs): its output suppressed, as
     /// `CommandSourceStack.withSuppressedOutput` does.
-    pub(in crate::game) quiet: bool,
+    pub quiet: bool,
 }
 
 /// Why a guest's turn didn't start (`as_guest_at`).
@@ -110,10 +110,7 @@ pub fn swing_packet(
 
 /// The block columns `Entity.isInWall` looks at: `AABB.ofSize` around the
 /// eyes, 0.8 of the body's width across (`BlockPos.betweenClosedStream`).
-pub fn eye_columns(
-    at: [f64; 3],
-    body: Dimensions,
-) -> [std::ops::RangeInclusive<i32>; 2] {
+pub fn eye_columns(at: [f64; 3], body: Dimensions) -> [std::ops::RangeInclusive<i32>; 2] {
     let half = f64::from(body.width * 0.8) / 2.0;
     let range = |v: f64| (v - half).floor() as i32..=(v + half).floor() as i32;
     [range(at[0]), range(at[2])]
@@ -238,11 +235,7 @@ pub mod guest_close_listener_tests {
         game.sculk_sync_index();
         assert!(selected(game).is_none());
     }
-    pub fn open(
-        game: &mut crate::game::ServerGame<'_>,
-        conn: u32,
-        sequence: i32,
-    ) -> i32 {
+    pub fn open(game: &mut crate::game::ServerGame<'_>, conn: u32, sequence: i32) -> i32 {
         game.lan_guest_packet(
             conn,
             S::UseItemOn(play::UseItemOn {

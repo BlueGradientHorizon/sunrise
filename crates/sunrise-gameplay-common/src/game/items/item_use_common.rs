@@ -31,7 +31,7 @@ pub enum ItemUseState {
 }
 
 impl ItemUseState {
-    pub(in crate::game) fn animation(self) -> UseAnimation {
+    pub fn animation(self) -> UseAnimation {
         match self {
             Self::Spear(_) => UseAnimation::Spear,
             Self::Other(animation) => animation,
@@ -43,12 +43,7 @@ impl ItemUseState {
 /// mod has changed this use's countdown. This flag preserves vanilla's
 /// initially zero-duration items; a mod-run-out use skips effects, but
 /// still decrements on both sides.
-pub fn tick_left(
-    before: i32,
-    remaining: i32,
-    canceled: bool,
-    set: bool,
-) -> (i32, bool) {
+pub fn tick_left(before: i32, remaining: i32, canceled: bool, set: bool) -> (i32, bool) {
     let left = if canceled { -1 } else { remaining };
     (left, set || canceled || remaining != before)
 }
@@ -78,11 +73,7 @@ pub fn remaining_of(using: Option<(usize, u32)>, duration: i32) -> i32 {
 
 /// Sets `useItemRemaining` of the use `using` by moving its `duration`, as a
 /// mod's tick does; false when nothing is in use.
-pub fn set_remaining(
-    using: Option<(usize, u32)>,
-    duration: &mut i32,
-    remaining: i32,
-) -> bool {
+pub fn set_remaining(using: Option<(usize, u32)>, duration: &mut i32, remaining: i32) -> bool {
     let Some((_, ticks)) = using else {
         return false;
     };
@@ -120,12 +111,12 @@ pub fn consumes_at_once(consume_ticks: i32) -> bool {
 /// Captured item and whether Start or Tick has overridden the remaining duration.
 #[derive(Default)]
 pub struct UseStart {
-    pub(in crate::game) ticks_set: bool,
-    pub(in crate::game) item: Option<ItemStack>,
+    pub ticks_set: bool,
+    pub item: Option<ItemStack>,
 }
 
 impl UseStart {
-    pub(in crate::game) fn of(item: ItemStack) -> Self {
+    pub fn of(item: ItemStack) -> Self {
         Self {
             ticks_set: false,
             item: Some(item),

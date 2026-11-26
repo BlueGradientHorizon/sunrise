@@ -7,10 +7,10 @@ use super::{
     explosion::{BlockInteraction, ExplosionSource},
     explosion_settings::{BlastCalculator, BlastEffects, BlastSettings, SourceCalculator},
     minecarts::CartKind,
-    native_hooks::sound_id,
 };
 use mod_api::{EntityRef, ExplodeError, ExplosionInteraction, ExplosionSettings};
 use sunrise_game_data::gamerules::vanilla;
+use sunrise_gameplay_common::game::native_hooks::sound_id;
 use sunrise_level::particle_options::ParticleType;
 use sunrise_sim::lan::server_effects::{
     ServerExplosionParticle, ServerParticle, server_particle_ok,
@@ -142,7 +142,8 @@ impl crate::game::ServerGame<'_> {
                 }
                 let immune = match &c.immune_blocks {
                     Some(tag) => Some(
-                        self.common.res
+                        self.common
+                            .res
                             .items()
                             .block_tags
                             .get(tag)
@@ -260,21 +261,29 @@ impl crate::game::ServerGame<'_> {
                 return;
             }
             Target::Projectile(_) => self
-                .common.creatures
+                .common
+                .creatures
                 .projectiles
                 .iter()
                 .find(|p| p.id == id)
                 .and_then(|p| Some((p.owner?, p.guest))),
             Target::Rocket(_) => self
-                .common.rockets
+                .common
+                .rockets
                 .iter()
                 .find(|r| r.id == id)
                 .and_then(|r| Some((r.owner?, r.guest))),
             // A thrown trident's owner is a player: a guest, or the player in place.
-            Target::Trident(_) => self.common.tridents.iter().find(|t| t.id == id).and_then(|t| {
-                let in_place = self.common.player.as_ref().map(|p| p.entity_id as u32);
-                (t.guest.is_some() || in_place == Some(t.owner)).then_some((Who::Player, t.guest))
-            }),
+            Target::Trident(_) => self
+                .common
+                .tridents
+                .iter()
+                .find(|t| t.id == id)
+                .and_then(|t| {
+                    let in_place = self.common.player.as_ref().map(|p| p.entity_id as u32);
+                    (t.guest.is_some() || in_place == Some(t.owner))
+                        .then_some((Who::Player, t.guest))
+                }),
             Target::Hook(_) => self.fishing_hook_by_id(id).map(|(_, caster)| match caster {
                 Target::Guest(conn) => (Who::Player, Some(conn)),
                 _ => (Who::Player, self.server.lan_acting),
@@ -314,7 +323,8 @@ impl crate::game::ServerGame<'_> {
             // MinecartTNT.isPrimed (fuse > -1).
             Target::Cart(_)
                 if self
-                    .common.carts
+                    .common
+                    .carts
                     .iter()
                     .any(|c| c.id == id && c.kind == CartKind::Tnt && c.fuse >= 0) =>
             {
@@ -328,7 +338,12 @@ impl crate::game::ServerGame<'_> {
                 SourceCalculator::PortalProof
             }
             Target::Projectile(_) => {
-                let charge = self.common.creatures.projectiles.iter().find(|p| p.id == id);
+                let charge = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id);
                 let knockback = match charge.map(|p| &p.kind) {
                     Some(ProjectileKind::WindCharge) => super::wind::PLAYER_KNOCKBACK,
                     Some(ProjectileKind::BreezeWindCharge) => 1.0,

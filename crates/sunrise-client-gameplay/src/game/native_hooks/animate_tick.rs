@@ -1,4 +1,4 @@
-
+use sunrise_gameplay_common::game::api_values::block_state::block_listens;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -10,7 +10,8 @@ impl crate::game::ClientGame<'_> {
     /// Whether a client tick's sampling asks for the block parts' `animate_tick`: some part
     /// answers it and this is a window's client.
     pub(in crate::game) fn mod_animate_parts(&self) -> bool {
-        mod_api::__private::has_scoped_hook(mod_api::HookId::AnimateTick) && self.common.native_window()
+        mod_api::__private::has_scoped_hook(mod_api::HookId::AnimateTick)
+            && self.common.native_window()
     }
 
     /// Calls the parts of the pick at `pos` (`state`), inside the pick as vanilla's

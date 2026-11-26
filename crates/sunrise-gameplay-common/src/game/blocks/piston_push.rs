@@ -40,13 +40,13 @@ pub enum Lid {
 }
 
 impl Lid {
-    pub(in crate::game) fn mover(self) -> MoverType {
+    pub fn mover(self) -> MoverType {
         match self {
             Lid::Box => MoverType::ShulkerBox,
             Lid::Shulker(_) => MoverType::Shulker,
         }
     }
-    pub(in crate::game) fn shulker(self) -> Option<u32> {
+    pub fn shulker(self) -> Option<u32> {
         match self {
             Lid::Box => None,
             Lid::Shulker(id) => Some(id),
@@ -64,28 +64,28 @@ pub(in crate::game) struct PistonIndex {
 
 /// `Entity.getStepHeight` of each body, read before the push.
 pub struct StepHeights {
-    pub(in crate::game) player: f32,
-    pub(in crate::game) guests: std::collections::HashMap<u32, f32>,
+    pub player: f32,
+    pub guests: std::collections::HashMap<u32, f32>,
 }
 
 /// One selected body; the handle is only a hint once a move can reenter the level.
 #[derive(Clone, Copy)]
 pub struct PushTarget {
-    pub(in crate::game) hint: MoveWho,
-    pub(in crate::game) id: u32,
-    pub(in crate::game) join: Option<JoinSeq>,
+    pub hint: MoveWho,
+    pub id: u32,
+    pub join: Option<JoinSeq>,
 }
 
 /// What the push needs from one entity.
 #[derive(Clone, Copy)]
 pub struct Body {
-    pub(in crate::game) bounds: Aabb,
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) on_ground: bool,
-    pub(in crate::game) step_height: f32,
-    pub(in crate::game) piston_reaction: PushReaction,
+    pub bounds: Aabb,
+    pub position: Vec3,
+    pub on_ground: bool,
+    pub step_height: f32,
+    pub piston_reaction: PushReaction,
     /// Standing on the piston's own block (`Entity.isSupportedBy`).
-    pub(in crate::game) supported: bool,
+    pub supported: bool,
 }
 
 impl crate::game::CommonGame<'_> {

@@ -342,7 +342,7 @@ impl crate::game::ClientGame<'_> {
         &self,
         stack: &sunrise_items::items::ItemStack,
     ) -> Cow<'static, mod_api::Identifier> {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         let default = Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID);
         let state = &self.client.armor_stand_assets.0.extensions;
         if state.items.is_empty() {
@@ -378,7 +378,7 @@ impl crate::game::ClientGame<'_> {
         mut texture: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
         mut emissive: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
     ) -> Option<Vec<super::equipment_piece::EquipmentMaterial<'a>>> {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         let state = &self.client.armor_stand_assets.0.extensions;
         if state.items.is_empty() {
             return None;

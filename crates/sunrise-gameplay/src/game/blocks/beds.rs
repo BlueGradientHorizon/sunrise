@@ -5,14 +5,15 @@
 //! down (`try_sleep`) and freed in the level's tick once nobody sleeps in it
 //! any more, whichever way they got up: waking, the Leave Bed button, death,
 //! a broken bed, or leaving the game.
-use super::native_hooks::SleepProblem;
 use super::{Dim, Game};
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::native_hooks::SleepProblem;
 
 impl crate::game::ServerGame<'_> {
     /// `BedRule.canSleep` of the current dimension's bed rule.
     pub(in crate::game) fn bed_can_sleep_now(&self) -> bool {
-        self.common.dimension_type()
+        self.common
+            .dimension_type()
             .bed_rule
             .can_sleep
             .test(self.dark_outside())
@@ -101,7 +102,11 @@ impl crate::game::ServerGame<'_> {
             let bed = self.common.world.block(head[0], head[1], head[2]);
             let straw = &*self.common.res.facts().get(bed).name == "minecraft:straw_bed";
             if straw
-                && self.common.dimension_type_of(dim).straw_bed_rule.destroy_on_leave
+                && self
+                    .common
+                    .dimension_type_of(dim)
+                    .straw_bed_rule
+                    .destroy_on_leave
                 && let Err(e) = self.destroy_straw_bed(head)
             {
                 log::warn!("could not break the straw bed at {head:?}: {e}");

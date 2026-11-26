@@ -1,4 +1,7 @@
-
+#[cfg(feature = "client")]
+use sunrise_core::position::BlockPos;
+#[cfg(feature = "client")]
+use sunrise_world::registry::BlockStateId;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

@@ -1,11 +1,11 @@
 //! A shift-click in a mod container's menu, routed by the mods
 //! (`native_menu_quick_move`, `AbstractContainerMenu.quickMoveStack`) before
 //! the game's own routing.
-use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
 use super::{BlockStateId, Game, transactions::After};
 use crate::game::server_side::native_hooks_server::block_entity_tick::ResidentBlockEntityAccess;
 use mod_api::{BlockEntityRef, BlockEntityScope, BlockEntityTypeKey};
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     block_entities::Pos,
@@ -469,10 +469,7 @@ impl Admitted {
 
     /// Whether the same window, guest mode and original backing generation are still admitted.
     /// Callers separately check the level-bound holder before settling the clicked slot.
-    pub(in crate::game) fn holds(
-        &self,
-        game: &crate::game::ServerGame<'_>,
-    ) -> bool {
+    pub(in crate::game) fn holds(&self, game: &crate::game::ServerGame<'_>) -> bool {
         let Some(guest) = game
             .side
             .lan

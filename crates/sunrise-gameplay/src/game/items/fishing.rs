@@ -2,16 +2,16 @@
 //! bobbing, lure and bite timers, open water, hooking mobs, retrieving the
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
 use super::{Game, creatures::ProjectileHitter, lan_mobs::guest_bounds};
-#[cfg(test)]
-use sunrise_gameplay_common::game::fishing_common::inside_medium;
-use sunrise_gameplay_common::game::fishing_common::{
-    Hook, HookLerp, HookMedium, SIZE, State, bite_impulse, bounds, rebound, synchronized_random,
-};
 use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
+};
+#[cfg(test)]
+use sunrise_gameplay_common::game::fishing_common::inside_medium;
+use sunrise_gameplay_common::game::fishing_common::{
+    Hook, HookLerp, HookMedium, SIZE, State, bite_impulse, bounds, rebound, synchronized_random,
 };
 use sunrise_protocol::entity_data::{Value, serializer};
 use sunrise_sim::advancements::EntityView;
@@ -263,7 +263,12 @@ impl crate::game::ServerGame<'_> {
         };
         let mut rows = Vec::new();
         for seed in [0_i64, 1, 42, 123456789, -1] {
-            let position = self.common.player.as_ref().expect("harness player").position;
+            let position = self
+                .common
+                .player
+                .as_ref()
+                .expect("harness player")
+                .position;
             let Some(id) = self.server.next_entity.checked_add(1) else {
                 break;
             };
@@ -277,13 +282,15 @@ impl crate::game::ServerGame<'_> {
             self.common.world.random.set_seed(seed);
             self.use_fishing_rod(&rod);
             let items: Vec<_> = self
-                .common.dropped
+                .common
+                .dropped
                 .iter()
                 .skip(item_start)
                 .map(|item| item.stack.item.to_string())
                 .collect();
             let xp: Vec<_> = self
-                .common.orbs
+                .common
+                .orbs
                 .iter()
                 .skip(orb_start)
                 .map(|orb| orb.value)
@@ -306,7 +313,8 @@ impl crate::game::ServerGame<'_> {
         ];
         let old_block = self.common.world.block(block[0], block[1], block[2]);
         let water = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .default_state("minecraft:water")
@@ -352,7 +360,8 @@ impl crate::game::ServerGame<'_> {
         // The client must take the same block hit before moving as the server;
         // otherwise it lands farther away and slides back on the next update.
         let stone = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .default_state("minecraft:stone")
@@ -374,7 +383,9 @@ impl crate::game::ServerGame<'_> {
             );
             let mut random = LegacyRandom::new(0);
             for tick in 0..5 {
-                state = self.common.client_hook_step(1, None, false, state, &mut random);
+                state = self
+                    .common
+                    .client_hook_step(1, None, false, state, &mut random);
                 rows.push(serde_json::json!({
                     "case": case, "tick": tick,
                     "position": [state.0.x - f64::from(block[0]), state.0.y, state.0.z - f64::from(block[2])],
@@ -393,7 +404,11 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game::server_side) fn holds_rod(&self) -> bool {
         self.common.held().is_some_and(|s| self.common.is_rod(s))
-            || self.common.offhand.as_ref().is_some_and(|s| self.common.is_rod(s))
+            || self
+                .common
+                .offhand
+                .as_ref()
+                .is_some_and(|s| self.common.is_rod(s))
     }
     /// `FishingRodItem.use`.
     pub(in crate::game::server_side) fn use_fishing_rod(&mut self, stack: &ItemStack) -> bool {
@@ -402,8 +417,10 @@ impl crate::game::ServerGame<'_> {
         }
         // The mods hear a server player's cast or reel-in first.
         if self.common.player.is_some()
-            && let (Some(uuid), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+            && let (Some(uuid), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             let state = match self.common.hook.as_ref() {
                 None => 0,
@@ -418,7 +435,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let Some((pos, eye_height)) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| (p.position, p.dimensions.eye_height))
         else {
@@ -532,7 +550,12 @@ impl crate::game::ServerGame<'_> {
             } else if let Some(item) = self.common.dropped.iter_mut().find(|i| i.id == id) {
                 pull_item(item, Vec3::new(d.x * 0.1, d.y * 0.1, d.z * 0.1));
                 hooked_item = true;
-            } else if let Some(t) = self.common.tnts.iter_mut().find(|t| t.id != 0 && t.id == id) {
+            } else if let Some(t) = self
+                .common
+                .tnts
+                .iter_mut()
+                .find(|t| t.id != 0 && t.id == id)
+            {
                 t.velocity = pulled(t.velocity);
             } else if let Some(a) = self.common.armor_stands.iter_mut().find(|a| a.id == id) {
                 a.velocity = pulled(a.velocity);
@@ -542,11 +565,16 @@ impl crate::game::ServerGame<'_> {
                 });
             } else if let Some(i) = self.common.carts.iter().position(|c| c.id == id) {
                 // `AbstractMinecart` is pickable, so `pullEntity` moves it too.
-                self.common.carts.update(i, |c| c.velocity = pulled(c.velocity));
+                self.common
+                    .carts
+                    .update(i, |c| c.velocity = pulled(c.velocity));
             } else if let Some(i) = self.common.falling.iter().position(|f| f.id == id) {
-                self.common.falling.update(i, |f| f.velocity = pulled(f.velocity));
+                self.common
+                    .falling
+                    .update(i, |f| f.velocity = pulled(f.velocity));
             } else if self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_some_and(|pl| pl.entity_id as u32 == id)
             {
@@ -561,13 +589,15 @@ impl crate::game::ServerGame<'_> {
             }
             // CriteriaTriggers.FISHING_ROD_HOOKED for any hooked entity type.
             let hooked = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| self.mob_entity(m))
                 .or_else(|| {
                     let kind = if self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .is_some_and(|pl| pl.entity_id as u32 == id)
                     {
@@ -594,7 +624,8 @@ impl crate::game::ServerGame<'_> {
             // `withLuck(this.luck + owner.getLuck())`: the rod's Luck of the Sea
             // plus the owner's luck attribute (the Luck and Bad Luck effects).
             let owner_luck = self
-                .common.player
+                .common
+                .player
                 .as_mut()
                 .and_then(|p| p.attribute("minecraft:luck").ok())
                 .unwrap_or(0.0) as f32;
@@ -613,7 +644,7 @@ impl crate::game::ServerGame<'_> {
             let params = hook_params(luck, Some(self.killer_loot_entity(None)));
             let caller = self.caller_loot(
                 Some([hook.position.x, hook.position.y, hook.position.z]),
-                Some(super::creatures::to_loot(rod)),
+                Some(sunrise_gameplay_common::game::creatures::to_loot(rod)),
             );
             let items = caller.with(|| {
                 fishing_loot(
@@ -687,7 +718,8 @@ impl crate::game::ServerGame<'_> {
             self.trigger_fishing_rod_hooked(rod, &bobber, &caught);
             for item in caught.iter().cloned() {
                 let fish = self
-                    .common.res
+                    .common
+                    .res
                     .items()
                     .item_tags
                     .get("minecraft:fishes")
@@ -820,9 +852,10 @@ impl crate::game::ServerGame<'_> {
             } else {
                 // The mods hear a server player's fish bite, and may call it
                 // off: the wait starts over.
-                if let (Some(uuid), Some(name)) =
-                    (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-                {
+                if let (Some(uuid), Some(name)) = (
+                    self.server.lan_acting_uuid,
+                    self.server.lan_acting_name.clone(),
+                ) {
                     let mut cancel = false;
                     self.native_player_fish(uuid, &name, 1, &mut cancel);
                     if cancel {
@@ -896,7 +929,8 @@ impl crate::game::ServerGame<'_> {
             Some(hook) => {
                 let to = hook.position;
                 self.common.hook.put_back(hook);
-                self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.common
+                    .entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             }
             None => self.common.hook.retire_extracted(id, join),
         }
@@ -944,7 +978,10 @@ impl crate::game::ServerGame<'_> {
             h.position.y.floor() as i32,
             h.position.z.floor() as i32,
         ];
-        let liquid = self.common.water_height(b[0], b[1], b[2]).map_or(0.0, |w| w.0);
+        let liquid = self
+            .common
+            .water_height(b[0], b[1], b[2])
+            .map_or(0.0, |w| w.0);
         // Out of water, a mod may say the bobber floats here all the same.
         let hooked = matches!(h.state, State::Hooked(_));
         let medium = if liquid > 0.0 || hooked {
@@ -1003,11 +1040,12 @@ impl crate::game::ServerGame<'_> {
                     .expand_towards(h.velocity)
                     .inflate(Vec3::new(1.0, 1.0, 1.0));
                 let mut best = sunrise_sim::projectiles::NearestHit::new();
-                let query = super::creatures::TargetQuery {
-                    include_guests: true,
-                    include_items: true,
-                    ..Default::default()
-                };
+                let query =
+                    sunrise_gameplay_common::game::creatures::projectile_targets::TargetQuery {
+                        include_guests: true,
+                        include_items: true,
+                        ..Default::default()
+                    };
                 self.visit_projectile_targets(query, &[], |c| {
                     if !h.left_owner
                         && self.in_same_vehicle_tree(sunrise_sim::mobs::Who::Player, c.who)
@@ -1049,7 +1087,8 @@ impl crate::game::ServerGame<'_> {
                         );
                     } else if id != 0 {
                         let breeze = self
-                            .common.mobs
+                            .common
+                            .mobs
                             .iter()
                             .find(|m| {
                                 m.id == id
@@ -1117,61 +1156,84 @@ impl crate::game::ServerGame<'_> {
             State::Hooked(id) => {
                 // updateHookedEntity: ride the hooked mob, player or item at 0.8 of its height.
                 let hooked = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id && m.alive())
                     .map(|m| (m.position, f64::from(m.height())))
                     .or_else(|| {
-                        self.server.hook_targets.iter().find(|t| t.id == id).map(|t| {
-                            let (lo, hi) = (t.bounds.min_position(), t.bounds.max_position());
+                        self.server
+                            .hook_targets
+                            .iter()
+                            .find(|t| t.id == id)
+                            .map(|t| {
+                                let (lo, hi) = (t.bounds.min_position(), t.bounds.max_position());
+                                (
+                                    Vec3::new((lo.x + hi.x) / 2.0, lo.y, (lo.z + hi.z) / 2.0),
+                                    hi.y - lo.y,
+                                )
+                            })
+                    })
+                    .or_else(|| {
+                        self.common
+                            .armor_stands
+                            .iter()
+                            .find(|a| a.id == id)
+                            .map(|a| {
+                                let b = a.bounds();
+                                (a.position, b.max_position().y - b.min_position().y)
+                            })
+                    })
+                    .or_else(|| {
+                        self.common.boats.iter().find(|b| b.id == id).map(|b| {
                             (
-                                Vec3::new((lo.x + hi.x) / 2.0, lo.y, (lo.z + hi.z) / 2.0),
-                                hi.y - lo.y,
+                                b.position,
+                                sunrise_gameplay_common::game::boats_common::HEIGHT,
                             )
                         })
                     })
                     .or_else(|| {
-                        self.common.armor_stands.iter().find(|a| a.id == id).map(|a| {
-                            let b = a.bounds();
-                            (a.position, b.max_position().y - b.min_position().y)
-                        })
-                    })
-                    .or_else(|| {
-                        self.common.boats
-                            .iter()
-                            .find(|b| b.id == id)
-                            .map(|b| (b.position, sunrise_gameplay_common::game::boats_common::HEIGHT))
-                    })
-                    .or_else(|| {
-                        self.common.carts
+                        self.common
+                            .carts
                             .iter()
                             .find(|c| c.id == id)
                             .map(|c| (c.position, super::minecarts::HEIGHT))
                     })
                     .or_else(|| {
-                        self.common.dropped
+                        self.common
+                            .dropped
                             .iter()
                             .find(|i| i.id == id)
                             .map(|i| (i.position, sunrise_sim::entities::ItemEntity::WIDTH))
                     })
                     .or_else(|| {
-                        self.common.tnts
+                        self.common
+                            .tnts
                             .iter()
                             .find(|t| t.id != 0 && t.id == id)
-                            .map(|t| (t.position, sunrise_gameplay_common::game::tnt_common::PrimedTnt::SIZE))
+                            .map(|t| {
+                                (
+                                    t.position,
+                                    sunrise_gameplay_common::game::tnt_common::PrimedTnt::SIZE,
+                                )
+                            })
                     })
                     .or_else(|| {
-                        self.common.item_frames.iter().find(|f| f.id == id).map(|f| {
-                            let (lo, hi) = f.bounds();
-                            (
-                                Vec3::new(
-                                    (lo[0] + hi[0]) * 0.5,
-                                    (lo[1] + hi[1]) * 0.5,
-                                    (lo[2] + hi[2]) * 0.5,
-                                ),
-                                f64::from(0.5_f32),
-                            )
-                        })
+                        self.common
+                            .item_frames
+                            .iter()
+                            .find(|f| f.id == id)
+                            .map(|f| {
+                                let (lo, hi) = f.bounds();
+                                (
+                                    Vec3::new(
+                                        (lo[0] + hi[0]) * 0.5,
+                                        (lo[1] + hi[1]) * 0.5,
+                                        (lo[2] + hi[2]) * 0.5,
+                                    ),
+                                    f64::from(0.5_f32),
+                                )
+                            })
                     })
                     .or_else(|| {
                         self.common.paintings.iter().find(|p| p.id == id).map(|p| {
@@ -1187,25 +1249,29 @@ impl crate::game::ServerGame<'_> {
                         })
                     })
                     .or_else(|| {
-                        self.common.falling
+                        self.common
+                            .falling
                             .iter()
                             .find(|f| f.id == id)
                             .map(|f| (f.position, f64::from(0.98_f32)))
                     })
                     .or_else(|| {
-                        self.common.crystals
+                        self.common
+                            .crystals
                             .iter()
                             .find(|c| c.id != 0 && c.id == id)
                             .map(|c| (c.position, 2.0))
                     })
                     .or_else(|| {
-                        self.common.cushions
+                        self.common
+                            .cushions
                             .iter()
                             .find(|c| c.id == id)
                             .map(|c| (c.position, f64::from(0.25_f32)))
                     })
                     .or_else(|| {
-                        self.common.resident_entities
+                        self.common
+                            .resident_entities
                             .knots
                             .iter()
                             .find(|k| k.id == id)
@@ -1217,7 +1283,8 @@ impl crate::game::ServerGame<'_> {
                             })
                     })
                     .or_else(|| {
-                        self.common.player
+                        self.common
+                            .player
                             .as_ref()
                             .filter(|pl| pl.entity_id as u32 == id)
                             .map(|pl| (pl.position, f64::from(pl.dimensions.height)))
@@ -1261,7 +1328,8 @@ impl crate::game::ServerGame<'_> {
                 if in_water {
                     h.out_of_water = (h.out_of_water - 1).max(0);
                     if h.nibble > 0 {
-                        let mut sync_random = synchronized_random(h.uuid, self.common.world.game_time);
+                        let mut sync_random =
+                            synchronized_random(h.uuid, self.common.world.game_time);
                         let dip = -0.1
                             * f64::from(sync_random.next_float())
                             * f64::from(sync_random.next_float());
@@ -1373,7 +1441,9 @@ impl crate::game::ServerGame<'_> {
         let side = game_side!(self);
         let motion = self.common.body_motion(&side);
         motion.apply_block_speed(position, velocity);
-        let writes = self.common.body_step_on(entity, (position, bounds(position)), ground, velocity);
+        let writes =
+            self.common
+                .body_step_on(entity, (position, bounds(position)), ground, velocity);
         super::entity::apply_contact_writes(writes, velocity, None, None, None);
     }
     /// The players a hook can catch: everyone but spectators and the dead
@@ -1422,7 +1492,12 @@ impl crate::game::ServerGame<'_> {
     /// someone else's hook for the moment, so theirs is left out.
     pub(in crate::game::server_side) fn fishing_hooks_here(
         &self,
-    ) -> impl Iterator<Item = (&Hook, sunrise_gameplay_common::game::commands_common::Target)> {
+    ) -> impl Iterator<
+        Item = (
+            &Hook,
+            sunrise_gameplay_common::game::commands_common::Target,
+        ),
+    > {
         use sunrise_gameplay_common::game::commands_common::Target;
         let own = self.common.hook.iter().map(|hook| (hook, Target::Player));
         let guests = self.server.lan.iter().flat_map(|host| {
@@ -1473,7 +1548,9 @@ impl crate::game::ServerGame<'_> {
                     .and_then(|play| play.hook.as_mut())
             }
             sunrise_gameplay_common::game::commands_common::Target::Player
-            | sunrise_gameplay_common::game::commands_common::Target::Guest(_) => self.common.hook.as_mut(),
+            | sunrise_gameplay_common::game::commands_common::Target::Guest(_) => {
+                self.common.hook.as_mut()
+            }
             _ => None,
         };
         let Some(hook) = hook else {
@@ -1488,7 +1565,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn remove_fishing_hook(&mut self, id: u32) {
         use sunrise_sim::join_seq::residency::{Kind, Source, table::EntityLookup};
         let found = self
-            .common.resident_entities
+            .common
+            .resident_entities
             .table
             .borrow_mut()
             .server_entity_lookup(id, |at| self.locate_server_resident_owner(at));
@@ -1516,13 +1594,17 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn fishing_hook_by_id(
         &self,
         id: u32,
-    ) -> Option<(&Hook, sunrise_gameplay_common::game::commands_common::Target)> {
+    ) -> Option<(
+        &Hook,
+        sunrise_gameplay_common::game::commands_common::Target,
+    )> {
         use sunrise_sim::join_seq::residency::{
             Kind, Source,
             table::{EntityLookup, SourceEntity},
         };
         let found = self
-            .common.resident_entities
+            .common
+            .resident_entities
             .table
             .borrow_mut()
             .server_entity_lookup(id, |at| {
@@ -1673,8 +1755,6 @@ fn track(hook: &Hook, owner: i32, out: &mut States) {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{Hook, cast_direction, entity_hit_margin, first_entity_hit, pull_item, rebound};
-
-    
 
     /// `fishing_medium`'s surface: a bobber is in the medium below `floor(surface) + 1`, and a
     /// surface that is not finite, or under the bobber, is no medium.
@@ -2082,8 +2162,6 @@ pub(in crate::game) mod tests {
         );
         assert_eq!(pulled, Vec3::new(1.5, 0.2, 0.0));
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;

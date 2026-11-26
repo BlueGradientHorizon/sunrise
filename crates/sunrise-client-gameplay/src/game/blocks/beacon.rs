@@ -10,11 +10,11 @@ use super::{
         tooltip::{WidgetTooltipPositioner, quantize_tooltip_anchor},
     },
 };
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::game::beacon_common::{EFFECTS, effect_box_hits};
 use sunrise_client::{hud::HudBatch, mesher::Vertex};
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_game_data::text::Text;
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay_common::game::beacon_common::{EFFECTS, effect_box_hits};
 use sunrise_items::items::ItemStack;
 use sunrise_level::{containers::BlockEntity, test_instance_block::Status};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
@@ -123,7 +123,8 @@ impl crate::game::ClientGame<'_> {
                     .and_then(|key| {
                         let (ns, path) = key.split_once(':').unwrap_or(("minecraft", key));
                         let file = self
-                            .common.options
+                            .common
+                            .options
                             .resources
                             .join("data")
                             .join(ns)
@@ -131,7 +132,7 @@ impl crate::game::ClientGame<'_> {
                             .join(format!("{path}.json"));
                         let json: serde_json::Value =
                             serde_json::from_slice(&std::fs::read(file).ok()?).ok()?;
-                        sunrise_gameplay::test_instances::parse_test_def(&json)
+                        sunrise_gameplay_common::test_instances::parse_test_def(&json)
                     })
                     .is_none_or(|t| t.required);
                 if required { 0xFF_0000 } else { 0xFF_8000 }
@@ -144,11 +145,15 @@ impl crate::game::ClientGame<'_> {
     /// carries no beam sections, so the client builds them too; effects,
     /// sounds and the advancement stay with the server.
     pub(in crate::game) fn client_tick_beacon(&mut self, key: (i32, i32, i32)) {
-        let Some((lease, BlockEntity::Beacon(mut b))) = self.common.world.block_entities.take(&key) else {
+        let Some((lease, BlockEntity::Beacon(mut b))) = self.common.world.block_entities.take(&key)
+        else {
             return;
         };
         let _ = self.common.advance_beacon_beam(key, &mut b);
-        self.common.world.block_entities.put(lease, BlockEntity::Beacon(b));
+        self.common
+            .world
+            .block_entities
+            .put(lease, BlockEntity::Beacon(b));
     }
     fn beacon_levels(&self) -> i32 {
         let Some((s, ui)) = self.station_and_ui() else {
@@ -158,7 +163,12 @@ impl crate::game::ClientGame<'_> {
             return levels;
         }
         let pos = s.pos;
-        match self.common.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        match self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))
+        {
             Some(BlockEntity::Beacon(b)) => b.levels,
             _ => 0,
         }
@@ -228,7 +238,11 @@ impl crate::game::ClientGame<'_> {
             return true;
         }
         if inside(l, 164.0, 107.0, 22.0, 22.0) {
-            let paid = self.common.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
+            let paid = self
+                .common
+                .station
+                .as_ref()
+                .is_some_and(|s| s.inputs[0].is_some());
             if paid && sel[0].is_some() {
                 self.client
                     .audio
@@ -269,7 +283,11 @@ impl crate::game::ClientGame<'_> {
         let local = (self.client.cursor.0 - bx, self.client.cursor.1 - by);
         let levels = self.beacon_levels();
         let sel = self.common.station.as_ref().map_or([None; 2], |s| s.beacon);
-        let paid = self.common.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
+        let paid = self
+            .common
+            .station
+            .as_ref()
+            .is_some_and(|s| s.inputs[0].is_some());
         // BeaconScreen draws no title, but has the menu's.
         super::screen_info::name_container(|| {
             self.remote_menu_title().map_or_else(
@@ -438,16 +456,21 @@ impl crate::game::ClientGame<'_> {
         // `BeaconRenderer.shouldRender` and `TestInstanceRenderer.shouldRender` cull at the
         // effective render distance.
         let view = self.effective_render_distance();
-        let beams = self.common.world.block_entities.iter().filter_map(|(k, e)| {
-            let (reach, sections) = match beam(e) {
-                Some(sections) => (Reach::Beacon, std::borrow::Cow::Borrowed(sections)),
-                None => (
-                    Reach::TestInstance,
-                    std::borrow::Cow::Owned(self.test_instance_beam(e)?),
-                ),
-            };
-            Some((k, reach, sections))
-        });
+        let beams = self
+            .common
+            .world
+            .block_entities
+            .iter()
+            .filter_map(|(k, e)| {
+                let (reach, sections) = match beam(e) {
+                    Some(sections) => (Reach::Beacon, std::borrow::Cow::Borrowed(sections)),
+                    None => (
+                        Reach::TestInstance,
+                        std::borrow::Cow::Owned(self.test_instance_beam(e)?),
+                    ),
+                };
+                Some((k, reach, sections))
+            });
         for (k, reach, sections) in beams {
             let base = glam::DVec3::new(f64::from(k.0) + 0.5, f64::from(k.1), f64::from(k.2) + 0.5);
             if !reach.should_render([k.0, k.1, k.2], camera, view) {

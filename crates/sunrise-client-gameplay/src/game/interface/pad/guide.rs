@@ -327,7 +327,9 @@ impl crate::game::ClientGame<'_> {
         let mut item_use = None;
         if !spectator && !swallowed {
             for hand in Hand::BOTH {
-                item_use = self.common.with_hand(hand, |g| g.pad_guide_item_use(block.as_ref()));
+                item_use = self
+                    .common
+                    .with_hand(hand, |g| g.pad_guide_item_use(block.as_ref()));
                 if item_use.is_some() {
                     break;
                 }
@@ -386,9 +388,14 @@ impl crate::game::ClientGame<'_> {
         let object = self
             .remote_object_hit()
             .filter(|hit| self.common.before_block(hit.distance))
-            .filter(|hit| self.common.mob_hit().is_none_or(|(_, d, _)| hit.distance < d));
+            .filter(|hit| {
+                self.common
+                    .mob_hit()
+                    .is_none_or(|(_, d, _)| hit.distance < d)
+            });
         let mob = self
-            .common.mob_hit()
+            .common
+            .mob_hit()
             .filter(|(_, d, _)| object.is_none() && self.common.before_block(*d));
         if attack.is_some() || object.is_some() || mob.is_some() {
             let takes = if spectator {
@@ -419,7 +426,8 @@ impl crate::game::ClientGame<'_> {
         } else {
             let held = self.common.held().cloned();
             let ender_chest = &*self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                 .name
@@ -439,19 +447,22 @@ impl crate::game::ClientGame<'_> {
         };
         let breakable = !self.common.block_action_restricted(hit.pos)
             && self
-                .common.res
+                .common
+                .res
                 .items()
                 .can_destroy_block(self.common.held(), self.common.creative)
             && (self.common.creative
                 || self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                     .hardness
                     >= 0.0);
         let picked = !spectator
             && self
-                .common.picked_stack(hit.pos, false)
+                .common
+                .picked_stack(hit.pos, false)
                 .is_some_and(|stack| self.pad_guide_can_pick(&stack));
         (Target::Block { breakable, takes }, Some(hit), picked)
     }
@@ -475,7 +486,10 @@ impl crate::game::ClientGame<'_> {
 
     /// A redstone conductor on the block, which keeps an ender chest shut.
     fn pad_guide_block_covered(&self, hit: &super::super::Hit) -> bool {
-        let above = self.common.world.block(hit.pos[0], hit.pos[1] + 1, hit.pos[2]);
+        let above = self
+            .common
+            .world
+            .block(hit.pos[0], hit.pos[1] + 1, hit.pos[2]);
         self.common.res.behaviours().facts(above).flags
             & sunrise_world::level::data::state_flags::CONDUCTOR
             != 0
@@ -498,7 +512,11 @@ impl crate::game::ClientGame<'_> {
         if let Some(cart) = self.common.carts.iter().find(|c| c.id as i32 == id) {
             use super::super::minecarts::CartKind;
             let ridden = self.common.riding == Some(cart.id)
-                || self.common.mobs.iter().any(|m| m.extra.mount == Some(cart.id));
+                || self
+                    .common
+                    .mobs
+                    .iter()
+                    .any(|m| m.extra.mount == Some(cart.id));
             let game_master = self.common.can_use_game_master_blocks();
             return match cart.kind {
                 _ if cart.kind.interact_passes(sneaking, ridden, game_master) => None,
@@ -514,11 +532,13 @@ impl crate::game::ClientGame<'_> {
             if boat.chest && (sneaking || self.common.riding.is_some() || !room) {
                 return Some(Verb::Open);
             }
-            let rideable = !sneaking && boat.out_of_control < 60.0 && self.common.riding.is_none() && room;
+            let rideable =
+                !sneaking && boat.out_of_control < 60.0 && self.common.riding.is_none() && room;
             return rideable.then_some(Verb::Ride);
         }
         if self
-            .common.painting_hit()
+            .common
+            .painting_hit()
             .is_some_and(|(_, d)| (d - distance).abs() < 1e-6)
         {
             return None;
@@ -595,12 +615,15 @@ impl crate::game::ClientGame<'_> {
                 || id.ends_with("_boat")
                 || id.ends_with("_raft")
                 || id.ends_with("_spawn_egg");
-            if places_on_block && (self.common.may_build() || self.common.can_place_on_in_adventure(hit.pos)) {
+            if places_on_block
+                && (self.common.may_build() || self.common.can_place_on_in_adventure(hit.pos))
+            {
                 return Some(Verb::Place);
             }
             if self.common.may_build()
                 && self
-                    .common.block_transform(&stack, hit, self.held_mapping(Action::Sneak))
+                    .common
+                    .block_transform(&stack, hit, self.held_mapping(Action::Sneak))
                     .is_some()
             {
                 return Some(Verb::Use);
@@ -691,7 +714,7 @@ impl crate::game::ClientGame<'_> {
             }
             // A content mod's rod casts as vanilla's does.
             _ if info.is("minecraft:fishing_rod") => Verb::Fish,
-            _ if super::super::remote::item_has_use(&info) => Verb::Use,
+            _ if sunrise_gameplay_common::game::remote::item_has_use(&info) => Verb::Use,
             _ => return None,
         })
     }

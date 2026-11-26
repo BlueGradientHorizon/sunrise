@@ -129,25 +129,25 @@ pub struct NativeRecipeResult {
 /// nothing. A crafting recipe has one result and no chance.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NativeRecipeView {
-    pub(crate) layout: NativeRecipeLayout,
+    pub layout: NativeRecipeLayout,
     /// The grid's size (`Grid` only), at most 3 x 3; slots past it continue
     /// in rows under it, 27 in all.
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) slots: Vec<Vec<mod_api::Stack>>,
+    pub width: u32,
+    pub height: u32,
+    pub slots: Vec<Vec<mod_api::Stack>>,
     /// Up to four, left to right after the arrow.
-    pub(crate) results: Vec<NativeRecipeResult>,
+    pub results: Vec<NativeRecipeResult>,
     /// Fluids the recipe takes and gives, `amount` in millibuckets, each in
     /// a well with its amount under it; at most eight each. A well shows the
     /// fluid's client look (`data/<mod>/sunrise/fluid/`: sprite and tint), a
     /// flat square of vanilla's colour for water and lava and else grey when
     /// the fluid has none.
-    pub(crate) fluid_inputs: Vec<FluidStack>,
-    pub(crate) fluid_outputs: Vec<FluidStack>,
+    pub fluid_inputs: Vec<FluidStack>,
+    pub fluid_outputs: Vec<FluidStack>,
     /// A short line under the recipe (a cooking time), or "".
-    pub(crate) note: String,
+    pub note: String,
     /// The action button beside it: none, enabled, or shown greyed.
-    pub(crate) action: Option<bool>,
+    pub action: Option<bool>,
 }
 
 /// An item of [`NativeRecipes::items`], by its index there, with a count
@@ -186,26 +186,26 @@ pub struct NativeRecipe {
     pub(crate) kind: NativeRecipeKind,
     /// The recipe book's tab (`crafting_building_blocks`, `furnace_food`),
     /// or "".
-    pub(crate) category: String,
+    pub category: String,
     /// Recipes the book shows on one button share a group, or "".
-    pub(crate) group: String,
+    pub group: String,
     /// A shaped recipe's grid: `slots` holds its cells row by row. 0 for
     /// the other kinds.
-    pub(crate) width: u32,
-    pub(crate) height: u32,
+    pub width: u32,
+    pub height: u32,
     /// Each slot's stacks, any one of which fits; an empty list is an empty
     /// cell. Cooking and stonecutting: the input. Smithing: the template,
     /// the base, the addition. Brewing: the bottle, the reagent.
-    pub(crate) slots: Vec<Vec<NativeRecipeStack>>,
+    pub slots: Vec<Vec<NativeRecipeStack>>,
     /// What it makes; several when that varies (a trim on any armour).
-    pub(crate) results: Vec<NativeRecipeStack>,
+    pub results: Vec<NativeRecipeStack>,
     /// Cooking: game ticks and experience; 0 for the other kinds.
-    pub(crate) cooking_time: u32,
-    pub(crate) experience: f32,
+    pub cooking_time: u32,
+    pub experience: f32,
     /// The recipe book's id for it (one per way the book shows it), as
     /// `known_recipes` lists them; -1 for the kinds the book doesn't
     /// show (campfire, stonecutting, smithing, brewing).
-    pub(crate) book_id: i32,
+    pub book_id: i32,
 }
 
 /// An item of [`NativeRecipes::items`].
@@ -233,11 +233,7 @@ pub struct NativeRecipes {
 
 /// `native_living_use_totem` for the damage code: whether it
 /// canceled the totem. The entity and the source are named as the damage hook names them.
-pub fn use_totem(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    off_hand: bool,
-) -> bool {
+pub fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingUseTotem) {
         return false;
     }
@@ -262,11 +258,7 @@ pub fn use_totem(
 pub struct HitLevel<'a>(pub(in crate::game) DamageLevel<'a>);
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
-pub fn invulnerability_check(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    vanilla: bool,
-) -> bool {
+pub fn invulnerability_check(level: DamageLevel<'_>, hurting: Hurting<'_>, vanilla: bool) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::EntityInvulnerabilityCheck) {
         return vanilla;
     }
@@ -282,9 +274,7 @@ pub fn invulnerability_check(
     invulnerable
 }
 
-pub fn engine_reduction(
-    reduction: mod_api::Reduction,
-) -> sunrise_world::living_damage::Reduction {
+pub fn engine_reduction(reduction: mod_api::Reduction) -> sunrise_world::living_damage::Reduction {
     match reduction {
         mod_api::Reduction::Invulnerability => {
             sunrise_world::living_damage::Reduction::Invulnerability
@@ -300,9 +290,7 @@ pub fn engine_reduction(
     }
 }
 
-pub struct LiveDamageRead<'a>(
-    pub(in crate::game) &'a sunrise_world::living_damage::DamageState,
-);
+pub struct LiveDamageRead<'a>(pub(in crate::game) &'a sunrise_world::living_damage::DamageState);
 
 impl mod_api::__private::DamageContainerRead for LiveDamageRead<'_> {
     fn original(&self) -> f32 {
@@ -439,11 +427,7 @@ pub fn incoming_damage(
 }
 
 /// `native_living_damage_pre` for the damage code.
-pub fn damage_pre(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    container: &mut DamageContainer,
-) {
+pub fn damage_pre(level: DamageLevel<'_>, hurting: Hurting<'_>, container: &mut DamageContainer) {
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePre) {
         return;
     }
@@ -461,11 +445,7 @@ pub fn damage_pre(
 }
 
 /// `native_living_damage_post` for the damage code.
-pub fn damage_post(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    container: &DamageContainer,
-) {
+pub fn damage_post(level: DamageLevel<'_>, hurting: Hurting<'_>, container: &DamageContainer) {
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePost) {
         return;
     }
@@ -502,11 +482,7 @@ pub fn shield_block(
 /// `native_living_knockback` for the knockback code: whether it
 /// canceled the push. Its one caller. The pushed entity and the source are named as the
 /// damage hook names them.
-pub fn knockback(
-    level: DamageLevel<'_>,
-    pushed: Hurting<'_>,
-    knock: &mut Knock,
-) -> bool {
+pub fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut Knock) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingKnockback) {
         return false;
     }
@@ -845,10 +821,7 @@ impl crate::game::CommonGame<'_> {
         self.world.block_entities.set_stateful_entities(states);
     }
     /// Create a block entity from an actual state using the level's creation hook.
-    pub fn new_block_entity_for_state(
-        &mut self,
-        state: BlockStateId,
-    ) -> Option<BlockEntity> {
+    pub fn new_block_entity_for_state(&mut self, state: BlockStateId) -> Option<BlockEntity> {
         self.with_level(|_, level, _| level.new_block_entity_for_state(state))
     }
     /// A mod block's container at `key` opens its menu: its slots grown to
@@ -927,9 +900,7 @@ pub fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn client_packet_view(
-    packet: &sunrise_protocol::packets::play::Clientbound,
-) -> ClientPacket {
+pub fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Clientbound;

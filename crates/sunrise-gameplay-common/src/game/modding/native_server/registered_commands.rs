@@ -30,18 +30,15 @@ pub struct NativeCommands {
 #[derive(Default)]
 pub(in crate::game) struct NativeCommandState {
     /// A mod asked for its commands again (`refresh_commands`): done at the next server tick.
-    pub(in crate::game) refresh: bool,
-    pub(in crate::game) registered: Option<NativeCommands>,
+    pub refresh: bool,
+    pub registered: Option<NativeCommands>,
     /// The display report of the currently installed server command tree.
-    pub(in crate::game) report: Value,
+    pub report: Value,
     /// A hub holds the report revision it was given, not the dispatcher incarnation.
-    pub(in crate::game) display_revision: u64,
+    pub display_revision: u64,
 }
 
-pub fn without_reserved_roots(
-    report: &Value,
-    reserved: impl Fn(&str) -> bool,
-) -> Value {
+pub fn without_reserved_roots(report: &Value, reserved: impl Fn(&str) -> bool) -> Value {
     let mut report = report.clone();
     if let Some(roots) = report.get_mut("children").and_then(Value::as_object_mut) {
         roots.retain(|name, _| !reserved(name));
@@ -55,7 +52,7 @@ pub fn without_reserved_roots(
 impl NativeCommandState {
     /// The traversal level of a mod's root (`line`, without its slash), when registered.
     /// The parsed executable node enforces its own usage level separately.
-    pub(in crate::game) fn level(&self, line: &str) -> Option<u8> {
+    pub fn level(&self, line: &str) -> Option<u8> {
         let name = line.split(' ').next().unwrap_or_default();
         self.report["children"].get(name)?;
         self.registered.as_ref()?.levels.get(name).copied()

@@ -9,7 +9,8 @@
 //! go over the screen comes to the mod as `Dropped` (`Held`). With no mod
 //! showing a panel, each hook here returns after one check.
 use super::{
-    Game, Screen, native_hooks::PanelEvent as BrowserEvent, native_panel_recipes::RecipePage,
+    crate::game::native_hooks::PanelEvent as BrowserEvent, Game, Screen,
+    native_panel_recipes::RecipePage,
 };
 use mod_api::{PanelStyle, Stack as BrowserStack};
 use sunrise_client::{
@@ -610,7 +611,8 @@ impl crate::game::ClientGame<'_> {
         }
         let Some(shown) = self.client.panel.shown(|id| {
             !self
-                .common.mods
+                .common
+                .mods
                 .code_disabled(&self.client.settings.mods.disabled, id)
         }) else {
             self.client.panel.of = None;
@@ -623,7 +625,8 @@ impl crate::game::ClientGame<'_> {
         }
         if self.client.panel.of.as_ref() != Some(&of) {
             let items = self
-                .common.server_items
+                .common
+                .server_items
                 .as_deref()
                 .unwrap_or_else(|| self.common.res.items());
             let stacks = shown
@@ -646,7 +649,8 @@ impl crate::game::ClientGame<'_> {
     fn panel_shown(&self) -> Option<&Shown> {
         self.client.panel.shown(|id| {
             !self
-                .common.mods
+                .common
+                .mods
                 .code_disabled(&self.client.settings.mods.disabled, id)
         })
     }
@@ -1421,30 +1425,27 @@ pub(in crate::game::client_side) fn browser_stack(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::client_side::native_panel::tests::HEARD;
+    use sunrise_gameplay_common::game::client_side::native_panel::tests::HEARD;
 
-use sunrise_gameplay_common::game::client_side::native_panel::tests::MENU;
+    use sunrise_gameplay_common::game::client_side::native_panel::tests::MENU;
 
-use sunrise_gameplay_common::game::client_side::native_panel::tests::keys;
+    use sunrise_gameplay_common::game::client_side::native_panel::tests::keys;
 
-use sunrise_gameplay_common::game::client_side::native_panel::tests::stack;
+    use sunrise_gameplay_common::game::client_side::native_panel::tests::stack;
 
-use sunrise_gameplay_common::game::client_side::native_panel::tests::view;
+    use sunrise_gameplay_common::game::client_side::native_panel::tests::view;
 
     use super::{
         BrowserStack, BrowserTooltip, DRAG_THRESHOLD, Held, Now, Owner, Panel, RecipePage, Release,
         browser_overlay,
     };
-    use sunrise_gameplay_common::game::native_hooks::{NativeRecipeLayout, NativeRecipeResult, NativeRecipeView};
     use mod_api::FluidStack;
-
-    
-    
-    
-    
+    use sunrise_gameplay_common::game::native_hooks::{
+        NativeRecipeLayout, NativeRecipeResult, NativeRecipeView,
+    };
 
     #[cfg(test)]
-/// `panel_search` as the panel sees it: only the running mod that owns
+    /// `panel_search` as the panel sees it: only the running mod that owns
     /// the panel queues a text, and the box changes only when that owner's
     /// box draws (`deliver_search`).
     #[test]
@@ -1486,7 +1487,7 @@ use sunrise_gameplay_common::game::client_side::native_panel::tests::view;
     }
 
     #[cfg(test)]
-/// Another mod taking the panel, or the owner taking its panel away,
+    /// Another mod taking the panel, or the owner taking its panel away,
     /// drops a queued text: it is never shown in another owner's box.
     #[test]
     fn a_queued_search_goes_with_its_owners_panel() {
@@ -1510,7 +1511,7 @@ use sunrise_gameplay_common::game::client_side::native_panel::tests::view;
     }
 
     #[cfg(test)]
-/// The box counts its 50 in UTF-16 code units, as vanilla's does, and a
+    /// The box counts its 50 in UTF-16 code units, as vanilla's does, and a
     /// text it already holds (once cut to that) leaves its cursor and
     /// selection where the player put them.
     #[test]
@@ -1539,10 +1540,8 @@ use sunrise_gameplay_common::game::client_side::native_panel::tests::view;
         }
     }
 
-    
-
     #[cfg(test)]
-fn held(owner: &str, index: usize) -> Held {
+    fn held(owner: &str, index: usize) -> Held {
         Held {
             owner: Owner::Native(owner.into()),
             index,
@@ -1556,7 +1555,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// The release of a `held("jei", _)` press, with its menu still open,
+    /// The release of a `held("jei", _)` press, with its menu still open,
     /// jei's panel shown, `at_index` at the pressed index, and the pointer
     /// `on_panel` or not.
     fn release(
@@ -1578,7 +1577,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// A press stays a click until the pointer is `DRAG_THRESHOLD` away, in
+    /// A press stays a click until the pointer is `DRAG_THRESHOLD` away, in
     /// any direction; then it is a drag, even if the pointer comes back.
     #[test]
     fn a_press_drags_only_past_the_threshold() {
@@ -1596,7 +1595,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// The release of a press: a click where it never moved far, a drop at
+    /// The release of a press: a click where it never moved far, a drop at
     /// the release point off the panel, nothing back on it.
     #[test]
     fn a_release_clicks_drops_or_cancels() {
@@ -1631,7 +1630,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// A deferred click is sent only while the shown list still has the
+    /// A deferred click is sent only while the shown list still has the
     /// pressed item at its index; a drag drops the item captured at the
     /// press, whatever the list holds now.
     #[test]
@@ -1668,7 +1667,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// A press belongs to the menu open when it went down. Escape, focus
+    /// A press belongs to the menu open when it went down. Escape, focus
     /// loss, a right press, and its menu closing or being replaced cancel
     /// it: it draws nothing and its release sends nothing, but the press
     /// stays held so that release is still the panel's. A vetoed release
@@ -1778,7 +1777,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// An item dragged off the list draws over the settings button: its
+    /// An item dragged off the list draws over the settings button: its
     /// label shows only with no drag, and the pointed item's tooltip only
     /// with neither.
     #[test]
@@ -1803,7 +1802,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// Only a drag on the shown panel's own owner draws its item; a press
+    /// Only a drag on the shown panel's own owner draws its item; a press
     /// that hasn't moved draws nothing.
     #[test]
     fn the_dragged_item_is_the_owners() {
@@ -1829,7 +1828,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_mod_chooses_the_viewers_page_buttons_and_keeps_them() {
         keys();
         let mut panel = Panel::default();
@@ -1853,7 +1852,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// JEI 1.12's overlay: the items flush right under a 20 pixel page row,
+    /// JEI 1.12's overlay: the items flush right under a 20 pixel page row,
     /// the search box at the foot of the screen with the settings button on
     /// its right, under the window when asked and there is room.
     #[test]
@@ -1926,7 +1925,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-/// A native mod's items and recipe page are what the panel holds, and
+    /// A native mod's items and recipe page are what the panel holds, and
     /// its owner (who hears the panel's events) is that mod.
     #[test]
     fn native_owner_holds_the_panel() {
@@ -1978,7 +1977,7 @@ fn held(owner: &str, index: usize) -> Held {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn empty_search_can_be_edited_and_an_explicit_clear_still_hides_the_panel() {
         keys();
         let mut panel = Panel::default();
@@ -2023,9 +2022,6 @@ fn held(owner: &str, index: usize) -> Held {
         );
     }
 
-    
-    
-    
     /// `panel_search("jei", text)` through the host, as mod `caller`'s hook calls it.
     pub fn search_as(game: &mut crate::game::ClientGame<'_>, caller: &'static str, text: &str) {
         use mod_api::content::crash::{ModCall, enter_native_mod};
@@ -2043,9 +2039,6 @@ fn held(owner: &str, index: usize) -> Held {
         game.draw_mod_browser(&mut batch);
         std::mem::take(&mut *HEARD.lock().unwrap())
     }
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

@@ -4,52 +4,52 @@ use super::*;
 use sunrise_level::chunk_streamer::ChunkWorkerContext;
 
 impl Resources {
-    pub(in crate::game) fn rest(&self) -> &WorldRest {
+    pub fn rest(&self) -> &WorldRest {
         self.rest
             .get()
             .expect("world resources joined before entry")
     }
-    pub(in crate::game) fn facts(&self) -> &BlockFacts {
+    pub fn facts(&self) -> &BlockFacts {
         &self.core.facts
     }
-    pub(in crate::game) fn item_defaults(&self) -> &sunrise_world::item_defaults::ItemDefaults {
+    pub fn item_defaults(&self) -> &sunrise_world::item_defaults::ItemDefaults {
         self.core.item_data.defaults()
     }
-    pub(in crate::game) fn items(&self) -> &Items {
+    pub fn items(&self) -> &Items {
         &self.rest().items
     }
-    pub(in crate::game) fn shared_items(&self) -> Arc<Items> {
+    pub fn shared_items(&self) -> Arc<Items> {
         self.rest().items.clone()
     }
-    pub(in crate::game) fn recipes(&self) -> &Recipes {
+    pub fn recipes(&self) -> &Recipes {
         &self.rest().recipes
     }
-    pub(in crate::game) fn transformers(&self) -> &sunrise_sim::block_transform::Transformers {
+    pub fn transformers(&self) -> &sunrise_sim::block_transform::Transformers {
         &self.rest().transformers
     }
-    pub(in crate::game) fn biomes(&self) -> &Arc<Biomes> {
+    pub fn biomes(&self) -> &Arc<Biomes> {
         &self.core.biomes
     }
     pub(in crate::game) fn environment(&self) -> &Environment {
         &self.core.environment
     }
     /// The environment of a dimension type id; a type with no table of its own gets the overworld's.
-    pub(in crate::game) fn environment_of(&self, dimension_type: &str) -> &Environment {
+    pub fn environment_of(&self, dimension_type: &str) -> &Environment {
         match dimension_type {
             "minecraft:the_nether" => self.nether_environment(),
             "minecraft:the_end" => self.end_environment(),
             _ => self.environment(),
         }
     }
-    pub(in crate::game) fn mob_types(&self) -> &HashMap<String, Arc<MobType>> {
+    pub fn mob_types(&self) -> &HashMap<String, Arc<MobType>> {
         &self.rest().mob_types
     }
     /// The player's, the armor stand's and the dragon's registry keys, resolved with these
     /// resources.
-    pub(in crate::game) fn living_type_keys(&self) -> sunrise_sim::health::LivingTypeKeys {
+    pub fn living_type_keys(&self) -> sunrise_sim::health::LivingTypeKeys {
         self.rest().living_type_keys
     }
-    pub(in crate::game) fn mob_data(&self) -> &sunrise_sim::mobs::MobData {
+    pub fn mob_data(&self) -> &sunrise_sim::mobs::MobData {
         &self.rest().mob_data
     }
     pub(in crate::game) fn providers(&self) -> &Providers {
@@ -61,10 +61,10 @@ impl Resources {
     pub(in crate::game) fn end_environment(&self) -> &Environment {
         &self.rest().end_environment
     }
-    pub(in crate::game) fn behaviours(&self) -> &Behaviours {
+    pub fn behaviours(&self) -> &Behaviours {
         &self.rest().behaviours
     }
-    pub(in crate::game) fn collision(&self) -> &BlockCollisionRegistry<'static> {
+    pub fn collision(&self) -> &BlockCollisionRegistry<'static> {
         &self.core.collision
     }
     pub(in crate::game) fn suffocation(
@@ -72,7 +72,7 @@ impl Resources {
     ) -> &sunrise_world::suffocation::SuffocationRegistry<'static> {
         &self.core.suffocation
     }
-    pub(in crate::game) fn motion(&self) -> &MotionResources {
+    pub fn motion(&self) -> &MotionResources {
         &self.core.motion
     }
     /// The variant registries finalizeSpawn selects from
@@ -80,10 +80,10 @@ impl Resources {
     pub fn spawn_registries(&self) -> &sunrise_sim::mobs::finalize::SpawnRegistries {
         &self.core.spawn_registries
     }
-    pub(in crate::game) fn threads(&self) -> usize {
+    pub fn threads(&self) -> usize {
         self.core.threads
     }
-    pub(in crate::game) fn stations(&self) -> &sunrise_sim::stations::StationData {
+    pub fn stations(&self) -> &sunrise_sim::stations::StationData {
         &self.rest().stations
     }
 }
@@ -97,10 +97,7 @@ pub struct PackParts {
 }
 
 impl PackResources {
-    pub(in crate::game) fn chunk_context_with(
-        &self,
-        biomes: Arc<Biomes>,
-    ) -> Arc<ChunkWorkerContext> {
+    pub fn chunk_context_with(&self, biomes: Arc<Biomes>) -> Arc<ChunkWorkerContext> {
         let old = &self.chunk_context;
         if Arc::ptr_eq(&old.biomes, &biomes) {
             return old.clone();

@@ -1,9 +1,9 @@
 use super::*;
-use sunrise_gameplay_common::game::native_hooks::animate_tick::LentRandom;
-use sunrise_gameplay_common::game::native_hooks::animate_tick::LevelRandom;
 use std::cell::RefCell;
 use std::rc::Rc;
 use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay_common::game::native_hooks::animate_tick::LentRandom;
+use sunrise_gameplay_common::game::native_hooks::animate_tick::LevelRandom;
 
 impl crate::game::ClientGame<'_> {
     /// Lend `ClientLevel.random` to a client Part, sharing the stream with any callbacks
@@ -32,10 +32,7 @@ impl crate::game::ClientGame<'_> {
     /// the poofs from `create_fireworks`), on the stream a client Part
     /// holds as `event.random`: the engine's random is that stream for `f`, and
     /// `f`'s draws stay in it.
-    pub(in crate::game::client_side) fn with_lent_level_random<R>(
-        &mut self,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
+    pub(crate) fn with_lent_level_random<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         let Some(lent) = self.client.lent_level_random.0.clone() else {
             return f(self);
         };

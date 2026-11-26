@@ -1,14 +1,11 @@
 //! A server player's ender chest (`Player.getEnderChestInventory`) by slot, for mods that copy
 //! or edit it whole (player data sync, `/endersee`), and its menu opened with no block.
-use super::{
-    Game,
-    api_values::{project_stack, stack_read_metadata},
-    commands::items::Slot,
-    native_server::PlayerRead,
-};
+use super::{Game, commands::items::Slot};
 use mod_api::{InventoryView, MenuReplace, OpenMenuError, PlayerDataRefusal, PlayerRef};
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::api_values::{project_stack, stack_read_metadata};
+use sunrise_gameplay_common::game::native_server::PlayerRead;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::{data::component_nbt, menu::Slots};
 

@@ -1,4 +1,4 @@
-
+use sunrise_core::position::BlockPos;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

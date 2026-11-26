@@ -20,15 +20,15 @@ use sunrise_perf_format::v1::StopReason;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Snapshot {
-    pub(in crate::game) default_mode: i32,
-    pub(in crate::game) personal_mode: i32,
-    pub(in crate::game) cheats: bool,
-    pub(in crate::game) difficulty: u8,
-    pub(in crate::game) locked: bool,
-    pub(in crate::game) lan: bool,
-    pub(in crate::game) port: u16,
-    pub(in crate::game) guest_commands: bool,
-    pub(in crate::game) force: bool,
+    pub default_mode: i32,
+    pub personal_mode: i32,
+    pub cheats: bool,
+    pub difficulty: u8,
+    pub locked: bool,
+    pub lan: bool,
+    pub port: u16,
+    pub guest_commands: bool,
+    pub force: bool,
 }
 
 /// Where the server puts the answer to a request the window waits for.

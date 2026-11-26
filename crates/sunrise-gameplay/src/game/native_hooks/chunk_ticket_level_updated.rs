@@ -1,4 +1,4 @@
-
+use mod_api::ChunkRef;
 
 /// The hook point. It does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

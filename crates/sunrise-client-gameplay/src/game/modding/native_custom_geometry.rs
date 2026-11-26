@@ -93,7 +93,9 @@ impl ClientGame<'_> {
         }
         draw.set_model_cut(entities.len() as u32);
         // Seconds of game time, wrapping every hour (72,000 ticks) so f32 keeps sub-tick steps.
-        draw.set_time(((self.common.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
+        draw.set_time(
+            ((self.common.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32,
+        );
         let view = mod_api::WorldRenderView::new(camera, alpha as f32, self.common.world.game_time);
         // RenderLevelStageEvent's stages in frame order, so each one's output follows the
         // last's; custom geometry and the debug renderers draw with the last, AfterLevel.
@@ -137,7 +139,7 @@ impl ClientGame<'_> {
         text: &mod_api::Text,
         options: NameTagOptions,
     ) -> Result<(), DrawError> {
-        use super::api_values::TryIntoEngine;
+        use sunrise_gameplay_common::game::api_values::TryIntoEngine;
         draw.check_label(at)?;
         let text = text
             .try_into_engine(&())
@@ -451,7 +453,7 @@ impl ClientGame<'_> {
 }
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::in_own_process;
 
     use super::*;
     use glam::{DVec3, Mat4, Quat, Vec3};

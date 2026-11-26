@@ -5,15 +5,15 @@
 //! button and page turns.
 use super::{
     Game,
-    native_hooks::{
-        NativeRecipeLayout as BrowserLayout, NativeRecipeResult as BrowserResult,
-        NativeRecipeView as BrowserRecipe, PanelEvent as BrowserEvent,
-    },
     native_panel::{Layout, Owner, browser_stack, inside, wheel_turn},
 };
 use mod_api::Stack as BrowserStack;
 use std::time::Instant;
 use sunrise_client::hud::{HudBatch, rgba};
+use sunrise_gameplay_common::game::native_hooks::{
+    NativeRecipeLayout as BrowserLayout, NativeRecipeResult as BrowserResult,
+    NativeRecipeView as BrowserRecipe, PanelEvent as BrowserEvent,
+};
 use sunrise_items::items::ItemStack;
 
 const SLOT: f32 = 18.0;

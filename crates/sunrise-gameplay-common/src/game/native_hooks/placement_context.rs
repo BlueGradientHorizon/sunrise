@@ -22,7 +22,7 @@ impl GameLevel<'_> {
     }
 
     /// Convert the part's answer at the mod boundary, before the world checks the destination.
-    pub(in crate::game) fn rewrite_placement_context(
+    pub fn rewrite_placement_context(
         &self,
         stack: &ItemStack,
         context: &PlacementContext,

@@ -2,9 +2,9 @@
 #[derive(Default)]
 pub struct KeptItemEntity {
     pub(in crate::game) stack: Option<ItemStack>,
-    pub(in crate::game) pickup_delay: Option<i64>,
-    pub(in crate::game) target: Option<Option<[i32; 4]>>,
-    pub(in crate::game) velocity: Option<Vec3>,
+    pub pickup_delay: Option<i64>,
+    pub target: Option<Option<[i32; 4]>>,
+    pub velocity: Option<Vec3>,
 }
 
 impl KeptItemEntity {

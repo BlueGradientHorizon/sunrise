@@ -1,4 +1,4 @@
-use super::api_values::{TryIntoApi, TryIntoEngine};
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use sunrise_items::items::ItemStack as EngineStack;
 
 impl crate::game::ServerGame<'_> {
@@ -127,7 +127,9 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         if let Ok(api) = entity.try_into_api() {
-            sunrise_gameplay_common::game::native_hooks::native_block_entity_update_tag(pos, &api, tag);
+            sunrise_gameplay_common::game::native_hooks::native_block_entity_update_tag(
+                pos, &api, tag,
+            );
         }
     }
 }

@@ -38,7 +38,8 @@ impl crate::game::ServerGame<'_> {
         }
         let dead = match self.player_handle_read(player).ok_or(Refusal::Stale)? {
             PlayerRead::Acting { .. } => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_none_or(|p| p.health.health() <= 0.0),
             PlayerRead::Guest(g) => g.dead,
@@ -98,7 +99,9 @@ impl crate::game::ServerGame<'_> {
             return Err(PlacementStateError::Unavailable);
         }
         let BlockPos { x, y, z } = context.pos;
-        let Some(source) = super::api_values::placement_source_into_engine(context.source) else {
+        let Some(source) =
+            sunrise_gameplay_common::game::api_values::placement_source_into_engine(context.source)
+        else {
             return Ok(None);
         };
         if !context.hit.iter().all(|n| n.is_finite())
@@ -108,7 +111,10 @@ impl crate::game::ServerGame<'_> {
         {
             return Ok(None);
         }
-        let Some(block) = super::api_values::behavior_block(block, self.common.res.behaviours()) else {
+        let Some(block) = sunrise_gameplay_common::game::api_values::behavior_block(
+            block,
+            self.common.res.behaviours(),
+        ) else {
             return Ok(None);
         };
         let item = match context.item {
@@ -120,20 +126,21 @@ impl crate::game::ServerGame<'_> {
             }
             None => "",
         };
-        self.common.preview_state_for_placement(
-            block,
-            &PlacementContext {
-                pos: context.pos,
-                hit_pos: context.hit_pos,
-                face: context.face,
-                hit: Vec3::new(context.hit[0], context.hit[1], context.hit[2]),
-                inside: context.inside,
-                source,
-                item: item.to_owned(),
-                replace_clicked: context.replace_clicked,
-            },
-        )
-        .map_err(super::api_values::placement_refusal_into_api)
+        self.common
+            .preview_state_for_placement(
+                block,
+                &PlacementContext {
+                    pos: context.pos,
+                    hit_pos: context.hit_pos,
+                    face: context.face,
+                    hit: Vec3::new(context.hit[0], context.hit[1], context.hit[2]),
+                    inside: context.inside,
+                    source,
+                    item: item.to_owned(),
+                    replace_clicked: context.replace_clicked,
+                },
+            )
+            .map_err(sunrise_gameplay_common::game::api_values::placement_refusal_into_api)
     }
 
     /// A chosen state written as a placement writes it, then `Block.setPlacedBy`, with no
@@ -188,9 +195,15 @@ impl crate::game::ServerGame<'_> {
             let at = BlockPos::new(pos[0], pos[1], pos[2]);
             if self.common.world.carrier_fences.locks_cell(&pos)
                 || self
-                    .common.preview_set_placed_by(at, state, write_flags.map(|flags| flags.bits()))
+                    .common
+                    .preview_set_placed_by(at, state, write_flags.map(|flags| flags.bits()))
                     .keys()
-                    .any(|p| self.common.world.carrier_fences.locks_cell(&[p.x, p.y, p.z]))
+                    .any(|p| {
+                        self.common
+                            .world
+                            .carrier_fences
+                            .locks_cell(&[p.x, p.y, p.z])
+                    })
             {
                 return Ok(false);
             }

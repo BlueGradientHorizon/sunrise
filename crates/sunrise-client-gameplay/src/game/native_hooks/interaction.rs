@@ -1,4 +1,6 @@
-
+use mod_api::{InteractionAttempt, InteractionKey};
+use sunrise_gameplay_common::game::native_hooks::interaction::InteractionDecision;
+use sunrise_sim::first_person_sim::Hand;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

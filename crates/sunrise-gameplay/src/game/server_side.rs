@@ -879,7 +879,8 @@ pub struct ServerState {
     pub(in crate::game::server_side) wind_source: Option<sunrise_sim::join_seq::JoinSeq>,
     /// Wind pushes held until the entity's own tick has run, by entity id
     /// (game/interface/wind.rs `apply_late_wind_pushes`).
-    pub(in crate::game::server_side) late_wind_pushes: Vec<(u32, sunrise_gameplay_common::game::Vec3)>,
+    pub(in crate::game::server_side) late_wind_pushes:
+        Vec<(u32, sunrise_gameplay_common::game::Vec3)>,
     /// The players a fishing hook can catch, taken as the hooks tick, and
     /// the pulls on them waiting for the hub (game/items/fishing.rs).
     pub(in crate::game::server_side) hook_targets: Vec<crate::game::fishing::HookTarget>,
@@ -1103,7 +1104,7 @@ pub struct ServerState {
     /// The block a guest is acting on (game/network/lan_actions/interaction.rs).
     pub(in crate::game::server_side) forced_hit: Option<Hit>,
     /// The part of a right click a guest's packet asks for (game/network/lan_actions/interaction.rs).
-    pub(in crate::game::server_side) guest_use: Option<GuestUse>,
+    pub guest_use: Option<GuestUse>,
     /// The last `use_hand` that ended the click did so with `FAIL`, which
     /// does not consume the action (handleUseItemOn's ANY_BLOCK_USE).
     pub(in crate::game::server_side) use_failed: bool,
@@ -1233,11 +1234,12 @@ pub struct ServerState {
     pub(in crate::game) pending_particles:
         Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
     pub(in crate::game) pending_explosions: Vec<sunrise_sim::lan::server_effects::ServerExplosion>,
-    pub(in crate::game) pending_native_sounds: Vec<creatures::NativeSound>,
+    pub(in crate::game) pending_native_sounds:
+        Vec<sunrise_gameplay_common::game::creatures::NativeSound>,
     pub(in crate::game) effect_rng: sunrise_core::random::LegacyRandom,
     pub(in crate::game::server_side) sculk: sculk_server::SculkState,
 
-    pub(in crate::game::server_side) save: ServerShared<Arc<SaveDir>>,
+    pub save: ServerShared<Arc<SaveDir>>,
     /// Must precede session_lock: dropping the writer drains writes while the world is locked.
     pub(in crate::game::server_side) player_autosaves:
         ServerOnly<sunrise_sim::lan::playerdata::Autosaves>,
@@ -1247,7 +1249,7 @@ pub struct ServerState {
     pub(in crate::game::server_side) raiding: ServerOnly<raids::Raiding>,
     /// The world's data packs' content tables, when it has packs (`None`
     /// keeps `Resources.rest`'s own in use).
-    pub(in crate::game::server_side) world_tables: ServerShared<Option<WorldTables>>,
+    pub world_tables: ServerShared<Option<WorldTables>>,
     /// Server-owned loot and item snapshots, independent of client preloads.
     pub(in crate::game::server_side) server_loot:
         ServerOnly<sunrise_sim::structure_blocks::LootSnapshot>,
@@ -1262,8 +1264,7 @@ pub struct ServerState {
     /// Item entities spawned and block entities removed while the block
     /// behaviour ran (spilled contents, popped resources).
     pub(in crate::game::server_side) spill: ServerOnly<spill_common::Spill>,
-    pub(in crate::game::server_side) creative_catalog:
-        ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
+    pub creative_catalog: ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
     /// The mobs lent to the hook calls running now, before they join a level
     /// (game/modding/native_unspawned_mob.rs).
     pub(in crate::game::server_side) lent_mobs: ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
@@ -1274,7 +1275,8 @@ pub struct ServerState {
     pub(in crate::game::server_side) game_tests: ServerOnly<game_tests::GameTests>,
     /// A mod asked for the command trees again (`native_refresh_commands`):
     /// the next server tick asks every mod for its commands and resends them.
-    pub(in crate::game::server_side) native_commands: ServerOnly<native_server::NativeCommandState>,
+    pub(in crate::game::server_side) native_commands:
+        ServerOnly<sunrise_gameplay_common::game::native_server::NativeCommandState>,
     /// Other players in the current guest turn, including borrowed ancestor bodies.
     pub(in crate::game::server_side) lan_building_boxes:
         ServerOnly<building_players::BuildingPlayers>,
@@ -1283,7 +1285,7 @@ pub struct ServerState {
         ServerOnly<Vec<lan_actions_server::DisplacedPlayer>>,
     /// A fake player's `perform_action` in progress, and what it refused.
     pub(in crate::game::server_side) fake_action:
-        ServerOnly<std::sync::Arc<native_server::FakeAction>>,
+        ServerOnly<std::sync::Arc<sunrise_gameplay_common::game::native_server::FakeAction>>,
     /// A dedicated server's operator, whitelist and ban lists, for `/op`,
     /// `/ban` and friends (`DedicatedPlayerList`).
     pub(in crate::game::server_side) server_lists:
@@ -1834,8 +1836,12 @@ impl<'a> ServerGame<'a> {
         prep: Box<ServerConstructPrep>,
         effects: Box<ServerConstructEffects>,
     ) -> Self {
-        let (wp, server) = ConstructInit::<true>::wrap_server_prep_and_effects(prep, effects);
-        let mut game = crate::game::ServerGame { common: sunrise_gameplay_common::game::ConstructInit::<true>::assemble_common(res, wp), server: *server };
+        let (wp, server) =
+            crate::game::ConstructInit::<true>::wrap_server_prep_and_effects(prep, effects);
+        let mut game = crate::game::ServerGame {
+            common: sunrise_gameplay_common::game::ConstructInit::<true>::assemble_common(res, wp),
+            server: *server,
+        };
         game.reset_entity_residency();
         game
     }

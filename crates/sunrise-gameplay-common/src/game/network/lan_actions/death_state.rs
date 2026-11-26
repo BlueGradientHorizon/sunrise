@@ -8,12 +8,12 @@ use sunrise_sim::health::AcceptedHit;
 /// death's own source, `generic_kill` for `/kill`.
 pub struct FatalSource {
     pub(in crate::game) accepted: Option<Arc<AcceptedHit>>,
-    pub(in crate::game) damage_type: String,
-    pub(in crate::game) causing: u32,
+    pub damage_type: String,
+    pub causing: u32,
 }
 
 impl FatalSource {
-    pub(in crate::game) fn source(&self) -> HurtSource<'_> {
+    pub fn source(&self) -> HurtSource<'_> {
         self.accepted.as_ref().map_or(
             HurtSource {
                 damage_type: &self.damage_type,
@@ -25,7 +25,7 @@ impl FatalSource {
         )
     }
 
-    pub(in crate::game) fn weapon(&self) -> Option<&ItemStack> {
+    pub fn weapon(&self) -> Option<&ItemStack> {
         self.accepted.as_ref().and_then(|hit| hit.weapon.as_ref())
     }
 }

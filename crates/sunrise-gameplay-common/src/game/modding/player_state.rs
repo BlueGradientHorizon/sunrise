@@ -3,20 +3,20 @@ use mod_api::{__private::TransactionFrame, Attachments};
 /// Per-player attachment state and active replacement player UUIDs during clone hooks.
 #[derive(Default)]
 pub(in crate::game) struct PlayerState {
-    pub(in crate::game) attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
-    pub(in crate::game) cloning_players: Vec<(u128, u32, u32)>,
+    pub attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
+    pub cloning_players: Vec<(u128, u32, u32)>,
 }
 
 /// Retained original-player attachment storage tied to `Game::transactions` so mutations,
 /// default insertions, removals and decode caching roll back with an aborted transaction.
 pub struct OriginalAttachmentSlot {
-    pub(in crate::game) map: Attachments,
+    pub map: Attachments,
     active_frames: Vec<TransactionFrame>,
     journal: Vec<(TransactionFrame, Attachments)>,
 }
 
 impl OriginalAttachmentSlot {
-    pub(in crate::game) fn new(map: Attachments) -> Self {
+    pub fn new(map: Attachments) -> Self {
         Self {
             map,
             active_frames: Vec::new(),
@@ -51,7 +51,7 @@ impl OriginalAttachmentSlot {
         }
     }
 
-    pub(in crate::game) fn journal_current(&mut self) {
+    pub fn journal_current(&mut self) {
         if let Some(&token) = self.active_frames.last()
             && !self.journal.iter().any(|(t, _)| *t == token)
         {

@@ -275,7 +275,7 @@ pub struct MemoryInputs {
 }
 
 impl MemoryInputs {
-    pub(in crate::game) fn report(
+    pub fn report(
         self,
         server: Option<ServerSide>,
         active: impl Fn() -> bool,
@@ -457,7 +457,7 @@ impl Drop for ServerMemoryRequest {
 }
 
 impl Generation {
-    pub(in crate::game) fn of(streaming: &sunrise_level::chunk_streamer::ChunkStreamer) -> Self {
+    pub fn of(streaming: &sunrise_level::chunk_streamer::ChunkStreamer) -> Self {
         let c = streaming.proto_census();
         let [blocks, lists, heightmaps, other, biomes, records] = c.bytes;
         let protos: usize = c.bytes.iter().sum();
@@ -486,7 +486,7 @@ impl Generation {
 }
 
 impl ServerMemoryRequest {
-    pub(in crate::game) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
+    pub fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
         if self.cancelled.load(Ordering::Acquire) {
             return;
         }
@@ -510,7 +510,7 @@ impl PendingMemory {
     pub(in crate::game) fn cancel(&mut self) {
         self.cancel.cancel();
     }
-    pub(in crate::game) fn poll(&self) -> Poll<Option<MemoryRows>> {
+    pub fn poll(&self) -> Poll<Option<MemoryRows>> {
         // Keep the slot reserved while either the worker or queued request still holds the flag.
         if !self.worker.is_finished() || Arc::strong_count(&self.cancel.cancelled) != 1 {
             return Poll::Pending;
@@ -520,7 +520,7 @@ impl PendingMemory {
         }
         Poll::Ready(self.rows.try_recv().ok())
     }
-    pub(in crate::game) fn spawn(
+    pub fn spawn(
         cost: MemoryCost,
         from_server: bool,
         report: impl FnOnce(Option<ServerSide>, &AtomicBool) -> Option<MemoryRows> + Send + 'static,

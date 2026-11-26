@@ -1,8 +1,8 @@
 //! The clip stack of one GUI drawing hook call: `DrawContext::push_clip` and `pop_clip`
 //! (`GuiGraphics.enableScissor`, `disableScissor`), cut on the batch as the game's own
 //! screens cut theirs (`HudBatch::clip_since`).
-use crate::hud::HudBatch;
 use mod_api::GuiClipRefusal;
+use sunrise_client_render::hud::HudBatch;
 
 /// The most clips one hook call holds open at once.
 pub(crate) const MAX_OPEN: usize = 64;

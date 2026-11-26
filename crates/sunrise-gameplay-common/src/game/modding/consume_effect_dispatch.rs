@@ -16,7 +16,7 @@ impl Drop for ActiveKind {
 
 /// Returns false only when this kind already has a handler on this call stack.
 /// Different kinds may dispatch normally, including kinds owned by another mod.
-pub(super) fn dispatch(kind: &str, apply: impl FnOnce()) -> bool {
+pub fn dispatch(kind: &str, apply: impl FnOnce()) -> bool {
     let entered = ACTIVE.with(|active| {
         let mut active = active.borrow_mut();
         if active.iter().any(|current| current == kind) {

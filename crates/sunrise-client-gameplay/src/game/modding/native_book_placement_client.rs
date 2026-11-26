@@ -18,7 +18,7 @@ impl ClientGame<'_> {
         }
     }
 
-    pub(in crate::game::client_side) fn begin_mod_book_placement(&mut self) {
+    pub fn begin_mod_book_placement(&mut self) {
         let Some(epoch) = self.common.native_net.book_view.epoch else {
             return;
         };
@@ -28,8 +28,9 @@ impl ClientGame<'_> {
         let supported = mod_api::RecipeBookLayout::registered_menus()
             .iter()
             .any(|menu| {
-                mod_api::RecipeBookLayout::registered(menu)
-                    .is_some_and(|(book, _, _)| self.common.native_net.book_view.contains(book.as_str()))
+                mod_api::RecipeBookLayout::registered(menu).is_some_and(|(book, _, _)| {
+                    self.common.native_net.book_view.contains(book.as_str())
+                })
             });
         if !supported {
             return;
@@ -40,7 +41,8 @@ impl ClientGame<'_> {
 
     pub(in crate::game) fn check_mod_book_placement_timeout(&mut self) {
         if self
-            .common.native_net
+            .common
+            .native_net
             .placement
             .client
             .window()
@@ -49,7 +51,8 @@ impl ClientGame<'_> {
             self.clear_mod_book_placement_screen();
         }
         if self
-            .common.native_net
+            .common
+            .native_net
             .placement
             .deadline
             .is_some_and(|deadline| std::time::Instant::now() >= deadline)

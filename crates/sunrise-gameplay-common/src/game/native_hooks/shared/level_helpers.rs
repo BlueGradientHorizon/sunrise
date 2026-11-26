@@ -156,7 +156,7 @@ impl GameLevel<'_> {
         changed
     }
 
-    pub(in crate::game) fn finish_native_block(
+    pub fn finish_native_block(
         &mut self,
         pos: [i32; 3],
         previous: BlockStateId,

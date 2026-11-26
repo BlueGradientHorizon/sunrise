@@ -5,7 +5,7 @@ use {
     sunrise_world::level::{LevelEvent, Ticks},
 };
 
-pub(in crate::game) fn world_attachments(
+pub fn world_attachments(
     world: &mut sunrise_level::world::World,
     holder: mod_api::Holder,
 ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {

@@ -1,4 +1,5 @@
-
+use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::native_hooks::substitute_inline_images::substitute;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

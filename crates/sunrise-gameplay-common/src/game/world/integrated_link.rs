@@ -46,40 +46,40 @@ pub struct Flags {
     #[cfg(test)]
     pub(in crate::game) fail_tick: AtomicBool,
     /// `Minecraft.pause`: a single-player pause screen is open.
-    pub(in crate::game) paused: AtomicBool,
-    pub(in crate::game) stop: AtomicBool,
-    pub(in crate::game) finished: AtomicBool,
-    pub(in crate::game) failure: Mutex<Option<String>>,
+    pub paused: AtomicBool,
+    pub stop: AtomicBool,
+    pub finished: AtomicBool,
+    pub failure: Mutex<Option<String>>,
     /// The owning window's report inbox, shared with this server and its region workers.
-    pub(in crate::game) reports: Arc<Reports>,
+    pub reports: Arc<Reports>,
     /// `IntegratedServer.getPort`: the port it is open to the LAN on, 0
     /// while it is not.
-    pub(in crate::game) published: AtomicU16,
-    pub(in crate::game) smoothed_tick_ms: AtomicU32,
+    pub published: AtomicU16,
+    pub smoothed_tick_ms: AtomicU32,
     /// `options.renderDistance` and `options.simulationDistance`, which the
     /// server follows while it runs (IntegratedServer.tickServer).
-    pub(in crate::game) render_distance: AtomicI32,
-    pub(in crate::game) simulation_distance: AtomicI32,
+    pub render_distance: AtomicI32,
+    pub simulation_distance: AtomicI32,
     /// `options.entityDistanceScaling` (an `f64`'s bits), which
     /// `IntegratedServer.getScaledTrackingDistance` reads on every call.
-    pub(in crate::game) entity_distance: AtomicU64,
+    pub entity_distance: AtomicU64,
     /// `MinecraftServer.isCurrentlySaving`: the server is autosaving.
-    pub(in crate::game) saving: AtomicBool,
+    pub saving: AtomicBool,
     /// The generators of the levels the server has run, by dimension: what
     /// F3's chunk generation entry asks `ServerChunkCache.getGenerator`.
-    pub(in crate::game) terrain: Mutex<
+    pub terrain: Mutex<
         std::collections::HashMap<&'static str, Arc<sunrise_sim::vanillagen::VanillaTerrain>>,
     >,
     /// What the server's `LevelLoadListener` reports, for the window's
     /// `LevelLoadingScreen` (`LevelLoadTracker.serverProgress/statusView`).
-    pub(in crate::game) load: Arc<ServerLoadView>,
+    pub load: Arc<ServerLoadView>,
     /// What the world's upgrade has done (`UpgradeProgress`): the window shows it on
     /// `FileFixerProgressScreen` while the file fixers run, and its Cancel stops them.
-    pub(in crate::game) upgrade: Arc<sunrise_world::datafix::progress::UpgradeProgress>,
+    pub upgrade: Arc<sunrise_world::datafix::progress::UpgradeProgress>,
     /// Where the window's debug entries want the server's lines for (its
     /// dimension and feet), and the lines of the last tick there.
-    pub(in crate::game) debug_at: Mutex<Option<(Dim, [i32; 3])>>,
-    pub(in crate::game) debug: Mutex<(u64, crate::game::debug_lines::ServerDebug)>,
+    pub debug_at: Mutex<Option<(Dim, [i32; 3])>>,
+    pub debug: Mutex<(u64, crate::game::debug_lines::ServerDebug)>,
 }
 
 impl Flags {
@@ -122,21 +122,21 @@ pub type Ready = std::result::Result<(Pipe, String), String>;
 
 /// The world to open and the player who owns it.
 pub struct Launch {
-    pub(in crate::game) folder: String,
-    pub(in crate::game) rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
-    pub(in crate::game) name: Option<String>,
-    pub(in crate::game) seed: Option<i64>,
-    pub(in crate::game) creative: bool,
-    pub(in crate::game) create: Option<WorldOptions>,
+    pub folder: String,
+    pub rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
+    pub name: Option<String>,
+    pub seed: Option<i64>,
+    pub creative: bool,
+    pub create: Option<WorldOptions>,
     /// The window's profile: the only one let in until the world is open to
     /// the LAN, and the world's player.
-    pub(in crate::game) owner: u128,
+    pub owner: u128,
     /// Its name, for the LAN's MOTD.
-    pub(in crate::game) player: String,
+    pub player: String,
     /// The signed-in account's profile, fetched while the world loads.
-    pub(in crate::game) owner_profile: Option<Arc<OwnerProfile>>,
-    pub(in crate::game) online_auth: bool,
-    pub(in crate::game) session_verifier: sunrise_sim::lan::SessionVerifier,
+    pub owner_profile: Option<Arc<OwnerProfile>>,
+    pub online_auth: bool,
+    pub session_verifier: sunrise_sim::lan::SessionVerifier,
 }
 
 /// What the world options screen shows of an integrated server.
@@ -168,8 +168,7 @@ pub enum ComponentHarness {
     ),
 }
 
-pub type ProfileResolverFactory =
-    fn() -> Box<dyn sunrise_level::profile_lookup::ProfileResolver>;
+pub type ProfileResolverFactory = fn() -> Box<dyn sunrise_level::profile_lookup::ProfileResolver>;
 pub type Serve = fn(
     &Arc<Resources>,
     PackResources,

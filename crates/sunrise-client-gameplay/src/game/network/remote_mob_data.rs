@@ -468,7 +468,9 @@ fn swirls(list: &Particles, builtin: &Builtin) -> Vec<ParticleOptions> {
     list.iter()
         .filter_map(|p| {
             if let Some(ParticleData::Mod { name, options }) = &p.data {
-                return sunrise_gameplay_common::game::lan_particle_data::decode_mod_particle(name, options);
+                return sunrise_gameplay_common::game::lan_particle_data::decode_mod_particle(
+                    name, options,
+                );
             }
             let name = builtin.get("minecraft:particle_type")?.name(p.id)?;
             let ty = ParticleType::from_name(name)?;
@@ -488,7 +490,7 @@ fn swirls(list: &Particles, builtin: &Builtin) -> Vec<ParticleOptions> {
         .collect()
 }
 
-use super::villager_client::villager_data;
+use sunrise_gameplay_common::game::villager_client::villager_data;
 
 #[cfg(feature = "client")]
 impl ClientGame<'_> {
@@ -512,7 +514,11 @@ impl ClientGame<'_> {
             .flatten()
             .and_then(|head| self.common.sleeping_position(head));
         let professions = r.professions.clone();
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32) {
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, id as u32)
+        {
             let stare_sound = crate::game::client_side::villager_client_client::receive(
                 m,
                 values,

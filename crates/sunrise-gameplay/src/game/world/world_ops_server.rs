@@ -1,5 +1,6 @@
 //! Server-side implementations of `side_ops::world` and server-only world/save/control helpers.
 use super::*;
+use crate::game::native_hooks;
 use serde_json::{Value, json};
 
 impl crate::game::ServerGame<'_> {
@@ -217,10 +218,15 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<sunrise_core::nbt::Tag> {
         let key = (pos[0], pos[1], pos[2]);
         match self.common.world.block_entities.get(&key) {
-            Some(entity) => {
-                Some(self.common.encode_live_block_entity(key, entity, block, self.common.res.items()))
+            Some(entity) => Some(self.common.encode_live_block_entity(
+                key,
+                entity,
+                block,
+                self.common.res.items(),
+            )),
+            None => {
+                sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos)
             }
-            None => sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos),
         }
     }
 
@@ -235,7 +241,9 @@ impl crate::game::ServerGame<'_> {
         held: Option<&ItemStack>,
     ) -> Vec<ItemStack> {
         let dynamic = self.common.pending.dynamic(pos);
-        let place = self.common.loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
+        let place = self
+            .common
+            .loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
         let (_, entity) = self.common.native_clicker();
         let mut drops = sunrise_world::loot::with_native_loot_place(place, || {
             let roll = sunrise_items::items::BlockLootRoll {
@@ -341,7 +349,13 @@ impl crate::game::ServerGame<'_> {
                         let block = registry
                             .state(c.block(pos.0 & 15, pos.1, pos.2 & 15))
                             .map_or("", |state| state.name.as_str());
-                        self.common.capture_block_entity_payload(*pos, block, entity, self.common.res.items())
+                        self.common
+                            .capture_block_entity_payload(
+                                *pos,
+                                block,
+                                entity,
+                                self.common.res.items(),
+                            )
                             .map(|edited| (*pos, edited))
                     })
                     .collect();
@@ -389,7 +403,10 @@ impl crate::game::ServerGame<'_> {
             _ => return,
         };
         let neighbour = [pos[0] + dx, pos[1], pos[2] + dz];
-        let state = self.common.world.block(neighbour[0], neighbour[1], neighbour[2]);
+        let state = self
+            .common
+            .world
+            .block(neighbour[0], neighbour[1], neighbour[2]);
         self.side_post_block_game_event(
             "minecraft:block_change",
             neighbour,

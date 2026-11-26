@@ -14,7 +14,7 @@ pub struct Seat {
 }
 
 impl Seat {
-    pub(in crate::game) fn general(type_slot: usize, position: Vec3, yaw: f32) -> Self {
+    pub fn general(type_slot: usize, position: Vec3, yaw: f32) -> Self {
         let catalog = super::general::general_type_catalog();
         let (width, height) = catalog.dimensions(type_slot);
         Self {
@@ -32,11 +32,11 @@ impl Seat {
     }
 
     /// `Entity.positionRider` for a player: its vehicle attachment below the passenger point.
-    pub(in crate::game) fn player_seat(&self) -> Vec3 {
+    pub fn player_seat(&self) -> Vec3 {
         self.passenger_position(PLAYER_VEHICLE_ATTACHMENT)
     }
 
-    pub(in crate::game) fn position_mob(&self, mob: &mut sunrise_sim::mobs::Mob) {
+    pub fn position_mob(&self, mob: &mut sunrise_sim::mobs::Mob) {
         let offset = sunrise_sim::mobs::riders::vehicle_attachment(mob, self.width);
         sunrise_sim::mobs::living::teleports::snap_to(mob, self.passenger_position(offset));
         mob.velocity = Vec3::ZERO;
@@ -46,7 +46,7 @@ impl Seat {
         mob.ai.nav.stop();
     }
     /// `Entity.getDismountLocationForPassenger`: `(getX(), getBoundingBox().maxY, getZ())`.
-    pub(in crate::game) fn dismount(&self) -> Vec3 {
+    pub fn dismount(&self) -> Vec3 {
         Vec3::new(
             self.position.x,
             self.position.y + self.height,

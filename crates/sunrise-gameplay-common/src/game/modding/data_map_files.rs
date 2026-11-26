@@ -93,7 +93,7 @@ impl<T: Clone> File<T> {
     }
 }
 
-pub(super) fn entry_value(raw: &Value) -> Result<&Value, String> {
+pub fn entry_value(raw: &Value) -> Result<&Value, String> {
     if let Some(object) = raw.as_object()
         && let Some(value) = object.get("value")
     {
@@ -182,7 +182,7 @@ fn merge_versions<T: Clone, I: IntoIterator<Item: AsRef<str>>>(
     (map, applied)
 }
 
-pub(super) fn load<T: Clone, I: IntoIterator<Item: AsRef<str>>>(
+pub fn load<T: Clone, I: IntoIterator<Item: AsRef<str>>>(
     id: &Identifier,
     registry: &str,
     map: BTreeMap<String, T>,
@@ -215,7 +215,7 @@ pub(super) fn load<T: Clone, I: IntoIterator<Item: AsRef<str>>>(
     )
 }
 
-pub(super) struct NumberCodec<F> {
+pub struct NumberCodec<F> {
     pub field: &'static str,
     pub decode: F,
 }
@@ -242,7 +242,7 @@ fn scalar(raw: Box<RawValue>, field: &str) -> Result<Box<RawValue>, String> {
 }
 /// Keep numeric entries as RawValue until their codec reads the original decimal,
 /// with no f64 round trip through the generic value decoder.
-pub(super) fn load_numeric<T: Clone, I: IntoIterator<Item: AsRef<str>>>(
+pub fn load_numeric<T: Clone, I: IntoIterator<Item: AsRef<str>>>(
     id: &Identifier,
     registry: &str,
     map: BTreeMap<String, T>,

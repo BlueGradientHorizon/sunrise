@@ -46,7 +46,7 @@ pub struct Attributed<N, T> {
 impl<N: LoopMod, T> Attributed<N, T> {
     /// Runs `call` on the slot, marked as inside the mod.
     #[inline(always)]
-    pub(crate) fn call<R>(&mut self, call: impl FnOnce(&mut T) -> R) -> Option<R> {
+    pub fn call<R>(&mut self, call: impl FnOnce(&mut T) -> R) -> Option<R> {
         let _inside = mod_api::content::crash::enter_native_mod(N::CALL);
         Some(call(&mut self.slot))
     }

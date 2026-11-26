@@ -8,15 +8,16 @@
 //! attachment before the listeners have set it.
 
 use crate::game::ServerGame;
-pub(in crate::game) use sunrise_gameplay_common::game::entity_initialization_common::EntityInitialization;
 use mod_api::Holder;
 use std::collections::HashSet;
+pub(in crate::game) use sunrise_gameplay_common::game::entity_initialization_common::EntityInitialization;
 
 impl ServerGame<'_> {
     pub(in crate::game) fn server_bind_constructed_entity_attachments(&mut self, id: u32) {
         if self.native_authoritative()
             && self
-                .common.entity_attachments
+                .common
+                .entity_attachments
                 .get(&id)
                 .is_some_and(|map| map.has_index_entries())
             && let Err(error) = self.bind_resident_entity_attachments(id)
@@ -30,10 +31,13 @@ impl ServerGame<'_> {
         &mut self,
         retained: &HashSet<u32>,
     ) {
-        self.common.entity_initialization
+        self.common
+            .entity_initialization
             .initialized
             .retain(|holder| match holder {
-                Holder::Entity(id) => !self.common.persist.uuids.contains_key(id) || retained.contains(id),
+                Holder::Entity(id) => {
+                    !self.common.persist.uuids.contains_key(id) || retained.contains(id)
+                }
                 _ => true,
             });
     }
@@ -41,7 +45,8 @@ impl ServerGame<'_> {
     /// A LAN guest's player, its file just read for connection `conn`.
     pub(in crate::game::server_side) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
         if self.common.entity_initialization.players.insert(uuid, conn) != Some(conn) {
-            self.common.forget_entity_initialization(Holder::Player(uuid));
+            self.common
+                .forget_entity_initialization(Holder::Player(uuid));
         }
         self.initialize_guest_player_under_data(uuid, conn);
     }
@@ -53,7 +58,8 @@ impl ServerGame<'_> {
         uuid: u128,
         conn: u32,
     ) {
-        self.common.forget_entity_initialization(Holder::Player(uuid));
+        self.common
+            .forget_entity_initialization(Holder::Player(uuid));
         self.initialize_guest_player_under_data(uuid, conn);
     }
 
@@ -70,7 +76,8 @@ impl ServerGame<'_> {
             .as_mut()
             .and_then(|host| host.hub.guests.attachments_mut(conn))
             .map(|attachments| attachments.to_nbt());
-        self.common.initialize_entity(Holder::Player(uuid), "minecraft:player");
+        self.common
+            .initialize_entity(Holder::Player(uuid), "minecraft:player");
         if let Some(data) = data
             && let Some(attachments) = self
                 .server
@@ -96,7 +103,8 @@ pub(in crate::game) struct TransferredEntityState {
     /// arrival moves that keeping to the new id.
     pub(in crate::game) journaled: Option<u32>,
     /// Filled by an abort that comes before the arrival: the contents the arrival puts back.
-    pub(in crate::game) rollback: Option<super::transactions::ArrivalRollback>,
+    pub(in crate::game) rollback:
+        Option<sunrise_gameplay_common::game::transactions::ArrivalRollback>,
     /// The id the entity had before it travelled, which a kill credit may still name.
     pub(in crate::game) source: u32,
 }
@@ -148,7 +156,8 @@ impl ServerGame<'_> {
             rollback,
             source: id,
             initialized: self
-                .common.entity_initialization
+                .common
+                .entity_initialization
                 .initialized
                 .remove(&Holder::Entity(id)),
         }
@@ -188,7 +197,8 @@ impl ServerGame<'_> {
         }
         self.common.entity_attachments.insert(id, map);
         if state.initialized {
-            self.common.entity_initialization
+            self.common
+                .entity_initialization
                 .initialized
                 .insert(Holder::Entity(id));
         }

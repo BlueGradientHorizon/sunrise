@@ -1,14 +1,14 @@
 use super::*;
-use sunrise_gameplay_common::game::{
-    commands_common::{Target, entity_pitch},
-    general::GeneralRow,
-    transactions::OpenTransactions,
-};
 use mod_api::{
     EntityRef, EntityServerAccess, EntityServerScope, EntitySubjectView, ResidentGeneralEntity,
     ServerHost,
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::{
+    commands_common::{Target, entity_pitch},
+    general::GeneralRow,
+    transactions::OpenTransactions,
+};
 use sunrise_sim::lan::playerdata::ints_uuid;
 
 pub(in crate::game) struct ResidentGeneralRow<'a> {
@@ -157,11 +157,7 @@ impl ResidentGeneralEntity for ResidentGeneralRow<'_> {
 impl crate::game::ServerGame<'_> {
     /// Dispatch the authoritative tick of one resident general entity row of type `kind`,
     /// lending its live row sequentially with `ServerHost`.
-    pub(in crate::game::server_side) fn tick_general_row_scoped(
-        &mut self,
-        kind: &str,
-        subject: mod_api::EntityRef,
-    ) {
+    pub(crate) fn tick_general_row_scoped(&mut self, kind: &str, subject: mod_api::EntityRef) {
         let mut access = GeneralTickAccess {
             game: self,
             subject,

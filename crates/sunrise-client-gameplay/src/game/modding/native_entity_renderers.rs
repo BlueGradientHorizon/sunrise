@@ -17,10 +17,9 @@
 //! through the same guard ([`Game::guarded_entity_draw`]).
 use super::{
     Game,
-    host::draw::GameBlockEntityDrawContext,
     native_block_entity_draw::{BlockEntityDraw, LevelLight},
 };
-use sunrise_gameplay_common::game::general::{GeneralTypeCatalog, general_type_catalog};
+use crate::game::host::draw::GameBlockEntityDrawContext;
 use glam::{DVec3, Mat4};
 use mod_api::{BlockEntityDrawContext, EntityRenderState, EntityRenderer};
 use std::{
@@ -31,6 +30,7 @@ use std::{
     },
 };
 use sunrise_client::{block_entity_render::diffuse_lights, mesher::Vertex};
+use sunrise_gameplay_common::game::general::{GeneralTypeCatalog, general_type_catalog};
 use sunrise_level::fast_hash::FxHashMap;
 use sunrise_sim::{
     mobs::{Mob, MobType},

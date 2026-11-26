@@ -32,7 +32,7 @@ impl crate::game::CommonGame<'_> {
         Ok(self.attachment_frame_borrow())
     }
 
-    pub(in crate::game) fn attachment_frame_borrow(&self) -> mod_api::AttachmentReadScope<'_> {
+    pub fn attachment_frame_borrow(&self) -> mod_api::AttachmentReadScope<'_> {
         mod_api::__private::game::attachment_read_scope(&self.transactions.attachment_query_scopes)
     }
 }

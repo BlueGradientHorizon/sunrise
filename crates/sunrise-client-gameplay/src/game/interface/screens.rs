@@ -858,7 +858,8 @@ impl crate::game::ClientGame<'_> {
             .is_none_or(|t| t.elapsed().as_millis() >= 1000);
         for (x, y, key, id) in death_buttons(w, h, self.common.level.hardcore) {
             let is_focused = self.client.death_focus == Some(id);
-            let hover = active && (ui::hovered(self.client.cursor, x, y, 200.0, 20.0) || is_focused);
+            let hover =
+                active && (ui::hovered(self.client.cursor, x, y, 200.0, 20.0) || is_focused);
             ui::button(
                 batch,
                 atlas,
@@ -893,7 +894,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// LocalPlayer.respawn: the player comes back (the death screen's
     /// button, or at once with `immediate_respawn`).
-    pub(in crate::game::client_side) fn respawn_player(&mut self) -> Result<()> {
+    pub fn respawn_player(&mut self) -> Result<()> {
         self.client.death_focus = None;
         self.client.chat_ui.death_text = None;
         // LocalPlayer.respawn: KeyMapping.resetToggleKeys.

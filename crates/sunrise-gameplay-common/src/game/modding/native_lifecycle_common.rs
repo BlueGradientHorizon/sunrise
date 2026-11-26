@@ -73,27 +73,27 @@ impl OpenAttempt {
 /// hook body is empty, so with no native mods nothing changes.
 #[derive(Default)]
 pub struct NativeLifecycle {
-    pub(in crate::game) attempt: Option<OpenAttempt>,
-    pub(in crate::game) read_scope: bool,
+    pub attempt: Option<OpenAttempt>,
+    pub read_scope: bool,
     /// The mods' delayed tasks (`schedule_task`): dropped whenever a world opens or closes.
-    pub(in crate::game) tasks: ScheduledTasks,
+    pub tasks: ScheduledTasks,
     /// The section `entity_entering_section` files each entity under, for this epoch's world.
-    pub(in crate::game) entity_sections: super::entity_sections::EntitySections,
+    pub entity_sections: super::entity_sections::EntitySections,
     pub(in crate::game) section_observer: super::entity_sections::observer_cache::ObserverCache,
     pub(in crate::game) player_section_observer:
         Option<std::rc::Rc<super::entity_sections::PlayerSectionObserver>>,
     /// Tossed item entities `item_toss` is still asking about, innermost last: a join flush
     /// stops before them, so a cancel never takes back an entity already announced.
-    pub(in crate::game) held_joins: Vec<u32>,
+    pub held_joins: Vec<u32>,
     /// Item notices waiting for their join decision.
-    pub(in crate::game) pending_item_spawns: Vec<(u32, String, i32, [f64; 3])>,
+    pub pending_item_spawns: Vec<(u32, String, i32, [f64; 3])>,
     /// The log has named the entity id exhaustion (`entity_ids_exhausted`).
-    pub(in crate::game) ids_exhausted_told: bool,
+    pub ids_exhausted_told: bool,
 }
 
 impl NativeLifecycle {
     /// A read is valid only during a tick hook with its current tick context.
-    pub(in crate::game) fn permits_read(&self, context: &LifecycleContext) -> bool {
+    pub fn permits_read(&self, context: &LifecycleContext) -> bool {
         self.read_scope
             && self
                 .attempt
@@ -103,12 +103,12 @@ impl NativeLifecycle {
 
     /// The epoch of the world open now, from the start of its open to the end
     /// of its close: what a mod's entity and level handles carry.
-    pub(in crate::game) fn epoch(&self) -> Option<WorldEpoch> {
+    pub fn epoch(&self) -> Option<WorldEpoch> {
         self.attempt.map(|a| WorldEpoch::new(a.epoch))
     }
 
     /// The open starts: a fresh process-wide epoch, never reused.
-    pub(in crate::game) fn begin_open(&mut self, authority: Authority) {
+    pub fn begin_open(&mut self, authority: Authority) {
         self.attempt = Some(OpenAttempt {
             authority,
             epoch: fresh_epoch().get(),
@@ -120,7 +120,7 @@ impl NativeLifecycle {
         self.tasks.clear();
     }
 
-    pub(in crate::game) fn world_open_ready(&mut self) -> Option<LifecycleContext> {
+    pub fn world_open_ready(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
         if attempt.session != OpenState::Opening {
             return None;
@@ -129,14 +129,14 @@ impl NativeLifecycle {
         attempt.server_context()
     }
 
-    pub(in crate::game) fn is_opening(&self) -> bool {
+    pub fn is_opening(&self) -> bool {
         self.attempt
             .as_ref()
             .is_some_and(|attempt| attempt.session == OpenState::Opening)
     }
 
     /// `WorldOpenFailed`: only while opening; the attempt is invalidated.
-    pub(in crate::game) fn world_open_failed(&mut self) -> Option<LifecycleContext> {
+    pub fn world_open_failed(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
         if attempt.session != OpenState::Opening {
             return None;
@@ -147,14 +147,14 @@ impl NativeLifecycle {
         context
     }
 
-    pub(in crate::game) fn begin_close(&mut self) {
+    pub fn begin_close(&mut self) {
         if let Some(attempt) = self.attempt.as_mut() {
             attempt.session = OpenState::Closing;
         }
     }
 
     /// A failure after readiness retires the epoch, including during shutdown.
-    pub(in crate::game) fn world_close_failed(&mut self) -> Option<LifecycleContext> {
+    pub fn world_close_failed(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_ref()?;
         if attempt.session == OpenState::Opening {
             return None;
@@ -166,7 +166,7 @@ impl NativeLifecycle {
     }
 
     /// `WorldCloseFinal`: at most once per epoch; the epoch retires.
-    pub(in crate::game) fn world_close_final(&mut self) -> Option<LifecycleContext> {
+    pub fn world_close_final(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
         if attempt.session != OpenState::Closing {
             return None;
@@ -178,7 +178,7 @@ impl NativeLifecycle {
     }
 
     /// Non-paused ready ticks only; a paused pass observes nothing, does not count.
-    pub(in crate::game) fn server_tick_start(
+    pub fn server_tick_start(
         &mut self,
         world_running: bool,
     ) -> Option<(LifecycleContext, ServerTickPhase)> {
@@ -198,17 +198,14 @@ impl NativeLifecycle {
     }
 
     /// Discard the pending end when a tick fails.
-    pub(in crate::game) fn cancel_server_tick(&mut self) {
+    pub fn cancel_server_tick(&mut self) {
         if let Some(attempt) = &mut self.attempt {
             attempt.tick_open = false;
         }
     }
 
     /// Pairs the last start; an errored tick never reaches it.
-    pub(in crate::game) fn server_tick_end(
-        &mut self,
-        paused: bool,
-    ) -> Option<(LifecycleContext, ServerTickPhase)> {
+    pub fn server_tick_end(&mut self, paused: bool) -> Option<(LifecycleContext, ServerTickPhase)> {
         let attempt = self.attempt.as_mut()?;
         if paused || attempt.session != OpenState::Ready || !attempt.tick_open {
             return None;

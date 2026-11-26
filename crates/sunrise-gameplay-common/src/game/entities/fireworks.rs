@@ -26,63 +26,63 @@ pub struct Rocket {
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
     /// a client.
     pub id: u32,
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) previous: Vec3,
-    pub(in crate::game) velocity: Vec3,
-    pub(in crate::game) life: i32,
+    pub position: Vec3,
+    pub previous: Vec3,
+    pub velocity: Vec3,
+    pub life: i32,
     pub(in crate::game) lifetime: i32,
-    pub(in crate::game) explosions: Arc<Vec<FireworkExplosion>>,
+    pub explosions: Arc<Vec<FireworkExplosion>>,
     /// Boosting the player (attachedToEntity).
-    pub(in crate::game) attached: bool,
+    pub attached: bool,
     /// On a server, the guest (by connection) who launched it, or whom it
     /// boosts: `owner`'s `Who::Player` then means them, not the host.
-    pub(in crate::game) guest: Option<u32>,
+    pub guest: Option<u32>,
     /// `Projectile.getOwner`: the player who launched it, credited with
     /// what its blast hurts.
-    pub(in crate::game) owner: Option<Who>,
+    pub owner: Option<Who>,
     /// `Projectile.getOwner` when `owner` can't name it: the UUID of an owner
     /// that is neither a player nor a mob.
-    pub(in crate::game) owner_uuid: Option<[i32; 4]>,
+    pub owner_uuid: Option<[i32; 4]>,
     /// `Projectile.leftOwner`: until then it can't hit its owner.
-    pub(in crate::game) left_owner: bool,
+    pub left_owner: bool,
     /// `Projectile.lastDeflectedBy`: prevents repeated deflection by the same mob.
     pub(in crate::game) last_deflected_by: Option<u32>,
     /// `DATA_ATTACHED_TO_TARGET`: the server entity the rocket follows;
     /// boosting happens when it is the local player.
-    pub(in crate::game) attached_to: Option<u32>,
+    pub attached_to: Option<u32>,
     /// `DATA_SHOT_AT_ANGLE` (dispensers, crossbows): constant velocity.
-    pub(in crate::game) angled: bool,
+    pub angled: bool,
     /// `DATA_ID_FIREWORKS_ITEM`: the stack it was launched from.
-    pub(in crate::game) item: Arc<ItemStack>,
+    pub item: Arc<ItemStack>,
     /// `Entity.random`: what a mod's `Projectile.deflect` draws from.
-    pub(in crate::game) random: sunrise_core::random::LegacyRandom,
+    pub random: sunrise_core::random::LegacyRandom,
     /// `Entity.onGround`: whether its last move was stopped going down (or
     /// the one it was loaded with, until it moves).
-    pub(in crate::game) ground: sunrise_world::ground_support::GroundState,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Projectile.hasBeenShot`: its first tick posts `projectile_shoot`.
-    pub(in crate::game) has_been_shot: bool,
+    pub has_been_shot: bool,
     /// `Entity.isSilent`: no launch sound.
-    pub(in crate::game) silent: bool,
+    pub silent: bool,
     /// `Entity.fallDistance`.
-    pub(in crate::game) fall_distance: f64,
+    pub fall_distance: f64,
     /// `Entity.stuckSpeedMultiplier`: a cobweb or powder snow it went through
     /// slows its next move.
     pub(in crate::game) stuck: Vec3,
     /// `Entity.wasTouchingWater`: entering water splashes.
-    pub(in crate::game) was_touching_water: bool,
+    pub was_touching_water: bool,
     /// `Entity.firstTick`: no splash on the tick it appears in water.
-    pub(in crate::game) first_tick: bool,
+    pub first_tick: bool,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
     pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 impl Rocket {
     /// Position and motion (the dispenser parity fixture).
-    pub(in crate::game) fn motion(&self) -> (Vec3, Vec3) {
+    pub fn motion(&self) -> (Vec3, Vec3) {
         (self.position, self.velocity)
     }
     /// `Projectile.updateRotation`: a fifth of the way from `old` (yaw,
@@ -98,7 +98,7 @@ impl Rocket {
     }
 
     /// A rocket a server sent (`handleAddEntity`): placed and moved by it.
-    pub(in crate::game) fn remote(id: u32, position: Vec3, velocity: Vec3) -> Self {
+    pub fn remote(id: u32, position: Vec3, velocity: Vec3) -> Self {
         let item = ItemStack::new("minecraft:firework_rocket", 1);
         let (_, explosions) = fireworks_of(&item);
         Self {
@@ -134,18 +134,13 @@ impl Rocket {
         }
     }
     /// `Projectile.setOwner`; the UUID is kept only for an owner `who` can't name.
-    pub(in crate::game) fn set_owner(
-        &mut self,
-        who: Option<Who>,
-        uuid: Option<[i32; 4]>,
-        guest: Option<u32>,
-    ) {
+    pub fn set_owner(&mut self, who: Option<Who>, uuid: Option<[i32; 4]>, guest: Option<u32>) {
         (self.owner, self.guest) = (who, guest);
         self.owner_uuid = uuid.filter(|_| who.is_none());
     }
     /// `FireworkRocketEntity.addAdditionalSaveData`; the owner when it is
     /// `player`, or an entity that is neither a player nor a mob.
-    pub(in crate::game) fn to_nbt(
+    pub fn to_nbt(
         &self,
         uuid: [i32; 4],
         player: Option<[i32; 4]>,
@@ -177,7 +172,7 @@ impl Rocket {
         )
     }
     /// A rocket loaded from its NBT (`/summon`, a saved chunk).
-    pub(in crate::game) fn from_nbt(r: RocketNbt) -> Self {
+    pub fn from_nbt(r: RocketNbt) -> Self {
         let item = r
             .item
             .unwrap_or_else(|| ItemStack::new("minecraft:firework_rocket", 1));
@@ -216,7 +211,7 @@ impl Rocket {
     /// `Entity.load` over a live rocket (`/data merge`, `/data modify`): what
     /// [`Self::from_nbt`] reads replaces its own; it keeps its id and what it
     /// boosts.
-    pub(in crate::game) fn load_nbt(&mut self, r: RocketNbt) {
+    pub fn load_nbt(&mut self, r: RocketNbt) {
         let loaded = Self::from_nbt(r);
         self.rotation = loaded.rotation;
         self.has_been_shot = loaded.has_been_shot;
@@ -272,7 +267,7 @@ impl Rocket {
     /// The end of `Projectile.shoot`: yaw and pitch are set straight from the
     /// shot's motion (the old rotation follows, as `rotation` is the old one
     /// on the next tick).
-    pub(in crate::game) fn turn_to_shot(&mut self) {
+    pub fn turn_to_shot(&mut self) {
         let v = self.velocity;
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = sunrise_core::geometry::trig::atan2_degrees;
@@ -280,7 +275,7 @@ impl Rocket {
     }
     /// The move of a rocket attached to no entity: sped up and rising, or an
     /// angled one's own motion.
-    pub(in crate::game) fn next_motion(&self) -> Vec3 {
+    pub fn next_motion(&self) -> Vec3 {
         if self.angled {
             self.velocity
         } else {
@@ -299,7 +294,7 @@ impl Rocket {
     /// `EntityType.FIREWORK_ROCKET.getDimensions()`: width, height and eye height.
     pub(in crate::game) const DIMENSIONS: [f32; 3] = [0.25, 0.25, 0.2125];
     /// `EntityType.FIREWORK_ROCKET`: 0.25 x 0.25.
-    pub(in crate::game) fn bounds(&self) -> Aabb {
+    pub fn bounds(&self) -> Aabb {
         let vanilla = Self::bounds_at(self.position);
         sunrise_sim::pose::SizeAnswer::sized_box(
             self.size_answer,
@@ -320,7 +315,7 @@ impl Rocket {
     /// up (an angled one keeps its motion) and rise, then move (`Entity.move`:
     /// a cobweb or powder snow scales this move only). Returns where it moved
     /// from, the move it asked for and the one it made.
-    pub(in crate::game) fn free_flight(
+    pub fn free_flight(
         &mut self,
         scene: &mut SceneCollisions,
         context: &sunrise_world::native_load_context::LoopContext,
@@ -407,10 +402,7 @@ pub fn fireworks_of(stack: &ItemStack) -> (u8, Vec<FireworkExplosion>) {
 }
 /// `FireworkRocketEntity(Level, double, double, double, ItemStack)`, after the UUID:
 /// the motion's two triangles, then the lifetime's two `nextInt`s, all from `random`.
-pub fn rocket_draws(
-    random: &mut sunrise_core::random::LegacyRandom,
-    flight: u8,
-) -> (Vec3, i32) {
+pub fn rocket_draws(random: &mut sunrise_core::random::LegacyRandom, flight: u8) -> (Vec3, i32) {
     let tri = |r: &mut sunrise_core::random::LegacyRandom| r.triangle(0.0, 0.002297);
     let velocity = Vec3::new(tri(random), 0.05, tri(random));
     let lifetime = 10 * (1 + i32::from(flight))

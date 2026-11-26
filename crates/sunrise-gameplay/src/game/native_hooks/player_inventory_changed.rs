@@ -1,3 +1,4 @@
+use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_player_inventory_changed(

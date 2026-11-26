@@ -1,6 +1,5 @@
 //! Client-side scoreboard snapshot reads (`ClientHost::scoreboard`).
 use crate::game::ClientGame;
-use super::api_values::TryIntoApi;
 use mod_api::{
     ClientObjective, ClientScore, ClientScoreboard, ClientTeam, CollisionRule, DisplaySlot,
     NumberFormat, ObjectiveRenderType, TeamColor, TeamVisibility, TextFormError,
@@ -9,6 +8,7 @@ use sunrise_game_data::{
     scoreboard::{self as sb, Comp, comp_text},
     text::Text as EngineText,
 };
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 fn api_text(text: &EngineText) -> Result<mod_api::Text, TextFormError> {
     text.try_into_api()
@@ -112,7 +112,8 @@ impl ClientGame<'_> {
 
     /// Every team this client was sent.
     pub(in crate::game) fn client_teams(&self) -> Result<Vec<ClientTeam>, TextFormError> {
-        self.common.score
+        self.common
+            .score
             .board
             .teams
             .iter()

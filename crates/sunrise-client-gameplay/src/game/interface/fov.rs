@@ -40,7 +40,8 @@ impl ClientGame<'_> {
     pub(in crate::game) fn scoping(&self) -> bool {
         self.common.using.is_some()
             && self
-                .common.use_start
+                .common
+                .use_start
                 .item
                 .as_ref()
                 .is_some_and(|s| &*s.item == "minecraft:spyglass")
@@ -147,12 +148,16 @@ impl ClientGame<'_> {
     /// The fog type at `camera` as the blocks the camera sees there give it. Both paths go
     /// through the replaceable `fog_type`.
     fn camera_fog_type_seen(&self, camera: [f64; 3]) -> FogType {
-        let (world, facts, near) = (&self.common.world, self.common.res.facts(), self.near_plane());
+        let (world, facts, near) = (
+            &self.common.world,
+            self.common.res.facts(),
+            self.near_plane(),
+        );
         if !mod_api::__private::has_scoped_hook(mod_api::HookId::StateAtViewpoint) {
             return fog_type(world, facts, camera, &near, &|state, _| state);
         }
         let seen = |state, [x, y, z]: [i32; 3]| {
-            if !super::api_values::block_state::block_listens(
+            if !sunrise_gameplay_common::game::api_values::block_state::block_listens(
                 mod_api::HookId::StateAtViewpoint,
                 state,
             ) {
@@ -220,7 +225,9 @@ impl ClientGame<'_> {
         if !self.client.settings.extras.lod_zoom_detail {
             return None;
         }
-        let yaw = self.camera_subject().map_or(self.common.yaw, |c| c.camera.y_rot);
+        let yaw = self
+            .camera_subject()
+            .map_or(self.common.yaw, |c| c.camera.y_rot);
         sunrise_client::lod::ZoomAim::new(
             yaw,
             self.fov_degrees(1.0, camera),
@@ -292,7 +299,8 @@ impl ClientGame<'_> {
     /// towards 1.125 by half the frame's game ticks and reset to 0.5 while
     /// not scoping in first person.
     pub(in crate::game::client_side) fn draw_spyglass(&mut self, batch: &mut HudBatch) {
-        self.client.scope_scale += 0.5 * self.client.frame_ticks * (1.125 - self.client.scope_scale);
+        self.client.scope_scale +=
+            0.5 * self.client.frame_ticks * (1.125 - self.client.scope_scale);
         if !self.client.camera_type.is_first_person() {
             return;
         }

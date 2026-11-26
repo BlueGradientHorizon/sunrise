@@ -32,7 +32,7 @@ fn api_render_type(render: sb::RenderType) -> ObjectiveRenderType {
 
 /// A text as the API holds it; one too deep for the API is refused by name, never flattened.
 pub(in crate::game) fn api_text(text: &EngineText) -> Result<mod_api::Text, TextFormError> {
-    use super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     text.try_into_api()
 }
 
@@ -83,7 +83,8 @@ impl ServerGame<'_> {
         if self.common.native_lifecycle.epoch() != Some(objective.fields().epoch) {
             return None;
         }
-        self.common.score
+        self.common
+            .score
             .board
             .objective_by_identity(objective.fields().id)
     }
@@ -172,7 +173,8 @@ impl ServerGame<'_> {
         if !self.common.is_logical_server() {
             return Vec::new();
         }
-        self.common.score
+        self.common
+            .score
             .board
             .objectives
             .iter()
@@ -208,7 +210,8 @@ impl ServerGame<'_> {
             None,
         );
         self.sync_score_registries();
-        self.common.score
+        self.common
+            .score
             .board
             .objective(name)
             .and_then(|o| self.objective_handle(o))
@@ -246,7 +249,8 @@ impl ServerGame<'_> {
                 None
             }
         };
-        self.common.score
+        self.common
+            .score
             .board
             .set_display_objective(&slot.name(), name.as_deref());
         true
@@ -336,7 +340,8 @@ impl ServerGame<'_> {
     ) -> Option<Vec<ScoreEntry>> {
         let name = &self.objective_state(objective)?.name;
         Some(
-            self.common.score
+            self.common
+                .score
                 .board
                 .list_scores(name)
                 .into_iter()
@@ -421,7 +426,8 @@ impl ServerGame<'_> {
         value: i32,
     ) -> Result<(), ObjectiveError> {
         let (name, key, display) = self.score_write(objective, &holder)?;
-        self.common.score
+        self.common
+            .score
             .board
             .set_with(&key, &name, value, display.as_ref());
         Ok(())
@@ -474,7 +480,8 @@ impl ServerGame<'_> {
             return false;
         };
         let Some(score) = self
-            .common.score
+            .common
+            .score
             .board
             .scores
             .get_mut(&key)
@@ -511,7 +518,7 @@ pub mod tests {
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
     #[cfg(test)]
-/// The API's slot and color names are the board's, in the board's order.
+    /// The API's slot and color names are the board's, in the board's order.
     #[test]
     fn slot_and_color_names_are_the_boards() {
         let slots: Vec<_> = DisplaySlot::all().map(DisplaySlot::name).collect();
@@ -525,7 +532,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-/// A number format crosses to the board and back unchanged.
+    /// A number format crosses to the board and back unchanged.
     #[test]
     fn number_formats_round_trip_through_the_board() {
         let mut styled = TextStyle::default();
@@ -549,7 +556,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-/// A component deeper than the serialization limit survives in-memory capture, while
+    /// A component deeper than the serialization limit survives in-memory capture, while
     /// writing it back across the serialization boundary is refused by name, never flattened.
     #[test]
     fn a_text_too_deep_for_the_api_is_refused_by_name() {
@@ -602,10 +609,6 @@ pub mod tests {
         let _ = std::fs::remove_file(&saved_board);
         saved_board
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

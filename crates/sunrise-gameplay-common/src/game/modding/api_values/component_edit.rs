@@ -15,7 +15,7 @@ const REMOVED_DAMAGE: &str = "!minecraft:damage";
 const ENCHANTMENTS: &str = "minecraft:enchantments";
 const TRIM: &str = "minecraft:trim";
 
-pub(in crate::game) struct GearEdits {
+pub struct GearEdits {
     pub enchantments: bool,
     pub trim: bool,
 }
@@ -27,13 +27,13 @@ pub(in crate::game) struct PreparedComponentEdit {
 
 impl PreparedComponentEdit {
     /// Write only admitted fields named by the pruned batch, not validation-only overrides.
-    pub(in crate::game) fn apply(self, resident: &mut EngineStack) {
+    pub fn apply(self, resident: &mut EngineStack) {
         resident.apply_component_fields_from(self.fields, self.edits.names());
     }
 }
 
 /// Lend a lazy view of the resolved slot, then admit the net change without copying the slot.
-pub(in crate::game) fn prepare_component_edit(
+pub fn prepare_component_edit(
     read: EquipmentRead<'_>,
     items: &Items,
     edit: &mut dyn for<'a> FnMut(&mut ItemComponentEditor<'a>),

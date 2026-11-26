@@ -133,9 +133,9 @@ pub fn menu_title(tag: &Tag) -> sunrise_game_data::text::Text {
 /// `LinearInterpolationHandler`'s target: a position and rotation (yRot,
 /// xRot) reached in `steps` ticks.
 pub struct Lerp {
-    pub(in crate::game) target: [f64; 3],
-    pub(in crate::game) rotation: Option<(f32, f32)>,
-    pub(in crate::game) steps: u32,
+    pub target: [f64; 3],
+    pub rotation: Option<(f32, f32)>,
+    pub steps: u32,
 }
 
 /// `SteppedInterpolationHandler.doInterpolate`'s `setPos` and `setRot` on a
@@ -175,9 +175,7 @@ pub fn face_direction(face: [i32; 3]) -> u8 {
 }
 
 /// A protocol number format as the scoreboard's.
-pub fn number_format(
-    f: &play::NumberFormat,
-) -> sunrise_game_data::scoreboard::NumberFormat {
+pub fn number_format(f: &play::NumberFormat) -> sunrise_game_data::scoreboard::NumberFormat {
     use sunrise_game_data::scoreboard::{NumberFormat, tag_to_json};
     match f {
         play::NumberFormat::Blank => NumberFormat::Blank,
@@ -371,18 +369,15 @@ pub type DryChanges = Vec<(sunrise_core::position::BlockPos, BlockStateId)>;
 pub type DryUse = (DryChanges, Vec<DrySound>);
 /// Where `BlockItem.place` on the dry level placed, and the blocks it set.
 pub struct DryPlace {
-    pub(in crate::game) pos: sunrise_core::position::BlockPos,
-    pub(in crate::game) matches_candidate: bool,
-    pub(in crate::game) changes: DryChanges,
+    pub pos: sunrise_core::position::BlockPos,
+    pub matches_candidate: bool,
+    pub changes: DryChanges,
 }
 
 /// The blocks a guest's hand flips that its use predicts (and hears at once): a wooden or
 /// copper door, trapdoor or fence gate, a lever, a button or a cauldron, whose fill level
 /// changes as the bucket, bottle or dye lands. An iron door or trapdoor has no hand use.
-pub fn hand_operated(
-    behaviours: &sunrise_world::level::Behaviours,
-    state: BlockStateId,
-) -> bool {
+pub fn hand_operated(behaviours: &sunrise_world::level::Behaviours, state: BlockStateId) -> bool {
     behaviours
         .data(state)
         .is(sunrise_world::level::classes::Class::FenceGate)
@@ -408,10 +403,7 @@ pub fn hand_id(hand: Hand) -> i32 {
 /// Whether `Item.use` of `info` ends `Minecraft.startUseItem`'s click, so the
 /// off hand gets no turn. `FireworkRocketItem.use` answers SUCCESS while the
 /// player glides (the rocket boosts them) and PASS otherwise.
-pub fn use_ends_click(
-    info: &sunrise_items::items::ItemInfo,
-    fall_flying: bool,
-) -> bool {
+pub fn use_ends_click(info: &sunrise_items::items::ItemInfo, fall_flying: bool) -> bool {
     item_has_use(info) || (fall_flying && &*info.id == "minecraft:firework_rocket")
 }
 
@@ -444,11 +436,7 @@ pub fn remote_object_swings(response: Option<bool>, is_boarding: bool) -> bool {
 
 /// Whether right-clicking an item frame passes (`InteractionResult.PASS`).
 /// A fixed frame or an empty frame when clicking with an empty hand passes.
-pub fn item_frame_interact_passes(
-    fixed: bool,
-    frame_has_item: bool,
-    hand_has_item: bool,
-) -> bool {
+pub fn item_frame_interact_passes(fixed: bool, frame_has_item: bool, hand_has_item: bool) -> bool {
     fixed || (!frame_has_item && !hand_has_item)
 }
 
@@ -575,11 +563,7 @@ pub fn synced_local_use(
     }
 }
 
-pub fn object_skin_changed(
-    published: &HashMap<String, String>,
-    key: &str,
-    skin: &str,
-) -> bool {
+pub fn object_skin_changed(published: &HashMap<String, String>, key: &str, skin: &str) -> bool {
     published.get(key).is_none_or(|previous| previous != skin)
 }
 
@@ -603,10 +587,7 @@ pub fn snapshot_value(s: &play::AttributeSnapshot) -> f64 {
 
 /// What `ChatScreen.handleChatInput` sends of typed chat once `ClientChatEvent` (`ask`, with
 /// the outgoing message and the cancel flag) had its say: nothing when canceled or emptied.
-pub fn chat_after_event(
-    message: &str,
-    ask: impl FnOnce(&mut String, &mut bool),
-) -> Option<String> {
+pub fn chat_after_event(message: &str, ask: impl FnOnce(&mut String, &mut bool)) -> Option<String> {
     let mut outgoing = message.to_owned();
     let mut cancel = false;
     ask(&mut outgoing, &mut cancel);
@@ -696,6 +677,4 @@ pub mod frozen_screen_effects_tests;
 pub mod rider_tick_tests;
 
 #[allow(unused_imports)]
-pub use inventory::{
-    inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind,
-};
+pub use inventory::{inventory_screen_slot, inventory_screen_slot_with_type, remote_station_kind};

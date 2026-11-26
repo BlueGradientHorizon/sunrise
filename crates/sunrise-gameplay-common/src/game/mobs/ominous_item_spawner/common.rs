@@ -13,22 +13,22 @@ pub struct OminousItemSpawner {
     pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
     /// a client.
-    pub(in crate::game) id: u32,
+    pub id: u32,
     /// `DATA_ITEM`; `minecraft:air` stands for `ItemStack.EMPTY`.
-    pub(in crate::game) item: ItemStack,
-    pub(in crate::game) position: [f64; 3],
-    pub(in crate::game) spawn_item_after: i64,
-    pub(in crate::game) tick_count: i64,
+    pub item: ItemStack,
+    pub position: [f64; 3],
+    pub spawn_item_after: i64,
+    pub tick_count: i64,
     /// `Entity.remainingFireTicks`, counted down by `baseTick`.
-    pub(in crate::game) fire_ticks: i32,
+    pub fire_ticks: i32,
     /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
-    pub(in crate::game) synced_fire: bool,
+    pub synced_fire: bool,
     /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
-    pub(in crate::game) has_visual_fire: bool,
+    pub has_visual_fire: bool,
     /// Its UUID, and the compound it was loaded from (fields Sunrise doesn't
     /// model survive a save).
-    pub(in crate::game) uuid: [i32; 4],
-    pub(in crate::game) raw: Option<Box<sunrise_core::nbt::Tag>>,
+    pub uuid: [i32; 4],
+    pub raw: Option<Box<sunrise_core::nbt::Tag>>,
 }
 
 sunrise_sim::impl_joined!(OminousItemSpawner);

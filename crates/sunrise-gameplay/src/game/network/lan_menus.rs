@@ -3,11 +3,12 @@
 //! runs, so a menu owner kept there is out of reach of anything that runs inside the turn: another
 //! nested turn, a hook, an action that needs to find the menu to admit or undo. These owners stay
 //! in the host, by connection, for as long as the guest is here.
-use super::{lan::LanHost, lan_crafting::GuestCrafting, transactions::decision::MenuOwner};
+use super::{lan::LanHost, lan_crafting::GuestCrafting};
 
 use sunrise_gameplay_common::game::{
     lan_menu_data::{ClickReply, GuestMerchant, GuestStation, MenuClickReply},
     native_menu_data::HeardMenu,
+    transactions::decision::MenuOwner,
 };
 
 /// One guest's menu owners: the inventory menu, the crafting table and the furnace or brewing
@@ -32,7 +33,8 @@ pub(in crate::game) struct GuestMenus {
     pub(in crate::game) menu_heard: Option<HeardMenu>,
     /// The storage a mod backed its open menu's slots with (`player_back_mod_menu_slots`);
     /// None for every menu no mod backed.
-    pub(in crate::game) slot_places: Option<sunrise_gameplay_common::game::native_menu_values::MenuSlotPlaces>,
+    pub(in crate::game) slot_places:
+        Option<sunrise_gameplay_common::game::native_menu_values::MenuSlotPlaces>,
 }
 
 impl crate::game::ServerGame<'_> {
@@ -53,14 +55,21 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn reply_menu_click(&mut self, conn: u32, reply: ClickReply) {
-        if let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
-            self.after_commit(super::transactions::After::MenuClick(Box::new(
-                MenuClickReply {
-                    conn,
-                    generation: guest.menu_generation,
-                    reply,
-                },
-            )));
+        if let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        {
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::MenuClick(Box::new(
+                    MenuClickReply {
+                        conn,
+                        generation: guest.menu_generation,
+                        reply,
+                    },
+                )),
+            );
         }
     }
 
@@ -73,7 +82,9 @@ impl crate::game::ServerGame<'_> {
             reply: ClickReply::Close(window),
         };
         if self.menu_click_in_progress(conn) {
-            self.after_commit(super::transactions::After::MenuClick(Box::new(reply)));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::MenuClick(Box::new(reply)),
+            );
         } else {
             self.publish_menu_click(reply);
         }

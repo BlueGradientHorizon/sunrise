@@ -22,7 +22,7 @@ impl RemoteInteraction {
     pub fn new(position: [f64; 3]) -> Self {
         Self::new_with_rotation(position, 0.0, 0.0)
     }
-    pub(in crate::game) fn new_with_rotation(position: [f64; 3], yaw: f32, pitch: f32) -> Self {
+    pub fn new_with_rotation(position: [f64; 3], yaw: f32, pitch: f32) -> Self {
         let pos = Vec3::new(position[0], position[1], position[2]);
         let yaw = if yaw.is_finite() { yaw } else { 0.0 };
         let pitch = if pitch.is_finite() {
@@ -46,7 +46,7 @@ impl RemoteInteraction {
         }
     }
     /// Unsynced spawns keep EntityType's 0x0 eye height until DATA_POSE/WIDTH/HEIGHT triggers refreshDimensions.
-    pub(in crate::game) fn eye_height(&self) -> f32 {
+    pub fn eye_height(&self) -> f32 {
         if self.dimensions_refreshed {
             self.height * 0.85
         } else {

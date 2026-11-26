@@ -114,7 +114,6 @@ pub(in crate::game::client_side) fn tooltip_position(
     (pos[0] as f32, pos[1] as f32)
 }
 
-use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Game, Screen};
 use mod_api::TooltipElement;
 use std::cell::Cell;
@@ -124,6 +123,7 @@ use sunrise_client::hud::{HudBatch, rgba};
 use sunrise_core::random::{LegacyRandom, RandomSource};
 #[allow(unused_imports)]
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
@@ -150,7 +150,9 @@ impl Drop for TooltipBuildGuard {
 pub(in crate::game) use super::stations_client::{CyclingSlot, EnchantBook, rename_box};
 #[cfg(feature = "client")]
 pub(in crate::game) use super::stations_client::{EMPTY_TEMPLATE_ICONS, StationUi};
-pub(in crate::game) use sunrise_gameplay_common::game::stations_common::{INPUT, Kind, RESULT, Station};
+pub(in crate::game) use sunrise_gameplay_common::game::stations_common::{
+    INPUT, Kind, RESULT, Station,
+};
 
 /// `at` is on one of a list's `rows`, with no row further that way.
 pub(in crate::game::client_side) fn off_visible_rows(
@@ -369,7 +371,8 @@ impl crate::game::ClientGame<'_> {
             name: Some(name),
         };
         let (player, entity_id) = (self.common.own_uuid(), self.common.own_entity_id());
-        self.common.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
+        self.common
+            .api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
     }
     /// Client arm of [`Game::side_station_changed`]: enchanting only clears
     /// offers without an enchantable item; anvil runs the client preview hook.
@@ -531,7 +534,9 @@ impl crate::game::ClientGame<'_> {
                 } else if ok && c.count <= cap.min(self.common.max_stack(&c)) {
                     (Some(c), Some(s))
                 } else if c.same_item_same_components(&s) {
-                    let n = s.count.min(self.common.max_stack(&c).saturating_sub(c.count));
+                    let n = s
+                        .count
+                        .min(self.common.max_stack(&c).saturating_sub(c.count));
                     s.count -= n;
                     c.count += n;
                     ((s.count > 0).then_some(s), Some(c))
@@ -666,7 +671,8 @@ impl crate::game::ClientGame<'_> {
         };
         match s.kind {
             Kind::Anvil => {
-                (self.common.creative || self.common.experience.level >= s.anvil.cost) && s.anvil.cost > 0
+                (self.common.creative || self.common.experience.level >= s.anvil.cost)
+                    && s.anvil.cost > 0
             }
             _ => true,
         }
@@ -686,7 +692,8 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         if cost <= 0
-            || (self.common.experience.level < lapis_needed as i32 || self.common.experience.level < cost)
+            || (self.common.experience.level < lapis_needed as i32
+                || self.common.experience.level < cost)
                 && !self.common.creative
         {
             return;
@@ -889,7 +896,11 @@ impl crate::game::ClientGame<'_> {
     }
     /// `StonecutterScreen.mouseScrolled`.
     pub(in crate::game::client_side) fn station_scroll(&mut self, d: f32) -> bool {
-        let mut handled = if let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut())
+        let mut handled = if let Some(m) = self
+            .common
+            .station
+            .as_mut()
+            .and_then(|s| s.merchant.as_mut())
             && m.session.offers.len() > 7
         {
             let max = m.session.offers.len() - 7;
@@ -924,8 +935,10 @@ impl crate::game::ClientGame<'_> {
         else {
             return handled;
         };
-        let (_, oy) =
-            self.inventory_origin(&HudBatch::new(size, self.client.settings.gui_scale_inputs()));
+        let (_, oy) = self.inventory_origin(&HudBatch::new(
+            size,
+            self.client.settings.gui_scale_inputs(),
+        ));
         let y = self.client.cursor.1 - oy;
         // `StonecutterScreen.mouseDragged`.
         if let Some((s, ui)) = self.station_and_ui_mut()
@@ -957,7 +970,8 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn station_typing(&self) -> bool {
         self.client.screen == Screen::Inventory
             && self
-                .common.station
+                .common
+                .station
                 .as_ref()
                 .is_some_and(|s| s.kind == Kind::Anvil && s.inputs[0].is_some())
     }
@@ -972,7 +986,8 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let before = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .filter(|s| s.kind == Kind::Anvil)
             .map(|s| self.common.anvil_item_name(s));
@@ -986,7 +1001,8 @@ impl crate::game::ClientGame<'_> {
         }
         s.name.clone_from(&ui.rename.value);
         let after = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .filter(|s| s.kind == Kind::Anvil)
             .map(|s| self.common.anvil_item_name(s));
@@ -1002,7 +1018,8 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let before = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .filter(|s| s.kind == Kind::Anvil)
             .map(|s| self.common.anvil_item_name(s));
@@ -1014,7 +1031,8 @@ impl crate::game::ClientGame<'_> {
         }
         s.name.clone_from(&ui.rename.value);
         let after = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .filter(|s| s.kind == Kind::Anvil)
             .map(|s| self.common.anvil_item_name(s));
@@ -1035,11 +1053,15 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let before = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .filter(|s| s.kind == Kind::Anvil)
             .map(|s| self.common.anvil_item_name(s));
-        let (Some(s), Some(ui)) = (self.common.station.as_mut(), self.client.station_ui.as_mut()) else {
+        let (Some(s), Some(ui)) = (
+            self.common.station.as_mut(),
+            self.client.station_ui.as_mut(),
+        ) else {
             debug_assert!(
                 self.station.is_none(),
                 "open client station missing StationUi"
@@ -1049,7 +1071,8 @@ impl crate::game::ClientGame<'_> {
         if ui.rename.shortcut(shortcut, &mut self.client.clipboard.0) {
             s.name.clone_from(&ui.rename.value);
             let after = self
-                .common.station
+                .common
+                .station
                 .as_ref()
                 .filter(|s| s.kind == Kind::Anvil)
                 .map(|s| self.common.anvil_item_name(s));
@@ -1061,7 +1084,11 @@ impl crate::game::ClientGame<'_> {
     }
     /// A click in the anvil's name box (`EditBox.onClick`).
     pub(in crate::game::client_side) fn anvil_name_click(&mut self, ox: f32, oy: f32) -> bool {
-        let open = self.common.station.as_ref().is_some_and(|s| s.kind == Kind::Anvil);
+        let open = self
+            .common
+            .station
+            .as_ref()
+            .is_some_and(|s| s.kind == Kind::Anvil);
         if !open {
             return false;
         }
@@ -1582,7 +1609,8 @@ impl crate::game::ClientGame<'_> {
             self.common.ui.difficulty == 0,
             &display,
             &|id| {
-                self.common.res
+                self.common
+                    .res
                     .mob_types()
                     .get(id)
                     .is_none_or(|t| t.allowed_in_peaceful())
@@ -1732,9 +1760,12 @@ impl crate::game::ClientGame<'_> {
         if mod_callbacks
             && shown
             && mod_api::__private::listened(mod_api::HookId::ItemTooltip)
-            && let Ok(metadata) = sunrise_gameplay_common::game::api_values::stack_read_metadata(stack)
+            && let Ok(metadata) =
+                sunrise_gameplay_common::game::api_values::stack_read_metadata(stack)
         {
-            let project = |metadata| sunrise_gameplay_common::game::api_values::project_stack(stack, metadata).ok();
+            let project = |metadata| {
+                sunrise_gameplay_common::game::api_values::project_stack(stack, metadata).ok()
+            };
             let mut access = EngineTooltipLines(&mut lines);
             self.native_item_tooltip(mod_api::__private::ItemTooltipCall {
                 player: self.common.own_uuid(),
@@ -2049,7 +2080,9 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let stack = self.slot_view(slot);
-        if self.common.carried.is_some() && !stack.as_ref().is_some_and(|s| self.tooltip_with_carried(s)) {
+        if self.common.carried.is_some()
+            && !stack.as_ref().is_some_and(|s| self.tooltip_with_carried(s))
+        {
             return;
         }
         if let Some(stack) = stack {
@@ -2392,8 +2425,6 @@ pub(in crate::game) mod tests {
         });
     }
 
-    
-
     #[test]
     #[ignore = "daily"]
     fn tooltip_part_context_tracks_flags_and_client_tick_rate() {
@@ -2518,7 +2549,6 @@ pub(in crate::game) mod tests {
         });
     }
 
-    
     /// A helmet's armour lines go where `ItemStack.addAttributeTooltips` puts them; a mod's
     /// `gather_skipped_attribute_tooltips` takes a slot group out, heading and all, and its
     /// `add_attribute_tooltips` line lands right after what is left, with the local player
@@ -2878,7 +2908,6 @@ pub(in crate::game) mod tests {
         s.stone.recipes.truncate(12);
         assert!(!s.stonecutter_scrolls());
     }
-    
 }
 
 #[cfg(feature = "client")]

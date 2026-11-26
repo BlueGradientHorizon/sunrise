@@ -15,11 +15,11 @@ pub enum ClientQuit {
 
 pub struct ClosingSave {
     pub quit: bool,
-    pub(in crate::game) close: bool,
-    pub(in crate::game) reply: Option<std::sync::mpsc::Sender<String>>,
+    pub close: bool,
+    pub reply: Option<std::sync::mpsc::Sender<String>>,
     #[allow(dead_code)]
-    pub(in crate::game) started: Instant,
-    pub(in crate::game) stage: Stage,
+    pub started: Instant,
+    pub stage: Stage,
 }
 #[allow(dead_code)]
 pub enum Stage {

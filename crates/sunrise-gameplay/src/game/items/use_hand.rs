@@ -31,7 +31,8 @@ impl crate::game::ServerGame<'_> {
         // isSecondaryUseActive with something in either hand keeps blocks
         // from reacting.
         let sneaking = self.server_acting_sneak();
-        let hands_full = self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
+        let hands_full =
+            self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts
         // (RightClickBlock): a cancel answers for the block and the item, and
@@ -47,7 +48,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(hit) = block_hit {
             let held = self.common.held().cloned();
             let answer = sunrise_level::spans::time("use_mods", || {
-                self.common.right_click_block(hit, self.common.hand, held.as_ref())
+                self.common
+                    .right_click_block(hit, self.common.hand, held.as_ref())
             });
             match answer {
                 native_hooks::BlockClickAnswer::Go {
@@ -91,14 +93,20 @@ impl crate::game::ServerGame<'_> {
             && let Some(hit) = block_hit
         {
             let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-            let mut block_answer =
-                self.common.use_item_on_block(hit, self.common.hand, held.as_ref(), mod_api::UsePhase::Block);
+            let mut block_answer = self.common.use_item_on_block(
+                hit,
+                self.common.hand,
+                held.as_ref(),
+                mod_api::UsePhase::Block,
+            );
             if block_answer.is_none()
                 && mod_api::__private::has_part_hook(mod_api::HookId::UseItemOn)
                 && api_values::block_state::block_listens(mod_api::HookId::UseItemOn, state)
                 && let Ok(snapshot) = held.try_into_api()
             {
-                let click = self.common.block_click(hit, self.common.hand, snapshot.as_ref());
+                let click = self
+                    .common
+                    .block_click(hit, self.common.hand, snapshot.as_ref());
                 self.native_use_item_on(state, &click, &mut block_answer);
             }
             let mut chains_sign = false;
@@ -186,7 +194,9 @@ impl crate::game::ServerGame<'_> {
                     .or_else(|| self.use_chiseled_bookshelf(hit, state, held.as_ref(), ItemOn));
             }
             // TRY_WITH_EMPTY_HAND: only the main hand's turn uses the block itself (useWithoutItem). The block's item behaviour hears both hands.
-            if !anchor_passed && !chains_sign && (self.common.hand == Hand::Main || block_answer.is_some())
+            if !anchor_passed
+                && !chains_sign
+                && (self.common.hand == Hand::Main || block_answer.is_some())
             {
                 let face = match hit.face {
                     [0, 1, 0] => Direction::Up,
@@ -205,9 +215,11 @@ impl crate::game::ServerGame<'_> {
                 };
                 let item = held.as_ref().map(|s| s.item.to_string());
                 let adds_candle = self
-                    .common.with_level(|b, _, _| b.cake_candle_state(state, item.as_deref()).is_some());
+                    .common
+                    .with_level(|b, _, _| b.cake_candle_state(state, item.as_deref()).is_some());
                 let pots_flower = self
-                    .common.with_level(|b, _, _| b.potted_flower_state(state, item.as_deref()).is_some());
+                    .common
+                    .with_level(|b, _, _| b.potted_flower_state(state, item.as_deref()).is_some());
                 let sign_consumes = self.sign_consumes_click(hit.pos);
                 use sunrise_world::level::{InteractionResult, UseBranch};
                 let item_result = match block_answer {
@@ -228,12 +240,15 @@ impl crate::game::ServerGame<'_> {
                         )
                         && let Ok(snapshot) = self.common.held().try_into_api()
                     {
-                        let click = self.common.block_click(hit, self.common.hand, snapshot.as_ref());
+                        let click =
+                            self.common
+                                .block_click(hit, self.common.hand, snapshot.as_ref());
                         self.native_use_without_item(state, &click, &mut empty_answer);
                     }
                     if empty_answer.is_none()
                         && self
-                            .common.res
+                            .common
+                            .res
                             .behaviours()
                             .data(state)
                             .is(sunrise_world::level::classes::Class::Fence)
@@ -290,9 +305,10 @@ impl crate::game::ServerGame<'_> {
                     self.award_stat("used", &used.item, 1);
                     self.award_custom_stat("pot_flower", 1);
                     self.common.consume_held();
-                    if let (Some(player), Some(name)) =
-                        (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-                    {
+                    if let (Some(player), Some(name)) = (
+                        self.server.lan_acting_uuid,
+                        self.server.lan_acting_name.clone(),
+                    ) {
                         self.native_player_flower_pot_manipulate(
                             player, &name, hit.pos, &used.item,
                         );
@@ -302,7 +318,8 @@ impl crate::game::ServerGame<'_> {
                 if empty_template_ran && result == sunrise_world::level::InteractionResult::Success
                 {
                     let name = self
-                        .common.res
+                        .common
+                        .res
                         .facts()
                         .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                         .name
@@ -372,7 +389,8 @@ impl crate::game::ServerGame<'_> {
                 .as_ref()
                 .zip(info.as_ref())
                 .is_none_or(|(stack, info)| {
-                    self.common.cooldowns
+                    self.common
+                        .cooldowns
                         .is_on_cooldown(&sunrise_items::cooldowns::group(
                             stack,
                             info.use_cooldown.as_ref(),
@@ -422,7 +440,9 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         };
         if let Some(hit) = block_hit
-            && let Some(answer) = self.common.item_on_interaction(hit, self.common.hand, &stack)
+            && let Some(answer) = self
+                .common
+                .item_on_interaction(hit, self.common.hand, &stack)
         {
             if self.common.interaction_consumed(answer) {
                 self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
@@ -501,7 +521,9 @@ impl crate::game::ServerGame<'_> {
         }
         // a mod's item used over time: its Item.use, once a block item's
         // useOn had its turn.
-        if !on_block && (info.block.is_none() || block_hit.is_none()) && self.common.start_mod_use(&stack)
+        if !on_block
+            && (info.block.is_none() || block_hit.is_none())
+            && self.common.start_mod_use(&stack)
         {
             return Ok(true);
         }
@@ -709,7 +731,8 @@ impl crate::game::ServerGame<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.common.mobs
+                        self.common
+                            .mobs
                             .iter_mut()
                             .find(|m| m.id == id)?
                             .random
@@ -779,7 +802,11 @@ impl crate::game::ServerGame<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.common.mobs.iter().find(|m| m.id == id).map(|m| m.position)?
+                        self.common
+                            .mobs
+                            .iter()
+                            .find(|m| m.id == id)
+                            .map(|m| m.position)?
                     }
                     None => self.common.player.as_ref()?.position,
                 };
@@ -845,9 +872,13 @@ impl crate::game::ServerGame<'_> {
         // how many arrows leave and how far apart they fan (Multishot: two more
         // arrows, ten degrees of spread).
         let (count, spread) = self.bow_volley(stack);
-        let (velocity, on_ground) = self.common.player.as_ref().map_or((Vec3::ZERO, true), |pl| {
-            (self.common.known_player_movement(), pl.ground.on_ground)
-        });
+        let (velocity, on_ground) = self
+            .common
+            .player
+            .as_ref()
+            .map_or((Vec3::ZERO, true), |pl| {
+                (self.common.known_player_movement(), pl.ground.on_ground)
+            });
         // ProjectileWeaponItem.shoot: an odd count is centred on the view, the
         // arrows alternate either side of it, `direction` flipping per arrow.
         // A count of 0 draws nothing and vanilla skips `shoot` altogether.
@@ -913,7 +944,8 @@ impl crate::game::ServerGame<'_> {
         // BowItem.releaseUsing: `playSound(null, getX(), getY(), getZ(), ...)`, at
         // the feet: an eye-height source a few cm from the listener pans hard.
         let feet = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
         self.server_play_sound("minecraft:entity.arrow.shoot", feet, 1.0, pitch);
@@ -994,3 +1026,4 @@ pub mod scaffolding_inside_tests;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+use sunrise_gameplay_common::game::{api_values, native_hooks};

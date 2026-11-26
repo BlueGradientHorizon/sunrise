@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn with_break_progress_positions(
@@ -9,7 +7,9 @@ impl crate::game::ClientGame<'_> {
         publish: impl FnOnce(&mut Self, Vec<[i32; 3]>),
     ) {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
-        if !self.common.native_window() || !block_listens(mod_api::HookId::BreakProgressPositions, state) {
+        if !self.common.native_window()
+            || !block_listens(mod_api::HookId::BreakProgressPositions, state)
+        {
             publish(self, Vec::new());
             return;
         }
@@ -70,4 +70,5 @@ impl crate::game::ClientGame<'_> {
         self.fire_break_progress_positions(call);
     }
 }
+use sunrise_gameplay_common::game::api_values::block_state::block_listens;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

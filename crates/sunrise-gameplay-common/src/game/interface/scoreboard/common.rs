@@ -6,7 +6,7 @@ use sunrise_sim::{lan::playerdata::ints_uuid, save::uuid_text};
 #[derive(Default)]
 pub struct Recorded {
     /// `lastRecordedHealthAndAbsorption` (compared as a float).
-    pub(in crate::game) health_and_absorption: Option<f32>,
+    pub health_and_absorption: Option<f32>,
     pub(in crate::game) food: Option<i32>,
     pub(in crate::game) air: Option<i32>,
     pub(in crate::game) armor: Option<i32>,
@@ -16,7 +16,7 @@ pub struct Recorded {
 impl Recorded {
     /// The food, air, armor, xp and level criteria whose value differs from the last
     /// recorded one, recorded as they are returned (`ServerPlayer.doTick`).
-    pub(in crate::game) fn changed_scores(
+    pub fn changed_scores(
         &mut self,
         food: i32,
         air: i32,
@@ -46,17 +46,13 @@ pub(in crate::game) struct ScoreState {
     /// `/data ... storage`.
     pub storage: sunrise_sim::command_storage::CommandStorage,
     pub stopwatches: sunrise_sim::stopwatches::Stopwatches,
-    pub(in crate::game) loaded: bool,
-    pub(in crate::game) recorded: Recorded,
+    pub loaded: bool,
+    pub recorded: Recorded,
 }
 
 /// `TamableAnimal.getTeam`: a pet's own team, else, when it is tamed, its root
 /// owner's, else none. An untamed pet has no owner to take one from.
-pub fn pet_team<'a>(
-    board: &'a Scoreboard,
-    own: &str,
-    owner: Option<&str>,
-) -> Option<&'a sb::Team> {
+pub fn pet_team<'a>(board: &'a Scoreboard, own: &str, owner: Option<&str>) -> Option<&'a sb::Team> {
     board
         .players_team(own)
         .or_else(|| board.players_team(owner?))

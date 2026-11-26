@@ -19,7 +19,11 @@ impl ServerGame<'_> {
             rest = game.give_acting_stack(stack, owner);
             // containerMenu.broadcastChanges: InventoryChangeTrigger.
             if game.player.is_some() {
-                game.after_commit(super::transactions::After::InventoryTrigger(player.uuid()));
+                game.after_commit(
+                    sunrise_gameplay_common::game::transactions::After::InventoryTrigger(
+                        player.uuid(),
+                    ),
+                );
             }
         });
         if ran {

@@ -5,6 +5,9 @@ use super::saving::ClientQuit;
 #[cfg(feature = "client")]
 use super::*;
 #[cfg(feature = "client")]
+#[cfg(feature = "client")]
+use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
+#[cfg(feature = "client")]
 use crate::game::client_side::launch_options_client::{is_client_start, time_limit};
 #[cfg(feature = "client")]
 use sunrise_client::window::PointerSample;
@@ -495,7 +498,9 @@ impl ApplicationHandler for crate::game::ClientGame<'_> {
                         "startedCleanly",
                         sunrise_client::options_file::V::Bool(true),
                     );
-                    self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                    self.client
+                        .settings
+                        .save(&sunrise_gameplay_common::game::options_path());
                 }
                 Ok(false) => {
                     event_loop.exit();

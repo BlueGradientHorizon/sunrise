@@ -25,7 +25,7 @@ pub struct Fangs {
     /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
     pub has_visual_fire: bool,
     /// `Entity.random`. The attack sound's pitch is its first draw.
-    pub(in crate::game) random: LegacyRandom,
+    pub random: LegacyRandom,
 }
 
 sunrise_sim::impl_joined!(Fangs);
@@ -40,20 +40,13 @@ pub struct FangState {
     pub list: sunrise_sim::join_seq::ResidentList<Fangs>,
 }
 impl FangState {
-    pub(in crate::game) fn perf_count(&self) -> usize {
+    pub fn perf_count(&self) -> usize {
         self.list.len()
     }
 }
 
 impl CommonGame<'_> {
-    pub fn insert_fangs(
-        &mut self,
-        id: u32,
-        at: [f64; 3],
-        yaw: f32,
-        delay: i32,
-        owner: u32,
-    ) {
+    pub fn insert_fangs(&mut self, id: u32, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         self.fangs.list.push(Fangs {
             attachment_lifetime: Default::default(),
             join: Default::default(),

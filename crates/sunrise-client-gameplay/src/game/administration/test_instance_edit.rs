@@ -6,6 +6,7 @@ use super::{
 };
 use sunrise_client::ui::EditBox;
 use sunrise_game_data::text::{self, Text};
+use sunrise_gameplay_common::game::remote::remote_text;
 use sunrise_level::{
     containers::BlockEntity, structure_block::rotation_ordinal,
     test_instance_block::TestInstanceBlock,
@@ -295,11 +296,7 @@ impl Editor for TestInstanceEditor {
 
     fn opened(&mut self, entity: &BlockEntity, pos: Pos) -> Vec<S> {
         if let BlockEntity::TestInstanceBlock(b) = entity {
-            self.error = b
-                .data
-                .error_message
-                .as_ref()
-                .map(super::remote::remote_text);
+            self.error = b.data.error_message.as_ref().map(remote_text);
         }
         self.update_info(pos, true)
     }
@@ -321,7 +318,7 @@ impl Editor for TestInstanceEditor {
         {
             let message = Text::empty()
                 .with_color(text::RED)
-                .append(super::remote::remote_text(error));
+                .append(remote_text(error));
             description = description
                 .append(Text::translate(
                     "test_instance.description.failed",
@@ -347,7 +344,8 @@ impl crate::game::ClientGame<'_> {
     }
     /// `LocalPlayer.openTestInstanceBlock`.
     pub(in crate::game::client_side) fn open_test_instance_block(&mut self, pos: Pos) {
-        let Some(BlockEntity::TestInstanceBlock(b)) = self.common.world.block_entities.get(&pos) else {
+        let Some(BlockEntity::TestInstanceBlock(b)) = self.common.world.block_entities.get(&pos)
+        else {
             return;
         };
         let editor = TestInstanceEditor::new(b, self.side_test_rotation(pos));

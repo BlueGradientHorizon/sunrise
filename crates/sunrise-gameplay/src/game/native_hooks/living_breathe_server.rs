@@ -7,7 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// stands. The listener's writes and that check are one transaction: a
     /// refusal (`None`) rolls the listener's transactional writes back and
     /// leaves the air as it is, and the caller applies nothing.
-    pub(in crate::game::server_side) fn ask_breath(
+    pub(crate) fn ask_breath(
         &mut self,
         living: mod_api::LivingRef,
         vanilla: sunrise_sim::breathing::Breath,
@@ -31,12 +31,13 @@ impl crate::game::ServerGame<'_> {
         answered.ok().map(|()| breath)
     }
     /// A paused mob's breathing, as `ask_player_breath` does for a player.
-    pub(in crate::game::server_side) fn ask_mob_breath(
+    pub(crate) fn ask_mob_breath(
         &mut self,
         pause: &sunrise_sim::mobs::ai::AirPause,
     ) -> Option<sunrise_sim::breathing::Breath> {
         let living = self
-            .common.entity(pause.mob)
+            .common
+            .entity(pause.mob)
             .and_then(|entity| self.common.living(entity))?;
         self.ask_breath(living, pause.step.vanilla, |game| {
             game.mobs.iter().any(|m| pause.still_valid(m))
@@ -49,7 +50,10 @@ impl crate::game::ServerGame<'_> {
         step: sunrise_sim::breathing::AirStep,
     ) -> Option<sunrise_sim::breathing::Breath> {
         let id = self.native_acting_entity();
-        let living = self.common.entity(id).and_then(|entity| self.common.living(entity))?;
+        let living = self
+            .common
+            .entity(id)
+            .and_then(|entity| self.common.living(entity))?;
         self.ask_breath(living, step.vanilla, move |game| {
             game.player
                 .as_ref()
@@ -62,7 +66,10 @@ impl crate::game::ServerGame<'_> {
         id: u32,
         step: sunrise_sim::breathing::AirStep,
     ) -> Option<sunrise_sim::breathing::Breath> {
-        let living = self.common.entity(id).and_then(|entity| self.common.living(entity))?;
+        let living = self
+            .common
+            .entity(id)
+            .and_then(|entity| self.common.living(entity))?;
         self.ask_breath(living, step.vanilla, move |game| {
             game.armor_stands
                 .iter()

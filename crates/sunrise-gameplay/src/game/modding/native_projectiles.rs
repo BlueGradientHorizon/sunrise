@@ -3,10 +3,8 @@
 //! collects the impacts; once its worlds are let go, the mods hear each one, and a
 //! projectile whose impact a mod canceled flies the tick again from where it was,
 //! through whatever it hit.
-use super::{
-    Game, commands::Target, creatures::TargetQuery, dragon_common::SPECIAL, lan_pvp::meets_players,
-    native_hooks::mob_kind,
-};
+use super::{Game, commands::Target, dragon_common::SPECIAL, lan_pvp::meets_players};
+use crate::game::{creatures::TargetQuery, native_hooks::mob_kind};
 use std::ops::Range;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_level::fast_hash::{FxHashMap, FxHashSet};
@@ -103,7 +101,10 @@ impl crate::game::ServerGame<'_> {
         let (entity, block, _, _) = self.pearl_hit(hit);
         if let Some(id) = entity {
             let entity = self.common.entity(id)?;
-            Some(ImpactTarget::Entity(entity, self.common.entity_position(entity)?))
+            Some(ImpactTarget::Entity(
+                entity,
+                self.common.entity_position(entity)?,
+            ))
         } else if matches!(hit, Hit::Block { .. }) {
             Some(ImpactTarget::Block(
                 self.common.world.block(block[0], block[1], block[2]),
@@ -213,7 +214,10 @@ impl crate::game::ServerGame<'_> {
             Hit::Entity { who, at } => {
                 let (entity, kind) = match who {
                     Who::Mob(id) => self.native_impact_entity(id),
-                    Who::Player => (self.common.own_entity_id() as u32, "minecraft:player".into()),
+                    Who::Player => (
+                        self.common.own_entity_id() as u32,
+                        "minecraft:player".into(),
+                    ),
                 };
                 (Some(entity), kind, [0; 3], [0; 3], at)
             }
@@ -334,7 +338,10 @@ impl crate::game::ServerGame<'_> {
             Hit::Entity { who, at } => {
                 let (entity, kind) = match who {
                     Who::Mob(id) => self.native_impact_entity(id),
-                    Who::Player => (self.common.own_entity_id() as u32, "minecraft:player".into()),
+                    Who::Player => (
+                        self.common.own_entity_id() as u32,
+                        "minecraft:player".into(),
+                    ),
                 };
                 (Some(entity), kind, [0; 3], [0; 3], at)
             }
@@ -490,8 +497,12 @@ impl crate::game::ServerGame<'_> {
             let from = p.position;
             (p, pending.keep, hit) = self.broken_vehicle_retick(before.clone());
             pending.target = self.native_impact_target(hit);
-            self.common.creatures.projectiles.store_back(index, p.clone());
-            self.common.entity_section_step(p.id, from.components(), p.position.components());
+            self.common
+                .creatures
+                .projectiles
+                .store_back(index, p.clone());
+            self.common
+                .entity_section_step(p.id, from.components(), p.position.components());
             if self.projectile_removal_pending(p.id) {
                 return None;
             }
@@ -532,7 +543,8 @@ impl crate::game::ServerGame<'_> {
                     let end = self.common.creatures.projectiles.len();
                     self.common.creatures.projectiles.put_back(end, owner);
                 }
-                self.common.entity_section_step(p.id, p.position.components(), to.components());
+                self.common
+                    .entity_section_step(p.id, p.position.components(), to.components());
             } else {
                 self.common.creatures.projectiles.remove(index);
             }
@@ -574,7 +586,8 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or_default();
             if pending.keep {
                 self.common.creatures.projectiles.store_back(i, p.clone());
-                self.common.entity_section_step(p.id, from.components(), p.position.components());
+                self.common
+                    .entity_section_step(p.id, from.components(), p.position.components());
             } else {
                 self.common.creatures.projectiles.remove(i);
             }

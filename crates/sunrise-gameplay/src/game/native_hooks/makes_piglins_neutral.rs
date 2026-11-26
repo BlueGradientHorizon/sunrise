@@ -1,4 +1,5 @@
-
+use mod_api::LivingRef;
+use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// `IItemExtension.makesPiglinsNeutral`: does `stack`, worn by `wearer`,

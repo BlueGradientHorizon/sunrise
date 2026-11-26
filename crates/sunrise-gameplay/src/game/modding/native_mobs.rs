@@ -179,7 +179,8 @@ impl crate::game::ServerGame<'_> {
             ["minecraft:", kind].concat()
         };
         let monster = self
-            .common.res
+            .common
+            .res
             .mob_types()
             .get(&qualified)
             .is_some_and(|t| t.category == "monster");
@@ -190,7 +191,7 @@ impl crate::game::ServerGame<'_> {
             kind,
             pos,
             true,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Command,
             ),
         )?;
@@ -237,7 +238,8 @@ impl crate::game::ServerGame<'_> {
         if !self.native_mob_level(dimension) {
             return Vec::new();
         }
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .filter(|m| !m.removed && m.alive())
             .map(|m| self.native_mob_of(m))

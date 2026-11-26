@@ -2,7 +2,7 @@ use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game::client_side) fn finish_render_frame(&mut self, elapsed: Duration) {
+    pub(crate) fn finish_render_frame(&mut self, elapsed: Duration) {
         let (world_partial_tick, partial_tick) = self
             .client
             .extras

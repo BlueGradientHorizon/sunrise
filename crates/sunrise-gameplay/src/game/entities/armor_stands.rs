@@ -4,13 +4,16 @@
 //! the default pose, the hit wobble and humanoid armor layers.
 use super::entity::Entity;
 use super::{Game, InteractTarget};
-use sunrise_gameplay_common::game::armor_stands_common::{TYPE_ID, overlaps, swap_with_equipment_slot};
 use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::armor_stands_common::{
+    TYPE_ID, overlaps, swap_with_equipment_slot,
+};
+use sunrise_gameplay_common::game::creatures;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::ArmorStand,
@@ -21,9 +24,9 @@ use sunrise_sim::{
 pub(in crate::game::server_side) fn armor_stand_dying_drops<'a>(
     stand: &ArmorStand,
     mob_drops: bool,
-    dying: super::creatures::DyingDrops<'a>,
+    dying: creatures::DyingDrops<'a>,
     roll: impl FnOnce(&str) -> Vec<sunrise_world::loot::LootStack>,
-) -> (super::creatures::DyingDrops<'a>, Vec<(ItemStack, [f64; 3])>) {
+) -> (creatures::DyingDrops<'a>, Vec<(ItemStack, [f64; 3])>) {
     let stacks = if stand.small || !mob_drops {
         Vec::new()
     } else {
@@ -32,7 +35,7 @@ pub(in crate::game::server_side) fn armor_stand_dying_drops<'a>(
             .filter(|stack| !stack.is_empty())
             .map(|stack| {
                 (
-                    super::creatures::from_loot(stack),
+                    creatures::from_loot(stack),
                     [stand.position.x, stand.position.y, stand.position.z],
                 )
             })
@@ -158,8 +161,12 @@ impl crate::game::ServerGame<'_> {
         // `EntityType.createDefaultStackConfig`: the item's `custom_data`, then its
         // `entity_data` merged over the stand; `ArmorStandItem.useOn` then snaps it
         // to the placement yaw with pitch 0.
-        let own =
-            sunrise_sim::entity_nbt::armor_stand_to_nbt(&stand, [0; 4], None, self.common.res.items());
+        let own = sunrise_sim::entity_nbt::armor_stand_to_nbt(
+            &stand,
+            [0; 4],
+            None,
+            self.common.res.items(),
+        );
         let mut raw = sunrise_sim::block_entity_item::stack_configured_entity(
             stack,
             "minecraft:armor_stand",
@@ -193,7 +200,10 @@ impl crate::game::ServerGame<'_> {
         // ArmorStandItem.useOn: the stand's ENTITY_PLACE, by the player.
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:entity_place", [foot.x, foot.y, foot.z], ctx);
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         self.common.armor_stands.push(stand);
         if !self.common.creative {
             self.common.consume_held();
@@ -206,7 +216,8 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game::server_side) fn equipment_slot(&self, stack: &ItemStack) -> usize {
         match self
-            .common.res
+            .common
+            .res
             .items()
             .get(&stack.item)
             .and_then(|i| i.equip_slot.as_deref())
@@ -225,19 +236,23 @@ impl crate::game::ServerGame<'_> {
         let Some((mut i, d, point)) = (match target {
             // interactAt gets the packet's location, measured from the stand's
             // position, so getClickedSlot reads the height the client clicked.
-            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.armor_stands, t.id, |a| a.id)
-                .map(|i| {
-                    let p = self.common.armor_stands[i].position;
-                    (
-                        i,
-                        0.0,
-                        [
-                            p.x + t.location[0],
-                            p.y + t.location[1],
-                            p.z + t.location[2],
-                        ],
-                    )
-                }),
+            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(
+                &self.common.armor_stands,
+                t.id,
+                |a| a.id,
+            )
+            .map(|i| {
+                let p = self.common.armor_stands[i].position;
+                (
+                    i,
+                    0.0,
+                    [
+                        p.x + t.location[0],
+                        p.y + t.location[1],
+                        p.z + t.location[2],
+                    ],
+                )
+            }),
             None => self.common.armor_stand_hit(),
         }) else {
             return false;
@@ -332,8 +347,10 @@ impl crate::game::ServerGame<'_> {
             .is_none_or(|h| h.count <= 1 || current.is_none());
         if moves
             && target.is_some()
-            && let (Some(player), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+            && let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             let stand = self.common.armor_stands[i].id as i32;
             let slot_name = ["mainhand", "offhand", "feet", "legs", "chest", "head"][slot];
@@ -344,9 +361,11 @@ impl crate::game::ServerGame<'_> {
             }
             // The listener had the game in its hands: find the stand again by
             // its id and check the click's facts. A change spends the click.
-            let Some(now) =
-                sunrise_gameplay_common::game::item_actions::named_entity(&self.common.armor_stands, stand, |a| a.id)
-            else {
+            let Some(now) = sunrise_gameplay_common::game::item_actions::named_entity(
+                &self.common.armor_stands,
+                stand,
+                |a| a.id,
+            ) else {
                 return true;
             };
             let stand = &self.common.armor_stands[now];
@@ -384,7 +403,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let p = self.common.armor_stands[i].position;
-        self.common.world
+        self.common
+            .world
             .modified
             .insert(((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4));
         self.swing_arm();
@@ -445,7 +465,10 @@ impl crate::game::ServerGame<'_> {
         before_weapon: impl FnOnce(&mut Self, Aabb, u32),
     ) -> bool {
         // The stand's box, id and place, before the hit may remove it.
-        let (area, id) = (self.common.armor_stands[i].bounds(), self.common.armor_stands[i].id);
+        let (area, id) = (
+            self.common.armor_stands[i].bounds(),
+            self.common.armor_stands[i].id,
+        );
         let (center, on_ground) = (
             self.common.armor_stands[i].position,
             self.common.armor_stands[i].ground.on_ground,
@@ -467,7 +490,8 @@ impl crate::game::ServerGame<'_> {
         // (`DamageSource.isCreativePlayer`).
         let id = self.common.armor_stands[i].id;
         let attacker = self.common.own_entity_id();
-        let vanilla = self.saved_refuses_damage(id, "minecraft:player_attack", self.common.creative);
+        let vanilla =
+            self.saved_refuses_damage(id, "minecraft:player_attack", self.common.creative);
         let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
@@ -507,7 +531,8 @@ impl crate::game::ServerGame<'_> {
     /// interleaves the remaining turns with shulkers before applying each lid push.
     pub(in crate::game::server_side) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
         self.server.ordered.armor_stands.extend(
-            self.common.armor_stands
+            self.common
+                .armor_stands
                 .iter()
                 .filter(|stand| stand.join < self.server.ordered.born)
                 .map(|stand| stand.join),
@@ -521,7 +546,8 @@ impl crate::game::ServerGame<'_> {
             .make_contiguous()
             .sort_unstable();
         let first_shulker = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|mob| !mob.removed && mob.species() == Species::Shulker)
             .map(|mob| mob.join)
@@ -553,7 +579,12 @@ impl crate::game::ServerGame<'_> {
 
     #[cfg(test)]
     pub(in crate::game) fn tick_armor_stands(&mut self) -> Result<()> {
-        let joins: Vec<_> = self.common.armor_stands.iter().map(|stand| stand.join).collect();
+        let joins: Vec<_> = self
+            .common
+            .armor_stands
+            .iter()
+            .map(|stand| stand.join)
+            .collect();
         self.tick_armor_stand_turns(joins)
     }
 
@@ -611,7 +642,8 @@ impl crate::game::ServerGame<'_> {
             }
             self.armor_stand_location_effects(i, false);
             // ArmorStand.travel: a marker or a NoGravity stand does not move.
-            let travels = !self.common.armor_stands[i].marker && !self.common.armor_stands[i].no_gravity;
+            let travels =
+                !self.common.armor_stands[i].marker && !self.common.armor_stands[i].no_gravity;
             if travels && obstacles.is_none() {
                 obstacles = Some(self.stand_entity_collisions());
             }
@@ -654,9 +686,14 @@ impl crate::game::ServerGame<'_> {
                         a.position.z,
                     ));
                     &*self
-                        .common.res
+                        .common
+                        .res
                         .facts()
-                        .get(self.common.world.block(eye_block.x, eye_block.y, eye_block.z))
+                        .get(
+                            self.common
+                                .world
+                                .block(eye_block.x, eye_block.y, eye_block.z),
+                        )
                         .name
                         == "minecraft:bubble_column"
                 };
@@ -770,7 +807,9 @@ impl crate::game::ServerGame<'_> {
                     stand.ground,
                     stand.velocity,
                 );
-                let writes = self.common.body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
+                let writes =
+                    self.common
+                        .body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
                 let stand = &mut self.common.armor_stands[i];
                 // `ArmorStand.hurtServer` does not take generic damage; the stand
                 // has no stuck multiplier or active-effect list in its travel row.
@@ -795,7 +834,8 @@ impl crate::game::ServerGame<'_> {
                     self.bubble_column_particles(pos);
                 }
             }
-            self.common.armor_stands[i].apply_honey_slide(&self.common.world, self.common.res.facts());
+            self.common.armor_stands[i]
+                .apply_honey_slide(&self.common.world, self.common.res.facts());
             let a = &self.common.armor_stands[i];
             if !a.marker && !a.no_gravity {
                 self.entity_powder_snow_particles(
@@ -852,12 +892,14 @@ impl crate::game::ServerGame<'_> {
             }
             if self.common.armor_stands[i].fire_ticks > 0
                 && self.common.armor_stands[i].fire_ticks >= prev_fire
-                && let Some(sunrise_core::nbt::Tag::Compound(map)) = self.common.persist.raw.get_mut(&id)
+                && let Some(sunrise_core::nbt::Tag::Compound(map)) =
+                    self.common.persist.raw.get_mut(&id)
             {
                 map.remove(&"TicksFrozen".into());
             }
             let (id, from, to) = section_step;
-            self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.common
+                .entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             // The end of LivingEntity.tick.
             let a = &mut self.common.armor_stands[i];
             if a.impulse_grace > 0 {
@@ -865,16 +907,26 @@ impl crate::game::ServerGame<'_> {
             }
         }
         for (id, bubbles) in drowned {
-            let Some((at, v)) = self.common.armor_stands.iter().find(|a| a.id == id).map(|a| {
-                (
-                    [a.position.x, a.position.y, a.position.z],
-                    [a.velocity.x, a.velocity.y, a.velocity.z],
-                )
-            }) else {
+            let Some((at, v)) = self
+                .common
+                .armor_stands
+                .iter()
+                .find(|a| a.id == id)
+                .map(|a| {
+                    (
+                        [a.position.x, a.position.y, a.position.z],
+                        [a.velocity.x, a.velocity.y, a.velocity.z],
+                    )
+                })
+            else {
                 continue;
             };
             if self.drown_bubbles(at, v, bubbles) {
-                self.lan_entity_event(id as i32, sunrise_gameplay_common::game::combat_common::DROWN_EVENT, at);
+                self.lan_entity_event(
+                    id as i32,
+                    sunrise_gameplay_common::game::combat_common::DROWN_EVENT,
+                    at,
+                );
             }
         }
         for (id, damage_type) in dead.into_iter().rev() {
@@ -1021,7 +1073,12 @@ impl crate::game::ServerGame<'_> {
             return Ok(());
         }
         let p = stand.on_pos_legacy(|p| {
-            let name = &self.common.res.facts().get(self.common.world.block(p.x, p.y, p.z)).name;
+            let name = &self
+                .common
+                .res
+                .facts()
+                .get(self.common.world.block(p.x, p.y, p.z))
+                .name;
             let tags = &self.common.res.items().block_tags;
             [
                 "minecraft:fences",
@@ -1033,14 +1090,16 @@ impl crate::game::ServerGame<'_> {
         });
         for chance in [landed.then_some(3), Some(100)].into_iter().flatten() {
             let egg = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(self.common.world.block(p.x, p.y, p.z))
                 .is_some_and(|s| s.name == "minecraft:turtle_egg");
             if egg
                 && self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                 && self.common.world.random.next_int_bound(chance).unwrap_or(1) == 0
@@ -1060,8 +1119,8 @@ impl crate::game::ServerGame<'_> {
         causing: u32,
     ) {
         let source = (!mod_api::__private::mods().is_empty())
-            .then(|| super::creatures::death_hurt_source(damage_type, causing));
-        let dying = super::creatures::DyingDrops {
+            .then(|| creatures::death_hurt_source(damage_type, causing));
+        let dying = creatures::DyingDrops {
             entity: stand.id,
             kind: "minecraft:armor_stand",
             player: None,
@@ -1070,7 +1129,8 @@ impl crate::game::ServerGame<'_> {
         };
         let (dying, stacks) = armor_stand_dying_drops(
             stand,
-            self.common.ui
+            self.common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS),
             dying,
@@ -1092,7 +1152,9 @@ impl crate::game::ServerGame<'_> {
                 match loot.random_sequence(table) {
                     Some(sequence) => loot.roll_entity(
                         table,
-                        self.server.rand_sequences.get(sequence, self.common.level.seed),
+                        self.server
+                            .rand_sequences
+                            .get(sequence, self.common.level.seed),
                         &params,
                     ),
                     None => loot.roll_entity(table, &mut self.common.world.random, &params),
@@ -1159,7 +1221,8 @@ impl crate::game::ServerGame<'_> {
         };
         let tagged = |game: &Self, tag: &str| game.health_resources.damage.in_tag(kind, tag);
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing, Some(Target::Mob(_)))
@@ -1173,7 +1236,10 @@ impl crate::game::ServerGame<'_> {
         // Entity.isInvulnerableToBase: the flag, unless a creative player hits.
         let creative = match causing {
             Some(Target::Player) => self.common.creative,
-            Some(Target::Guest(conn)) => self.common.command_guest(conn).is_some_and(|g| g.creative()),
+            Some(Target::Guest(conn)) => self
+                .common
+                .command_guest(conn)
+                .is_some_and(|g| g.creative()),
             _ => false,
         };
         let causing_id = causing
@@ -1234,7 +1300,9 @@ impl crate::game::ServerGame<'_> {
                 // igniteForSeconds(5.0f): at least 100 ticks, and clearFreeze.
                 let a = &mut self.common.armor_stands[i];
                 a.fire_ticks = a.fire_ticks.max(100);
-                if let Some(sunrise_core::nbt::Tag::Compound(map)) = self.common.persist.raw.get_mut(&id) {
+                if let Some(sunrise_core::nbt::Tag::Compound(map)) =
+                    self.common.persist.raw.get_mut(&id)
+                {
                     map.remove(&"TicksFrozen".into());
                 }
             }
@@ -1251,7 +1319,8 @@ impl crate::game::ServerGame<'_> {
         let may_build = match causing {
             Some(Target::Player) => self.common.may_build(),
             Some(Target::Guest(conn)) => self
-                .common.command_guest(conn)
+                .common
+                .command_guest(conn)
                 .is_none_or(|g| g.abilities.may_build),
             _ => true,
         };
@@ -1297,7 +1366,8 @@ impl crate::game::ServerGame<'_> {
         let attacker = match causing {
             Some(Target::Player | Target::Guest(_)) => Some("minecraft:player".to_owned()),
             Some(Target::Mob(m_id)) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == m_id)
                 .map(|m| m.kind.id.clone()),
@@ -1370,7 +1440,8 @@ impl crate::game::ServerGame<'_> {
         });
         if removed {
             let source = self
-                .common.level_entity(causing as i32)
+                .common
+                .level_entity(causing as i32)
                 .or(Some(super::commands::Target::Stand(id)));
             self.entity_killed_event_by(at, source);
         }
@@ -1444,7 +1515,8 @@ impl crate::game::ServerGame<'_> {
         height: f64,
     ) {
         let Some(state) = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .default_state("minecraft:oak_planks")
@@ -1474,7 +1546,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let components = self
-            .common.pack
+            .common
+            .pack
             .item_models
             .components(&sunrise_sim::item_models::stack_view(stack));
         let Some(equippable) = components.get("minecraft:equippable") else {

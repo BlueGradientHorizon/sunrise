@@ -84,11 +84,11 @@ impl crate::game::ClientGame<'_> {
         }
         // Holding the scrollbar scrolls as the mouse moves (mouseDragged).
         if !right
-            && self
-                .client
-                .creative_screen
-                .0
-                .press_scrollbar(cx - ox, cy - oy, &self.common.pack.names)
+            && self.client.creative_screen.0.press_scrollbar(
+                cx - ox,
+                cy - oy,
+                &self.common.pack.names,
+            )
         {
             return true;
         }
@@ -98,10 +98,7 @@ impl crate::game::ClientGame<'_> {
         false
     }
     /// The stack at a resolved display slot on the active item tab, accounting for scroll.
-    pub(in crate::game::client_side) fn creative_display_stack(
-        &self,
-        slot: usize,
-    ) -> Option<ItemStack> {
+    pub fn creative_display_stack(&self, slot: usize) -> Option<ItemStack> {
         let names = &self.common.pack.names;
         let cell = slot - Creative::DISPLAY;
         let first_row = self.client.creative_screen.0.first_row(names);
@@ -360,7 +357,11 @@ impl crate::game::ClientGame<'_> {
             self.draw_hovered_slot_highlight(batch, true, ox, oy);
         } else {
             let items = self.client.creative_screen.0.items(&self.common.pack.names);
-            let first = self.client.creative_screen.0.first_row(&self.common.pack.names);
+            let first = self
+                .client
+                .creative_screen
+                .0
+                .first_row(&self.common.pack.names);
             for r in 0..5 {
                 for c in 0..9 {
                     let Some(stack) = items.get((first + r) * 9 + c).filter(|s| s.count > 0) else {
@@ -415,7 +416,8 @@ impl crate::game::ClientGame<'_> {
                 // `inventory.binSlot`, not an English literal.
                 let destroy = self.translate_with_fallback("inventory.binSlot", "Destroy Item");
                 self.tooltip(batch, &destroy, self.client.cursor.0, self.client.cursor.1);
-            } else if let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1)
+            } else if let Some(slot) =
+                self.slot_at(batch, self.client.cursor.0, self.client.cursor.1)
                 && let Some(stack) = self.slot_view(slot)
                 && self.tooltip_with_carried(&stack)
             {

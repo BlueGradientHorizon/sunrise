@@ -18,7 +18,7 @@ impl GameLevel<'_> {
     /// the levels the table reads. The roll decides each read, the level
     /// fires the hook and the roll goes on with the answer; so the listeners
     /// can hold this level, the roll keeps the randoms until it ends.
-    pub(in crate::game) fn roll_block_loot(
+    pub fn roll_block_loot(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,

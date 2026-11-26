@@ -42,16 +42,16 @@ impl std::ops::DerefMut for EntityMaps {
 }
 
 impl EntityMaps {
-    pub(in crate::game) fn collider(&self, id: u32) -> Option<&ColliderEntry> {
+    pub fn collider(&self, id: u32) -> Option<&ColliderEntry> {
         self.colliders.get(&id)
     }
 
-    pub(in crate::game) fn collider_mut(&mut self, id: u32) -> Option<&mut ColliderEntry> {
+    pub fn collider_mut(&mut self, id: u32) -> Option<&mut ColliderEntry> {
         self.colliders.get_mut(&id)
     }
 
     /// Gives the entity `id`, which stands in `level`, this collider.
-    pub(in crate::game) fn insert_collider(&mut self, id: u32, level: Dim, entry: ColliderEntry) {
+    pub fn insert_collider(&mut self, id: u32, level: Dim, entry: ColliderEntry) {
         if self.colliders.insert(id, entry).is_some() {
             self.unindex(id);
         }
@@ -59,7 +59,7 @@ impl EntityMaps {
     }
 
     /// Takes the collider off the entity, wherever it stands.
-    pub(in crate::game) fn remove_collider(&mut self, id: u32) -> bool {
+    pub fn remove_collider(&mut self, id: u32) -> bool {
         let had = self.colliders.remove(&id).is_some();
         if had {
             self.unindex(id);
@@ -68,7 +68,7 @@ impl EntityMaps {
     }
 
     /// The entity `id` arrived in `level` with its collider.
-    pub(in crate::game) fn move_collider(&mut self, id: u32, level: Dim) {
+    pub fn move_collider(&mut self, id: u32, level: Dim) {
         if self.colliders.contains_key(&id) {
             self.unindex(id);
             self.by_level.entry(level).or_default().insert(id);
@@ -83,12 +83,12 @@ impl EntityMaps {
     }
 
     /// The ids of the colliders in `level`.
-    pub(in crate::game) fn colliders_in(&self, level: Dim) -> impl Iterator<Item = u32> + '_ {
+    pub fn colliders_in(&self, level: Dim) -> impl Iterator<Item = u32> + '_ {
         self.by_level.get(&level).into_iter().flatten().copied()
     }
 
     /// Writes the entity's collider into its saved compound.
-    pub(in crate::game) fn write_collider(&self, root: &mut Compound, id: u32) {
+    pub fn write_collider(&self, root: &mut Compound, id: u32) {
         match self.colliders.get(&id) {
             Some(entry) => {
                 root.insert(SAVE_KEY.into(), Tag::Compound(entry.saved.clone()));
@@ -140,7 +140,7 @@ pub struct Placement {
 
 /// The placements of each level's colliders, kept from tick to tick.
 #[derive(Default)]
-pub(in crate::game) struct Placements(pub(in crate::game) HashMap<Dim, Placement>);
+pub(in crate::game) struct Placements(pub HashMap<Dim, Placement>);
 
 /// The save key of an entity's collider, beside its attachments.
 pub const SAVE_KEY: &str = "SunriseCollider";

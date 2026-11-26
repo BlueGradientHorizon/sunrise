@@ -13,7 +13,7 @@ pub struct PrimedTnt {
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
@@ -47,7 +47,7 @@ pub struct PrimedTnt {
 }
 impl PrimedTnt {
     /// The live state encoded for each existing save view.
-    pub(in crate::game) fn block_state_nbt(
+    pub fn block_state_nbt(
         &self,
         registry: &sunrise_world::registry::BlockRegistry,
     ) -> sunrise_core::nbt::Tag {
@@ -58,10 +58,10 @@ impl PrimedTnt {
     }
 
     /// `EntityTypes.TNT`'s `sized(0.98F, 0.98F)`, widened from the float.
-    pub(in crate::game) const SIZE: f64 = 0.98_f32 as f64;
+    pub const SIZE: f64 = 0.98_f32 as f64;
     /// `EntityTypes.TNT.getDimensions()`: width, height and eye height.
     pub(in crate::game) const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.15];
-    pub(in crate::game) fn bounds(&self) -> Aabb {
+    pub fn bounds(&self) -> Aabb {
         let h = Self::SIZE / 2.0;
         let vanilla = Aabb::new(
             Vec3::new(self.position.x - h, self.position.y, self.position.z - h),
@@ -80,7 +80,7 @@ impl PrimedTnt {
     }
     /// `Entity.move`: a pending stuck multiplier is used up by the next move,
     /// which starts from rest. Returns it, for a move that scales its step by it.
-    pub(in crate::game) fn take_stuck(&mut self) -> Option<Vec3> {
+    pub fn take_stuck(&mut self) -> Option<Vec3> {
         if self.stuck.length_squared() <= 1.0e-7 {
             return None;
         }
@@ -89,17 +89,13 @@ impl PrimedTnt {
     }
     /// PowderSnowBlock.getCollisionShape: a top that holds it once it has
     /// fallen more than 2.5 blocks, read with [`Self::collision_context`].
-    pub(in crate::game) fn powder_snow_subject(
-        &self,
-    ) -> sunrise_level::collisions::PowderSnowSubject<'static> {
+    pub fn powder_snow_subject(&self) -> sunrise_level::collisions::PowderSnowSubject<'static> {
         sunrise_level::collisions::PowderSnowSubject {
             fall_distance: self.fall_distance,
             ..Default::default()
         }
     }
-    pub(in crate::game) fn collision_context(
-        &self,
-    ) -> sunrise_world::collision_context::CollisionContext<'static> {
+    pub fn collision_context(&self) -> sunrise_world::collision_context::CollisionContext<'static> {
         sunrise_sim::motion::BodyMotion::entity_context(self.id, self.position)
     }
     /// Entity.checkFallDamage after a move that stepped `moved_y`: out of

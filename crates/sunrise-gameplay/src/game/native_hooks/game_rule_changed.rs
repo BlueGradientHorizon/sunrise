@@ -1,4 +1,5 @@
-
+use mod_api::GameRuleActor;
+use sunrise_game_data::gamerules::Value as GameRuleValue;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

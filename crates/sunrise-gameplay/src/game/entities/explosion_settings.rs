@@ -58,7 +58,7 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn blast_damage_type(&self) -> &'static str {
         match self.server.combat.0.blast_settings.damage {
             Some(damage) => damage.name,
-            None => super::creatures::damage_type(
+            None => sunrise_gameplay_common::game::creatures::damage_type(
                 DamageKind::Explosion,
                 self.blast_attacker().is_some(),
             ),

@@ -1,10 +1,7 @@
 //! Server-side dropped-item handle reads and writes for native mods.
-use super::{
-    Game,
-    api_values::{project_stack, stack_read_metadata},
-    commands::Target,
-};
+use super::{Game, commands::Target};
 use mod_api::{EntityRef, ItemEntityRef, ItemStackView};
+use sunrise_gameplay_common::game::api_values::{project_stack, stack_read_metadata};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata::{ints_uuid, uuid_ints};
 
@@ -15,13 +12,15 @@ impl crate::game::ServerGame<'_> {
         item: ItemEntityRef,
         hint: Option<usize>,
     ) -> Option<usize> {
-        let (Target::Item(_), Some(location)) =
-            self.common.native_entity_target_with_location(item.entity())?
+        let (Target::Item(_), Some(location)) = self
+            .common
+            .native_entity_target_with_location(item.entity())?
         else {
             return None;
         };
         hint.filter(|&i| {
-            self.common.dropped
+            self.common
+                .dropped
                 .get(i)
                 .is_some_and(|row| row.join == location.join)
         })
@@ -40,7 +39,8 @@ impl crate::game::ServerGame<'_> {
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
     ) -> Option<()> {
         let stack = &self
-            .common.dropped
+            .common
+            .dropped
             .get(self.native_item_entity_index(item, None)?)?
             .stack;
         let metadata = stack_read_metadata(stack).ok()?;
@@ -65,7 +65,8 @@ impl crate::game::ServerGame<'_> {
     /// The signed pickup delay; the legacy infinite sentinel reads as vanilla's 32767.
     pub(in crate::game) fn item_entity_pickup_delay(&self, item: ItemEntityRef) -> Option<i32> {
         let delay = self
-            .common.dropped
+            .common
+            .dropped
             .get(self.native_item_entity_index(item, None)?)?
             .pickup_delay;
         if delay == i64::from(u32::MAX) {
@@ -109,7 +110,8 @@ impl crate::game::ServerGame<'_> {
     /// `ItemEntity.getAge`, including negative lifetime sentinels.
     pub(in crate::game) fn item_entity_age(&self, item: ItemEntityRef) -> Option<i32> {
         Some(
-            self.common.dropped
+            self.common
+                .dropped
                 .get(self.native_item_entity_index(item, None)?)?
                 .age,
         )
@@ -117,7 +119,8 @@ impl crate::game::ServerGame<'_> {
 
     /// The UUID set by `ItemEntity.setTarget`, limiting pickup to that player.
     pub(in crate::game) fn item_entity_target(&self, item: ItemEntityRef) -> Option<u128> {
-        self.common.dropped
+        self.common
+            .dropped
             .get(self.native_item_entity_index(item, None)?)?
             .target
             .map(ints_uuid)
@@ -139,7 +142,8 @@ impl crate::game::ServerGame<'_> {
     /// `ItemEntity.getOwner`: the thrower as a resolved entity, not the pickup target.
     pub(in crate::game) fn item_entity_owner(&self, item: ItemEntityRef) -> Option<EntityRef> {
         let uuid = self
-            .common.dropped
+            .common
+            .dropped
             .get(self.native_item_entity_index(item, None)?)?
             .thrower?;
         let target = self.common.target_by_uuid(ints_uuid(uuid))?;

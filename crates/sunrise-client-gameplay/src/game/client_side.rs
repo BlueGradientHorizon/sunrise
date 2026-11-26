@@ -1,4 +1,5 @@
 //! Client-owned fields of [`super::Game`].
+use crate::game::{ConstructInit, client_side};
 use {crate::game::*, sunrise_gameplay_common::game::*};
 
 #[cfg(feature = "client")]
@@ -1185,7 +1186,7 @@ pub(in crate::game) struct ClientState {
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
     pub(in crate::game) link_prompt: Option<String>,
     /// A server's Code of Conduct to accept (game/interface/code_of_conduct.rs).
-    pub(in crate::game::client_side) code_of_conduct: Option<code_of_conduct::Prompt>,
+    pub code_of_conduct: Option<code_of_conduct::Prompt>,
     pub(in crate::game::client_side) world_renderer_ready: bool,
     pub(in crate::game::client_side) instance_groups:
         std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
@@ -1243,8 +1244,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) physical_keys: HashSet<KeyCode>,
     /// Keys whose first press a mod cancelled (`key_mapping_pre`): their repeats are never held.
     pub(in crate::game::client_side) rejected_keys: HashSet<KeyCode>,
-    pub(in crate::game::client_side) physical_buttons: HashSet<MouseButton>,
-    pub(in crate::game::client_side) drag_button: Option<MouseButton>,
+    pub physical_buttons: HashSet<MouseButton>,
+    pub drag_button: Option<MouseButton>,
     /// Control + left click as a right click (macOS).
     pub(in crate::game::client_side) right_click_emulation:
         sunrise_client_input::mouse::RightClickEmulation,
@@ -1300,7 +1301,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game) vanilla_mappings: sunrise_client::keymapping::VanillaMappings,
     /// A world screen with the pointer captured was open last frame.
     pub(in crate::game::client_side) was_playing: bool,
-    pub(in crate::game::client_side) debug: bool,
+    pub debug: bool,
     /// `sunrise-ctl gpu-passes`: time Sunrise's own passes on the GPU with F3 shut.
     pub(in crate::game::client_side) gpu_passes: bool,
     /// `sunrise-ctl gpu-passes detail`: also dispatch times and counters.
@@ -1337,10 +1338,10 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) glowing_vertices: std::cell::RefCell<Vec<Vertex>>,
     /// Client mods' sounds (`play_local_sound`): those waiting for the next audio update
     /// (`tick_sound_engine`), the stops and fades asked of them, and their handles.
-    pub(in crate::game::client_side) mod_sounds: native_local_sounds::ModSounds,
+    pub mod_sounds: native_local_sounds::ModSounds,
     /// A client mod asked to clear the particles (`clear_particles`), done before
     /// the next frame or particle tick (`apply_mod_particle_clear`).
-    pub(in crate::game::client_side) mod_clear_particles: std::cell::Cell<bool>,
+    pub mod_clear_particles: std::cell::Cell<bool>,
     /// The shader pack's entity and block entity ids, while one draws entities.
     pub(in crate::game::client_side) pack_ids: Option<shader_packs::PackIds>,
     pub(in crate::game::client_side) started: Instant,
@@ -1355,8 +1356,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) kept_block_entities:
         std::cell::RefCell<native_block_entity_draw::KeptGeometry>,
     /// Client mods' dynamic textures in the GUI atlas's pool (game/modding/native_dynamic_textures.rs).
-    pub(in crate::game::client_side) dynamic_textures:
-        sunrise_client::hud::dynamic_textures::DynamicTextures,
+    pub dynamic_textures: sunrise_client::hud::dynamic_textures::DynamicTextures,
     /// Glyphs from `native_draw_text` (`&self`): uploaded to the font atlas with the frame.
     pub(in crate::game::client_side) text_patches:
         std::cell::RefCell<Vec<sunrise_client::font::Patch>>,
@@ -1370,7 +1370,7 @@ pub(in crate::game) struct ClientState {
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
     pub(in crate::game::client_side) debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
-    pub(in crate::game::client_side) hud_layer_next: Option<usize>,
+    pub hud_layer_next: Option<usize>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     pub(in crate::game::client_side) mod_view_distances:
         std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
@@ -1390,7 +1390,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) fps_frames: u64,
     pub(in crate::game::client_side) fps_at: Instant,
     /// `Hud.tickCount`, advanced on each unpaused client tick, including in menus.
-    pub(in crate::game::client_side) gui_ticks: i32,
+    pub gui_ticks: i32,
     /// The sprite animation clock (`TextureManager.tick`): counts only the ticks the level
     /// runs normally, so `/tick freeze` holds it and `/tick step` moves it on.
     pub(in crate::game::client_side) texture_ticks: u64,
@@ -1484,7 +1484,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) lightning_seen: [u32; 2],
     /// The open WinScreen (game/interface/win.rs).
     pub(in crate::game::client_side) win: Option<win::Win>,
-    pub(in crate::game::client_side) demo_intro: Option<demo_intro::DemoIntro>,
+    pub demo_intro: Option<demo_intro::DemoIntro>,
     /// Falling models by state and selected-model address list; cleared on pack/atlas replacement.
     pub(in crate::game::client_side) falling_vertices:
         RefCell<HashMap<BlockStateId, Vec<(Vec<usize>, Vec<Vertex>)>>>,
@@ -1501,7 +1501,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) waypoints: sunrise_client::locator_bar::ClientWaypoints,
     /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
     pub(in crate::game::client_side) locator_camera: Option<([f64; 3], f32, f32, f32)>,
-    pub(in crate::game::client_side) native_camera_frame: Option<mod_api::Camera>,
+    pub native_camera_frame: Option<mod_api::Camera>,
     /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
     /// none when it drew from vanilla's.
     pub(in crate::game::client_side) posed_rotation: Option<(f32, f32)>,
@@ -1539,15 +1539,17 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) block_display_parts_scratch: Vec<u32>,
     pub(in crate::game::client_side) display_inline_profiles_scratch:
         Vec<std::sync::Arc<serde_json::Value>>,
-    pub(in crate::game::client_side) interactions:
-        std::collections::HashMap<i32, sunrise_gameplay_common::game::interactions_common::RemoteInteraction>,
+    pub interactions: std::collections::HashMap<
+        i32,
+        sunrise_gameplay_common::game::interactions_common::RemoteInteraction,
+    >,
     /// The fence knots a server tracks to this client, by entity id, at their
     /// block (`LeashFenceKnotEntity`).
     pub(in crate::game::client_side) remote_knots: HashMap<u32, [i32; 3]>,
     pub(in crate::game::client_side) text_display_vertices: usize,
     pub(in crate::game::client_side) skin_slots: sunrise_client::skins::SkinSlots,
     pub(in crate::game::client_side) skin_profiles: RefCell<sunrise_client::skins::Resolver>,
-    pub(in crate::game::client_side) chat_ui: chat::ChatUiState,
+    pub chat_ui: chat::ChatUiState,
     pub(in crate::game::client_side) map_slots: super::atlas_slots::AtlasSlots<i32>,
     /// Runtime trim slots and the last completed preparation for this atlas.
     pub(in crate::game::client_side) trim_slots: sunrise_client::trims::TrimSlots,
@@ -1555,7 +1557,7 @@ pub(in crate::game) struct ClientState {
     /// The horse inventory (game/interface/mount_menu.rs).
     pub(in crate::game::client_side) mount_menu: mount_menu::MountMenu,
     /// The other players' hooks a server tracks to this client.
-    pub(in crate::game::client_side) remote_hooks: Vec<fishing_client::RemoteHook>,
+    pub remote_hooks: Vec<fishing_client::RemoteHook>,
     pub(in crate::game::client_side) remote_clouds:
         Vec<sunrise_client_gameplay::remote::projectiles::RemoteCloud>,
     pub(in crate::game::client_side) tick_hit: std::cell::Cell<Option<Option<Hit>>>,
@@ -1565,7 +1567,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) arrow_model: Option<sunrise_client::mobs::Part>,
     pub(in crate::game::client_side) bee_stinger_model: Option<sunrise_client::mobs::Part>,
     /// The creative search projection whose stacks the mods' `item_name` parts last named.
-    pub(in crate::game::client_side) creative_search_named: Option<u64>,
+    pub creative_search_named: Option<u64>,
     /// `CreativeModeInventoryScreen.ignoreTextInput`: the chat key opened the
     /// search tab, so the letter it carries is not typed into the box.
     pub(in crate::game::client_side) creative_ignore_text: bool,
@@ -1580,17 +1582,17 @@ pub(in crate::game) struct ClientState {
         sunrise_threads::alloc_count::Counts,
     )>,
     /// Settings and HUD state: `game/interface/extras.rs`.
-    pub(in crate::game::client_side) extras: extras::ExtrasState,
+    pub extras: extras::ExtrasState,
     /// The PvP & HUD options' state (`game/entities/pvp.rs`).
     pub(in crate::game::client_side) pvp: pvp::PvpState,
     /// The item panel beside container screens (`game/modding/native_panel.rs`).
-    pub(in crate::game::client_side) panel: native_panel::Panel,
+    pub panel: native_panel::Panel,
     /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
     pub(in crate::game::client_side) native_shaders: native_shaders::NativeShaders,
     /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
-    pub(in crate::game::client_side) mod_keys: sunrise_client::keymapping::ModKeys,
+    pub mod_keys: sunrise_client::keymapping::ModKeys,
     /// The mod whose own screen is open (`Screen::Mod`).
-    pub(in crate::game::client_side) native_mod_screen: Option<String>,
+    pub native_mod_screen: Option<String>,
     /// The camera section (column, height) `pending_uploads` is sorted for, farthest first:
     /// while it stays, the list needs only its new meshes merged in, not a sort every frame.
     pub(in crate::game::client_side) pending_uploads_order: Option<((i32, i32), i32)>,
@@ -1627,7 +1629,7 @@ pub(in crate::game) struct ClientState {
     /// keys held, and the debug renderers F3+B and F3+G switch on.
     pub(in crate::game::client_side) debug_keys: sunrise_client::debug_keys::DebugKeys,
     /// The F3 overlay's charts (F3+2, F3+3).
-    pub(in crate::game::client_side) debug_charts: sunrise_client::debug_chart::DebugCharts,
+    pub debug_charts: sunrise_client::debug_chart::DebugCharts,
     /// `DebugOptionsScreen` while it is open (game/interface/debug_options.rs).
     pub(in crate::game::client_side) debug_options: Option<debug_options::DebugOptionsUi>,
     /// `DebugEntryMemory`'s readings (game/interface/debug_lines.rs).
@@ -1649,10 +1651,10 @@ pub(in crate::game) struct ClientState {
     /// The mobs `mob_run_geometry` drew last frame (`lastEntityRenderStateCount`).
     pub(in crate::game::client_side) rendered_mobs: std::cell::Cell<usize>,
     /// Whether a native mod requested background blur for this frame (`apply_screen_blur`).
-    pub(in crate::game::client_side) screen_blur_requested: std::cell::Cell<bool>,
+    pub screen_blur_requested: std::cell::Cell<bool>,
     /// PauseScreen.showPauseMenu (false after F3+Escape).
-    pub(in crate::game::client_side) pause_menu: bool,
-    pub(in crate::game::client_side) pause_focus: Option<u8>,
+    pub pause_menu: bool,
+    pub pause_focus: Option<u8>,
     pub(in crate::game::client_side) death_focus: Option<u8>,
     /// The screen ([`Game::key_screen`]) the menu focus belongs to. Another
     /// screen in front drops it, as `Gui.setScreen` drops the focus of the
@@ -1675,7 +1677,7 @@ pub(in crate::game) struct ClientState {
     /// The world list's icon in progress (`GameRenderer.tryTakeScreenshotIfNeeded`):
     /// `None` without a local world, or once the save has its icon.png.
     pub(in crate::game::client_side) world_icon: Option<WorldIcon>,
-    pub(in crate::game::client_side) client_pick: native_hooks_client::client_pick::ClientPick,
+    pub client_pick: native_hooks_client::client_pick::ClientPick,
     /// `Hud.bossOverlay`: the bars this window is showing.
     pub(in crate::game::client_side) boss_overlay: sunrise_client::boss_overlay::BossOverlay,
     /// `WorldBorderRenderer` and its render state.
@@ -1687,23 +1689,22 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) stats_ui: stats_screen::StatsUi,
     /// The Server Links screens' state (game/network/server_links.rs).
     pub(in crate::game::client_side) links_ui: server_links::LinksUi,
-    pub(in crate::game::client_side) camera_type: sunrise_level::camera_math::CameraType,
-    pub(in crate::game::client_side) requested_camera_type:
-        std::cell::Cell<Option<sunrise_level::camera_math::CameraType>>,
+    pub camera_type: sunrise_level::camera_math::CameraType,
+    pub requested_camera_type: std::cell::Cell<Option<sunrise_level::camera_math::CameraType>>,
     /// The local player as a model (third person, the inventory).
-    pub(in crate::game::client_side) player_model: Option<Mob>,
+    pub player_model: Option<Mob>,
 
     pub(in crate::game::client_side) pending_entry: ClientOnly<Option<PendingWorldEntry>>,
     /// A pack reload staged on a worker until `drive_pack_reload` applies it.
     pub(in crate::game::client_side) pack_reload: ClientOnly<Option<packs::PackReload>>,
     /// A server's resource packs (game/world/server_packs.rs).
-    pub(in crate::game::client_side) server_packs: ClientOnly<server_packs::ServerPackState>,
+    pub server_packs: ClientOnly<server_packs::ServerPackState>,
     /// The window's inbox for server notices, kept across world disconnects.
     pub(in crate::game::client_side) client_reports:
         ClientOnly<Arc<sunrise_sim::chunk_io::Reports>>,
     /// A command the player didn't type, waiting for their answer
     /// (game/network/remote_chat.rs).
-    pub(in crate::game::client_side) command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
+    pub command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
     pub(in crate::game::client_side) dialogs: ClientOnly<dialogs::DialogState>,
     /// This game's resource packs (`reload_packs` replaces them).
     pub(in crate::game::client_side) pending_initial_models:
@@ -1715,16 +1716,16 @@ pub(in crate::game) struct ClientState {
         ClientOnly<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
     /// The monitor whose video modes `settings.video_modes` holds.
     pub(in crate::game::client_side) video_modes: ClientOnly<sunrise_client::window::VideoModeList>,
-    pub(in crate::game::client_side) screen_state: ClientOnly<screen_build::ScreenState>,
-    pub(in crate::game::client_side) window: ClientShared<Option<Arc<Window>>>,
-    pub(in crate::game::client_side) renderer: ClientShared<Option<Box<Renderer>>>,
+    pub screen_state: ClientOnly<screen_build::ScreenState>,
+    pub window: ClientShared<Option<Arc<Window>>>,
+    pub renderer: ClientShared<Option<Box<Renderer>>>,
     /// Mob models posed on the GPU (`Frame::skin`, `mobs::skin`): the models stored there,
     /// and this frame's draws.
     pub(in crate::game::client_side) skin_models:
         ClientOnly<std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>>,
     /// The level random a block part's `animate_tick` holds as `event.random`, while it runs:
     /// the game's own draws during the call go through it (`with_lent_level_random`).
-    pub(in crate::game::client_side) lent_level_random:
+    pub lent_level_random:
         ClientOnly<Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>>,
     /// Controllers (Sunrise's own).
     pub(in crate::game::client_side) pad: ClientShared<pad::Pads>,
@@ -1734,16 +1735,15 @@ pub(in crate::game) struct ClientState {
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     pub(in crate::game::client_side) debug_renderers:
         ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
-    pub(in crate::game::client_side) audio: ClientShared<Audio>,
-    pub(in crate::game::client_side) particles:
-        ClientShared<sunrise_client::particles::ParticleEngine>,
+    pub audio: ClientShared<Audio>,
+    pub particles: ClientShared<sunrise_client::particles::ParticleEngine>,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
-    pub(in crate::game::client_side) pickups: ClientOnly<pickups::Pickups>,
+    pub pickups: ClientOnly<pickups::Pickups>,
     /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
     /// while the title says `createWorld.preparing`.
     pub(in crate::game::client_side) creation_job:
         ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
-    pub(in crate::game::client_side) title: ClientShared<Option<Title>>,
+    pub title: ClientShared<Option<Title>>,
     pub(in crate::game::client_side) armor_stand_assets:
         ClientOnly<armor_stands_client::ArmorStandAssets>,
     pub(in crate::game::client_side) text_displays:
@@ -1757,9 +1757,8 @@ pub(in crate::game) struct ClientState {
     /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
     pub(in crate::game::client_side) spawners: ClientOnly<spawner_client::SpawnerState>,
     /// The mod screen of a menu open on this client (`native_screen`).
-    pub(in crate::game::client_side) mod_screen:
-        ClientOnly<Option<native_hooks_client::OpenNativeScreen>>,
-    pub(in crate::game::client_side) creative_screen: ClientOnly<Creative>,
+    pub mod_screen: ClientOnly<Option<native_hooks_client::OpenNativeScreen>>,
+    pub creative_screen: ClientOnly<Creative>,
     /// Control replies waiting for a rendered frame or a benchmark deadline.
     pub(in crate::game::client_side) pending_screenshot:
         ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
@@ -2756,7 +2755,10 @@ impl<'a> ClientGame<'a> {
             session_verifier,
             profile_resolver,
         );
-        crate::game::ClientGame { common: sunrise_gameplay_common::game::ConstructInit::<true>::assemble_common(res, wp), client: *client }
+        crate::game::ClientGame {
+            common: sunrise_gameplay_common::game::ConstructInit::<true>::assemble_common(res, wp),
+            client: *client,
+        }
     }
 }
 

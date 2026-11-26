@@ -320,7 +320,7 @@ fn tabs(w: f32) -> (f32, f32) {
 const TAB_H: f32 = 24.0;
 const FOOTER: f32 = 33.0;
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game::client_side) fn open_stats(&mut self) {
+    pub fn open_stats(&mut self) {
         // StatsScreen.init: a server's client asks for its statistics.
         if self.client.remote.is_some() {
             self.send(sunrise_protocol::packets::play::Serverbound::ClientCommand(
@@ -358,17 +358,23 @@ impl crate::game::ClientGame<'_> {
     /// Items (and block items) with any non-zero column.
     fn stat_items(&self) -> Vec<String> {
         let mut items = item_rows(&self.common.stats, |block| {
-            self.common.pack.assets.registry.default_state(block).map_or_else(
-                || "minecraft:air".to_owned(),
-                |s| self.common.res.facts().get(s).item.to_string(),
-            )
+            self.common
+                .pack
+                .assets
+                .registry
+                .default_state(block)
+                .map_or_else(
+                    || "minecraft:air".to_owned(),
+                    |s| self.common.res.facts().get(s).item.to_string(),
+                )
         });
         if let Some((col, order)) = self.client.stats_ui.sort {
             let ty = COLUMNS[col].0;
             // `Item.getId`: one pass over the registry, not a scan per row
             // (the screen asks for its rows several times a frame).
             let ids: std::collections::HashMap<&str, usize> = self
-                .common.res
+                .common
+                .res
                 .items()
                 .registry_order
                 .iter()
@@ -403,7 +409,9 @@ impl crate::game::ClientGame<'_> {
             .into_iter()
             .flat_map(counted)
             .collect();
-        let registry = super::remote::builtin_registries(&self.common.options.resources);
+        let registry = sunrise_gameplay_common::game::villager_client::builtin_registries(
+            &self.common.options.resources,
+        );
         let order = registry
             .as_deref()
             .and_then(|b| b.get("minecraft:entity_type"));
@@ -655,7 +663,12 @@ impl crate::game::ClientGame<'_> {
                         .child_of(list_key, i + 1)
                         .without_tooltip()
                     });
-                    batch.sprite(&self.client.gui.atlas, "container/slot", left + 1.0, y + 1.0);
+                    batch.sprite(
+                        &self.client.gui.atlas,
+                        "container/slot",
+                        left + 1.0,
+                        y + 1.0,
+                    );
                     self.draw_item(batch, &stack, left + 2.0, y + 2.0);
                     // `ItemRowWidget.extractTooltip`: the item's tooltip at the slot's corner.
                     if ui::hovered(self.client.cursor, left + 1.0, y + 1.0, 18.0, 18.0) {
@@ -753,7 +766,8 @@ impl crate::game::ClientGame<'_> {
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
         let before = self.client.stats_ui.tab;
-        if self.client.stats_ui.key(key, ctrl, shift, active) && self.client.stats_ui.tab != before {
+        if self.client.stats_ui.key(key, ctrl, shift, active) && self.client.stats_ui.tab != before
+        {
             // TabManager.setCurrentTab(.., true): the click of a tab press.
             self.client
                 .audio

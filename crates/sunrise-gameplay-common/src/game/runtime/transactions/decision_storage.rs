@@ -60,7 +60,7 @@ impl Journal {
         self.after.extend(child.after);
     }
 
-    pub(in crate::game) fn rollback(self) {
+    pub fn rollback(self) {
         assert!(self.owners.is_empty(), "game menu undo needs its owner");
         // No success effect, drop, or retirement escapes an aborted action.
         #[cfg(test)]
@@ -72,7 +72,7 @@ impl Journal {
         }
     }
 
-    pub(in crate::game) fn take_owners(&mut self) -> impl Iterator<Item = engine::KeptOwner> {
+    pub fn take_owners(&mut self) -> impl Iterator<Item = engine::KeptOwner> {
         std::mem::take(&mut self.owners).into_values()
     }
 
@@ -112,8 +112,12 @@ pub struct GameHost<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
 
 impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> GameHost<'a, 'g, S> {
     #[inline(always)]
-    pub(in crate::game) fn new(game: &'a mut S, identity: Identity) -> Self {
-        Self { game, identity , resource: std::marker::PhantomData }
+    pub fn new(game: &'a mut S, identity: Identity) -> Self {
+        Self {
+            game,
+            identity,
+            resource: std::marker::PhantomData,
+        }
     }
 }
 

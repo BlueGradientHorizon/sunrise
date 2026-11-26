@@ -8,10 +8,10 @@ use super::*;
 pub struct QueuedChat {
     /// The valid player signature (also the deletion key), or the invalid
     /// signature an error only acknowledges. Disguised chat has neither.
-    pub(in crate::game) signature: Option<Signature>,
+    pub signature: Option<Signature>,
     /// The player's UUID, 0 for disguised chat (`Util.NIL_UUID`).
     pub(in crate::game) sender: u128,
-    pub(in crate::game) kind: QueuedChatKind,
+    pub kind: QueuedChatKind,
 }
 
 pub enum QueuedChatKind {
@@ -47,10 +47,7 @@ pub enum QueuedChatKind {
 
 /// `PlayerChatMessage` of a `ClientboundPlayerChatPacket`, for
 /// `ClientChatReceivedEvent.Player`; `signed` when its signature validated.
-pub fn player_chat_info(
-    p: &play::PlayerChat,
-    signed: bool,
-) -> mod_api::PlayerChatInfo {
+pub fn player_chat_info(p: &play::PlayerChat, signed: bool) -> mod_api::PlayerChatInfo {
     use sunrise_game_data::scoreboard::{comp_text, tag_to_json};
     let filter = match p.filter.0 {
         1 => mod_api::ChatFilter::FullyFiltered,

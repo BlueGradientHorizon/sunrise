@@ -1,4 +1,3 @@
-
 #[macro_use]
 #[path = "game/server_side.rs"]
 pub mod server_side;
@@ -8,8 +7,6 @@ pub(in crate::game) use server_side::acting_state;
 pub(in crate::game) use server_side::advancements;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ahead;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::server_effects;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::allays;
 #[allow(unused_imports)]
@@ -160,6 +157,8 @@ pub(in crate::game) use server_side::entity_part_state_tests;
 pub(in crate::game) use server_side::entity_residency;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::entity_sizes;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::server_effects;
 #[allow(dead_code)]
 pub(in crate::game) struct ServerGame<'a> {
     common: sunrise_gameplay_common::game::CommonGame<'a>,
@@ -180,8 +179,6 @@ impl std::ops::DerefMut for ServerGame<'_> {
     }
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::modapi_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::explosion;
 #[allow(unused_imports)]
@@ -211,8 +208,6 @@ pub(in crate::game) use server_side::first_tick_registration_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::fishing;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::ghasts;
-#[allow(unused_imports)]
 pub(in crate::game) use server_side::foxes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::frames;
@@ -222,6 +217,8 @@ pub(in crate::game) use server_side::functions;
 pub(in crate::game) use server_side::game_mode;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::game_tests;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::ghasts;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::golem_defense_tests;
@@ -381,6 +378,8 @@ pub(in crate::game) use server_side::mod_container_openers;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mod_container_openers_tests;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::modapi_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mounts;
 #[allow(unused_imports)]
@@ -838,14 +837,14 @@ pub(in crate::game) use server_side::runtime_levels_tests;
 #[cfg(test)]
 #[path = "game/runtime/runtime_reset_tests.rs"]
 mod runtime_reset_tests;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side as server_state;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::save_load_pass_tests;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::save_pass_tests;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side as server_state;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::scoreboard;
 #[allow(unused_imports)]
@@ -895,6 +894,34 @@ pub(in crate::game) use server_side::splash_water;
 #[cfg(any(test, feature = "test-support"))]
 #[path = "game/modding/stacked_on_other_tests.rs"]
 pub mod stacked_on_other_tests;
+use crate::tick_profile;
+pub use hot_paths::{HotPathsMods, hot_paths_next_block_entity, note_hot_paths_listener_call};
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::books_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::chat_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::command_blocks_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::command_minecarts_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::commands_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::creatures_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::game_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::hand_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::lightning_server;
+#[allow(unused_imports)]
+use server_side::loading_server::start_dedicated_game;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::player_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::sign_edit_server;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::spawner_server;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::stand_break_loot_tests;
@@ -927,38 +954,12 @@ pub(in crate::game) use server_side::test_pos_guest_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::tnt;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::books_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::chat_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::command_blocks_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::command_minecarts_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::commands_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::creatures_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::game_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::hand_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::lightning_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::player_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::sign_edit_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::spawner_server;
-#[allow(unused_imports)]
 pub(in crate::game) use server_side::trading;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::transaction_entities_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::transactions_server;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::world_update_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::trial_spawner;
 #[allow(unused_imports)]
@@ -1010,7 +1011,8 @@ pub(in crate::game) use server_side::world_loading;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_test_def_tests;
-pub use hot_paths::{HotPathsMods, hot_paths_next_block_entity, note_hot_paths_listener_call};
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::world_update_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::xp_orb_targeting;
 #[cfg(test)]
@@ -1020,9 +1022,6 @@ pub(in crate::game) use server_side::xp_repair_ratio_tests;
 pub(in crate::game) use server_side::zombie_reinforcements;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::zombie_villagers;
-use crate::tick_profile;
-#[allow(unused_imports)]
-use server_side::loading_server::start_dedicated_game;
 #[allow(unused_imports)]
 use server_state::ServerState;
 
@@ -1043,11 +1042,14 @@ pub(in crate::game) struct WrappedServerInit {
         std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
     >,
     game_tests: server_side::ServerOnly<game_tests::GameTests>,
-    native_commands: server_side::ServerOnly<native_server::NativeCommandState>,
+    native_commands:
+        server_side::ServerOnly<sunrise_gameplay_common::game::native_server::NativeCommandState>,
     lan_building_boxes: server_side::ServerOnly<server_side::building_players::BuildingPlayers>,
     lan_displaced_players:
         server_side::ServerOnly<Vec<server_side::lan_actions_server::DisplacedPlayer>>,
-    fake_action: server_side::ServerOnly<std::sync::Arc<native_server::FakeAction>>,
+    fake_action: server_side::ServerOnly<
+        std::sync::Arc<sunrise_gameplay_common::game::native_server::FakeAction>,
+    >,
     server_lists:
         server_side::ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
     cmds: server_side::ServerOnly<commands::extra::CommandExtras>,
@@ -1058,10 +1060,13 @@ pub(in crate::game) struct WrappedServerInit {
     exec: server_side::ServerOnly<commands::execute::ExecState>,
 }
 
-use sunrise_gameplay_common::game::WrappedPrepInit;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use sunrise_gameplay_common::game::spill_common;
+use sunrise_gameplay_common::game::{WorldTables, WrappedPrepInit};
 struct ConstructInit<const NO_SLOT: bool>;
 impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
-#[inline(never)]
+    #[inline(never)]
     fn build_server_be_ticks(
         registry: &'static sunrise_world::registry::BlockRegistry,
     ) -> sunrise_level::block_entity_ticks::BlockEntityTicks {
@@ -1069,7 +1074,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
         anims.classify(registry);
         anims
     }
-#[inline(never)]
+    #[inline(never)]
     fn build_wrapped_server() -> Box<WrappedServerInit> {
         Box::new(WrappedServerInit {
             player_autosaves: server_side::ServerOnly::new(Default::default()),
@@ -1098,7 +1103,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             exec: server_side::ServerOnly::new(Default::default()),
         })
     }
-#[inline(never)]
+    #[inline(never)]
     fn wrap_server_prep_and_effects(
         prep: Box<server_side::ServerConstructPrep>,
         effects: Box<server_side::ServerConstructEffects>,
@@ -1133,7 +1138,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     }
 }
 
-
 pub(in crate::game) use server_side::durability;
 
 #[path = "game/modding/native_registry_entries.rs"]
@@ -1145,13 +1149,21 @@ pub(in crate::game) use server_side::{entity_server, lan_op, minecarts_server};
 use sunrise_gameplay_common::game::SideGame;
 impl<'g> SideGame<'g> for ServerGame<'g> {
     type State = server_side::ServerState;
-    fn side_state(&self) -> &Self::State { &self.server }
-    fn side_state_mut(&mut self) -> &mut Self::State { &mut self.server }
-
-    fn common_and_state_mut(&mut self) -> (&mut sunrise_gameplay_common::game::CommonGame<'g>, &mut Self::State) {
-        (&mut self.common, &mut self.server)
+    fn side_state(&self) -> &Self::State {
+        &self.server
+    }
+    fn side_state_mut(&mut self) -> &mut Self::State {
+        &mut self.server
     }
 
+    fn common_and_state_mut(
+        &mut self,
+    ) -> (
+        &mut sunrise_gameplay_common::game::CommonGame<'g>,
+        &mut Self::State,
+    ) {
+        (&mut self.common, &mut self.server)
+    }
 }
 
 #[path = "game/side_ops/mod.rs"]

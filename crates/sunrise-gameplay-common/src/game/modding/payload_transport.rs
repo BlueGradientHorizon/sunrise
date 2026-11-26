@@ -19,7 +19,7 @@ pub(in crate::game) struct Deferred {
 }
 const _: () = assert!(std::mem::size_of::<Deferred>() <= 256);
 impl Deferred {
-    pub(in crate::game) fn publish(self) {
+    pub fn publish(self) {
         let _ = self.epoch.with_active(|| self.prepared.publish());
     }
 }
@@ -78,11 +78,7 @@ impl crate::game::CommonGame<'_> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-    pub fn run_payload<E: ClientEvent>(
-        &mut self,
-        endpoint: Endpoint<E>,
-        incoming: Incoming,
-    ) {
+    pub fn run_payload<E: ClientEvent>(&mut self, endpoint: Endpoint<E>, incoming: Incoming) {
         if !incoming.epoch.active() {
             return;
         }

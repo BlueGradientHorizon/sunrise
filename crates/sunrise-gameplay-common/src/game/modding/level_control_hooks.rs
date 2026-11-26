@@ -26,13 +26,13 @@ impl LevelControl {
     }
 
     /// Whether this control's hook is being heard on this thread.
-    pub(in crate::game) fn is_heard(self) -> bool {
+    pub fn is_heard(self) -> bool {
         HEARING.with(|h| h.get() & self.bit() != 0)
     }
 
     /// Runs `f`, a dispatch of this control's hook, with the control marked as heard until it
     /// returns or unwinds.
-    pub(in crate::game) fn hear<R>(self, f: impl FnOnce() -> R) -> R {
+    pub fn hear<R>(self, f: impl FnOnce() -> R) -> R {
         struct Heard(u8);
         impl Drop for Heard {
             fn drop(&mut self) {

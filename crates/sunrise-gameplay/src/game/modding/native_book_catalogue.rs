@@ -1,8 +1,8 @@
 //! Authoritative custom displays, with slot examples resolved in the server's context.
-use super::api_values::TryIntoApi;
 use super::*;
 use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
 use std::result::Result;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_sim::recipe_book::{DisplayResources, placement_sync as sync};
 
 impl crate::game::ServerGame<'_> {
@@ -11,7 +11,8 @@ impl crate::game::ServerGame<'_> {
             return Ok(());
         }
         let stacks = self
-            .common.resolve_mod_book_declaration_slot(slot)
+            .common
+            .resolve_mod_book_declaration_slot(slot)
             .into_iter()
             .map(|stack| {
                 stack
@@ -99,7 +100,8 @@ impl crate::game::ServerGame<'_> {
             return Err(Refusal::Invalid);
         };
         let settings = self
-            .common.native_net
+            .common
+            .native_net
             .book_connections
             .get(&conn)
             .and_then(|connection| connection.authority.as_ref())
@@ -118,7 +120,8 @@ impl crate::game::ServerGame<'_> {
         let before = self.mod_book_menu_snapshot(conn, window, menu.as_str())?;
         self.common.ensure_mod_book_displays();
         let index = self
-            .common.recipe_tables
+            .common
+            .recipe_tables
             .books
             .as_ref()
             .and_then(|result| result.as_ref().ok())
@@ -177,7 +180,8 @@ impl crate::game::ServerGame<'_> {
             .collect();
         drop(declarations);
         let authority = self
-            .common.native_net
+            .common
+            .native_net
             .placement
             .servers
             .get_mut(&conn)

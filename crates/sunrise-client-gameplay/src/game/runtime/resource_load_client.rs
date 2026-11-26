@@ -1,9 +1,25 @@
 use super::*;
-use {crate::game::client_side::resource_tables_client::ClientPackParts, crate::game::client_side::resource_tables_client::ClientPackResources, crate::game::client_side::resource_tables_client::ClientResources, crate::game::client_side::resource_tables_client::UiResources, sunrise_gameplay_common::game::resource_load::CoreLoadError, sunrise_gameplay_common::game::resource_load::CorePresentation, sunrise_gameplay_common::game::resource_load::PreparedCore, sunrise_gameplay_common::game::resource_load::Progress, sunrise_gameplay_common::game::resource_load::ServerCorePresentation, sunrise_gameplay_common::game::resource_load::Step, sunrise_gameplay_common::game::resource_load::WorldRestLoader, sunrise_gameplay_common::game::resource_load::finish_core, sunrise_gameplay_common::game::resource_load::load_core, sunrise_gameplay_common::game::resource_load::prepare_core, sunrise_gameplay_common::game::resource_load::write_prepared_files};
 use std::path::Path;
 use sunrise_assets::{item_model::ItemModels, resource_source::ResourceRoot};
 use sunrise_world::{
     block_render::FaceVisibility, item_defaults::ItemData, registry::BlockRegistry,
+};
+use {
+    crate::game::client_side::resource_tables_client::ClientPackParts,
+    crate::game::client_side::resource_tables_client::ClientPackResources,
+    crate::game::client_side::resource_tables_client::ClientResources,
+    crate::game::client_side::resource_tables_client::UiResources,
+    sunrise_gameplay_common::game::resource_load::CoreLoadError,
+    sunrise_gameplay_common::game::resource_load::CorePresentation,
+    sunrise_gameplay_common::game::resource_load::PreparedCore,
+    sunrise_gameplay_common::game::resource_load::Progress,
+    sunrise_gameplay_common::game::resource_load::ServerCorePresentation,
+    sunrise_gameplay_common::game::resource_load::Step,
+    sunrise_gameplay_common::game::resource_load::WorldRestLoader,
+    sunrise_gameplay_common::game::resource_load::finish_core,
+    sunrise_gameplay_common::game::resource_load::load_core,
+    sunrise_gameplay_common::game::resource_load::prepare_core,
+    sunrise_gameplay_common::game::resource_load::write_prepared_files,
 };
 
 pub(in crate::game) type UiPublishArg = UiResources;
@@ -261,7 +277,10 @@ pub(in crate::game) fn load_resources_for_mods(
         }
     };
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
-    let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
+    let conditions = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+        mod_sources,
+        &inventory,
+    )?;
     let ((core, client), resolved, client_load) = loop {
         let listeners = is_client
             .then(|| client_reload::register_startup_client_reload_listeners(Some(settings)));

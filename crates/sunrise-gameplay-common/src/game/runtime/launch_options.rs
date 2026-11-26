@@ -6,28 +6,28 @@ use super::*;
 pub struct Options {
     pub resources: PathBuf,
     pub(in crate::game) distance: i32,
-    pub(in crate::game) distance_override: Option<i32>,
-    pub(in crate::game) seed: i64,
-    pub(in crate::game) developer_single_player: bool,
-    pub(in crate::game) creative: bool,
-    pub(in crate::game) test_terrain: bool,
+    pub distance_override: Option<i32>,
+    pub seed: i64,
+    pub developer_single_player: bool,
+    pub creative: bool,
+    pub test_terrain: bool,
     /// `--pregen`: enable the command even when the saved Extras switch is off.
-    pub(in crate::game) pregen: bool,
-    pub(in crate::game) frames: Option<u64>,
+    pub pregen: bool,
+    pub frames: Option<u64>,
     /// `--world-frames N`: exit after N frames drawn in the world (smoke runs; the world may load slowly).
-    pub(in crate::game) world_frames: Option<u64>,
+    pub world_frames: Option<u64>,
     pub(in crate::game) screenshot_after: Option<u64>,
-    pub(in crate::game) timeout: Option<Duration>,
-    pub(in crate::game) report: Option<PathBuf>,
-    pub(in crate::game) world: Option<String>,
+    pub timeout: Option<Duration>,
+    pub report: Option<PathBuf>,
+    pub world: Option<String>,
     pub(in crate::game) look: Option<(f32, f32)>,
-    pub(in crate::game) time: Option<i64>,
-    pub(in crate::game) weather: Option<String>,
-    pub(in crate::game) dimension: Option<String>,
+    pub time: Option<i64>,
+    pub weather: Option<String>,
+    pub dimension: Option<String>,
     /// Options.pauseOnLostFocus off (F3+P), for scripted testing.
-    pub(in crate::game) no_pause: bool,
+    pub no_pause: bool,
     /// Control socket path (`--control`), for `sunrise-ctl`.
-    pub(in crate::game) control: Option<PathBuf>,
+    pub control: Option<PathBuf>,
     /// `SUNRISE_SPIKES=MS`: the slow ring's threshold, with spans on every thread; nothing is logged.
     pub spikes: Option<f32>,
     /// Render into a texture instead of the window (`--offscreen`), so a
@@ -41,49 +41,49 @@ pub struct Options {
     pub headless: bool,
     /// `--width` and `--height` (vanilla's own arguments): the window's
     /// starting size, 1280x720 by default.
-    pub(in crate::game) window_size: [u32; 2],
+    pub window_size: [u32; 2],
     /// Multiplayer: `--server HOST[:PORT]` joins at start; `--name` is the offline player name.
-    pub(in crate::game) server: Option<String>,
+    pub server: Option<String>,
     /// `--name`, `SUNRISE_PLAYER_NAME` or the signed-in account's name; else
     /// [`Options::player_name`] uses the kept offline name.
-    pub(in crate::game) player_name: Option<String>,
+    pub player_name: Option<String>,
     /// `--dedicated`: run as a dedicated server; vanilla's server arguments
     /// (`--nogui`, `--port`, `--world`, `--universe`, `--initSettings`) follow.
-    pub(in crate::game) dedicated: Option<Vec<String>>,
+    pub dedicated: Option<Vec<String>>,
     /// `--transfers SETTINGS`: a dedicated server takes a proxy's hand-over requests
     /// (`server.toml`'s `[transfer]`, which sunrise-server passes; lan/arrivals.rs).
-    pub(in crate::game) transfers: Option<sunrise_sim::lan::arrivals::Settings>,
+    pub transfers: Option<sunrise_sim::lan::arrivals::Settings>,
     /// `--benchmark SCENARIO`: run the benchmark, write its report and quit.
-    pub(in crate::game) benchmark: Option<String>,
+    pub benchmark: Option<String>,
     /// `--benchmark-set SWITCH=VALUE`: a graphics choice for the travel benchmark.
-    pub(in crate::game) benchmark_set: Option<(String, String)>,
+    pub benchmark_set: Option<(String, String)>,
     /// `--profile`: capture the benchmark run in a .hzperf file.
-    pub(in crate::game) benchmark_profile: bool,
+    pub benchmark_profile: bool,
     /// Content selection and the compiled native runtime shared with resource loaders.
     pub mods: mods::ModsState,
     /// What this Game executes; independent of its current server connection.
     pub execution_role: execution_role::ExecutionRole,
     /// The server's report source survives returned errors until the launch reports them.
-    pub(crate) save_failure_diagnostics: sunrise_sim::chunk_io::SaveFailureDiagnostics,
+    pub save_failure_diagnostics: sunrise_sim::chunk_io::SaveFailureDiagnostics,
     /// `--fullscreen` (vanilla's): the window opens fullscreen whatever options.txt says,
     /// as vanilla's DisplayData does, without saving it there.
-    pub(in crate::game) fullscreen: bool,
+    pub fullscreen: bool,
     /// `--game-dir DIR`: the folder `read` makes the working directory (saves, options.txt...).
-    pub(in crate::game) game_dir: Option<PathBuf>,
+    pub game_dir: Option<PathBuf>,
     /// `--quickPlaySingleplayer`, checked once the game folder is known.
     pub(in crate::game) quick_play: Option<String>,
-    pub(in crate::game) session_file: Option<String>,
+    pub session_file: Option<String>,
     /// `--session-stdin`: the session file's JSON comes on standard input instead.
-    pub(in crate::game) session_stdin: bool,
+    pub session_stdin: bool,
     /// Why this game plays without an account: the launcher's `SUNRISE_OFFLINE_REASON`, or a
     /// session it could not read. The title screen shows it once.
-    pub(in crate::game) offline_reason: Option<String>,
+    pub offline_reason: Option<String>,
 }
 
 impl Options {
     /// The name to join servers with: the one given, else the offline name kept
     /// next to options.txt (created on first use).
-    pub(in crate::game) fn player_name(&self) -> String {
+    pub fn player_name(&self) -> String {
         self.player_name.clone().unwrap_or_else(|| {
             std::env::current_dir().map_or_else(
                 |_| sunrise_sim::offline_name::generate(0),

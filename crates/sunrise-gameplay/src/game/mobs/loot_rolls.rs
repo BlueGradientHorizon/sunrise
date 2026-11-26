@@ -1,11 +1,11 @@
 //! Loot rolls with a mod listening to `enchanted_entity_loot`.
 
-use crate::game::ServerGame;
 use super::commands::Target;
-use super::creatures::death_hurt_source;
+use crate::game::ServerGame;
 use mod_api::entity::health::HurtSource;
 use mod_api::{EntityRef, LivingRef};
 use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay_common::game::creatures::death_source::death_hurt_source;
 use sunrise_items::items::{ItemStack, Items};
 use sunrise_items::random_sequences::RandomSequences;
 use sunrise_sim::mobs::drops::{DeathRolls, roll_asked};
@@ -91,7 +91,8 @@ impl ServerGame<'_> {
         else {
             return None;
         };
-        self.common.effect_living_ref(Some(self.network_entity_id(target)?))
+        self.common
+            .effect_living_ref(Some(self.network_entity_id(target)?))
     }
     /// The drops of `/loot ... kill`, from the table's random sequence, else
     /// the level random. It reads levels as a death does, and a mod listening
@@ -113,7 +114,8 @@ impl ServerGame<'_> {
         // LootCommand.dropKillLoot supplies the selected live mob as THIS_ENTITY.
         let live_target = match target {
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|mob| mob.id == id)
                 .then(|| self.target_loot_entity(target)),
@@ -129,7 +131,8 @@ impl ServerGame<'_> {
         let live_target = live_target.as_ref().filter(|_| loot.is_some());
         // The listeners get the game, so the roll holds its own share of the items.
         let listened = self
-            .common.server_items
+            .common
+            .server_items
             .clone()
             .zip(self.listened_kill_target(target));
         let sequence = server_world_items!(self).loot_sequence(table);
@@ -254,11 +257,14 @@ impl ServerGame<'_> {
     ) -> sunrise_world::loot::LootEntity {
         let mut entity = match target {
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|mob| mob.id == id)
                 .map(|mob| sunrise_sim::mobs::drops::loot_entity(mob, None))
-                .unwrap_or_else(|| sunrise_world::loot::LootEntity::new(&self.common.target_type(target))),
+                .unwrap_or_else(|| {
+                    sunrise_world::loot::LootEntity::new(&self.common.target_type(target))
+                }),
             Target::Player => self.killer_loot_entity(None),
             Target::Guest(conn) => self.killer_loot_entity(Some(conn)),
             _ => sunrise_world::loot::LootEntity::new(&self.common.target_type(target)),
@@ -303,7 +309,10 @@ impl ServerGame<'_> {
             let items = server_world_items!(self);
             match items.loot_sequence(table) {
                 Some(sequence) => {
-                    let random = self.server.rand_sequences.get(&sequence, self.common.level.seed);
+                    let random = self
+                        .server
+                        .rand_sequences
+                        .get(&sequence, self.common.level.seed);
                     items.roll_loot_table(table, held, this, random)
                 }
                 None => items.roll_loot_table(table, held, this, &mut self.common.world.random),

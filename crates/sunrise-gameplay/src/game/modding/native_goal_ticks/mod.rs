@@ -623,7 +623,7 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
     }
 
     fn merchant_offers_lent(&self, mob: &Mob) -> Option<Vec<mod_api::MerchantOffer>> {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         self.merchant_read_lent(mob, |offers, _, _| offers.try_into_api().ok())
     }
 
@@ -657,7 +657,10 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
         let Some(epoch) = self.common.native_lifecycle.epoch() else {
             return false;
         };
-        let Some(target) = self.common.native_entity_target(EntityRef::new(epoch, player)) else {
+        let Some(target) = self
+            .common
+            .native_entity_target(EntityRef::new(epoch, player))
+        else {
             return false;
         };
         matches!(
@@ -679,7 +682,8 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
     }
 
     fn mob_added_to_level(&self, mob: &Mob) -> bool {
-        self.common.persist
+        self.common
+            .persist
             .live
             .binary_search_by_key(&mob.id, |entry| entry.0)
             .is_ok()
@@ -928,7 +932,7 @@ impl crate::game::ServerGame<'_> {
             w: &world,
             host: self,
         };
-        super::native_hooks::NativeHookHost { host: &context }
+        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: &context }
             .native_mob_despawn(dimension, entity, kind, pos, result);
     }
     /// Run `read` against the goal view of `mob`'s tick, as a mod goal reads.
@@ -981,15 +985,14 @@ impl crate::game::ServerGame<'_> {
         };
         let mut new_target = original;
         let mut cancel = false;
-        super::native_hooks::NativeHookHost { host: &context }.native_living_change_target(
-            mod_api::__private::LivingChangeTargetCall {
+        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: &context }
+            .native_living_change_target(mod_api::__private::LivingChangeTargetCall {
                 mob: entity,
                 original_target: original,
                 new_target: &mut new_target,
                 is_brain,
                 cancel: &mut cancel,
-            },
-        );
+            });
         if cancel {
             return mobs::TargetChange::Keep;
         }

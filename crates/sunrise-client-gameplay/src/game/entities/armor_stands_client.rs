@@ -1,5 +1,4 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::armor_stands_common::{TYPE_ID, skull_kind, swap_with_equipment_slot};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_assets::resource_source::ResourceSource;
 use sunrise_client::trims::{TrimOverride, TrimRegistry};
@@ -10,6 +9,9 @@ use sunrise_client::{
     trims::TrimTexture,
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::armor_stands_common::{
+    TYPE_ID, skull_kind, swap_with_equipment_slot,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::ArmorStand,
@@ -325,7 +327,10 @@ impl ClientGame<'_> {
                 continue;
             }
             let entity_start = out.len();
-            self.mark_motion(entity_start, sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(a.id));
+            self.mark_motion(
+                entity_start,
+                sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(a.id),
+            );
             // EntityRenderer: drawn between last tick's position and this one's.
             let at = a.render_position(alpha);
             let p = super::entity_culling::at(at) - camera;
@@ -692,7 +697,7 @@ impl ClientGame<'_> {
             if !mod_api::__private::listened(mod_api::HookId::HumanoidSetupAnim) {
                 return;
             }
-            use super::api_values::TryIntoApi;
+            use sunrise_gameplay_common::game::api_values::TryIntoApi;
             let stacks = [0, 1].map(|slot| {
                 a.equipment[slot]
                     .as_ref()
@@ -719,7 +724,8 @@ impl ClientGame<'_> {
             return false;
         };
         let components = self
-            .common.pack
+            .common
+            .pack
             .item_models
             .components(&sunrise_sim::item_models::stack_view(stack));
         let Some(equippable) = components.get("minecraft:equippable") else {
@@ -808,7 +814,8 @@ impl ClientGame<'_> {
         stand.show_arms = true;
         if let Some(stack) = result {
             let equip = self
-                .common.res
+                .common
+                .res
                 .items()
                 .get(&stack.item)
                 .and_then(|i| i.equip_slot.clone());
@@ -854,7 +861,8 @@ impl ClientGame<'_> {
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
         let stacks =
-            self.common.armor
+            self.common
+                .armor
                 .iter()
                 .chain(self.common.mobs.iter().flat_map(|m| {
                     sunrise_items::equipment::ARMOR.map(|slot| &m.extra.equipment[slot])
@@ -872,7 +880,8 @@ impl ClientGame<'_> {
                 }));
         // The smithing screen's preview stand wears the result slot's item.
         let preview = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .filter(|s| s.kind == super::stations::Kind::Smithing)
             .and_then(|s| s.result.as_ref())

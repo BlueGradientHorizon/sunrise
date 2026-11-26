@@ -29,7 +29,7 @@ impl CriterionContext for NativeCriterion<'_> {
     /// predicates; other components and predicates aren't checked. A missing
     /// key passes, as an absent `Optional<ItemPredicate>` does.
     fn item(&self, key: &str, stack: &mod_api::ItemStack) -> bool {
-        let Ok(stack) = super::api_values::stack_value(stack) else {
+        let Ok(stack) = sunrise_gameplay_common::game::api_values::stack_value(stack) else {
             return false;
         };
         adv::item(&self.conditions[key], &item_view(&stack), self.world)

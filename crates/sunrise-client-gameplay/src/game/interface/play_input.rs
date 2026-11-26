@@ -1,6 +1,7 @@
 //! Key and mouse mappings in play: toggled sneak and sprint, keys after rebinding, keys held
 //! across screens, the hotbar's wheel and bumper steps, and mouse buttons while playing.
 use super::*;
+use crate::game::client_side::key_codes::{gameplay_has_keyboard, glfw_modifiers, keyboard_button};
 
 fn studio_replay_shortcut(key: KeyCode) -> bool {
     matches!(
@@ -561,7 +562,12 @@ impl crate::game::ClientGame<'_> {
         {
             return false;
         }
-        let names: Vec<&'static str> = self.client.settings.keys.translated_mappings(input).collect();
+        let names: Vec<&'static str> = self
+            .client
+            .settings
+            .keys
+            .translated_mappings(input)
+            .collect();
         let mut canceled = false;
         for name in names {
             let mut this = false;
@@ -703,7 +709,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether `key` is held, a movement key by the analog move vector too: as the keys it holds
     /// (`eight_direction_keys`), whatever moves the player. For readers of the keys that aren't
     /// the movement itself.
-    pub(in crate::game::client_side) fn movement_key_held(&self, key: KeyCode) -> bool {
+    pub fn movement_key_held(&self, key: KeyCode) -> bool {
         if let Some(down) = self.client.keys.override_for(&key) {
             return down;
         }

@@ -26,7 +26,7 @@ impl render::RenderDataSource for crate::game::ClientGame<'_> {
 
 impl anim::HumanoidSetup for crate::game::ClientGame<'_> {
     fn before_arm_pose(&self, mob: &Mob, state: &anim::State<'_>, poses: &mut anim::Poses) {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         let stacks = [false, true].map(|off| {
             render::held_item_stack(&mob.extra, off).and_then(|stack| stack.try_into_api().ok())
         });
@@ -65,7 +65,12 @@ impl crate::game::ClientGame<'_> {
             entity_type,
             humanoid,
             partial_tick,
-            game_time: self.client.title.0.is_none().then_some(self.common.world.game_time),
+            game_time: self
+                .client
+                .title
+                .0
+                .is_none()
+                .then_some(self.common.world.game_time),
             parts: poses,
         });
     }

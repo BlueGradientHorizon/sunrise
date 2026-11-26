@@ -3,7 +3,7 @@ use mod_api::{HookId, PlayerModel, PlayerSkinOverride};
 
 impl ClientGame<'_> {
     /// Install the resolved appearance on the render-only avatar and return the original pair.
-    pub(in crate::game::client_side) fn apply_player_skin_override(
+    pub(crate) fn apply_player_skin_override(
         &mut self,
         panorama: bool,
     ) -> Option<(Option<String>, bool)> {

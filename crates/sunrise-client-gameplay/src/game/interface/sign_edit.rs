@@ -87,7 +87,7 @@ impl ClientGame<'_> {
             self.close_sign_editor();
         }
     }
-    pub(in crate::game::client_side) fn close_sign_editor(&mut self) {
+    pub fn close_sign_editor(&mut self) {
         if self.remove_sign_editor() {
             self.refresh_screen_widgets();
         }
@@ -96,7 +96,7 @@ impl ClientGame<'_> {
 
     /// `AbstractSignEditScreen.removed`: send what the client wrote, or
     /// keep it in the window's own world and send its guests the block update.
-    pub(in crate::game::client_side) fn remove_sign_editor(&mut self) -> bool {
+    pub fn remove_sign_editor(&mut self) -> bool {
         let Some(edit) = self.client.sign_edit.take() else {
             return false;
         };
@@ -109,7 +109,10 @@ impl ClientGame<'_> {
         }
         // `SignBlockEntity.updateSignText`'s `setAllowedPlayerEditor(null)`:
         // the editor that closes gives the sign up.
-        self.common.world.block_entities.set_sign_editor(edit.pos, None);
+        self.common
+            .world
+            .block_entities
+            .set_sign_editor(edit.pos, None);
         true
     }
     /// `ClientPacketListener.handleOpenSignEditor`: the editor on a sign this

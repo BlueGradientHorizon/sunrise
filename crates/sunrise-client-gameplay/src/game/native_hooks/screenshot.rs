@@ -1,4 +1,5 @@
-
+use mod_api::ScreenshotImage;
+use sunrise_game_data::text::Text;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

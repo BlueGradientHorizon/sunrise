@@ -1,4 +1,5 @@
-
+use mod_api::{MovementInput, MovementKeys};
+use sunrise_sim::sprint::Keys;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

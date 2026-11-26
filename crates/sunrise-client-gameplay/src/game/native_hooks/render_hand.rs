@@ -1,4 +1,5 @@
-
+use crate::game::BlockEntityDraw;
+use sunrise_client::mesher::Vertex;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]
@@ -21,7 +22,7 @@ impl crate::game::ClientGame<'_> {
     /// the default geometry, and player render state is not exposed.
     pub(in crate::game) fn native_render_hand(
         &self,
-        render: &mut HandRender<'_>,
+        render: &mut mod_api::HandRender<'_>,
         draw: &mut dyn mod_api::HandDrawContext,
         canceled: &mut bool,
     ) {
@@ -38,7 +39,7 @@ impl crate::game::ClientGame<'_> {
     /// item id, as the arm's.
     pub(in crate::game) fn render_hand_cancelled(
         &self,
-        render: &mut HandRender<'_>,
+        render: &mut mod_api::HandRender<'_>,
         to_world: glam::Mat4,
         light: u32,
         out: &mut Vec<Vertex>,

@@ -1,9 +1,4 @@
 use super::*;
-use sunrise_gameplay_common::game::{
-    Dim,
-    api_values::{TryIntoApi, TryIntoEngine},
-    transactions::OpenTransactions,
-};
 use mod_api::{
     BlockEntityAccess, BlockEntityItemError, BlockEntityRef, BlockEntityScope, BlockEntityView,
     ResidentBlockEntity, ServerHost, TransactionContext, TransactionScopeError,
@@ -11,6 +6,11 @@ use mod_api::{
 };
 use std::collections::HashMap;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_gameplay_common::game::{
+    Dim,
+    api_values::{TryIntoApi, TryIntoEngine},
+    transactions::OpenTransactions,
+};
 use sunrise_gameplay_common::hoppers::HopperState;
 use sunrise_items::items::Items;
 use sunrise_level::{
@@ -358,7 +358,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `LevelChunk.BoundTickingBlockEntity.tick` for a resident mod block entity.
     /// Returns whether the ticker was dispatched, so skipped rows have no after-slot.
-    pub(in crate::game::server_side) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) -> bool {
+    pub(crate) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) -> bool {
         let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get(&pos) else {
             return false;
         };
@@ -372,7 +372,8 @@ impl crate::game::ServerGame<'_> {
         let block = &self.common.res.facts().get(live_state).name;
         if !valid_tick_subject(block, entity) {
             if let Some(id) = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .record_invalid_mod_tick(pos, generation)
             {
@@ -388,7 +389,8 @@ impl crate::game::ServerGame<'_> {
         let mut access =
             ResidentBlockEntityAccess::new(self, Some(subject), Loan::Tick(Some(live_state)));
         native_block_entity_tick(kind, BlockEntityScope::new(&mut access));
-        self.common.world
+        self.common
+            .world
             .block_entities
             .clear_ticker_warning(pos, generation);
         true
@@ -396,9 +398,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
-    pub(in crate::game) fn blockless(
-        game: &'g mut crate::game::ServerGame<'w>,
-    ) -> Self {
+    pub(in crate::game) fn blockless(game: &'g mut crate::game::ServerGame<'w>) -> Self {
         Self::new(game, None, Loan::OnLoad)
     }
     pub(in crate::game) fn for_handle(

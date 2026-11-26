@@ -13,7 +13,7 @@ impl CommonGame<'_> {
     }
     /// The same, for the structures whose id `wanted` takes: the others'
     /// starts aren't looked up.
-    pub(super) fn structures_reaching_where(
+    pub fn structures_reaching_where(
         &self,
         pos: [i32; 3],
         wanted: &dyn Fn(&str) -> bool,
@@ -21,7 +21,7 @@ impl CommonGame<'_> {
         structures_reaching_in(&self.world, &|| self.end.locator(), pos, wanted)
     }
     /// The structures with a piece containing `pos`.
-    pub(super) fn structures_at(&self, pos: [i32; 3]) -> Vec<String> {
+    pub fn structures_at(&self, pos: [i32; 3]) -> Vec<String> {
         self.structures_reaching(pos)
             .into_iter()
             .filter(|(_, piece)| *piece)

@@ -1,4 +1,4 @@
-
+use sunrise_world::registry::BlockStateId;
 
 impl crate::game::ServerGame<'_> {
     /// `Block.isPossibleToRespawnInThis` for a forced respawn column.

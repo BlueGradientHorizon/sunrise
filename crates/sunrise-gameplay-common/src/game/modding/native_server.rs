@@ -15,8 +15,8 @@ pub(in crate::game) mod provider_tests;
 #[path = "native_server/registered_commands.rs"]
 pub mod registered_commands;
 
-use crate::game::CommonGame as Game;
 use super::api_values::TryIntoEngine;
+use crate::game::CommonGame as Game;
 #[allow(unused_imports)]
 pub use argument_kinds::{CommandArguments, command_arguments};
 #[allow(unused_imports)]
@@ -198,7 +198,7 @@ pub fn command_tree(
 /// suggestion provider is refused by name because a client command has no server to answer it.
 /// A root the chat tree already has (`vanilla` answers) is left out. Every other argument kind
 /// builds exactly as on the server.
-pub(in crate::game) fn client_command_tree(
+pub fn client_command_tree(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
@@ -558,7 +558,7 @@ impl PlayerRead<'_> {
         }))
     }
 
-    pub(in crate::game) fn abilities(&self) -> Option<mod_api::PlayerAbilities> {
+    pub fn abilities(&self) -> Option<mod_api::PlayerAbilities> {
         let a = match self {
             Self::Acting {
                 abilities: Some(a), ..
@@ -781,7 +781,7 @@ pub struct ScopedPlayerState {
     pub(in crate::game) saturation: f32,
 }
 impl ScopedPlayerState {
-    pub(in crate::game) fn new(
+    pub fn new(
         resources: &sunrise_sim::motion::MotionResources,
         items: &sunrise_items::items::Items,
         setup: PlayerActionSetup,
@@ -829,7 +829,7 @@ impl ScopedPlayerState {
         })
     }
 
-    pub(in crate::game) fn swap(&mut self, guest: &mut Guest) {
+    pub fn swap(&mut self, guest: &mut Guest) {
         std::mem::swap(&mut self.motion, &mut guest.motion);
         std::mem::swap(&mut self.position, &mut guest.position);
         std::mem::swap(&mut self.yaw, &mut guest.yaw);
@@ -866,10 +866,10 @@ pub(in crate::game) struct FakeAction {
 }
 impl FakeAction {
     /// Whether a fake player's action is running.
-    pub(in crate::game) fn acting(&self) -> bool {
+    pub fn acting(&self) -> bool {
         self.acting.load(Ordering::Relaxed)
     }
-    pub(in crate::game) fn block(&self, effect: FakeEffect) {
+    pub fn block(&self, effect: FakeEffect) {
         // The first effect stopped is the one the action answers.
         self.blocked
             .lock()
@@ -880,7 +880,7 @@ impl FakeAction {
 /// Marks a fake player's action as running until it drops.
 pub struct Acting(pub(in crate::game) Arc<FakeAction>);
 impl Acting {
-    pub(in crate::game) fn start(action: &Arc<FakeAction>) -> Self {
+    pub fn start(action: &Arc<FakeAction>) -> Self {
         *action
             .blocked
             .lock()
@@ -889,7 +889,7 @@ impl Acting {
         Self(Arc::clone(action))
     }
     /// The effect this action stopped, if any.
-    pub(in crate::game) fn blocked(&self) -> Option<FakeEffect> {
+    pub fn blocked(&self) -> Option<FakeEffect> {
         *self
             .0
             .blocked
@@ -908,19 +908,13 @@ pub mod tests {
     use super::*;
     use sunrise_items::items::ItemStack;
 
-    
-
-    
-
-    
-
     #[cfg(test)]
-pub(in crate::game) type Heard = Vec<(&'static str, u32, u128, &'static str, [i32; 2])>;
+    pub(in crate::game) type Heard = Vec<(&'static str, u32, u128, &'static str, [i32; 2])>;
     #[cfg(test)]
-/// Logs each of the watch trio: (hook, player id, UUID, level, chunk).
+    /// Logs each of the watch trio: (hook, player id, UUID, level, chunk).
     pub(in crate::game) struct Watcher(pub(in crate::game) std::sync::Arc<std::sync::Mutex<Heard>>);
     #[cfg(test)]
-impl Watcher {
+    impl Watcher {
         pub(in crate::game) fn log(
             &self,
             hook: &'static str,
@@ -937,7 +931,7 @@ impl Watcher {
         }
     }
     #[cfg(test)]
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Watcher {
         fn chunk_watch(&self, _: &mut dyn mod_api::ServerHost, e: &mut mod_api::ChunkWatchEvent) {
             self.log("watch", e.player, e.chunk);
@@ -953,8 +947,6 @@ impl Watcher {
             self.log("unwatch", e.player, e.chunk);
         }
     }
-
-    
 
     pub fn player_guest() -> Guest {
         use std::sync::{
@@ -984,7 +976,7 @@ impl Watcher {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn player_reads_use_guest_mode_and_abilities() {
         let mut guest = player_guest();
         guest.abilities.flying_speed = 0.08;
@@ -1035,14 +1027,14 @@ impl Watcher {
     }
 
     #[cfg(test)]
-pub(in crate::game) fn tree(
+    pub(in crate::game) fn tree(
         commands: &[mod_api::Command],
     ) -> (Value, HashMap<String, u8>, Vec<String>) {
         command_tree(commands, &Dispatcher::new(), &HashMap::new())
     }
 
     #[cfg(test)]
-pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
+    pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
         Some(ItemStack {
             item: item.into(),
             count,
@@ -1052,7 +1044,7 @@ pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn orbs_are_found_by_their_half_block_box() {
         // A block's cell, as a mod asks for a broken block's drops.
         let (min, max) = ([10.0, 64.0, -3.0], [11.0, 65.0, -2.0]);
@@ -1071,7 +1063,7 @@ pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn whole_stacks_are_given_onto_equal_stacks_only() {
         use super::super::inventory_add;
         let mut inv = vec![stack("minecraft:dirt", 64); 36];
@@ -1107,7 +1099,7 @@ pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
     }
 
     #[cfg(test)]
-/// The game's `Inventory.add` (pickups, `/give`, a bucket's or a bottle's result) takes
+    /// The game's `Inventory.add` (pickups, `/give`, a bucket's or a bottle's result) takes
     /// its slots from `getSlotWithRemainingSpace` and `getFreeSlot`
     /// (`sunrise_client::menu::{slot_with_remaining_space, free_slot}`): one dirt at a time
     /// lands where they answer and nowhere else, in vanilla's order (the selected slot, the
@@ -1154,7 +1146,7 @@ pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
     }
 
     #[cfg(test)]
-/// A mod's rows that keep hotbar slots 6 to 8 free change the slot the game's
+    /// A mod's rows that keep hotbar slots 6 to 8 free change the slot the game's
     /// `Inventory.add` takes (replaced on this thread through `rule_replacements::ADD_SLOT`):
     /// a dirt passes the stack in slot 6 with room and the selected slot 7 for slot 0.
     #[test]
@@ -1209,7 +1201,7 @@ pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn usages_merge_into_one_tree_with_runnable_nodes() {
         let (t, levels, problems) = tree(&[
             mod_api::Command::new("balance [player:player]"),
@@ -1240,7 +1232,7 @@ pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_usage_with_another_string_kind_is_left_out_in_either_order() {
         for (first, second, line, other) in [
             (
@@ -1280,11 +1272,11 @@ pub(in crate::game) fn stack(item: &str, count: u32) -> Option<ItemStack> {
     }
 
     #[cfg(test)]
-pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <column:column_pos> \
+    pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <column:column_pos> \
          <look:rotation> <level:dimension> <tag:nbt>";
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn position_rotation_dimension_and_nbt_kinds_are_vanillas_parsers() {
         let (tree, _, problems) = tree(&[mod_api::Command::new(POSITIONED)]);
         assert!(problems.is_empty(), "{problems:?}");
@@ -1304,7 +1296,7 @@ pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentere
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn vec3_and_vec3_uncentered_do_not_share_a_node() {
         let (_, _, problems) = tree(&[
             mod_api::Command::new("go <to:vec3>"),
@@ -1315,7 +1307,7 @@ pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentere
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn positions_and_rotations_resolve_against_the_source() {
         let (tree, _, problems) = tree(&[mod_api::Command::new(POSITIONED)]);
         assert!(problems.is_empty(), "{problems:?}");
@@ -1374,7 +1366,7 @@ pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentere
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_dimension_the_world_lacks_is_refused_and_an_nbt_argument_is_a_compound() {
         let refusal = dimension_value("minecraft:nowhere", |_| None).unwrap_err();
         assert_eq!(refusal.key, "argument.dimension.invalid");
@@ -1387,7 +1379,7 @@ pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentere
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn every_supported_kind_has_a_parser() {
         assert!(
             argument_kinds::KINDS
@@ -1397,11 +1389,11 @@ pub(in crate::game) const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentere
     }
 
     #[cfg(test)]
-/// A test mod's argument type: named machines, one word, completed by prefix.
+    /// A test mod's argument type: named machines, one word, completed by prefix.
     pub(in crate::game) struct MachineArgument;
 
     #[cfg(test)]
-impl mod_api::CommandArgumentType for MachineArgument {
+    impl mod_api::CommandArgumentType for MachineArgument {
         fn kind(&self) -> mod_api::CommandArgumentKind {
             mod_api::CommandArgumentKind::Word
         }
@@ -1432,10 +1424,10 @@ impl mod_api::CommandArgumentType for MachineArgument {
     }
 
     #[cfg(test)]
-pub(in crate::game) struct HostileArgument;
+    pub(in crate::game) struct HostileArgument;
 
     #[cfg(test)]
-impl mod_api::CommandArgumentType for HostileArgument {
+    impl mod_api::CommandArgumentType for HostileArgument {
         fn kind(&self) -> mod_api::CommandArgumentKind {
             mod_api::CommandArgumentKind::Word
         }
@@ -1470,7 +1462,7 @@ impl mod_api::CommandArgumentType for HostileArgument {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn hostile_argument_callbacks_are_refused_without_losing_the_dispatcher() {
         let arguments: CommandArguments = HashMap::from([(
             "test:hostile".into(),
@@ -1500,7 +1492,7 @@ impl mod_api::CommandArgumentType for HostileArgument {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn panicking_argument_kind_is_left_out_of_the_tree() {
         struct PanicKind;
         impl mod_api::CommandArgumentType for PanicKind {
@@ -1532,10 +1524,10 @@ impl mod_api::CommandArgumentType for HostileArgument {
     }
 
     #[cfg(test)]
-pub(in crate::game) struct Machines;
+    pub(in crate::game) struct Machines;
 
     #[cfg(test)]
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Machines {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             r.register_command_argument("machine", MachineArgument);
@@ -1543,7 +1535,7 @@ pub(in crate::game) struct Machines;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_registered_argument_type_parses_and_completes_its_values() {
         mod_platform::__private::part_tests::install_parts_fixture(&[mod_api::ModEntry::new(
             "test",
@@ -1597,7 +1589,7 @@ pub(in crate::game) struct Machines;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn the_id_kind_reads_a_free_identifier_with_no_registry() {
         let (tree, _, problems) = tree(&[mod_api::Command::new("map fullrender <world:id>")]);
         assert!(problems.is_empty(), "{problems:?}");
@@ -1643,12 +1635,12 @@ pub(in crate::game) struct Machines;
     }
 
     #[cfg(test)]
-/// A test mod's argument type for a WorldEdit-style pattern list: the greedy text holds
+    /// A test mod's argument type for a WorldEdit-style pattern list: the greedy text holds
     /// several tokens, and the completion is for the one being typed.
     pub(in crate::game) struct PatternArgument;
 
     #[cfg(test)]
-impl mod_api::CommandArgumentType for PatternArgument {
+    impl mod_api::CommandArgumentType for PatternArgument {
         fn kind(&self) -> mod_api::CommandArgumentKind {
             mod_api::CommandArgumentKind::Greedy
         }
@@ -1672,7 +1664,7 @@ impl mod_api::CommandArgumentType for PatternArgument {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_greedy_argument_completes_the_token_being_typed() {
         let arguments: CommandArguments = HashMap::from([(
             "test:pattern".into(),
@@ -1711,11 +1703,11 @@ impl mod_api::CommandArgumentType for PatternArgument {
     }
 
     #[cfg(test)]
-/// A type whose completion mixes one the text can hold with one it cannot.
+    /// A type whose completion mixes one the text can hold with one it cannot.
     pub(in crate::game) struct MixedOffsets;
 
     #[cfg(test)]
-impl mod_api::CommandArgumentType for MixedOffsets {
+    impl mod_api::CommandArgumentType for MixedOffsets {
         fn kind(&self) -> mod_api::CommandArgumentKind {
             mod_api::CommandArgumentKind::Greedy
         }
@@ -1737,7 +1729,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_suggestion_with_an_offset_past_the_text_is_refused_and_the_others_stay() {
         let arguments: CommandArguments = HashMap::from([(
             "test:mixed".into(),
@@ -1766,7 +1758,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn resource_and_mod_id_kinds_accept_only_known_ids() {
         let mut arguments = command_arguments();
         // The test process loads no package: stand in for one the way `command_arguments` does.
@@ -1837,7 +1829,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn native_usages_parse_with_their_permissions_in_the_server_dispatcher() {
         let (tree, _, problems) = tree(&[
             mod_api::Command::new("warp [name:word]"),
@@ -1899,12 +1891,8 @@ impl mod_api::CommandArgumentType for MixedOffsets {
         );
     }
 
-    
-
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn native_executable_permissions_do_not_follow_public_descendants() {
         for optional in [false, true] {
             for reverse in [false, true] {
@@ -1949,7 +1937,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn native_public_prefixes_do_not_open_admin_children() {
         for reverse in [false, true] {
             let mut commands = vec![
@@ -1986,7 +1974,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn native_shared_executable_prefix_uses_last_accepted_registration() {
         let cases = [
             (
@@ -2057,7 +2045,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn native_rejected_usage_cannot_open_an_executable_prefix() {
         let (tree, _, problems) = tree(&[
             mod_api::Command::op("foo <value:integer>", 4),
@@ -2091,7 +2079,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_command_takes_its_lowest_level() {
         let (t, levels, _) = tree(&[
             mod_api::Command::new("warp [name:word]"),
@@ -2104,7 +2092,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn bad_usages_are_left_out() {
         let (t, levels, problems) = tree(&[
             mod_api::Command::new("a [x:integer] <y:integer>"),
@@ -2126,7 +2114,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-/// `integer(min,max)` and `long(min,max)` go out as vanilla's `IntegerArgumentInfo` and
+    /// `integer(min,max)` and `long(min,max)` go out as vanilla's `IntegerArgumentInfo` and
     /// `LongArgumentInfo` write them (a bound at the type's extreme is left out), and the server
     /// refuses a value out of range with Brigadier's message before any executor runs.
     #[test]
@@ -2211,7 +2199,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-/// A mod argument type that declares `CommandArgumentKind::Integer` goes out as vanilla's
+    /// A mod argument type that declares `CommandArgumentKind::Integer` goes out as vanilla's
     /// bounded `brigadier:integer`, so a client refuses what the server refuses; the server checks
     /// the bounds before the mod's parser.
     #[test]
@@ -2268,7 +2256,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-/// `<name:string>` and a type declaring `CommandArgumentKind::Quotable` read Brigadier's
+    /// `<name:string>` and a type declaring `CommandArgumentKind::Quotable` read Brigadier's
     /// `StringArgumentType.string()`: a word or a quoted phrase, decoded, with an argument after
     /// it. Both go to clients as `brigadier:string` in its quotable mode; only the mod's type asks
     /// the server for completions, as `word` and a `Word` type do.
@@ -2375,7 +2363,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-/// NeoForge's `RegisterCommandsEvent` registers into vanilla's dispatcher, whose literal
+    /// NeoForge's `RegisterCommandsEvent` registers into vanilla's dispatcher, whose literal
     /// merges by Brigadier's `CommandNode.addChild`: a mod usage under `/time` sits beside
     /// vanilla's, which stay; vanilla's node keeps its permission; an executor at a vanilla node
     /// replaces vanilla's, and a later one replaces that. A mod argument at a vanilla node's
@@ -2452,7 +2440,7 @@ impl mod_api::CommandArgumentType for MixedOffsets {
     }
 
     #[cfg(test)]
-/// WorldEdit-style `//set`: the usage `/set <x:word>` (typed `//set` with the chat slash) is a
+    /// WorldEdit-style `//set`: the usage `/set <x:word>` (typed `//set` with the chat slash) is a
     /// root literal `/set` with its argument, and the server dispatches it as typed.
     #[test]
     fn a_first_word_may_start_with_one_slash() {
@@ -2492,10 +2480,6 @@ pub mod fake_action_tests {
     use mod_api::{BlockHit, Hand, PlayerRef};
     use sunrise_items::items::ItemStack;
 
-    
-
-    
-
     /// A click on the top of the block at `pos`.
     pub fn on_top(pos: [i32; 3]) -> PlayerAction {
         let [x, y, z] = pos.map(f64::from);
@@ -2510,38 +2494,8 @@ pub mod fake_action_tests {
         boats_common::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
     };
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     #[cfg(test)]
-/// A listener on `attack_entity` records the target's health where the hook
+    /// A listener on `attack_entity` records the target's health where the hook
     /// runs; with `cancel` set it vetoes the blow.
     pub(in crate::game) struct AttackWatcher {
         pub(in crate::game) seen: std::sync::Arc<std::sync::Mutex<Vec<f32>>>,
@@ -2549,7 +2503,7 @@ pub mod fake_action_tests {
     }
 
     #[cfg(test)]
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for AttackWatcher {
         fn attack_entity(
             &self,
@@ -2571,14 +2525,14 @@ pub mod fake_action_tests {
     }
 
     #[cfg(test)]
-/// A listener on `attack_entity` reads the attacking player's attack
+    /// A listener on `attack_entity` reads the attacking player's attack
     /// strength where the hook runs.
     pub(in crate::game) struct ChargeWatcher(
         pub(in crate::game) std::sync::Arc<std::sync::Mutex<Vec<Option<f32>>>>,
     );
 
     #[cfg(test)]
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ChargeWatcher {
         fn attack_entity(
             &self,
@@ -2592,16 +2546,8 @@ pub mod fake_action_tests {
         }
     }
 
-    
-
-    
-
-    
-
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn the_acting_mark_clears_on_a_panic_and_each_action_starts_unblocked() {
         let action = std::sync::Arc::new(super::FakeAction::default());
         let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -2619,8 +2565,6 @@ pub mod fake_action_tests {
         }
         assert_eq!(Acting::start(&action).blocked(), None);
     }
-
-    
 }
 
 /// The online mode a dedicated server's network config carries: it has an

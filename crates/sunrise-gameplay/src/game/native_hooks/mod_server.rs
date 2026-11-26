@@ -1,16 +1,5 @@
 use self::block_entity_tick::ResidentBlockEntityAccess;
 use crate::game::server_side::{Game, GameLevel};
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay_common::game::native_data_maps_common::DataMapType;
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
-use sunrise_gameplay_common::game::native_hooks::HitLevel;
-use sunrise_gameplay_common::game::native_hooks::LiveDamageRead;
-use sunrise_gameplay_common::game::native_hooks::apply_menu_button_cursor;
-use sunrise_gameplay_common::game::native_hooks::mob_kind;
-use sunrise_gameplay_common::game::native_hooks::mod_menu;
-use sunrise_gameplay_common::game::native_hooks::property_change;
-use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::*};
 use mod_api::EffectKey;
 use mod_api::{
     self, BlockPlacement, EntityRef, GameRuleActor, LifecycleContext, Placement, PlayerRef,
@@ -23,6 +12,16 @@ use std::sync::Arc;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_game_data::gamerules::Value as GameRuleValue;
 use sunrise_game_data::suggestion::Suggestion;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::native_data_maps_common::DataMapType;
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
+use sunrise_gameplay_common::game::native_hooks::HitLevel;
+use sunrise_gameplay_common::game::native_hooks::LiveDamageRead;
+use sunrise_gameplay_common::game::native_hooks::apply_menu_button_cursor;
+use sunrise_gameplay_common::game::native_hooks::mob_kind;
+use sunrise_gameplay_common::game::native_hooks::mod_menu;
+use sunrise_gameplay_common::game::native_hooks::property_change;
 use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
 use sunrise_sim::block_contact::Pending;
 use sunrise_sim::health::mob_source;
@@ -30,6 +29,7 @@ use sunrise_sim::health::mob_source;
 use sunrise_sim::mobs::Damage;
 use sunrise_world::level::PlaceContext;
 use sunrise_world::level::flags;
+use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::*};
 use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 use {
     sunrise_game_data::text::Text, sunrise_items::items::ItemStack,
@@ -62,25 +62,17 @@ pub(in crate::game) mod build_creative_mode_tab_contents;
 #[path = "can_start_swimming_server.rs"]
 pub(in crate::game) mod can_start_swimming;
 
-
-
 #[path = "contents_changed_server.rs"]
 pub(in crate::game) mod contents_changed;
 
-
-
 #[path = "enchanted_block_loot_server.rs"]
 pub(in crate::game) mod enchanted_block_loot;
-
-
 
 #[path = "exp_drop_server.rs"]
 pub(in crate::game) mod exp_drop;
 
 #[path = "explosion_notice_containment_server.rs"]
 pub(in crate::game) mod explosion_notice_containment;
-
-
 
 #[path = "general_entity_tick_server.rs"]
 pub(in crate::game) mod general_entity_tick;
@@ -91,19 +83,11 @@ pub(in crate::game) mod incoming_tests;
 #[path = "item_attack_server.rs"]
 pub(in crate::game) mod item_attack;
 
-
-
-
-
 #[path = "level_world_server.rs"]
 pub(in crate::game) mod level_world;
 
-
-
 #[path = "living_death_server.rs"]
 pub(in crate::game) mod living_death;
-
-
 
 #[path = "mod_configs_server.rs"]
 pub(in crate::game) mod mod_configs;
@@ -125,8 +109,6 @@ pub(in crate::game) mod player_leave;
 
 #[path = "register_enchantment_damage_effects_server.rs"]
 pub(in crate::game) mod register_enchantment_damage_effects;
-
-
 
 #[path = "shared/item_fallthrough_server.rs"]
 pub(in crate::game) mod item_fallthrough;
@@ -166,11 +148,15 @@ impl crate::game::ServerGame<'_> {
         let held = if mod_api::__private::mods().is_empty() {
             [None, None]
         } else if self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
-            [self.common.stack_in(self.common.selected).cloned(), self.common.offhand.clone()]
+            [
+                self.common.stack_in(self.common.selected).cloned(),
+                self.common.offhand.clone(),
+            ]
         } else if let Some(mob) = self.common.mobs.iter().find(|m| m.id as i32 == attacker) {
             [mob.extra.main_hand_stack().cloned(), None]
         } else if let Some(guest) = self
@@ -187,7 +173,8 @@ impl crate::game::ServerGame<'_> {
             [None, None]
         };
         let player_uuid = if self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
@@ -217,7 +204,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// Finish a lethal or totem-protected hit only once the owning level has settled it.
-    pub(in crate::game::server_side) fn finish_damage_post(
+    pub(crate) fn finish_damage_post(
         &mut self,
         entity: i32,
         kind: &str,
@@ -240,7 +227,8 @@ impl crate::game::ServerGame<'_> {
         let (victim_mob, lend_mob) = match (victim_mob, lend_mob) {
             (Some(v), Some(l)) => {
                 let [v, l] = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .get_disjoint_mut([v, l])
                     .expect("two different mobs");
                 (Some(&*v), Some(l))
@@ -249,7 +237,11 @@ impl crate::game::ServerGame<'_> {
             (Some(v), None) => (Some(&self.common.mobs[v]), None),
             (None, None) => (None, None),
         };
-        let player_victim = self.common.player.as_ref().is_some_and(|p| p.entity_id == entity);
+        let player_victim = self
+            .common
+            .player
+            .as_ref()
+            .is_some_and(|p| p.entity_id == entity);
         let hub = self.server.lan.as_ref().map(|lan| &lan.hub);
         let parked = move || HitLend::parked_guest(hub, parked?);
         let (victim, lend) = if player_victim {
@@ -301,14 +293,15 @@ impl crate::game::ServerGame<'_> {
     /// `ItemStack.onItemUseFirst` for a click on a block: the broadcast
     /// event's `ItemBeforeBlock` phase, then the held item's Part. Canceling skips that Part.
     /// Only `Pass` continues to the block.
-    pub(in crate::game::server_side) fn item_use_first(
+    pub(crate) fn item_use_first(
         &mut self,
-        hit: &super::Hit,
+        hit: &sunrise_gameplay_common::game::Hit,
         hand: Hand,
         stack: &ItemStack,
     ) -> Option<mod_api::InteractionResult> {
         if let Some(answer) =
-            self.common.use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
+            self.common
+                .use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
         {
             return Some(answer);
         }
@@ -332,7 +325,8 @@ impl crate::game::ServerGame<'_> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let against = self.common.world.block(pos[0], pos[1] - 1, pos[2]);
         let kind = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == mob)
             .map(|m| m.kind.id.clone());
@@ -391,7 +385,9 @@ impl crate::game::ServerGame<'_> {
             && let Some((handle, _)) = target
             && let Some(pos) = self.native_block_entity_write_key(handle)
         {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(pos));
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(
+                pos,
+            ));
         }
         apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
     }
@@ -402,7 +398,9 @@ impl crate::game::ServerGame<'_> {
         slot: i32,
     ) -> Option<&mut Option<ItemStack>> {
         match slot {
-            0.. if (slot as usize) < self.common.inventory.len() => self.common.inventory.get_mut(slot as usize),
+            0.. if (slot as usize) < self.common.inventory.len() => {
+                self.common.inventory.get_mut(slot as usize)
+            }
             100..=103 => self.common.armor.get_mut(103 - slot as usize),
             -106 => Some(&mut self.common.offhand),
             _ => None,
@@ -488,7 +486,9 @@ impl crate::game::ServerGame<'_> {
     /// the attack the enclosing [`Self::with_attack`] lends.
     pub(in crate::game) fn attack_of_who(&self, attacker: Option<Who>) -> Attack {
         match attacker {
-            Some(Who::Player) => self.attack_of(self.common.player.as_ref().map_or(0, |p| p.entity_id)),
+            Some(Who::Player) => {
+                self.attack_of(self.common.player.as_ref().map_or(0, |p| p.entity_id))
+            }
             Some(Who::Mob(id)) => self.attack_of(id as i32),
             None => self.current_attack(),
         }
@@ -541,7 +541,8 @@ impl crate::game::ServerGame<'_> {
         // Preserve saved/constructed UUIDs. Natural spawns built with provisional
         // IDs get their persistent identity when admitted, not on their first hit.
         for mob in self.common.mobs.iter().skip(from) {
-            self.common.persist
+            self.common
+                .persist
                 .uuids
                 .get_or_insert_with(mob.id, sunrise_sim::save::random_uuid);
         }
@@ -590,8 +591,14 @@ impl crate::game::ServerGame<'_> {
     ) -> sunrise_game_data::Result<Option<sunrise_world::level::AppliedPlacement>> {
         let registry = self.common.pack.assets.registry;
         let game_master = ctx.can_use_game_master_blocks;
-        let stack_state =
-            |state| sunrise_gameplay_common::game::block_items::item_block_state(registry, state, stack, game_master);
+        let stack_state = |state| {
+            sunrise_gameplay_common::game::block_items::item_block_state(
+                registry,
+                state,
+                stack,
+                game_master,
+            )
+        };
         let has_part =
             mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
         let placer = (has_part && by_player)
@@ -631,9 +638,18 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|entity| self.common.entity(entity));
             // The block revision and journal epoch cover supporting blocks and
             // block-entity shapes without tracing ordinary reads.
-            let level = (self.common.dim, self.common.world.revision, self.common.transactions.writes());
+            let level = (
+                self.common.dim,
+                self.common.world.revision,
+                self.common.transactions.writes(),
+            );
             if self.placement_canceled(placer, preview.pos, preview.state, against, extra)
-                || level != (self.common.dim, self.common.world.revision, self.common.transactions.writes())
+                || level
+                    != (
+                        self.common.dim,
+                        self.common.world.revision,
+                        self.common.transactions.writes(),
+                    )
                 || block(self, preview.pos) != target_before
                 || block(self, against_pos) != against
                 || (by_player && self.common.held() != hand.as_ref())
@@ -642,7 +658,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let Some(placed) = self
-            .common.with_level(|b, level, ticks| b.apply_placement(level, ticks, decision, stack_state))
+            .common
+            .with_level(|b, level, ticks| b.apply_placement(level, ticks, decision, stack_state))
         else {
             return Ok(None);
         };
@@ -650,7 +667,8 @@ impl crate::game::ServerGame<'_> {
             let pos = placed.context.pos;
             let target = [pos.x, pos.y, pos.z];
             self.apply_block_item_data(target, placed.state, stack, game_master);
-            self.common.with_level(|b, level, ticks| b.placement_set_placed_by(level, ticks, &placed));
+            self.common
+                .with_level(|b, level, ticks| b.placement_set_placed_by(level, ticks, &placed));
             let placer = by_player.then(|| self.native_acting_player()).flatten();
             self.set_placed_by(target, placer, Some(stack))?;
             self.block_item_placed(stack, placer, &placed.context);
@@ -658,7 +676,8 @@ impl crate::game::ServerGame<'_> {
                 self.trigger_block("minecraft:placed_block", target, stack);
             }
         }
-        self.common.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
+        self.common
+            .with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
         Ok(Some(placed))
     }
     /// `GameRuleChangedEvent` once the server set the rule `name` to `value`
@@ -695,7 +714,10 @@ impl crate::game::ServerGame<'_> {
     }
     /// The acting player's blow killed mob `index`.
     pub(in crate::game) fn native_kill_event(&mut self, index: usize) {
-        let (entity, kind) = (self.common.mobs[index].id, mob_kind(&self.common.mobs[index]));
+        let (entity, kind) = (
+            self.common.mobs[index].id,
+            mob_kind(&self.common.mobs[index]),
+        );
         let player = self.common.native_acting_id();
         self.native_mob_killed(player, entity, &kind);
     }
@@ -882,7 +904,13 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::listened(mod_api::HookId::EntityPlace) {
             return false;
         }
-        self.placement_canceled(self.common.entity(placer), pos, state, placed_against, companion)
+        self.placement_canceled(
+            self.common.entity(placer),
+            pos,
+            state,
+            placed_against,
+            companion,
+        )
     }
 }
 

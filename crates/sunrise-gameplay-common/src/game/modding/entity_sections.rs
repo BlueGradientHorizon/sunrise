@@ -70,7 +70,7 @@ pub(in crate::game) struct Crossing {
 /// Where a boundary is: the world open and the level the entity is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) struct Scope {
-    pub(in crate::game) epoch: WorldEpoch,
+    pub epoch: WorldEpoch,
     pub(in crate::game) level: DimensionKey,
 }
 
@@ -348,12 +348,7 @@ impl CommonGame<'_> {
     /// that leaves its section puts it at the end of the section it enters, whether or not a
     /// hook listens. Cost: the integer compare of [`crossed`]; the table is touched only on a
     /// crossing.
-    pub fn entity_section_entered(
-        &mut self,
-        id: u32,
-        from: [f64; 3],
-        to: [f64; 3],
-    ) {
+    pub fn entity_section_entered(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
         if crossed(from, to) && self.is_logical_server() {
             self.resident_entities
                 .table
@@ -363,12 +358,7 @@ impl CommonGame<'_> {
     }
 
     /// Entity `id` was put from `from` (when known) at `to`; tell it immediately after filing.
-    pub fn entity_section_moved(
-        &mut self,
-        id: u32,
-        from: Option<[f64; 3]>,
-        to: [f64; 3],
-    ) {
+    pub fn entity_section_moved(&mut self, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) {
         self.side_pick_section_move(id, to);
         if let Some(from) = from {
             self.entity_section_entered(id, from, to);
@@ -481,12 +471,7 @@ impl CommonGame<'_> {
 
     /// Tell a write whose row is temporarily lent to a family pass. The callback sees the
     /// committed position without removing and reinserting the surrounding list tail.
-    pub fn entity_section_step_visible(
-        &mut self,
-        id: u32,
-        from: [f64; 3],
-        to: [f64; 3],
-    ) -> bool {
+    pub fn entity_section_step_visible(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) -> bool {
         let scope = self.entity_section_scope();
         self.native_lifecycle.entity_sections.write_position = Some((id, to));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

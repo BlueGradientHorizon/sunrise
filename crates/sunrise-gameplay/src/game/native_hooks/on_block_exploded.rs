@@ -1,3 +1,6 @@
+use mod_api::{BlockEntityRef, ExplosionStart};
+use sunrise_core::position::BlockPos;
+use sunrise_world::registry::BlockStateId;
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_on_block_exploded(
@@ -27,7 +30,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let block_entity = self
-            .common.level(self.common.dim.id())
+            .common
+            .level(self.common.dim.id())
             .and_then(|level| self.common.block_entity(level, pos));
         self.contained_block_exploded(
             BlockPos::new(pos[0], pos[1], pos[2]),

@@ -14,7 +14,10 @@ impl ServerGame<'_> {
         join: JoinSeq,
         state: BlockStateId,
     ) {
-        if super::api_values::block_state::block_listens(mod_api::HookId::FallingTick, state) {
+        if sunrise_gameplay_common::game::api_values::block_state::block_listens(
+            mod_api::HookId::FallingTick,
+            state,
+        ) {
             self.server.ordered.falling_ticked.push((id, join));
         }
     }
@@ -32,13 +35,17 @@ impl ServerGame<'_> {
         let mut ticked = std::mem::take(&mut self.server.ordered.falling_ticked);
         for (id, join) in ticked.drain(..) {
             let Some(i) = self
-                .common.falling
+                .common
+                .falling
                 .locate(join)
                 .filter(|&i| self.common.falling[i].id == id)
             else {
                 continue;
             };
-            let (state, p) = (self.common.falling[i].state, self.common.falling[i].position);
+            let (state, p) = (
+                self.common.falling[i].state,
+                self.common.falling[i].position,
+            );
             let pos = BlockPos::new(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
             self.native_falling_tick(state, pos, mod_api::EntityRef::new(epoch, id));
         }

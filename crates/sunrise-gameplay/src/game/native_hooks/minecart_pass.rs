@@ -1,4 +1,6 @@
-
+use mod_api::EntityRef;
+use sunrise_core::position::BlockPos;
+use sunrise_world::registry::BlockStateId;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

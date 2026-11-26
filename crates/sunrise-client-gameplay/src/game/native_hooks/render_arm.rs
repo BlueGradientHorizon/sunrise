@@ -1,4 +1,4 @@
-
+use crate::game::BlockEntityDraw;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

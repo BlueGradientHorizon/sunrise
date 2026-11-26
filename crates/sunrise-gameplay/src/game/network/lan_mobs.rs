@@ -91,7 +91,9 @@ impl ServerGame<'_> {
         if events.is_empty() {
             return;
         }
-        for (conn, mob, e) in super::creatures::RemainingActions::new(events) {
+        for (conn, mob, e) in
+            sunrise_gameplay_common::game::creatures::RemainingActions::new(events)
+        {
             self.guest_hit_by(conn, |g| g.guest_mob_event(mob, e));
         }
     }
@@ -245,7 +247,10 @@ impl ServerGame<'_> {
     ) {
         if let (Some(v), Some(g)) = (
             velocity,
-            self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)),
+            self.server
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn)),
         ) {
             g.send(&C::SetEntityMotion(play::SetEntityMotion {
                 id: g.entity_id,

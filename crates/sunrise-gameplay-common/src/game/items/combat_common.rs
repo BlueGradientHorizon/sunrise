@@ -8,7 +8,7 @@ pub const DROWN_EVENT: i8 = 67;
 
 /// `LivingEntity.lastHurtByPlayer`: a reference that survives a disconnect.
 #[derive(Clone, Copy)]
-pub struct PlayerCredit(pub(in crate::game) u128);
+pub struct PlayerCredit(pub u128);
 
 impl From<PlayerCredit> for u128 {
     fn from(credit: PlayerCredit) -> Self {

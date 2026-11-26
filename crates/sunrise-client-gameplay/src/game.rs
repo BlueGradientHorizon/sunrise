@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 use client_side::window_handler::follow_keymap;
 #[cfg(feature = "client")]
@@ -13,10 +12,22 @@ use loading_screen::{App, Loading, leave_fullscreen_after, run_event_loop};
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 use motion_ids::{motion_at, motion_block_entity};
+use std::cell::RefCell;
+use std::sync::Arc;
+use std::time::Instant;
+use sunrise_client::assets::RenderAssets;
+use sunrise_client::audio::Audio;
+use sunrise_client::creative::Creative;
+use sunrise_client::gfx::Renderer;
+use sunrise_client::hud::HudBatch;
+use sunrise_client::title::Title;
+use sunrise_gameplay_common::game::OrbFrame;
+use sunrise_gameplay_common::game::integrated_link;
+use sunrise_gameplay_common::game::saving;
 #[cfg(feature = "client")]
 macro_rules! client_game_side {
     ($s:expr, $meta:expr) => {
-        $crate::game_side!(
+        sunrise_gameplay_common::game_side!(
             $s,
             $meta,
             match &$s.side.remote {
@@ -217,12 +228,6 @@ pub(in crate::game) use client_side::allays_client;
 pub(in crate::game) use client_side::composter_client;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::modapi_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::spawner_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::extras;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -314,6 +319,12 @@ pub(in crate::game) use client_side::item_particles;
 pub(in crate::game) use client_side::jigsaw_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::jukebox;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::modapi_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::spawner_client;
 #[cfg(test)]
 #[path = "game/interface/keymap_tests.rs"]
 mod keymap_tests;
@@ -507,6 +518,84 @@ pub(in crate::game) use client_side::native_panel_recipes;
 #[cfg(test)]
 #[path = "game/modding/native_panel_wheel_tests.rs"]
 mod native_panel_wheel_tests;
+#[allow(unused_imports)]
+use crate::frame_autotune;
+#[allow(unused_imports)]
+use crate::occlusion_culling;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::advancements_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::block_entity_anims_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::boats_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::cauldron_prediction_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::commands_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::creatures_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::dragon_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::end_client;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::entity_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::entity_sizes_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::fangs_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::fireworks_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::fishing_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::game_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::game_mode_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::integrated_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::level_particles_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::machines_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::memory_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_book_net_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_book_placement_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_book_settings_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_entity_refs_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_hooks_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::native_living_effects_client;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_part_tables;
@@ -571,6 +660,9 @@ pub(in crate::game) use client_side::net_harness;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::no_resources;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::ominous_item_spawner_client;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::options;
 #[cfg(feature = "client")]
@@ -601,6 +693,9 @@ pub(in crate::game) use client_side::pad_craft;
 pub(in crate::game) use client_side::pad_menu;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::paintings_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::particle_culling;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -621,6 +716,9 @@ pub(in crate::game) use client_side::play_input;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::play_keys;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::player_client;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::pointer_capture;
@@ -699,6 +797,9 @@ pub(in crate::game) use client_side::resource_loader;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::saves_control;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::saving_client;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::screen_build;
 #[cfg(feature = "client")]
@@ -753,6 +854,9 @@ pub(in crate::game) use client_side::social;
 pub(in crate::game) use client_side::spawner_client_tick_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::spear_client;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::spectator;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -790,6 +894,9 @@ pub(in crate::game) use client_side::subtitles;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::sulfur_bucket_tests;
 #[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::swing_packet;
+#[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::sync_background_tests;
@@ -807,105 +914,13 @@ pub(in crate::game) use client_side::text_displays;
 pub(in crate::game) use client_side::text_expression_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
+pub(in crate::game) use client_side::thrown_item_draw;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::tick_script;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::titles;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::advancements_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::block_entity_anims_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::boats_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::cauldron_prediction_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::commands_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::creatures_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::dragon_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::end_client;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::entity_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::entity_sizes_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::fangs_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::fireworks_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::fishing_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::game_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::game_mode_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::integrated_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::level_particles_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::machines_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::memory_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_book_net_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_book_placement_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_book_settings_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_entity_refs_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_hooks_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_living_effects_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::ominous_item_spawner_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::paintings_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::player_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::saving_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::spear_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::swing_packet;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::thrown_item_draw;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::tnt_client;
@@ -928,20 +943,14 @@ pub(in crate::game) use client_side::trident_client;
 pub(in crate::game) use client_side::tutorial;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::using_item_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::world_view_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::zombie_villagers_client;
-#[cfg(feature = "client")]
-#[allow(unused_imports)]
 pub(in crate::game) use client_side::ui_control;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::use_same_item_tests;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::using_item_client;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::viewed_worlds;
 #[cfg(feature = "client")]
@@ -966,10 +975,12 @@ pub(in crate::game) use client_side::world_session;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::world_update;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
-use crate::frame_autotune;
+pub(in crate::game) use client_side::world_view_client;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
-use crate::occlusion_culling;
+pub(in crate::game) use client_side::zombie_villagers_client;
 
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -983,20 +994,20 @@ use loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
 };
 #[cfg(feature = "client")]
+pub use native_block_entity_draw::BlockEntityDraw;
+#[cfg(feature = "client")]
+pub use native_mob_draw::{MobRender, PlayerRender};
+#[cfg(feature = "client")]
 use resource_loader::{EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry};
 #[allow(unused_imports)]
 #[cfg(feature = "client")]
 use resource_loader::{run_loading, write_report};
 #[allow(unused_imports)]
-use sunrise_client_render::block_entity_reach::Reach;
-#[cfg(feature = "client")]
-pub use native_block_entity_draw::BlockEntityDraw;
-#[cfg(feature = "client")]
-pub use native_mob_draw::{MobRender, PlayerRender};
-#[allow(unused_imports)]
 use sunrise_client::actions::Action as Mapping;
 #[allow(unused_imports)]
 use sunrise_client::held::Source;
+#[allow(unused_imports)]
+use sunrise_client_render::block_entity_reach::Reach;
 #[allow(unused_imports)]
 use winit::{
     application::ApplicationHandler,
@@ -1023,7 +1034,10 @@ impl crate::game::ClientGame<'_> {
             &self.client.gui.atlas,
             bar,
             fade,
-            self.client.settings.file.bool("darkMojangStudiosBackground"),
+            self.client
+                .settings
+                .file
+                .bool("darkMojangStudiosBackground"),
         );
     }
 
@@ -1146,7 +1160,7 @@ pub(in crate::game) struct WrappedRendererInit {
 use sunrise_gameplay_common::game::WrappedPrepInit;
 struct ConstructInit<const NO_SLOT: bool>;
 impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
-#[cfg(feature = "client")]
+    #[cfg(feature = "client")]
     #[inline(never)]
     fn build_wrapped_client() -> Box<WrappedClientInit> {
         Box::new(WrappedClientInit {
@@ -1200,14 +1214,14 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             adv_ui: client_side::ClientOnly::new(Default::default()),
         })
     }
-#[cfg(feature = "client")]
+    #[cfg(feature = "client")]
     #[inline(never)]
     fn build_wrapped_renderer() -> Box<WrappedRendererInit> {
         Box::new(WrappedRendererInit {
             renderer: client_side::ClientShared::new(None),
         })
     }
-#[cfg(feature = "client")]
+    #[cfg(feature = "client")]
     #[inline(never)]
     fn build_client_be_anims(
         registry: &'static sunrise_world::registry::BlockRegistry,
@@ -1216,7 +1230,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
         anims.classify(registry);
         anims
     }
-#[cfg(feature = "client")]
+    #[cfg(feature = "client")]
     #[inline(never)]
     fn wrap_client_prep_and_effects(
         prep: Box<client_side::ClientConstructPrep>,
@@ -1326,13 +1340,21 @@ pub(in crate::game) use client_side::{armor_stands_client, frames_client, mineca
 use sunrise_gameplay_common::game::SideGame;
 impl<'g> SideGame<'g> for ClientGame<'g> {
     type State = client_side::ClientState;
-    fn side_state(&self) -> &Self::State { &self.client }
-    fn side_state_mut(&mut self) -> &mut Self::State { &mut self.client }
-
-    fn common_and_state_mut(&mut self) -> (&mut sunrise_gameplay_common::game::CommonGame<'g>, &mut Self::State) {
-        (&mut self.common, &mut self.client)
+    fn side_state(&self) -> &Self::State {
+        &self.client
+    }
+    fn side_state_mut(&mut self) -> &mut Self::State {
+        &mut self.client
     }
 
+    fn common_and_state_mut(
+        &mut self,
+    ) -> (
+        &mut sunrise_gameplay_common::game::CommonGame<'g>,
+        &mut Self::State,
+    ) {
+        (&mut self.common, &mut self.client)
+    }
 }
 
 #[path = "game/side_ops/mod.rs"]

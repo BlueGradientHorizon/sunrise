@@ -1,17 +1,21 @@
 use super::*;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use std::path::Path;
+use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
+use sunrise_gameplay_common::game::api_values::{self, TryIntoApi};
 #[cfg(test)]
 use sunrise_gameplay_common::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
 use sunrise_gameplay_common::game::resource_tables::PackParts;
-use std::path::Path;
-use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
 use sunrise_level::chunk_streamer::ChunkWorkerContext;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// A title screen over the current resources and their splash pool.
     pub(crate) fn new_title(&self, saves: PathBuf) -> Title {
-        Title::new(saves, &self.common.options.resources, &self.client.gui.splashes)
+        Title::new(
+            saves,
+            &self.common.options.resources,
+            &self.client.gui.splashes,
+        )
     }
 }
 

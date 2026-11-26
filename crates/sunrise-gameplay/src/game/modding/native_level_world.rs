@@ -26,7 +26,9 @@ impl crate::game::ServerGame<'_> {
     /// or `hard`, as `/difficulty` names it.
     pub(in crate::game) fn level_difficulty(&self, level: LevelRef) -> Option<&'static str> {
         self.common.native_level_world(level)?;
-        DIFFICULTIES.get(usize::from(self.common.ui.difficulty)).copied()
+        DIFFICULTIES
+            .get(usize::from(self.common.ui.difficulty))
+            .copied()
     }
     /// `ServerLevel.getCurrentDifficultyAt(pos)` in the level the handle names, in place or
     /// parked.
@@ -37,7 +39,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<mod_api::Difficulty> {
         let world = self.common.native_level_world(level)?;
         let at = pos.map(f64::from);
-        Some(super::creatures::local_difficulty_in(world, at).into())
+        Some(sunrise_gameplay_common::game::creatures::local_difficulty_in(world, at).into())
     }
     /// Read a registered boolean game rule.
     pub(in crate::game) fn level_game_rule_bool(
@@ -46,7 +48,8 @@ impl crate::game::ServerGame<'_> {
         key: BoolGameRuleKey,
     ) -> Option<bool> {
         self.common.native_level_world(level)?;
-        self.common.ui
+        self.common
+            .ui
             .rules
             .bool_slot(mod_api::__private::game_rule_bool_slot(key)?)
     }
@@ -57,7 +60,8 @@ impl crate::game::ServerGame<'_> {
         key: mod_api::IntGameRuleKey,
     ) -> Option<i32> {
         self.common.native_level_world(level)?;
-        self.common.ui
+        self.common
+            .ui
             .rules
             .int_slot(mod_api::__private::game_rule_int_slot(key)?)
     }

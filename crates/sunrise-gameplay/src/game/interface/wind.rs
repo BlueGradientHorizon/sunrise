@@ -1,8 +1,8 @@
 //! Wind charges: the item a player throws (`WindChargeItem`), the charges
 //! breezes shoot, and the burst they make (`ServerExplosion` with
 //! `TRIGGER_BLOCK`: no damage, only knockback and the blocks that react).
-use crate::game::ServerGame;
 use super::entity::{Blast, Entity as _};
+use crate::game::ServerGame;
 use crate::game::server_side::entity_server::for_each_entity_mut;
 use std::collections::BTreeSet;
 use sunrise_core::{
@@ -212,7 +212,15 @@ impl ServerGame<'_> {
         let velocity = self.common.known_player_movement();
         let start = Vec3::new(pos.x, eye[1], pos.z);
         let mut proj = Projectile::new(ProjectileKind::WindCharge, start, Some(Who::Player));
-        proj.shoot_from_rotation(self.common.pitch, self.common.yaw, 0.0, 1.5, 1.0, velocity, on_ground);
+        proj.shoot_from_rotation(
+            self.common.pitch,
+            self.common.yaw,
+            0.0,
+            1.5,
+            1.0,
+            velocity,
+            on_ground,
+        );
         self.spawn_projectile(proj, stack);
         let pitch = 0.4 / (self.common.world.random.next_float() * 0.4 + 0.8);
         self.server_play_sound("minecraft:entity.wind_charge.throw", eye, 0.5, pitch);
@@ -254,7 +262,8 @@ impl ServerGame<'_> {
         let (lo, hi) = (whole.min_position(), whole.max_position());
         let exposure = self.seen_percent(center, [lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
         let Some((id, mut push)) = self
-            .common.dragon
+            .common
+            .dragon
             .as_ref()
             .and_then(|d| Some((d.id, d.explosion_knockback(center, radius, exposure)?)))
         else {
@@ -366,7 +375,7 @@ impl ServerGame<'_> {
     ) -> (Projectile, bool, Hit) {
         let include_guests =
             again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind);
-        let query = super::creatures::TargetQuery::for_projectile(&again, include_guests);
+        let query = sunrise_gameplay_common::game::creatures::projectile_targets::TargetQuery::for_projectile(&again, include_guests);
         let (keep, hit) = {
             let live = self.live_proj_world(query, &[]);
             again.tick(&live)
@@ -406,7 +415,7 @@ impl ServerGame<'_> {
             }
             // Non-mob pickable target (stand, painting, frame, knot, cushion, vehicle, falling block).
             Who::Mob(id) if !self.common.mobs.iter().any(|m| m.id == id) => {
-                let info = super::creatures::ProjectileHitInfo::from_projectile(
+                let info = sunrise_gameplay_common::game::creatures::projectile_targets::ProjectileHitInfo::from_projectile(
                     p,
                     "minecraft:wind_charge",
                     1.0,
@@ -479,7 +488,8 @@ impl ServerGame<'_> {
         radius: f32,
     ) -> Vec<[i32; 3]> {
         let stops = self
-            .common.res
+            .common
+            .res
             .items()
             .block_tags
             .get("minecraft:blocks_wind_charge_explosions")
@@ -514,7 +524,8 @@ impl ServerGame<'_> {
                             break;
                         }
                         let name = &self
-                            .common.res
+                            .common
+                            .res
                             .facts()
                             .get(self.common.world.block(pos[0], pos[1], pos[2]))
                             .name;
@@ -550,7 +561,8 @@ impl ServerGame<'_> {
         let blocklike = !src.breeze
             && !src.wind_charge
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         let diameter = f64::from(radius * 2.0);
@@ -601,7 +613,8 @@ impl ServerGame<'_> {
         let burst = Blast {
             vehicles_ignore: src.mob
                 && !self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: !blocklike,
@@ -682,7 +695,8 @@ impl ServerGame<'_> {
             return None;
         }
         let resistance = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:explosion_knockback_resistance").ok())
             .unwrap_or(0.0);
@@ -796,13 +810,19 @@ impl ServerGame<'_> {
         // Explosion.canTriggerBlocks: a breeze's charge needs mob griefing.
         if !src.breeze
             || self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         {
             // Util.shuffle(list, level.random)
             for i in (2..=targets.len()).rev() {
-                let swap = self.common.world.random.next_int_bound(i as i32).unwrap_or(0) as usize;
+                let swap = self
+                    .common
+                    .world
+                    .random
+                    .next_int_bound(i as i32)
+                    .unwrap_or(0) as usize;
                 targets.swap(i - 1, swap);
             }
             let dimension = self.common.dim.id();
@@ -840,18 +860,25 @@ impl ServerGame<'_> {
     ) -> Result<()> {
         // Util.shuffle(list, level.random)
         for i in (2..=targets.len()).rev() {
-            let swap = self.common.world.random.next_int_bound(i as i32).unwrap_or(0) as usize;
+            let swap = self
+                .common
+                .world
+                .random
+                .next_int_bound(i as i32)
+                .unwrap_or(0) as usize;
             targets.swap(i - 1, swap);
         }
         let breeze = self.server.combat.0.explosion_source.is_some_and(|id| {
-            self.common.creatures
+            self.common
+                .creatures
                 .projectiles
                 .iter()
                 .any(|p| p.id == id && p.kind == ProjectileKind::BreezeWindCharge)
         });
         if breeze
             && !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         {
@@ -868,7 +895,13 @@ impl ServerGame<'_> {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         // FenceGateBlock.onExplosionHit tests power and toggles the gate
         // without turning it towards anyone, as a click would.
-        if self.common.res.behaviours().data(state).is(Class::FenceGate) {
+        if self
+            .common
+            .res
+            .behaviours()
+            .data(state)
+            .is(Class::FenceGate)
+        {
             if self.common.with_level(|b, level, ticks| {
                 b.fence_gate_exploded(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
             }) {
@@ -998,7 +1031,6 @@ pub(in crate::game) mod tests {
         let arrow = Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None);
         assert!(!Entity::ticks_after_projectiles(&arrow));
     }
-    
 
     #[test]
     fn a_deflected_projectile_turns_around_at_half_speed() {

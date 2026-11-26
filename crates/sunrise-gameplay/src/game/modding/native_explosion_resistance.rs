@@ -75,7 +75,12 @@ impl crate::game::ServerGame<'_> {
             _ => unreachable!("ResistanceCells: unhandled variant"),
         };
         let ms = started.elapsed().as_secs_f32() * 1000.0;
-        if self.common.options.spikes.is_some_and(|threshold| ms > threshold) {
+        if self
+            .common
+            .options
+            .spikes
+            .is_some_and(|threshold| ms > threshold)
+        {
             log::info!("Sunrise: slow mod explosion resistance read {ms:.1} ms ({count} cells)");
         }
         Ok(out)
@@ -112,8 +117,10 @@ impl crate::game::ServerGame<'_> {
         }
         // The calculator `level.explode` would have: the same selection, read the same way.
         let rules = self.blast_rules(None, false);
-        let damage_type =
-            super::creatures::damage_type(DamageKind::Explosion, self.blast_attacker().is_some());
+        let damage_type = sunrise_gameplay_common::game::creatures::damage_type(
+            DamageKind::Explosion,
+            self.blast_attacker().is_some(),
+        );
         let start = self.explosion_start(
             blast.center,
             blast.radius,
@@ -125,7 +132,12 @@ impl crate::game::ServerGame<'_> {
         let mut out = Vec::with_capacity(count);
         for pos in positions {
             // Reads never load a column.
-            if !self.common.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4)) {
+            if !self
+                .common
+                .world
+                .chunks
+                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
+            {
                 out.push(ExplosionResistance::Unavailable);
                 continue;
             }

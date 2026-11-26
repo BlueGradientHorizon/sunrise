@@ -1,14 +1,13 @@
 //! A subscribed guest's merchant result click is one savepoint. Each take has its own
 //! frozen menu plan, collect and apply; a later refusal aborts every earlier iteration.
-use super::{
-    Game,
-    trading::MadeMaps,
-    transactions::{
-        After,
-        decision::{Identity, OwnerStamp},
-    },
+use super::{Game, trading::MadeMaps};
+use sunrise_gameplay_common::game::lan_menu_data::{
+    Effect, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow,
 };
-use sunrise_gameplay_common::game::lan_menu_data::{Effect, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow};
+use sunrise_gameplay_common::game::transactions::{
+    After,
+    decision::{Identity, OwnerStamp},
+};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{advancements::Advancement, menu::Menu};
 
@@ -61,7 +60,11 @@ impl crate::game::ServerGame<'_> {
         let unlocked = g.recipes_unlocked.clone();
         let book = g.recipe_book.clone();
         self.journal_guest_click(conn);
-        let level = self.common.transactions.last_mut().expect("the action is open");
+        let level = self
+            .common
+            .transactions
+            .last_mut()
+            .expect("the action is open");
         level.trades.guests.insert(
             conn,
             Box::new(KeptMerchantGuest {
@@ -189,12 +192,14 @@ impl crate::game::ServerGame<'_> {
         pitch: f32,
     ) {
         if self.merchant_take_active() {
-            self.defer_effect(super::transactions::DeferredEffect::Sound {
-                sound,
-                at,
-                volume: 1.0,
-                pitch,
-            });
+            self.defer_effect(
+                sunrise_gameplay_common::game::transactions::DeferredEffect::Sound {
+                    sound,
+                    at,
+                    volume: 1.0,
+                    pitch,
+                },
+            );
         } else {
             self.server_play_sound(sound, at, 1.0, pitch);
         }

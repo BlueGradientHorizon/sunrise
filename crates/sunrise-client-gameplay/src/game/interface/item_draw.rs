@@ -3,7 +3,6 @@
 //! dropped items (`ItemEntityRenderer`) and items posed in the world (hands,
 //! frames, armour stands). This binds the resolver's host services
 //! (`ItemEnv`) and the special renderers' registries to the game.
-use super::api_values::TryIntoApi;
 use super::{Dim, Game, entity_culling::EntityCullDecision};
 #[cfg(feature = "client")]
 use crate::game::client_side::item_model_context;
@@ -25,6 +24,7 @@ use sunrise_client::{
     mesher::Vertex,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
 
 struct ItemEntityDraw<'a> {
@@ -519,7 +519,8 @@ impl crate::game::ClientGame<'_> {
             moon_phase: (self.common.world.day_time.div_euclid(24_000)).rem_euclid(8) as i32,
             respawn: self.common.spawn.map(|s| GlobalPos {
                 dimension: self
-                    .common.level
+                    .common
+                    .level
                     .world_spawn_dimension
                     .clone()
                     .unwrap_or_else(|| "minecraft:overworld".to_owned()),
@@ -535,7 +536,8 @@ impl crate::game::ClientGame<'_> {
         stack: Option<&ItemStack>,
     ) -> OwnerState {
         let position = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
         let mut owner = owner_at(position, self.common.yaw, "minecraft:player");
@@ -543,7 +545,8 @@ impl crate::game::ClientGame<'_> {
         owner.is_local_player = true;
         owner.is_view_entity = true;
         owner.last_death_location = self
-            .common.level
+            .common
+            .level
             .last_death
             .clone()
             .map(|(dimension, pos)| GlobalPos { dimension, pos });
@@ -563,8 +566,13 @@ impl crate::game::ClientGame<'_> {
         owner.fishing_cast_with_this_item = stack
             .zip(self.common.cast_rod())
             .is_some_and(|(s, rod)| std::ptr::eq(s, rod));
-        owner.is_selected =
-            stack.is_some() && self.common.inventory.get(self.common.selected).and_then(Option::as_ref) == stack;
+        owner.is_selected = stack.is_some()
+            && self
+                .common
+                .inventory
+                .get(self.common.selected)
+                .and_then(Option::as_ref)
+                == stack;
         owner.is_carried = owner.is_selected;
         owner
     }
@@ -581,7 +589,8 @@ impl crate::game::ClientGame<'_> {
     /// `ItemStack.hasFoil`, with the item's default glint.
     fn has_foil(&self, stack: &ItemStack) -> bool {
         let item_glint = self
-            .common.res
+            .common
+            .res
             .items()
             .enchantments
             .props
@@ -636,7 +645,8 @@ impl crate::game::ClientGame<'_> {
         let renderer = &self.client.client_pack.item_renderer;
         let (rule, glint) = renderer.cit.as_ref().map_or((None, None), |cit| {
             let item_max = self
-                .common.res
+                .common
+                .res
                 .items()
                 .get(&stack.item)
                 .map_or(0, |i| i.max_damage);
@@ -752,7 +762,9 @@ impl crate::game::ClientGame<'_> {
     }
     /// The `GLINT_TEXTURING` inputs of this frame (`WorldSink` picks `ENTITY_SCALE` per quad).
     pub(in crate::game::client_side) fn glint(&self) -> Option<item_render::Glint> {
-        self.client.glint_frame.glint(item_render::Glint::ITEM_SCALE)
+        self.client
+            .glint_frame
+            .glint(item_render::Glint::ITEM_SCALE)
     }
     /// Submit a resolved item under `pose` (camera-relative) at `light`
     /// (packed lightmap coordinates).

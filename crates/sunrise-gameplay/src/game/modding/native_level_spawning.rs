@@ -6,13 +6,13 @@
 use super::{
     Game,
     commands::Target,
-    creatures::SpawnSite,
     general::{GeneralEntityRecord, GeneralTypeEnvelope, general_type_catalog},
     native_projectile_launch::thrown_projectile_kind,
     natural_spawning,
 };
 use mod_api::{EntityRef, EntitySpawn, LevelRef, SpawnBody, SpawnFlags, SpawnLimits};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::creatures::SpawnSite;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{lan::playerdata::uuid_ints, projectiles::Projectile};
 
@@ -67,7 +67,8 @@ impl crate::game::ServerGame<'_> {
                 let kind = sunrise_command::args::normalized(kind);
                 if self.difficulty_id() == 0
                     && self
-                        .common.res
+                        .common
+                        .res
                         .mob_types()
                         .get(kind.as_ref())
                         .is_some_and(|t| !t.allowed_in_peaceful())

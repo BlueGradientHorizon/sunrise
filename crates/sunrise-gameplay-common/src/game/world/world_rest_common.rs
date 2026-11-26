@@ -65,7 +65,7 @@ impl RestPresentation for ServerRestPresentation {
     }
 }
 
-pub(in crate::game) fn load_world_rest<P: RestPresentation + Sync>(
+pub fn load_world_rest<P: RestPresentation + Sync>(
     resource_root: &sunrise_assets::resource_source::ResourceRoot,
     conditions: &sunrise_world::conditions::LoadConditions,
     resources: &Resources,

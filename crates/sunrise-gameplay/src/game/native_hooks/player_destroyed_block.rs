@@ -1,4 +1,5 @@
-
+use sunrise_core::nbt::Compound;
+use sunrise_world::registry::BlockStateId;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

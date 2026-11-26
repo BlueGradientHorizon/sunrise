@@ -1,12 +1,13 @@
 use super::*;
+use std::path::Path;
+use sunrise_assets::resource_source::ResourceRoot;
+use sunrise_gameplay_common::game::mods;
 use sunrise_gameplay_common::game::{
     resource_load::{
         PreparedCore, Progress, ServerCorePresentation, finish_core, load_core, prepare_core,
     },
     world_rest_common::{self, ServerRestPresentation},
 };
-use std::path::Path;
-use sunrise_assets::resource_source::ResourceRoot;
 use sunrise_level::sim_settings::SimSettings;
 
 pub fn load_resources_server(
@@ -23,7 +24,8 @@ pub fn load_resources_server(
     sunrise_threads::jobs::configure(threads);
     let prepared = root.prepared();
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(prepared)?;
-    let conditions = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(mods, &inventory)?;
+    let conditions =
+        sunrise_gameplay_common::game::load_conditions::conditions_for_mods(mods, &inventory)?;
     let role = mods::LoadRole::startup(execution_role::ExecutionRole::DedicatedServer);
     let (core, ()) = startup::time("core", || {
         load_core::<ServerCorePresentation>(

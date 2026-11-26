@@ -6,7 +6,6 @@
 //! prepared for drawing only as `DrawContext::entity` prepares them. Nothing of it reaches
 //! the client's level, its particle engine or its sounds. A scene of blocks alone never
 //! comes here.
-use super::api_values::TryIntoEngine as _;
 use super::{
     Game,
     native_scene::{SceneBlock, SceneQuad, face_shade, shaded},
@@ -28,6 +27,7 @@ use sunrise_client::{
     particles::{ParticleEngine, ParticleLevel},
 };
 use sunrise_core::geometry::Vec3 as Position;
+use sunrise_gameplay_common::game::api_values::TryIntoEngine as _;
 use sunrise_level::particle_options::ParticleOptions;
 use sunrise_level::{chunk::Chunk, world::World};
 use sunrise_sim::mobs::Mob;
@@ -156,11 +156,7 @@ pub fn lives(scene: &Scene) -> bool {
 }
 
 /// A living scene's input, checked before anything is kept or drawn: its clock.
-pub fn check(
-    rect: [f32; 4],
-    scene: &Scene,
-    view: SceneView,
-) -> Result<SceneClock, SceneError> {
+pub fn check(rect: [f32; 4], scene: &Scene, view: SceneView) -> Result<SceneClock, SceneError> {
     let finite = rect.iter().chain(&view.center).all(|v| v.is_finite())
         && view.yaw.is_finite()
         && view.pitch.is_finite();

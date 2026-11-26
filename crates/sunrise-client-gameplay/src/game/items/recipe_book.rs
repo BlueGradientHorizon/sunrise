@@ -614,7 +614,8 @@ impl crate::game::ClientGame<'_> {
             .hash(&mut h);
         book_type.index().hash(&mut h);
         let key = h.finish();
-        if key == self.client.recipe_ui.0.view_key && !self.client.recipe_ui.0.view.tabs.is_empty() {
+        if key == self.client.recipe_ui.0.view_key && !self.client.recipe_ui.0.view.tabs.is_empty()
+        {
             return;
         }
         let ui = std::mem::take(&mut self.client.recipe_ui.0);
@@ -690,7 +691,8 @@ impl crate::game::ClientGame<'_> {
                 cleared.extend(ids.into_iter().cloned());
             }
         }
-        self.common.level
+        self.common
+            .level
             .recipe_book
             .to_be_displayed
             .retain(|id| !cleared.contains(id));
@@ -938,7 +940,8 @@ impl crate::game::ClientGame<'_> {
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
-            if self.client.recipe_ui.0.page > 0 && inside(cursor, xo + 38.0, yo + 137.0, 12.0, 17.0) {
+            if self.client.recipe_ui.0.page > 0 && inside(cursor, xo + 38.0, yo + 137.0, 12.0, 17.0)
+            {
                 self.client.recipe_ui.0.page -= 1;
                 self.client
                     .audio
@@ -1548,7 +1551,7 @@ impl crate::game::ClientGame<'_> {
             .map_or_else(Default::default, |book| book.confirmed_ids(recipe_id))
     }
     /// A viewer's transfer of one set of ingredients.
-    pub(in crate::game::client_side) fn transfer_viewer_recipe(&mut self, display_id: i32) {
+    pub fn transfer_viewer_recipe(&mut self, display_id: i32) {
         self.client.panel.transfer_warning = None;
         if !self.mod_recipe_screen()
             || (self.common.creative && self.common.craft_size != 3 && !self.mod_crafting_open())
@@ -1674,7 +1677,9 @@ impl crate::game::ClientGame<'_> {
         recipe: &str,
     ) -> Option<RecipeTransferCheck> {
         let eligible_menu = self.mod_recipe_screen()
-            || (self.client.screen == Screen::Inventory && !self.common.spectator() && self.mod_menu_open());
+            || (self.client.screen == Screen::Inventory
+                && !self.common.spectator()
+                && self.mod_menu_open());
         if !eligible_menu
             || !self
                 .client
@@ -2074,7 +2079,9 @@ impl crate::game::ClientGame<'_> {
             if !self.mod_book_open() {
                 return None;
             }
-            self.native_screen_slot(sunrise_gameplay_common::game::inventory_slots::container_slot_index(slot)?)?;
+            self.native_screen_slot(
+                sunrise_gameplay_common::game::inventory_slots::container_slot_index(slot)?,
+            )?;
         } else if !self.book_open(self.active_book()?) {
             return None;
         }

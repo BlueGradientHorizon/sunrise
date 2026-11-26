@@ -14,9 +14,9 @@ pub struct CartStep {
 /// server sent (`lerpSteps`), the ones being played over 3 ticks
 /// (`currentLerpSteps`) and where the cart was when they began (`oldLerp`).
 pub struct CartLerp {
-    pub(in crate::game) pending: Vec<CartStep>,
-    pub(in crate::game) current: Vec<CartStep>,
-    pub(in crate::game) total_weight: f64,
-    pub(in crate::game) delay: i32,
-    pub(in crate::game) old: CartStep,
+    pub pending: Vec<CartStep>,
+    pub current: Vec<CartStep>,
+    pub total_weight: f64,
+    pub delay: i32,
+    pub old: CartStep,
 }

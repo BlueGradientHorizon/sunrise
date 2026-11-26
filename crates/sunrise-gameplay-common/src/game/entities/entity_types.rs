@@ -28,7 +28,7 @@ use sunrise_world::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::game) enum ThunderHit {
+pub enum ThunderHit {
     Untouched,
     /// Burns, takes 5 damage, and the kinds with their own `thunderHit` change.
     Mob,
@@ -42,7 +42,7 @@ pub(in crate::game) enum ThunderHit {
 
 /// What a blast knows about itself, for the entities in its reach to answer.
 #[derive(Clone, Copy)]
-pub(in crate::game) struct Blast {
+pub struct Blast {
     /// `VehicleEntity.ignoreExplosion`: a mob's blast, with mob griefing off.
     pub(in crate::game) vehicles_ignore: bool,
     /// `ItemEntity.ignoreExplosion` (`shouldAffectBlocklikeEntities`).
@@ -471,7 +471,7 @@ macro_rules! entity_lists {
     };
 }
 #[allow(unused_imports)]
-pub(crate) use entity_lists;
+pub use entity_lists;
 
 macro_rules! direct_entity_edit {
     (Projectile) => {
@@ -491,27 +491,27 @@ macro_rules! direct_entity_edit {
     };
 }
 #[allow(unused_imports)]
-pub(crate) use direct_entity_edit;
+pub use direct_entity_edit;
 
 macro_rules! define_entity_handles {
     (() $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         /// Every list, borrowed apart from the rest of `Game`, for
         /// [`for_each_entity`] while the world is borrowed mutably.
         #[derive(Clone, Copy)]
-        pub(in crate::game) struct EntityLists<'w> {
+        pub struct EntityLists<'w> {
             $(pub(in crate::game) $field: &'w [$ty],)*
         }
 
         /// One entity, by list and index.
         #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-        pub(in crate::game) enum EntityHandle {
+        pub enum EntityHandle {
             $($kind(usize),)*
         }
 
         impl<'w> EntityLists<'w> {
             /// Merge lists already ordered by join number, taking the lowest head at each
             /// step. The cursors live on the stack.
-            pub(in crate::game) fn merge_in_join_order(self, include: impl Fn(EntityHandle) -> bool + 'w)
+            pub fn merge_in_join_order(self, include: impl Fn(EntityHandle) -> bool + 'w)
                 -> impl Iterator<Item = (EntityHandle, JoinSeq)> + 'w
             {
                 let mut cursors = [$(self.$field.len()),*].map(|_| 0usize);
@@ -562,7 +562,7 @@ macro_rules! define_entity_handles {
 impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             /// Every entity's handle: lengths read now, nothing allocated, and
             /// no borrow of `Game` held, so the caller can change it mid-walk.
-            pub(in crate::game) fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<__Side> {
+            pub fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<__Side> {
                 std::iter::empty()
                     $(.chain((0..self$(.$list)+.len()).map(EntityHandle::$kind)))*
             }
@@ -629,7 +629,7 @@ macro_rules! with_entity {
     };
 }
 #[allow(unused_imports)]
-pub(in crate::game) use with_entity;
+pub use with_entity;
 
 #[path = "entity/list_borrows.rs"]
 pub mod list_borrows;
@@ -644,7 +644,7 @@ macro_rules! walk_lists {
     };
 }
 #[allow(unused_imports)]
-pub(crate) use walk_lists;
+pub use walk_lists;
 
 /// Runs `$body` for every entity, with `$entity` as a reference to its own
 /// type: one loop per list, each compiled for its kind, so nothing allocates
@@ -661,7 +661,7 @@ macro_rules! for_each_entity {
     };
 }
 #[allow(unused_imports)]
-pub(in crate::game) use for_each_entity;
+pub use for_each_entity;
 
 /// [`with_entity`], with the entity mutable.
 macro_rules! with_entity_mut {
@@ -677,7 +677,7 @@ macro_rules! with_entity_mut {
     };
 }
 #[allow(unused_imports)]
-pub(in crate::game) use with_entity_mut;
+pub use with_entity_mut;
 
 impl Entity for Mob {
     stored_ground!();

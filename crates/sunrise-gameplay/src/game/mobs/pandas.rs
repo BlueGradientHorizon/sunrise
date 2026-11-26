@@ -10,7 +10,8 @@ use sunrise_sim::mobs::{Species, panda};
 impl ServerGame<'_> {
     /// `Panda.canPickUpAndEat`'s tag.
     pub(in crate::game::server_side) fn panda_eats_from_ground(&self, item: &str) -> bool {
-        self.common.res
+        self.common
+            .res
             .items()
             .item_tags
             .get("minecraft:panda_eats_from_ground")
@@ -20,12 +21,15 @@ impl ServerGame<'_> {
     /// looks for food within 6 and 8 blocks for `PandaSitGoal`.
     pub(in crate::game) fn tick_pandas(&mut self) {
         let griefing = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         for i in 0..self.common.mobs.len() {
             let m = &self.common.mobs[i];
-            if m.species() != Species::Panda || !m.alive() || !self.common.creatures.ticked.contains(&m.id)
+            if m.species() != Species::Panda
+                || !m.alive()
+                || !self.common.creatures.ticked.contains(&m.id)
             {
                 continue;
             }
@@ -40,7 +44,8 @@ impl ServerGame<'_> {
             {
                 let reach = m.bounds().inflate(Vec3::new(1.0, 0.0, 1.0));
                 let taken = self
-                    .common.dropped
+                    .common
+                    .dropped
                     .iter()
                     .position(|e| wants(self, e) && reach.intersects(e.bounds()));
                 if let Some(j) = taken {
@@ -57,11 +62,13 @@ impl ServerGame<'_> {
             let area = |r: f64| m.bounds().inflate(Vec3::new(r, r, r));
             let (near, wide) = (area(6.0), area(8.0));
             let food_near = self
-                .common.dropped
+                .common
+                .dropped
                 .iter()
                 .any(|e| wants(self, e) && near.intersects(e.bounds()));
             let food_at = self
-                .common.dropped
+                .common
+                .dropped
                 .iter()
                 .find(|e| wants(self, e) && wide.intersects(e.bounds()))
                 .map(|e| [e.position.x, e.position.y, e.position.z]);
@@ -124,10 +131,11 @@ impl ServerGame<'_> {
         if loved {
             self.server.love_cause.insert(id, self.server.lan_acting);
             let kind = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
-                .map(super::native_hooks::mob_kind)
+                .map(sunrise_gameplay_common::game::native_hooks::mob_kind)
                 .unwrap_or_default();
             self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
             // Animal.setInLove: entity event 18, the love hearts.
@@ -142,7 +150,8 @@ impl ServerGame<'_> {
     /// `Panda.afterSneeze`: the grown pandas within 10 blocks of a cub jump.
     pub(in crate::game::server_side) fn panda_sneezed(&mut self, id: u32) {
         let Some(area) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .map(|m| m.bounds().inflate(Vec3::new(10.0, 10.0, 10.0)))
@@ -169,7 +178,8 @@ impl ServerGame<'_> {
                 }
             }
         }
-        self.common.mobs
+        self.common
+            .mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
 }

@@ -2,11 +2,7 @@
 //! `clientTick` for every spawner (`mobs::spawner`), the mobs they add, a
 //! spawn egg used on one (`SpawnEggItem.useOn`), their events and the mob
 //! spinning inside (`SpawnerRenderer`).
-use super::{
-    Game,
-    creatures::{Finalized, SpawnReason},
-    persist::SpawnTree,
-};
+use super::{Game, persist::SpawnTree};
 use std::collections::HashMap;
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
@@ -15,6 +11,7 @@ use sunrise_core::{
     random::{LegacyRandom, LevelRandom, RandomSource},
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::creatures::{Finalized, SpawnReason};
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::mobs::{
     Mob, Who,
@@ -37,7 +34,8 @@ pub(in crate::game) enum Planned {
 impl crate::game::ServerGame<'_> {
     /// `EntityType.byString`: the type is in the registry.
     pub(in crate::game) fn entity_type_exists(&self, id: &str) -> bool {
-        self.common.res
+        self.common
+            .res
             .rest
             .get()
             .is_some_and(|rest| rest.spawner_types.contains_key(id))
@@ -53,12 +51,14 @@ impl crate::game::ServerGame<'_> {
     /// the block removes or replaces that entity, so the block is not read
     /// again here.
     pub(in crate::game) fn tick_spawner(&mut self, key: Pos) -> Result<()> {
-        let Some((lease, BlockEntity::Spawner(mut spawner))) = self.common.world.block_entities.take(&key)
+        let Some((lease, BlockEntity::Spawner(mut spawner))) =
+            self.common.world.block_entities.take(&key)
         else {
             return Ok(());
         };
         let result = self.server_tick_spawner(key, &mut spawner);
-        self.common.world
+        self.common
+            .world
             .block_entities
             .put(lease, BlockEntity::Spawner(spawner));
         result
@@ -84,7 +84,8 @@ impl crate::game::ServerGame<'_> {
         let range = f64::from(spawner.required_player_range);
         if !self.alive_player_near(at[0], at[1], at[2], range)
             || !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
@@ -293,7 +294,9 @@ impl crate::game::ServerGame<'_> {
                 SpawnerEvent::BlockEvent(id) => {
                     self.lan_block_event(pos, id, 0);
                     // The client copy's onEventTriggered.
-                    if let Some(BlockEntity::Spawner(s)) = self.common.world.block_entities.get_mut(&key) {
+                    if let Some(BlockEntity::Spawner(s)) =
+                        self.common.world.block_entities.get_mut(&key)
+                    {
                         s.client_event(id);
                     }
                 }
@@ -314,7 +317,8 @@ impl crate::game::ServerGame<'_> {
     /// `sendBlockUpdated`: the clients load the new update tag (the client
     /// copy's delay follows it, its display mob is made again).
     pub(in crate::game::server_side) fn spawner_block_updated(&mut self, key: Pos) {
-        self.common.world
+        self.common
+            .world
             .path_type_block_updated(sunrise_core::position::BlockPos::new(key.0, key.1, key.2));
         if let Some(BlockEntity::Spawner(s)) = self.common.world.block_entities.get_mut(&key) {
             s.client_loaded();
@@ -348,7 +352,8 @@ impl crate::game::ServerGame<'_> {
             _ => return None,
         };
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
@@ -361,7 +366,9 @@ impl crate::game::ServerGame<'_> {
         if trial {
             // TrialSpawnerBlockEntity.setEntityId and setEntityData:
             // overrideEntityToSpawn, which ends in setState(INACTIVE).
-            if let Some(BlockEntity::TrialSpawner(t)) = self.common.world.block_entities.get_mut(&key) {
+            if let Some(BlockEntity::TrialSpawner(t)) =
+                self.common.world.block_entities.get_mut(&key)
+            {
                 match data {
                     Some(data) => t.override_entity_data(kind, data),
                     None => t.override_entity(kind),

@@ -29,27 +29,27 @@ pub(in crate::game) type KeptAnon = (
 
 /// What a transaction did to entities, for its close.
 #[derive(Default)]
-pub(in crate::game) struct EntityJournal {
+pub struct EntityJournal {
     /// Below the join number of every entity added in the transaction (`JoinSeq::upcoming` as
     /// it opened).
-    pub(in crate::game) mark: JoinSeq,
+    pub mark: JoinSeq,
     /// How many thrown potions there were as it opened.
-    pub(in crate::game) potions: usize,
+    pub potions: usize,
     /// The travellers that arrived from another level, by the ids they arrived under.
-    pub(in crate::game) arrivals: HashSet<u32>,
+    pub arrivals: HashSet<u32>,
     /// The removals asked for, in order: each runs at the root commit.
     pub(in crate::game) removals: Vec<Removal>,
     /// Each mob's `removed` flag before the transaction first removed it.
-    pub(in crate::game) mob_removed: HashMap<u32, bool>,
+    pub mob_removed: HashMap<u32, bool>,
     /// The join and leave announcements held for the root commit, in order.
     pub(in crate::game) announcements: Vec<Announcement>,
     /// Each raw record a spawn wrote over in `persist.anon` (by kind and position: an end
     /// crystal standing there keeps its own there), as it was before the first such spawn.
-    pub(in crate::game) anon: Vec<KeptAnon>,
+    pub anon: Vec<KeptAnon>,
 }
 
 /// A removal waiting for the root commit.
-pub(in crate::game) enum Removal {
+pub enum Removal {
     /// The mob is marked already; a killed one's effects that act on removal wait.
     Mob {
         id: u32,
@@ -60,7 +60,7 @@ pub(in crate::game) enum Removal {
 
 /// What mods are told of entities joining and leaving, held while a transaction is open.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::game) enum Announcement {
+pub enum Announcement {
     /// `native_joins_flush` of the entities that joined through `through`, as the caller said
     /// whether they came with a chunk.
     Joins {
@@ -74,7 +74,7 @@ pub(in crate::game) enum Announcement {
 }
 
 /// One place in a commit's queue.
-pub(in crate::game) enum Step {
+pub enum Step {
     Tell(Announcement),
     /// The removals of a transaction, run once its joins are told.
     Remove(Vec<Removal>),
@@ -99,7 +99,7 @@ impl Step {
 /// queued behind what is being told, so no flush a listener starts sees the commit's
 /// half-told batches: the entities the transaction added and removed are never announced,
 /// and each batch keeps its `loaded_from_disk` and bound.
-pub(in crate::game) struct Committing {
+pub struct Committing {
     pub(in crate::game) dimension: Dim,
     /// The entities the transaction added and removed: never told to join.
     pub(in crate::game) removed: Vec<u32>,
@@ -113,17 +113,14 @@ pub(in crate::game) struct Committing {
 
 /// The innermost commit being told in `dimension`: a listener's commit in another level sits
 /// above it on the stack and must not hide it.
-pub(in crate::game) fn committing_in(
-    commits: &mut [Committing],
-    dimension: Dim,
-) -> Option<&mut Committing> {
+pub fn committing_in(commits: &mut [Committing], dimension: Dim) -> Option<&mut Committing> {
     commits
         .iter_mut()
         .rev()
         .find(|commit| commit.dimension == dimension)
 }
 
-pub(in crate::game) fn is_committing(commits: &[Committing], dimension: Dim) -> bool {
+pub fn is_committing(commits: &[Committing], dimension: Dim) -> bool {
     commits.iter().any(|commit| commit.dimension == dimension)
 }
 
@@ -131,7 +128,7 @@ pub(in crate::game) fn is_committing(commits: &[Committing], dimension: Dim) -> 
 /// whatever other levels' transactions are open inside it (a command run `in` another level can
 /// open one). What happens in a level with none open (a command run `in` it from another
 /// level's transaction) is not journaled.
-pub(in crate::game) fn open_in(transactions: &mut [Level], dimension: Dim) -> Option<&mut Level> {
+pub fn open_in(transactions: &mut [Level], dimension: Dim) -> Option<&mut Level> {
     transactions
         .iter_mut()
         .rev()
@@ -262,12 +259,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// `entity_remove` of `target`, which `entity` names, inside a transaction: marked now and
     /// removed at the root commit. False, with nothing done, when none is open in this level.
-    pub fn journal_removal(
-        &mut self,
-        entity: EntityRef,
-        target: Target,
-        killed: bool,
-    ) -> bool {
+    pub fn journal_removal(&mut self, entity: EntityRef, target: Target, killed: bool) -> bool {
         let dim = self.dim;
         let Some(level) = open_in(&mut self.transactions, dim) else {
             return false;
@@ -295,7 +287,7 @@ pub(in crate::game) type ArrivalRollback =
 /// The index registration of an entity that left this level inside a transaction, with its
 /// lifetime slot: both retire when the root closes, committed or not, since travel is not
 /// undone. Until then the source level's index keeps the rows it had at the take.
-pub(in crate::game) struct Departure {
+pub struct Departure {
     pub(in crate::game) lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub(in crate::game) registration:
         Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
@@ -373,10 +365,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// An abort's way back for the maps that travelled: their contents as the transaction first
     /// reached them, wherever their entity is now.
-    pub fn restore_travelled(
-        &mut self,
-        travelled: HashMap<u32, super::KeptAttachments>,
-    ) {
+    pub fn restore_travelled(&mut self, travelled: HashMap<u32, super::KeptAttachments>) {
         for (id, kept) in travelled {
             if let Some(map) = self.entity_attachments.get_mut(&id) {
                 map.replace_contents(kept.contents);

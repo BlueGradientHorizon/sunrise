@@ -1,5 +1,7 @@
 use super::*;
-use sunrise_gameplay_common::game::{combat_common::PlayerCredit, entity_memory::OffLevel, native_ticks};
+use sunrise_gameplay_common::game::{
+    combat_common::PlayerCredit, entity_memory::OffLevel, native_ticks,
+};
 use sunrise_gameplay_common::lan::mob_players::{GuestViews, acts_on_player};
 
 /// Route each player event to the player selected when it was emitted.
@@ -105,7 +107,8 @@ impl crate::game::ServerGame<'_> {
         if self.common.persist.off_level.is_empty() {
             Vec::new()
         } else {
-            self.common.persist
+            self.common
+                .persist
                 .off_level
                 .values()
                 .filter_map(OffLevel::as_mob)
@@ -116,7 +119,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The killing blow of a mob as the death hooks name it: its damage
     /// type and the causing entity's id (0 for none).
-    pub(in crate::game::server_side) fn mob_damage_source(&self, m: &Mob) -> (&'static str, u32) {
+    pub fn mob_damage_source(&self, m: &Mob) -> (&'static str, u32) {
         let (damage_type, attacker) = match m.last_damage {
             Some((d, _)) => (source_damage_type(d), d.attacker),
             None => ("minecraft:generic", None),
@@ -180,9 +183,10 @@ impl crate::game::ServerGame<'_> {
             .then(|| self.common.entity_section_scope())
             .flatten();
         let (section_table, live_section_observer) = if round.sections() {
-            self.common.native_lifecycle
-                .section_observer
-                .begin(&mut self.common.native_lifecycle.entity_sections, section_scope)
+            self.common.native_lifecycle.section_observer.begin(
+                &mut self.common.native_lifecycle.entity_sections,
+                section_scope,
+            )
         } else {
             (None, None)
         };
@@ -281,7 +285,12 @@ impl crate::game::ServerGame<'_> {
                 // build it once: the player view and the teams scan every UUID.
                 let mut leash_boats = std::mem::take(&mut self.server.leash_boats);
                 leash_boats.clear();
-                leash_boats.extend(self.common.boats.iter().map(super::super::boat_leads::boat_state));
+                leash_boats.extend(
+                    self.common
+                        .boats
+                        .iter()
+                        .map(super::super::boat_leads::boat_state),
+                );
                 self.server.leash_boats = leash_boats;
                 let mut base = self.mob_world_base(&[]);
                 // Install the shared observer only on the per-mob view below; keeping the
@@ -559,8 +568,11 @@ impl crate::game::ServerGame<'_> {
                     let difficulty = match cached_difficulty {
                         Some((key, difficulty)) if key == chunk_key => difficulty,
                         _ => {
-                            let difficulty =
-                                self.common.local_difficulty([m.position.x, m.position.y, m.position.z]);
+                            let difficulty = self.common.local_difficulty([
+                                m.position.x,
+                                m.position.y,
+                                m.position.z,
+                            ]);
                             cached_difficulty = Some((chunk_key, difficulty));
                             difficulty
                         }
@@ -1037,7 +1049,8 @@ impl crate::game::ServerGame<'_> {
             }
             // Mobs that joined during the pass go first on a restore: the rows move.
             let same_rows = same_rows && self.common.mobs.is_empty();
-            self.common.mobs
+            self.common
+                .mobs
                 .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
             let restored = self.common.mobs.stamp();
             std::mem::swap(&mut self.server.last_hurt_by_player, &mut player_credit);
@@ -1099,16 +1112,19 @@ impl crate::game::ServerGame<'_> {
                         self.settle_creaking_hurt(sting.target);
                     }
                     if self
-                        .common.mob_object(sting.fish)
+                        .common
+                        .mob_object(sting.fish)
                         .is_some_and(|mob| sting.same_fish(mob))
                     {
                         let victim = self
-                            .common.mob_index
+                            .common
+                            .mob_index
                             .find(&self.common.mobs, sting.target)
                             .map(|i| &mut self.common.mobs[i]);
                         let mut aftermath = sting.poison(victim);
                         if let Some(sound) = self
-                            .common.mob_object(sting.fish)
+                            .common
+                            .mob_object(sting.fish)
                             .and_then(|fish| sting.sound(fish))
                         {
                             aftermath.push(sound);
@@ -1309,7 +1325,10 @@ impl crate::game::ServerGame<'_> {
         if let Some(table) = section_table {
             let mut sections = table.borrow_mut();
             sections.ticked = section_moves;
-            std::mem::swap(&mut self.common.native_lifecycle.entity_sections, &mut sections);
+            std::mem::swap(
+                &mut self.common.native_lifecycle.entity_sections,
+                &mut sections,
+            );
         } else {
             self.common.native_lifecycle.entity_sections.ticked = section_moves;
         }

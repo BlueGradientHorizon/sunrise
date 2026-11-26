@@ -190,10 +190,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Item.getName(ItemStack)` of a mod item: what its `item_name` Part
     /// answers, or `None` for the default. One table lookup for an item no
     /// Part names.
-    pub fn mod_item_name(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<sunrise_game_data::text::Text> {
+    pub fn mod_item_name(&self, stack: &ItemStack) -> Option<sunrise_game_data::text::Text> {
         sunrise_sim::stations::item_name_part(&self.loop_context, stack)
     }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
@@ -341,11 +338,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.stack_can_be_hurt_by(stack, &source.damage_type.to_string())
     }
     /// `ItemStack.canBeHurtBy`, shared by armour wear and detached stack reads.
-    pub fn stack_can_be_hurt_by(
-        &self,
-        stack: &ItemStack,
-        name: &str,
-    ) -> Option<bool> {
+    pub fn stack_can_be_hurt_by(&self, stack: &ItemStack, name: &str) -> Option<bool> {
         self.items().get(&stack.item)?;
         stack_can_be_hurt_by(
             &self.pack.item_models,
@@ -452,14 +445,14 @@ pub fn stack_can_be_hurt_by(
     sunrise_sim::item_damage::stack_can_be_hurt_by(default, catalog, stack, name)
 }
 
-pub(in crate::game) const ITEM_ENVIRONMENT_DAMAGE: [&str; 4] = [
+pub const ITEM_ENVIRONMENT_DAMAGE: [&str; 4] = [
     "minecraft:on_fire",
     "minecraft:lava",
     "minecraft:in_fire",
     "minecraft:cactus",
 ];
 
-pub(in crate::game) fn item_damage_resolver<'a>(
+pub fn item_damage_resolver<'a>(
     models: &'a sunrise_assets::item_model::ItemModels,
     catalog: &'a sunrise_world::damage_source::Catalog,
 ) -> impl Fn(&ItemStack, &str) -> bool + 'a {

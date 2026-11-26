@@ -4,7 +4,8 @@ impl crate::game::ClientGame<'_> {
     /// Returns the mod block at `pos` if its declared container opens menu type `menu`.
     pub(in crate::game) fn menu_opener_block(&self, pos: Pos, menu: &str) -> Option<&str> {
         let block = &self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos.0, pos.1, pos.2))
             .name;
@@ -19,7 +20,7 @@ impl crate::game::ClientGame<'_> {
     /// are stored under `key`; `extra` was already matched to this opening.
     /// The packet handler checked for required factories before changing menus.
     /// False refuses the opening; an ordinary stock menu needs no mod screen.
-    pub(in crate::game::client_side) fn open_native_screen(
+    pub(crate) fn open_native_screen(
         &mut self,
         key: Pos,
         target: Option<Pos>,

@@ -1,10 +1,10 @@
 //! Authoritative placement: detached calculation, journaled writes, then publication.
-use super::api_values::TryIntoApi;
 use super::{
     Game, native_book_backings::Backings, native_book_grid::Session,
     native_book_scope::MenuSnapshot,
 };
 use mod_api::{HostTransaction, ItemPlace, ItemResource, MenuSlotBacking, ServerHost};
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_sim::{
     lan::menu::ModCraft,
     menu::{
@@ -57,7 +57,8 @@ impl crate::game::ServerGame<'_> {
             return Err(R::Denied);
         }
         let settings = self
-            .common.native_net
+            .common
+            .native_net
             .book_connections
             .get(&conn)
             .and_then(|connection| connection.authority.as_ref())
@@ -68,7 +69,8 @@ impl crate::game::ServerGame<'_> {
             return Err(R::Stale);
         }
         let authority = self
-            .common.native_net
+            .common
+            .native_net
             .placement
             .servers
             .get_mut(&conn)
@@ -83,7 +85,8 @@ impl crate::game::ServerGame<'_> {
         }
         self.common.ensure_mod_book_displays();
         let index = self
-            .common.recipe_tables
+            .common
+            .recipe_tables
             .books
             .as_ref()
             .and_then(|result| result.as_ref().ok())
@@ -118,13 +121,15 @@ impl crate::game::ServerGame<'_> {
         self.common.transactions.len() == 1
             && self.mod_book_menu_unchanged(before)
             && self
-                .common.native_net
+                .common
+                .native_net
                 .placement
                 .servers
                 .get(&before.conn)
                 .is_some_and(|server| server.peer.owns(&selection.catalog))
             && self
-                .common.native_net
+                .common
+                .native_net
                 .book_connections
                 .get(&before.conn)
                 .and_then(|connection| connection.authority.as_ref())
@@ -243,7 +248,8 @@ impl crate::game::ServerGame<'_> {
         let mut changed = std::collections::BTreeSet::new();
         for (key, stack) in changes.blocks {
             let entity = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get_mut(&key.pos)
                 .ok_or(R::Changed)?;
@@ -252,7 +258,9 @@ impl crate::game::ServerGame<'_> {
             changed.insert(key.pos);
         }
         for pos in changed {
-            self.after_commit(super::transactions::After::Changed(pos));
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(
+                pos,
+            ));
         }
         for stack in std::mem::take(&mut menu.dropped) {
             self.drop_after_commit(before.uuid, stack);

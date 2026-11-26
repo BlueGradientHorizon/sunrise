@@ -13,10 +13,10 @@ pub(in crate::game) const SUPPORT_PROBE: f64 = 0.01;
 
 /// A body standing on a collider.
 pub struct Rider {
-    pub(in crate::game) target: MoveWho,
-    pub(in crate::game) id: u32,
+    pub target: MoveWho,
+    pub id: u32,
     /// The collider entity it stands on.
-    pub(in crate::game) support: u32,
+    pub support: u32,
 }
 
 /// The collider a body with `bounds` and entity `id` stands on: the one box under its feet with

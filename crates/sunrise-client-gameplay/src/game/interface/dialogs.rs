@@ -3,8 +3,8 @@
 //! `WaitingForResponseScreen`): the screen over whatever is open (the
 //! connecting screen in configuration), its inputs, and the actions its
 //! buttons send back.
-use crate::game::ClientGame;
 use super::remote_chat::Behind;
+use crate::game::ClientGame;
 use std::{sync::Arc, time::Instant};
 use sunrise_client::{
     clipboard::EditShortcut,
@@ -149,7 +149,7 @@ impl ClientGame<'_> {
     }
     /// What tells one dialog screen from another for a controller's focus: a new dialog is a
     /// new screen, and so are the warning and waiting screens.
-    pub(in crate::game::client_side) fn dialog_screen_key(&self) -> (bool, bool, Option<u64>) {
+    pub fn dialog_screen_key(&self) -> (bool, bool, Option<u64>) {
         let d = &self.client.dialogs.0;
         (
             d.warning,
@@ -388,7 +388,7 @@ impl ClientGame<'_> {
     }
 
     /// Every dialog screen goes (a disconnect, or the level loading screen).
-    pub(in crate::game::client_side) fn close_dialogs(&mut self) {
+    pub fn close_dialogs(&mut self) {
         self.client.dialogs.0 = DialogState {
             revision: self.client.dialogs.0.revision,
             ..DialogState::default()
@@ -961,8 +961,13 @@ impl ClientGame<'_> {
         let cursor = self.client.cursor;
         if self.client.dialogs.0.warning {
             let (title, message, _) = self.warning_texts();
-            let answer = Confirm::new(&self.client.gui.atlas.font, self.gui_size(), &title, &message)
-                .answer_at(cursor);
+            let answer = Confirm::new(
+                &self.client.gui.atlas.font,
+                self.gui_size(),
+                &title,
+                &message,
+            )
+            .answer_at(cursor);
             match answer {
                 Some(true) => {
                     self.client.audio.0.play_button_click();

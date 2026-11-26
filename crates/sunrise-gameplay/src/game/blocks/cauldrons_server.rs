@@ -30,7 +30,7 @@ impl crate::game::ServerGame<'_> {
         let slot = self.common.held_slot();
         let player = self.common.native_acting_id();
         if self.common.transactions.is_empty() {
-            use transactions::DeferredEffect;
+            use sunrise_gameplay_common::game::transactions::DeferredEffect;
             let mut hand = sunrise_gameplay_common::game::powder_snow::HeldSlot {
                 game: self,
                 slot,
@@ -80,7 +80,7 @@ impl crate::game::ServerGame<'_> {
             return Ok(result.outcome);
         }
         let outcome = self.storage_transaction(|game, _| {
-            use transactions::DeferredEffect;
+            use sunrise_gameplay_common::game::transactions::DeferredEffect;
             game.journal_player(player);
             let mut hand = sunrise_gameplay_common::game::powder_snow::HeldSlot {
                 game,

@@ -21,7 +21,7 @@ pub struct BlockTables<'a> {
 }
 
 impl<'a> BlockTables<'a> {
-    pub(in crate::game) fn new(res: &'a Resources, pack: &'a PackResources) -> Self {
+    pub fn new(res: &'a Resources, pack: &'a PackResources) -> Self {
         Self { res, pack }
     }
 
@@ -53,10 +53,7 @@ impl<'a> BlockTables<'a> {
     /// A registered fluid's type properties: its block's light and name for a world fluid,
     /// vanilla's `FluidTags.WATER` and `FluidTags.LAVA` behaviours by its family. None for a
     /// key the registry doesn't hold.
-    pub(in crate::game) fn fluid_type_properties(
-        &self,
-        fluid: FluidKey,
-    ) -> Option<FluidTypeProperties> {
+    pub fn fluid_type_properties(&self, fluid: FluidKey) -> Option<FluidTypeProperties> {
         let id = mod_api::__private::fluid_id(fluid)?;
         let behaviours = self.res.behaviours();
         let block = behaviours.fluid_definitions().get(id).map(|definition| {

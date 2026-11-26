@@ -1,9 +1,7 @@
-
-
 #[cfg(feature = "client")]
 #[inline(always)]
 pub(in crate::game) fn native_client_setup(context: &mut dyn mod_api::ClientSetupContext) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_client_setup(context);
+    crate::game::native_hooks::fire::fire_client_setup(context);
 }
 
 /// The hook points. Each does nothing in Sunrise.

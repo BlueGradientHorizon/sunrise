@@ -1,6 +1,9 @@
-
 #[cfg(feature = "client")]
 use crate::game::ClientGame;
+#[cfg(feature = "client")]
+use mod_api::*;
+#[cfg(feature = "client")]
+use std::sync::Arc;
 
 #[cfg(feature = "client")]
 impl ClientSession for ClientGame<'_> {

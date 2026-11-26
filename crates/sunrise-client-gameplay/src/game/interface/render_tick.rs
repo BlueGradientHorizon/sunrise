@@ -1,9 +1,8 @@
 //! Per-tick client visuals: the particle engine, `ClientLevel.animateTick`,
 //! campfire smoke and rain splashes (`ClientLevel.tickWeatherEffects`).
-#[cfg(feature = "client")]
-use super::host::draw::GameCameraDrawContext;
 use super::{Dim, Game, api_values::TryIntoApi, weather::precipitation_at};
-use sunrise_gameplay_common::game::weather_height::motion_blocking_height;
+#[cfg(feature = "client")]
+use crate::game::host::draw::GameCameraDrawContext;
 use mod_api::{
     __private::{SelectedBlockScreenEffectRenderer, block_screen_effect_render},
     BlockScreenEffect,
@@ -24,6 +23,7 @@ use sunrise_core::{
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_gameplay_common::game::weather_height::motion_blocking_height;
 use sunrise_items::blocks::{BlockFacts, Fluid};
 use sunrise_level::assets::Properties;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
@@ -185,7 +185,8 @@ impl crate::game::ClientGame<'_> {
         title: bool,
         sky: &sunrise_level::environment::Sky,
     ) -> Option<[f32; 2]> {
-        if title || !sunrise_client::clouds::visible(&self.client.settings.clouds, sky.cloud_color[3])
+        if title
+            || !sunrise_client::clouds::visible(&self.client.settings.clouds, sky.cloud_color[3])
         {
             return None;
         }
@@ -244,7 +245,8 @@ impl crate::game::ClientGame<'_> {
         let partial = self.common.clock.fraction() as f32;
         let fog_effects = cam.as_ref().map(|c| c.fog_effects);
         let blindness = fog_effects.map(|e| e.blindness).unwrap_or_else(|| {
-            self.common.potions
+            self.common
+                .potions
                 .effects
                 .get("blindness")
                 .map(|effect| (effect.duration, effect.duration == -1))
@@ -300,8 +302,12 @@ impl crate::game::ClientGame<'_> {
             sunrise_client::fog::clear_distance_fog(&mut fog, &input);
         }
         if self.client.title.0.is_none() {
-            fog.color =
-                self.native_fog_color_now(self.common.clock.fraction() as f32, at, fog_type, fog.color);
+            fog.color = self.native_fog_color_now(
+                self.common.clock.fraction() as f32,
+                at,
+                fog_type,
+                fog.color,
+            );
             fog = self.native_fog_now(self.common.clock.fraction() as f32, at, fog_type, fog);
         }
         fog
@@ -361,7 +367,11 @@ impl crate::game::ClientGame<'_> {
             return 0.0;
         }
         night_vision_scale(
-            self.common.potions.effects.get("night_vision").map(|e| e.duration),
+            self.common
+                .potions
+                .effects
+                .get("night_vision")
+                .map(|e| e.duration),
             partial,
         )
     }
@@ -425,7 +435,9 @@ impl crate::game::ClientGame<'_> {
         let overlays = hud_overlays::CameraOverlays {
             vignette: self.vignette_shown().then_some((
                 fx.vignette_brightness,
-                self.common.border.warning_strength(border_pos[0], border_pos[2]),
+                self.common
+                    .border
+                    .warning_strength(border_pos[0], border_pos[2]),
             )),
             first_person: self.client.camera_type.is_first_person(),
             scoping: self.scoping(),
@@ -536,7 +548,10 @@ impl crate::game::ClientGame<'_> {
             let cull_fov = self
                 .fov_degrees(partial, eye)
                 .max((self.client.settings.fov as i32) as f32);
-            let (near_yaw, near_pitch) = self.client.posed_rotation.unwrap_or((self.common.yaw, self.common.pitch));
+            let (near_yaw, near_pitch) = self
+                .client
+                .posed_rotation
+                .unwrap_or((self.common.yaw, self.common.pitch));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
                 size[0] as f32,
@@ -628,7 +643,8 @@ impl crate::game::ClientGame<'_> {
         let fire_suppressed = on_fire
             && modded
             && self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .default_state("minecraft:fire")
@@ -690,7 +706,14 @@ impl crate::game::ClientGame<'_> {
         let packed = self.common.world.light(b[0], b[1], b[2]);
         let sky = i32::from(packed >> 4) - self.sky_darken();
         let raw = sky.max(i32::from(packed & 15)).clamp(0, 15) as u8;
-        lightmap_brightness(if self.common.dim == Dim::Nether { 0.1 } else { 0.0 }, raw)
+        lightmap_brightness(
+            if self.common.dim == Dim::Nether {
+                0.1
+            } else {
+                0.0
+            },
+            raw,
+        )
     }
     /// What `Minecraft` ticks outside the level's own tick: `GameRenderer.tick` runs the light
     /// flicker whenever the game is not paused, frozen or not, while `TextureManager.tick`
@@ -714,7 +737,8 @@ impl crate::game::ClientGame<'_> {
         ];
         let rain = self.view_weather(1.0).0;
         let biome = self
-            .common.world
+            .common
+            .world
             .chunks
             .get(&(b[0] >> 4, b[2] >> 4))
             .map_or(0, |c| c.biome(b[0], b[1], b[2]));
@@ -733,7 +757,12 @@ impl crate::game::ClientGame<'_> {
         &self,
         id: i32,
     ) -> Option<(TrackingTarget, TrackingBody)> {
-        if self.client.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+        if self
+            .client
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == id)
+        {
             let player = self.common.player.as_ref()?;
             return Some((TrackingTarget::LocalPlayer, player_tracking_body(player)));
         }
@@ -775,7 +804,12 @@ impl crate::game::ClientGame<'_> {
             if self.client.remote.is_some() && self.common.portal_player.cooldown > 0 {
                 self.common.portal_player.cooldown -= 1;
             }
-            let nausea = self.common.potions.effects.get("nausea").map(nausea_has_effect);
+            let nausea = self
+                .common
+                .potions
+                .effects
+                .get("nausea")
+                .map(nausea_has_effect);
             self.client.screen_fx.tick_spinning(nausea);
             let (rain, sky_light, rains) = self.rain_fog_inputs(cam_pos);
             update_rain_fog(&mut self.client.fog, rain, sky_light, rains, 1.0);
@@ -785,7 +819,8 @@ impl crate::game::ClientGame<'_> {
         self.client.particles.0.camera = cam_pos;
         let (rain, thunder) = self.weather_levels(1.0);
         let ambient_attribute = attribute(AMBIENT_PARTICLES).expect("registered ambient particles");
-        let marker = marker_particle_target(self.common.mode, self.common.stack_in(self.common.selected));
+        let marker =
+            marker_particle_target(self.common.mode, self.common.stack_in(self.common.selected));
         // The day timeline: firefly bush sounds from 12600 to 23400.
         let firefly_bush_sounds = self.common.dimension_type().has_timeline("minecraft:day")
             && (12600..23401).contains(&self.common.world.day_time.rem_euclid(24000));
@@ -979,7 +1014,8 @@ impl crate::game::ClientGame<'_> {
                         let state = world.block(x, below, z);
                         let f = facts.get(state);
                         let block_top = self
-                            .common.collision
+                            .common
+                            .collision
                             .cached_shapes()
                             .cached_collision_top(state, [x, below, z], bx, bz)
                             .ok()
@@ -1062,10 +1098,11 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let options = match particle {
-            PersistentOptions::Block(ty, state) => block_state_id(self.common.pack.assets.registry, state)
-                .and_then(|state| {
+            PersistentOptions::Block(ty, state) => {
+                block_state_id(self.common.pack.assets.registry, state).and_then(|state| {
                     self.block_provider_options(*ty, state, at.map(|x| x.floor() as i32))
-                }),
+                })
+            }
             PersistentOptions::Item(tag) => sunrise_items::item_nbt::item_from_nbt(tag)
                 .filter(|stack| self.items().get(&stack.item).is_some())
                 .map(|stack| self.item_particle(&stack)),
@@ -1094,7 +1131,8 @@ impl crate::game::ClientGame<'_> {
         // SpellParticle.isCloseToScopingPlayer: the eye of a local player looking
         // through a spyglass in first person.
         let scope_eye = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|_| self.client.camera_type.is_first_person() && self.scoping())
             .map(|p| {
@@ -1110,7 +1148,8 @@ impl crate::game::ClientGame<'_> {
             facts,
             collision: self.common.collision,
             player: self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|p| ([p.position.x, p.position.y, p.position.z], p.velocity.y)),
             cached_chunk: std::cell::Cell::new(None),
@@ -1130,12 +1169,15 @@ impl crate::game::ClientGame<'_> {
             .particles
             .0
             .sample_tracking_bodies(|target| match target {
-                TrackingTarget::LocalPlayer => self.common.player.as_ref().map(player_tracking_body),
+                TrackingTarget::LocalPlayer => {
+                    self.common.player.as_ref().map(player_tracking_body)
+                }
                 TrackingTarget::Entity(id) => {
                     if self.client.remote.is_some() {
                         return self.remote_entity_tracking_body(id);
                     }
-                    self.common.mob_index
+                    self.common
+                        .mob_index
                         .find_ref(&self.common.mobs, id as u32)
                         .map(|i| mob_tracking_body(&self.common.mobs[i]))
                 }
@@ -1145,7 +1187,8 @@ impl crate::game::ClientGame<'_> {
         self.tick_pickups();
         laps.lap("tp_pickups");
         let camera = self.client.particles.0.camera;
-        for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.client.particles.0.sounds)
+        for (name, at, volume, pitch, delayed) in
+            std::mem::take(&mut self.client.particles.0.sounds)
         {
             if delayed {
                 self.client
@@ -1314,8 +1357,6 @@ mod tests {
         assert_eq!(splash_height(&world, &properties, 3, 1, 3), Some(9));
     }
 
-    
-
     /// `extract_block_screen_effect`: a mod that cancels the overlay of stone at one position
     /// leaves the frame's block overlays as they are with no block there, the fire overlay
     /// included; dirt in the same place keeps its overlay.
@@ -1339,13 +1380,19 @@ mod tests {
             ) -> Flow {
                 SEEN.lock().unwrap().push((
                     event.effect,
-                    sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(&event.state, &())
-                        .unwrap(),
+                    sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
+                        &event.state,
+                        &(),
+                    )
+                    .unwrap(),
                     event.pos,
                 ));
                 if event.effect == BlockScreenEffect::Block
-                    && sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(&event.state, &())
-                        .unwrap()
+                    && sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
+                        &event.state,
+                        &(),
+                    )
+                    .unwrap()
                         == self.0
                     && event.pos == BlockPos::new(0, 65, 0)
                 {

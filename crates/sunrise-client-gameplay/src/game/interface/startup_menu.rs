@@ -2,18 +2,19 @@
 //! atlas/panorama; transfers the actual screen and queued entry to Game.
 use super::event_loop::EventLoopCtl;
 use super::*;
+use crate::game::client_side::key_codes::glfw_modifiers;
 use crate::game::client_side::{
     key_focus::{self, Act},
     pack_discovery_client::{data_packs_with_icons, into_resource_pack, selection_with_icon},
     resource_load_client::load_resources_for_mods,
 };
-use sunrise_gameplay_common::game::pack_discovery::discover;
 use sunrise_client::{
     clipboard::{self, AppendSelection, SystemClipboard},
     options_ui::{Event, OptionsUi, Page},
     widgets::{Kind, Target},
     window::{GuiSize, PointerProjection, PointerSample, PointerSpace},
 };
+use sunrise_gameplay_common::game::pack_discovery::discover;
 use winit::{event::KeyEvent, keyboard::ModifiersState};
 
 #[derive(Default)]
@@ -137,10 +138,7 @@ impl StartupMenu {
         }
     }
 
-    pub(in crate::game::client_side) fn handoff(
-        &mut self,
-        game: &mut crate::game::ClientGame<'_>,
-    ) {
+    pub(in crate::game::client_side) fn handoff(&mut self, game: &mut crate::game::ClientGame<'_>) {
         let registry = Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry());
         if let Some(PendingWorldEntry::Local {
             create: Some(options),
@@ -531,7 +529,8 @@ impl Loading {
             menu.options.layout_changed();
         }
         if installed {
-            self.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.settings
+                .save(&sunrise_gameplay_common::game::options_path());
         }
     }
     pub(in crate::game::client_side) fn apply_menu_settings(&mut self) {
@@ -626,7 +625,8 @@ impl Loading {
                 sunrise_client::options_file::V::Bool(title.skip_multiplayer_warning),
             );
         }
-        self.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.settings
+            .save(&sunrise_gameplay_common::game::options_path());
     }
 
     fn open_menu_options(&mut self, page: Page) {
@@ -729,17 +729,22 @@ impl Loading {
                     packs::open_folder(&dir);
                 }
                 Event::OpenModFolder => {
-                    let dir = sunrise_gameplay_common::game::game_dir().join(sunrise_mod_package::mod_list::DIR);
+                    let dir = sunrise_gameplay_common::game::game_dir()
+                        .join(sunrise_mod_package::mod_list::DIR);
                     let _ = std::fs::create_dir_all(&dir);
                     packs::open_folder(&dir);
                 }
                 Event::BrowseMods => {
                     let ui = &mut self.menu.options.mod_browser;
-                    self.menu.mod_jobs.browse(ui, sunrise_gameplay_common::game::game_dir());
+                    self.menu
+                        .mod_jobs
+                        .browse(ui, sunrise_gameplay_common::game::game_dir());
                 }
                 Event::InstallMod(id) => {
                     let ui = &mut self.menu.options.mod_browser;
-                    self.menu.mod_jobs.install(ui, sunrise_gameplay_common::game::game_dir(), id);
+                    self.menu
+                        .mod_jobs
+                        .install(ui, sunrise_gameplay_common::game::game_dir(), id);
                 }
                 Event::OpenModPage(url) => packs::open_uri(&url),
                 // The startup menu has no screen stack for ConfirmLinkScreen; the link opens
@@ -1507,7 +1512,8 @@ impl Loading {
                     "onboardAccessibility",
                     sunrise_client::options_file::V::Bool(false),
                 );
-                self.settings.save(&sunrise_gameplay_common::game::options_path());
+                self.settings
+                    .save(&sunrise_gameplay_common::game::options_path());
             }
             for found in title.lan_found_narrations((batch.width, batch.height)) {
                 sunrise_narrator::say_system_queued(&found.plain());
@@ -1605,10 +1611,6 @@ fn list_menu_mods(mods: &mut sunrise_mod_package::mod_list::ModList) {
 mod tests {
     use super::*;
 
-    
-
-    
-
     #[test]
     #[ignore = "daily"]
     fn queued_creation_is_reconciled_at_handoff() {
@@ -1677,20 +1679,6 @@ mod tests {
         });
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     #[test]
     fn queued_server_keeps_address_player_identity_and_lan_kind() {
         let mut menu = StartupMenu::default();
@@ -1709,12 +1697,4 @@ mod tests {
         );
         assert!(menu.pending.take().is_none(), "an entry is consumed once");
     }
-
-    
-
-    
-
-    
-
-    
 }

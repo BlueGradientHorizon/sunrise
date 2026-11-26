@@ -83,7 +83,10 @@ impl crate::game::ServerGame<'_> {
         ) {
             // The physical sweep uses the same destruction paths, but a
             // passenger veto here must not trigger another attempt there.
-            self.common.persist.notified_vehicle_removals.insert(entity.id());
+            self.common
+                .persist
+                .notified_vehicle_removals
+                .insert(entity.id());
         }
         if let Some([_, y, _]) = position {
             self.dismount_removed_passengers(entity.id(), y);
@@ -117,11 +120,19 @@ impl crate::game::ServerGame<'_> {
         let at = self.target_position(target)?;
         let [x, y, z] = match target {
             Target::Frame(id) => {
-                let frame = self.common.item_frames.iter().find(|frame| frame.id == id)?;
+                let frame = self
+                    .common
+                    .item_frames
+                    .iter()
+                    .find(|frame| frame.id == id)?;
                 super::frames::hanging_drop_position(at, frame.step())
             }
             Target::Painting(id) => {
-                let painting = self.common.paintings.iter().find(|painting| painting.id == id)?;
+                let painting = self
+                    .common
+                    .paintings
+                    .iter()
+                    .find(|painting| painting.id == id)?;
                 super::frames::hanging_drop_position(at, painting.step())
             }
             _ => at,
@@ -129,7 +140,8 @@ impl crate::game::ServerGame<'_> {
         // Found by its id: the hooks the spawn runs may add entities after it.
         let id = self.server.next_entity + 1;
         self.spawn_at_location(Vec3::new(x, y, z), f64::from(y_offset), stack);
-        self.common.dropped
+        self.common
+            .dropped
             .iter()
             .rev()
             .any(|d| d.id == id)
@@ -180,7 +192,7 @@ impl crate::game::ServerGame<'_> {
         {
             let vehicle = sunrise_gameplay_common::game::entity_memory::RemovedVehicle::Mob {
                 position,
-                kind: super::native_hooks::mob_kind(mob),
+                kind: sunrise_gameplay_common::game::native_hooks::mob_kind(mob),
             };
             self.retain_removed_vehicle(id, vehicle);
         }
@@ -276,7 +288,11 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use {sunrise_gameplay_common::game::api_values::StackReadError, sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay_common::game::api_values::test_snapshot};
+    use {
+        sunrise_gameplay_common::game::api_values::StackReadError,
+        sunrise_gameplay_common::game::api_values::TryIntoApi,
+        sunrise_gameplay_common::game::api_values::test_snapshot,
+    };
     #[test]
     #[ignore = "daily"]
     fn destroying_a_cart_spills_all_slots_before_removing_its_row() {

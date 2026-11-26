@@ -1,7 +1,7 @@
 use super::*;
 
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game::client_side) fn native_book_placement_scope_matches(
+    pub(crate) fn native_book_placement_scope_matches(
         &self,
         window: i32,
         nonce: u64,
@@ -41,7 +41,7 @@ impl crate::game::ClientGame<'_> {
             identity.book.as_str(),
         )
     }
-    pub(in crate::game::client_side) fn native_book_placement_window(
+    pub(crate) fn native_book_placement_window(
         &self,
     ) -> Option<sunrise_sim::recipe_book::placement_sync::Window> {
         let screen = self.shown_active_native_screen()?;
@@ -61,11 +61,7 @@ impl crate::game::ClientGame<'_> {
                 .ok()?,
         })
     }
-    pub(in crate::game::client_side) fn apply_screen_with_mod_book(
-        &mut self,
-        screen: Screen,
-        owner: Option<&str>,
-    ) {
+    pub(crate) fn apply_screen_with_mod_book(&mut self, screen: Screen, owner: Option<&str>) {
         // Publish the accepted native screen before building its layout. A
         // staged screen is not shown, even on an in-place Inventory open.
         if screen == Screen::Inventory

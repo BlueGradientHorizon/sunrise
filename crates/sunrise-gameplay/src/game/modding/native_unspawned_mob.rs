@@ -9,9 +9,8 @@
 //! paths share the editor below; neither writes a resident mob. Kind/position
 //! metadata is subject to the same lease checks as all other reads and writes.
 
-use crate::game::ServerGame;
-use super::api_values::TryIntoEngine;
 use super::living_attributes::{AttributeWrite, collect_equipment, write_unspawned_attribute};
+use crate::game::ServerGame;
 use mod_api::{
     AgeableGroup, AttributeModifier, AttributeOperation, EntityRef, EquipmentSlot, Identifier,
     ItemStack, SpawnGroup, TropicalVariant, UnspawnedMobEdits, UnspawnedMobError, UnspawnedMobRef,
@@ -20,6 +19,7 @@ use mod_api::{
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{cell::RefCell, rc::Rc};
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use sunrise_mod_runtime::pending_children::PendingChildren;
 use sunrise_sim::mobs::finalize::{Ageable, Group};
 use sunrise_sim::mobs::{Mob, equine, llama, tame};
@@ -154,7 +154,10 @@ impl ServerGame<'_> {
     /// The world a lend's handles belong to; a game with none open lends
     /// under epoch 0, which no open world has.
     pub(in crate::game) fn lend_epoch(&self) -> WorldEpoch {
-        self.common.native_lifecycle.epoch().unwrap_or(WorldEpoch::new(0))
+        self.common
+            .native_lifecycle
+            .epoch()
+            .unwrap_or(WorldEpoch::new(0))
     }
 
     /// Runs `read` on the lend `handle` names.
@@ -198,10 +201,7 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn edit_lent_mob<T>(
         &self,
         handle: UnspawnedMobRef,
-        edit: impl FnOnce(
-            &crate::game::ServerGame<'_>,
-            &mut Mob,
-        ) -> Result<T, UnspawnedMobError>,
+        edit: impl FnOnce(&crate::game::ServerGame<'_>, &mut Mob) -> Result<T, UnspawnedMobError>,
     ) -> Result<T, UnspawnedMobError> {
         if let Some(key) = super::native_pending_children::pending_key(self, handle)? {
             let arena = self.server.lent_mobs.0.borrow().pending.clone();
@@ -637,9 +637,9 @@ impl Edits<'_, '_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
+    use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
 
-use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
+    use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
 
     use super::super::commands::Target;
     use super::super::creatures::SpawnSite;
@@ -650,14 +650,6 @@ use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
     use sunrise_sim::mobs::finalize::{self, Attr};
     use sunrise_sim::mobs::spawn_rules::Reason;
 
-    
-    
-    
-    
-
-    
-    
-    
     pub fn spawn_pig(game: &mut crate::game::ServerGame<'_>) -> Option<u32> {
         game.spawn_mob(
             "minecraft:pig",
@@ -667,27 +659,8 @@ use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
         )
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-    
-    
-    
-    
-    
-
-    
-
     #[cfg(test)]
-/// Group data crosses the boundary by the names vanilla saves its
+    /// Group data crosses the boundary by the names vanilla saves its
     /// variants under, both ways, and a name the game does not know drops
     /// the group.
     #[test]

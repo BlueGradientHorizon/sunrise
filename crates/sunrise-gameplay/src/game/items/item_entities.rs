@@ -2,6 +2,7 @@
 //! `tick_experience`), the stacks a destroyed container lets fall, and spawning and merging orbs.
 use super::*;
 use sunrise_gameplay_common::game::collision_source::Mover;
+use sunrise_gameplay_common::game::creatures;
 
 /// The items `give_items_back` takes again, where the item the loop was at now is (none once it
 /// is gone), and the index the loop goes on from.
@@ -224,7 +225,9 @@ impl crate::game::ServerGame<'_> {
                     if extra_life > 0 {
                         item.age = 6000 - extra_life.min(32766);
                         alive = true;
-                    } else if self.server.serving.is_some() || self.common.options.dedicated.is_some() {
+                    } else if self.server.serving.is_some()
+                        || self.common.options.dedicated.is_some()
+                    {
                         self.native_item_despawn(
                             item.id,
                             &item.stack.item,
@@ -603,9 +606,12 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let into_join = self.common.orbs[i].join;
-        let area = self.common.orbs[i].bounds().inflate(Vec3::new(0.5, 0.5, 0.5));
+        let area = self.common.orbs[i]
+            .bounds()
+            .inflate(Vec3::new(0.5, 0.5, 0.5));
         let candidates: Vec<_> = self
-            .common.orbs
+            .common
+            .orbs
             .iter()
             .filter(|o| o.join != into_join && o.bounds().intersects(area))
             .map(|o| o.join)
@@ -630,7 +636,8 @@ impl crate::game::ServerGame<'_> {
             let Some(i) = self.common.orbs.locate(into_join) else {
                 return;
             };
-            let written = (self.common.orbs[i].value, self.common.orbs[i].count) != (into_value, into_count);
+            let written =
+                (self.common.orbs[i].value, self.common.orbs[i].count) != (into_value, into_count);
             let fresh = self.common.orbs.locate(from_join).filter(|&j| {
                 let (a, b) = (&self.common.orbs[i], &self.common.orbs[j]);
                 (b.value, b.count) == (from_value, from_count)
@@ -738,7 +745,8 @@ impl crate::game::ServerGame<'_> {
         }
         let spectator = self.common.spectator();
         let player = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|p| !p.health.dead_or_dying() && !spectator);
         // Player.aiStep: standing, the pickup area is the player's box
@@ -796,7 +804,8 @@ impl crate::game::ServerGame<'_> {
                 true
             });
         }
-        self.common.orbs
+        self.common
+            .orbs
             .restore(orbs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         if gained > 0 {
             gained = self.mending(gained);
@@ -833,7 +842,8 @@ impl crate::game::ServerGame<'_> {
         in_removal: bool,
     ) -> bool {
         let Some((item, count)) = self
-            .common.dropped
+            .common
+            .dropped
             .iter()
             .rev()
             .find(|d| d.id == id)
@@ -842,9 +852,12 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         if !mod_api::__private::mods().is_empty() {
-            self.common.native_lifecycle
-                .pending_item_spawns
-                .push((id, item.to_string(), count, position));
+            self.common.native_lifecycle.pending_item_spawns.push((
+                id,
+                item.to_string(),
+                count,
+                position,
+            ));
             if in_removal {
                 self.flush_removal_join(id)
             } else {
@@ -870,7 +883,8 @@ impl crate::game::ServerGame<'_> {
     ) {
         let mut stacks: Vec<ItemStack> = Vec::new();
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::KEEP_INVENTORY)
         {
@@ -960,7 +974,8 @@ impl crate::game::ServerGame<'_> {
     /// Block.popResource
     pub(in crate::game) fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
         let block_drops = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS);
         if let Some(at) = sunrise_gameplay_common::game::spill_common::admitted_pop_position(
@@ -982,9 +997,11 @@ impl crate::game::ServerGame<'_> {
     ) {
         let count = stack.count;
         let at = [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])];
-        for piece in
-            sunrise_world::level::removal::drop_item_stack_at(&mut self.common.world.random, at, count)
-        {
+        for piece in sunrise_world::level::removal::drop_item_stack_at(
+            &mut self.common.world.random,
+            at,
+            count,
+        ) {
             self.spawn_item_thrown(
                 ItemStack {
                     count: piece.count,
@@ -1004,11 +1021,15 @@ impl crate::game::ServerGame<'_> {
         face: [i32; 3],
         stack: ItemStack,
     ) {
-        let (p, v) =
-            sunrise_gameplay_common::game::spill_common::pop_position_from_face(&mut self.common.world.random, pos, face);
+        let (p, v) = sunrise_gameplay_common::game::spill_common::pop_position_from_face(
+            &mut self.common.world.random,
+            pos,
+            face,
+        );
         // The private overload checks the gamerule after the offsets are drawn.
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
         {

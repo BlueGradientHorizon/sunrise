@@ -4,7 +4,7 @@ use winit::keyboard::PhysicalKey;
 
 impl crate::game::ClientGame<'_> {
     /// Give the bound editor its key before normal title-screen navigation.
-    pub(in crate::game::client_side) fn preset_editor_key(&self, key: KeyCode) -> bool {
+    pub(crate) fn preset_editor_key(&self, key: KeyCode) -> bool {
         let physical = PhysicalKey::Code(key);
         self.preset_editor_title()
             .and_then(|title| title.preset_editor_session())
@@ -12,7 +12,7 @@ impl crate::game::ClientGame<'_> {
                 session.key_pressed(
                     preset_editor_key_code(physical),
                     keybinds::raw_key_code(physical),
-                    sunrise_gameplay_common::game::glfw_modifiers(self.client.modifiers),
+                    crate::game::client_side::key_codes::glfw_modifiers(self.client.modifiers),
                 )
             })
     }
@@ -28,18 +28,23 @@ impl crate::game::ClientGame<'_> {
         else {
             return false;
         };
-        session.mouse_clicked(self.client.cursor.0, self.client.cursor.1, button, double_click)
+        session.mouse_clicked(
+            self.client.cursor.0,
+            self.client.cursor.1,
+            button,
+            double_click,
+        )
     }
     /// Forward printable characters to the open bound preset editor. Returns `true` if the editor
     /// consumed any character.
-    pub(in crate::game::client_side) fn preset_editor_type_text(&self, text: &str) -> bool {
+    pub(crate) fn preset_editor_type_text(&self, text: &str) -> bool {
         let Some(session) = self
             .preset_editor_title()
             .and_then(|title| title.preset_editor_session())
         else {
             return false;
         };
-        let modifiers = sunrise_gameplay_common::game::glfw_modifiers(self.client.modifiers);
+        let modifiers = crate::game::client_side::key_codes::glfw_modifiers(self.client.modifiers);
         let mut handled = false;
         for ch in text.chars().filter(|c| !c.is_control()) {
             handled |= session.char_typed(ch, modifiers);

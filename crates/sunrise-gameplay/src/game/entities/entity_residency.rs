@@ -110,7 +110,7 @@ macro_rules! define_resident_access {
             if track_saved_uuids {
                 $this.persist.uuids.bind(journal, dimension);
             }
-            $($crate::game::resident_state::bind_resident_list!($kind, $this$(.$field)+, journal, Owner { dimension, kind: Kind::$kind });)*
+            $(sunrise_gameplay_common::game::resident_state::bind_resident_list!($kind, $this$(.$field)+, journal, Owner { dimension, kind: Kind::$kind });)*
             $this$(.$projectiles)+.bind_residency(journal, Owner { dimension, kind: Kind::Projectile }, |entity| (entity.id, entity.join_seq()));
             $this.dragon.bind_residency_specialized(journal, Owner { dimension, kind: Kind::Dragon }, |entity| (entity.id, entity.join_seq()), sunrise_sim::join_seq::residency::Source::Ordinary, Some((Kind::DragonPart, 8, |dragon, offset| dragon.parts.get(usize::from(offset)).map(|part| part.3))), None);
         }
@@ -165,7 +165,7 @@ macro_rules! define_resident_access {
                     let dragon = $this.dragon.as_ref()?;
                     if dragon.id == 0 { return None; }
                     dragon.parts.get(usize::from(offset))?;
-                    let id = crate::game::dragon_common::dragon_part_id(dragon.id, usize::from(offset));
+                    let id = sunrise_gameplay_common::game::dragon_common::dragon_part_id(dragon.id, usize::from(offset));
                     let visible = true;
                     Some(SourceEntity { id, value: (Target::DragonPart(id), visible) })
                 }

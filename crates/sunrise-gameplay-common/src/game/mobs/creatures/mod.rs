@@ -11,9 +11,7 @@ pub use living_draw::LivingFrame;
 pub mod player_loot_entity;
 pub mod projectile_targets;
 #[allow(unused_imports)]
-pub use projectile_targets::{
-    NonMobHit, ProjectileHitInfo, TargetQuery, is_pickable_projectile,
-};
+pub use projectile_targets::{NonMobHit, ProjectileHitInfo, TargetQuery, is_pickable_projectile};
 #[allow(unused_imports)]
 pub use sunrise_gameplay_common::projectile_world::ProjWorld;
 pub mod pufferfish_player;
@@ -104,14 +102,14 @@ pub use death_source::death_hurt_source;
 
 /// A dying entity whose items drop (`LivingDropsEvent`).
 pub struct DyingDrops<'a> {
-    pub(in crate::game) entity: u32,
-    pub(in crate::game) kind: &'a str,
+    pub entity: u32,
+    pub kind: &'a str,
     /// The UUID of a dying player.
-    pub(in crate::game) player: Option<u128>,
+    pub player: Option<u128>,
     /// The death's source; none when no mod listens.
-    pub(in crate::game) source: Option<HurtSource<'a>>,
+    pub source: Option<HurtSource<'a>>,
     /// Whether a player hurt it within 100 ticks.
-    pub(in crate::game) recently_hit: bool,
+    pub recently_hit: bool,
 }
 
 /// A sound a native mod queued, sent when the host is free.
@@ -136,8 +134,8 @@ pub struct NativeSound {
 
 /// Shared state for the mob runs in one entity pass.
 pub struct MobDrawFrame<'a> {
-    pub(in crate::game) living: LivingFrame<'a>,
-    pub(in crate::game) precheck: bool,
+    pub living: LivingFrame<'a>,
+    pub precheck: bool,
 }
 
 #[derive(Default)]
@@ -148,11 +146,11 @@ pub struct NormalActionFrame {
 }
 #[derive(Default)]
 pub struct NormalMobActions {
-    pub(in crate::game) root: NormalActionFrame,
+    pub root: NormalActionFrame,
     pub(in crate::game) nested: Vec<NormalActionFrame>,
 }
 impl NormalMobActions {
-    pub(in crate::game) fn new(events: Vec<MobEvent>) -> Self {
+    pub fn new(events: Vec<MobEvent>) -> Self {
         Self {
             root: NormalActionFrame {
                 events: events.into(),
@@ -216,14 +214,14 @@ pub struct Creatures {
     /// thousands of mobs would allocate and free megabytes every tick.
     pub(in crate::game) seen_buf: Vec<Seen>,
     /// Per-tick scratch retained between creature ticks.
-    pub(in crate::game) event_buf: Vec<MobEvent>,
-    pub(in crate::game) pickable_projectile_targets: Vec<sunrise_sim::projectiles::TargetCandidate>,
-    pub(in crate::game) arrow_hit_scratch: sunrise_sim::arrows::ArrowHitScratch,
+    pub event_buf: Vec<MobEvent>,
+    pub pickable_projectile_targets: Vec<sunrise_sim::projectiles::TargetCandidate>,
+    pub arrow_hit_scratch: sunrise_sim::arrows::ArrowHitScratch,
     /// For each arrow an entity hit in this projectile tick, the projectiles
     /// that ticked after it and stayed, in order: a bounced one goes back
     /// before the first still listed (`finish_arrow_hit`).
-    pub(in crate::game) bounced_followers: Vec<(u32, Vec<u32>)>,
-    pub(in crate::game) pending: std::collections::HashMap<&'static str, PendingMobBatch>,
+    pub bounced_followers: Vec<(u32, Vec<u32>)>,
+    pub pending: std::collections::HashMap<&'static str, PendingMobBatch>,
     /// The mobs whose own tick ran in the last `tick_creature_entities`:
     /// `ServerLevel.tick` ticks only the entities in entity-ticking range, so
     /// what the passes after the loop do for a mob's `aiStep`, goals or brain
@@ -248,8 +246,7 @@ pub struct Creatures {
 /// (`Projectile.onHit` then redirects it). `PICKABLE_PROJECTILE_IDS + j` is
 /// `projectiles[j]` during `tick_projectiles`, below the dragon's reserved ids.
 #[cfg(test)]
-pub const PICKABLE_PROJECTILE_IDS: u32 =
-    crate::game::dragon_common::SPECIAL - 0x10000;
+pub const PICKABLE_PROJECTILE_IDS: u32 = crate::game::dragon_common::SPECIAL - 0x10000;
 
 /// The index of the projectile a `pickable_projectile_hitboxes` id stands for.
 #[cfg(test)]
@@ -309,12 +306,7 @@ pub fn seen(m: &Mob, player: Option<[i32; 4]>, items: &Items) -> Seen {
 /// vehicle) and the camera entity the pick starts from, so a packet that names
 /// one of those does nothing rather than reaching the feed, shear, leash or
 /// name paths the pick path refuses.
-pub fn named_mob_pickable(
-    alive: bool,
-    id: u32,
-    riding: Option<u32>,
-    camera: Option<u32>,
-) -> bool {
+pub fn named_mob_pickable(alive: bool, id: u32, riding: Option<u32>, camera: Option<u32>) -> bool {
     alive && Some(id) != riding && Some(id) != camera
 }
 
@@ -328,17 +320,17 @@ pub type Skinned = Option<((usize, usize, u32), Option<(glam::Vec3, glam::Vec3)>
 #[derive(Clone, Copy, Debug)]
 pub struct ProjectileHitter {
     /// `Projectile.getOwner`.
-    pub(in crate::game) owner: Option<Who>,
+    pub owner: Option<Who>,
     /// On a server, the guest (by connection) who owns it.
-    pub(in crate::game) guest: Option<u32>,
+    pub guest: Option<u32>,
     /// An `AbstractArrow` (a target block resets after 20 ticks, not 8).
-    pub(in crate::game) arrow: bool,
+    pub arrow: bool,
     /// Its entity type, for `target_hit`'s projectile predicate.
-    pub(in crate::game) kind: &'static str,
-    pub(in crate::game) position: Vec3,
+    pub kind: &'static str,
+    pub position: Vec3,
 }
 impl ProjectileHitter {
-    pub(in crate::game) fn of(p: &Projectile) -> Self {
+    pub fn of(p: &Projectile) -> Self {
         Self {
             owner: p.owner,
             guest: p.guest,
@@ -394,7 +386,7 @@ impl crate::game::CommonGame<'_> {
         let center = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
         self.control_mobs_at(radius, center)
     }
-    pub(in crate::game) fn control_mobs_at(&self, radius: f64, center: Vec3) -> serde_json::Value {
+    pub fn control_mobs_at(&self, radius: f64, center: Vec3) -> serde_json::Value {
         let list: Vec<serde_json::Value> = self
             .mobs
             .iter()
@@ -514,10 +506,7 @@ impl crate::game::CommonGame<'_> {
         self.handle_mob_events_reusable(&mut events)
     }
 
-    pub fn handle_mob_events_reusable(
-        &mut self,
-        events: &mut Vec<MobEvent>,
-    ) -> Result<()> {
+    pub fn handle_mob_events_reusable(&mut self, events: &mut Vec<MobEvent>) -> Result<()> {
         self.side_handle_mob_events_reusable(events)
     }
 
@@ -671,10 +660,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// The mob a normal interaction can reach: a packet's exact validated ID,
     /// or the crosshair's mob before its blocking shape.
-    pub fn mob_interaction_target(
-        &self,
-        target: Option<InteractTarget>,
-    ) -> Option<usize> {
+    pub fn mob_interaction_target(&self, target: Option<InteractTarget>) -> Option<usize> {
         let (index, distance, _) = (match target {
             // The id the packet named, under the filters the crosshair pick
             // applies (`mob_hit`): a mob in its death animation is not clicked

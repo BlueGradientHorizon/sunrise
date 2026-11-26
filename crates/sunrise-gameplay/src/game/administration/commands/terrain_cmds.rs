@@ -181,10 +181,12 @@ impl crate::game::ServerGame<'_> {
                 let mut tracker = Tracker::default();
                 for x in cx0..=cx1 {
                     for z in cz0..=cz1 {
-                        let changed =
-                            self.server
-                                .streaming
-                                .set_forced_loaded(&mut self.common.world, x, z, add);
+                        let changed = self.server.streaming.set_forced_loaded(
+                            &mut self.common.world,
+                            x,
+                            z,
+                            add,
+                        );
                         tracker.track(&holder(chunk_text(x, z)), i32::from(changed));
                     }
                 }
@@ -239,7 +241,8 @@ impl crate::game::ServerGame<'_> {
             * i64::from(hi[1] - lo[1] + 1)
             * i64::from(hi[2] - lo[2] + 1);
         let limit = self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if volume > i64::from(limit) {
@@ -364,13 +367,15 @@ impl crate::game::ServerGame<'_> {
         }
         let old = chunk.biome(pos[0], pos[1], pos[2]);
         self.journal_biome(pos, old);
-        let qy =
-            ((pos[1] - self.common.world.bottom_y()) >> 2).clamp(0, self.common.world.layout().height() / 4 - 1);
+        let qy = ((pos[1] - self.common.world.bottom_y()) >> 2)
+            .clamp(0, self.common.world.layout().height() / 4 - 1);
         if let Some(chunk) = self.common.world.chunks.get_mut(&key) {
             let chunk = std::sync::Arc::make_mut(chunk);
             chunk.set_biome_cell((pos[0] & 15) >> 2, qy, (pos[2] & 15) >> 2, target as u16);
         }
-        self.after_commit(super::super::transactions::After::Biome(key));
+        self.after_commit(sunrise_gameplay_common::game::transactions::After::Biome(
+            key,
+        ));
         true
     }
 
@@ -423,8 +428,13 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let dist = self.common.border.distance(px, pz) + self.common.border.safe_zone;
-        if dist < 0.0 && self.common.border.damage_per_block > 0.0 && self.common.ticks.is_multiple_of(10) {
-            let amount = (-dist * self.common.border.damage_per_block).floor().max(1.0) as f32;
+        if dist < 0.0
+            && self.common.border.damage_per_block > 0.0
+            && self.common.ticks.is_multiple_of(10)
+        {
+            let amount = (-dist * self.common.border.damage_per_block)
+                .floor()
+                .max(1.0) as f32;
             self.hurt_player_by("minecraft:outside_border", amount);
         }
     }
@@ -604,9 +614,9 @@ pub(in crate::game) mod tests {
 #[cfg(any(test, feature = "test-support"))]
 pub mod loot_mine_component_tests {
     use super::*;
-    use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::{Compound, Tag};
+    use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
     use sunrise_sim::save;
 
@@ -618,10 +628,6 @@ pub mod loot_mine_component_tests {
             .clone()
             .expect("actual inventory slot must be occupied")
     }
-
-    
-
-    
 }
 
 #[cfg(test)]

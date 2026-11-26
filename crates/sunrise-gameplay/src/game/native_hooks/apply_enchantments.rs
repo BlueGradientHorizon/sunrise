@@ -1,4 +1,4 @@
-
+use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// `IItemExtension.applyEnchantments`: the enchanting table applies `enchantments` (the

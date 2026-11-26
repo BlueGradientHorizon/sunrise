@@ -4,12 +4,12 @@
 //! guest's inventory, with vanilla's packets: OpenScreen, container clicks
 //! and their corrections, and the grid back into the inventory when the menu
 //! closes (`AbstractContainerMenu.clearContainer`).
-use super::{
-    Game,
+use super::Game;
+use sunrise_gameplay_common::game::lan_menu_data::{FurnaceMenuEffects, GuestMenuEffects};
+use sunrise_gameplay_common::game::{
     lan_actions::RECIPE_CHECK_COST,
     transactions::{After, decision::MenuOwner},
 };
-use sunrise_gameplay_common::game::lan_menu_data::{FurnaceMenuEffects, GuestMenuEffects};
 use sunrise_items::items::{ItemStack, Items};
 use sunrise_level::containers::{BlockEntity, ModMenuType};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -447,7 +447,8 @@ impl crate::game::ServerGame<'_> {
             g.craft_result = menu.slot(0).cloned();
         });
         *host.menus.entry(conn).or_default().crafting.inventory = Some(menu);
-        host.hub.inventory_clicked(conn, p, &self.common.world, &changed);
+        host.hub
+            .inventory_clicked(conn, p, &self.common.world, &changed);
         true
     }
 
@@ -1331,7 +1332,11 @@ impl crate::game::ServerGame<'_> {
                 for k in 0..3 {
                     f.items[k] = menu.slot(k).cloned();
                 }
-                f.input_clicked(&self.common.loop_context, world_recipes!(self), items[0].clone());
+                f.input_clicked(
+                    &self.common.loop_context,
+                    world_recipes!(self),
+                    items[0].clone(),
+                );
             }
             if changed {
                 self.container_changed(pos);
@@ -1734,7 +1739,8 @@ impl crate::game::ServerGame<'_> {
     /// guest is within reach of it.
     pub(in crate::game::server_side) fn lan_table_valid(&self, g: &Guest, pos: [i32; 3]) -> bool {
         let name = &self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos[0], pos[1], pos[2]))
             .name;
@@ -1849,7 +1855,12 @@ impl crate::game::ServerGame<'_> {
         pos: (i32, i32, i32),
     ) -> Vec<((i32, i32, i32), Vec<Option<ItemStack>>)> {
         let mut asked = Vec::new();
-        let Some(uuid) = self.server.lan.as_ref().map(|host| host.hub.guests[gi].uuid) else {
+        let Some(uuid) = self
+            .server
+            .lan
+            .as_ref()
+            .map(|host| host.hub.guests[gi].uuid)
+        else {
             return Vec::new();
         };
         self.native_recipe_sources(uuid, t.id, [pos.0, pos.1, pos.2], &mut asked);
@@ -1921,11 +1932,17 @@ impl crate::game::ServerGame<'_> {
                     links.push(at);
                 }
             }
-            self.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                if let Some(m) = g.menu.as_mut() {
-                    m.links = links;
-                }
-            });
+            self.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(gi, |g| {
+                    if let Some(m) = g.menu.as_mut() {
+                        m.links = links;
+                    }
+                });
         }
     }
 

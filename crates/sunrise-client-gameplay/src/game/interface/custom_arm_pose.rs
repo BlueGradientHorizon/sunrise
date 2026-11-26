@@ -8,7 +8,7 @@ impl crate::game::ClientGame<'_> {
         poses: &mut [Option<ArmPose>; 2],
         humanoid: mod_api::HumanoidRenderState<'_>,
     ) {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         if !poses
             .iter()
             .any(|pose| matches!(pose, Some(ArmPose::Custom { .. })))

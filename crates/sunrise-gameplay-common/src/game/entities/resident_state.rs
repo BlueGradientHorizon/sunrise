@@ -90,4 +90,4 @@ macro_rules! bind_resident_list {
         $list.bind_residency($journal, $owner, |entity| (entity.id, entity.join_seq()))
     };
 }
-pub(crate) use bind_resident_list;
+pub use bind_resident_list;

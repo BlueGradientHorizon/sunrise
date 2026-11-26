@@ -75,7 +75,12 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
         let guest = self.native_menu_player(menu.fields().player)?;
         let host = self.server.lan.as_ref()?;
-        (host.hub.holder_guest(guest.uuid, self.common.dim.id())?.conn == guest.conn).then_some(())?;
+        (host
+            .hub
+            .holder_guest(guest.uuid, self.common.dim.id())?
+            .conn
+            == guest.conn)
+            .then_some(())?;
         (guest.menu_generation == menu.fields().generation).then_some(())?;
         if let Some(open) = &guest.menu {
             (open.window == menu.fields().window).then_some(guest)
@@ -162,7 +167,9 @@ impl crate::game::ServerGame<'_> {
         let acting = self.server.lan_acting == Some(guest.conn);
         Some(match backing {
             MenuSlotBacking::BlockEntity { .. } | MenuSlotBacking::Entity { .. } => {
-                let world = self.common.native_level_world(self.common.level(&guest.dimension)?)?;
+                let world = self
+                    .common
+                    .native_level_world(self.common.level(&guest.dimension)?)?;
                 guest.menu.as_ref()?.slots.get(world, guest, slot)
             }
             MenuSlotBacking::Player(n @ 0..36) => {
@@ -334,7 +341,8 @@ impl crate::game::ServerGame<'_> {
                 }
                 self.journal_block_entity_slot(pos, index);
                 let Some(held) = self
-                    .common.world
+                    .common
+                    .world
                     .block_entities
                     .get_mut(&pos)
                     .and_then(|block| block.slot_mut(index))
@@ -342,7 +350,9 @@ impl crate::game::ServerGame<'_> {
                     return false;
                 };
                 *held = Some(stack);
-                self.after_commit(super::transactions::After::Changed(pos));
+                self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(
+                    pos,
+                ));
                 true
             }
             Some(
@@ -366,8 +376,8 @@ impl crate::game::ServerGame<'_> {
     /// equipment, cursor and ender contents are swapped into Game.
     pub(in crate::game) fn native_menu_player(&self, player: PlayerRef) -> Option<&Guest> {
         match self.player_handle_read(player)? {
-            super::native_server::PlayerRead::Guest(guest) => Some(guest),
-            super::native_server::PlayerRead::Acting { .. } => {
+            sunrise_gameplay_common::game::native_server::PlayerRead::Guest(guest) => Some(guest),
+            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => {
                 self.server.lan.as_ref()?.hub.guest(self.server.lan_acting?)
             }
         }
@@ -386,7 +396,9 @@ impl crate::game::ServerGame<'_> {
         let (kind, disabled, menu_id) = match &guest.menu {
             None => (Kind::Inventory, None, None),
             Some(open) => {
-                let world = self.common.native_level_world(self.common.level(&guest.dimension)?)?;
+                let world = self
+                    .common
+                    .native_level_world(self.common.level(&guest.dimension)?)?;
                 let name = self
                     .server
                     .lan
@@ -425,7 +437,9 @@ impl crate::game::ServerGame<'_> {
         let mut rules = Box::new(Menu::new(kind));
         rules.set_registry_id(menu_id);
         if let Some(open) = guest.menu.as_ref() {
-            let world = self.common.native_level_world(self.common.level(&guest.dimension)?)?;
+            let world = self
+                .common
+                .native_level_world(self.common.level(&guest.dimension)?)?;
             let limits = open.slots.stack_limits(world, open.size);
             rules.set_container_limits(limits);
             rules.set_block_pos(

@@ -42,7 +42,8 @@ impl ServerGame<'_> {
     }
     /// `getKillCredit` naming a wither that is still in the level.
     fn is_wither(&self, id: u32) -> bool {
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .any(|o| o.id == id && o.alive() && o.species() == Species::Wither)
     }
@@ -61,7 +62,8 @@ impl ServerGame<'_> {
         if self.can_entity_grief(Some(wither))
             && let Some(rose) = rose
             && self
-                .common.res
+                .common
+                .res
                 .facts()
                 .is_air(self.common.world.block(pos[0], pos[1], pos[2]))
             && self.common.with_level(|b, level, ticks| {
@@ -98,7 +100,8 @@ impl ServerGame<'_> {
             match key {
                 '^' => self.is_wither_skull_state(state),
                 '#' => self
-                    .common.res
+                    .common
+                    .res
                     .items()
                     .block_tags
                     .get("minecraft:wither_summon_base_blocks")
@@ -224,7 +227,7 @@ impl ServerGame<'_> {
                 let hit = self.hurt_player_from(
                     amount,
                     skull.from,
-                    super::creatures::damage_type(kind, false),
+                    sunrise_gameplay_common::game::creatures::damage_type(kind, false),
                     Some(owner),
                     false,
                 );
@@ -233,10 +236,10 @@ impl ServerGame<'_> {
                 }
                 // A totem that fired saves the player inside hurtServer:
                 // still alive, so no heal.
-                let killed = self
-                    .common.player
-                    .as_ref()
-                    .is_some_and(|pl| killed(hit, pl.health.dead_or_dying(), pl.health.totem_used));
+                let killed =
+                    self.common.player.as_ref().is_some_and(|pl| {
+                        killed(hit, pl.health.dead_or_dying(), pl.health.totem_used)
+                    });
                 if killed {
                     self.heal_skull_owner(p, live_owner);
                 }
@@ -298,7 +301,8 @@ impl ServerGame<'_> {
                         };
                         self.finish_mob_damage_at(index);
                         let alive = self
-                            .common.mobs
+                            .common
+                            .mobs
                             .get(index)
                             .is_some_and(|m| m.id == id && m.alive());
                         survived_hit = hit && alive;
@@ -308,7 +312,7 @@ impl ServerGame<'_> {
                         let mut skull_p = p.clone();
                         skull_p.owner = live_owner;
                         let damage_type = self.projectile_damage_type(&skull_p);
-                        let info = super::creatures::ProjectileHitInfo::from_projectile(
+                        let info = sunrise_gameplay_common::game::creatures::projectile_targets::ProjectileHitInfo::from_projectile(
                             &skull_p,
                             damage_type,
                             amount,
@@ -330,7 +334,8 @@ impl ServerGame<'_> {
                 if survived_hit
                     && wither_ticks > 0
                     && let Some(m) = self
-                        .common.mobs
+                        .common
+                        .mobs
                         .iter_mut()
                         .find(|m| m.id == id && m.species() != Species::Wither)
                 {
@@ -394,7 +399,8 @@ impl ServerGame<'_> {
         self.common.creatures.projectiles.push(p.clone());
         let result = blast(self);
         let row = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .position(|q| q.id == p.id && q.join == p.join);
@@ -408,7 +414,12 @@ impl ServerGame<'_> {
     fn heal_skull_owner(&mut self, p: &Projectile, owner: Option<Who>) {
         match owner {
             Some(Who::Mob(id)) => {
-                if let Some(w) = self.common.mobs.iter_mut().find(|m| m.id == id && m.alive()) {
+                if let Some(w) = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == id && m.alive())
+                {
                     w.heal(&self.common.loop_context, 5.0);
                 }
             }

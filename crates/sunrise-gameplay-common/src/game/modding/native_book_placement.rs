@@ -11,7 +11,7 @@ pub(in crate::game) struct State {
     pub(in crate::game) deadline: Option<std::time::Instant>,
 }
 // no wire: source ordinals actually published to this connection.
-pub(in crate::game) struct Server {
+pub struct Server {
     pub(in crate::game) peer: sync::Authority,
     pub(in crate::game) displays: BTreeMap<String, u32>,
 }

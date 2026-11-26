@@ -3,7 +3,6 @@
 //! `TreeNodePosition`, dragged or scrolled inside the 252x140 window, with
 //! the progress tooltip of the hovered advancement.
 
-
 use super::{Game, Screen, advancements_common::text_of};
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 use sunrise_client::{hud::HudBatch, ui};
@@ -198,7 +197,7 @@ pub(in crate::game::client_side) fn closed_screen()
 }
 
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game::client_side) fn open_advancements(&mut self, from_pause: bool) {
+    pub fn open_advancements(&mut self, from_pause: bool) {
         self.client.adv_ui.0 = AdvUi {
             cache: self.client.adv_ui.0.cache.take(),
             tab: self.common.adv.selected_tab.clone(),
@@ -827,7 +826,8 @@ impl crate::game::ClientGame<'_> {
                 if hidden && !self.adv_done(i) {
                     continue;
                 }
-                let Some((x, y)) = self.client.adv_ui.0.cache.as_ref().and_then(|c| c.pos[i]) else {
+                let Some((x, y)) = self.client.adv_ui.0.cache.as_ref().and_then(|c| c.pos[i])
+                else {
                     continue;
                 };
                 let (x0, y0) = (sx.wrapping_add(x), sy.wrapping_add(y));

@@ -28,7 +28,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub(in crate::game) fn from_block(name: &str) -> Option<Self> {
+    pub fn from_block(name: &str) -> Option<Self> {
         Some(match name {
             "minecraft:enchanting_table" => Self::Enchanting,
             "minecraft:anvil" | "minecraft:chipped_anvil" | "minecraft:damaged_anvil" => {
@@ -126,33 +126,33 @@ impl Kind {
 }
 
 pub struct Station {
-    pub(in crate::game) kind: Kind,
-    pub(in crate::game) pos: [i32; 3],
-    pub(in crate::game) inputs: Vec<Option<ItemStack>>,
-    pub(in crate::game) result: Option<ItemStack>,
-    pub(in crate::game) offers: EnchantOffers,
-    pub(in crate::game) bookcases: i32,
-    pub(in crate::game) anvil: AnvilResult,
+    pub kind: Kind,
+    pub pos: [i32; 3],
+    pub inputs: Vec<Option<ItemStack>>,
+    pub result: Option<ItemStack>,
+    pub offers: EnchantOffers,
+    pub bookcases: i32,
+    pub anvil: AnvilResult,
     /// Anvil rename box text (`AnvilMenu.itemName`).
-    pub(in crate::game) name: String,
+    pub name: String,
     /// Stonecutter: the menu's recipe list (sunrise_client::menu) and `selectedRecipeIndex`.
-    pub(in crate::game) stone: sunrise_sim::menu::Stonecutter,
-    pub(in crate::game) selected: Option<usize>,
+    pub stone: sunrise_sim::menu::Stonecutter,
+    pub selected: Option<usize>,
     #[allow(dead_code)]
     pub(in crate::game) last_sound: u64,
     /// Villager trading state.
-    pub(in crate::game) merchant: Option<Box<crate::game::trading_common::MerchantState>>,
+    pub merchant: Option<Box<crate::game::trading_common::MerchantState>>,
     /// Beacon menu: the selected primary and secondary power (EFFECTS index).
-    pub(in crate::game) beacon: [Option<usize>; 2],
+    pub beacon: [Option<usize>; 2],
 }
 
 impl Station {
     /// `StonecutterScreen.isScrollBarActive`.
-    pub(in crate::game) fn stonecutter_scrolls(&self) -> bool {
+    pub fn stonecutter_scrolls(&self) -> bool {
         self.inputs[0].is_some() && self.stone.recipes.len() > 12
     }
 
-    pub(in crate::game) fn new(kind: Kind, pos: [i32; 3]) -> Self {
+    pub fn new(kind: Kind, pos: [i32; 3]) -> Self {
         Self {
             kind,
             pos,
@@ -170,7 +170,7 @@ impl Station {
         }
     }
 
-    pub(in crate::game) fn new_kind(kind: Kind, pos: [i32; 3]) -> Self {
+    pub fn new_kind(kind: Kind, pos: [i32; 3]) -> Self {
         Self::new(kind, pos)
     }
 }

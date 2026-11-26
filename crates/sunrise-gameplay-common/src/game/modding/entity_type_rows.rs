@@ -11,7 +11,7 @@ use std::{
 #[derive(Debug, Default, PartialEq)]
 pub struct EntityTypeRows {
     /// Every entity type (`minecraft:boat`), namespaced as commands name it.
-    pub(in crate::game) ids: Vec<String>,
+    pub ids: Vec<String>,
     /// The living ones.
     pub(in crate::game) living: Vec<String>,
     /// Each type's `EntityType.getDimensions()` (width, height, eye height), by id.
@@ -50,7 +50,7 @@ pub(in crate::game) static ROWS: Mutex<Vec<(PathBuf, Arc<EntityTypeRows>)>> =
     Mutex::new(Vec::new());
 
 /// The entity types under `root` (none when its `entity-types.json` is missing or unreadable).
-pub(in crate::game) fn entity_type_rows(root: &Path) -> Arc<EntityTypeRows> {
+pub fn entity_type_rows(root: &Path) -> Arc<EntityTypeRows> {
     let mut cache = ROWS.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((_, rows)) = cache.iter().find(|(cached, _)| cached == root) {
         return rows.clone();
@@ -63,7 +63,7 @@ pub(in crate::game) fn entity_type_rows(root: &Path) -> Arc<EntityTypeRows> {
 
 impl EntityTypeRows {
     /// Whether `id` is an entity type.
-    pub(in crate::game) fn contains(&self, id: &str) -> bool {
+    pub fn contains(&self, id: &str) -> bool {
         self.ids.binary_search_by(|t| t.as_str().cmp(id)).is_ok()
     }
     /// `EntityType.getDimensions()` of `id`: its width, height and eye height.
@@ -75,7 +75,7 @@ impl EntityTypeRows {
         Some(self.dimensions[i].1)
     }
     /// Whether `id` is a living entity type.
-    pub(in crate::game) fn is_living(&self, id: &str) -> bool {
+    pub fn is_living(&self, id: &str) -> bool {
         self.living.binary_search_by(|t| t.as_str().cmp(id)).is_ok()
     }
 }

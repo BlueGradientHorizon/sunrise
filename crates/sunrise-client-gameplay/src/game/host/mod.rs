@@ -1,6 +1,7 @@
-
 #[cfg(feature = "client")]
 use super::ClientGame;
+use mod_api::__private::game::*;
+use mod_api::*;
 
 #[cfg(feature = "client")]
 impl Host for ClientGame<'_> {

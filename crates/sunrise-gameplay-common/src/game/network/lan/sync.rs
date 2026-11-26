@@ -133,7 +133,7 @@ pub(in crate::game) fn initial_sources(
 
 /// Build server recipes privately so a refused reload leaves the current cache intact.
 /// Like `load_sources`, for a caller that builds the tables with `Recipes::from_resolved`.
-pub(in crate::game) fn prepare_server_sources(
+pub fn prepare_server_sources(
     root: &std::path::Path,
     item_data: &ItemData,
     items: &Items,
@@ -148,7 +148,7 @@ pub(in crate::game) fn prepare_server_sources(
     )
 }
 
-pub(in crate::game) fn install_server_sources(
+pub fn install_server_sources(
     root: &std::path::Path,
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -163,7 +163,7 @@ pub(in crate::game) fn install_server_sources(
 }
 
 /// The recipes of a load of `origin`: a server's are shared, a client's own.
-pub(in crate::game) fn load_sources(
+pub fn load_sources(
     root: &std::path::Path,
     item_data: &ItemData,
     items: &Items,
@@ -288,7 +288,7 @@ pub(in crate::game) fn cached_sync_data(
 
 /// Keep a usable no-pack preload, but decode any eager world wire data in a
 /// private cache so a refused decode cannot publish the world's registries.
-pub(in crate::game) fn prepare_world_sync_data(
+pub fn prepare_world_sync_data(
     root: &std::path::Path,
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -308,7 +308,7 @@ pub(in crate::game) fn prepare_world_sync_data(
     Ok(staged)
 }
 
-pub(in crate::game) fn install_world_sync_data(staged: SyncCache) {
+pub fn install_world_sync_data(staged: SyncCache) {
     *SYNC.lock().unwrap_or_else(|e| e.into_inner()) = staged;
 }
 
@@ -370,7 +370,7 @@ pub(in crate::game) fn prepare_sync_reload(
 /// tags, recipes and advancements read again with the world's packs, the
 /// synchronized registries `kept` (the hub's) as they were, and that becomes
 /// what `sync_data` gives.
-pub(in crate::game) fn prepare_wire_reload(
+pub fn prepare_wire_reload(
     root: &std::path::Path,
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -418,7 +418,7 @@ pub fn install_wire_reload(
 
 /// A server's own data load over `item_data`'s registry inputs: the owner of
 /// the data a server reads and sends, whichever window shares the `ItemData`.
-pub(in crate::game) fn server_data_load(
+pub fn server_data_load(
     root: &std::path::Path,
     item_data: &ItemData,
 ) -> std::io::Result<sunrise_world::native_load_context::LoadContext> {
@@ -455,10 +455,7 @@ pub struct SyncPreload {
 
 /// Start reading the server's data beside the world's preparation; `None`
 /// when it is read already, or being read (`preload_world_data`).
-pub fn preload_sync_data(
-    item_data: &Arc<ItemData>,
-    items: Arc<Items>,
-) -> Option<SyncPreload> {
+pub fn preload_sync_data(item_data: &Arc<ItemData>, items: Arc<Items>) -> Option<SyncPreload> {
     let generation = item_data.defaults().generation();
     if !SYNC.try_lock().is_ok_and(|sync| {
         sync.damage.is_none()
@@ -497,7 +494,7 @@ pub fn preload_sync_data(
 impl SyncPreload {
     /// The world is open: without packs of its own (`overlay`), what was read
     /// becomes `sync_data`'s; with them, `sync_data` loads them as before.
-    pub(in crate::game) fn adopt(self, overlay: &sunrise_world::loot::PackOverlay) {
+    pub fn adopt(self, overlay: &sunrise_world::loot::PackOverlay) {
         if !overlay.files.is_empty() {
             return;
         }

@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
@@ -15,7 +13,7 @@ impl crate::game::ClientGame<'_> {
     /// Client-side, on any server, single player's own included.
     /// Every packet exposes its protocol type id. Custom payloads also expose
     /// their channel and raw bytes; no other decoded fields cross the API.
-    pub(in crate::game) fn native_client_packet(&mut self, packet: &ClientPacket) {
+    pub(in crate::game) fn native_client_packet(&mut self, packet: &mod_api::ClientPacket) {
         self.fire_client_packet(packet);
     }
 }

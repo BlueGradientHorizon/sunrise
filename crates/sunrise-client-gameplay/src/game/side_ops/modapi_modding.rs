@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
@@ -115,52 +114,28 @@ impl SideOps for crate::game::client_side::ClientState {
             game.client_crafting_remainder_hook(stack, remainder);
         }
     }
-    fn side_entity_bounding_box(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<[[f64; 3]; 2]> {
+    fn side_entity_bounding_box(game: &Self::Game<'_>, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
         game.client_entity_bounding_box(entity)
     }
-    fn side_entity_eye_height(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<f64> {
+    fn side_entity_eye_height(game: &Self::Game<'_>, entity: EntityRef) -> Option<f64> {
         game.client_entity_eye_height(entity)
     }
-    fn side_entity_is_shift_key_down(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<bool> {
+    fn side_entity_is_shift_key_down(game: &Self::Game<'_>, entity: EntityRef) -> Option<bool> {
         game.client_entity_is_shift_key_down(entity)
     }
-    fn side_entity_kind(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<EntityTypeKey> {
+    fn side_entity_kind(game: &Self::Game<'_>, entity: EntityRef) -> Option<EntityTypeKey> {
         game.client_entity_kind(entity)
     }
-    fn side_entity_level(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<LevelRef> {
+    fn side_entity_level(game: &Self::Game<'_>, entity: EntityRef) -> Option<LevelRef> {
         game.client_entity_level(entity)
     }
-    fn side_entity_main_arm(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<MainHand> {
+    fn side_entity_main_arm(game: &Self::Game<'_>, entity: EntityRef) -> Option<MainHand> {
         game.client_entity_main_arm(entity)
     }
-    fn side_entity_residency(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> EntityResidency {
+    fn side_entity_residency(game: &Self::Game<'_>, entity: EntityRef) -> EntityResidency {
         game.client_entity_residency(entity)
     }
-    fn side_entity_velocity(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<[f64; 3]> {
+    fn side_entity_velocity(game: &Self::Game<'_>, entity: EntityRef) -> Option<[f64; 3]> {
         game.client_entity_velocity(entity)
     }
     fn side_item_combat_actor(
@@ -169,10 +144,7 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<(bool, bool, f64, bool)> {
         game.client_item_combat_actor(actor)
     }
-    fn side_item_entity(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<ItemEntityRef> {
+    fn side_item_entity(game: &Self::Game<'_>, entity: EntityRef) -> Option<ItemEntityRef> {
         game.client_item_entity(entity)
     }
     fn side_level_block_face_sturdy(
@@ -240,10 +212,7 @@ impl SideOps for crate::game::client_side::ClientState {
             game.list_native_mods();
         }
     }
-    fn side_living_absorption(
-        game: &Self::Game<'_>,
-        living: LivingRef,
-    ) -> Option<f32> {
+    fn side_living_absorption(game: &Self::Game<'_>, living: LivingRef) -> Option<f32> {
         game.client_living_absorption(living)
     }
     fn side_living_attribute_value(
@@ -260,31 +229,19 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<EquipmentRead<'__side_g>> {
         game.client_living_equipment_stack(living, slot)
     }
-    fn side_living_read_target(
-        game: &Self::Game<'_>,
-        living: LivingRef,
-    ) -> Option<Target> {
+    fn side_living_read_target(game: &Self::Game<'_>, living: LivingRef) -> Option<Target> {
         game.client_living_read_target(living)
     }
     fn side_living_target_alive(game: &Self::Game<'_>, id: u32) -> bool {
         game.client_living_target_alive(id)
     }
-    fn side_living_use_ticks(
-        game: &Self::Game<'_>,
-        living: LivingRef,
-    ) -> Option<Option<u32>> {
+    fn side_living_use_ticks(game: &Self::Game<'_>, living: LivingRef) -> Option<Option<u32>> {
         game.client_living_use_ticks(living)
     }
-    fn side_living_used_item_hand(
-        game: &Self::Game<'_>,
-        living: LivingRef,
-    ) -> Option<Hand> {
+    fn side_living_used_item_hand(game: &Self::Game<'_>, living: LivingRef) -> Option<Hand> {
         game.client_living_used_item_hand(living)
     }
-    fn side_menu_carried(
-        game: &Self::Game<'_>,
-        menu: MenuRef,
-    ) -> Option<Option<ItemStack>> {
+    fn side_menu_carried(game: &Self::Game<'_>, menu: MenuRef) -> Option<Option<ItemStack>> {
         game.client_menu_carried(menu)
     }
     fn side_menu_kind(game: &Self::Game<'_>, menu: MenuRef) -> Option<Option<String>> {
@@ -330,10 +287,7 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> std::result::Result<Option<CollisionFlags>, LevelReadError> {
         game.client_player_collision_flags(player)
     }
-    fn side_player_container_menu(
-        game: &Self::Game<'_>,
-        player: PlayerRef,
-    ) -> Option<MenuRef> {
+    fn side_player_container_menu(game: &Self::Game<'_>, player: PlayerRef) -> Option<MenuRef> {
         game.client_player_container_menu(player)
     }
     fn side_player_destroy_progress(
@@ -345,10 +299,7 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<f32> {
         game.client_player_destroy_progress(player, level, pos, state)
     }
-    fn side_player_dimension_key(
-        game: &Self::Game<'_>,
-        player: PlayerRef,
-    ) -> Option<DimensionKey> {
+    fn side_player_dimension_key(game: &Self::Game<'_>, player: PlayerRef) -> Option<DimensionKey> {
         game.client_player_dimension_key(player)
     }
     fn side_player_has_correct_tool_for_drops(
@@ -366,18 +317,12 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<PlayerRead<'__side_g>> {
         game.client_player_read_both(player)
     }
-    fn side_retire_disabled_instance_groups(
-        game: &Self::Game<'_>,
-        effective: &BTreeSet<String>,
-    ) {
+    fn side_retire_disabled_instance_groups(game: &Self::Game<'_>, effective: &BTreeSet<String>) {
         {
             game.client_retire_disabled_instance_groups(effective);
         }
     }
-    fn side_set_audio_loop_context(
-        game: &mut Self::Game<'_>,
-        audio: Option<LoopContext>,
-    ) {
+    fn side_set_audio_loop_context(game: &mut Self::Game<'_>, audio: Option<LoopContext>) {
         {
             game.client_set_audio_loop_context(audio);
         }
@@ -401,10 +346,7 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<BlockCapabilitySite> {
         game.client_signal_capability_site(at)
     }
-    fn side_signal_container_size(
-        game: &Self::Game<'_>,
-        at: BlockSide,
-    ) -> Option<usize> {
+    fn side_signal_container_size(game: &Self::Game<'_>, at: BlockSide) -> Option<usize> {
         game.client_signal_container_size(at)
     }
     fn side_signal_container_stack(
@@ -422,24 +364,13 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<&'__side_g Arc<Items>> {
         game.client_world_table_items()
     }
-    fn side_level_ref(
-        game: &Self::Game<'_>,
-        epoch: WorldEpoch,
-        key: DimensionKey,
-    ) -> LevelRef {
+    fn side_level_ref(game: &Self::Game<'_>, epoch: WorldEpoch, key: DimensionKey) -> LevelRef {
         LevelRef::new(epoch, key)
     }
-    fn side_online_player_sender(
-        game: &Self::Game<'_>,
-        player: PlayerRef,
-    ) -> Option<PlayerSender> {
+    fn side_online_player_sender(game: &Self::Game<'_>, player: PlayerRef) -> Option<PlayerSender> {
         None
     }
 }
-use sunrise_gameplay_common::game::side_ops::modapi_modding::SideOps;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_gameplay_common::game::native_server::PlayerRead;
 use core::ops::ControlFlow;
 use mod_api::BlockCapabilitySite;
 use mod_api::BlockEntityRef;
@@ -469,6 +400,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use sunrise_assets::resource_source::ResourceSource;
 use sunrise_core::identifier::Identifier;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::native_server::PlayerRead;
+use sunrise_gameplay_common::game::side_ops::modapi_modding::FunctionRegistry;
+use sunrise_gameplay_common::game::side_ops::modapi_modding::SideOps;
 use sunrise_items::items::ItemStack;
 use sunrise_items::items::Items;
 use sunrise_level::world::World;

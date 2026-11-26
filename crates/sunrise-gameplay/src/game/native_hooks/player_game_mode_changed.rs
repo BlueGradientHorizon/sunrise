@@ -1,4 +1,4 @@
-
+use mod_api::GameMode;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

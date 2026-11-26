@@ -20,8 +20,10 @@ impl ServerGame<'_> {
     /// `player` finds the player).
     fn native_cooldowns_of(&self, player: PlayerRef) -> Option<&Cooldowns> {
         match self.player_handle_read(player)? {
-            super::native_server::PlayerRead::Acting { .. } => Some(&self.common.cooldowns),
-            super::native_server::PlayerRead::Guest(g) => Some(
+            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => {
+                Some(&self.common.cooldowns)
+            }
+            sunrise_gameplay_common::game::native_server::PlayerRead::Guest(g) => Some(
                 self.server
                     .lan
                     .as_ref()?
@@ -98,8 +100,10 @@ impl ServerGame<'_> {
     /// experience orb.
     pub(in crate::game) fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
         match self.player_handle_read(player)? {
-            super::native_server::PlayerRead::Acting { .. } => Some(self.server.xp_delay),
-            super::native_server::PlayerRead::Guest(g) => Some(
+            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => {
+                Some(self.server.xp_delay)
+            }
+            sunrise_gameplay_common::game::native_server::PlayerRead::Guest(g) => Some(
                 self.server
                     .lan
                     .as_ref()?

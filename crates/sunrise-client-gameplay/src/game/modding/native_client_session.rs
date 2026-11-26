@@ -1,16 +1,19 @@
 //! Read-only projections of the connected client's existing state.
 
-use {sunrise_gameplay_common::game::Game, crate::game::client_side::remote_client::Remote};
 #[cfg(test)]
 use mod_api::prelude::*;
 use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, PlayerRef};
 use std::sync::Arc;
+use {crate::game::client_side::remote_client::Remote, sunrise_gameplay_common::game::Game};
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn native_session(&self) -> Option<&Remote> {
         self.common.native_window().then_some(())?;
         self.common.native_lifecycle.epoch()?;
-        self.client.remote.as_ref().filter(|remote| remote.logged_in)
+        self.client
+            .remote
+            .as_ref()
+            .filter(|remote| remote.logged_in)
     }
 
     /// The connected server, not a stale reconnect target. None outside a
@@ -128,7 +131,8 @@ impl crate::game::ClientGame<'_> {
     ) -> Option<BlockBreakingState> {
         self.native_local_status(player)?;
         Some(
-            self.common.mining
+            self.common
+                .mining
                 .as_ref()
                 .map_or(BlockBreakingState::Idle, |mining| {
                     BlockBreakingState::Breaking {
@@ -156,8 +160,8 @@ fn tab_list(
     header: Option<&sunrise_game_data::text::Text>,
     footer: Option<&sunrise_game_data::text::Text>,
 ) -> mod_api::ClientTabList {
-    use super::api_values::TryIntoApi;
     use sunrise_client::tab_list::{name_for_display, sorted_players};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     // A text too deep for the API reads as its plain words rather than dropping the entry.
     let text = |text: &sunrise_game_data::text::Text| {
         text.try_into_api()
@@ -185,7 +189,7 @@ pub mod tests {
     use super::*;
 
     #[cfg(test)]
-/// The Tab overlay's names, order, cap, header and footer, as `client_tab_list` reads them.
+    /// The Tab overlay's names, order, cap, header and footer, as `client_tab_list` reads them.
     #[test]
     fn the_tab_list_reads_as_the_overlay_draws_it() {
         use sunrise_game_data::{scoreboard::Scoreboard, text::Text as EngineText};
@@ -309,7 +313,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn client_session_reads_follow_connection_language_and_frame_state() {
         use sunrise_game_data::lang::{self, Language};
@@ -427,7 +431,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn latency_and_item_use_read_the_local_player_as_the_client_sees_it() {
         with_client_game(|game| {
@@ -467,7 +471,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn local_player_status_tracks_mining_mood_and_refuses_other_handles() {
         with_client_game(|game| {

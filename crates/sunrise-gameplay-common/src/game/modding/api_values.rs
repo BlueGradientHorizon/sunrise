@@ -45,10 +45,7 @@ impl mod_api::RandomSource for LiveLevelRandom<'_> {
 }
 
 /// Lend the actual stream directly without unwind restoration or transaction journaling.
-pub fn with_live_level_random(
-    random: &mut LegacyRandom,
-    draw: mod_api::RandomDraw<'_>,
-) {
+pub fn with_live_level_random(random: &mut LegacyRandom, draw: mod_api::RandomDraw<'_>) {
     draw.run(&mut LiveLevelRandom(random));
 }
 
@@ -109,9 +106,7 @@ pub fn is_ladder(
 }
 
 /// Resolve the metadata default through the sole numeric reverse index, without allocation.
-pub fn default_state(
-    block: mod_api::BlockKey,
-) -> Option<sunrise_world::registry::BlockStateId> {
+pub fn default_state(block: mod_api::BlockKey) -> Option<sunrise_world::registry::BlockStateId> {
     use mod_api::BlockMetadata;
     let metadata = mod_api::__private::block_definitions()?;
     let value = metadata.of(block, &[]).ok()?;
@@ -162,9 +157,7 @@ pub mod recipe_inputs;
 /// Publish a loaded item table's registry identities: the item keys in the table's
 /// command-registry order, then the enchantment keys in the loaded registry's order.
 /// Both tables load together, so one call keeps the two orderings from drifting.
-pub fn resolve_item_registry(
-    items: &sunrise_items::items::Items,
-) -> Result<(), String> {
+pub fn resolve_item_registry(items: &sunrise_items::items::Items) -> Result<(), String> {
     mod_api::__private::resolve_items(items.registry_order.iter().map(|id| &**id)).map_err(
         |errors| {
             errors
@@ -179,9 +172,7 @@ pub fn resolve_item_registry(
 
 /// Publish the loaded enchantment registry's keys in `RegistryDataLoader`'s order,
 /// separately for a path that reloads only the data-pack tables.
-pub fn resolve_enchantment_registry(
-    items: &sunrise_items::items::Items,
-) -> Result<(), String> {
+pub fn resolve_enchantment_registry(items: &sunrise_items::items::Items) -> Result<(), String> {
     mod_api::__private::resolve_enchantments(items.enchantments.list.iter().map(|entry| &*entry.id))
         .map_err(|errors| errors.join("\n"))
 }
@@ -337,9 +328,7 @@ pub fn group_block_states(
     (ordered, grouped)
 }
 
-pub fn bind_worker_blocks(
-    registry: &sunrise_world::registry::BlockRegistry,
-) -> Result<(), String> {
+pub fn bind_worker_blocks(registry: &sunrise_world::registry::BlockRegistry) -> Result<(), String> {
     block_state::bind(registry)?;
     let index = block_state::current().map_err(|error| format!("worker index: {error:?}"))?;
     let retained =
@@ -550,7 +539,7 @@ pub enum StackReadError {
 }
 
 impl StackReadError {
-    pub(in crate::game) fn into_write_error(self) -> StackWriteError {
+    pub fn into_write_error(self) -> StackWriteError {
         match self {
             Self::UnknownItem => StackWriteError::UnknownItem,
             Self::Empty => StackWriteError::EmptyEngineStack,
@@ -560,9 +549,7 @@ impl StackReadError {
 }
 
 /// Execute a native write and preserve its answer, including unit and original errors.
-pub fn call_write<W: IntoWriteResult>(
-    call: impl FnOnce() -> W,
-) -> Result<W::Value, W::Error> {
+pub fn call_write<W: IntoWriteResult>(call: impl FnOnce() -> W) -> Result<W::Value, W::Error> {
     call().into_write_result()
 }
 
@@ -875,9 +862,7 @@ impl TryIntoEngine for mod_api::MerchantOffer {
 pub type StackReadMetadata = (mod_api::ItemKey, NonZeroU32, Option<u32>);
 
 /// Resolve the item and check the count without copying the stack or encoding its patch.
-pub fn stack_read_metadata(
-    stack: &EngineStack,
-) -> Result<StackReadMetadata, StackReadError> {
+pub fn stack_read_metadata(stack: &EngineStack) -> Result<StackReadMetadata, StackReadError> {
     let key = mod_api::__private::item_key(&stack.item).ok_or(StackReadError::UnknownItem)?;
     let count = NonZeroU32::new(stack.count).ok_or(StackReadError::Empty)?;
     let damage = stack
@@ -972,10 +957,7 @@ pub fn stack_value(value: &ApiStack) -> Result<EngineStack, StackWriteError> {
     encode_stack(value, id.into())
 }
 
-pub fn encode_stack(
-    value: &ApiStack,
-    item: Arc<str>,
-) -> Result<EngineStack, StackWriteError> {
+pub fn encode_stack(value: &ApiStack, item: Arc<str>) -> Result<EngineStack, StackWriteError> {
     let stack = decode_stack_record(value, item);
     // Check the original override even if its value failed to decode.
     let patch = value.components().map(|patch| patch.as_nbt());
@@ -1198,9 +1180,7 @@ impl TryIntoApi for sunrise_sim::crafting::FireworkShapeIngredient {
 /// A recipe listing crosses one entry at a time: one unrepresentable recipe must not
 /// hide the rest of its type. Other collection conversions remain all-or-nothing.
 #[derive(Default)]
-pub struct RecipeListing(
-    pub std::sync::Arc<[sunrise_sim::crafting::RecipeSnapshot]>,
-);
+pub struct RecipeListing(pub std::sync::Arc<[sunrise_sim::crafting::RecipeSnapshot]>);
 impl TryIntoApi for RecipeListing {
     type Api = std::sync::Arc<[mod_api::Recipe]>;
     type Error = std::convert::Infallible;
@@ -1807,7 +1787,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-/// Vanilla `DataComponents.DAMAGE` validates non-negative ints without capping by `max_damage`.
+    /// Vanilla `DataComponents.DAMAGE` validates non-negative ints without capping by `max_damage`.
     #[test]
     fn a_write_preserves_damage_above_max_damage() {
         let items = catalog();
@@ -1822,7 +1802,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn damage_and_max_damage_follow_vanilla_int_ranges() {
         use sunrise_core::vanilla_bytes::Writer;
         use sunrise_protocol::{
@@ -1939,7 +1919,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn stack_maximum_respects_the_vanilla_codec_range() {
         let items = catalog();
         let key = mod_api::__private::item_key("minecraft:stick").unwrap();
@@ -1984,7 +1964,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn production_snapshots_preserve_component_corpus_contents() {
         let items = catalog();
         let cases = [
@@ -2087,7 +2067,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn durability_and_stackability_are_mutually_exclusive() {
         let items = catalog();
         let mut stick = ApiStack::of(mod_api::__private::item_key("minecraft:stick").unwrap());
@@ -2133,7 +2113,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn removed_stack_maximum_uses_the_absent_component_limit_of_one() {
         let items = catalog();
         let mut stack =
@@ -2159,7 +2139,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn full_stack_write_round_trips_bare_damage() {
         mod_api::testing::with_parts_registration_probe(
             Default::default(),
@@ -2184,7 +2164,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn damage_only_snapshots_preserve_presence_without_an_opaque_patch() {
         catalog();
         for damage in [0, 5] {
@@ -2203,7 +2183,7 @@ pub mod stack_limit_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn active_registry_limits_survive_world_replacement_and_owner_drop() {
         fn catalog_with(maximum: u32) -> Items {
             let mut items = catalog();
@@ -2762,9 +2742,7 @@ pub fn game_rule_int_snapshot_preserves_full_range() {
     }
 }
 
-pub fn with_rule_schema<T>(
-    f: impl FnOnce(&mod_api::__private::RuleSchema<'_>) -> T,
-) -> T {
+pub fn with_rule_schema<T>(f: impl FnOnce(&mod_api::__private::RuleSchema<'_>) -> T) -> T {
     let registry = sunrise_game_data::gamerules::rule_registry();
     f(&mod_api::__private::RuleSchema {
         category: &|id| registry.categories().iter().any(|category| category == id),

@@ -1,13 +1,13 @@
 //! Shears and entity parts (NeoForge's `IShearable`, #3351): a player's shears and a dispenser's
 //! ask the mob's entity parts first (`EntityPart::is_shearable`), and a part that says yes
 //! shears it (`EntityPart::on_sheared`) in place of the species' own shearing.
-use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Game, Hand};
 use mod_api::{
     PlayerRef,
     content::crash::{ModCall, enter_native_mod},
 };
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Species, Who};
 
@@ -57,7 +57,9 @@ impl crate::game::ServerGame<'_> {
         let (id, at) = (self.common.mobs[index].id, self.common.mobs[index].position);
         let parts = mod_api::__private::entity_parts();
         let (Some(attached), Some(entity), Ok(shears)) = (
-            parts.entity_parts(&self.common.mobs[index].kind.id).get(part),
+            parts
+                .entity_parts(&self.common.mobs[index].kind.id)
+                .get(part),
             self.common.entity(id),
             shears.try_into_api(),
         ) else {
@@ -72,7 +74,11 @@ impl crate::game::ServerGame<'_> {
             attached.part().on_sheared(self, entity, player, &shears)
         };
         // The part may have moved or removed the mob: its drops fall where it is now.
-        let index = self.common.mobs.iter().position(|m| m.id == id && !m.removed);
+        let index = self
+            .common
+            .mobs
+            .iter()
+            .position(|m| m.id == id && !m.removed);
         let at = index.map_or(at, |i| self.common.mobs[i].position);
         for drop in drops {
             let Ok(stack) = drop.try_into_engine(self.items()) else {
@@ -115,8 +121,10 @@ impl crate::game::ServerGame<'_> {
                 _ => false,
             };
         if shearable
-            && let (Some(uuid), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+            && let (Some(uuid), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             let mut cancel = false;
             let off_hand = self.common.hand == Hand::Off;

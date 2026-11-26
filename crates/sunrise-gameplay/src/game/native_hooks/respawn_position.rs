@@ -1,4 +1,5 @@
-
+use sunrise_core::position::BlockPos;
+use sunrise_world::registry::BlockStateId;
 
 impl crate::game::ServerGame<'_> {
     /// `IBlockExtension.getRespawnPosition`: where an entity of type `entity_type` whose

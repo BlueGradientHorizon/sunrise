@@ -49,7 +49,7 @@ impl GameLevel<'_> {
     /// `LevelAccess::observe_block_state_change`, and a client's own block writes: the parts
     /// of `old`'s block hear the change, then the parts of `new`'s block when the block
     /// changed. A panicking part is contained with a warning.
-    pub(in crate::game) fn block_state_change(
+    pub fn block_state_change(
         &self,
         pos: BlockPos,
         old: BlockStateId,

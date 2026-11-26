@@ -4,8 +4,8 @@
 //! resets the ticker). Reads return None for a stale handle or a player who
 //! isn't online here; a resting guest reads its saved body.
 use crate::game::ServerGame;
-use super::native_server::PlayerRead;
 use mod_api::PlayerRef;
+use sunrise_gameplay_common::game::native_server::PlayerRead;
 use sunrise_sim::attack_strength::{BASE_ATTACK_SPEED, delay};
 
 impl ServerGame<'_> {

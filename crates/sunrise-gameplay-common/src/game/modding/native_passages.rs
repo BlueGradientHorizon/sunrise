@@ -30,22 +30,22 @@ pub(in crate::game) const VERTICAL_LIMIT: f64 = 2.0e7;
 #[derive(Default)]
 pub(crate) struct Passages {
     /// The server's passages, by level, then by chunk ([`Passage::chunk`]).
-    pub(in crate::game) levels: FxHashMap<DimensionKey, LevelPassages>,
+    pub levels: FxHashMap<DimensionKey, LevelPassages>,
     /// Where each of the server's passages is.
-    pub(in crate::game) index: FxHashMap<PassageId, (DimensionKey, [i32; 2])>,
+    pub index: FxHashMap<PassageId, (DimensionKey, [i32; 2])>,
     /// The last number given; numbers start at 1 and are never reused.
-    pub(in crate::game) last: u64,
+    pub last: u64,
     /// The passages whose change the clients have not all been told, one entry each: a
     /// live passage not told to every client yet, or a removed one some were told of. So it
     /// holds at most the live passages and those told before their removal.
-    pub(in crate::game) dirty: FxHashMap<PassageId, Dirty>,
+    pub dirty: FxHashMap<PassageId, Dirty>,
     /// A client's copy: what its server told it of, kept with the chunk.
-    pub(in crate::game) held: FxHashMap<PassageId, Passage>,
+    pub held: FxHashMap<PassageId, Passage>,
     /// A client's crossing that waits for the server's position packet
     /// (`native_passage_cross.rs`).
-    pub(in crate::game) crossing: Option<PassageId>,
+    pub crossing: Option<PassageId>,
     /// The server's refusal of the client's last crossing, until the next.
-    pub(in crate::game) refused: Option<(PassageId, mod_api::PassageCrossRefusal)>,
+    pub refused: Option<(PassageId, mod_api::PassageCrossRefusal)>,
 }
 
 #[derive(Default)]
@@ -76,7 +76,7 @@ pub enum HeldRefusal {
 
 impl Passages {
     /// Level `key` closed (`LevelEvent.Unload`): its passages and their untold changes go.
-    pub(in crate::game) fn retire_level(&mut self, key: DimensionKey) {
+    pub fn retire_level(&mut self, key: DimensionKey) {
         if self.levels.remove(&key).is_none() && self.dirty.is_empty() {
             return;
         }
@@ -90,7 +90,7 @@ impl Passages {
 
     /// The world opened, closed or failed: every passage and change goes, the server's and
     /// a client's copy, but not the numbering.
-    pub(in crate::game) fn retire_world(&mut self) {
+    pub fn retire_world(&mut self) {
         self.levels.clear();
         self.index.clear();
         self.dirty.clear();
@@ -108,7 +108,7 @@ impl Passages {
     }
 
     /// The server's passage `id`, if level `key` holds it.
-    pub(in crate::game) fn find(&self, key: DimensionKey, id: PassageId) -> Option<Passage> {
+    pub fn find(&self, key: DimensionKey, id: PassageId) -> Option<Passage> {
         let &(at, chunk) = self.index.get(&id).filter(|(at, _)| *at == key)?;
         let list = self.levels.get(&at)?.chunks.get(&chunk)?;
         list.iter().find(|(held, _)| *held == id).map(|(_, p)| *p)
@@ -323,10 +323,8 @@ pub mod tests {
             .collect()
     }
 
-    
-
     #[cfg(test)]
-/// The doorway passes; each way of not being a finite rectangle with unit axes at a
+    /// The doorway passes; each way of not being a finite rectangle with unit axes at a
     /// right angle, sides in (0, 32] and corners inside vanilla's clamps is refused by name,
     /// at either end.
     #[test]
@@ -374,30 +372,14 @@ pub mod tests {
         );
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     #[cfg(test)]
-/// Removes the passage in the second `chunk_sent` it hears.
+    /// Removes the passage in the second `chunk_sent` it hears.
     struct RemoveOnSecondSent {
         heard: std::sync::Mutex<u32>,
         id: PassageId,
     }
     #[cfg(test)]
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for RemoveOnSecondSent {
         fn chunk_sent(&self, host: &mut dyn mod_api::ServerHost, e: &mut mod_api::ChunkSentEvent) {
             let mut heard = self.heard.lock().unwrap();
@@ -407,8 +389,4 @@ pub mod tests {
             }
         }
     }
-
-    
-
-    
 }

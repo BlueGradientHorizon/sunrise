@@ -82,22 +82,22 @@ pub struct PotionCloud {
 /// a guest keeps their own while the host's are in `PotionState`.
 #[derive(Default)]
 pub struct BodyPotions {
-    pub(in crate::game) protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
-    pub(in crate::game) enchant_modifiers: Vec<(String, String, f64, String)>,
+    pub protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
+    pub enchant_modifiers: Vec<(String, String, f64, String)>,
 }
 
 /// Effects, thrown potions and the cached armor and enchantment modifiers.
 #[derive(Default)]
 pub struct PotionState {
-    pub(in crate::game) effects: PlayerEffects,
+    pub effects: PlayerEffects,
     /// Reused holder snapshot for the read-only mod effect tick event.
-    pub(in crate::game) tick_keys: std::cell::RefCell<Vec<mod_api::EffectKey>>,
-    pub(in crate::game) thrown: Vec<ThrownPotion>,
+    pub tick_keys: std::cell::RefCell<Vec<mod_api::EffectKey>>,
+    pub thrown: Vec<ThrownPotion>,
     /// Armor the protection table was computed for.
-    pub(in crate::game) protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
+    pub protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
 
     /// Enchantment attribute modifiers on the player: (attribute, id, amount, operation).
-    pub(in crate::game) enchant_modifiers: Vec<(String, String, f64, String)>,
+    pub enchant_modifiers: Vec<(String, String, f64, String)>,
 }
 
 /// An entity a cloud has affected (`AreaEffectCloud.victims`).
@@ -123,7 +123,7 @@ fn thrown_kind(stack: &ItemStack) -> &'static str {
 }
 
 impl CloudSettings {
-    pub(in crate::game) fn lingering() -> Self {
+    pub fn lingering() -> Self {
         Self {
             wait_time: LINGERING_WAIT,
             reapplication_delay: REAPPLICATION_DELAY,
@@ -151,18 +151,18 @@ impl PotionCloud {
 impl PotionState {
     /// Thrown potions in flight as (entity type, position, motion), for the
     /// dispenser parity fixture.
-    pub(in crate::game) fn thrown_entities(&self) -> Vec<(&'static str, Vec3, Vec3)> {
+    pub fn thrown_entities(&self) -> Vec<(&'static str, Vec3, Vec3)> {
         self.thrown
             .iter()
             .map(|t| (thrown_kind(&t.stack), t.position, t.velocity))
             .collect()
     }
-    pub(in crate::game) fn clear_thrown(&mut self) {
+    pub fn clear_thrown(&mut self) {
         self.thrown.clear();
     }
     /// The numbered ones as a server's clients track them: (id, entity
     /// type, item, position, motion).
-    pub(in crate::game) fn thrown_tracked(
+    pub fn thrown_tracked(
         &self,
     ) -> impl Iterator<Item = (u32, &'static str, &ItemStack, Vec3, Vec3)> {
         self.thrown.iter().filter(|t| t.id != 0).map(|t| {
@@ -177,14 +177,14 @@ impl PotionState {
     }
     /// A server's move: thrown potions have no interpolation handler, so
     /// `moveOrInterpolateTo` puts them there at once. False when `id` isn't one.
-    pub(in crate::game) fn remote_thrown_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+    pub fn remote_thrown_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
         let t = self.thrown.iter().find(|t| t.id == id)?;
         Some((
             [t.position.x, t.position.y, t.position.z],
             [t.previous.x, t.previous.y, t.previous.z],
         ))
     }
-    pub(in crate::game) fn has_thrown(&self, id: u32) -> bool {
+    pub fn has_thrown(&self, id: u32) -> bool {
         self.thrown.iter().any(|t| t.id == id)
     }
 }

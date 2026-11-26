@@ -323,9 +323,9 @@ sunrise_sim::impl_joined!(Crystal);
 sunrise_mod_runtime::impl_attachment_lifetime!(Crystal);
 impl Crystal {
     /// `EntityType.END_CRYSTAL.getDimensions()`: width, height and eye height.
-    pub(in crate::game) const DIMENSIONS: [f32; 3] = [2.0, 2.0, 1.7];
+    pub const DIMENSIONS: [f32; 3] = [2.0, 2.0, 1.7];
     /// `EntityType.END_CRYSTAL`: 2 x 2.
-    pub(in crate::game) fn bounds(&self) -> Aabb {
+    pub fn bounds(&self) -> Aabb {
         let p = self.position;
         let vanilla = Aabb::new(
             Vec3::new(p.x - 1.0, p.y, p.z - 1.0),
@@ -343,7 +343,7 @@ impl Path {
     pub(in crate::game) fn done(&self) -> bool {
         self.next >= self.nodes.len()
     }
-    pub(in crate::game) fn advance(&mut self) {
+    pub fn advance(&mut self) {
         self.next += 1;
     }
     pub(in crate::game) fn next_pos(&self) -> [i32; 3] {
@@ -400,7 +400,7 @@ pub enum Phase {
 }
 /// A path compared by identity only (phases compare by kind).
 #[derive(Clone, Debug)]
-pub struct PathBox(pub(in crate::game) Path);
+pub struct PathBox(pub Path);
 impl PartialEq for PathBox {
     fn eq(&self, _: &Self) -> bool {
         true
@@ -423,7 +423,7 @@ impl Phase {
             Self::Hover { .. } => 10,
         }
     }
-    pub(in crate::game) fn from_id(id: i32) -> Self {
+    pub fn from_id(id: i32) -> Self {
         match id {
             1 => Self::Strafe {
                 charge: 0,
@@ -501,62 +501,62 @@ pub struct Dragon {
     pub id: u32,
     pub position: Vec3,
     pub previous: Vec3,
-    pub(in crate::game) velocity: Vec3,
+    pub velocity: Vec3,
     pub yaw: f32,
     pub pitch: f32,
     pub previous_yaw: f32,
-    pub(in crate::game) yaw_accel: f32,
+    pub yaw_accel: f32,
     pub health: f32,
     pub hurt_time: i32,
     /// `LivingEntity.damageCooldownTime` and `lastHurt`: within the window
     /// only damage above the last hit lands, and only the excess.
-    pub(in crate::game) invulnerable: i32,
-    pub(in crate::game) last_hurt: f32,
+    pub invulnerable: i32,
+    pub last_hurt: f32,
     /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
-    pub(in crate::game) last_hurt_mob: Option<(u32, i32)>,
+    pub last_hurt_mob: Option<(u32, i32)>,
     /// `lastHurtByPlayer` with its 100 tick memory: the player credited with
     /// the kill, and the dragon tick of their last hit.
-    pub(in crate::game) hurt_by_player: Option<(FightWho, i32)>,
+    pub hurt_by_player: Option<(FightWho, i32)>,
     pub last_source: Option<(&'static str, Option<i32>, Option<i32>)>,
     pub death_time: i32,
     pub flap: f32,
     pub old_flap: f32,
-    pub(in crate::game) in_wall: bool,
-    pub(in crate::game) phase: Phase,
+    pub in_wall: bool,
+    pub phase: Phase,
     /// `Mob.isAggressive` (the synced mob flag), `persistenceRequired` and
     /// the target a mod set (`Mob.target`): kept for native mods, the
     /// dragon's own flight never reads them.
-    pub(in crate::game) aggressive: bool,
-    pub(in crate::game) persistent: bool,
-    pub(in crate::game) target: Option<u32>,
+    pub aggressive: bool,
+    pub persistent: bool,
+    pub target: Option<u32>,
     /// The phase left was `Flaming` (`DragonSittingFlamingPhase.end`) and its
     /// cloud is still to be discarded.
-    pub(in crate::game) flame_ended: bool,
+    pub flame_ended: bool,
     pub(in crate::game) flame_count: i32,
-    pub(in crate::game) sitting_damage: f32,
+    pub sitting_damage: f32,
     /// `LivingEntity.equipment`: nothing in the fight reads it; it is kept
     /// for mods and saves.
     pub equipment: sunrise_items::equipment::Equipment,
     /// The live attribute map (`AttributeMap`), built when an item with
     /// attribute modifiers is worn or it is read.
     pub live: sunrise_sim::living_attributes::LivingAttributes,
-    pub(in crate::game) growl: i32,
+    pub growl: i32,
     /// `Mob.ambientSoundTime`.
-    pub(in crate::game) ambient_time: i32,
-    pub(in crate::game) ticks: i32,
+    pub ambient_time: i32,
+    pub ticks: i32,
     /// DragonFlightHistory: (y, yRot) samples, newest at `head`.
     pub(in crate::game) history: [(f64, f32); 64],
     pub(in crate::game) head: usize,
     /// head, neck, body, tail1-3, wing1-2.
     pub parts: [DragonPart; 8],
-    pub(in crate::game) nodes: Option<[[i32; 3]; 24]>,
-    pub(in crate::game) nearest_crystal: Option<usize>,
+    pub nodes: Option<[[i32; 3]; 24]>,
+    pub nearest_crystal: Option<usize>,
     /// The player a crystal destroyed while it held its pattern sends it
     /// after (`strafe_after_crystal`), taken on its next tick.
-    pub(in crate::game) strafe_request: Option<FightWho>,
+    pub strafe_request: Option<FightWho>,
     /// `Mob.isNoAi` (`NoAI`): it flaps in place, with no phase or flight.
-    pub(in crate::game) no_ai: bool,
-    pub(in crate::game) random: LegacyRandom,
+    pub no_ai: bool,
+    pub random: LegacyRandom,
 }
 /// A player in the fight: the window's own player, or a guest by
 /// connection (a LAN or server player).
@@ -576,7 +576,7 @@ pub(in crate::game) struct DragonPart(
     pub Vec3,
     pub Vec3,
     pub(in crate::game) sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) [i32; 4],
+    pub [i32; 4],
 );
 impl Default for DragonPart {
     fn default() -> Self {
@@ -602,7 +602,7 @@ impl sunrise_mod_runtime::attachments::HasAttachmentLifetime for Dragon {
 impl Crystal {
     /// `new EndCrystal(level, x, y, z)`: no beam, not invulnerable, on no
     /// ground with no fall (what `Entity`'s constructor leaves).
-    pub(in crate::game) fn new(id: u32, position: Vec3, show_bottom: bool, time: i32) -> Self {
+    pub fn new(id: u32, position: Vec3, show_bottom: bool, time: i32) -> Self {
         Self {
             size_answer: None,
             attachment_lifetime: Default::default(),
@@ -622,7 +622,7 @@ impl Crystal {
     /// `RandomSource.create()`): its UUID (`Mth.createInsecureUUID`), then
     /// `time = random.nextInt(100000)`. The level's random draws nothing. Returns the drawn time
     /// (for `start_time`) and the UUID.
-    pub(in crate::game) fn own_draws() -> (i32, [i32; 4]) {
+    pub fn own_draws() -> (i32, [i32; 4]) {
         let mut random = sunrise_level::random_source::entity();
         let uuid = sunrise_sim::save::insecure_uuid(&mut random);
         (random.next_int_bound(100_000).unwrap_or(0), uuid)
@@ -632,7 +632,7 @@ impl Crystal {
     /// gets which draw, and a server's entity ids, follow the order chunks load in, which differs
     /// between launches; the position is the same in every copy of the world. The draw is made
     /// either way, so the random stays where it would be.
-    pub(in crate::game) fn start_time(position: Vec3, drawn: i32, still: bool) -> i32 {
+    pub fn start_time(position: Vec3, drawn: i32, still: bool) -> i32 {
         if still {
             sunrise_sim::mobs::entity_random(0, position)
                 .next_int_bound(100_000)
@@ -651,7 +651,7 @@ impl Dragon {
     /// `EnderDragon`'s constructor: full health, hovering (`EnderDragonPhase.HOVERING`). Only
     /// `EnderDragonFight.createNewDragon` sets the holding pattern; a dragon from `/summon`, a
     /// spawn egg or a save without `DragonPhase` keeps hovering where it was put.
-    pub(in crate::game) fn new(position: Vec3, yaw: f32, seed: i64) -> Self {
+    pub fn new(position: Vec3, yaw: f32, seed: i64) -> Self {
         Self {
             residency: Default::default(),
             join: Default::default(),
@@ -699,7 +699,7 @@ impl Dragon {
         }
     }
     /// DragonFlightHistory.record.
-    pub(in crate::game) fn record(&mut self) {
+    pub fn record(&mut self) {
         self.head = (self.head + 1) & 63;
         self.history[self.head] = (self.position.y, self.yaw);
     }
@@ -709,7 +709,7 @@ impl Dragon {
     }
     /// `DragonFlightHistory.get(delay, partial)`, with
     /// `EnderDragonRenderer.extractRenderState`'s frozen history on death.
-    pub(in crate::game) fn sample_lerp(&self, delay: usize, partial: f32) -> (f64, f32) {
+    pub fn sample_lerp(&self, delay: usize, partial: f32) -> (f64, f32) {
         let partial = if self.alive() { partial } else { 0.0 };
         let a = self.sample(delay);
         let b = self.sample(delay + 1);
@@ -724,7 +724,7 @@ impl Dragon {
         matches!(self.phase, Phase::Dying { .. }) || !self.alive()
     }
     /// The entity's own box, not any of the separate `EnderDragonPart` boxes.
-    pub(in crate::game) fn body_bounds(&self) -> Aabb {
+    pub fn body_bounds(&self) -> Aabb {
         // EntityTypes.ENDER_DRAGON dimensions: 16 wide, 8 high.
         let p = self.position;
         Aabb::new(
@@ -733,10 +733,10 @@ impl Dragon {
         )
     }
     /// Where part `i` stands and its box.
-    pub(in crate::game) fn part_geometry(&self, i: usize) -> (Vec3, Aabb) {
+    pub fn part_geometry(&self, i: usize) -> (Vec3, Aabb) {
         (self.parts[i].0, self.part_box(i))
     }
-    pub(in crate::game) fn part_box(&self, i: usize) -> Aabb {
+    pub fn part_box(&self, i: usize) -> Aabb {
         let (w, h) = PART_SIZES[i];
         let p = self.parts[i].0;
         Aabb::new(
@@ -766,7 +766,7 @@ impl Dragon {
     /// `ServerExplosion.hurtEntities` on the dragon: the dragon itself (its
     /// body takes it), then each part, in `Level.getEntities` order, each by
     /// its distance and how much of its box the blast sees (`exposure`).
-    pub(in crate::game) fn explosion_hits(
+    pub fn explosion_hits(
         &self,
         center: [f64; 3],
         radius: f32,
@@ -800,14 +800,14 @@ impl Dragon {
     /// `ServerExplosion.hurtEntities` knockback on the dragon itself:
     /// `pushFromExplosion` adds `(1 - dist) * exposure` along the blast to
     /// its eye to the motion (`Entity.push`); the parts are not pushed.
-    pub(in crate::game) fn whole_box(&self) -> Aabb {
+    pub fn whole_box(&self) -> Aabb {
         let p = self.position;
         Aabb::new(
             Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
             Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
         )
     }
-    pub(in crate::game) fn explosion_knockback(
+    pub fn explosion_knockback(
         &self,
         center: [f64; 3],
         radius: f32,
@@ -832,17 +832,17 @@ impl Dragon {
         Some(away.map(|d| d / l * power))
     }
     /// The phase as a native mod sees it.
-    pub(in crate::game) fn native_phase(&self) -> DragonPhase {
+    pub fn native_phase(&self) -> DragonPhase {
         DragonPhase::from_id(self.phase.id()).expect("the phases are the vanilla ones")
     }
     /// `EnderDragonPhaseManager.setPhase`: nothing when it is the phase it
     /// holds (a strafing dragon too), else the new phase begins fresh.
-    pub(in crate::game) fn set_native_phase(&mut self, phase: DragonPhase) {
+    pub fn set_native_phase(&mut self, phase: DragonPhase) {
         if phase != self.native_phase() {
             self.set_phase(Phase::from_id(phase.id()));
         }
     }
-    pub(in crate::game) fn set_phase(&mut self, phase: Phase) {
+    pub fn set_phase(&mut self, phase: Phase) {
         if self.phase.id() == phase.id() && phase.id() != 1 {
             return;
         }
@@ -863,7 +863,7 @@ impl Dragon {
     pub(in crate::game) fn first_tick(&self) -> bool {
         self.ticks == 0
     }
-    pub(in crate::game) fn to_nbt(
+    pub fn to_nbt(
         &self,
         uuid: [i32; 4],
         raw: Option<&Tag>,
@@ -898,7 +898,7 @@ impl Dragon {
         }
         tag
     }
-    pub(in crate::game) fn from_nbt(tag: &Tag, seed: i64) -> Option<Self> {
+    pub fn from_nbt(tag: &Tag, seed: i64) -> Option<Self> {
         let (position, velocity, _) = sunrise_sim::entity_nbt::boat_from_nbt(tag)?;
         let [yaw, pitch] = sunrise_sim::entity_nbt::loaded_rotation(tag);
         let mut d = Self::new(position, yaw, seed);
@@ -924,7 +924,7 @@ impl Dragon {
     }
 }
 impl Crystal {
-    pub(in crate::game) fn to_nbt(&self, uuid: [i32; 4], raw: Option<&Tag>) -> Tag {
+    pub fn to_nbt(&self, uuid: [i32; 4], raw: Option<&Tag>) -> Tag {
         let mut tag = sunrise_sim::entity_nbt::vehicle_to_nbt(
             "minecraft:end_crystal",
             self.position,
@@ -949,7 +949,7 @@ impl Crystal {
         }
         tag
     }
-    pub(in crate::game) fn from_nbt(tag: &Tag, time: i32) -> Option<Self> {
+    pub fn from_nbt(tag: &Tag, time: i32) -> Option<Self> {
         let (position, _, _) = sunrise_sim::entity_nbt::boat_from_nbt(tag)?;
         // TagValueInput.getShortOr uses NumericTag.shortValue.
         let fire = match tag.get("Fire") {
@@ -981,24 +981,24 @@ pub struct Breath {
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id once a server's players track it (0 until then).
-    pub(in crate::game) id: u32,
-    pub(in crate::game) at: [f64; 3],
-    pub(in crate::game) motion: [f64; 3],
+    pub id: u32,
+    pub at: [f64; 3],
+    pub motion: [f64; 3],
     /// `Entity.fallDistance`: as loaded, until water resets or lava halves it.
-    pub(in crate::game) fall_distance: f64,
+    pub fall_distance: f64,
     /// `Entity.remainingFireTicks`: a cloud is fire immune, so its first tick
     /// clears a burning one to 0.
-    pub(in crate::game) fire_ticks: i32,
+    pub fire_ticks: i32,
     /// `Entity.firstTick`: true until the first base tick finishes, gating `isInLava()`.
-    pub(in crate::game) first_tick: bool,
-    pub(in crate::game) radius: f32,
-    pub(in crate::game) age: i32,
-    pub(in crate::game) duration: i32,
-    pub(in crate::game) from_dragon: bool,
+    pub first_tick: bool,
+    pub radius: f32,
+    pub age: i32,
+    pub duration: i32,
+    pub from_dragon: bool,
     /// Who it hit and until which age (`AreaEffectCloud.victims`).
-    pub(in crate::game) victims: Vec<(Victim, i32)>,
+    pub victims: Vec<(Victim, i32)>,
     /// A lingering potion's cloud (`ThrownLingeringPotion`): what it applies.
-    pub(in crate::game) potion: Option<PotionCloud>,
+    pub potion: Option<PotionCloud>,
 }
 
 sunrise_sim::impl_joined!(Breath, Dragon);
@@ -1007,7 +1007,7 @@ sunrise_mod_runtime::impl_attachment_lifetime!(Breath);
 impl Breath {
     /// `AreaEffectCloud.isWaiting`: before its wait time (20 ticks, 10 for a
     /// lingering potion's).
-    pub(in crate::game) fn waiting(&self) -> bool {
+    pub fn waiting(&self) -> bool {
         self.age < self.potion.as_ref().map_or(20, |p| p.settings.wait_time)
     }
 }

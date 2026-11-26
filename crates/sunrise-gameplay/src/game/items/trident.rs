@@ -4,13 +4,13 @@
 //! return to the owner, pickup) with `ThrownTridentRenderer`, and Channeling's
 //! lightning on a hit (`channeling.json`).
 use super::{Game, commands::Target};
-use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use mod_api::{__private::TransactionFrame, SoundSource};
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 #[allow(unused_imports)]
 use sunrise_items::{enchant::EffectContext, items::ItemStack};
 #[allow(unused_imports)]
@@ -70,7 +70,9 @@ impl crate::game::ServerGame<'_> {
         self.spawn_bolt(at, false);
         // The summon effect's owner is the thrower: LightningBolt.setCause.
         if let Some(last) = self.common.bolts.len().checked_sub(1) {
-            self.common.bolts.update(last, |bolt| bolt.cause = Some(guest));
+            self.common
+                .bolts
+                .update(last, |bolt| bolt.cause = Some(guest));
         }
         self.server_play_sound("minecraft:item.trident.thunder", at, 5.0, 1.0);
     }
@@ -100,7 +102,8 @@ impl crate::game::ServerGame<'_> {
                 return None;
             }
             let shape = self
-                .common.collision
+                .common
+                .collision
                 .collision_shape(&mut scene, state, [p.x, p.y, p.z])
                 .ok()?;
             shape.clip(from, to, p)
@@ -108,8 +111,18 @@ impl crate::game::ServerGame<'_> {
         let Some(hit) = hit.ok().flatten() else {
             return;
         };
-        let state = self.common.world.block(hit.block.x, hit.block.y, hit.block.z);
-        if !self.common.res.facts().get(state).name.ends_with("lightning_rod") {
+        let state = self
+            .common
+            .world
+            .block(hit.block.x, hit.block.y, hit.block.z);
+        if !self
+            .common
+            .res
+            .facts()
+            .get(state)
+            .name
+            .ends_with("lightning_rod")
+        {
             return;
         }
         let edge = f64::from(1.0e-5f32);
@@ -144,7 +157,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         // Counted on the server before the throw or the spin.
@@ -180,7 +194,8 @@ impl crate::game::ServerGame<'_> {
             // (LocalPlayer.move, through the move gate, #2414), which stops at a ceiling and whose
             // end writes the ground state, so the rest of the tick travels in the air.
             if let Some(before) = self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .filter(|p| p.ground.on_ground)
                 .map(|p| p.position.components())
@@ -226,9 +241,10 @@ impl crate::game::ServerGame<'_> {
                     }
                 }
             }
-            if let (Some(player), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-            {
+            if let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            ) {
                 self.native_player_riptide(player, &name);
             }
             return;
@@ -248,7 +264,15 @@ impl crate::game::ServerGame<'_> {
         let (v, on_ground) = self.common.player.as_ref().map_or((Vec3::ZERO, true), |p| {
             (self.common.known_player_movement(), p.ground.on_ground)
         });
-        projectile.shoot_from_rotation(self.common.pitch, self.common.yaw, 0.0, 2.5, 1.0, v, on_ground);
+        projectile.shoot_from_rotation(
+            self.common.pitch,
+            self.common.yaw,
+            0.0,
+            2.5,
+            1.0,
+            v,
+            on_ground,
+        );
         let id = self.take_entity_id();
         if let Some(uuid) = projectile.uuid {
             self.common.persist.uuids.insert(id, uuid);
@@ -380,7 +404,11 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn trident_catchers(&self) -> Vec<Catcher> {
         let mut out = Vec::new();
         if let Some(eye) = self.common.eye_position() {
-            let feet = self.common.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
+            let feet = self
+                .common
+                .player
+                .as_ref()
+                .map_or(Vec3::ZERO, |p| p.position);
             out.push(Catcher {
                 guest: None,
                 id: 0,
@@ -532,7 +560,8 @@ impl crate::game::ServerGame<'_> {
                 t.loyalty_pull(owner_eye);
                 // The pull is a position update of its own, before the trident's move.
                 let to = t.position;
-                self.common.entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.common
+                    .entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                 if t.returning == 0 {
                     self.server_play_sound(
                         "minecraft:item.trident.return",
@@ -601,8 +630,13 @@ impl crate::game::ServerGame<'_> {
                 // AbstractArrow.tick: clip blocks first, then search pickable entities up to end.
                 let from = t.position;
                 let flight = t.velocity;
-                let clip =
-                    clip_block_hit(&self.common.world, self.common.res.facts(), self.common.collision, from, flight);
+                let clip = clip_block_hit(
+                    &self.common.world,
+                    self.common.res.facts(),
+                    self.common.collision,
+                    from,
+                    flight,
+                );
                 let end = clip.map_or(from.add_vector(flight), |(at, _, _)| at);
                 // ProjectileUtil.computeMargin + NearestHit broad-phase over live targets.
                 let margin = sunrise_sim::projectiles::compute_margin(t.age as i32);
@@ -614,7 +648,7 @@ impl crate::game::ServerGame<'_> {
                 .inflate(Vec3::new(1.0, 1.0, 1.0));
                 let mut best = sunrise_sim::projectiles::NearestHit::new();
                 if !t.dealt_damage {
-                    let query = super::creatures::TargetQuery {
+                    let query = sunrise_gameplay_common::game::creatures::TargetQuery {
                         include_guests: true,
                         arrow_friendly_fire: owner_who.map(|o| (o, t.guest)),
                         ..Default::default()
@@ -649,13 +683,13 @@ impl crate::game::ServerGame<'_> {
                     // No damage, sound or deflection: it flies on from the contact.
                 } else if let Some((who, _)) = hit_entity {
                     // `Breeze.deflection`: turns a trident back without dealing damage.
-                    let breeze = match who {
-                        Who::Mob(id) => self
-                            .common.mobs
-                            .iter()
-                            .find(|m| m.id == id && m.alive() && m.species() == Species::Breeze),
-                        Who::Player => None,
-                    };
+                    let breeze =
+                        match who {
+                            Who::Mob(id) => self.common.mobs.iter().find(|m| {
+                                m.id == id && m.alive() && m.species() == Species::Breeze
+                            }),
+                            Who::Player => None,
+                        };
                     if let Some(breeze) = breeze {
                         let breeze_id = breeze.id;
                         if t.deflected_by != Some(breeze_id) {
@@ -756,7 +790,8 @@ impl crate::game::ServerGame<'_> {
                                     self.common.tridents.put_back(i, t);
                                     hurt(self);
                                     let Some(index) = self
-                                        .common.tridents
+                                        .common
+                                        .tridents
                                         .locate(join)
                                         .filter(|_| !self.common.removal_pending(&target))
                                     else {
@@ -776,7 +811,9 @@ impl crate::game::ServerGame<'_> {
                                 }
                             }
                             Who::Mob(id) => {
-                                if let Some(mob_idx) = self.common.mob_index.find(&self.common.mobs, id) {
+                                if let Some(mob_idx) =
+                                    self.common.mob_index.find(&self.common.mobs, id)
+                                {
                                     let plan = self
                                         .prepare_knockback_credit(id as i32, owner_who, &attack);
                                     // The hit's causing entity, lent to its listeners beside the victim.
@@ -784,7 +821,8 @@ impl crate::game::ServerGame<'_> {
                                     let decision = crate::game::server_side::entity_server::causer_decision!(
                                         self, causing
                                     );
-                                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                                    let mut credit =
+                                        plan.lend(&mut self.server.last_hurt_by_player);
                                     let from_pos = Some([t.position.x, t.position.y, t.position.z]);
                                     let join = self.common.mobs[mob_idx].join;
                                     let (victim, lend) = crate::game::server_side::entity_server::victim_and_causer!(
@@ -814,7 +852,8 @@ impl crate::game::ServerGame<'_> {
                                         if hurt {
                                             hurt_mob = Some((id, join));
                                         } else if self
-                                            .common.mobs
+                                            .common
+                                            .mobs
                                             .iter()
                                             .find(|m| m.id == id && m.join == join && !m.removed)
                                             .is_some_and(|m| m.species() == Species::Enderman)
@@ -838,11 +877,12 @@ impl crate::game::ServerGame<'_> {
                                         }
                                     } else {
                                         let stand_pos = self
-                                            .common.armor_stands
+                                            .common
+                                            .armor_stands
                                             .iter()
                                             .find(|a| a.id == id)
                                             .map(|a| a.position.components());
-                                        let info = super::creatures::ProjectileHitInfo {
+                                        let info = sunrise_gameplay_common::game::creatures::ProjectileHitInfo {
                                             direct_id: t.id,
                                             owner: owner_who,
                                             guest: t.guest,
@@ -855,7 +895,7 @@ impl crate::game::ServerGame<'_> {
                                             ignite_seconds: None,
                                         };
                                         if self.projectile_hurts_non_mob(&info, id)
-                                            == super::creatures::NonMobHit::Hurt
+                                            == sunrise_gameplay_common::game::creatures::NonMobHit::Hurt
                                             && let Some(pos) = stand_pos
                                         {
                                             hurt_stand = Some((id, pos));
@@ -885,7 +925,8 @@ impl crate::game::ServerGame<'_> {
                             let channeling_at = if hurt_player {
                                 self.common.player.as_ref().map(|p| p.position.components())
                             } else if let Some((id, join)) = hurt_mob {
-                                self.common.mobs
+                                self.common
+                                    .mobs
                                     .iter()
                                     .find(|m| m.id == id && m.join == join && !m.removed)
                                     .map(|m| m.position.components())
@@ -905,7 +946,8 @@ impl crate::game::ServerGame<'_> {
                         if owner_who.is_some()
                             && let Some((id, join)) = hurt_mob
                             && let Some(m) = self
-                                .common.mobs
+                                .common
+                                .mobs
                                 .iter()
                                 .find(|m| m.id == id && m.join == join && !m.removed)
                         {
@@ -1046,7 +1088,8 @@ impl crate::game::ServerGame<'_> {
             } else {
                 self.common.tridents.insert(i, t);
             }
-            self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.common
+                .entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             if let Some(frame) = transaction.take() {
                 self.close_storage_frame(frame, true);
             }
@@ -1117,7 +1160,9 @@ impl crate::game::ServerGame<'_> {
             host.hub.take_item(t.id as i32, by.id, 1, at);
         }
         if by.guest.is_none() {
-            let pitch = ((self.common.world.random.next_float() - self.common.world.random.next_float()) * 0.7
+            let pitch = ((self.common.world.random.next_float()
+                - self.common.world.random.next_float())
+                * 0.7
                 + 1.0)
                 * 2.0;
             self.server_play_sound(

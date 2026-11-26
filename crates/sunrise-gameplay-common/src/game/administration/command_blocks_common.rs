@@ -7,7 +7,7 @@ use sunrise_gameplay_common::command_blocks::state_of;
 use sunrise_level::{command_block::CommandBlock, containers::BlockEntity};
 use sunrise_world::chunk::BlockState;
 
-pub(in crate::game) type Pos = (i32, i32, i32);
+pub type Pos = (i32, i32, i32);
 
 impl crate::game::CommonGame<'_> {
     /// `Player.canUseGameMasterBlocks`: creative with game master commands.

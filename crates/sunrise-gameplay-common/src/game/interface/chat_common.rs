@@ -18,7 +18,7 @@ use sunrise_world::{
 pub const PLAYER_NAME: &str = "Player";
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::world_clock::OVERWORLD_CLOCK;
+pub use sunrise_gameplay_common::world_clock::OVERWORLD_CLOCK;
 #[allow(unused_imports)]
 pub use sunrise_gameplay_common::world_clock::TimeMarker;
 
@@ -97,9 +97,7 @@ pub(in crate::game) fn json_ids_in(dir: &Path) -> Vec<String> {
 }
 
 /// The overworld clock's timelines and time markers, read from `data/minecraft/timeline`.
-pub fn overworld_timelines(
-    root: &Path,
-) -> (Vec<(String, Option<i64>)>, Vec<(String, TimeMarker)>) {
+pub fn overworld_timelines(root: &Path) -> (Vec<(String, Option<i64>)>, Vec<(String, TimeMarker)>) {
     let dir = root.join("data/minecraft/timeline");
     let (mut timelines, mut markers) = (Vec::new(), Vec::new());
     for name in json_ids_in(&dir) {

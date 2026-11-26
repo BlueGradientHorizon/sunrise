@@ -4,12 +4,7 @@
 //! event it plays (`DefaultDispenseItemBehavior.dispense` then plays that
 //! event and the smoke animation, event 2000).
 #[allow(unused_imports)]
-use super::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
-#[allow(unused_imports)]
 use super::{Dim, Game, item_abilities::ability};
-#[allow(unused_imports)]
-use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
-use sunrise_gameplay_common::game::spill_common;
 #[allow(unused_imports)]
 use mod_api::SoundSource;
 #[allow(unused_imports)]
@@ -30,6 +25,11 @@ use sunrise_gameplay::dispense_rules::{
     LAUNCH, block_box, data_value, mob_can_dispenser_equip, mob_can_use_slot, overlaps,
     section_order, shrink, step, y_rot,
 };
+#[allow(unused_imports)]
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
+#[allow(unused_imports)]
+use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
+use sunrise_gameplay_common::game::spill_common;
 #[allow(unused_imports)]
 use sunrise_world::{
     fluid::FluidKind,
@@ -197,12 +197,14 @@ impl crate::game::ServerGame<'_> {
     ) {
         let spawn = self.prepared_dispensed(pos, facing, stack);
         if self.has_level_transaction() {
-            self.after_commit(super::transactions::After::DispenserDrop {
-                pos,
-                facing,
-                spawn: Box::new(spawn),
-                play_events,
-            });
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::DispenserDrop {
+                    pos,
+                    facing,
+                    spawn: Box::new(spawn),
+                    play_events,
+                },
+            );
         } else {
             self.commit_dispensed(pos, facing, spawn, play_events);
         }
@@ -266,7 +268,11 @@ impl crate::game::ServerGame<'_> {
         let stack = stack.try_into_engine_preserving_count(self.items())?;
         let left = if !(self.server.serving.is_some() || self.common.options.dedicated.is_some())
             || dimension != self.common.dim.id()
-            || !self.common.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
+            || !self
+                .common
+                .world
+                .chunks
+                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
         {
             Some(stack)
         } else {
@@ -287,7 +293,11 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<ItemStack> {
         if !(self.server.serving.is_some() || self.common.options.dedicated.is_some())
             || dimension != self.common.dim.id()
-            || !self.common.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
+            || !self
+                .common
+                .world
+                .chunks
+                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
             || stack.count == 0
         {
             return Some(stack).filter(|stack| stack.count > 0);
@@ -305,7 +315,11 @@ impl crate::game::ServerGame<'_> {
     ) -> std::result::Result<(), mod_api::LevelWriteError> {
         if !(self.server.serving.is_some() || self.common.options.dedicated.is_some())
             || dimension != self.common.dim.id()
-            || !self.common.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
+            || !self
+                .common
+                .world
+                .chunks
+                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
         {
             return Err(mod_api::LevelWriteError::Unavailable);
         }
@@ -320,11 +334,13 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
     ) -> Option<ItemStack> {
         let left = self.default_execute(pos, facing, stack);
-        self.after_commit(super::transactions::After::DispenserFeedback {
-            pos,
-            facing,
-            event: CLICK,
-        });
+        self.after_commit(
+            sunrise_gameplay_common::game::transactions::After::DispenserFeedback {
+                pos,
+                facing,
+                event: CLICK,
+            },
+        );
         left
     }
     /// `DefaultDispenseItemBehavior.addToInventoryOrDispense`: inserts `remainder` into the
@@ -350,7 +366,8 @@ impl crate::game::ServerGame<'_> {
             _ => resident,
         };
         let slots = self
-            .common.world
+            .common
+            .world
             .block_entities
             .get(&pos)
             .filter(|_| holder == resident)
@@ -358,7 +375,8 @@ impl crate::game::ServerGame<'_> {
         let mut set_item = false;
         for slot in 0..slots {
             let room = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get(&pos)
                 .and_then(|entity| entity.slots().get(slot))
@@ -377,7 +395,8 @@ impl crate::game::ServerGame<'_> {
             }
             self.journal_block_entity_slot(pos, slot);
             if let Some(cell) = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get_mut(&pos)
                 .and_then(|entity| entity.slot_mut(slot))
@@ -508,11 +527,13 @@ impl crate::game::ServerGame<'_> {
             // Feedback follows the behaviour's effects. Event 0 still replaces the slot,
             // but plays neither sound nor smoke.
             if event != 0 {
-                self.after_commit(super::transactions::After::DispenserFeedback {
-                    pos,
-                    facing,
-                    event,
-                });
+                self.after_commit(
+                    sunrise_gameplay_common::game::transactions::After::DispenserFeedback {
+                        pos,
+                        facing,
+                        event,
+                    },
+                );
             }
             return Ok(ControlFlow::Continue(left));
         }
@@ -573,7 +594,13 @@ impl crate::game::ServerGame<'_> {
         if event == FAIL {
             self.native_block_failed_dispense(self.common.dim.id(), [pos.0, pos.1, pos.2], &item);
         }
-        self.after_commit(super::transactions::After::DispenserFeedback { pos, facing, event });
+        self.after_commit(
+            sunrise_gameplay_common::game::transactions::After::DispenserFeedback {
+                pos,
+                facing,
+                event,
+            },
+        );
         Ok(ControlFlow::Continue(left))
     }
     /// `DispenserBlock.getDefaultDispenseMethod`: equipment, spawn eggs, or a drop.
@@ -592,7 +619,8 @@ impl crate::game::ServerGame<'_> {
             return Ok((self.default_execute(pos, facing, stack), CLICK));
         }
         let swallowable = self
-            .common.res
+            .common
+            .res
             .items()
             .item_tags
             .get("minecraft:sulfur_cube_swallowable")
@@ -619,14 +647,16 @@ impl crate::game::ServerGame<'_> {
         let block = block_box(p);
         let key = |at: Vec3, id: u32| (section_order(at), id);
         let mut found: Vec<(_, Target)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .filter(|(_, m)| !m.removed && overlaps(m.bounds(), block))
             .map(|(i, m)| (key(m.position, m.id), Target::Mob(i)))
             .collect();
         found.extend(
-            self.common.armor_stands
+            self.common
+                .armor_stands
                 .iter()
                 .enumerate()
                 .filter(|(_, s)| overlaps(s.bounds(), block))
@@ -753,7 +783,7 @@ impl crate::game::ServerGame<'_> {
             ];
             return self.spawn_dragon_spawned(
                 at,
-                super::creatures::SpawnSite::Finalizing(
+                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::Dispenser,
                 ),
             );
@@ -773,7 +803,7 @@ impl crate::game::ServerGame<'_> {
             &name,
             at,
             true,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Dispenser,
             ),
         )?;
@@ -1037,10 +1067,16 @@ impl crate::game::ServerGame<'_> {
         let _ = self.common.world.random.next_float();
         self.server.next_entity += 1;
         let (_, uuid) = sunrise_sim::mobs::living_random();
-        self.common.persist.uuids.insert(self.server.next_entity, uuid);
+        self.common
+            .persist
+            .uuids
+            .insert(self.server.next_entity, uuid);
         let stand =
             sunrise_sim::entities::ArmorStand::new(self.server.next_entity, foot, y_rot(facing));
-        self.common.world.modified.insert((front.0 >> 4, front.2 >> 4));
+        self.common
+            .world
+            .modified
+            .insert((front.0 >> 4, front.2 >> 4));
         self.common.armor_stands.push(stand);
         // EntityType.appendDefaultStackConfig: the dispenser's yaw first, then
         // the item's createDefaultStackConfig with no user.
@@ -1087,9 +1123,10 @@ impl crate::game::ServerGame<'_> {
         facing: Direction,
         stack: ItemStack,
     ) -> Dispensed {
-        let Some((wood, chest)) =
-            sunrise_gameplay_common::game::boats_common::registered_boat_item(&stack.item, self.common.res.items())
-        else {
+        let Some((wood, chest)) = sunrise_gameplay_common::game::boats_common::registered_boat_item(
+            &stack.item,
+            self.common.res.items(),
+        ) else {
             return (self.dispense_default_in_level(pos, facing, stack), CLICK);
         };
         let front = offset(pos, facing);
@@ -1120,7 +1157,10 @@ impl crate::game::ServerGame<'_> {
         if chest {
             boat = boat.with_chest();
         }
-        self.common.world.modified.insert((front.0 >> 4, front.2 >> 4));
+        self.common
+            .world
+            .modified
+            .insert((front.0 >> 4, front.2 >> 4));
         let (id, kind, yaw) = (boat.id, boat.entity_type(), boat.yaw);
         self.common.boats.push(boat);
         // BoatDispenseItemBehavior: createDefaultStackConfig with no user,
@@ -1176,7 +1216,10 @@ impl crate::game::ServerGame<'_> {
             kind,
             Vec3::new(x, base_y + y_offset, z),
         );
-        self.common.world.modified.insert((front.0 >> 4, front.2 >> 4));
+        self.common
+            .world
+            .modified
+            .insert((front.0 >> 4, front.2 >> 4));
         self.common.carts.push(cart);
         // AbstractMinecart.createMinecart: createDefaultStackConfig with no user.
         let id = self.server.next_entity;
@@ -1201,8 +1244,9 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
     ) -> Result<Dispensed> {
         let target = Self::pos_of(offset(pos, facing));
-        let picked =
-            self.common.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, target, false));
+        let picked = self
+            .common
+            .with_level(|b, level, ticks| b.bucket_pickup(level, ticks, target, false));
         self.server_process_level_events()?;
         match picked {
             Some(filled) => {
@@ -1251,7 +1295,8 @@ impl crate::game::ServerGame<'_> {
             // primeTime(false): the fuse is lit only while TNT explodes; the
             // ignition counts either way.
             if self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
                 && sulfur_cube::prime(&mut self.common.mobs[i], false)
@@ -1267,14 +1312,20 @@ impl crate::game::ServerGame<'_> {
             return Ok((self.hurt_and_break(stack, 1), CLICK));
         }
         if self
-            .common.with_level(|b, level, ticks| b.fire_can_be_placed_at(level, ticks, target_pos, facing))
+            .common
+            .with_level(|b, level, ticks| b.fire_can_be_placed_at(level, ticks, target_pos, facing))
         {
-            if !self.common.native_block_ignite_allowed(target_pos, "flint_and_steel") {
+            if !self
+                .common
+                .native_block_ignite_allowed(target_pos, "flint_and_steel")
+            {
                 return Ok((Some(stack), CLICK));
             }
-            let fire =
-                self.common.with_level(|b, level, ticks| b.fire_state_for(level, ticks, target_pos));
-            self.common.level_set([target.0, target.1, target.2], fire)?;
+            let fire = self
+                .common
+                .with_level(|b, level, ticks| b.fire_state_for(level, ticks, target_pos));
+            self.common
+                .level_set([target.0, target.1, target.2], fire)?;
             self.post_block_game_event(
                 "minecraft:block_place",
                 [target.0, target.1, target.2],
@@ -1293,13 +1344,15 @@ impl crate::game::ServerGame<'_> {
             );
         } else if &*name == "minecraft:tnt" {
             if self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
                 && self.tnt_prime_allowed(target_pos)
             {
                 self.spawn_primed_tnt(target_pos, false, None, None);
-                self.common.with_level(|b, level, ticks| b.remove_block(level, ticks, target_pos, false));
+                self.common
+                    .with_level(|b, level, ticks| b.remove_block(level, ticks, target_pos, false));
                 self.server_process_level_events()?;
             } else {
                 success = false;
@@ -1326,7 +1379,8 @@ impl crate::game::ServerGame<'_> {
                 || b.grow_water_plant(level, ticks, target_pos, None)
         });
         if grown {
-            self.common.level_events
+            self.common
+                .level_events
                 .push(sunrise_world::level::LevelEvent::LevelEvent {
                     id: 1505,
                     pos: target_pos,
@@ -1371,13 +1425,18 @@ impl crate::game::ServerGame<'_> {
                 }
             };
             let skull = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .default_state("minecraft:wither_skeleton_skull")
-                .and_then(|s| self.common.with_props(s, &[("rotation", &rotation.to_string())]));
+                .and_then(|s| {
+                    self.common
+                        .with_props(s, &[("rotation", &rotation.to_string())])
+                });
             if let Some(skull) = skull {
-                self.common.level_set([target.0, target.1, target.2], skull)?;
+                self.common
+                    .level_set([target.0, target.1, target.2], skull)?;
                 if let Some(entity) = BlockEntity::for_block("minecraft:wither_skeleton_skull") {
                     self.common.world.block_entities.insert(target, entity);
                 }
@@ -1419,7 +1478,8 @@ impl crate::game::ServerGame<'_> {
             && self.can_spawn_golem([target.0, target.1, target.2])
         {
             if let Some(pumpkin) = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .default_state("minecraft:carved_pumpkin")
@@ -1467,15 +1527,18 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
     ) -> Result<Dispensed> {
         let front = offset(pos, facing);
-        let below_empty = self
-            .common.res
-            .facts()
-            .is_air(self.block_at((front.0, front.1 - 1, front.2)));
+        let below_empty =
+            self.common
+                .res
+                .facts()
+                .is_air(self.block_at((front.0, front.1 - 1, front.2)));
         let ctx =
             Self::shulker_box_place_context(front, facing, below_empty, stack.item.to_string());
         // DirectionalPlaceContext places at the front block or nowhere. A shulker box is
         // neither a slab nor snow, so `canPlace` always has an answer here.
-        if self.common.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx))
+        if self
+            .common
+            .with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx))
             != Ok(true)
         {
             return Ok((Some(stack), FAIL));
@@ -1500,7 +1563,8 @@ impl crate::game::ServerGame<'_> {
         let state = self.block_at(target);
         let name = self.dispenser_block_name(target);
         let honey = self
-            .common.prop(state, "honey_level")
+            .common
+            .prop(state, "honey_level")
             .and_then(|v| v.parse::<i32>().ok());
         if self.in_block_tag("minecraft:beehives", &name)
             && let Some(level) = honey
@@ -1508,7 +1572,8 @@ impl crate::game::ServerGame<'_> {
         {
             // releaseBeesAndResetHoneyLevel.
             if let Some(reset) = self.common.with_props(state, &[("honey_level", "0")]) {
-                self.common.level_set([target.0, target.1, target.2], reset)?;
+                self.common
+                    .level_set([target.0, target.1, target.2], reset)?;
             }
             self.dispenser_empty_hive(target, state);
             let bottle = ItemStack::new("minecraft:honey_bottle", 1);
@@ -1562,12 +1627,18 @@ impl crate::game::ServerGame<'_> {
     ) -> Vec<ItemStack> {
         match server_world_items!(self).loot_sequence(parent) {
             Some(sequence) => {
-                let random = self.server.rand_sequences.get(&sequence, self.common.level.seed);
+                let random = self
+                    .server
+                    .rand_sequences
+                    .get(&sequence, self.common.level.seed);
                 server_world_items!(self).loot_table_from(table, false, held, random)
             }
-            None => {
-                server_world_items!(self).loot_table(table, false, held, &mut self.common.world.random)
-            }
+            None => server_world_items!(self).loot_table(
+                table,
+                false,
+                held,
+                &mut self.common.world.random,
+            ),
         }
     }
     /// `Entity.spawnAtLocation(level, stack, offset)`: an item at the entity's
@@ -1656,10 +1727,13 @@ pub mod tests {
     use sunrise_sim::mobs::Mob;
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_dispenser_keeps_the_egg_if_its_type_cannot_spawn_in_peaceful() {
-        use {crate::game::commands::peaceful_tests, sunrise_gameplay_common::game::execution_role::ExecutionRole};
+        use {
+            crate::game::commands::peaceful_tests,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
 
         peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
             let egg = peaceful_tests::trader_egg();
@@ -1676,27 +1750,6 @@ pub mod tests {
             assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
         });
     }
-
-    
-
-    
-
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-    
-    
-    
 
     /// One scene per dispense, three blocks apart: a dispenser at (5, 64, 2 + 3 row) facing east,
     /// and in front a zombie that picks up loot (id 10 + row) and an armour stand (id 20 + row),
@@ -1737,24 +1790,6 @@ pub mod tests {
         )
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     #[allow(unused_imports)]
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     #[allow(unused_imports)]
@@ -1762,34 +1797,15 @@ pub mod tests {
     #[allow(unused_imports)]
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
-    
-
-    pub fn dispense_at_guest(
-        game: &mut crate::game::ServerGame<'_>,
-        item: &str,
-    ) -> (bool, u32) {
+    pub fn dispense_at_guest(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, u32) {
         let mut stack = ItemStack::new(item, 2);
         // The dispenser sits one block over the guest's feet, facing down.
         let done = game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack);
         (done, stack.count)
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     #[cfg(test)]
-/// `SectionPos.asLong` packs z (22 bits) over y (20 bits) under a fixed x,
+    /// `SectionPos.asLong` packs z (22 bits) over y (20 bits) under a fixed x,
     /// and the section set is sorted as longs: z -1 packs as 0x3FFFFF << 20,
     /// above z 0's 0; y -1 at z 0 packs as 0xFFFFF, below z 1's 1 << 20.
     #[test]
@@ -1805,7 +1821,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn shulker_box_dispenser_builds_directional_place_context() {
         use sunrise_core::{geometry::Vec3, position::BlockPos};
         for facing in Direction::ALL {
@@ -1839,8 +1855,6 @@ pub mod tests {
             );
         }
     }
-
-    
 }
 
 impl crate::game::ServerGame<'_> {
@@ -1919,7 +1933,8 @@ impl crate::game::ServerGame<'_> {
         let prepared = self.common.equip_stack(stack);
         let allows = |entity: u32, id: &str| {
             let data = equippable.allows(id);
-            self.common.can_equip(&prepared, equippable.slot, entity, id, data)
+            self.common
+                .can_equip(&prepared, equippable.slot, entity, id, data)
         };
         // LivingEntity.canEquipWithDispenser: alive, the slot usable, the
         // item's allowed entities, the slot empty and the dispenser rule.
@@ -1930,7 +1945,9 @@ impl crate::game::ServerGame<'_> {
                 allows(self.common.own_entity_id() as u32, "minecraft:player")
                     && match slot {
                         Slot::OffHand => self.common.offhand.is_none(),
-                        _ => slot.armor_index().is_some_and(|i| self.common.armor[i].is_none()),
+                        _ => slot
+                            .armor_index()
+                            .is_some_and(|i| self.common.armor[i].is_none()),
                     }
             }
             Target::Guest(conn) => self
@@ -2050,14 +2067,17 @@ impl crate::game::ServerGame<'_> {
         let state = self.block_at(target);
         if &*self.dispenser_block_name(target) == "minecraft:respawn_anchor" {
             let charge = self
-                .common.prop(state, "charges")
+                .common
+                .prop(state, "charges")
                 .and_then(|v| v.parse::<i32>().ok())
                 .unwrap_or(0);
             if charge != 4 {
-                if let Some(next) =
-                    self.common.with_props(state, &[("charges", &(charge + 1).to_string())])
+                if let Some(next) = self
+                    .common
+                    .with_props(state, &[("charges", &(charge + 1).to_string())])
                 {
-                    self.common.level_set([target.0, target.1, target.2], next)?;
+                    self.common
+                        .level_set([target.0, target.1, target.2], next)?;
                     // RespawnAnchorBlock.charge: Context.of(null, newState).
                     self.post_block_game_event(
                         "minecraft:block_change",
@@ -2094,8 +2114,10 @@ impl crate::game::ServerGame<'_> {
             ));
         };
         set_success("honeycomb", true);
-        self.common.level_set([target.0, target.1, target.2], waxed)?;
-        self.common.level_events
+        self.common
+            .level_set([target.0, target.1, target.2], waxed)?;
+        self.common
+            .level_events
             .push(sunrise_world::level::LevelEvent::LevelEvent {
                 id: 3003,
                 pos: Self::pos_of(target),
@@ -2141,7 +2163,13 @@ impl crate::game::ServerGame<'_> {
         }
         self.server_play_sound("minecraft:item.bottle.empty", Self::center(pos), 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", [pos.0, pos.1, pos.2], None, None);
-        if let Some(mud) = self.common.pack.assets.registry.default_state("minecraft:mud") {
+        if let Some(mud) = self
+            .common
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:mud")
+        {
             self.common.level_set([target.0, target.1, target.2], mud)?;
         }
         let bottle = ItemStack::new("minecraft:glass_bottle", 1);
@@ -2157,7 +2185,8 @@ impl crate::game::ServerGame<'_> {
         stack: ItemStack,
     ) -> Dispensed {
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -2200,7 +2229,8 @@ impl crate::game::ServerGame<'_> {
         let state = self.block_at(target);
         let name = self.dispenser_block_name(target);
         let level = self
-            .common.prop(state, "honey_level")
+            .common
+            .prop(state, "honey_level")
             .and_then(|v| v.parse::<i32>().ok());
         if !self.in_block_tag("minecraft:beehives", &name) || level.is_none_or(|l| l < 5) {
             return Ok(false);
@@ -2401,7 +2431,8 @@ impl crate::game::ServerGame<'_> {
         };
         let area = Aabb::new(centre, centre).inflate(Vec3::new(16.0, 16.0, 16.0));
         let mut leashed: Vec<(u32, usize)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .filter(|(_, m)| {
@@ -2433,7 +2464,10 @@ impl crate::game::ServerGame<'_> {
                 (m.position, Who::Mob(m.id))
             }
             _ => (
-                self.common.player.as_ref().map_or(Vec3::ZERO, |p| p.position),
+                self.common
+                    .player
+                    .as_ref()
+                    .map_or(Vec3::ZERO, |p| p.position),
                 Who::Player,
             ),
         };

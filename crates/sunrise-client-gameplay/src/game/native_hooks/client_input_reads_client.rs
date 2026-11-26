@@ -8,7 +8,9 @@ impl crate::game::ClientGame<'_> {
     /// The current window modifier keys in the same GLFW encoding as input hooks.
     /// Cleared when the window loses focus; available even outside a world.
     pub(in crate::game) fn modifiers(&self) -> ClientModifiers {
-        ClientModifiers::new(sunrise_gameplay_common::game::glfw_modifiers(self.client.modifiers))
+        ClientModifiers::new(crate::game::client_side::key_codes::glfw_modifiers(
+            self.client.modifiers,
+        ))
     }
     /// Playing, with nothing over the world: keys and zoom apply.
     pub(in crate::game) fn playing(&self) -> bool {

@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Run one block use with an isolated original stack, restoring the outer
     /// operation even when a listener unwinds. Replacements never edit this value.
-    pub(in crate::game::server_side) fn with_block_use_original<R>(
+    pub fn with_block_use_original<R>(
         &mut self,
         hand: Hand,
         action: impl FnOnce(&mut Self) -> R,

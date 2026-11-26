@@ -1,10 +1,8 @@
 //! A player's inventory by vanilla's slot numbers (`Inventory.getItem`/`setItem`).
 //! Reads lend the current slots; writes go through the authoritative server.
-use super::{
-    Game,
-    native_server::{PlayerRead, SLOTS, inventory_slot},
-};
+use super::Game;
 use mod_api::{PlayerDataRefusal, PlayerRef};
+use sunrise_gameplay_common::game::native_server::{PlayerRead, SLOTS, inventory_slot};
 use sunrise_items::items::ItemStack;
 
 /// The authority refusals shared by writes to a server player's own state.
@@ -57,7 +55,11 @@ impl crate::game::ServerGame<'_> {
         let ran = self.native_as_player_handle(player, |game| {
             set = game.slot_set(&target, stack.filter(|s| s.count > 0));
             if set && game.player.is_some() {
-                game.after_commit(super::transactions::After::InventoryTrigger(player.uuid()));
+                game.after_commit(
+                    sunrise_gameplay_common::game::transactions::After::InventoryTrigger(
+                        player.uuid(),
+                    ),
+                );
             }
         });
         if ran && set {

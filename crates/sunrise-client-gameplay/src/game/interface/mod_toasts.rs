@@ -41,7 +41,8 @@ impl crate::game::ClientGame<'_> {
         }
         let icon = match request.icon {
             Some(ToastIcon::Item(stack)) => Some(Icon::Item(
-                super::api_values::stack_value(&stack).map_err(AddToastError::Icon)?,
+                sunrise_gameplay_common::game::api_values::stack_value(&stack)
+                    .map_err(AddToastError::Icon)?,
             )),
             Some(ToastIcon::Sprite(sprite)) => Some(Icon::Sprite(sprite.to_string())),
             None | Some(_) => None,

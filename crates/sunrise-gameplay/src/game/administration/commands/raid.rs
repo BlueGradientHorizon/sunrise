@@ -60,7 +60,7 @@ impl crate::game::ServerGame<'_> {
                     kind,
                     [player.x, player.y, player.z],
                     true,
-                    super::super::creatures::SpawnSite::Finalizing(
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                         sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 ) {

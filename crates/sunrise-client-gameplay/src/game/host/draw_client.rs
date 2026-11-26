@@ -1,14 +1,14 @@
-use sunrise_gameplay_common::game::host::draw::EngineTooltipFont;
 use crate::game::host::draw::GameBlockEntityDrawContext;
 use crate::game::host::draw::GameCameraDrawContext;
 use crate::game::host::draw::GameDrawContext;
 use crate::game::host::draw::GameWorldDrawContext;
+use mod_api::{prelude::*, *};
+use sunrise_gameplay_common::game::host::draw::EngineTooltipFont;
 use sunrise_gameplay_common::game::host::draw::font_id_str;
 use sunrise_gameplay_common::game::{
     Game,
     api_values::{TryIntoApi, TryIntoEngine},
 };
-use mod_api::{prelude::*, *};
 
 impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     fn push(&mut self) {
@@ -241,7 +241,7 @@ impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g> {
 impl<'a, 'g> GameCameraDrawContext<'a, 'g> {
     pub(crate) fn new(
         game: &'a crate::game::ClientGame<'g>,
-        surface: &'a mut crate::screen_effects::CameraQuads,
+        surface: &'a mut sunrise_client::screen_effects::CameraQuads,
     ) -> Self {
         Self { game, surface }
     }

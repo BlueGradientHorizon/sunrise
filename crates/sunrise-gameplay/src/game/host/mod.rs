@@ -1,5 +1,6 @@
-
 use super::ServerGame;
+use mod_api::__private::game::*;
+use mod_api::*;
 
 impl Host for ServerGame<'_> {
     fn backend(&self) -> Option<BackendRef<'_>> {
@@ -47,7 +48,8 @@ impl ServerHost for ServerGame<'_> {
             .and_then(|items| stack.try_into_engine_preserving_count(items))
             .map_err(ScratchScopeError::Stack)?;
         let taken = self
-            .common.scratch_scope(
+            .common
+            .scratch_scope(
                 Some(engine_stack.item.clone()),
                 engine_stack,
                 |game, tx, place| callback(game, tx, place),
@@ -71,7 +73,8 @@ impl ServerHost for ServerGame<'_> {
             .and_then(|items| stack.try_into_engine_preserving_count(items))
             .map_err(ScratchScopeError::Stack)?;
         let taken = self
-            .common.scratch_scope(None, engine_stack, |game, tx, place| {
+            .common
+            .scratch_scope(None, engine_stack, |game, tx, place| {
                 callback(game, tx, place)
             })
             .map_err(ScratchScopeError::Transaction)?;

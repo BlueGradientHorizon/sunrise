@@ -1,5 +1,4 @@
 //! Canonical physical storage behind a detached custom placement.
-use super::api_values::TryIntoEngine;
 use super::{
     Game,
     native_book_scope::{MenuSnapshot, NativeMenuSlot},
@@ -8,6 +7,7 @@ use mod_api::__private::game::Fields;
 use mod_api::{ItemPlace, MenuSlotBacking, MenuSlotPlace, ServerHost};
 use std::collections::{BTreeMap, BTreeSet};
 use sunrise_core::nbt::Compound;
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{
@@ -183,11 +183,7 @@ impl Backings {
         }
         Ok(value)
     }
-    fn keep(
-        &mut self,
-        game: &crate::game::ServerGame<'_>,
-        pos: Pos,
-    ) -> Result<(), Refusal> {
+    fn keep(&mut self, game: &crate::game::ServerGame<'_>, pos: Pos) -> Result<(), Refusal> {
         if self.blocks.contains_key(&pos) {
             return Ok(());
         }
@@ -288,10 +284,7 @@ impl Backings {
     ) -> bool {
         self.unchanged_blocks(game) && self.native_is_unchanged(game)
     }
-    fn native_is_unchanged(
-        &self,
-        game: &mut crate::game::ServerGame<'_>,
-    ) -> bool {
+    fn native_is_unchanged(&self, game: &mut crate::game::ServerGame<'_>) -> bool {
         let (Some(native), Some((conn, uuid, window))) = (&self.native, self.native_menu) else {
             return self.native.is_none() && self.native_menu.is_none();
         };

@@ -14,7 +14,7 @@ use sunrise_world::{
 /// A state's empty-context collision boxes at `pos`, block-local: a block entity's published
 /// shape where its block publishes one, else the declared or vanilla shape. Collision errors
 /// return no boxes. The one read behind `LevelRef::block_shape` and `LevelHost::collision_shape`.
-pub(in crate::game) fn collision_boxes(
+pub fn collision_boxes(
     collision: &BlockCollisionRegistry<'_>,
     world: &World,
     state: BlockStateId,

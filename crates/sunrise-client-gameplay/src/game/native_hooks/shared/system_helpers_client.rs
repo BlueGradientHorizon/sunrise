@@ -23,7 +23,7 @@ impl crate::game::ClientGame<'_> {
         self.made_recipes()
     }
     /// A line in chat from the client.
-    pub(in crate::game::client_side) fn native_chat(&mut self, text: &str) {
+    pub(crate) fn native_chat(&mut self, text: &str) {
         let focused = self.client.screen == Screen::Chat;
         let line = Text::literal(text);
         let ticks = self.visual_ticks();
@@ -51,10 +51,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
-    pub(in crate::game::client_side) fn screen_own_exclusion(
-        &self,
-        batch: &HudBatch,
-    ) -> Vec<[f32; 4]> {
+    pub(crate) fn screen_own_exclusion(&self, batch: &HudBatch) -> Vec<[f32; 4]> {
         if !matches!(self.side.screen, Screen::Inventory | Screen::Creative) {
             return Vec::new();
         }

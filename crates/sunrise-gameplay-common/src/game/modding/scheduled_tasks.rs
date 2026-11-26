@@ -10,12 +10,12 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 };
 
-pub(in crate::game) type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
+pub type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
 /// The owning mod's `[mod] id` (when scheduled inside a mod call) and its callable, detached from
 /// the scheduler.
 pub(in crate::game) type PendingTask = (Option<&'static str>, ServerTask);
 
-pub(in crate::game) fn dispose_pending_task((owner, task): PendingTask) {
+pub fn dispose_pending_task((owner, task): PendingTask) {
     match owner {
         Some(id) => CallbackOwner::dispose_scheduled_task(id, task),
         None => CallbackOwner::call_engine(|| drop(task)),
@@ -25,7 +25,7 @@ pub(in crate::game) fn dispose_pending_task((owner, task): PendingTask) {
 /// Runs every item `next` yields through `run`, even when one run panics: the other items still
 /// run, and the first panic comes back for the caller to put back in flight once it has restored
 /// its own state. `state` is passed to both so each may borrow the whole of it in turn.
-pub(in crate::game) fn run_all<S, T>(
+pub fn run_all<S, T>(
     state: &mut S,
     mut next: impl FnMut(&mut S) -> Option<T>,
     mut run: impl FnMut(&mut S, T),
@@ -46,7 +46,7 @@ pub(in crate::game) fn run_all<S, T>(
 }
 
 // Keep formatting macros out of the function-replacement lifecycle source.
-pub(in crate::game) fn report_failure(mod_id: &str, panic: &str) {
+pub fn report_failure(mod_id: &str, panic: &str) {
     log::error!(
         "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
     );

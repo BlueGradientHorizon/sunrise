@@ -173,12 +173,7 @@ impl crate::game::CommonGame<'_> {
 
 impl GameLevel<'_> {
     /// `BlockEntity.saveAdditional` for a live block entity used in a loot roll.
-    pub(in crate::game) fn encode_live_block_entity(
-        &self,
-        pos: Pos,
-        entity: &BlockEntity,
-        block: &str,
-    ) -> Tag {
+    pub fn encode_live_block_entity(&self, pos: Pos, entity: &BlockEntity, block: &str) -> Tag {
         block_entity_encode::encode_with(
             pos,
             entity,

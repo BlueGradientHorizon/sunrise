@@ -1,4 +1,6 @@
-
+use mod_api::EntityRef;
+use sunrise_core::position::BlockPos;
+use sunrise_world::registry::BlockStateId;
 
 impl crate::game::ServerGame<'_> {
     /// `IBlockExtension.canEntityDestroy`: the parts of `state` at `pos` may answer whether

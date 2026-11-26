@@ -14,7 +14,7 @@ macro_rules! impl_pack_discovery_context {
     };
 }
 
-pub(in crate::game) use impl_pack_discovery_context;
+pub use impl_pack_discovery_context;
 
 #[inline(always)]
 pub(in crate::game) fn native_add_pack_finders(

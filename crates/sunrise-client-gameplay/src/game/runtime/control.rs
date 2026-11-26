@@ -1,8 +1,6 @@
 //! Commands from the control socket (`sunrise-ctl`), run on the game thread.
 use super::event_loop::EventLoopCtl;
 use super::{Game, Screen};
-use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
-use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};
 use std::{
     sync::mpsc::Sender,
@@ -12,6 +10,8 @@ use sunrise_client::gfx::pack_timing;
 use sunrise_client::held::Source;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
+use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use sunrise_items::items::ItemStack;
 use winit::{event::MouseButton, keyboard::KeyCode};
 
@@ -119,7 +119,11 @@ impl crate::game::ClientGame<'_> {
         spans: &[sunrise_level::spans::Span],
     ) {
         if let Some(flight) = self.client.flight.0.as_mut().filter(|flight| flight.raw) {
-            let visited = self.common.world.block_entities.take_column_unload_entries();
+            let visited = self
+                .common
+                .world
+                .block_entities
+                .take_column_unload_entries();
             let [sorted, merged] = std::mem::take(&mut flight.upload_queue_work);
             let mesh_uploads = std::mem::take(&mut flight.mesh_uploads);
             if rendered {
@@ -329,7 +333,7 @@ impl crate::game::ClientGame<'_> {
             if self.mounted_widget_key_pressed(
                 KeyCode::Backspace,
                 false,
-                super::glfw_modifiers(self.client.modifiers),
+                crate::game::client_side::key_codes::glfw_modifiers(self.client.modifiers),
             ) {
                 return Ok(());
             }
@@ -1028,7 +1032,8 @@ impl crate::game::ClientGame<'_> {
                     format!("minecraft:{name}")
                 };
                 let info = self
-                    .common.res
+                    .common
+                    .res
                     .items()
                     .get(&item)
                     .ok_or_else(|| format!("unknown item {item}"))?;
@@ -1049,7 +1054,8 @@ impl crate::game::ClientGame<'_> {
                 while given < count {
                     let n = (count - given).min(max);
                     let rest = self
-                        .common.add_stack_to_inventory(ItemStack {
+                        .common
+                        .add_stack_to_inventory(ItemStack {
                             item: item.as_str().into(),
                             count: n,
                             damage: 0,
@@ -1130,7 +1136,11 @@ impl crate::game::ClientGame<'_> {
                 self.require_world()?;
                 let radius: f64 = words.get(1).map_or(Ok(64.0), |r| r.parse())?;
                 if let Some(server) = &self.client.integrated {
-                    let center = self.common.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
+                    let center = self
+                        .common
+                        .player
+                        .as_ref()
+                        .map_or(Vec3::ZERO, |p| p.position);
                     let value = server
                         .ask(|reply| {
                             OwnerRequest::Control(ControlRequest::MobsAt {
@@ -1345,7 +1355,10 @@ impl crate::game::ClientGame<'_> {
                 let pitch = words.get(8).map_or(Ok(10.0), |p| p.parse::<f32>())?;
                 let raw = words.get(9) == Some(&"raw");
                 if raw {
-                    self.common.world.block_entities.take_column_unload_entries();
+                    self.common
+                        .world
+                        .block_entities
+                        .take_column_unload_entries();
                 }
                 self.reset_frame_stats();
                 self.client.flight.0 = Some(Flight {

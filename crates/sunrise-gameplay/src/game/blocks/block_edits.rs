@@ -3,16 +3,18 @@
 //! at once through `World::edit_runs`, with what `fill ... strict` does for
 //! the block entities and the watched blocks of each block changed.
 use crate::game::ServerGame;
+use mod_api::BlockEdit;
+use mod_api::ColumnBlocks;
+use mod_api::Heightmap;
+use std::sync::Arc;
 use sunrise_gameplay_common::game::block_edits_common::Tracked;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay_common::game::block_edits_common::{
     MAX_COLUMNS, column_height, loaded_heights,
 };
-use sunrise_gameplay_common::game::transactions::{StrictBlockStep, StrictBlockSteps, take_replay_row};
-use mod_api::BlockEdit;
-use mod_api::ColumnBlocks;
-use mod_api::Heightmap;
-use std::sync::Arc;
+use sunrise_gameplay_common::game::transactions::{
+    StrictBlockStep, StrictBlockSteps, take_replay_row,
+};
 use sunrise_level::{
     block_edit::{BulkPublication, Run},
     chunk::ColumnLayout,
@@ -30,8 +32,10 @@ impl ServerGame<'_> {
     /// or filter past the end, or more than 65536 filters, and nothing is
     /// made.
     pub(in crate::game) fn apply_block_edit(&mut self, edit: &BlockEdit) -> Result<u64, String> {
-        let super::api_values::block_edit::PreparedBlockEdit { palette, filters } =
-            super::api_values::block_edit::prepare(edit)?;
+        let sunrise_gameplay_common::game::api_values::block_edit::PreparedBlockEdit {
+            palette,
+            filters,
+        } = sunrise_gameplay_common::game::api_values::block_edit::prepare(edit)?;
         let runs = resolve_runs(edit, &palette, filters.len(), |h, x, z| {
             self.common.edit_height(h, x, z)
         })?;
@@ -63,34 +67,35 @@ impl ServerGame<'_> {
                 || BlockEntity::for_block(&f.name).is_some()
         };
         let mut steps = StrictBlockSteps::new();
-        let (out, publication) = if let Some(frame) = self.common.transactions.level_frame(self.common.dim) {
-            let (out, publication) = self.common.world.stage_edit_runs(
-                &runs,
-                matches,
-                track,
-                |pos, old, new, clears_group, old_group| {
-                    frame.keep_bulk_block(pos, old);
-                    if old_group.is_some() {
-                        frame.keep_connection_group(pos, old_group);
-                    }
-                    let to = BlockStateId(new);
-                    steps
-                        .entry(pos)
-                        .and_modify(|step| {
-                            step.to = to;
-                            step.clear_connection_group |= clears_group;
-                        })
-                        .or_insert(StrictBlockStep {
-                            to,
-                            row: None,
-                            clear_connection_group: clears_group,
-                        });
-                },
-            );
-            (out, Some(publication))
-        } else {
-            (self.common.world.edit_runs(&runs, matches, track), None)
-        };
+        let (out, publication) =
+            if let Some(frame) = self.common.transactions.level_frame(self.common.dim) {
+                let (out, publication) = self.common.world.stage_edit_runs(
+                    &runs,
+                    matches,
+                    track,
+                    |pos, old, new, clears_group, old_group| {
+                        frame.keep_bulk_block(pos, old);
+                        if old_group.is_some() {
+                            frame.keep_connection_group(pos, old_group);
+                        }
+                        let to = BlockStateId(new);
+                        steps
+                            .entry(pos)
+                            .and_modify(|step| {
+                                step.to = to;
+                                step.clear_connection_group |= clears_group;
+                            })
+                            .or_insert(StrictBlockStep {
+                                to,
+                                row: None,
+                                clear_connection_group: clears_group,
+                            });
+                    },
+                );
+                (out, Some(publication))
+            } else {
+                (self.common.world.edit_runs(&runs, matches, track), None)
+            };
         self.common.world.watched = watched;
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.
@@ -103,23 +108,26 @@ impl ServerGame<'_> {
             .filter(|&&((x, y, z), old, new)| {
                 name(old) != name(new)
                     || !self
-                        .common.world
+                        .common
+                        .world
                         .block_entities
                         .get(&(x, y, z))
                         .is_some_and(|e| e.fits(&name(new)))
             })
             .map(|&(_, _, new)| BlockStateId(new))
             .collect();
-        let mut made =
-            make_block_entities(&wanted, |state| self.common.new_block_entity_for_state(*state))
-                .into_iter();
+        let mut made = make_block_entities(&wanted, |state| {
+            self.common.new_block_entity_for_state(*state)
+        })
+        .into_iter();
         if publication.is_some() {
             // Keep the original row, including absence, before the strict writer creates or
             // removes a resident. Keep its drops suppressed just as in an immediate bulk edit.
             for &(pos, old, new) in &out.tracked {
                 if name(old) != name(new)
                     || !self
-                        .common.world
+                        .common
+                        .world
                         .block_entities
                         .get(&pos)
                         .is_some_and(|row| row.fits(&name(new)))
@@ -136,12 +144,14 @@ impl ServerGame<'_> {
             publication.as_ref().map(|_| &mut steps),
         );
         if let Some(publication) = publication {
-            self.after_commit(super::transactions::After::BulkBlocks(
-                publication,
-                out.tracked,
-                removed,
-                steps,
-            ));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::BulkBlocks(
+                    publication,
+                    out.tracked,
+                    removed,
+                    steps,
+                ),
+            );
         } else {
             for pos in removed {
                 self.jukebox_removed(pos);
@@ -177,7 +187,12 @@ impl ServerGame<'_> {
         below: u32,
         above: u32,
     ) -> Result<ColumnBlocks, String> {
-        read_size(columns.len(), below, above, self.common.world.layout().height())?;
+        read_size(
+            columns.len(),
+            below,
+            above,
+            self.common.world.layout().height(),
+        )?;
         let bases = self.common.loaded_column_heights(columns, h);
         let (palette, blocks) = column_blocks(&self.common.world, columns, &bases, below, above)
             .ok_or("the read is too big")?;
@@ -186,7 +201,8 @@ impl ServerGame<'_> {
         for (&(x, z), base) in columns.iter().zip(&bases) {
             let water = base
                 .and_then(|b| {
-                    self.common.world
+                    self.common
+                        .world
                         .chunks
                         .get(&(x >> 4, z >> 4))
                         .map(|c| biomes.get(c.biome(x, b - 1, z)).water)
@@ -195,7 +211,9 @@ impl ServerGame<'_> {
             water_colors.push(water);
         }
         Ok(ColumnBlocks {
-            palette: super::api_values::block_edit::column_palette(palette)?,
+            palette: sunrise_gameplay_common::game::api_values::block_edit::column_palette(
+                palette,
+            )?,
             bases,
             blocks,
             water_colors,
@@ -413,25 +431,20 @@ fn replace_block_entities(
 
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::server_side::block_edits::tests::columns_world;
+    use sunrise_gameplay_common::game::server_side::block_edits::tests::columns_world;
 
-use sunrise_gameplay_common::game::server_side::block_edits::tests::edit;
+    use sunrise_gameplay_common::game::server_side::block_edits::tests::edit;
 
-use sunrise_gameplay_common::game::server_side::block_edits::tests::height;
+    use sunrise_gameplay_common::game::server_side::block_edits::tests::height;
 
-use sunrise_gameplay_common::game::server_side::block_edits::tests::run;
+    use sunrise_gameplay_common::game::server_side::block_edits::tests::run;
 
-use sunrise_gameplay_common::game::server_side::block_edits::tests::world;
+    use sunrise_gameplay_common::game::server_side::block_edits::tests::world;
 
     use super::*;
     use mod_api::BlockRun;
     use sunrise_level::chunk::Chunk;
     use sunrise_world::heightmap::HeightmapType;
-
-    
-
-    
-    
 
     #[test]
     fn runs_naming_entries_past_the_end_are_refused_whole() {
@@ -487,9 +500,6 @@ use sunrise_gameplay_common::game::server_side::block_edits::tests::world;
         let runs = resolve_runs(&edit(vec![high]), &[7], 0, |_, _, _| 0).unwrap();
         assert_eq!((runs[0].y0, runs[0].y1), (i32::MAX, i32::MAX));
     }
-
-    
-    
 
     #[test]
     fn a_chest_replaced_by_stone_loses_its_block_entity() {
@@ -649,9 +659,6 @@ use sunrise_gameplay_common::game::server_side::block_edits::tests::world;
             Some(BlockEntity::Chest(_))
         ));
     }
-
-    
-    
 
     #[test]
     fn each_heightmap_has_its_own_height() {

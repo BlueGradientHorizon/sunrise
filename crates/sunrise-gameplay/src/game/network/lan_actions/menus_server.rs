@@ -10,12 +10,14 @@ impl crate::game::ServerGame<'_> {
         g: &sunrise_sim::lan::guest::Guest,
     ) -> bool {
         let bounds = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .find(|c| c.id as i32 == id)
             .map(|c| c.bounds())
             .or_else(|| {
-                self.common.boats
+                self.common
+                    .boats
                     .iter()
                     .find(|b| b.id as i32 == id)
                     .map(|b| b.bounds())
@@ -35,7 +37,7 @@ impl crate::game::ServerGame<'_> {
             m.slots.valid(&self.common.world)
                 && m.still_valid(&host.hub.loop_context, &self.common.world, g)
                 && !matches!(m.slots, Slots::Block((_, y, id))
-                    if y == crate::game::minecarts::CART_KEY_Y
+                    if y == sunrise_gameplay_common::game::minecarts::CART_KEY_Y
                         && !self.chest_vehicle_still_valid(id, g))
         })
     }
@@ -60,7 +62,12 @@ impl crate::game::ServerGame<'_> {
         let spectator = if acting {
             self.common.spectator()
         } else {
-            let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            let Some(guest) = self
+                .server
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
+            else {
                 return;
             };
             guest.spectator()

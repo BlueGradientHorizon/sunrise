@@ -3,11 +3,9 @@
 //! `ServerRecipeBook`. Reads return None for a stale handle or a player who
 //! isn't online here. Writes return false (or None) for those, for a dead
 //! player, and, inside another player's turn, for anyone but that player.
-use super::{
-    Game, lan_actions_server::CombatPlayer, native_server::PlayerRead, stats::Stats,
-    transactions::DeferredEffect,
-};
+use super::{Game, lan_actions_server::CombatPlayer, stats::Stats};
 use mod_api::{PlayerRef, StatType};
+use sunrise_gameplay_common::game::{native_server::PlayerRead, transactions::DeferredEffect};
 use sunrise_gameplay_common::stats::StatValues;
 
 use super::native_namespaced_id::namespaced;
@@ -16,9 +14,14 @@ impl crate::game::ServerGame<'_> {
     /// The player's statistics, including the counter lent to a nested turn.
     fn native_player_stats(&self, player: PlayerRef) -> Option<Option<&Stats>> {
         match self.player_handle_read(player) {
-            Some(PlayerRead::Guest(g)) => {
-                Some(self.server.lan.as_ref()?.play.get(&g.conn).map(|p| &p.stats))
-            }
+            Some(PlayerRead::Guest(g)) => Some(
+                self.server
+                    .lan
+                    .as_ref()?
+                    .play
+                    .get(&g.conn)
+                    .map(|p| &p.stats),
+            ),
             Some(PlayerRead::Acting { .. }) => Some(Some(&self.common.stats)),
             None => {
                 let entity = player.entity();

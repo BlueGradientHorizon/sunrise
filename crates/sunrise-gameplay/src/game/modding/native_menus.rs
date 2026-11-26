@@ -1,13 +1,13 @@
 //! Blockless server menus for native mods: vanilla chest displays or declared mod menus.
 //! Owned slots run ordinary clicks; display slots move nothing by default. Menu parts can
 //! replace a click, and a close listener receives any detached owned contents.
-use super::api_values::TryIntoEngine;
 use super::{Game, lan::LanHost, lan_menus::GuestMenus};
-use sunrise_gameplay_common::game::native_menu_data::{ContainerPos, HeardMenu};
-use sunrise_gameplay_common::game::native_menu_ids::MOUNT_MENU;
 use mod_api::__private::game::*;
 use mod_api::{MenuRef, MenuReplace, ModMenuOpen};
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
+use sunrise_gameplay_common::game::native_menu_data::{ContainerPos, HeardMenu};
+use sunrise_gameplay_common::game::native_menu_ids::MOUNT_MENU;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::{
     data::component_nbt,
@@ -258,7 +258,8 @@ impl crate::game::ServerGame<'_> {
             .menu
             .as_ref()
             .filter(|m| m.window == window && m.slots == sunrise_sim::lan::menu::Slots::Native)?;
-        self.common.player_container_menu(self.common.player(uuid)?)
+        self.common
+            .player_container_menu(self.common.player(uuid)?)
             .filter(|menu| menu.fields().window == window)
     }
     /// Replaces what the player's open native menu `window` shows, without reopening it
@@ -284,11 +285,15 @@ impl crate::game::ServerGame<'_> {
         // The scoped click reconciles its own window on both override and refusal.
         if transactional
             && !self
-                .common.transactions
+                .common
+                .transactions
                 .iter()
                 .any(|level| level.menu_click_active == Some(conn))
         {
-            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Resend(window));
+            self.reply_menu_click(
+                conn,
+                sunrise_gameplay_common::game::lan_menu_data::ClickReply::Resend(window),
+            );
         }
         Ok(())
     }
@@ -296,7 +301,11 @@ impl crate::game::ServerGame<'_> {
     /// stages the close for its current window and sends it only once the transaction commits.
     pub(in crate::game) fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
-            && let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
+            && let Some(guest) = self
+                .server
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
             && let Some(open) = guest
                 .menu
                 .as_ref()
@@ -390,7 +399,8 @@ impl crate::game::ServerGame<'_> {
                 };
                 positions.map(|pos| {
                     pos.and_then(|pos| {
-                        self.common.world
+                        self.common
+                            .world
                             .block_entities
                             .generation(&pos)
                             .map(|generation| (pos, generation))
@@ -438,7 +448,12 @@ impl crate::game::ServerGame<'_> {
         if !heard && openers == [None; 2] {
             return;
         }
-        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let uuid = guest.uuid;
@@ -521,7 +536,7 @@ impl crate::game::ServerGame<'_> {
                 } => {
                     self.menu_places_closed(uuid, window);
                     if mod_api::__private::listened(mod_api::HookId::MenuClosed) {
-                        use super::api_values::TryIntoApi;
+                        use sunrise_gameplay_common::game::api_values::TryIntoApi;
                         let owned_slots: Vec<_> = owned_slots
                             .iter()
                             .map(|slot| slot.as_ref().and_then(|stack| stack.try_into_api().ok()))
@@ -540,21 +555,24 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
+    use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
-use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
+    use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
 
-    use super::super::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, crate::game::server_side::native_item_places::tests::open_to_lan};
     use super::*;
     use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
     use std::sync::{Arc, mpsc};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_protocol::{
         buf::Reader,
         packets::play::{self, Clientbound as C, Serverbound as S},
     };
     use sunrise_sim::lan::{Out, PlayerSender};
+    use {
+        crate::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
 
     /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
     pub fn watched_guest(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
@@ -565,8 +583,6 @@ use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
         game.side.lan.as_mut().unwrap().hub.guests.push(player);
         rx
     }
-
-    
 
     pub fn open(
         game: &mut crate::game::ServerGame<'_>,
@@ -586,32 +602,6 @@ use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
         .unwrap()
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     /// [`watched_guest`] on a Sunrise client that reads a menu opened with no block, and the
     /// key of [`MOD_MENU`].
     pub fn mod_menu_guest(
@@ -627,18 +617,8 @@ use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
         (rx, key)
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn menu_clicks_map_to_the_inventory_below() {
         // A 6-row chest: 54 slots, then the inventory's 27, then the hotbar.
         assert_eq!(native_menu_inventory_slot(54, 3), None);

@@ -150,7 +150,7 @@ impl NativeConfigs {
     }
 
     /// Drops the server's configs and answers them.
-    pub(in crate::game) fn drop_server(&mut self) -> Vec<ConfigFile> {
+    pub fn drop_server(&mut self) -> Vec<ConfigFile> {
         let (server, rest) = std::mem::take(&mut self.files)
             .into_iter()
             .partition(|t| t.config.kind == mod_api::ConfigKind::Server);
@@ -186,7 +186,7 @@ impl CommonGame<'_> {
 
     /// The window's `Client` and `Common` configs, once: after client setup
     /// and before its title, connection or ordinary runtime callbacks.
-    pub(in crate::game) fn native_configs_client_start(&mut self) {
+    pub fn native_configs_client_start(&mut self) {
         if !self.native_configs.started {
             use mod_api::ConfigKind::{Client, Common};
             self.native_configs_load(&[Client, Common], None);

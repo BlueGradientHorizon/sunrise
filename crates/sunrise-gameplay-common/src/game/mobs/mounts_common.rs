@@ -6,11 +6,7 @@ use sunrise_sim::{
     sprint::Keys,
 };
 
-pub fn steering_item(
-    species: Species,
-    main: Option<&str>,
-    offhand: Option<&str>,
-) -> bool {
+pub fn steering_item(species: Species, main: Option<&str>, offhand: Option<&str>) -> bool {
     let item = match species {
         Species::Pig => "minecraft:carrot_on_a_stick",
         Species::Strider => "minecraft:warped_fungus_on_a_stick",
@@ -22,13 +18,13 @@ pub fn steering_item(
 #[derive(Default)]
 pub struct MountState {
     /// `jumpRidingTicks`: -10 cooling down after a jump, >= 0 charging.
-    pub(in crate::game) jump_ticks: i32,
+    pub jump_ticks: i32,
     /// `jumpRidingScale` (0..1).
-    pub(in crate::game) jump_scale: f32,
+    pub jump_scale: f32,
     pub(in crate::game) was_jumping: bool,
 }
 impl MountState {
-    pub(in crate::game) fn reset_jump(&mut self) {
+    pub fn reset_jump(&mut self) {
         self.jump_ticks = 0;
         self.jump_scale = 0.0;
     }

@@ -3,11 +3,11 @@
 
 use std::borrow::Cow;
 
-use sunrise_gameplay_common::game::level_sounds_common::{HeardSound, LevelSound, listened};
 use mod_api::{Identifier, SoundSource};
+use sunrise_gameplay_common::game::level_sounds_common::{HeardSound, LevelSound, listened};
 
 use crate::game::ServerGame;
-use super::native_hooks::level_sound_playable;
+use sunrise_gameplay_common::game::native_hooks::level_sound_playable;
 
 /// A sound bound to an entity (`level.playSound(except, entity, ...)`),
 /// waiting for the end of the tick to be asked of the mods and sent.

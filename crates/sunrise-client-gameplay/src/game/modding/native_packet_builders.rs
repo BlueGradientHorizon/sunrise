@@ -25,7 +25,7 @@ impl ClientGame<'_> {
             request,
             &remote.builtin,
             &remote.registries,
-            |stack| super::api_values::stack_value(stack).ok(),
+            |stack| sunrise_gameplay_common::game::api_values::stack_value(stack).ok(),
         )
     }
 }

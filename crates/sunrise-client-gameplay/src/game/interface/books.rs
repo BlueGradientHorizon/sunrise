@@ -81,7 +81,7 @@ impl BookScreen {
     }
 
     /// The id the screen hooks see (`ScreenView.id`).
-    pub(in crate::game::client_side) fn id(&self) -> &'static str {
+    pub fn id(&self) -> &'static str {
         match self {
             Self::Edit { signing: true, .. } => "book_sign",
             Self::Edit { .. } => "book_edit",
@@ -345,7 +345,8 @@ impl ClientGame<'_> {
             .map(|r| r.profile_name.clone())
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| self.common.options.player_name());
-        self.common.write_book_with_author(slot, pages, title, author);
+        self.common
+            .write_book_with_author(slot, pages, title, author);
         self.refresh_screen_widgets();
         self.capture(true);
     }

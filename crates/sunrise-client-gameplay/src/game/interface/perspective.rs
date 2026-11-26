@@ -5,7 +5,6 @@
 #[cfg(feature = "client")]
 use super::native_mob_draw::PlayerRender;
 use super::{Game, Screen};
-use sunrise_gameplay_common::game::{collider_rays::ColliderRays, ray_shapes::ray_shape_from_boxes};
 use mod_api::Hand;
 use std::{
     io,
@@ -16,6 +15,9 @@ use sunrise_client::{hud::HudBatch, mobs::render::FrameDraw, mouse::Rotation};
 use sunrise_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     position::BlockPos,
+};
+use sunrise_gameplay_common::game::{
+    collider_rays::ColliderRays, ray_shapes::ray_shape_from_boxes,
 };
 use sunrise_items::blocks::BlockFacts;
 use sunrise_level::camera_math::{CameraEntity, CameraType, LivingCamera};
@@ -293,8 +295,12 @@ impl crate::game::ClientGame<'_> {
             entity.position = position;
             entity.previous = position;
         }
-        let descending =
-            subject.is_local_player && self.common.player.as_ref().is_some_and(|p| p.shift_key_down);
+        let descending = subject.is_local_player
+            && self
+                .common
+                .player
+                .as_ref()
+                .is_some_and(|p| p.shift_key_down);
         let entity_kind = subject.collision_kind;
         let mut view = self.client.view;
         let kind = self.client.camera_type;
@@ -374,7 +380,8 @@ impl crate::game::ClientGame<'_> {
         let sleeping = self.common.sleeping.map(|head| {
             let state = self.common.world.block(head[0], head[1], head[2]);
             let props = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -389,7 +396,8 @@ impl crate::game::ClientGame<'_> {
             })
         });
         let mount = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.mobs.iter().find(|m| m.id == id))
             .map(Mob::camera_scale_and_distance);
         // AbstractBoat.positionRider turns a passenger by the boat's
@@ -397,11 +405,13 @@ impl crate::game::ClientGame<'_> {
         // interpolates a passenger's yaw: the boat's turn is spread over the
         // frames of a tick.
         let ride_turn = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.boats.iter().find(|b| b.id == id))
             .map_or_else(
                 || {
-                    self.common.riding
+                    self.common
+                        .riding
                         .and_then(|id| self.common.carts.iter().find(|c| c.id == id))
                         .map_or(0.0, |c| c.passenger_yaw_delta)
                 },
@@ -466,14 +476,22 @@ impl crate::game::ClientGame<'_> {
         let position = p.position;
         let (fall_flying, fly_ticks, velocity) = (p.fall_flying, p.fall_fly_ticks, p.velocity);
         let spinning = p.auto_spin_attack_ticks > 0;
-        let using = self.common.using.map(|(_, ticks)| ticks as i32 + 1).unwrap_or(0);
+        let using = self
+            .common
+            .using
+            .map(|(_, ticks)| ticks as i32 + 1)
+            .unwrap_or(0);
         let using_off_hand = self
-            .common.using
+            .common
+            .using
             .is_some_and(|(slot, _)| slot == super::held_items::OFFHAND_SLOT);
         let use_animation = self
-            .common.using
+            .common
+            .using
             .and_then(|(slot, _)| self.common.stack_in(slot))
-            .map_or_else(Default::default, |stack| self.common.item_use_animation(stack));
+            .map_or_else(Default::default, |stack| {
+                self.common.item_use_animation(stack)
+            });
         let charged = self.common.inventory[self.common.selected]
             .as_ref()
             .is_some_and(|s| s.data().is_some_and(|d| !d.charged.is_empty()));
@@ -503,7 +521,10 @@ impl crate::game::ClientGame<'_> {
         let previous_position = self.common.previous_position;
         // LivingEntity.getBedOrientation: the model lies in the bed as
         // another player's does (`villager::sleep_pose`).
-        let bed = self.common.sleeping.map_or(0, |head| self.common.bed_facing(head));
+        let bed = self
+            .common
+            .sleeping
+            .map_or(0, |head| self.common.bed_facing(head));
         let spectator = self.common.own_player_is_spectator();
         let ridden = self.ridden_body();
         // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID come from the server.
@@ -632,14 +653,24 @@ impl crate::game::ClientGame<'_> {
             m.extra.avatar.cloak_o[1] -= 0.125;
         }
         m.extra.swing_right_arm = swing_right_arm;
-        m.extra.swing_stab = self.common.swing.current.is_some_and(|c| c.animation.kind == 2);
+        m.extra.swing_stab = self
+            .common
+            .swing
+            .current
+            .is_some_and(|c| c.animation.kind == 2);
         m.hurt_time = hurt;
         let poses = self.held_arm_poses_with_stacks(
             self.common.own_entity_id() as u32,
             self.client.player_model.as_ref().unwrap(),
-            [self.common.selected, super::held_items::OFFHAND_SLOT].map(|slot| self.common.stack_in(slot)),
+            [self.common.selected, super::held_items::OFFHAND_SLOT]
+                .map(|slot| self.common.stack_in(slot)),
         );
-        self.client.player_model.as_mut().unwrap().extra.held_arm_pose = poses;
+        self.client
+            .player_model
+            .as_mut()
+            .unwrap()
+            .extra
+            .held_arm_pose = poses;
     }
     /// `Entity.turn` for the player, by the mouse, a pad, the arrow keys or an
     /// agent's `turn`.
@@ -661,8 +692,13 @@ impl crate::game::ClientGame<'_> {
         let rotation = turn_rotation(self.common.yaw, self.common.pitch, pitch_o, xo, yo);
         // The held lead's old look (`LocalPlayer.getRopeHoldPosition`'s
         // `yRotO`/`xRotO`) turns with the view (#10276).
-        self.client.rope_rot_old =
-            rope_old_after_turn(self.client.rope_rot_old, self.common.yaw, self.common.pitch, xo, yo);
+        self.client.rope_rot_old = rope_old_after_turn(
+            self.client.rope_rot_old,
+            self.common.yaw,
+            self.common.pitch,
+            xo,
+            yo,
+        );
         self.common.yaw = rotation.y_rot;
         self.common.pitch = rotation.x_rot;
         if let Some(m) = self.client.player_model.as_mut() {
@@ -673,10 +709,12 @@ impl crate::game::ClientGame<'_> {
         // keeps the view within 105 degrees of the boat at every turn, not
         // only at the tick, so it never swings past and back.
         if let Some(b) = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.boats.iter().find(|b| b.id == id))
         {
-            let (yaw, clamped) = sunrise_level::camera_math::clamp_boat_rotation(self.common.yaw, b.yaw);
+            let (yaw, clamped) =
+                sunrise_level::camera_math::clamp_boat_rotation(self.common.yaw, b.yaw);
             self.common.yaw = yaw;
             // clampRotation moves `yRotO` with the view.
             self.client.rope_rot_old.0 += clamped;
@@ -721,7 +759,8 @@ impl crate::game::ClientGame<'_> {
                     self.common.own_player_is_spectator(),
                 )))
             && self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_some_and(|p| !p.health.dead_or_dying())
     }
@@ -779,7 +818,8 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         let eye = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or_else(|| m.eye_height(), |p| f64::from(p.dimensions.eye_height));
         let probe = entity_light_block(m.position, m.extra.crouching, eye);
@@ -867,7 +907,14 @@ impl crate::game::ClientGame<'_> {
             self.player_elytra_geometry(m, chest, camera, alpha as f32, packed, out);
             self.spin_attack_geometry(m, camera, alpha as f32, packed, out);
             self.shoulder_parrots_geometry(m, camera, alpha as f32, packed, out);
-            self.stuck_in_body_geometry(m, self.common.own_entity_id(), camera, alpha as f32, packed, out);
+            self.stuck_in_body_geometry(
+                m,
+                self.common.own_entity_id(),
+                camera,
+                alpha as f32,
+                packed,
+                out,
+            );
             self.held_item_geometry(m, camera, alpha, packed, true, None, out);
             // CustomHeadLayer: a pumpkin, skull or other head item.
             self.head_item_geometry(m, camera, alpha, packed, true, out);
@@ -887,7 +934,8 @@ impl crate::game::ClientGame<'_> {
         self.mod_render_post(m, Some(who), model, alpha as f32, camera, packed, out);
         // LivingEntity.isCurrentlyGlowing: the Glowing effect.
         let vanilla = self
-            .common.potions
+            .common
+            .potions
             .effects
             .get("glowing")
             .map(|_| super::glowing::team_color(self.own_team()));
@@ -929,7 +977,8 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         if self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| p.health.dead_or_dying())
         {
@@ -1014,7 +1063,8 @@ impl crate::game::ClientGame<'_> {
             * glam::Mat4::from_rotation_z(std::f32::consts::PI)
             * glam::Mat4::from_rotation_x((y_angle * 20.0).to_radians());
         let fire = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|p| p.is_on_fire() && !p.spectator)
             .map(|p| (p.dimensions.width, p.dimensions.height));
@@ -1301,7 +1351,7 @@ impl crate::game::ClientGame<'_> {
         m: &Mob,
         stacks: [Option<&sunrise_items::items::ItemStack>; 2],
     ) -> [Option<sunrise_core::arm_pose::ArmPose>; 2] {
-        use super::api_values::{TryIntoApi, TryIntoEngine};
+        use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
         use sunrise_sim::mobs::anim::humanoid_arm_poses;
         let stacks =
             stacks.map(|stack| stack.filter(|s| s.count > 0 && &*s.item != "minecraft:air"));

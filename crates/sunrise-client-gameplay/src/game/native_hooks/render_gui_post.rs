@@ -1,4 +1,4 @@
-
+use sunrise_client::{extras_hud::Corners, hud::HudBatch};
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

@@ -40,7 +40,8 @@ impl villager_brain::TradingPlayers for ServerGame<'_> {
 
 impl ServerGame<'_> {
     pub(in crate::game::server_side) fn villager_index(&self, id: u32) -> Option<usize> {
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .position(|m| m.id == id && m.species() == Species::Villager)
     }
@@ -64,7 +65,8 @@ impl ServerGame<'_> {
         let mut stack = inventory[slot].clone();
         let ask = self.common.bonemeal(pos, false, &mut stack);
         let grown = ask.crop.unwrap_or_else(|| {
-            self.common.with_level(|b, level, ticks| b.grow_crop(level, ticks, pos, ask.check))
+            self.common
+                .with_level(|b, level, ticks| b.grow_crop(level, ticks, pos, ask.check))
         });
         // A canceled `BonemealEvent` that succeeded uses none of the meal.
         if grown && ask.crop != Some(true) {
@@ -85,7 +87,8 @@ impl ServerGame<'_> {
         }
         if grown {
             villager_brain::bonemeal_grown(m, self.common.world.game_time);
-            self.common.level_events
+            self.common
+                .level_events
                 .push(sunrise_world::level::LevelEvent::LevelEvent {
                     id: 1505,
                     pos,
@@ -184,7 +187,13 @@ impl ServerGame<'_> {
     /// `SpawnUtil.trySpawnMob(IRON_GOLEM, ...)`: a golem near `start`, with
     /// the ambient sound `trySpawnMob` plays.
     pub(in crate::game::server_side) fn try_spawn_iron_golem(&mut self, start: [i32; 3]) -> bool {
-        let Some(kind) = self.common.res.mob_types().get("minecraft:iron_golem").cloned() else {
+        let Some(kind) = self
+            .common
+            .res
+            .mob_types()
+            .get("minecraft:iron_golem")
+            .cloned()
+        else {
             return false;
         };
         let id = self.server.next_entity + 1;
@@ -291,7 +300,8 @@ impl ServerGame<'_> {
             return;
         }
         let picks_up = self
-            .common.res
+            .common
+            .res
             .items()
             .item_tags
             .get("minecraft:villager_picks_up")
@@ -366,14 +376,16 @@ impl ServerGame<'_> {
     /// seeds and what their profession wants, from within a block.
     pub(in crate::game::server_side) fn villager_pickups(&mut self) {
         let griefing = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         if self.common.dropped.is_empty() || (!griefing && !self.grief_hooked()) {
             return;
         }
         let picks_up = self
-            .common.res
+            .common
+            .res
             .items()
             .item_tags
             .get("minecraft:villager_picks_up")
@@ -456,10 +468,7 @@ impl ServerGame<'_> {
     }
 
     /// The UUID of a player by connection (None for the host).
-    pub(in crate::game::server_side) fn player_uuid_of(
-        &self,
-        who: Option<u32>,
-    ) -> Option<[i32; 4]> {
+    pub fn player_uuid_of(&self, who: Option<u32>) -> Option<[i32; 4]> {
         let uuid = match who {
             None => return self.common.level.player_uuid,
             // While that guest acts its own UUID is swapped in.
@@ -500,7 +509,7 @@ impl ServerGame<'_> {
             && let Some(host) = &self.server.lan
         {
             let direct = cause.filter(|_| super::combat::melee(source.kind));
-            let kind = super::creatures::source_damage_type(source);
+            let kind = sunrise_sim::health::source_damage_type(source);
             host.hub.damage_event(id as i32, kind, cause, direct, at);
         }
         for villager::HurtSound(name, at, volume, pitch) in sounds.into_iter().flatten() {
@@ -526,7 +535,8 @@ impl ServerGame<'_> {
             return;
         };
         let snapshot: Vec<_> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .map(|m| m.seen(None, self.items()))
             .collect();
@@ -684,7 +694,8 @@ impl ServerGame<'_> {
             self.set_bed_occupied(bed, false);
         }
         let Some(i) = self
-            .common.mob_index
+            .common
+            .mob_index
             .find(&self.common.mobs, id)
             .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
         else {
@@ -699,10 +710,19 @@ impl ServerGame<'_> {
             block_tags: &world_items!(self).block_tags,
             border: Some(self.common.border.geometry()),
         };
-        let woke = villager::wake(&mut self.common.mobs[i], self.common.world.game_time, Some(&level), None);
+        let woke = villager::wake(
+            &mut self.common.mobs[i],
+            self.common.world.game_time,
+            Some(&level),
+            None,
+        );
         if woke.is_some() {
             let new = self.common.mobs[i].position;
-            self.common.entity_section_moved(id, Some([old.x, old.y, old.z]), [new.x, new.y, new.z]);
+            self.common.entity_section_moved(
+                id,
+                Some([old.x, old.y, old.z]),
+                [new.x, new.y, new.z],
+            );
         }
     }
 }

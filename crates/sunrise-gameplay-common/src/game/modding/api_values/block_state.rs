@@ -343,13 +343,13 @@ impl Index {
         })
     }
 
-    pub(crate) fn to_api(&self, state: BlockStateId) -> Result<BlockState, BlockStateError> {
+    pub fn to_api(&self, state: BlockStateId) -> Result<BlockState, BlockStateError> {
         self.forward
             .get(state.0 as usize)
             .copied()
             .ok_or(BlockStateError::UnknownState)
     }
-    pub(crate) fn to_engine(&self, state: BlockState) -> Result<BlockStateId, BlockStateError> {
+    pub fn to_engine(&self, state: BlockState) -> Result<BlockStateId, BlockStateError> {
         let states = self
             .reverse
             .get(&state.block())

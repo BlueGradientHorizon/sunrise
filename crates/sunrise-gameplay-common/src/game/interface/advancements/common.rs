@@ -24,33 +24,33 @@ pub struct TravelMarks {
 }
 #[derive(Default)]
 pub struct AdvState {
-    pub(in crate::game) tree: Arc<Tree>,
-    pub(in crate::game) remote_tree: Option<RemoteTree>,
+    pub tree: Arc<Tree>,
+    pub remote_tree: Option<RemoteTree>,
     /// `ClientAdvancements.selectedTab`: the connection remembers the root
     /// independently of the open screen's tabs and the current tree.
-    pub(in crate::game) selected_tab: Option<String>,
-    pub(in crate::game) progress: Progress,
-    pub(in crate::game) loaded: bool,
+    pub selected_tab: Option<String>,
+    pub progress: Progress,
+    pub loaded: bool,
     /// Awards skip the toast (`/advancement grant ... everything`).
-    pub(in crate::game) quiet: bool,
+    pub quiet: bool,
     /// The inventory last seen by `inventory_changed`.
-    pub(in crate::game) last_inventory: u64,
+    pub last_inventory: u64,
     /// `ServerPlayer.levitationStartPos` and `levitationStartTime`.
-    pub(in crate::game) levitation: Option<([f64; 3], u64)>,
+    pub levitation: Option<([f64; 3], u64)>,
     /// The fall, lava ride, Nether trip, blast and effects `tick_marks` follows.
-    pub(in crate::game) marks: TravelMarks,
+    pub marks: TravelMarks,
     /// While the game acts for a network player (`as_guest`): the
     /// advancements whose progress changed (`progressChanged`), the recipes
     /// unlocked and the announcements, for their client and everyone's.
-    pub(in crate::game) changed: BTreeSet<usize>,
-    pub(in crate::game) unlocked: Vec<String>,
-    pub(in crate::game) announced: Vec<Text>,
+    pub changed: BTreeSet<usize>,
+    pub unlocked: Vec<String>,
+    pub announced: Vec<Text>,
     /// `inventory_changed`'s criteria by item, built for `tree`.
-    pub(in crate::game) inventory_index: Option<(Arc<Tree>, Arc<adv::InventoryIndex>)>,
+    pub inventory_index: Option<(Arc<Tree>, Arc<adv::InventoryIndex>)>,
 }
 impl AdvState {
     /// Drop the index built for the previous tree after a new one is installed.
-    pub(in crate::game) fn reset_tree(&mut self) {
+    pub fn reset_tree(&mut self) {
         self.inventory_index = None;
     }
 }
@@ -58,10 +58,10 @@ impl AdvState {
 /// can replace a node without replacing the node its parent or children know.
 #[derive(Default)]
 pub struct RemoteTree {
-    pub(in crate::game) positions: Vec<(f32, f32)>,
+    pub positions: Vec<(f32, f32)>,
     /// Node identity for each ID in `Tree::list` order.
-    pub(in crate::game) current: Vec<usize>,
-    pub(in crate::game) nodes: Vec<RemoteNode>,
+    pub current: Vec<usize>,
+    pub nodes: Vec<RemoteNode>,
 }
 
 pub struct RemoteNode {
@@ -106,7 +106,7 @@ impl RemoteTree {
 
     /// Release identities no current node can reach in either direction.
     /// A removed or overwritten node remains as long as its links still matter.
-    pub(in crate::game) fn prune_unreachable(&mut self) {
+    pub fn prune_unreachable(&mut self) {
         if self.nodes.len() == self.current.len() {
             return;
         }
@@ -160,7 +160,7 @@ pub struct TagSources<'a> {
     pub(in crate::game) resources: &'a std::path::Path,
 }
 impl TagSources<'_> {
-    pub(in crate::game) fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
+    pub fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
         // The world's packs' tags over the game's own, as the server's
         // registries bind them (`TagLoader.loadTagsForExistingRegistries`).
         if let Some(tags) = self.pack_tags.and_then(|t| t.get(registry)) {

@@ -8,7 +8,7 @@ use sunrise_sim::menu::Maps;
 /// The level's maps as a menu sees them (`ContainerLevelAccess`): the
 /// states of the maps the click can reach, and the copies it makes.
 #[derive(Clone)]
-pub(in crate::game) struct LevelMaps {
+pub struct LevelMaps {
     states: RefCell<HashMap<i32, (bool, u8)>>,
     next_id: Cell<i32>,
     /// (new id, source id, scaled) for each copy made.
@@ -16,7 +16,7 @@ pub(in crate::game) struct LevelMaps {
 }
 
 impl LevelMaps {
-    pub(in crate::game) fn new(states: HashMap<i32, (bool, u8)>, next_id: i32) -> Self {
+    pub fn new(states: HashMap<i32, (bool, u8)>, next_id: i32) -> Self {
         Self {
             states: RefCell::new(states),
             next_id: Cell::new(next_id),
@@ -24,7 +24,7 @@ impl LevelMaps {
         }
     }
 
-    pub(in crate::game) fn into_made(self) -> Vec<(i32, i32, bool)> {
+    pub fn into_made(self) -> Vec<(i32, i32, bool)> {
         self.made.into_inner()
     }
 }

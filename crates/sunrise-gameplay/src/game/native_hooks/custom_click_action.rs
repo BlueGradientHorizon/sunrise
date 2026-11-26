@@ -1,4 +1,4 @@
-
+use sunrise_core::nbt::Tag;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

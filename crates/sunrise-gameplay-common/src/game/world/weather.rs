@@ -6,7 +6,7 @@ use crate::game::side_ops::world::SideOps as _;
 
 /// `ClientLevel.getPrecipitationAt`: a loaded column's biome and the level's sea level
 /// decide whether it snows, rains, or has no precipitation.
-pub(in crate::game) fn precipitation_at(
+pub fn precipitation_at(
     world: &World,
     biomes: &Biomes,
     zoom: BiomeZoom,
@@ -72,18 +72,18 @@ where
 
 pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
     /// The joined `ClientLevel`'s sea level, or the server level's generator setting.
-     fn weather_sea_level(&self) -> i32 {
+    fn weather_sea_level(&self) -> i32 {
         self.side_state()
             .side_remote_sea_level()
             .unwrap_or_else(|| self.dim.sea_level())
     }
 
     /// `Level.isDarkOutside`.
-     fn dark_outside(&self) -> bool {
+    fn dark_outside(&self) -> bool {
         !self.dimension_type().has_fixed_time && self.sky_darken() >= 4
     }
 
-     fn can_have_weather(&self) -> bool {
+    fn can_have_weather(&self) -> bool {
         level_can_have_weather(
             self.world.shape.sky_light,
             self.world.shape.has_ceiling,
@@ -93,7 +93,7 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The rain and thunder levels (`Level.getRainLevel`, `getThunderLevel`):
     /// the world's, where the level can have weather, else none.
-     fn weather_levels(&self, partial: f32) -> (f32, f32) {
+    fn weather_levels(&self, partial: f32) -> (f32, f32) {
         if self.can_have_weather() {
             self.world.weather.levels(partial)
         } else {
@@ -102,10 +102,11 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Level.getSkyDarken`: the same dimension, time and weather calculation used by gameplay.
-     fn sky_darken_in(&self, world: &World, dimension: Dim) -> i32 {
+    fn sky_darken_in(&self, world: &World, dimension: Dim) -> i32 {
         // A client of a server has the environment its server's type made for the level it is
         // in; a parked level keeps the client's own for its dimension.
-        let environment = match self.side_state()
+        let environment = match self
+            .side_state()
             .side_remote_environment()
             .filter(|_| dimension == self.dim)
         {
@@ -133,7 +134,7 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
         sunrise_level::environment::sky_darken(environment, day_time, rain, thunder)
     }
 
-     fn sky_darken(&self) -> i32 {
+    fn sky_darken(&self) -> i32 {
         if self.dim == Dim::Nether {
             return 11;
         }
@@ -165,7 +166,7 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `Level.isRainingAt`: `Level.precipitationAt`
     /// (`sunrise_world::level::weather::precipitation_at`) is rain.
-     fn raining_at(&self, p: BlockPos) -> bool {
+    fn raining_at(&self, p: BlockPos) -> bool {
         let reads = GamePrecipitation {
             world: &self.world,
             properties: &self.pack.assets.properties,
@@ -180,7 +181,7 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)`: one above the
     /// highest block in `blocks_motion_in_heightmap` or holding a fluid.
-     fn rain_height(&self, x: i32, z: i32) -> i32 {
+    fn rain_height(&self, x: i32, z: i32) -> i32 {
         crate::game::weather_height::motion_blocking_height(
             &self.world,
             &self.pack.assets.properties,
@@ -190,4 +191,3 @@ pub trait WeatherGameExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, T: crate::game::SideGame<'__sg>> WeatherGameExt<'__sg> for T {}
-

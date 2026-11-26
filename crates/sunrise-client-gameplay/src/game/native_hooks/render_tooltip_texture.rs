@@ -1,4 +1,5 @@
-
+use sunrise_core::identifier::Identifier;
+use sunrise_items::items::ItemStack;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

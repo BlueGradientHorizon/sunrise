@@ -1,6 +1,6 @@
 use super::*;
-use sunrise_gameplay_common::game::native_ticks;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::native_ticks;
 
 /// `IItemExtension.onEntityItemUpdate`: a dropped item entity is about to
 /// tick (`ItemEntity.tick`). Set `canceled` and its
@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
     /// Asks the parts of the item entity at `index` of `dropped` whether its tick
     /// ends here. An item no part is attached to is told nothing: its stack is not
     /// converted and no scope is made.
-    pub(in crate::game::server_side) fn item_update_halts(&mut self, index: usize) -> bool {
+    pub(crate) fn item_update_halts(&mut self, index: usize) -> bool {
         let item = &self.common.dropped[index];
         if !mod_api::__private::item_listens(mod_api::HookId::OnEntityItemUpdate, &item.stack.item)
         {
@@ -181,7 +181,7 @@ impl crate::game::ServerGame<'_> {
         });
         canceled
     }
-    pub(in crate::game::server_side) fn item_update_round(&mut self) -> native_ticks::TickRound {
+    pub(crate) fn item_update_round(&mut self) -> native_ticks::TickRound {
         // EntityTickEvent.Pre for the items about to tick, and the Post after them.
         let mut round = self.common.native_tick_round();
         let merging = self.common.is_logical_server();
@@ -212,7 +212,9 @@ impl crate::game::ServerGame<'_> {
             // Each item the Pre let through, in order, hears its part.
             let (mut n, mut from) = (0, 0);
             while update_hook && let Some(id) = round.let_through(n) {
-                if let Some(i) = native_ticks::place(&self.common.dropped, from, |item| item.id == id) {
+                if let Some(i) =
+                    native_ticks::place(&self.common.dropped, from, |item| item.id == id)
+                {
                     if self.item_update_halts(i) {
                         round.halt(id);
                     }
@@ -230,12 +232,7 @@ pub mod on_entity_item_update_tests {
     use super::*;
 
     /// One stack of `item` at rest on the floor, a pickup delay of 20 ticks.
-    pub fn rest(
-        game: &mut crate::game::ServerGame<'_>,
-        item: &str,
-        x: f64,
-        z: f64,
-    ) -> u32 {
+    pub fn rest(game: &mut crate::game::ServerGame<'_>, item: &str, x: f64, z: f64) -> u32 {
         game.spawn_item(ItemStack::new(item, 1), [x, 64.0, z], [0.0; 3], 20);
         game.side.ticked_entities_through = game.side.next_entity;
         game.dropped.last().unwrap().id

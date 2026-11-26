@@ -19,7 +19,7 @@ pub struct StrikeState {
 
 pub struct Bolt {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     /// The entity id a server's players know it by (0 until it has one).
     pub id: u32,
@@ -43,16 +43,16 @@ pub struct Bolt {
     /// Vehicle entity id when this bolt rides a serializable entity (`Entity.vehicle`).
     pub mount: Option<u32>,
     pub vehicle_order: i64,
-    pub(in crate::game) life: i32,
-    pub(in crate::game) flashes: i32,
-    pub(in crate::game) seed: i64,
+    pub life: i32,
+    pub flashes: i32,
+    pub seed: i64,
     /// The bolt's own random (`Entity.random`): UUID, then seed, flashes, flash
     /// timing and fire spots draw from it, never the level's.
-    pub(in crate::game) random: LegacyRandom,
-    pub(in crate::game) visual_only: bool,
-    pub(in crate::game) strike: StrikeState,
+    pub random: LegacyRandom,
+    pub visual_only: bool,
+    pub strike: StrikeState,
     /// Blocks it set on fire (`blocksSetOnFire`).
-    pub(in crate::game) fires: i32,
+    pub fires: i32,
     /// The player who channelled it (`LightningBolt.cause`): `Some(None)` for
     /// the host, `Some(Some(conn))` for a guest.
     pub cause: Option<Option<u32>>,
@@ -63,7 +63,7 @@ sunrise_mod_runtime::impl_attachment_lifetime!(Bolt);
 
 impl Bolt {
     /// `LightningBolt.<init>`: `Entity.<init>` draws the UUID first, then `seed` and `flashes`.
-    pub(in crate::game) fn new(id: u32, at: [f64; 3], visual_only: bool) -> (Self, [i32; 4]) {
+    pub fn new(id: u32, at: [f64; 3], visual_only: bool) -> (Self, [i32; 4]) {
         let mut random = random_source::entity();
         let uuid = sunrise_sim::save::insecure_uuid(&mut random);
         let seed = random.next_long();
@@ -106,7 +106,7 @@ impl Bolt {
     }
 
     /// `Entity.load` inherited fields (`LightningBolt.readAdditionalSaveData` is empty).
-    pub(in crate::game) fn apply_nbt(&mut self, tag: &sunrise_core::nbt::Tag) {
+    pub fn apply_nbt(&mut self, tag: &sunrise_core::nbt::Tag) {
         use sunrise_game_data::nbt_path::int_value;
         use sunrise_sim::{entity_nbt, save::float};
         if let Some(pos) = entity_nbt::position(tag) {

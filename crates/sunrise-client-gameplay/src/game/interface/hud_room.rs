@@ -54,12 +54,7 @@ impl ClientGame<'_> {
 
     /// Reserve the highest painted status row, vanilla or replaced, down to the bottom
     /// of the view. Measure only the installed body's paint, not the surrounding hook draws.
-    pub(in crate::game::client_side) fn keep_status_rows(
-        &mut self,
-        vertices: &[HudVertex],
-        w: f32,
-        h: f32,
-    ) {
+    pub fn keep_status_rows(&mut self, vertices: &[HudVertex], w: f32, h: f32) {
         let top = vertices.iter().map(|v| v.pos[1]).fold(h, f32::min);
         if top < self.client.chat_ui.room.bottom() {
             let half = hud_overlays::HOTBAR_HALF_WIDTH;

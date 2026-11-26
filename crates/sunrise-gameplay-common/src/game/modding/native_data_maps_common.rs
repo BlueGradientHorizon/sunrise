@@ -54,7 +54,7 @@ pub struct WorldRegistries<'a> {
     tags: RefCell<HashMap<String, HashMap<String, HashSet<String>>>>,
 }
 impl<'a> WorldRegistries<'a> {
-    pub(in crate::game) fn new(
+    pub fn new(
         ids: impl IntoIterator<Item = (&'a str, &'a [String])>,
         datapack: Option<&'a mod_api::DatapackRegistrySet>,
         items: &'a sunrise_items::items::Items,

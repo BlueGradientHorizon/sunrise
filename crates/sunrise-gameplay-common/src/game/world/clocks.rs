@@ -4,9 +4,9 @@ use sunrise_gameplay_common::world_clock::WorldClock;
 
 /// What the LAN hub's time packets carry, read from the clocks without touching the hub.
 pub struct HubClockSnapshot {
-    pub(in crate::game) others: Vec<(String, i64, f32)>,
-    pub(in crate::game) overworld_day: Option<i64>,
-    pub(in crate::game) level_clock: Option<(String, f32)>,
+    pub others: Vec<(String, i64, f32)>,
+    pub overworld_day: Option<i64>,
+    pub level_clock: Option<(String, f32)>,
 }
 
 impl crate::game::CommonGame<'_> {

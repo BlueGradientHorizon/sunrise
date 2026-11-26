@@ -10,14 +10,15 @@ impl crate::game::ServerGame<'_> {
         block_entity: BlockDropEntity<'_>,
         drops: Vec<ItemStack>,
     ) -> BlockDrops {
-        let breaker =
-            if sunrise_gameplay_common::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
-                || mod_api::__private::listened(mod_api::HookId::BlockDrops)
-            {
-                breaker.and_then(|id| self.common.entity(id))
-            } else {
-                None
-            };
+        let breaker = if sunrise_gameplay_common::game::api_values::block_state::block_listens(
+            mod_api::HookId::ExpDrop,
+            state,
+        ) || mod_api::__private::listened(mod_api::HookId::BlockDrops)
+        {
+            breaker.and_then(|id| self.common.entity(id))
+        } else {
+            None
+        };
         self.common.with_level(|_, level, _| {
             let pos = BlockPos::new(pos[0], pos[1], pos[2]);
             // with_level rebuilds GameLevel with both fields None on every call.
@@ -68,14 +69,17 @@ impl crate::game::ServerGame<'_> {
             )
         })
     }
-    pub(in crate::game::server_side) fn prepare_part_break_experience(
+    pub(crate) fn prepare_part_break_experience(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
         experience: &mut Option<u32>,
     ) {
         if !self.native_authoritative()
-            || !sunrise_gameplay_common::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
+            || !sunrise_gameplay_common::game::api_values::block_state::block_listens(
+                mod_api::HookId::ExpDrop,
+                state,
+            )
         {
             return;
         }

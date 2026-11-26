@@ -1,4 +1,4 @@
-
+use sunrise_sim::health::HurtSource;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

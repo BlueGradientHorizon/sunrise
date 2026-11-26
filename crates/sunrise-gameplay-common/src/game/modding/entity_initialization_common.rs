@@ -6,11 +6,11 @@ use std::collections::{HashMap, HashSet};
 #[derive(Default)]
 pub struct EntityInitialization {
     /// The object holders already told (entity IDs and separate player UUIDs).
-    pub(in crate::game) initialized: HashSet<Holder>,
+    pub initialized: HashSet<Holder>,
     /// Each LAN guest's connection when its player was last told.
-    pub(in crate::game) players: HashMap<u128, u32>,
+    pub players: HashMap<u128, u32>,
     /// The holder being told now: its attachments are reachable before it is in the level.
-    pub(in crate::game) active: Option<Holder>,
+    pub active: Option<Holder>,
 }
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {

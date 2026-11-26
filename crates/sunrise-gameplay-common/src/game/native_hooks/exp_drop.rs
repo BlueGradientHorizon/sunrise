@@ -7,7 +7,7 @@ impl GameLevel<'_> {
 }
 
 impl GameLevel<'_> {
-    pub(in crate::game) fn part_break_experience(
+    pub fn part_break_experience(
         &self,
         pos: BlockPos,
         state: BlockStateId,
@@ -72,7 +72,7 @@ impl GameLevel<'_> {
 
 impl GameLevel<'_> {
     /// Capture the resident block entity's generation at `pos`, if one currently exists.
-    pub(in crate::game) fn resident_block_entity(&self, pos: BlockPos) -> BlockDropEntity<'static> {
+    pub fn resident_block_entity(&self, pos: BlockPos) -> BlockDropEntity<'static> {
         BlockDropEntity::at(self.world, (pos.x, pos.y, pos.z), None)
     }
 }

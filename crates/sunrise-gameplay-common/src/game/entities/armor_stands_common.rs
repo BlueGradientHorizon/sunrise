@@ -16,10 +16,10 @@ pub fn overlaps(a: Aabb, b: Aabb) -> bool {
 /// checks: the piece worn in the slot, the hand, and the old piece bound for
 /// the inventory.
 #[derive(Debug, PartialEq)]
-pub(in crate::game) struct ArmorSwap {
-    pub(in crate::game) worn: ItemStack,
-    pub(in crate::game) hand: Option<ItemStack>,
-    pub(in crate::game) to_inventory: Option<ItemStack>,
+pub struct ArmorSwap {
+    pub worn: ItemStack,
+    pub hand: Option<ItemStack>,
+    pub to_inventory: Option<ItemStack>,
 }
 /// `Equippable.swapWithEquipmentSlot` after its checks. A single item swaps
 /// with the worn piece: the hand gets the worn piece (`copyAndClear`), or

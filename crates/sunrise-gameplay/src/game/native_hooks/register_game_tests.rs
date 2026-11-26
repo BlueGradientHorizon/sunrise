@@ -1,3 +1,4 @@
+use mod_api::GameTestFunctions;
 
 impl crate::game::ServerGame<'_> {
     /// Register functions before resolving the world's test definitions.

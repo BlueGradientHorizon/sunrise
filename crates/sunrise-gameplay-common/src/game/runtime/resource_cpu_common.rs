@@ -8,13 +8,13 @@ use sunrise_items::creative_catalog::{
 };
 
 pub struct ServerCpuResources {
-    pub(in crate::game) painting_variants: PaintingVariants,
-    pub(in crate::game) item_features: ItemFeatureRequirements,
-    pub(in crate::game) creative_catalog: Arc<Catalog>,
+    pub painting_variants: PaintingVariants,
+    pub item_features: ItemFeatureRequirements,
+    pub creative_catalog: Arc<Catalog>,
 }
 
 impl ServerCpuResources {
-    pub(in crate::game) fn load(resources: &ResourceRoot) -> Result<Self> {
+    pub fn load(resources: &ResourceRoot) -> Result<Self> {
         let root = resources.prepared();
         let (painting_variants, creative_catalog) = std::thread::scope(|scope| {
             let painting_variants = named_scope(scope, "game_cpu.paintings", move || {

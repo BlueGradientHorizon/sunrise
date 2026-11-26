@@ -1,4 +1,4 @@
-
+use mod_api::ClientPacket;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

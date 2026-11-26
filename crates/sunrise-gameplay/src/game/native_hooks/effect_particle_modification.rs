@@ -1,4 +1,5 @@
-
+use mod_api::{ActiveEffect, LivingRef};
+use sunrise_level::particle_options::ParticleOptions;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

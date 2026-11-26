@@ -45,7 +45,7 @@ macro_rules! server_game_side {
         });
         let player_uuid = $s.side.lan_acting_uuid;
         let session_lock = $s.side.session_lock.0.is_some();
-        $crate::game_side!(
+        sunrise_gameplay_common::game_side!(
             $s,
             (player_uuid, level, session_lock),
             $s.level.enabled_features.as_arc(),

@@ -24,11 +24,11 @@ pub enum GatewayJob {
 #[derive(Clone, Debug)]
 pub struct GatewayArrival {
     /// The entity, as it waits for the exit's chunks.
-    pub(in crate::game) traveller: Arriving,
+    pub traveller: Arriving,
     /// The gateway's exit, or the search for one.
-    pub(in crate::game) job: GatewayJob,
+    pub job: GatewayJob,
     /// The spot to load before the job is resolved.
-    pub(in crate::game) target: Vec3,
+    pub target: Vec3,
 }
 
 /// What waits at a gateway's exit.
@@ -42,7 +42,7 @@ pub enum Arriving {
 
 impl GatewayJob {
     /// The source of a new exit must stay loaded until its block entity is updated.
-    pub(in crate::game) fn source_chunk(self) -> Option<(i32, i32)> {
+    pub fn source_chunk(self) -> Option<(i32, i32)> {
         match self {
             Self::Find { gateway, .. } => Some((gateway[0] >> 4, gateway[2] >> 4)),
             Self::Known { .. } => None,
@@ -50,7 +50,7 @@ impl GatewayJob {
     }
 
     /// TheEndGatewayBlockEntity.getPortalPosition, using the gateway block entity.
-    pub(in crate::game) fn for_gateway(gateway: [i32; 3], entity: Option<&BlockEntity>) -> Self {
+    pub fn for_gateway(gateway: [i32; 3], entity: Option<&BlockEntity>) -> Self {
         let configured = match entity {
             Some(BlockEntity::EndGateway(g)) => g.exit_portal.map(|exit| (exit, g.exact_teleport)),
             _ => None,
@@ -85,21 +85,21 @@ pub fn exact_teleport(entity: Option<&BlockEntity>) -> bool {
 #[derive(Default)]
 pub(in crate::game) struct EndState {
     /// Ticks until the player can use a gateway again (TheEndGatewayBlockEntity cooldown).
-    pub(in crate::game) gateway_cooldown: u32,
-    pub(in crate::game) gateways: HashMap<u32, sunrise_sim::end_gateway::Traveller>,
+    pub gateway_cooldown: u32,
+    pub gateways: HashMap<u32, sunrise_sim::end_gateway::Traveller>,
     /// The entities that went through a gateway, waiting for its exit.
-    pub(in crate::game) arrivals: Vec<GatewayArrival>,
+    pub arrivals: Vec<GatewayArrival>,
     /// The chunks kept loaded for those arrivals.
-    pub(in crate::game) areas: Vec<(i32, i32)>,
+    pub areas: Vec<(i32, i32)>,
     /// `Entity.placePortalTicket` of the pearls that came out of a gateway:
     /// the chunk each landed in, kept loaded for the ticks left of its
     /// `TicketType.PORTAL`, so that it can come down and take its owner there.
-    pub(in crate::game) tickets: Vec<((i32, i32), u32)>,
+    pub tickets: Vec<((i32, i32), u32)>,
     /// The Overworld generator, for stronghold positions (ServerLevel.findNearestMapStructure).
-    pub(in crate::game) locator: std::sync::Mutex<Option<Arc<VanillaTerrain>>>,
+    pub locator: std::sync::Mutex<Option<Arc<VanillaTerrain>>>,
     /// Thrown eyes of ender in flight.
-    pub(in crate::game) eyes: Vec<EyeOfEnder>,
-    pub(in crate::game) flash: EndFlash,
+    pub eyes: Vec<EyeOfEnder>,
+    pub flash: EndFlash,
 }
 
 /// EndFlashState: a purple flash in the End sky every 600 ticks that also
@@ -156,21 +156,21 @@ pub fn flash_pose(x_angle: f32, y_angle: f32) -> glam::Mat4 {
 }
 
 impl EndState {
-    pub(in crate::game) fn locator(&self) -> Option<Arc<VanillaTerrain>> {
+    pub fn locator(&self) -> Option<Arc<VanillaTerrain>> {
         self.locator.lock().unwrap().clone()
     }
-    pub(in crate::game) fn set_locator(&self, terrain: Option<Arc<VanillaTerrain>>) {
+    pub fn set_locator(&self, terrain: Option<Arc<VanillaTerrain>>) {
         *self.locator.lock().unwrap() = terrain;
     }
 }
 
 impl EndState {
     /// The eyes' entity ids, for a server to number them.
-    pub(in crate::game) fn eye_ids(&mut self) -> impl Iterator<Item = &mut u32> {
+    pub fn eye_ids(&mut self) -> impl Iterator<Item = &mut u32> {
         self.eyes.iter_mut().map(|e| &mut e.id)
     }
     /// The numbered eyes as a server's clients track them: (id, position, motion).
-    pub(in crate::game) fn eyes_tracked(&self) -> impl Iterator<Item = (u32, [f64; 3], [f64; 3])> {
+    pub fn eyes_tracked(&self) -> impl Iterator<Item = (u32, [f64; 3], [f64; 3])> {
         self.eyes
             .iter()
             .filter(|e| e.id != 0)
@@ -178,7 +178,7 @@ impl EndState {
     }
     /// `handleAddEntity` for an eye of ender on a server's client: it flies
     /// where the server says.
-    pub(in crate::game) fn add_remote_eye(&mut self, id: u32, at: [f64; 3], velocity: [f64; 3]) {
+    pub fn add_remote_eye(&mut self, id: u32, at: [f64; 3], velocity: [f64; 3]) {
         self.eyes.retain(|e| e.id != id);
         let at = glam::DVec3::from_array(at);
         self.eyes.push(EyeOfEnder {
@@ -192,9 +192,7 @@ impl EndState {
         });
     }
     /// Where each eye in flight was last tick and is now (the hitbox view).
-    pub(in crate::game) fn eye_motions(
-        &self,
-    ) -> impl Iterator<Item = (glam::DVec3, glam::DVec3)> + '_ {
+    pub fn eye_motions(&self) -> impl Iterator<Item = (glam::DVec3, glam::DVec3)> + '_ {
         self.eyes.iter().map(|e| (e.previous, e.position))
     }
     /// `EyeOfEnder.tick` on a server's client: it moves by its last known
@@ -208,11 +206,11 @@ impl EndState {
     }
     /// A server's move: an eye has no interpolation handler, so
     /// `moveOrInterpolateTo` puts it there at once. False when `id` isn't one.
-    pub(in crate::game) fn remote_eye_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+    pub fn remote_eye_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
         let e = self.eyes.iter().find(|e| e.id == id)?;
         Some((e.position.to_array(), e.previous.to_array()))
     }
-    pub(in crate::game) fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
+    pub fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
         let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
             return false;
         };
@@ -220,21 +218,21 @@ impl EndState {
         true
     }
     /// `handleSetEntityMotion` for an eye. False when `id` isn't one.
-    pub(in crate::game) fn remote_eye_motion(&mut self, id: u32, velocity: [f64; 3]) -> bool {
+    pub fn remote_eye_motion(&mut self, id: u32, velocity: [f64; 3]) -> bool {
         let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
             return false;
         };
         e.velocity = glam::DVec3::from_array(velocity);
         true
     }
-    pub(in crate::game) fn remove_remote_eye(&mut self, id: u32) {
+    pub fn remove_remote_eye(&mut self, id: u32) {
         self.eyes.retain(|e| e.id != id);
     }
-    pub(in crate::game) fn clear_remote_eyes(&mut self) {
+    pub fn clear_remote_eyes(&mut self) {
         self.eyes.clear();
     }
     /// Where each eye is, for `status`.
-    pub(in crate::game) fn eye_positions(&self) -> impl Iterator<Item = (u32, [f64; 3])> {
+    pub fn eye_positions(&self) -> impl Iterator<Item = (u32, [f64; 3])> {
         self.eyes.iter().map(|e| (e.id, e.position.to_array()))
     }
 }
@@ -244,20 +242,20 @@ impl EndState {
 #[derive(Clone, Copy, Debug)]
 pub struct SummonedEye {
     /// `getDeltaMovement`, which nothing changes without a target.
-    pub(in crate::game) motion: Vec3,
+    pub motion: Vec3,
     /// `EyeOfEnder.life`: not saved, so a loaded eye starts again at 0.
-    pub(in crate::game) life: u32,
+    pub life: u32,
     /// `Entity.remainingFireTicks`, counted down by `baseTick`.
-    pub(in crate::game) fire_ticks: i32,
+    pub fire_ticks: i32,
     /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
-    pub(in crate::game) synced_fire: bool,
+    pub synced_fire: bool,
     /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
-    pub(in crate::game) has_visual_fire: bool,
+    pub has_visual_fire: bool,
 }
 impl SummonedEye {
     /// `Entity.load`'s motion and `EyeOfEnder.readAdditionalSaveData`'s
     /// `setItem`, which keeps one of the saved item, or an eye of ender.
-    pub(in crate::game) fn load(tag: &mut sunrise_core::nbt::Tag) -> Self {
+    pub fn load(tag: &mut sunrise_core::nbt::Tag) -> Self {
         use sunrise_core::nbt::Tag;
         let motion = sunrise_sim::entity_nbt::loaded_motion(tag);
         let fire_ticks = sunrise_sim::entity_nbt::fire_ticks_from_nbt(tag);
@@ -305,7 +303,7 @@ pub struct EyeOfEnder {
 }
 impl EyeOfEnder {
     /// EyeOfEnder.updateDeltaMovement.
-    pub(in crate::game) fn update_delta(
+    pub fn update_delta(
         old: glam::DVec3,
         position: glam::DVec3,
         target: glam::DVec3,

@@ -13,7 +13,7 @@ pub(in crate::game) const GUI_KEYS: [&str; 5] = [
 impl crate::game::ClientGame<'_> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
-    pub(in crate::game::client_side) fn open_player_inventory(&mut self) {
+    pub fn open_player_inventory(&mut self) {
         if self.common.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
@@ -246,7 +246,8 @@ impl crate::game::ClientGame<'_> {
         if self.in_portal_transition() {
             return;
         }
-        if self.client.remote.is_some() && (self.riding_mount_with_menu() || self.common.riding_chest_boat())
+        if self.client.remote.is_some()
+            && (self.riding_mount_with_menu() || self.common.riding_chest_boat())
         {
             self.remote_request_mount_inventory();
         } else if self.client.remote.is_some() || !self.common.spectator() {

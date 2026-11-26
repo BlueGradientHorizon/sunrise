@@ -133,11 +133,7 @@ impl CommonGame<'_> {
     }
 
     /// The block entity at `key` as vanilla saves it, with its custom name.
-    pub fn saved_block_entity(
-        &self,
-        key: (i32, i32, i32),
-        for_save: bool,
-    ) -> Option<Tag> {
+    pub fn saved_block_entity(&self, key: (i32, i32, i32), for_save: bool) -> Option<Tag> {
         let entity = self.world.block_entities.get(&key)?;
         let block = &self
             .res
@@ -191,11 +187,7 @@ impl CommonGame<'_> {
 
     /// `BlockState.getCloneItemStack` of the block at `pos`, then, with
     /// `include_data`, `ServerGamePacketListenerImpl.addBlockDataToItem`.
-    pub fn picked_stack(
-        &self,
-        pos: [i32; 3],
-        include_data: bool,
-    ) -> Option<ItemStack> {
+    pub fn picked_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
         let mut stack = self.clone_stack(pos, include_data)?;
         if include_data {
             self.add_block_data(pos, &mut stack);
@@ -206,7 +198,7 @@ impl CommonGame<'_> {
     /// `ServerGamePacketListenerImpl.addBlockDataToItem`: the block entity at
     /// `pos`, if any, onto `stack` (`BlockItem.setBlockEntityData`, then
     /// `ItemStack.applyComponents(collectComponents())`).
-    pub(in crate::game) fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
+    pub fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
         if let Some(saved) = self.saved_block_entity((pos[0], pos[1], pos[2]), true) {
             apply_patch(stack, block_entity_item::pick(&saved));
         }
@@ -214,11 +206,7 @@ impl CommonGame<'_> {
 
     /// `BlockState.getCloneItemStack` of the block at `pos`: the item alone,
     /// with what the block itself puts on it; `include_data` as vanilla passes it.
-    pub(in crate::game) fn clone_stack(
-        &self,
-        pos: [i32; 3],
-        include_data: bool,
-    ) -> Option<ItemStack> {
+    pub fn clone_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
         let key = (pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);

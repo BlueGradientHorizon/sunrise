@@ -4,9 +4,9 @@
 //! players (`mayUseItemAt`, `canHarmPlayer`). They return None for a stale
 //! handle or a player who isn't online here.
 use crate::game::ServerGame;
-use super::native_server::PlayerRead;
-use sunrise_gameplay_common::game::native_world_read_common::block_face_direction;
 use mod_api::{BlockFace, GameMode, PlayerRef};
+use sunrise_gameplay_common::game::native_server::PlayerRead;
+use sunrise_gameplay_common::game::native_world_read_common::block_face_direction;
 use sunrise_items::items::ItemStack;
 
 impl ServerGame<'_> {
@@ -74,7 +74,10 @@ impl ServerGame<'_> {
             return None;
         }
         let may_build = self.common.player_may_build(player)?;
-        Some(self.common.may_use_item_at(may_build, pos, block_face_direction(face), stack))
+        Some(
+            self.common
+                .may_use_item_at(may_build, pos, block_face_direction(face), stack),
+        )
     }
     /// `ServerPlayer.canHarmPlayer(other)`: the `pvp` rule and the two
     /// players' teams, as an attack, an arrow or a trident asks them
@@ -86,7 +89,8 @@ impl ServerGame<'_> {
     ) -> Option<bool> {
         self.player_handle_read(player)?;
         self.player_handle_read(other)?;
-        let attacker = self.native_target_team(self.common.native_entity_target(player.entity())?)?;
+        let attacker =
+            self.native_target_team(self.common.native_entity_target(player.entity())?)?;
         let victim = self.native_target_team(self.common.native_entity_target(other.entity())?)?;
         Some(self.player_may_harm(
             player.entity().id() as i32,

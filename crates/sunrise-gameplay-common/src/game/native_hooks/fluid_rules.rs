@@ -14,7 +14,7 @@ impl GameLevel<'_> {
     /// What a mod's world fluid does at `pos` in `dimension`: `registered`, then as the parts of the
     /// fluid answer through `dispatch`, brought back within what `WorldFluid` accepts. The one place
     /// that builds the hook's call, for a block-behaviour level and for a mod's read alike.
-    pub(in crate::game) fn answered_fluid_rules(
+    pub fn answered_fluid_rules(
         dimension: sunrise_core::dimension::Dimension,
         pos: BlockPos,
         fluid: sunrise_world::fluid::ModFluid,

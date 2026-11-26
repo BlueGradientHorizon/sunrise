@@ -6,8 +6,8 @@
 //! the armor attribute effects (respiration, depth strider, ...), Soul
 //! Speed's `location_changed` and `tick` effects and the
 //! `minecraft:location_changed` disk effect (frost walker).
-use crate::game::ServerGame;
 use super::durability::Wearer;
+use crate::game::ServerGame;
 use serde_json::Value;
 use sunrise_core::{
     geometry::Vec3,
@@ -208,11 +208,16 @@ impl ServerGame<'_> {
         base: f32,
         victim: Option<u32>,
     ) -> f32 {
-        let Some(held) = self.common.held().map(|stack| self.common.item_combat_stack(stack)) else {
+        let Some(held) = self
+            .common
+            .held()
+            .map(|stack| self.common.item_combat_stack(stack))
+        else {
             return base;
         };
         let actors = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .and_then(|player| victim.map(|victim| (player.entity_id as u32, victim)));
         self.weapon_enchanted_damage(
@@ -221,13 +226,15 @@ impl ServerGame<'_> {
             target,
             &self.common.stack_melee_damage_type(
                 Some(&held),
-                self.common.player
+                self.common
+                    .player
                     .as_ref()
                     .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying)),
                 true,
             ),
             base,
-            self.common.player
+            self.common
+                .player
                 .as_ref()
                 .map(|p| (p.fall_distance, p.fall_flying)),
         )
@@ -294,7 +301,7 @@ impl ServerGame<'_> {
                 let Some(((attacker, victim), weapon)) = actors.zip(weapon.as_ref()) else {
                     return value;
                 };
-                let Some(effect) = super::mods::ENCHANTMENT_DAMAGE_EFFECTS
+                let Some(effect) = sunrise_gameplay_common::game::mods::ENCHANTMENT_DAMAGE_EFFECTS
                     .get()
                     .and_then(|effects| effects.get(slot))
                 else {
@@ -328,7 +335,8 @@ impl ServerGame<'_> {
         // LivingEntity.getKnockback: `(float)getAttributeValue(ATTACK_KNOCKBACK)`, which
         // the weapon's knockback enchantment then adds to (EnchantmentHelper.modifyKnockback).
         let base = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:attack_knockback").ok())
             .unwrap_or(0.0) as f32;
@@ -373,7 +381,9 @@ impl ServerGame<'_> {
         let Some(held) = self.common.held().cloned() else {
             return;
         };
-        let Some(m) = self.common.mobs.get(mob) else { return };
+        let Some(m) = self.common.mobs.get(mob) else {
+            return;
+        };
         let kind = m.kind.id.clone();
         let victim = m.id;
         let ctx = EffectContext {
@@ -416,7 +426,8 @@ impl ServerGame<'_> {
                 }
                 let mut random = self.common.world.random.clone();
                 let ok = effect.get("requirements").is_none_or(|r| {
-                    self.common.res
+                    self.common
+                        .res
                         .stations()
                         .enchantments
                         .condition(r, *level, &ctx, &mut random)
@@ -754,14 +765,20 @@ impl ServerGame<'_> {
         damage_type: Option<&str>,
     ) {
         let attacker_kind = match attacker {
-            Some(Who::Player) => self.common.player.as_ref().map(|_| "minecraft:player".to_owned()),
+            Some(Who::Player) => self
+                .common
+                .player
+                .as_ref()
+                .map(|_| "minecraft:player".to_owned()),
             Some(Who::Mob(id)) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)
                 .map(|m| m.kind.id.clone())
                 .or_else(|| {
-                    self.common.dragon
+                    self.common
+                        .dragon
                         .as_ref()
                         .filter(|d| d.id == id)
                         .map(|_| "minecraft:ender_dragon".to_owned())
@@ -771,25 +788,31 @@ impl ServerGame<'_> {
         let attacker = attacker.filter(|_| attacker_kind.is_some());
         let direct = direct.or(attacker_kind.as_deref());
         use sunrise_sim::mobs::finalize as f;
-        let (id, kind, is_stand) =
-            if let Some(m) = self.common.mobs.iter().find(|m| m.id == target && !m.removed) {
-                (m.id, m.kind.id.clone(), false)
-            } else if let Some(a) = self.common.armor_stands.iter().find(|a| a.id == target) {
-                (a.id, "minecraft:armor_stand".to_owned(), true)
-            } else {
-                return;
-            };
+        let (id, kind, is_stand) = if let Some(m) = self
+            .common
+            .mobs
+            .iter()
+            .find(|m| m.id == target && !m.removed)
+        {
+            (m.id, m.kind.id.clone(), false)
+        } else if let Some(a) = self.common.armor_stands.iter().find(|a| a.id == target) {
+            (a.id, "minecraft:armor_stand".to_owned(), true)
+        } else {
+            return;
+        };
         // EquipmentSlot.VALUES: the hands, then the feet up to the head (the
         // body and the saddle keep no enchantments here).
         for slot in [f::MAINHAND, f::OFFHAND, f::FEET, f::LEGS, f::CHEST, f::HEAD] {
             let stack = if is_stand {
-                self.common.armor_stands
+                self.common
+                    .armor_stands
                     .iter()
                     .find(|a| a.id == id)
                     .and_then(|a| a.equipment.get(slot))
                     .cloned()
             } else {
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id)
                     .and_then(|m| f::item_stack(m, slot))
@@ -884,17 +907,18 @@ impl ServerGame<'_> {
                     },
                 };
                 let damage = random * (max - min) + min;
-                let (from, attacker_species) =
-                    if let Some(m) = self.common.mobs.iter().find(|m| m.id == wearer) {
-                        (
-                            [m.position.x, m.position.y, m.position.z],
-                            Some(m.species()),
-                        )
-                    } else if let Some(a) = self.common.armor_stands.iter().find(|a| a.id == wearer) {
-                        ([a.position.x, a.position.y, a.position.z], None)
-                    } else {
-                        return;
-                    };
+                let (from, attacker_species) = if let Some(m) =
+                    self.common.mobs.iter().find(|m| m.id == wearer)
+                {
+                    (
+                        [m.position.x, m.position.y, m.position.z],
+                        Some(m.species()),
+                    )
+                } else if let Some(a) = self.common.armor_stands.iter().find(|a| a.id == wearer) {
+                    ([a.position.x, a.position.y, a.position.z], None)
+                } else {
+                    return;
+                };
                 let kind = effect["damage_type"].as_str().unwrap_or("minecraft:thorns");
                 match attacker {
                     Who::Player => {
@@ -1322,7 +1346,8 @@ impl ServerGame<'_> {
                         let max_damage = match component("minecraft:max_damage") {
                             Some(sunrise_core::nbt::Tag::Int(value)) => *value as u32,
                             _ => self
-                                .common.res
+                                .common
+                                .res
                                 .items()
                                 .get(&stack.item)
                                 .map_or(0, |i| i.max_damage),
@@ -1462,7 +1487,8 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn apply_enchantment_attributes(&mut self) {
         let mut wanted: Vec<(String, String, f64, String)> = Vec::new();
         for (stack, slot) in self
-            .common.armor
+            .common
+            .armor
             .iter()
             .zip(["head", "chest", "legs", "feet"])
             .chain([
@@ -1627,10 +1653,12 @@ pub(in crate::game::server_side) fn mending_entries(
         .filter(|(id, _)| {
             enchantments.get(id).is_some_and(|def| {
                 def.effects.get("minecraft:repair_with_xp").is_some()
-                    && def
-                        .slots
-                        .iter()
-                        .any(|group| sunrise_gameplay_common::game::equipment_modifier_applies(group, slot.name()))
+                    && def.slots.iter().any(|group| {
+                        sunrise_gameplay_common::game::equipment_modifier_applies(
+                            group,
+                            slot.name(),
+                        )
+                    })
             })
         })
         .count()
@@ -1784,7 +1812,8 @@ impl ServerGame<'_> {
                 if let Some(sound) = sounds.get(index.min(sounds.len().saturating_sub(1))) {
                     let float = |key: &str| effect[key].as_f64().unwrap_or(1.0) as f32;
                     let at = self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .map(|p| [p.position.x, p.position.y, p.position.z]);
                     if let Some(at) = at {
@@ -1802,8 +1831,6 @@ pub(in crate::game) mod tests {
     use crate::game::damage_item_tests::{Rule, with_wear_part};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Mob, finalize};
-
-    
 
     use super::{
         Enchantments, armor_changes, block_break_speed_factor, pick_mending_slot, repair_from_xp,
@@ -1830,8 +1857,6 @@ pub(in crate::game) mod tests {
         );
         assert_eq!(armor_changes(&mut snapshot, &worn), [false; 4]);
     }
-
-    
 
     /// #4094: `BLOCK_BREAK_SPEED` is a multiplier on the destroy speed.
     #[test]

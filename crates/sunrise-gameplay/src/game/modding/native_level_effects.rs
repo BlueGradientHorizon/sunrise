@@ -3,11 +3,11 @@
 //! Every player in range hears or sees them, as `ServerLevel.playSound` and
 //! `sendParticles` send them. They return false on a client, for a handle of
 //! an earlier open, or for arguments the network can't carry.
-use super::api_values::TryIntoEngine;
-use super::native_hooks::{mod_particles_ok, mod_sound_ok};
 use super::{Game, creatures::NativeSound};
-use sunrise_gameplay_common::game::journal_level_effects::PendingWrite;
 use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
+use sunrise_gameplay_common::game::journal_level_effects::PendingWrite;
+use sunrise_gameplay_common::game::native_hooks::{mod_particles_ok, mod_sound_ok};
 use sunrise_level::particle_options::ParticleOptions;
 use sunrise_sim::lan::server_effects::ServerQueuedParticle;
 use sunrise_world::registry::BlockStateId;
@@ -228,7 +228,9 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         let Some(particle) =
-            sunrise_gameplay_common::game::lan_particle_data::server_particle_from_options(options, state)
+            sunrise_gameplay_common::game::lan_particle_data::server_particle_from_options(
+                options, state,
+            )
         else {
             return false;
         };

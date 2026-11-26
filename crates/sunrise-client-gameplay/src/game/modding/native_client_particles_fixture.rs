@@ -20,7 +20,7 @@ fn add(
     at: [f64; 3],
     velocity: [f64; 3],
 ) -> bool {
-    use super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     let Ok(options) = options.try_into_api() else {
         return false;
     };
@@ -51,7 +51,10 @@ impl ClientGame<'_> {
         self.client.particles.0.requested = Some(Vec::new());
         self.common.player = None;
         assert!(!add(self, &smoke, at, [0.0; 3]), "menu has no client level");
-        self.common.player = Some(PlayerMotion::new(self.common.motion, Vec3::new(0.0, 100.0, 0.0))?);
+        self.common.player = Some(PlayerMotion::new(
+            self.common.motion,
+            Vec3::new(0.0, 100.0, 0.0),
+        )?);
         let encoded = [f64::from(0xff12ab), 7.0, -2.0];
         let mut custom = ParticleOptions::named("fixture:encoded");
         custom.color = [0.1, 0.2, 0.3, 0.4];

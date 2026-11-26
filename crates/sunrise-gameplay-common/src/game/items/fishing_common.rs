@@ -12,44 +12,44 @@ pub enum State {
 }
 
 pub struct Hook {
-    pub(in crate::game) uuid: [i32; 4],
+    pub uuid: [i32; 4],
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
-    pub(in crate::game) caster: Option<u32>,
-    pub(in crate::game) caster_generation: sunrise_sim::join_seq::JoinSeq,
+    pub join: sunrise_sim::join_seq::JoinSeq,
+    pub caster: Option<u32>,
+    pub caster_generation: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id, which a server's players track it under.
-    pub(in crate::game) id: u32,
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) previous: Vec3,
-    pub(in crate::game) velocity: Vec3,
-    pub(in crate::game) state: State,
+    pub id: u32,
+    pub position: Vec3,
+    pub previous: Vec3,
+    pub velocity: Vec3,
+    pub state: State,
     /// `FishingHook.hookedIn`: set in `onHitEntity`, transitioned to `State::Hooked` on the next tick.
-    pub(in crate::game) hooked_in: Option<u32>,
+    pub hooked_in: Option<u32>,
     /// `Projectile.leftOwner`: until true, caster's root-vehicle tree is excluded from hits.
     pub(in crate::game) left_owner: bool,
     /// `Entity.yRot` updated on `Projectile.updateRotation` and `ProjectileDeflection.REVERSE`.
-    pub(in crate::game) yaw: f32,
+    pub yaw: f32,
     /// `Entity.xRot` updated on `Projectile.updateRotation`.
-    pub(in crate::game) pitch: f32,
-    pub(in crate::game) last_deflected_by: Option<u32>,
-    pub(in crate::game) needs_sync: bool,
+    pub pitch: f32,
+    pub last_deflected_by: Option<u32>,
+    pub needs_sync: bool,
     pub(in crate::game) tick_count: i32,
     pub(in crate::game) life: i32,
-    pub(in crate::game) ground: sunrise_world::ground_support::GroundState,
-    pub(in crate::game) nibble: i32,
-    pub(in crate::game) time_until_lured: i32,
-    pub(in crate::game) time_until_hooked: i32,
-    pub(in crate::game) fish_angle: f32,
+    pub ground: sunrise_world::ground_support::GroundState,
+    pub nibble: i32,
+    pub time_until_lured: i32,
+    pub time_until_hooked: i32,
+    pub fish_angle: f32,
     pub(in crate::game) out_of_water: i32,
     pub(in crate::game) open_water: bool,
     pub(in crate::game) luck: i32,
-    pub(in crate::game) lure: i32,
+    pub lure: i32,
     /// The fishing medium it last floated in outside water (`native_fishing_medium`): the
     /// table its catch rolls and the wait it draws. None in water.
-    pub(in crate::game) medium: Option<HookMedium>,
+    pub medium: Option<HookMedium>,
     /// The position a server's update put it heading for.
-    pub(in crate::game) lerp: HookLerp,
-    pub(in crate::game) random: LegacyRandom,
+    pub lerp: HookLerp,
+    pub random: LegacyRandom,
 }
 
 sunrise_mod_runtime::impl_attachment_lifetime!(Hook);
@@ -131,7 +131,7 @@ pub struct HookLerp {
 
 impl HookLerp {
     /// `interpolateTo`: a new target restarts the steps, the same one does not.
-    pub(in crate::game) fn start(&mut self, target: [f64; 3]) {
+    pub fn start(&mut self, target: [f64; 3]) {
         let target = Vec3::new(target[0], target[1], target[2]);
         if self.steps == 0 || self.target != target {
             self.target = target;
@@ -139,7 +139,7 @@ impl HookLerp {
         }
     }
     /// `doInterpolate`: a step of the way there.
-    pub(in crate::game) fn step(&mut self, at: Vec3) -> Vec3 {
+    pub fn step(&mut self, at: Vec3) -> Vec3 {
         if self.steps == 0 {
             return at;
         }
@@ -153,7 +153,7 @@ impl HookLerp {
     }
     /// `applyPredictedMovement`: what the hook moved by itself carries the
     /// target along while it is heading there.
-    pub(in crate::game) fn moved(&mut self, by: Vec3) {
+    pub fn moved(&mut self, by: Vec3) {
         if self.steps > 0 {
             self.target = Vec3::new(
                 self.target.x + by.x,
@@ -165,36 +165,36 @@ impl HookLerp {
 }
 
 impl Hook {
-    pub(in crate::game) fn bounds(&self) -> Aabb {
+    pub fn bounds(&self) -> Aabb {
         bounds(self.position)
     }
     /// `FishingHook.tick` returns before `applyEffectsFromBlocks` while it
     /// holds an entity.
-    pub(in crate::game) fn applies_block_effects(&self) -> bool {
+    pub fn applies_block_effects(&self) -> bool {
         !matches!(self.state, State::Hooked(_))
     }
-    pub(in crate::game) fn id(&self) -> u32 {
+    pub fn id(&self) -> u32 {
         self.id
     }
     /// `FishingHook.getHookedIn`, by entity id.
-    pub(in crate::game) fn hooked_in(&self) -> Option<u32> {
+    pub fn hooked_in(&self) -> Option<u32> {
         self.hooked_in.or(match self.state {
             State::Hooked(id) => Some(id),
             _ => None,
         })
     }
     /// `FishingHook.isOpenWaterFishing`.
-    pub(in crate::game) fn open_water(&self) -> bool {
+    pub fn open_water(&self) -> bool {
         self.open_water
     }
     /// A server's update of this client's own hook (`handleMoveEntity` also
     /// sets `onGround`).
-    pub(in crate::game) fn move_to(&mut self, target: [f64; 3], on_ground: bool) {
+    pub fn move_to(&mut self, target: [f64; 3], on_ground: bool) {
         self.ground.on_ground = resting(self.ground.on_ground, self.position, target, on_ground);
         self.lerp.start(target);
     }
     /// This client's own hook as its server tracks it: drawn, never ticked here.
-    pub(in crate::game) fn remote(id: u32, at: Vec3, uuid: [i32; 4]) -> Self {
+    pub fn remote(id: u32, at: Vec3, uuid: [i32; 4]) -> Self {
         let mut random = random_source::entity();
         // Entity initializes a local UUID before recreateFromPacket replaces it.
         let _local_uuid = sunrise_sim::save::insecure_uuid(&mut random);

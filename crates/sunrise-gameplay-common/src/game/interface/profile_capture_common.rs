@@ -53,7 +53,7 @@ pub enum Phase {
 pub struct Live(AtomicU8);
 
 impl Live {
-    pub(in crate::game) fn new() -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         Arc::new(Self(AtomicU8::new(Phase::Asked as u8)))
     }
 
@@ -66,17 +66,17 @@ impl Live {
         }
     }
 
-    pub(in crate::game) fn set(&self, phase: Phase) {
+    pub fn set(&self, phase: Phase) {
         self.0.store(phase as u8, Ordering::Relaxed);
     }
 
     /// Whether this side is, or is about to be, writing.
-    pub(in crate::game) fn active(&self) -> bool {
+    pub fn active(&self) -> bool {
         matches!(self.get(), Phase::Asked | Phase::Running)
     }
 
     /// Whether the file holds, or will hold, this side.
-    pub(in crate::game) fn wrote(&self) -> bool {
+    pub fn wrote(&self) -> bool {
         self.get() != Phase::Failed
     }
 }

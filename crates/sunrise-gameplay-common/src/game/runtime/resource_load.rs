@@ -197,19 +197,19 @@ pub enum Step<'scope, T> {
 }
 
 impl Progress {
-    pub(in crate::game) fn fraction(&self) -> f32 {
+    pub fn fraction(&self) -> f32 {
         self.value.load(Ordering::Relaxed) as f32 / (self.lines.len() - 1) as f32
     }
     pub(in crate::game) fn line(&self) -> &'static str {
         self.lines[(self.value.load(Ordering::Relaxed) as usize).min(self.lines.len() - 1)]
     }
-    pub(in crate::game) fn new() -> Self {
+    pub fn new() -> Self {
         Self::with(&STAGE_LINES)
     }
     pub(in crate::game) fn set(&self, stage: u32) {
         self.value.store(stage, Ordering::Relaxed);
     }
-    pub(in crate::game) fn with(lines: &'static [&'static str]) -> Self {
+    pub fn with(lines: &'static [&'static str]) -> Self {
         Self {
             value: Arc::new(AtomicU32::new(0)),
             lines,
@@ -218,14 +218,14 @@ impl Progress {
 }
 
 impl<'scope, T: Send + 'scope> Step<'scope, T> {
-    pub(in crate::game) fn join(self) -> T {
+    pub fn join(self) -> T {
         match self {
             Self::Thread(handle) => handle.join().unwrap(),
             Self::Later(f) => f(),
         }
     }
     /// `name` names the thread when one is spawned ([`named_scope`]).
-    pub(in crate::game) fn spawn(
+    pub fn spawn(
         scope: &'scope std::thread::Scope<'scope, '_>,
         parallel: bool,
         name: &str,
@@ -245,14 +245,14 @@ pub struct WorldRestLoader {
 }
 
 impl WorldRestLoader {
-    pub(in crate::game) fn ready(&self) -> Result<bool> {
+    pub fn ready(&self) -> Result<bool> {
         // No time limit: the title stays usable while this loads, and a slow
         // disk or a debug build can take minutes. A failure ends the thread
         // and is reported by `finish`.
         Ok(self.handle.is_finished())
     }
 
-    pub(in crate::game) fn finish(self) -> Result<()> {
+    pub fn finish(self) -> Result<()> {
         self.handle
             .join()
             .map_err(|_| "world resource loader panicked")?

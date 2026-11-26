@@ -70,7 +70,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let Some((species, navigation)) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .map(|m| (m.species(), m.ai.nav.kind))
@@ -99,7 +100,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let Some((species, navigation)) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .map(|m| (m.species(), m.ai.nav.kind))
@@ -190,9 +192,16 @@ impl crate::game::ServerGame<'_> {
     /// makes land as any tick's do.
     fn remove_from_selector(&mut self, index: usize, id: &str, targets: bool) -> usize {
         let snapshot: Vec<_> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
-            .map(|m| super::creatures::seen(m, self.common.level.player_uuid, self.items()))
+            .map(|m| {
+                sunrise_gameplay_common::game::creatures::seen(
+                    m,
+                    self.common.level.player_uuid,
+                    self.items(),
+                )
+            })
             .collect();
         let mut mobs = self.common.mobs.lift();
         #[cfg(test)]
@@ -235,7 +244,8 @@ impl crate::game::ServerGame<'_> {
         };
         drop(w);
         lent.give_back(&mut self.common.world);
-        self.common.mobs
+        self.common
+            .mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         self.common.handle_mob_events(events).ok();
         removed
@@ -460,7 +470,11 @@ impl crate::game::ServerGame<'_> {
 
     /// The species of the mob type `id` names (`minecraft:zombie`).
     fn species_of(&self, id: &str) -> Option<Species> {
-        self.common.res.mob_types().get(&namespaced(id)).map(|t| t.species)
+        self.common
+            .res
+            .mob_types()
+            .get(&namespaced(id))
+            .map(|t| t.species)
     }
 }
 

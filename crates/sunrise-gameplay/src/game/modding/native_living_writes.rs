@@ -48,7 +48,8 @@ impl crate::game::ServerGame<'_> {
                 Some(&mut self.server.guest_combat.0.entry(conn).or_default().stuck)
             }
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter_mut()
                 .find(|m| m.id == id)
                 .map(|m| &mut m.extra.stuck),
@@ -70,11 +71,12 @@ impl crate::game::ServerGame<'_> {
         send_to_self: bool,
     ) -> bool {
         match self.native_living_target(living) {
-            Some(Target::Mob(id)) => {
-                self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                    m.swing_hand_modified(hand == Hand::Off, SwingAnimation::DEFAULT)
-                })
-            }
+            Some(Target::Mob(id)) => self
+                .common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id)
+                .is_some_and(|m| m.swing_hand_modified(hand == Hand::Off, SwingAnimation::DEFAULT)),
             Some(Target::Player | Target::Guest(_)) => {
                 let Some(uuid) = self.native_living_player(living) else {
                     return false;
@@ -88,13 +90,13 @@ impl crate::game::ServerGame<'_> {
                     if let (true, true, Some(c), Some(id)) =
                         (started, send_to_self, current, game.side.lan_acting_entity)
                     {
-                        game.side
-                            .guest_packets
-                            .push(super::lan_actions::swing_packet(
+                        game.side.guest_packets.push(
+                            sunrise_gameplay_common::game::lan_actions::swing_packet(
                                 id as i32,
                                 c.hand,
                                 c.animation,
-                            ));
+                            ),
+                        );
                     }
                 });
                 started
@@ -166,10 +168,12 @@ impl crate::game::ServerGame<'_> {
     /// and the dragon.
     pub(in crate::game) fn living_item_use_remaining(&self, living: LivingRef) -> Option<i32> {
         match self.native_living_target(living)? {
-            Target::Player => Some(sunrise_gameplay_common::game::item_use_common::remaining_of(
-                self.common.using,
-                self.common.use_duration,
-            )),
+            Target::Player => Some(
+                sunrise_gameplay_common::game::item_use_common::remaining_of(
+                    self.common.using,
+                    self.common.use_duration,
+                ),
+            ),
             Target::Guest(conn) => Some(self.server.lan.as_ref()?.play.get(&conn)?.use_remaining()),
             Target::Mob(id) => self.mob_item_use_remaining(id),
             _ => None,
@@ -338,14 +342,6 @@ pub(in crate::game) mod tests {
     use sunrise_items::items::ItemStack;
     use sunrise_sim::lan::waypoints::Icon;
     use sunrise_sim::mobs::Mob;
-
-    
-    
-
-    
-    
-    
-    
 
     #[allow(unused_imports)]
     pub(in crate::game) use crate::game::client_side::native_living_writes_client::tests::with_uses;
@@ -726,16 +722,6 @@ pub(in crate::game) mod tests {
         });
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
     #[test]
     fn a_huge_stuck_count_ticks_without_overflow() {
         let mut stuck = Stuck {
@@ -746,10 +732,6 @@ pub(in crate::game) mod tests {
         stuck.tick();
         assert!(stuck.arrows >= i32::MAX - 1);
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;

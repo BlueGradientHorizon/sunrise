@@ -10,7 +10,7 @@
 use crate::game::CommonGame;
 use sunrise_core::geometry::Aabb;
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_sim::spear_sim::hits_in_reach;
+pub use sunrise_sim::spear_sim::hits_in_reach;
 use {
     sunrise_sim::attack_strength::delay, sunrise_sim::spear_sim::HIT_FEEDBACK_TICKS,
     sunrise_sim::spear_sim::Kinetic,
@@ -46,12 +46,7 @@ impl CommonGame<'_> {
     /// `LivingEntity.onKineticHit` for `entity`: the hit feels (the spear
     /// moves back, `kinetic_hit_ticks`) and sounds, at most once every ten
     /// ticks.
-    pub fn kinetic_hit_feedback(
-        &mut self,
-        entity: i32,
-        _kinetic: &Kinetic,
-        _at: [f64; 3],
-    ) {
+    pub fn kinetic_hit_feedback(&mut self, entity: i32, _kinetic: &Kinetic, _at: [f64; 3]) {
         let now = self.world.game_time;
         if self
             .kinetic_feedback

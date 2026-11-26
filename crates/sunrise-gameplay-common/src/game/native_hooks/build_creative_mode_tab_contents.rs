@@ -60,7 +60,7 @@ pub(in crate::game) struct EditSession {
 /// cache key need not carry a registry pointer that changes on a tag-only update.
 #[derive(Default)]
 pub struct CreativeCache {
-    pub(in crate::game) published: Option<Published>,
+    pub published: Option<Published>,
     pub(in crate::game) active: Option<ActiveBuild>,
 }
 

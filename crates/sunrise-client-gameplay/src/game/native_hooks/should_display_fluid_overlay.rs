@@ -1,4 +1,4 @@
-
+use sunrise_world::registry::BlockStateId;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

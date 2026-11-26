@@ -1,4 +1,4 @@
-
+use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// Per-stack ingredient and fuel remainder, initialized from item data.

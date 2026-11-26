@@ -33,7 +33,8 @@ impl ServerGame<'_> {
     /// after it, not on the mob's next AI step.
     pub(in crate::game) fn settle_hurt_teleports(&mut self) -> Result<()> {
         let pending: Vec<u32> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| {
                 (m.species() == Species::Enderman && m.extra.counter2 > 0)
@@ -61,9 +62,10 @@ impl ServerGame<'_> {
             // in its own tick; an enderman's reads only blocks.
             let uuid = self.common.level.player_uuid;
             let others: Vec<_> = if shulker {
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
-                    .map(|m| super::creatures::seen(m, uuid, self.items()))
+                    .map(|m| sunrise_gameplay_common::game::creatures::seen(m, uuid, self.items()))
                     .collect()
             } else {
                 Vec::new()
@@ -98,7 +100,11 @@ impl ServerGame<'_> {
             let last = self.common.mobs.len() - 1;
             self.common.mobs.swap(i, last);
             // The hurt's teleport (`teleportTo`) is one position update, told at once.
-            self.common.entity_section_moved(id, Some([from.x, from.y, from.z]), [to.x, to.y, to.z]);
+            self.common.entity_section_moved(
+                id,
+                Some([from.x, from.y, from.z]),
+                [to.x, to.y, to.z],
+            );
             self.common.handle_mob_events(events)?;
         }
         Ok(())
@@ -172,7 +178,8 @@ impl ServerGame<'_> {
         // A listener can change the candidate's blocks or the mob. Refuse that
         // stale attempt instead of overwriting its writes or normalizing twice.
         let kind = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| {
                 m.id == mob
@@ -251,12 +258,14 @@ impl ServerGame<'_> {
             .chain(self.common.item_frames.iter().map(|f| boxed(f.bounds())))
             .chain(self.common.paintings.iter().map(|p| boxed(p.bounds())))
             .chain(
-                self.common.crystals
+                self.common
+                    .crystals
                     .iter()
                     .map(sunrise_gameplay_common::game::dragon_common::Crystal::bounds),
             )
             .chain(
-                self.common.hook
+                self.common
+                    .hook
                     .iter()
                     .map(sunrise_gameplay_common::game::fishing_common::Hook::bounds),
             )

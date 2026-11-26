@@ -114,7 +114,7 @@ impl ContainerLayout {
     /// The areas the screen draws outside `image`, in the order the screen
     /// draws them: the creative tab rows then the effect panels, or the
     /// recipe book then the effect panels.
-    pub(in crate::game::client_side) fn exclusion(&self) -> Vec<[f32; 4]> {
+    pub fn exclusion(&self) -> Vec<[f32; 4]> {
         let mut areas = Vec::new();
         match self.tabs {
             Some([above, below]) => {
@@ -594,7 +594,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Framebuffer size and GUI projection, including before the renderer is initialized.
-    pub(in crate::game::client_side) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
+    pub fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
         let framebuffer = self.client.renderer.0.as_ref().map_or_else(
             || {
                 self.client.window.0.as_ref().map_or([1280, 720], |window| {
@@ -935,21 +935,15 @@ impl crate::game::ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::client_side::screen_build::tests::gui;
+    use sunrise_gameplay_common::game::client_side::screen_build::tests::gui;
 
     use super::{
         BuildLayout, ContainerLayout, EffectsLayout, PauseInputs, PauseLayout, ScreenBuildState,
         ScreenLayout,
     };
-    use sunrise_gameplay_common::game::Screen;
     use sunrise_client::hud::{GuiScale, HudBatch};
     use sunrise_client::window::GuiSize;
-
-    
-
-    
-
-    
+    use sunrise_gameplay_common::game::Screen;
 
     /// A container layout with only the fields a case cares about set.
     fn container(
@@ -1289,11 +1283,4 @@ use sunrise_gameplay_common::game::client_side::screen_build::tests::gui;
         );
         assert_eq!(state.builds, 1);
     }
-
-    
-    
-
-    
-
-    
 }

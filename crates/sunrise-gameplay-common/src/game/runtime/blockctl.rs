@@ -7,7 +7,7 @@ use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_world::{chunk::BlockState, registry::BlockStateId};
 
-pub(super) const HELP: &[&str] = &[
+pub const HELP: &[&str] = &[
     "setblock X Y Z BLOCK[props]    set a block with neighbour updates",
     "fill X1 Y1 Z1 X2 Y2 Z2 BLOCK   set a box of blocks",
     "getblock X Y Z                 block state at a position",

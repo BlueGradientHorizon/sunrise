@@ -1,4 +1,4 @@
-
+use sunrise_gameplay_common::game::native_hooks::SleepProblem;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {

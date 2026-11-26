@@ -1,4 +1,4 @@
-
+use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// `IItemExtension.isNotReplaceableByPickAction`: may a pick leave `stack`, in hotbar

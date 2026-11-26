@@ -4,7 +4,7 @@ use mod_api::SelectorSort;
 pub use sunrise_game_data::registries::SelectorToken;
 
 /// The frozen base selections validated when the installed mods registered their tokens.
-pub(in crate::game) fn selector_tokens() -> Vec<SelectorToken> {
+pub fn selector_tokens() -> Vec<SelectorToken> {
     mod_api::__private::entity_selector_types()
         .map(|(name, base)| SelectorToken {
             name: name.to_owned(),

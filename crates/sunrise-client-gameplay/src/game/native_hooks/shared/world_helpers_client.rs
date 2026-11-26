@@ -12,7 +12,7 @@ impl crate::game::ClientGame<'_> {
     /// each particle tick, after `RenderFrameEvent.Pre`, and at particle extraction, after
     /// HUD, screen and entity callbacks. Extraction also discards its geometry if a model
     /// callback asks to clear while it is being built, even while paused or tick-frozen.
-    pub(in crate::game::client_side) fn apply_mod_particle_clear(&mut self) {
+    pub(crate) fn apply_mod_particle_clear(&mut self) {
         if self.client.mod_clear_particles.take() {
             self.clear_client_particles();
         }
@@ -51,7 +51,7 @@ impl crate::game::ClientGame<'_> {
     /// opens, asked for once as `mod` to `title`, and a mod's answer applies
     /// as on any title screen. Told to the frame's observer, so it doesn't
     /// announce it again.
-    pub(in crate::game::client_side) fn close_mod_screen_to_title(&mut self) {
+    pub(crate) fn close_mod_screen_to_title(&mut self) {
         let decision = if self.screen_hooks_heard() {
             let current = self.screen_change_view(Screen::Mod);
             let none = self.screen_change_view(Screen::Playing);
@@ -74,7 +74,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether a box in `corner` shows: F3's debug screen takes both top
     /// corners (its left and right columns), and a bottom corner while one
     /// of its charts is drawn there.
-    pub(in crate::game::client_side) fn native_corner_shown(&self, corner: Corner) -> bool {
+    pub(crate) fn native_corner_shown(&self, corner: Corner) -> bool {
         let charts = self
             .client
             .debug_charts
@@ -189,7 +189,7 @@ impl<'g> crate::game::ClientGame<'g> {
             ),
         );
     }
-    pub(in crate::game::client_side) fn run_gui_layer(
+    pub(crate) fn run_gui_layer(
         &mut self,
         id: &str,
         batch: &mut HudBatch,

@@ -43,7 +43,7 @@ pub(in crate::game) fn body_health(body: LivingBody<'_>) -> Option<f32> {
 }
 
 /// `LivingEntity.getAbsorptionAmount`: none for an armor stand or the dragon, which carry none.
-pub(in crate::game) fn body_absorption(body: LivingBody<'_>) -> Option<f32> {
+pub fn body_absorption(body: LivingBody<'_>) -> Option<f32> {
     match body {
         LivingBody::Mob(m) => Some(m.absorption),
         LivingBody::Player(p) => match p.health {
@@ -151,10 +151,7 @@ pub(in crate::game) fn body_potion_affected(body: LivingBody<'_>, index: usize) 
 }
 
 /// `LivingEntity.getItemBySlot`: the live stack, never a copy.
-pub(in crate::game) fn body_equipment(
-    body: LivingBody<'_>,
-    slot: EquipmentSlot,
-) -> Option<EquipmentRead<'_>> {
+pub fn body_equipment(body: LivingBody<'_>, slot: EquipmentSlot) -> Option<EquipmentRead<'_>> {
     let stack = match body {
         LivingBody::Mob(m) => return finalize::equipment_slot(m, slot),
         LivingBody::Player(p) => *p.equipment.get(slot as usize)?,
@@ -205,7 +202,7 @@ pub(in crate::game) fn body_holder(body: LivingBody<'_>) -> Option<mod_api::Hold
 }
 
 /// `Mob.isNoAi`: None for anything but a mob.
-pub(in crate::game) fn body_no_ai(body: LivingBody<'_>) -> Option<bool> {
+pub fn body_no_ai(body: LivingBody<'_>) -> Option<bool> {
     match body {
         LivingBody::Mob(m) => Some(m.no_ai),
         _ => None,

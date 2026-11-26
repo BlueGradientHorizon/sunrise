@@ -119,7 +119,7 @@ impl GameLevel<'_> {
     /// The Ender Dragon fight is about to place its first dragon egg at `pos`.
     /// Set `cancel` to leave the block unchanged. Server-side.
     #[inline(always)]
-    pub(in crate::game) fn native_dragon_egg_form(
+    pub fn native_dragon_egg_form(
         &self,
         dimension: LevelDimension,
         pos: BlockPos,
@@ -451,16 +451,16 @@ impl GameLevel<'_> {
 /// The hook points. Each does nothing in Sunrise.
 pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// Before an authoritative server level's tick pass. `dimension` is its ID.
-     fn native_level_tick_pre(&mut self, level: LevelRef) {
+    fn native_level_tick_pre(&mut self, level: LevelRef) {
         crate::game::native_hooks::fire::FireHooks::fire_level_tick_pre(self, level);
     }
     /// After a successful authoritative server level tick pass.
-     fn native_level_tick_post(&mut self, level: LevelRef) {
+    fn native_level_tick_post(&mut self, level: LevelRef) {
         crate::game::native_hooks::fire::FireHooks::fire_level_tick_post(self, level);
     }
     /// `Player.interactOn`: both logical sides answer before entity interaction.
     /// Only the client's own consuming answer stops its hand loop.
-     fn native_entity_interact(
+    fn native_entity_interact(
         &mut self,
         hand: Hand,
         entity: i32,
@@ -468,32 +468,28 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
         stack: Option<&ItemStack>,
         result: &mut Option<mod_api::InteractionResult>,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_entity_interact(self, hand, entity, kind, stack, result);
+        crate::game::native_hooks::fire::FireHooks::fire_entity_interact(
+            self, hand, entity, kind, stack, result,
+        );
     }
     /// NeoForge's non-cancellable PlayerTickEvent.Pre on either logical side.
-     fn native_player_tick_pre(
-        &mut self,
-        call: mod_api::__private::PlayerTickPreCall,
-    ) {
+    fn native_player_tick_pre(&mut self, call: mod_api::__private::PlayerTickPreCall) {
         crate::game::native_hooks::fire::FireHooks::fire_player_tick_pre(self, call);
     }
     /// NeoForge's non-cancellable PlayerTickEvent.Post on either logical side.
-     fn native_player_tick_post(
-        &mut self,
-        call: mod_api::__private::PlayerTickPostCall,
-    ) {
+    fn native_player_tick_post(&mut self, call: mod_api::__private::PlayerTickPostCall) {
         crate::game::native_hooks::fire::FireHooks::fire_player_tick_post(self, call);
     }
     /// `ItemStack.useOn`: both logical sides answer after the block passed.
     /// Client reads and local effects cannot perform authoritative writes.
-     fn native_use_on(&mut self, call: mod_api::__private::UseOnCall<'_>) {
+    fn native_use_on(&mut self, call: mod_api::__private::UseOnCall<'_>) {
         crate::game::native_hooks::fire::FireHooks::fire_use_on(self, call);
     }
     /// A player uses `call.stack` with this click's `call.hand`: in the air, or
     /// on a block once `native_use_on` let it through, where `Item.use`
     /// starts. Both sides return the full interaction result; Pass continues.
     /// Consume handles without swinging. Cooldown items are skipped.
-     fn native_use_item(&mut self, call: mod_api::__private::UseItemCall<'_>) {
+    fn native_use_item(&mut self, call: mod_api::__private::UseItemCall<'_>) {
         crate::game::native_hooks::fire::FireHooks::fire_use_item(self, call);
     }
     /// `Item.getUseDuration` of `stack`, in ticks: `duration` arrives with
@@ -507,18 +503,14 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// Asked when a use starts, each tick a mod's item is in use, and each
     /// frame the hand draws one in use, on both sides. It has no user, as
     /// it is asked so often: answer from the stack alone.
-     fn native_use_duration(&self, stack: &ItemStack, duration: &mut i32) {
+    fn native_use_duration(&self, stack: &ItemStack, duration: &mut i32) {
         crate::game::native_hooks::fire::FireHooks::fire_use_duration(self, stack, duration);
     }
     /// `Item.getUseAnimation` of `stack` in use, with the item's vanilla
     /// answer as the starting animation. Asked on the client each first-person
     /// frame and each local or remote player model tick. A spear override is
     /// refused if the item has no kinetic data.
-     fn native_use_animation(
-        &self,
-        stack: &ItemStack,
-        animation: &mut UseAnimation,
-    ) {
+    fn native_use_animation(&self, stack: &ItemStack, animation: &mut UseAnimation) {
         crate::game::native_hooks::fire::FireHooks::fire_use_animation(self, stack, animation);
     }
     /// `Player.canEat` for a food `stack`, or None for cake and candle cake
@@ -529,14 +521,20 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// `Some(true)` to let a full player eat; `can_eat` left `None` keeps
     /// `vanilla_can_eat`. Both sides (the client starts eating as the
     /// server does), so answer from the stack and the player alone.
-     fn native_can_eat(
+    fn native_can_eat(
         &self,
         player: PlayerRef,
         stack: Option<&ItemStack>,
         vanilla_can_eat: bool,
         can_eat: &mut Option<bool>,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_can_eat(self, player, stack, vanilla_can_eat, can_eat);
+        crate::game::native_hooks::fire::FireHooks::fire_can_eat(
+            self,
+            player,
+            stack,
+            vanilla_can_eat,
+            can_eat,
+        );
     }
     /// NeoForge's `LivingEntityUseItemEvent.Start`: `entity` starts using
     /// `stack` in `hand` (`LivingEntity.startUsingItem`), for `duration`
@@ -551,7 +549,7 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// server's client for the uses it predicts. Answer the same on both,
     /// and change the world only on the server (`native_window` is false
     /// there), not on a server's client.
-     fn native_living_entity_use_item_start(
+    fn native_living_entity_use_item_start(
         &mut self,
         stack: &ItemStack,
         entity: Option<i32>,
@@ -559,7 +557,9 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
         duration: &mut i32,
         canceled: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_start(self, stack, entity, hand, duration, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_start(
+            self, stack, entity, hand, duration, canceled,
+        );
     }
     /// NeoForge's `LivingEntityUseItemEvent.Finish`: `entity`'s use of
     /// `stack` in `hand` ran its time (`LivingEntity.completeUsingItem`),
@@ -569,7 +569,7 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// last apple; a mod's own item is kept) and may be replaced. Fired for
     /// consumables, potions, spyglasses and mods' items. Both sides (a server's client sees its prediction);
     /// on the server for every player of the world (the helpers read the acting one).
-     fn native_living_entity_use_item_finish(
+    fn native_living_entity_use_item_finish(
         &mut self,
         stack: &ItemStack,
         entity: Option<i32>,
@@ -577,7 +577,9 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
         duration: i32,
         result: &mut Option<ItemStack>,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_finish(self, stack, entity, hand, duration, result);
+        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_finish(
+            self, stack, entity, hand, duration, result,
+        );
     }
     /// Each living tick that `entity` may still use `stack` in `hand`.
     /// `entity` is as in `native_living_entity_use_item_start`; `duration`
@@ -599,7 +601,7 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// cancellable, but its result stack may be replaced. Both sides: change
     /// the world only on the server, not on a server's client. Runs every tick
     /// of every use; check the item first.
-     fn native_living_entity_use_item_tick(
+    fn native_living_entity_use_item_tick(
         &mut self,
         stack: &ItemStack,
         entity: Option<i32>,
@@ -607,7 +609,9 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
         duration: &mut i32,
         canceled: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_tick(self, stack, entity, hand, duration, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_tick(
+            self, stack, entity, hand, duration, canceled,
+        );
     }
     /// `Item.onUseTick` of `stack`, used by `entity` with `remaining` ticks
     /// left, always above 0: what a mod's own item does each tick it is used
@@ -618,13 +622,10 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// the server). Both sides, as `native_living_entity_use_item_tick`:
     /// change the world only where this `Game` runs the world, not on a
     /// server's client. Runs every tick of every use: check the item first.
-     fn native_on_use_tick(
-        &mut self,
-        stack: &ItemStack,
-        entity: Option<i32>,
-        remaining: i32,
-    ) {
-        crate::game::native_hooks::fire::FireHooks::fire_on_use_tick(self, stack, entity, remaining);
+    fn native_on_use_tick(&mut self, stack: &ItemStack, entity: Option<i32>, remaining: i32) {
+        crate::game::native_hooks::fire::FireHooks::fire_on_use_tick(
+            self, stack, entity, remaining,
+        );
     }
     /// NeoForge's `LivingEntityUseItemEvent.Stop`: `entity` lets go of
     /// `stack` in `hand` before its use ran its time
@@ -634,7 +635,7 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// `native_release_using` isn't called); the use stops anyway. Not when
     /// the hand changed item, which stops the use without a release. Both
     /// sides, as `native_living_entity_use_item_tick`.
-     fn native_living_entity_use_item_stop(
+    fn native_living_entity_use_item_stop(
         &mut self,
         stack: &ItemStack,
         entity: Option<i32>,
@@ -642,7 +643,9 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
         duration: i32,
         canceled: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_stop(self, stack, entity, hand, duration, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_living_entity_use_item_stop(
+            self, stack, entity, hand, duration, canceled,
+        );
     }
     /// `Item.releaseUsing` of `stack`: `entity` let it go with `time_left`
     /// ticks of its `native_use_duration` left, so it was held for
@@ -652,14 +655,16 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// `native_living_entity_use_item_stop` let it through. Both sides, as
     /// vanilla's: change the world only where this `Game` runs the world,
     /// not on a server's client.
-     fn native_release_using(
+    fn native_release_using(
         &mut self,
         stack: &ItemStack,
         entity: Option<i32>,
         time_left: i32,
         used: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_release_using(self, stack, entity, time_left, used);
+        crate::game::native_hooks::fire::FireHooks::fire_release_using(
+            self, stack, entity, time_left, used,
+        );
     }
     /// A player right clicks a block (NeoForge's
     /// `PlayerInteractEvent.RightClickBlock`): once per hand, where
@@ -676,7 +681,7 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// then the other hand, `Fail` ends the click, and `Success`,
     /// `SuccessServer` or `Consume` end it as used, with the swing they name.
     /// A mod that keeps players out of land cancels with `Fail`.
-     fn native_right_click_block(
+    fn native_right_click_block(
         &mut self,
         click: &BlockClick<'_>,
         use_block: &mut TriState,
@@ -684,13 +689,20 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
         cancellation_result: &mut mod_api::InteractionResult,
         canceled: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_right_click_block(self, click, use_block, use_item, cancellation_result, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_right_click_block(
+            self,
+            click,
+            use_block,
+            use_item,
+            cancellation_result,
+            canceled,
+        );
     }
     /// Whether a mod listens to `native_entity_tick_pre` and `native_entity_tick_post`: a mod
     /// that hooks them hooks this one too and sets `listened` (HEAD, `*listened = true`).
     /// Without it the game tells no entity's tick, and keeps no list of them. Asked once for
     /// each family each tick, on the server and on a client.
-     fn native_entity_tick_listened(&mut self, listened: &mut bool) {
+    fn native_entity_tick_listened(&mut self, listened: &mut bool) {
         crate::game::native_hooks::fire::FireHooks::fire_entity_tick_listened(self, listened);
     }
     /// The entities `entities` are about to tick in the level `dimension`, and `kinds` holds
@@ -698,37 +710,32 @@ pub trait GameHooks<'g>: crate::game::native_hooks::fire::FireHooks<'g> {
     /// entity's tick in `tickNonPassenger`). Entity families may be observed on either side;
     /// see the hook catalog for coverage. Some routes run one call per entity, while others
     /// batch the family. Only IDs offered to this call may enter its cancellation output.
-     fn native_entity_tick_pre(
+    fn native_entity_tick_pre(
         &mut self,
         dimension: &str,
         entities: &[u32],
         kinds: &[&str],
         canceled: &mut Vec<u32>,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_entity_tick_pre(self, dimension, entities, kinds, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_entity_tick_pre(
+            self, dimension, entities, kinds, canceled,
+        );
     }
     /// The entities `entities` ticked in the level `dimension`, and `kinds` holds the type of
     /// each, in the same order (NeoForge's `EntityTickEvent.Post`): those
     /// `native_entity_tick_pre` was told and did not cancel, also one that died or was removed in
     /// its tick. An entity told alone in its Pre is told alone here, right after its own tick; a
     /// family once, after its last tick. On the server and on a client.
-     fn native_entity_tick_post(
-        &mut self,
-        dimension: &str,
-        entities: &[u32],
-        kinds: &[&str],
-    ) {
-        crate::game::native_hooks::fire::FireHooks::fire_entity_tick_post(self, dimension, entities, kinds);
+    fn native_entity_tick_post(&mut self, dimension: &str, entities: &[u32], kinds: &[&str]) {
+        crate::game::native_hooks::fire::FireHooks::fire_entity_tick_post(
+            self, dimension, entities, kinds,
+        );
     }
 }
 impl<'g, T: crate::game::native_hooks::fire::FireHooks<'g> + ?Sized> GameHooks<'g> for T {}
 
-
 /// Register namespaced NBT component types before content loads.
-pub fn native_component_types(
-    context: &mod_api::RegistrationContext,
-    types: &mut Vec<String>,
-) {
+pub fn native_component_types(context: &mod_api::RegistrationContext, types: &mut Vec<String>) {
     crate::game::native_hooks::fire::fire_component_types(context, types);
 }
 
@@ -1104,8 +1111,7 @@ pub fn another_mods(mod_id: &str) -> bool {
 /// (a client's guess at a click), it reads over the blocks the preview set. A read goes only
 /// through `Signals`, which asks the signal hooks and never `state_for_placement` or
 /// `can_survive`: a listener cannot re-enter itself through it.
-pub type LevelView<'a> =
-    super::super::mod_api_host::LevelTicks<'a, &'a GameLevel<'a>, &'a Ticks>;
+pub type LevelView<'a> = super::super::mod_api_host::LevelTicks<'a, &'a GameLevel<'a>, &'a Ticks>;
 impl GameLevel<'_> {
     /// This level as a placement or survival question sees it, with the simulation's `ticks`.
     pub(in crate::game) fn view<'a>(&'a self, ticks: &'a Ticks) -> LevelView<'a> {

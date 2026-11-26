@@ -24,8 +24,11 @@ impl crate::game::ServerGame<'_> {
             [1, 0, 0] => 5,
             _ => return false,
         };
-        if let Some(BlockEntity::Brushable(b)) =
-            self.common.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
+        if let Some(BlockEntity::Brushable(b)) = self
+            .common
+            .world
+            .block_entities
+            .get_mut(&(pos[0], pos[1], pos[2]))
         {
             b.hit_direction = Some(direction);
         }
@@ -83,8 +86,11 @@ impl crate::game::ServerGame<'_> {
         if brush.count != 0 {
             self.server.brushing.insert(pos, brush);
             self.common.schedule_brushable_tick(pos);
-        } else if let Some(BlockEntity::Brushable(b)) =
-            self.common.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
+        } else if let Some(BlockEntity::Brushable(b)) = self
+            .common
+            .world
+            .block_entities
+            .get_mut(&(pos[0], pos[1], pos[2]))
         {
             b.hit_direction = None;
         }
@@ -107,7 +113,12 @@ impl crate::game::ServerGame<'_> {
             _ => "minecraft:air",
         };
         // dropContent: the item at the middle of the block beside that face.
-        let item = match self.common.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        let item = match self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))
+        {
             Some(BlockEntity::Brushable(b)) => b.item.clone(),
             _ => None,
         };
@@ -213,7 +224,10 @@ impl crate::game::ServerGame<'_> {
         let loot = self.server.server_loot.0.get();
         let brusher = self.killer_loot_entity(None);
         let luck = self.acting_luck();
-        let tool = self.common.stack_in(slot).map(super::creatures::to_loot);
+        let tool = self
+            .common
+            .stack_in(slot)
+            .map(sunrise_gameplay_common::game::creatures::to_loot);
         let caller = self.caller_loot(Some(pos.map(|c| f64::from(c) + 0.5)), tool);
         caller.with(|| {
             decorated_pot::unpack_loot(
@@ -235,7 +249,10 @@ impl crate::game::ServerGame<'_> {
             b.table_seed_tag = tag.get("LootTableSeed").cloned();
             b.item = tag.get("item").and_then(save::item_from_nbt);
         }
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
     }
 }
 

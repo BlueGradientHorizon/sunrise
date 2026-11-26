@@ -15,9 +15,9 @@
 //! Within a batch the changes are in ascending menu slot order. Viewers see listener outputs from a
 //! click in the click's reply, and from any other write at the next `broadcastChanges`, as for any
 //! container write. Outputs never report again.
-use super::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
 use super::{Game, transactions::After};
 use mod_api::{MenuContainer, MenuSlotChange, MenuSlotContext, MenuSlotWrite};
+use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
 use sunrise_items::items::{ItemStack, Items};
 use sunrise_level::{
     block_entities::Pos,
@@ -554,7 +554,8 @@ impl crate::game::ServerGame<'_> {
                 if !writes.is_empty() {
                     self.journal_block_entity(pos);
                 }
-                let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get_mut(&pos) else {
+                let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get_mut(&pos)
+                else {
                     return;
                 };
                 if entity.items.len() < slots {
@@ -604,7 +605,8 @@ impl crate::game::ServerGame<'_> {
                 self.record_owned_slot_changed_seen(menu.conn, generation, seen);
             }
             SlotChangedBacking::Block { pos, .. } => {
-                let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get(&pos) else {
+                let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get(&pos)
+                else {
                     return;
                 };
                 let items = entity.items.clone();
@@ -704,7 +706,8 @@ impl crate::game::ServerGame<'_> {
                 resized_items(&guest.native_menu, layout.slots),
             ),
             Slots::Block(pos) => {
-                let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get(&pos) else {
+                let Some(BlockEntity::Mod(entity)) = self.common.world.block_entities.get(&pos)
+                else {
                     return None;
                 };
                 (
@@ -926,8 +929,8 @@ mod tests {
         SlotSnapshots, SlotWriteRefusal, UnreportableSlot, WriteScope, collect_slot_changes,
         context_from_menu, validate_slot_writes,
     };
-    use sunrise_gameplay_common::game::api_values::StackReadError;
     use mod_api::{MenuContainer, MenuSlotWrite};
+    use sunrise_gameplay_common::game::api_values::StackReadError;
     use sunrise_items::items::{ItemStack, Items};
     use sunrise_level::containers::{ModCrafting, ModLinks, ModMenuType};
     use sunrise_sim::menu::{Kind, Menu};

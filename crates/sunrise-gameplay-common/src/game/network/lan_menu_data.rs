@@ -44,7 +44,7 @@ impl GuestMenuEffects {
         }
     }
 
-    pub(in crate::game) fn take(menu: &mut Menu) -> Self {
+    pub fn take(menu: &mut Menu) -> Self {
         let dropped = std::mem::take(&mut menu.dropped);
         menu.drops.clear();
         Self {
@@ -77,44 +77,44 @@ pub enum ClickReply {
 /// Identity of a mount window across a tentative click and its settlement.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MountClickWindow {
-    pub(in crate::game) dim: Dim,
-    pub(in crate::game) conn: u32,
-    pub(in crate::game) generation: u64,
-    pub(in crate::game) window: i32,
-    pub(in crate::game) mob: u32,
+    pub dim: Dim,
+    pub conn: u32,
+    pub generation: u64,
+    pub window: i32,
+    pub mob: u32,
 }
 
 /// A guest's open workstation menu.
 #[derive(Clone)]
 pub struct GuestStation {
-    pub(in crate::game) window: i32,
-    pub(in crate::game) state: i32,
-    pub(in crate::game) kind: StationKind,
-    pub(in crate::game) pos: [i32; 3],
-    pub(in crate::game) menu: Box<Menu>,
+    pub window: i32,
+    pub state: i32,
+    pub kind: StationKind,
+    pub pos: [i32; 3],
+    pub menu: Box<Menu>,
     /// The data slots the client was last sent. `None` is not sent yet,
     /// which is not a cost: an anvil's signed cost may be `i32::MIN`.
-    pub(in crate::game) sent_data: Vec<Option<i32>>,
+    pub sent_data: Vec<Option<i32>>,
     /// The game time of the menu's last sound (`lastSoundTime`).
-    pub(in crate::game) last_sound: u64,
+    pub last_sound: u64,
 }
 
 /// A guest's open trading screen.
 #[derive(Clone)]
 pub struct GuestMerchant {
-    pub(in crate::game) window: i32,
-    pub(in crate::game) state: i32,
+    pub window: i32,
+    pub state: i32,
     /// The payment slots and the result.
-    pub(in crate::game) slots: [Option<ItemStack>; 3],
+    pub slots: [Option<ItemStack>; 3],
     /// Persistent quick-craft (drag) state across rebuilt merchant menus.
-    pub(in crate::game) drag: QuickCraftDrag,
-    pub(in crate::game) merchant: Box<MerchantState>,
+    pub drag: QuickCraftDrag,
+    pub merchant: Box<MerchantState>,
     /// The offers the client was last sent.
-    pub(in crate::game) sent: Vec<merchant::MerchantOffer>,
-    pub(in crate::game) sent_level: i32,
-    pub(in crate::game) sent_xp: i32,
+    pub sent: Vec<merchant::MerchantOffer>,
+    pub sent_level: i32,
+    pub sent_xp: i32,
     /// The result slot last synchronized to the client (`AbstractContainerMenu.remoteSlots`).
-    pub(in crate::game) sent_result: Option<ItemStack>,
+    pub sent_result: Option<ItemStack>,
 }
 
 pub struct KeptMerchantGuest {
@@ -145,10 +145,10 @@ pub struct KeptMerchantMob {
 
 #[derive(Default)]
 pub struct Journal {
-    pub(in crate::game) guests: HashMap<u32, Box<KeptMerchantGuest>>,
-    pub(in crate::game) windows: HashMap<u32, KeptMerchantWindow>,
-    pub(in crate::game) mobs: HashMap<u32, Box<KeptMerchantMob>>,
-    pub(in crate::game) sequences: Option<sunrise_items::random_sequences::RandomSequences>,
+    pub guests: HashMap<u32, Box<KeptMerchantGuest>>,
+    pub windows: HashMap<u32, KeptMerchantWindow>,
+    pub mobs: HashMap<u32, Box<KeptMerchantMob>>,
+    pub sequences: Option<sunrise_items::random_sequences::RandomSequences>,
     pub(in crate::game) active: Option<u32>,
     pub(in crate::game) correct_on_abort: std::collections::BTreeSet<(u32, i32)>,
     pub(in crate::game) refused_clicks: std::collections::BTreeSet<(u32, i32)>,

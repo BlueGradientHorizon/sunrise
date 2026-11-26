@@ -1,4 +1,4 @@
-
+use sunrise_sim::first_person_sim::Hand;
 
 /// The hook points. Each does nothing in Sunrise.
 #[cfg(feature = "client")]

@@ -1,4 +1,5 @@
-
+use mod_api::ItemEntityRef;
+use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// `IItemExtension.onDestroyed` (vanilla `ItemStack.onDestroyed`): a dropped item entity
@@ -35,7 +36,11 @@ impl crate::game::ServerGame<'_> {
         let id = entry.id;
         let vanilla_spilled = entry.peek_destroyed_contents();
         let stack = entry.stack.clone();
-        let Some(handle) = self.common.entity(id).and_then(|entity| self.common.item_entity(entity)) else {
+        let Some(handle) = self
+            .common
+            .entity(id)
+            .and_then(|entity| self.common.item_entity(entity))
+        else {
             if let Some(entry) = self.common.dropped.get_mut(index).filter(|e| e.id == id) {
                 return entry.spill_destroyed_contents();
             }

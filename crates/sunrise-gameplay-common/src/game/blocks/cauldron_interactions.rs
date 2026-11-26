@@ -10,9 +10,9 @@ use sunrise_sim::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]
 pub struct Callback {
-    pub(in crate::game) handler: Arc<dyn mod_api::Interaction>,
-    pub(in crate::game) owner: &'static str,
-    pub(in crate::game) guard: Option<RetainedCallback>,
+    pub handler: Arc<dyn mod_api::Interaction>,
+    pub owner: &'static str,
+    pub guard: Option<RetainedCallback>,
 }
 impl Callback {
     pub(in crate::game) fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
@@ -26,7 +26,7 @@ impl Callback {
         }
     }
 }
-pub(in crate::game) type Table = Dispatcher<Callback>;
+pub type Table = Dispatcher<Callback>;
 thread_local! {
     pub(in crate::game) static TABLE: RefCell<Arc<Table>> = RefCell::new(Arc::new(Table::default()));
 }

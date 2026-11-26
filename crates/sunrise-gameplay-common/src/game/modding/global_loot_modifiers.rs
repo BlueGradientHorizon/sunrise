@@ -17,7 +17,7 @@ use sunrise_world::{
     native_load_context::LoadContext,
 };
 
-pub(super) struct Serializers(HashMap<String, Arc<dyn GlobalLootModifierSerializer>>);
+pub struct Serializers(HashMap<String, Arc<dyn GlobalLootModifierSerializer>>);
 impl Serializers {
     pub(super) fn capture() -> Self {
         Self(
@@ -210,7 +210,7 @@ impl mod_api::RandomSource for RollAdapter<'_> {
 
 /// Root resources are lowest, then passive content, native contributions and
 /// the enabled packs. Readers run only after the loader selects each winning id.
-pub(super) fn files(
+pub fn files(
     root: &Path,
     stack: &super::function_pack_stack::PackStack,
     contributed: Vec<ModifierFile>,
@@ -277,7 +277,7 @@ fn append_pack(files: &mut Vec<ModifierFile>, pack: &str, source: &ResourceSourc
 }
 /// Preserve native contributions even though DataStore does not interpret this
 /// independently discovered resource folder. Their existing order is priority.
-pub(super) fn contributed(files: &[(String, Vec<u8>)]) -> Vec<ModifierFile> {
+pub fn contributed(files: &[(String, Vec<u8>)]) -> Vec<ModifierFile> {
     files
         .iter()
         .filter_map(|(key, bytes)| {
@@ -303,7 +303,7 @@ pub(super) fn contributed(files: &[(String, Vec<u8>)]) -> Vec<ModifierFile> {
 /// The reload retains its own generation, never a global live manager. Initial
 /// world opening binds the snapshot after its tables exist; reloads bind before
 /// any listener apply. A failed preparation simply drops this unbound candidate.
-pub(super) fn register_anchor(
+pub fn register_anchor(
     registry: &mut mod_api::ServerListenerRegistry,
 ) -> Result<Arc<mod_api::GlobalLootModifierManager>, mod_api::ReloadOrderError> {
     use mod_api::ServerReloadListeners;
@@ -317,7 +317,7 @@ pub(super) fn register_anchor(
     )?;
     Ok(generation)
 }
-pub(super) fn bind_retained(
+pub fn bind_retained(
     resources: &dyn mod_api::ServerReloadResources,
     generation: &mod_api::GlobalLootModifierManager,
 ) {

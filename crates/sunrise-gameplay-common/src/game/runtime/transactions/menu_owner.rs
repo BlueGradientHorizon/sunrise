@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OwnerStamp {
-    pub(in crate::game) id: MenuId,
+    pub id: MenuId,
     revision: Generation,
 }
 
@@ -30,16 +30,16 @@ impl<T: Default> Default for MenuOwner<T> {
 }
 
 impl<T> MenuOwner<T> {
-    pub(in crate::game) fn id(&self) -> MenuId {
+    pub fn id(&self) -> MenuId {
         self.stamp.id
     }
 
-    pub(in crate::game) fn stamp(&self) -> OwnerStamp {
+    pub fn stamp(&self) -> OwnerStamp {
         self.stamp
     }
 
     /// Undo content only. The owner and its revision must never roll back.
-    pub(in crate::game) fn restore(&mut self, value: T) {
+    pub fn restore(&mut self, value: T) {
         self.stamp.revision.advance();
         self.value = value;
     }

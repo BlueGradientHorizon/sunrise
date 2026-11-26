@@ -83,7 +83,7 @@ pub enum GeneralRecordError {
 
 impl GeneralRecordError {
     /// The refusal's diagnostic, for the load summary.
-    pub(in crate::game) fn message(&self) -> String {
+    pub fn message(&self) -> String {
         match self {
             GeneralRecordError::PayloadTooLarge { size } => format!(
                 "general entity payload {size} exceeds {}",
@@ -185,9 +185,7 @@ fn check_record(
     Ok(())
 }
 
-pub fn check_record_fields(
-    record: &GeneralEntityRecord,
-) -> Result<(), GeneralRecordError> {
+pub fn check_record_fields(record: &GeneralEntityRecord) -> Result<(), GeneralRecordError> {
     if !record
         .position
         .iter()
@@ -511,7 +509,7 @@ impl GeneralTypeCatalog {
     }
 
     /// The type's standing box at `at`, shared by server queries and client culling.
-    pub(in crate::game) fn bounds(&self, slot: usize, at: Vec3) -> Aabb {
+    pub fn bounds(&self, slot: usize, at: Vec3) -> Aabb {
         let (width, height) = self.dimensions(slot);
         let half = width / 2.0;
         Aabb::new(
@@ -536,7 +534,7 @@ impl GeneralTypeCatalog {
     }
 
     /// The range and update interval of the already-resolved type.
-    pub(in crate::game) fn tracking(&self, slot: usize) -> sunrise_sim::lan::tracking::General {
+    pub fn tracking(&self, slot: usize) -> sunrise_sim::lan::tracking::General {
         (&self.entries[slot]).into()
     }
 
@@ -558,7 +556,7 @@ impl GeneralTypeCatalog {
             .unwrap_or([0.0, entry.height, 0.0])
     }
 
-    pub(in crate::game) fn pickable(&self, slot: usize) -> bool {
+    pub fn pickable(&self, slot: usize) -> bool {
         self.entries[slot].pickable
     }
 
@@ -570,13 +568,13 @@ impl GeneralTypeCatalog {
     }
 
     /// The type's declared payload schema version, the one a fresh row starts at.
-    pub(in crate::game) fn payload_version(&self, slot: usize) -> u16 {
+    pub fn payload_version(&self, slot: usize) -> u16 {
         self.entries[slot].payload_version
     }
 
     /// The type's declared save policy, the writer of a record consults: a
     /// `noSave` type's rows produce zero persisted records.
-    pub(in crate::game) fn save_policy(&self, slot: usize) -> mod_api::GeneralSavePolicy {
+    pub fn save_policy(&self, slot: usize) -> mod_api::GeneralSavePolicy {
         self.entries[slot].save_policy
     }
 }
@@ -682,11 +680,11 @@ pub struct GeneralStore {
 }
 
 impl GeneralStore {
-    pub(in crate::game) fn row(&self, id: u32) -> Option<&GeneralRow> {
+    pub fn row(&self, id: u32) -> Option<&GeneralRow> {
         self.rows.iter().find(|row| row.id == id)
     }
 
-    pub(in crate::game) fn row_mut(&mut self, id: u32) -> Option<&mut GeneralRow> {
+    pub fn row_mut(&mut self, id: u32) -> Option<&mut GeneralRow> {
         self.rows.iter_mut().find(|row| row.id == id)
     }
 }
@@ -703,19 +701,19 @@ pub struct RiderIndex {
     mounts: u64,
     /// Each vehicle's first general rider. Places at and above `length` are
     /// foreign vehicles, with no corresponding general row.
-    pub(in crate::game) first_child: Vec<Option<usize>>,
+    pub first_child: Vec<Option<usize>>,
     /// Each rider's next sibling's place on the same vehicle.
-    pub(in crate::game) next_sibling: Vec<Option<usize>>,
+    pub next_sibling: Vec<Option<usize>>,
     /// Each vehicle's latest rider of the ongoing rebuild.
     last_child: Vec<Option<usize>>,
     /// A general row or foreign vehicle's place by id.
     places: FxHashMap<u32, usize>,
     boarded: Vec<(usize, u32)>,
-    pub(in crate::game) ticked: Vec<bool>,
-    pub(in crate::game) pending: Vec<(usize, Option<u32>)>,
-    pub(in crate::game) foreign_parents: Vec<(usize, i64, usize)>,
+    pub ticked: Vec<bool>,
+    pub pending: Vec<(usize, Option<u32>)>,
+    pub foreign_parents: Vec<(usize, i64, usize)>,
     /// General vehicles a mob rides, from the mob riders' pass of the same tick.
-    pub(in crate::game) mob_vehicles: sunrise_level::fast_hash::FxHashSet<u32>,
+    pub mob_vehicles: sunrise_level::fast_hash::FxHashSet<u32>,
 }
 
 impl RiderIndex {
@@ -732,7 +730,7 @@ impl RiderIndex {
     /// Re-derive the adjacency unless nothing changed since the last pass:
     /// one pass over the rows, each edge written once, no allocation while
     /// the row count and the mounts hold still.
-    pub(in crate::game) fn refresh(&mut self, rows: &GeneralRows, mounts: u64) {
+    pub fn refresh(&mut self, rows: &GeneralRows, mounts: u64) {
         let stamp = rows.stamp();
         if self.is_fresh(rows, mounts) {
             return;
@@ -780,10 +778,7 @@ impl RiderIndex {
 }
 
 impl crate::game::CommonGame<'_> {
-    pub fn general_passengers(
-        &self,
-        vehicle: u32,
-    ) -> impl Iterator<Item = &GeneralRow> {
+    pub fn general_passengers(&self, vehicle: u32) -> impl Iterator<Item = &GeneralRow> {
         let store = &self.resident_entities.general;
         let fresh = store.riders.is_fresh(&store.rows, store.mount_writes);
         // The vehicle's sibling chain while the index is current, else every row.

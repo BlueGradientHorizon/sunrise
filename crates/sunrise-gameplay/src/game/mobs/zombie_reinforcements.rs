@@ -42,11 +42,13 @@ impl ServerGame<'_> {
         }
         // ServerLevel.isSpawningMonsters.
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             || !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
         {
@@ -73,7 +75,7 @@ impl ServerGame<'_> {
             &kind.id,
             spot.map(f64::from),
             false,
-            super::creatures::SpawnSite::Finalizing(
+            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Reinforcement,
             ),
         ) else {

@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::native_hooks;
 
 impl crate::game::ServerGame<'_> {
     /// Asks the mods whether the acting guest may empty `stack` at `pos`
@@ -9,9 +10,10 @@ impl crate::game::ServerGame<'_> {
         stack: &ItemStack,
         pos: [i32; 3],
     ) -> bool {
-        let (Some(uuid), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        else {
+        let (Some(uuid), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) else {
             return false;
         };
         let mod_fluid = sunrise_world::fluid::mod_fluid_of_bucket(&stack.item);
@@ -48,7 +50,8 @@ impl crate::game::ServerGame<'_> {
         // keeps the knot's own path below.
         if let Some(id) = named
             && let Some(entity) = self
-                .common.level_entity(id)
+                .common
+                .level_entity(id)
                 .filter(|t| !matches!(t, commands::Target::Knot(_)))
         {
             // The point clicked, measured from the entity's position: a
@@ -126,7 +129,8 @@ impl crate::game::ServerGame<'_> {
             may_build: self.common.may_build(),
             can_eat: self.common.creative
                 || self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .is_some_and(|p| p.health.food.food < 20),
             game_master: self.common.can_use_game_master_blocks(),
@@ -171,7 +175,8 @@ impl crate::game::ServerGame<'_> {
         let guest = self.server.guest_use;
         if let Some(GuestUse::Entity(hand, target)) = guest {
             return Ok(self
-                .common.with_hand(hand, |g| g.interact_entity(Some(target)))?
+                .common
+                .with_hand(hand, |g| g.interact_entity(Some(target)))?
                 .then_some(hand));
         }
         let on_block = matches!(guest, Some(GuestUse::OnBlock { .. }));
@@ -203,10 +208,16 @@ impl crate::game::ServerGame<'_> {
         };
         for hand in hands {
             // The off hand's turn starts on the entity too (Minecraft.startUseItem).
-            if entity && hand == Hand::Off && self.common.with_hand(hand, |g| g.interact_entity(None))? {
+            if entity
+                && hand == Hand::Off
+                && self.common.with_hand(hand, |g| g.interact_entity(None))?
+            {
                 return Ok(Some(hand));
             }
-            if self.common.with_hand(hand, |game| game.use_hand(block_hit.as_ref()))? {
+            if self
+                .common
+                .with_hand(hand, |game| game.use_hand(block_hit.as_ref()))?
+            {
                 return Ok(Some(hand));
             }
         }
@@ -227,7 +238,8 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game) fn server_acting_player_ref(&self) -> Option<mod_api::PlayerRef> {
         let uuid = self.server.lan_acting_uuid.or_else(|| {
-            self.common.level
+            self.common
+                .level
                 .player_uuid
                 .map(sunrise_sim::lan::playerdata::ints_uuid)
         })?;

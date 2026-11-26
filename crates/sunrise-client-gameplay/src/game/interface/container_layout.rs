@@ -37,10 +37,7 @@ impl crate::game::ClientGame<'_> {
         })
     }
 
-    pub(in crate::game::client_side) fn container_layout(
-        &self,
-        batch: &sunrise_client::hud::HudBatch,
-    ) -> ContainerLayout {
+    pub fn container_layout(&self, batch: &sunrise_client::hud::HudBatch) -> ContainerLayout {
         self.build_container_layout(batch, self.container_layout_inputs(batch))
     }
 
@@ -97,7 +94,9 @@ impl crate::game::ClientGame<'_> {
             && match self.client.screen {
                 Screen::Creative => true,
                 Screen::Inventory => {
-                    self.common.container.is_none() && self.common.craft_size == 2 && !self.mount_active()
+                    self.common.container.is_none()
+                        && self.common.craft_size == 2
+                        && !self.mount_active()
                 }
                 _ => false,
             };
@@ -130,7 +129,8 @@ impl crate::game::ClientGame<'_> {
                 creative_inventory: self.creative_inventory_open(),
                 creative_tab: self.creative_tab_open(),
                 station: self
-                    .common.station
+                    .common
+                    .station
                     .as_ref()
                     .map(|s| (std::mem::discriminant(&s.kind), s.inputs.len())),
                 container: self.common.container_kind().map(std::mem::discriminant),

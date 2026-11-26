@@ -50,33 +50,33 @@ impl IncomingRecipes {
 
 #[derive(Default)]
 pub struct RecipeTables {
-    pub(in crate::game) tables: Option<Arc<Recipes>>,
-    pub(in crate::game) books: Option<
+    pub tables: Option<Arc<Recipes>>,
+    pub books: Option<
         Result<sunrise_sim::recipe_book::ModBookIndex, sunrise_sim::recipe_book::DisplayLoadError>,
     >,
-    pub(in crate::game) known: (Option<u64>, Arc<[i32]>),
+    pub known: (Option<u64>, Arc<[i32]>),
     /// The server's recipes of the types its native mods sent (`sunrise:
     /// recipe_content`) over the window's own: what `Game::recipes` reads on
     /// a client once they came.
-    pub(in crate::game) synced: Option<sunrise_sim::crafting::Recipes>,
+    pub synced: Option<sunrise_sim::crafting::Recipes>,
     /// The display numbers of those recipes: the server numbers its book's
     /// displays over its own recipe set, a world's data pack recipes
     /// included, so the book numbers them the same (`Game::display_index`).
-    pub(in crate::game) synced_index: Option<sunrise_sim::recipe_book::RecipeIndex>,
+    pub synced_index: Option<sunrise_sim::recipe_book::RecipeIndex>,
     /// The recipe content's parts so far, until its last.
-    pub(in crate::game) incoming: IncomingRecipes,
+    pub incoming: IncomingRecipes,
     /// The types that came before the player did: the mods hear of them
     /// once the helpers can answer (`recipes_received_now`).
-    pub(in crate::game) received: Option<Vec<String>>,
+    pub received: Option<Vec<String>>,
     /// The last authoritative property-set and stonecutter generation sent by a server.
-    pub(in crate::game) server_properties: sunrise_sim::recipe_book::ServerRecipeProperties,
+    pub server_properties: sunrise_sim::recipe_book::ServerRecipeProperties,
     /// The station recipes of a client connected to a server (stonecutter order from server).
-    pub(in crate::game) server_stations: Option<sunrise_sim::stations::StationRecipes>,
+    pub server_stations: Option<sunrise_sim::stations::StationRecipes>,
 }
 
 impl RecipeTables {
     /// Drop all per-session synced recipe and book-display state on disconnect.
-    pub(in crate::game) fn clear_session(&mut self) {
+    pub fn clear_session(&mut self) {
         self.tables = None;
         self.books = None;
         self.known = Default::default();

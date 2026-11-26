@@ -1,4 +1,4 @@
-
+use mod_api::ClientMiningPrediction;
 
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

@@ -1,4 +1,4 @@
-
+use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// a right-click on an entity with the point clicked (`native_entity_interact_specific`).

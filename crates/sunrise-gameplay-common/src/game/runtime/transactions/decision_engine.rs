@@ -11,18 +11,18 @@ use sunrise_sim::menu::Menu as EngineMenu;
 /// Names the guest's inventory owner, never a borrowed menu moved out for dispatch.
 #[derive(Clone, Copy)]
 pub struct Target {
-    pub(in crate::game) conn: u32,
-    pub(in crate::game) id: MenuId,
+    pub conn: u32,
+    pub id: MenuId,
 }
 
 pub struct KeptOwner {
-    pub(in crate::game) target: Target,
-    pub(in crate::game) value: Option<Box<EngineMenu>>,
+    pub target: Target,
+    pub value: Option<Box<EngineMenu>>,
 }
 
 impl Target {
     /// The owner's stable identity, which no take, restore or lift changes.
-    pub(in crate::game) fn owner_id(&self) -> MenuId {
+    pub fn owner_id(&self) -> MenuId {
         self.id
     }
 }

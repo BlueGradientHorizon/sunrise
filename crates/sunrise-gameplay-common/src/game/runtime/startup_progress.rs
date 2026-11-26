@@ -58,7 +58,7 @@ pub(crate) fn install(dedicated: bool) {
 }
 
 /// The bars to draw, newest first, as their label and done fraction, and the lines still shown.
-pub(crate) fn shown() -> (Vec<(String, f32)>, Vec<String>) {
+pub fn shown() -> (Vec<(String, f32)>, Vec<String>) {
     PROGRESS
         .get()
         .map(|progress| progress.shown(Instant::now()))

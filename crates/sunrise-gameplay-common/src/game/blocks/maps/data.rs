@@ -181,12 +181,12 @@ pub struct MapData {
     pub(in crate::game) frames: Vec<MapFrame>,
     pub(in crate::game) holders: Vec<Holder>,
     /// Changed since the last save / texture upload.
-    pub(in crate::game) dirty: bool,
-    pub(in crate::game) texture_dirty: bool,
+    pub dirty: bool,
+    pub texture_dirty: bool,
 }
 impl MapData {
     /// `MapItemSavedData.createFresh`: centred on the scale's grid cell.
-    pub(in crate::game) fn fresh(x: f64, z: f64, scale: u8, dimension: &str) -> Self {
+    pub fn fresh(x: f64, z: f64, scale: u8, dimension: &str) -> Self {
         let size = 128 * (1 << scale);
         let cell = |v: f64| (v.floor() as i32 + 64).div_euclid(size) * size + size / 2 - 64;
         Self {
@@ -208,7 +208,7 @@ impl MapData {
     /// `MapItemSavedData.setColor` for every pixel of `colors` (128 by 128, row by row): each
     /// changed one marks the map to save, redraw and send. Whether one changed; None for
     /// another length.
-    pub(in crate::game) fn paint(&mut self, colors: &[u8]) -> Option<bool> {
+    pub fn paint(&mut self, colors: &[u8]) -> Option<bool> {
         if colors.len() != self.colors.len() {
             return None;
         }
@@ -218,7 +218,7 @@ impl MapData {
         }
         Some(changed)
     }
-    pub(in crate::game) fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
+    pub fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
         let i = (x + y * 128) as usize;
         if self.colors[i] == color {
             return false;
@@ -236,7 +236,7 @@ impl MapData {
         true
     }
     /// `tickCarriedBy`'s holder for `who`, added when new.
-    pub(in crate::game) fn holder(&mut self, who: u32) -> &mut Holder {
+    pub fn holder(&mut self, who: u32) -> &mut Holder {
         let i = match self.holders.iter().position(|h| h.who == who) {
             Some(i) => i,
             None => {
@@ -248,7 +248,7 @@ impl MapData {
     }
     /// The holders that no longer carry the map nor see it framed go, and
     /// their markers with them (`tickCarriedBy`'s removeDecoration).
-    pub(in crate::game) fn drop_holders(&mut self, now: i64) {
+    pub fn drop_holders(&mut self, now: i64) {
         self.holders.retain(|h| h.holds(now));
         let holders = &self.holders;
         let before = self.decorations.len();
@@ -268,7 +268,7 @@ impl MapData {
     }
     /// `MapItemSavedData.removeDecoration`: whatever `key` names goes, and
     /// every holder is told the decorations changed, found or not.
-    pub(in crate::game) fn remove_decoration(&mut self, key: Key) {
+    pub fn remove_decoration(&mut self, key: Key) {
         self.decorations.retain(|d| d.key != key);
         self.decorations_changed();
     }
@@ -280,7 +280,7 @@ impl MapData {
     /// unlimited tracking) and removes what the key had. `game_time` is the
     /// level's: without a level the Nether's spinning rotation is not used.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn add_decoration(
+    pub fn add_decoration(
         &mut self,
         sprite: &'static str,
         game_time: Option<i64>,
@@ -334,11 +334,7 @@ impl MapData {
     }
     /// `tickCarriedBy` adds only missing component keys. Another carried
     /// copy without those entries must not erase an explorer map's target.
-    pub(in crate::game) fn add_item_decorations(
-        &mut self,
-        targets: Vec<StaticDecoration>,
-        game_time: i64,
-    ) {
+    pub fn add_item_decorations(&mut self, targets: Vec<StaticDecoration>, game_time: i64) {
         for (name, sprite, x, z, rotation) in targets {
             let key = Key::Item(name);
             if !self.decorations.iter().any(|d| d.key == key) {
@@ -356,7 +352,7 @@ impl MapData {
     }
     /// `MapItemSavedData.tickCarriedBy`'s check on every holder but `who`, the
     /// player ticking: one wearing map invisibility gear has no marker.
-    pub(in crate::game) fn hide_invisible(&mut self, who: u32) {
+    pub fn hide_invisible(&mut self, who: u32) {
         let hidden: Vec<u32> = self
             .holders
             .iter()
@@ -373,7 +369,7 @@ impl MapData {
     /// `invisible` whether they wear map invisibility gear. Without a carried
     /// copy the player has no marker; the frame gets its own, which replaces
     /// the marker of another frame entity remembered at the same block.
-    pub(in crate::game) fn tick_framed(
+    pub fn tick_framed(
         &mut self,
         who: u32,
         now: i64,
@@ -420,14 +416,14 @@ impl MapData {
     }
     /// `MapItemSavedData.removedFromFrame`: the frame entity's marker goes,
     /// and the frame remembered at its block.
-    pub(in crate::game) fn removed_from_frame(&mut self, pos: [i32; 3], entity_id: i32) {
+    pub fn removed_from_frame(&mut self, pos: [i32; 3], entity_id: i32) {
         self.remove_decoration(Key::Frame(entity_id));
         self.frames.retain(|f| f.pos != pos);
         self.dirty = true;
     }
     /// `MapItemSavedData.isTrackedCountOverLimit`: more than `limit`
     /// decorations count (`MapDecorationType.trackCount`).
-    pub(in crate::game) fn tracked_over_limit(&self, limit: usize) -> bool {
+    pub fn tracked_over_limit(&self, limit: usize) -> bool {
         self.decorations
             .iter()
             .filter(|d| tracks_count(d.sprite))
@@ -439,7 +435,7 @@ impl MapData {
     /// there as it stands loses it, and a changed banner's marker is renewed.
     /// `current` is the banner at `pos` (`MapBanner.fromWorld`); true when
     /// the markers changed.
-    pub(in crate::game) fn toggle_banner(
+    pub fn toggle_banner(
         &mut self,
         pos: [i32; 3],
         current: Option<MapBanner>,
@@ -482,7 +478,7 @@ impl MapData {
     /// `MapItemSavedData.checkBanners`: a banner marker in the column `x`,
     /// `z` whose banner is gone or changed (`current` reads
     /// `MapBanner.fromWorld` at a position) is dropped with its decoration.
-    pub(in crate::game) fn check_banners(
+    pub fn check_banners(
         &mut self,
         x: i32,
         z: i32,
@@ -502,7 +498,7 @@ impl MapData {
     }
     /// `HoldingPlayer.nextUpdatePacket` for `who`: the changed pixels, and
     /// the decorations (at most every 5th call while they changed).
-    pub(in crate::game) fn update_packet(
+    pub fn update_packet(
         &mut self,
         id: i32,
         who: u32,
@@ -558,7 +554,7 @@ impl MapData {
         })
     }
     /// `MapItemSavedData.<clinit>`: the CODEC save arm omits optional defaults.
-    pub(in crate::game) fn to_nbt(&self) -> Tag {
+    pub fn to_nbt(&self) -> Tag {
         let mut data = vec![
             ("dimension", Tag::String(self.dimension.as_str().into())),
             ("xCenter", Tag::Int(self.center[0])),
@@ -594,7 +590,7 @@ impl MapData {
             ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
         ])
     }
-    pub(in crate::game) fn from_nbt(tag: &Tag) -> Option<Self> {
+    pub fn from_nbt(tag: &Tag) -> Option<Self> {
         let d = tag.get("data")?;
         let int = |k: &str| match d.get(k) {
             Some(Tag::Int(v)) => Some(*v),
@@ -652,8 +648,8 @@ impl MapData {
 pub(in crate::game) struct Maps {
     pub data: HashMap<i32, MapData>,
     /// The highest map id handed out (`maps/last_id.dat`), loaded on first use.
-    pub(in crate::game) last_id: Option<i32>,
-    pub(in crate::game) missing: std::collections::HashSet<i32>,
+    pub last_id: Option<i32>,
+    pub missing: std::collections::HashSet<i32>,
 }
 /// `MapColor.getColorFromPackedId` as RGBA bytes (NONE and undefined IDs are transparent).
 pub fn packed_rgba(packed: u8) -> [u8; 4] {
@@ -813,7 +809,7 @@ pub fn decoration_rotation(nether: bool, game_time: i64, y_rot: f64) -> u8 {
 }
 impl MapData {
     /// `MapItemSavedData.scaled`: a fresh map one scale up around the same centre.
-    pub(in crate::game) fn scaled(&self) -> MapData {
+    pub fn scaled(&self) -> MapData {
         let mut m = MapData::fresh(
             f64::from(self.center[0]),
             f64::from(self.center[1]),
@@ -826,7 +822,7 @@ impl MapData {
     }
     /// `MapItemSavedData.locked`: the same pixels, banner markers and
     /// decorations, locked (the frame markers are not copied).
-    pub(in crate::game) fn locked_copy(&self) -> MapData {
+    pub fn locked_copy(&self) -> MapData {
         let mut m = MapData::fresh(
             f64::from(self.center[0]),
             f64::from(self.center[1]),

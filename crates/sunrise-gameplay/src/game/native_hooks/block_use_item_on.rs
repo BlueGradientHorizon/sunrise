@@ -1,4 +1,4 @@
-
+use sunrise_world::registry::BlockStateId;
 
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
@@ -9,7 +9,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_use_item_on(
         &mut self,
         state: BlockStateId,
-        click: &BlockClick<'_>,
+        click: &mod_api::BlockClick<'_>,
         answer: &mut Option<mod_api::InteractionResult>,
     ) {
         self.fire_use_item_on(state, click, answer);
