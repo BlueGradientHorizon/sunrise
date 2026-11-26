@@ -24,8 +24,18 @@ def restore_and_snapshot(root, snapshot):
     # The object IDs describe the checkout only while its tracked inputs are clean.
     subprocess.run(["git", "diff", "--exit-code", "HEAD", "--"], cwd=root,
                    check=True, stdout=subprocess.DEVNULL)
+    restored, total = restore_tree_mtimes(root, "HEAD", root, snapshot)
+    print(f"Restored mtimes for {restored} unchanged Git files and trees out of {total}")
+
+
+def restore_tree_mtimes(repo: Path, tree: str, root: Path, snapshot: Path) -> tuple[int, int]:
+    """Reconcile a verified checkout or a fresh full archive of `tree` from `repo`.
+
+    For an archive, the caller must hold the artifact cache lock from extraction
+    through the build and pass the same resolved tree ID used for extraction.
+    """
     entries = subprocess.check_output(
-        ["git", "ls-tree", "-r", "-t", "-z", "HEAD"], cwd=root,
+        ["git", "ls-tree", "-r", "-t", "-z", tree], cwd=repo,
     )
     previous = json.loads(snapshot.read_text()) if snapshot.exists() else {}
     current = {}
@@ -55,7 +65,7 @@ def restore_and_snapshot(root, snapshot):
         current[name] = [identity, path.stat().st_mtime_ns]
     snapshot.parent.mkdir(parents=True, exist_ok=True)
     snapshot.write_text(json.dumps(current, sort_keys=True) + "\n")
-    print(f"Restored mtimes for {restored} unchanged Git files and trees out of {len(current)}")
+    return restored, len(current)
 
 
 if __name__ == "__main__":
