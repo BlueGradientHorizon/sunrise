@@ -2690,7 +2690,7 @@ pub struct RenderCapabilities {
     /// `multi_draw_indirect_count`, Vulkan's `vkCmdDrawIndexedIndirectCount`). False where the
     /// adapter lacks `MULTI_DRAW_INDIRECT_COUNT`, and on DirectX 12, whose count draws leave an
     /// indexed command's `base_vertex` out of the vertex fetch.
-    pub indirect_count: bool,
+    pub multi_draw_indirect_count: bool,
 }
 
 /// Why a mod-owned offscreen [`RenderTargetRef`] operation was refused.
@@ -4082,7 +4082,7 @@ pub enum PipelineDrawError {
     /// count offset is not a multiple of 4, or the count's 4 bytes lie beyond that buffer.
     InvalidIndirect,
     /// An [`IndirectDraw`](crate::IndirectDraw) has a count buffer, and this adapter cannot draw
-    /// a GPU-written count ([`RenderCapabilities::indirect_count`] is false).
+    /// a GPU-written count ([`RenderCapabilities::multi_draw_indirect_count`] is false).
     UnsupportedIndirectCount,
     /// A [`TextureSource::RenderTargetColor`] or [`TextureSource::RenderTargetDepth`] in
     /// [`DrawBindings`] binds a mip level of a [`RenderTargetRef`] both as a storage image and

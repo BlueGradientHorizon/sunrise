@@ -388,14 +388,14 @@ pub mod built {
         read_write_storage: Vec<crate::RenderTargetFormat>,
         subgroup: bool,
         indirect_first_instance: bool,
-        indirect_count: bool,
+        multi_draw_indirect_count: bool,
     ) -> crate::RenderCapabilities {
         crate::RenderCapabilities {
             float32_filterable,
             read_write_storage,
             subgroup,
             indirect_first_instance,
-            indirect_count,
+            multi_draw_indirect_count,
         }
     }
     /// Wrap a slot in the retained GPU storage buffer store.

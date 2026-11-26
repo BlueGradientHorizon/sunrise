@@ -20,7 +20,7 @@ pub const INDIRECT_INDEXED_DRAW_SIZE: u64 = 20;
 /// The engine draws exactly `max_count` commands from `indirect_offset` (vanilla's
 /// `drawIndexedIndirect(commands, drawCount)`), the same on every backend. A command the mod's
 /// culling shader does not want drawn is left in place with `instance_count = 0`, which draws
-/// nothing. Where [`crate::RenderCapabilities::indirect_count`] is set, a compute pass may
+/// nothing. Where [`crate::RenderCapabilities::multi_draw_indirect_count`] is set, a compute pass may
 /// instead compact the commands and write how many there are into a count buffer
 /// ([`Self::with_count_buffer`]): the engine then draws that many, at most `max_count`
 /// (`multi_draw_indirect_count`), so culled slots cost nothing.
@@ -98,7 +98,7 @@ impl<'a> IndirectDraw<'a> {
 
     /// Draw as many commands as the `u32` at byte `offset` of `buffer` says, at most
     /// `max_count`. Refused with [`crate::PipelineDrawError::UnsupportedIndirectCount`] where
-    /// [`crate::RenderCapabilities::indirect_count`] is false.
+    /// [`crate::RenderCapabilities::multi_draw_indirect_count`] is false.
     pub const fn with_count_buffer(mut self, buffer: StorageBufferRef, offset: u64) -> Self {
         self.count_buffer = Some((buffer, offset));
         self

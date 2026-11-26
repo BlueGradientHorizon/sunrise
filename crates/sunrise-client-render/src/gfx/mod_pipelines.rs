@@ -109,7 +109,8 @@ impl IndirectSource {
     /// range an indirect command does not give it; `buffer` needs `INDIRECT` usage and a
     /// 4-byte `offset`, and must hold `max_count` commands of vanilla's
     /// `INDIRECT_INDEXED_DRAW_SIZE` (indexed) or `INDIRECT_DRAW_SIZE` bytes. A `count` buffer
-    /// needs `INDIRECT` usage and a 4-byte offset with its `u32` inside it.
+    /// is refused where `counts` (`RenderCapabilities::multi_draw_indirect_count`) is false,
+    /// and needs `INDIRECT` usage and a 4-byte offset with its `u32` inside it.
     pub fn new(
         topology: PrimitiveTopology,
         mesh: Option<ResolvedMeshDraw>,
@@ -117,7 +118,11 @@ impl IndirectSource {
         offset: u64,
         max_count: u32,
         count: Option<(wgpu::Buffer, u64)>,
+        counts: bool,
     ) -> Result<Self, mod_api::PipelineDrawError> {
+        if count.is_some() && !counts {
+            return Err(mod_api::PipelineDrawError::UnsupportedIndirectCount);
+        }
         if let Some((count, at)) = &count
             && (!count.usage().contains(wgpu::BufferUsages::INDIRECT)
                 || !at.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT)
@@ -4196,7 +4201,7 @@ impl ModPipelines {
                 }
                 // `max_count` commands, those the mod's culling shader zeroed
                 // (`instance_count = 0`) drawing nothing; or, with a count buffer (checked
-                // against `RenderCapabilities::indirect_count`), as many as the GPU wrote.
+                // against `RenderCapabilities::multi_draw_indirect_count`), as many as the GPU wrote.
                 if let Some((ibuf, fmt)) = indirect.index_buffer() {
                     pass.set_index_buffer(ibuf.slice(..), *fmt);
                 }
@@ -6911,8 +6916,10 @@ void main() {
     /// draw their quads: a `base_vertex` other than zero reaches the vertex fetch (the DirectX 12
     /// case), a command with `instance_count = 0` draws nothing (how a mod's culling shader drops
     /// a slot), and the buffer is refused unless it is `INDIRECT`, 4-aligned and large enough.
-    /// Where the adapter draws GPU-written counts, a count of 1 draws command 0 alone (#5908);
-    /// a count buffer is refused on the same terms as the command buffer.
+    /// Where the adapter draws GPU-written counts (#5908), a count of 2 in ten indexed slots
+    /// draws the first two and a count of 1 in ten non-indexed slots the first; without the
+    /// capability a count buffer is refused, and it is refused on the same terms as the command
+    /// buffer.
     #[test]
     #[ignore = "daily"]
     fn indirect_commands_draw_with_base_vertex_skip_zeroed_slots_and_are_refused_when_unfit() {
@@ -7027,6 +7034,7 @@ void main() {
             0,
             3,
             None,
+            false,
         )
         .unwrap();
 
@@ -7065,6 +7073,7 @@ void main() {
                 offset,
                 count,
                 None,
+                false,
             )
             .map(|_| ())
         };
@@ -7098,86 +7107,18 @@ void main() {
             })
         };
         assert_eq!(
-            IndirectSource::new(triangles, Some(resolved.clone()), plain.clone(), 0, 1, None)
-                .map(|_| ()),
-            Err(mod_api::PipelineDrawError::InvalidIndirect)
-        );
-        // A GPU-written count (`multi_draw_indexed_indirect_count`) draws that many, at most
-        // `max_count`: with 1 written, command 1 is left out though it lies in range.
-        let count_handle = storage
-            .create(
-                &gpu.0,
-                None,
-                &mod_api::StorageBufferDescriptor::new(8).indirect(true),
-            )
-            .unwrap();
-        storage
-            .write_range(None, count_handle, 4, bytemuck::cast_slice(&[1u32]))
-            .unwrap();
-        storage.flush(&gpu.0, &gpu.1);
-        let count_buffer = storage.resolve_buffer(None, count_handle).unwrap();
-        if crate::gfx::mod_render_targets::indirect_count(&adapter.get_info(), gpu.0.features()) {
-            let counted = IndirectSource::new(
-                triangles,
-                Some(resolved.clone()),
-                commands_buffer.clone(),
-                0,
-                3,
-                Some((count_buffer.clone(), 4)),
-            )
-            .unwrap();
-            let draw_cmd = PipelineDraw {
-                slot: 0,
-                stage: 4,
-                modifier_stack: 0,
-                draw: MeshDraw::vertices(0..0),
-                source: PipelineDrawSource::Indirect(counted),
-                bindings: None,
-            };
-            let batch = Batch {
-                set: Some(&set),
-                draws: std::slice::from_ref(&draw_cmd),
-                time: 0.0,
-                ..Default::default()
-            };
-            let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
-            assert_near(
-                at(4, 4),
-                [0.0, 220.0, 40.0, 255.0],
-                1.0,
-                "counted command 0",
-            );
-            assert_eq!(at(20, 4), at(20, 40), "command 1 is past the written count");
-        } else {
-            eprintln!(
-                "no count draws on {:?}: the counted draw is not run",
-                adapter.get_info()
-            );
-        }
-        let counted = |count: Option<(wgpu::Buffer, u64)>| {
             IndirectSource::new(
                 triangles,
                 Some(resolved.clone()),
-                commands_buffer.clone(),
+                plain.clone(),
                 0,
-                3,
-                count,
+                1,
+                None,
+                false
             )
-            .map(|_| ())
-        };
-        assert_eq!(counted(Some((count_buffer.clone(), 4))), Ok(()));
-        for (buffer, at) in [
-            (count_buffer.clone(), 2),
-            (count_buffer.clone(), 8),
-            (count_buffer.clone(), u64::MAX - 1),
-            (plain.clone(), 0),
-        ] {
-            assert_eq!(
-                counted(Some((buffer, at))),
-                Err(mod_api::PipelineDrawError::InvalidIndirect),
-                "a count at {at}"
-            );
-        }
+            .map(|_| ()),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
         // Without an index buffer the commands are 16 bytes each, and an expanded topology has
         // no vertex range to expand.
         let bare = crate::gfx::mod_meshes::ResolvedMeshDraw {
@@ -7192,6 +7133,7 @@ void main() {
                 0,
                 count,
                 None,
+                false,
             )
             .map(|_| ())
         };
@@ -7204,6 +7146,117 @@ void main() {
             non_indexed(PrimitiveTopology::Quads, 1),
             Err(mod_api::PipelineDrawError::TopologyMismatch)
         );
+
+        // A GPU-written count (#5908) draws that many commands, at most `max_count`, indexed
+        // (`multi_draw_indexed_indirect_count`) and not (`multi_draw_indirect_count`).
+        let mut indirect_buffer = |bytes: &[u8]| {
+            let descriptor = mod_api::StorageBufferDescriptor::new(bytes.len() as u64);
+            let handle = storage
+                .create(&gpu.0, None, &descriptor.indirect(true))
+                .unwrap();
+            storage.write_range(None, handle, 0, bytes).unwrap();
+            storage.flush(&gpu.0, &gpu.1);
+            storage.resolve_buffer(None, handle).unwrap()
+        };
+        // Ten indexed slots: quads 0 and 1, then quad 2 (red, drawn) in every slot after them;
+        // the count at byte 4 is 2.
+        let mut slots = vec![[6u32, 1, 0, 0, 0], [6, 1, 0, 4, 0]];
+        slots.resize(10, [6, 1, 0, 8, 0]);
+        let indexed_commands = indirect_buffer(bytemuck::cast_slice(&slots));
+        let count_buffer = indirect_buffer(bytemuck::cast_slice(&[0u32, 2]));
+        // Ten non-indexed slots: quad 0's lower-left triangle, then quad 1's; the count is 1.
+        let mut triangle_slots = vec![[3u32, 1, 0, 0]];
+        triangle_slots.resize(10, [3, 1, 4, 0]);
+        let triangle_commands = indirect_buffer(bytemuck::cast_slice(&triangle_slots));
+        let one = indirect_buffer(bytemuck::cast_slice(&[1u32]));
+        let counts = crate::gfx::mod_render_targets::multi_draw_indirect_count(
+            &adapter.get_info(),
+            gpu.0.features(),
+        );
+        let counted = |mesh, commands: &wgpu::Buffer, count: &wgpu::Buffer, at, counts| {
+            IndirectSource::new(
+                triangles,
+                Some(mesh),
+                commands.clone(),
+                0,
+                10,
+                Some((count.clone(), at)),
+                counts,
+            )
+        };
+        if counts {
+            for (source, check) in [
+                (
+                    counted(resolved.clone(), &indexed_commands, &count_buffer, 4, true),
+                    0,
+                ),
+                (counted(bare.clone(), &triangle_commands, &one, 0, true), 1),
+            ] {
+                let draw_cmd = PipelineDraw {
+                    slot: 0,
+                    stage: 4,
+                    modifier_stack: 0,
+                    draw: MeshDraw::vertices(0..0),
+                    source: PipelineDrawSource::Indirect(source.unwrap()),
+                    bindings: None,
+                };
+                let batch = Batch {
+                    set: Some(&set),
+                    draws: std::slice::from_ref(&draw_cmd),
+                    time: 0.0,
+                    ..Default::default()
+                };
+                let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
+                if check == 0 {
+                    assert_near(at(4, 4), [0.0, 220.0, 40.0, 255.0], 1.0, "counted quad 0");
+                    assert_near(
+                        at(20, 4),
+                        [255.0, 40.0, 220.0, 255.0],
+                        1.0,
+                        "counted quad 1",
+                    );
+                    assert_eq!(
+                        at(36, 4),
+                        at(36, 40),
+                        "slots 2 to 9 are past the count of 2"
+                    );
+                } else {
+                    assert_near(
+                        at(4, 12),
+                        [0.0, 220.0, 40.0, 255.0],
+                        1.0,
+                        "counted triangle",
+                    );
+                    assert_eq!(
+                        at(20, 12),
+                        at(20, 40),
+                        "slots 1 to 9 are past the count of 1"
+                    );
+                }
+            }
+        } else {
+            eprintln!(
+                "no count draws on {:?}: the counted draws are not run",
+                adapter.get_info()
+            );
+        }
+        // Without the capability a count buffer is refused, whatever the adapter.
+        assert_eq!(
+            counted(resolved.clone(), &indexed_commands, &count_buffer, 4, false).map(|_| ()),
+            Err(mod_api::PipelineDrawError::UnsupportedIndirectCount)
+        );
+        for (count, at) in [
+            (count_buffer.clone(), 2),
+            (count_buffer.clone(), 8),
+            (count_buffer.clone(), u64::MAX - 1),
+            (plain.clone(), 0),
+        ] {
+            assert_eq!(
+                counted(resolved.clone(), &indexed_commands, &count, at, true).map(|_| ()),
+                Err(mod_api::PipelineDrawError::InvalidIndirect),
+                "a count at {at}"
+            );
+        }
         meshes.release(None, mesh).unwrap();
         assert_eq!(
             meshes

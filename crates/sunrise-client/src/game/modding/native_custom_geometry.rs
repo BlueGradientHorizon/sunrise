@@ -1197,9 +1197,6 @@ impl Game<'_> {
             .resolve_mod_storage_buffer(owner, draw.indirect_buffer)
             .map_err(PipelineDrawError::Buffer)?;
         let count = match draw.count_buffer {
-            Some(_) if !gpu.render_capabilities().indirect_count => {
-                return Err(PipelineDrawError::UnsupportedIndirectCount);
-            }
             Some((handle, offset)) => Some((
                 gpu.resolve_mod_storage_buffer(owner, handle)
                     .map_err(PipelineDrawError::Buffer)?,
@@ -1214,6 +1211,7 @@ impl Game<'_> {
             draw.indirect_offset,
             draw.max_count,
             count,
+            gpu.multi_draw_indirect_count(),
         )
     }
     /// Record a GPU-driven [`mod_api::IndirectDraw`] for the world pass, after checking it.
