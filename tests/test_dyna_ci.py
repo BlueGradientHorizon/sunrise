@@ -13,6 +13,8 @@ import textwrap
 import time
 import unittest
 
+from tests.os_support import runs_linux_runner_step
+
 ROOT = Path(__file__).resolve().parents[1]
 PARITY = ROOT / ".github/workflows/parity.yml"
 BASH = shutil.which("bash")
@@ -633,6 +635,7 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertEqual([path.name for path in sorted((ROOT / "tools").glob("test_*_parity.py"))
                           if builds_client_lib_test(path)], [])
 
+    @runs_linux_runner_step
     def test_daily_harnesses_client_lib_tests_are_built_before_the_harnesses(self):
         from test_ci_runners import jobs
         parity = dict(jobs(PARITY.read_text()))["vanilla-parity"]
@@ -740,6 +743,7 @@ class IgnoredTestsKeepTests(unittest.TestCase):
         self.assertEqual(step["env"]["NAME"],
                          "${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}")
 
+    @runs_linux_runner_step
     def test_a_failed_runs_output_is_kept_under_its_run_attempt_and_job(self):
         self.private.mkdir()
         (self.private / "sunrise-client#1of2.test.log").write_text("synthetic private payload")
@@ -751,6 +755,7 @@ class IgnoredTestsKeepTests(unittest.TestCase):
         self.assertIn("ignored-tests-failed-logs/77-2-3", result.stdout)
         self.assertNotIn("synthetic private payload", result.stdout + result.stderr)
 
+    @runs_linux_runner_step
     def test_expired_entries_are_pruned_and_a_clean_run_adds_none(self):
         root = self.keep / "ignored-tests-failed-logs"
         stale, fresh = root / "70-1-0", root / "76-1-0"
@@ -772,6 +777,7 @@ class IgnoredTestsKeepTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+@runs_linux_runner_step
 class ParityWorkflowTests(unittest.TestCase):
     def setUp(self):
         from test_ci_concurrency import yaml
