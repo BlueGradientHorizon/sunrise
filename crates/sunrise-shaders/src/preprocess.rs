@@ -66,6 +66,17 @@ impl Preprocessed {
     pub(crate) fn file(&self) -> &str {
         self.files.first().map_or("", String::as_str)
     }
+
+    /// An error at output line `line` (from 0), at the pack's file and line it came from. A line
+    /// with no origin is one Sunrise added to the code (a declaration put in, say) after the
+    /// lines were mapped, or one of a `Preprocessed` built by hand: it names the stage file with
+    /// no line, as [`Origin::default`] does for the lines Sunrise writes.
+    pub(crate) fn error_at_line(&self, line: usize, message: impl Into<String>) -> crate::Error {
+        match self.lines.get(line) {
+            Some(o) => crate::Error::new(self.files[o.file as usize].clone(), o.line, message),
+            None => crate::Error::new(self.file(), 0, message),
+        }
+    }
 }
 
 /// Runs the preprocessor on the stage file `path` of `pack` with `macros` defined.
