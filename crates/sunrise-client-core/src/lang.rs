@@ -105,11 +105,14 @@ fn update_publication<R>(
     f: impl FnOnce(&mut Option<Arc<Language>>, &mut ModEntries) -> (R, bool),
 ) -> R {
     #[cfg(any(test, feature = "test-language-publication"))]
-    {
+    let f = {
+        let mut f = Some(f);
         let isolated = PUBLICATION.with(|slot| {
             let mut slot = slot.borrow_mut();
-            slot.as_mut()
-                .map(|isolated| f(&mut isolated.current, &mut isolated.mods))
+            slot.as_mut().map(|isolated| {
+                let f = f.take().expect("called once");
+                f(&mut isolated.current, &mut isolated.mods)
+            })
         });
         if let Some((result, published)) = isolated {
             if published {
@@ -117,7 +120,8 @@ fn update_publication<R>(
             }
             return result;
         }
-    }
+        f.expect("no isolated publication, so not called yet")
+    };
     let mut current = CURRENT.write().unwrap_or_else(|e| e.into_inner());
     let mut mods = MOD_ENTRIES.write().unwrap_or_else(|e| e.into_inner());
     let (result, published) = f(&mut current, &mut mods);
