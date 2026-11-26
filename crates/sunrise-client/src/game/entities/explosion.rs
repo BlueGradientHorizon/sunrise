@@ -2741,10 +2741,9 @@ pub(in crate::game) mod tests {
 
     /// A zombie's type with only what a hurt and a push read.
     fn zombie_type() -> std::sync::Arc<sunrise_client::mobs::MobType> {
-        use sunrise_client::mobs::{Anim, Brain, MobType, Part, Species};
+        use sunrise_client::mobs::{Anim, Brain, MobType, Species};
         std::sync::Arc::new(MobType {
             type_key: Default::default(),
-            shadow: None,
             id: "minecraft:zombie".into(),
             species: Species::Zombie,
             width: 0.6,
@@ -2777,15 +2776,6 @@ pub(in crate::game) mod tests {
             max_head_y_rot: 75.0,
             ambient_interval: 80,
             flags: Default::default(),
-            model: std::sync::Arc::new(Part {
-                name: "root".into(),
-                pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-                polygons: Vec::new(),
-                children: Vec::new(),
-                layer: None,
-            }),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Humanoid { zombie_arms: true },
             sounds: ["", "", ""],

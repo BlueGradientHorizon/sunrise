@@ -1,5 +1,5 @@
 use super::{Arg, Context, Game, R, Target, err};
-use crate::game::chat::PLAYER_NAME;
+use crate::game::chat_common::PLAYER_NAME;
 use sunrise_client::text::{self, Text};
 use sunrise_core::random::RandomSource;
 

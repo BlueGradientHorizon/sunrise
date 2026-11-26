@@ -2982,7 +2982,7 @@ impl B {
                                 feet: [feet.x, feet.y, feet.z],
                                 width,
                                 height,
-                                burst: crate::particles::Burst::VILLAGER,
+                                burst: sunrise_level::particle_options::Burst::VILLAGER,
                             });
                         }
                     }
@@ -3831,7 +3831,7 @@ fn happy_particles(m: &Mob, cx: &mut Bx) {
         feet: [m.position.x, m.position.y, m.position.z],
         width: f64::from(m.width()),
         height: f64::from(m.height()),
-        burst: crate::particles::Burst::VILLAGER,
+        burst: sunrise_level::particle_options::Burst::VILLAGER,
     });
 }
 /// `BehaviorUtils.findSectionClosestToVillage`.

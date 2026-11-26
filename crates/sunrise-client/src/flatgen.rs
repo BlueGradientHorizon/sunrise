@@ -1,8 +1,6 @@
 //! FlatLevelSource: superflat worlds (`minecraft:flat` generator).
-use crate::{
-    chunk::{Chunk, LevelShape},
-    streaming::ChunkGenerator,
-};
+use crate::chunk::{Chunk, LevelShape};
+use sunrise_level::chunk_streamer::ChunkGenerator;
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::{
@@ -390,13 +388,13 @@ impl ChunkGenerator for FlatTerrain {
     /// FlatLevelSource's proto is already its decorated column. Keep a copy
     /// for lighting a finished neighbour outside the kept area, just as the
     /// vanilla pipeline does for FEATURES neighbours.
-    fn light_view(&self, proto: &crate::streaming::Proto) -> Option<Chunk> {
+    fn light_view(&self, proto: &sunrise_level::chunk_streamer::Proto) -> Option<Chunk> {
         proto.downcast_ref::<Chunk>().cloned()
     }
     fn lod_surface(&self, _: &mut (), _: i32, _: i32) -> Option<crate::columns::Surface> {
         self.surface
     }
-    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> crate::streaming::Proto {
+    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> sunrise_level::chunk_streamer::Proto {
         let mut chunk = Chunk::with_layout(cx, cz, self.shape.column());
         for s in &mut chunk.sections {
             std::sync::Arc::make_mut(s).biomes = sunrise_core::paletted::PalettedContainer::new(
@@ -436,7 +434,7 @@ impl ChunkGenerator for FlatTerrain {
         Box::new(chunk)
     }
     /// FlatLevelSource.spawnOriginalMobs is empty: no generation-time spawns.
-    fn finish(&self, proto: crate::streaming::Proto) -> Chunk {
+    fn finish(&self, proto: sunrise_level::chunk_streamer::Proto) -> Chunk {
         *proto.downcast::<Chunk>().expect("flat terrain proto")
     }
 }
@@ -722,7 +720,7 @@ mod tests {
         };
         let mut chunk = Chunk::empty(3, -4);
         chunk.set(0, 0, 0, 42);
-        let proto: crate::streaming::Proto = Box::new(chunk);
+        let proto: sunrise_level::chunk_streamer::Proto = Box::new(chunk);
         let view = terrain.light_view(&proto).expect("flat proto light view");
         assert_eq!((view.x, view.z), (3, -4));
         assert_eq!(view.block(0, 0, 0).0, 42);

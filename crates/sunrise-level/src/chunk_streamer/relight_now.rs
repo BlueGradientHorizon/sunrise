@@ -1,5 +1,5 @@
 //! The light of a `Job::Light` taken into its chunk.
-use super::Streaming;
+use super::ChunkState;
 use crate::{
     chunk::Light,
     light::{LightChanges, apply_lighting, apply_relighting},
@@ -7,7 +7,7 @@ use crate::{
 };
 use std::sync::Arc;
 
-impl Streaming {
+impl ChunkState {
     /// Takes a lit column's light into its chunk (`Done::Lit`), `snapshot` being
     /// the edit sequence the blocks it was lit from had reached.
     pub(super) fn apply_lit(

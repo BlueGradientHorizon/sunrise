@@ -1,6 +1,6 @@
 use super::*;
-use crate::lod::Column;
-use crate::streaming::ChunkGenerator;
+use sunrise_level::chunk_streamer::ChunkGenerator;
+use sunrise_level::lod_data::Column;
 
 #[derive(Default, Debug)]
 struct Census {

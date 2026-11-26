@@ -278,7 +278,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 discrete,
                 distance_sqr,
                 invisible_to_viewer: invisible,
-                hud_hidden: self.ui.hide_gui,
+                hud_hidden: self.side.chat_ui.hide_gui,
                 is_camera: self.live_remote_camera_id() == Some(m.id),
                 is_vehicle: ridden.contains(&m.id),
             };
@@ -481,7 +481,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // ItemFrameRenderer.shouldShowName/getNameTag: only the targeted
         // frame's custom-named item, with the HUD visible (also glow frames).
-        let targeted_frame = (hooks || !self.ui.hide_gui)
+        let targeted_frame = (hooks || !self.side.chat_ui.hide_gui)
             .then(|| self.frame_hit())
             .flatten()
             .filter(|(_, distance)| {
@@ -503,7 +503,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let center = glam::DVec3::from_array(std::array::from_fn(|a| (lo[a] + hi[a]) / 2.0));
             if center.distance_squared(camera) < 64.0 * 64.0 {
                 let name_shown =
-                    !self.ui.hide_gui && targeted_frame == Some(index) && name.is_some();
+                    !self.side.chat_ui.hide_gui && targeted_frame == Some(index) && name.is_some();
                 let mut visible = name_shown;
                 let mut text = None;
                 if hooks {
@@ -914,7 +914,7 @@ pub(in crate::game) mod name_tag_tests;
 pub(in crate::game) mod tests {
     use super::*;
     use std::sync::Arc;
-    use sunrise_client::mobs::{Anim, Brain, MobType, Part, Species};
+    use sunrise_client::mobs::{Anim, Brain, MobType, Species};
     use sunrise_client::pose::Pose;
     use sunrise_core::geometry::Vec3;
 
@@ -1152,16 +1152,8 @@ pub(in crate::game) mod tests {
     /// The player model `perspective::player_type` builds from the prepared
     /// resources, without them: its box only needs the id and the pointer.
     fn player_mob() -> Mob {
-        let part = Part {
-            name: "root".into(),
-            pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-            polygons: Vec::new(),
-            children: Vec::new(),
-            layer: None,
-        };
         let kind = MobType {
             type_key: Default::default(),
-            shadow: None,
             id: "minecraft:player".into(),
             species: Species::Zombie,
             width: 0.6,
@@ -1194,9 +1186,6 @@ pub(in crate::game) mod tests {
             max_head_y_rot: 75.0,
             ambient_interval: 80,
             flags: Default::default(),
-            model: Arc::new(part),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Humanoid { zombie_arms: false },
             sounds: [

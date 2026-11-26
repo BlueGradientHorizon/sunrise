@@ -1441,10 +1441,13 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                         // The event loop dispatches this before any per-tick work,
                         // even on the title screen, without a world or renderer.
                         started.native_client_tick_pre();
-                        assert_eq!(started.ui.options.resource_error.as_deref(), pack_error);
+                        assert_eq!(
+                            started.side.chat_ui.options.resource_error.as_deref(),
+                            pack_error
+                        );
                         let mut expected = vec!["setup", "Client", "Common", "screen"];
                         if pack_error.is_some() {
-                            assert!(started.ui.options.resource_packs_open());
+                            assert!(started.side.chat_ui.options.resource_packs_open());
                             expected.push("screen");
                         }
                         expected.push("tick");
@@ -1535,8 +1538,8 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
             (event.hand == Hand::Main).then_some(ArmPose::ThrowTrident)
         }
     }
-    fn arms(m: &Mob) -> [[f32; 9]; 2] {
-        let mut poses = Poses::new(&m.kind.model);
+    fn arms(m: &Mob, models: &sunrise_client::mobs_render::ClientMobModels) -> [[f32; 9]; 2] {
+        let mut poses = Poses::new(models.model(&m.kind.id).unwrap());
         anim::setup(m, &anim::state(m, 0.0), &mut poses, &HashMap::new());
         [*poses.get("right_arm"), *poses.get("left_arm")]
     }
@@ -1579,9 +1582,17 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         m.extra.main_hand_left = true;
         m.extra.using_item = 12;
         m.extra.using_off_hand = true;
-        let baseline: Vec<_> = game.mobs.iter().map(arms).collect();
+        let res = game.res.clone();
+        let models = res.client_mob_models();
+        let baseline: Vec<_> = game.mobs.iter().map(|m| arms(m, models)).collect();
         game.tick_remote_arm_poses();
-        assert_eq!(game.mobs.iter().map(arms).collect::<Vec<_>>(), baseline);
+        assert_eq!(
+            game.mobs
+                .iter()
+                .map(|m| arms(m, models))
+                .collect::<Vec<_>>(),
+            baseline
+        );
         let calls = Arc::new(AtomicUsize::new(0));
         with_mods(
             vec![ModEntry::new("mob-pose", Box::new(MobPose(calls.clone())))].into(),
@@ -1591,11 +1602,11 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
                     game.mobs[0].extra.held_arm_pose,
                     [Some(sunrise_core::arm_pose::ArmPose::ThrowTrident), None]
                 );
-                let posed = arms(&game.mobs[0]);
+                let posed = arms(&game.mobs[0], models);
                 assert!((posed[1][3] + std::f32::consts::PI).abs() < 1e-6);
                 assert_ne!(posed, baseline[0]);
                 for (m, expected) in game.mobs[1..].iter().zip(&baseline[1..]) {
-                    assert_eq!(arms(m), *expected);
+                    assert_eq!(arms(m, models), *expected);
                 }
                 let empty = Mob::new(60, game.mobs[0].kind.clone(), Vec3::ZERO, 0.0);
                 assert_eq!(game.held_arm_poses(60, &empty), [None; 2]);
@@ -1610,7 +1621,13 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
         );
         assert_eq!(calls.load(Ordering::Relaxed), 2);
         game.tick_remote_arm_poses();
-        assert_eq!(game.mobs.iter().map(arms).collect::<Vec<_>>(), baseline);
+        assert_eq!(
+            game.mobs
+                .iter()
+                .map(|m| arms(m, models))
+                .collect::<Vec<_>>(),
+            baseline
+        );
     });
 }
 

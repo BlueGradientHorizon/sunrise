@@ -264,7 +264,7 @@ pub(in crate::game) fn run_block_outline_requires_player_camera_26_3() {
             param: 1.0,
         }))
         .unwrap();
-        game.ui.hide_gui = false;
+        game.chat_ui_mut_for_test().hide_gui = false;
         add_entity(
             game,
             2,
@@ -325,7 +325,7 @@ pub(in crate::game) fn run_culling_near_plane_uses_max_of_fov_and_option_fov_26_
         game.yaw = 0.0;
         game.pitch = 0.0;
         game.settings.fov = 70.0;
-        game.ui.hide_gui = true;
+        game.chat_ui_mut_for_test().hide_gui = true;
         let hand_proj = sunrise_client::camera::hand_projection(70.0, 1280.0, 800.0, 512.0);
         for _ in 0..20 {
             game.tick_fov();

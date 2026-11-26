@@ -1132,8 +1132,8 @@ fn saved_far_surface_reads_builds_and_water_without_gameplay_chunks() {
             .all(|s| s.light & 0xf0 == 0),
         "no invented skylight in Nether saves"
     );
-    struct SavedOnly(Vec<crate::streaming::LodDetail>);
-    impl crate::streaming::LodSampler for SavedOnly {
+    struct SavedOnly(Vec<sunrise_level::chunk_streamer::LodDetail>);
+    impl sunrise_level::chunk_streamer::LodSampler for SavedOnly {
         fn sample(&mut self, _: i32, _: i32) -> Option<crate::columns::Surface> {
             panic!("saved data must win")
         }
@@ -1143,11 +1143,12 @@ fn saved_far_surface_reads_builds_and_water_without_gameplay_chunks() {
                 "saved builds must not request speculative generation"
             );
         }
-        fn drain_details(&mut self) -> Vec<crate::streaming::LodDetail> {
+        fn drain_details(&mut self) -> Vec<sunrise_level::chunk_streamer::LodDetail> {
             std::mem::take(&mut self.0)
         }
     }
-    let inner = Arc::new(crate::testgen::TestTerrain::new(assets.registry, &biomes).unwrap());
+    let inner =
+        Arc::new(sunrise_level::testgen::TestTerrain::new(assets.registry, &biomes).unwrap());
     let generator = Arc::new(Persistent {
         inner,
         save: Arc::new(reopened),
@@ -1160,16 +1161,21 @@ fn saved_far_surface_reads_builds_and_water_without_gameplay_chunks() {
         cache: Default::default(),
         details: Vec::new(),
         approximate: false,
-        generated: Arc::new(crate::lod::cache::DiskCache::new(dir.join("far"), 1)),
+        generated: Arc::new(sunrise_level::lod_data::cache::DiskCache::new(
+            dir.join("far"),
+            1,
+        )),
         bake: None,
     };
-    use crate::streaming::LodSampler;
+    use sunrise_level::chunk_streamer::LodSampler;
     sampler.request_detail(&[(-2, 3)], [-32, 48]);
     let details = sampler.drain_details();
     assert_eq!(details.len(), 1);
     assert_eq!(&details[0].1[..], &surfaces[..]);
     sampler.cache.clear();
-    let generated: LodSurfaces = Arc::new(std::array::from_fn(|_| crate::lod::Column::default()));
+    let generated: LodSurfaces = Arc::new(std::array::from_fn(|_| {
+        sunrise_level::lod_data::Column::default()
+    }));
     sampler.inner = Box::new(SavedOnly(vec![
         ((-2, 3), generated.clone()),
         ((-9, 9), generated.clone()),
@@ -1190,13 +1196,14 @@ fn saved_far_surface_reads_builds_and_water_without_gameplay_chunks() {
     // generating it again.
     sampler.request_detail(&[(-9, 9)], [-144, 144]);
     assert_eq!(sampler.drain_details()[0].1, generated);
-    sampler.inner = crate::streaming::ChunkGenerator::lod_sampler(sampler.generator.inner.clone());
+    sampler.inner =
+        sunrise_level::chunk_streamer::ChunkGenerator::lod_sampler(sampler.generator.inner.clone());
     let grid = sampler.grid(-32, 48, 2, 16);
     for z in 0..8 {
         for x in 0..8 {
             assert_eq!(
                 grid[z * 16 + x],
-                crate::lod::Column::reduced(&surfaces, x * 2, z * 2, 2),
+                sunrise_level::lod_data::Column::reduced(&surfaces, x * 2, z * 2, 2),
                 "saved builds must override a batched direct grid"
             );
         }

@@ -257,7 +257,8 @@ fn read_compound(record: &Value, uuid: u128) -> Result<(Tag, u128), String> {
         .get("player")
         .and_then(Value::as_str)
         .ok_or("the record has no player compound")?;
-    let bytes = crate::skins::base64_decode(text).ok_or("the player compound is not base64")?;
+    let bytes = sunrise_level::profile_lookup::base64_decode(text)
+        .ok_or("the player compound is not base64")?;
     let (named, _) = read_named(&bytes, Limits::saved())
         .map_err(|e| format!("the player compound is not NBT: {e}"))?;
     match named.tag {

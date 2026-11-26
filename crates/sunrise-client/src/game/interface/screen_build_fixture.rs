@@ -120,7 +120,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     };
                     let abilities = ChatAbilities::new(ChatVisibility::Full);
                     let chat = ChatScreen::new(&m, &c, "", false, 0, 1, 1, abilities);
-                    self.ui.chat_screen = Some(chat);
+                    self.side.chat_ui.chat_screen = Some(chat);
                     self.side.screen = Screen::Chat;
                 }
                 Some(cart) => {
@@ -138,7 +138,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .build
                 .sync(self.side.screen, true, None, gui, layout);
             let (w, h) = (gui.size[0] as f32, gui.size[1] as f32);
-            if let Some(chat) = &self.ui.chat_screen {
+            if let Some(chat) = &self.side.chat_ui.chat_screen {
                 let i = &chat.input;
                 widgets.push(rect(i.x, i.y, i.width, i.height));
                 let (x, y, bw, bh) = self.built_chat(w, h).ok_or("no build")?.leave_bed;
@@ -153,7 +153,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     widgets.push(rect(x as i32, y as i32, bw as i32, 20));
                 }
             }
-            self.ui.chat_screen = None;
+            self.side.chat_ui.chat_screen = None;
             self.side.command_block_screen.0 = None;
             return Ok(serde_json::json!({
                 "gui": [gui.scale, gui.size[0], gui.size[1]],

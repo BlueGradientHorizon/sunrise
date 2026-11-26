@@ -486,7 +486,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
 impl Game<'_, crate::game::client_side::ClientState> {
     /// The top bar and the timeline over the HUD, while Studio is up in play.
     pub(in crate::game::client_side) fn draw_studio_bars(&mut self, batch: &mut super::HudBatch) {
-        if !EDITOR || self.ui.hide_gui || self.side.screen != Screen::Playing || !self.studio_up() {
+        if !EDITOR
+            || self.side.chat_ui.hide_gui
+            || self.side.screen != Screen::Playing
+            || !self.studio_up()
+        {
             return;
         }
         self.side.studio.topbar.render(

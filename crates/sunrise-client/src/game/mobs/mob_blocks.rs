@@ -111,7 +111,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     fn elder_guardian_geometry(&self, left: i32, alpha: f64, out: &mut Vec<Vertex>) {
-        let Some(kind) = self.res.mob_types().get("minecraft:elder_guardian") else {
+        let Some(model) = self
+            .res
+            .client_mob_models()
+            .model("minecraft:elder_guardian")
+        else {
             return;
         };
         let Some(r) = self.gui.atlas.sprites.get("entity/guardian_elder").copied() else {
@@ -141,10 +145,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             * glam::Mat4::from_rotation_x((60.0 - 150.0 * t).to_radians())
             * glam::Mat4::from_scale(glam::Vec3::new(k, -k, -k))
             * glam::Mat4::from_translation(glam::Vec3::new(0.0, -0.56, 3.5));
-        let poses = sunrise_client::mobs::anim::Poses::new(&kind.model);
-        self.mark_entity(out.len(), &kind.id);
+        let poses = sunrise_client::mobs::anim::Poses::new(model);
+        self.mark_entity(out.len(), "minecraft:elder_guardian");
         render::draw(
-            &kind.model,
+            model,
             m,
             &poses,
             [r.u0, r.v0, r.u1, r.v1],

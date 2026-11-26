@@ -475,12 +475,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 f64::from(m.width()),
                 f64::from(m.height()),
             );
-            sunrise_client::particles::around_self(
+            sunrise_level::particle_options::around_self(
                 &mut m.random,
                 feet,
                 width,
                 height,
-                sunrise_client::particles::Burst::HORSE_EATING,
+                sunrise_level::particle_options::Burst::HORSE_EATING,
                 |_, _| {},
             );
             m.extra.age = (m.extra.age + age_up * 20).min(0);

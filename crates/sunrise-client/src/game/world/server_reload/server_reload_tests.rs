@@ -115,7 +115,7 @@ fn build_mod_resources(
     inventory: &sunrise_mod_package::enabled::EnabledMods,
 ) -> sunrise_assets::resource_source::ResourceRoot {
     sunrise_client::mod_content::build(base, jar_store, mods, prepared, inventory).unwrap();
-    let resolved = sunrise_client::mod_content::resolved_resources(
+    let resolved = sunrise_client::mod_content::resolved_server_resources(
         base,
         prepared.to_owned(),
         jar_store,

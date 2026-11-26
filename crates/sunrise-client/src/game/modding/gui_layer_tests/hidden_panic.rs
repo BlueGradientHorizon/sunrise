@@ -89,7 +89,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
         mods::register_gui_layers(ExecutionRole::Client);
         game.side.title.0 = None;
         game.side.screen = crate::game::Screen::Playing;
-        game.ui.hide_gui = true;
+        game.side.chat_ui.hide_gui = true;
         for (frame, expected) in [
             &["mount replacement", "air replacement"][..],
             &["air replacement"],
@@ -101,7 +101,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             assert_eq!(take().as_slice(), expected);
             assert!(!batch.vertices.iter().any(|v| v.color == FAILED));
             assert!(batch.vertices.iter().any(|v| v.color == SIBLING));
-            assert_eq!(game.ui.room.bottom(), 125.0);
+            assert_eq!(game.side.chat_ui.room.bottom(), 125.0);
             if frame == 0 {
                 // The shared queue retains the failure under F1.
                 let [

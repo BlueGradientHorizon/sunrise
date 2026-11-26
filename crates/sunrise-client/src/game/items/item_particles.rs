@@ -6,7 +6,7 @@ use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     item_render::stack_view,
     items::ItemStack,
-    particles::{self, ParticleOptions, ParticleType},
+    particles::{ParticleOptions, ParticleType},
 };
 use sunrise_core::equipment_slot::EquipmentSlot;
 use sunrise_core::random::RandomSource;
@@ -34,7 +34,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let eye_y = self.eye_position().map_or(p.y, |e| e[1]);
         let options = self.item_particle(stack);
         let mut spawned = Vec::new();
-        particles::item_use_particles(
+        sunrise_level::particle_options::item_use_particles(
             &mut self.world.random,
             self.pitch,
             self.yaw,
@@ -89,7 +89,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let options = self.item_particle(&stack);
         let mut spawned = Vec::new();
-        particles::item_use_particles(
+        sunrise_level::particle_options::item_use_particles(
             &mut self.world.random,
             pitch,
             yaw,

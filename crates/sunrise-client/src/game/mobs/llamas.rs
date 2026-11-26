@@ -44,7 +44,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.particles_around_mob(
                 id,
                 "happy_villager",
-                sunrise_client::particles::Burst::HORSE_EATING,
+                sunrise_level::particle_options::Burst::HORSE_EATING,
             );
         }
         if !used {

@@ -405,8 +405,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if self.remote.as_ref().is_none_or(|r| r.show_death_screen) {
                 self.close_dialogs();
                 self.set_screen(Screen::Dead);
-                self.ui.death_time = 0;
-                self.ui.death_confirm = None;
+                self.side.chat_ui.death_time = 0;
+                self.side.chat_ui.death_confirm = None;
                 self.capture(false);
             } else {
                 self.respawn_player()?;
@@ -722,8 +722,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if p.health <= 0.0 && shown && self.side.screen != Screen::Dead && self.player.is_some() {
             self.close_dialogs();
             self.set_screen(Screen::Dead);
-            self.ui.death_time = 0;
-            self.ui.death_confirm = None;
+            self.side.chat_ui.death_time = 0;
+            self.side.chat_ui.death_confirm = None;
             self.capture(false);
         }
     }

@@ -1,23 +1,18 @@
 use super::*;
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Effective HUD and first-person hand visibility.
     pub(in crate::game) fn hud_mode(&self) -> mod_api::HudMode {
-        self.ui.hud_mode()
+        self.side.chat_ui.hud_mode()
     }
-}
-
-#[cfg(feature = "client")]
-impl crate::game::ClientGame<'_> {
     /// Set HUD and hand visibility on the client window.
     pub(in crate::game) fn set_hud_mode(&mut self, mode: mod_api::HudMode) {
-        self.ui.set_hud_mode(mode);
+        self.side.chat_ui.set_hud_mode(mode);
     }
 }
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::*;
     use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode, ModEntry};
     use mod_platform::testing::with_mods;
 
@@ -38,15 +33,6 @@ pub(in crate::game) mod tests {
     fn hud_mode_game_bridge_respects_client_and_guest_guards() {
         let mods: mod_api::Mods = vec![ModEntry::new("three-state", Box::new(ThreeState))].into();
         with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                for role in [
-                    ExecutionRole::IntegratedServer,
-                    ExecutionRole::DedicatedServer,
-                ] {
-                    game.options.execution_role = role;
-                    assert_eq!(game.hud_mode(), HudMode::AllVisible);
-                }
-            });
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 for mode in [HudMode::NoHud, HudMode::AllHidden, HudMode::AllVisible] {
                     game.fire_client_tick_pre();
@@ -54,7 +40,11 @@ pub(in crate::game) mod tests {
                 }
                 game.fire_client_tick_pre();
                 assert_eq!(game.hud_mode(), HudMode::NoHud);
-                assert!(game.ui.hands_drawn(false, false, true, true, false));
+                assert!(
+                    game.side
+                        .chat_ui
+                        .hands_drawn(false, false, true, true, false)
+                );
                 game.toggle_hide_gui();
                 assert_eq!(game.hud_mode(), HudMode::AllHidden);
                 game.toggle_hide_gui();

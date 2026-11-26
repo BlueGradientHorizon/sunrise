@@ -199,7 +199,7 @@ pub fn build_with_conditions(
         for layer in &group.layers {
             if let Some(jar) = layer.jar {
                 for name in layer.data.list("assets/").into_iter().filter(|name| {
-                    !crate::packs::merge_stacks(name) && m.content.files.contains(name)
+                    !sunrise_level::pack_meta::merge_stacks(name) && m.content.files.contains(name)
                 }) {
                     warnings.push(format!(
                         "mod {}: jar {} also provides {name}; the mod's own file wins",
@@ -234,7 +234,7 @@ pub fn build_with_conditions(
                 let bytes = layer.data.read(&file).ok_or_else(|| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("{}: {file}", layer.assets.id),
+                        format!("{}: {file}", layer.data.id),
                     )
                 })?;
                 if is_tag {
@@ -281,7 +281,7 @@ pub fn build_with_conditions(
     let registered_sound = |name: &str| {
         builtin_sounds
             .as_ref()
-            .is_some_and(|b| crate::music::registered_sound(b, name))
+            .is_some_and(|b| biomes::registered_sound(b, name))
     };
     let mut modifiers = Vec::new();
     let mut structure_modifiers = Vec::new();

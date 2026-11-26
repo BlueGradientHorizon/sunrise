@@ -2,7 +2,8 @@
 use super::{armor_stands::ArmorStandAssets, boats::BoatModels, minecarts::CartModels};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, hint::black_box, path::Path, time::Instant};
-use sunrise_client::mobs::{EntityModelDocument, Part, load_model};
+use sunrise_client::mobs::Part;
+use sunrise_client::mobs_render::{EntityModelDocument, load_model};
 
 const WOODS: [&str; 11] = [
     "oak",

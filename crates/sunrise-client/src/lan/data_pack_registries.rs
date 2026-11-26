@@ -926,7 +926,7 @@ mod tests {
                     else {
                         panic!("{name}: expected multiline control")
                     };
-                    json!({"max_lines": max_lines, "height": crate::dialog_screen::text_height(Some((*max_lines, *height))) as i32})
+                    json!({"max_lines": max_lines, "height": crate::dialog::text_height(Some((*max_lines, *height))) as i32})
                 }
                 _ => panic!("{name}: unknown observation {observe}"),
             };

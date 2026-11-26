@@ -142,16 +142,20 @@ pub fn menu_types(mods: &[ContentMod]) -> Vec<(&MenuType, &str)> {
 static FLUID_LOOKS: std::sync::RwLock<BTreeMap<String, FluidLook>> =
     std::sync::RwLock::new(BTreeMap::new());
 
-/// Remembers how the mods' fluids look (`data/<id>/sunrise/fluid/`), for what the client draws,
-/// and their measures, for `FluidTypeProperties` on either side.
+/// Remembers how the mods' fluids look (`data/<id>/sunrise/fluid/`) and their
+/// measures, for `FluidTypeProperties` on either side.
 pub fn set_fluid_looks(mods: &[ContentMod]) {
     let looks: BTreeMap<String, FluidLook> = mods
         .iter()
         .flat_map(|m| &m.content.fluids)
         .map(|f| (f.id.clone(), f.clone()))
         .collect();
-    crate::fluid_models::set_world_looks(looks.values());
     *FLUID_LOOKS.write().unwrap_or_else(|e| e.into_inner()) = looks;
+}
+
+pub fn with_fluid_looks<R>(f: impl FnOnce(&BTreeMap<String, FluidLook>) -> R) -> R {
+    let looks = FLUID_LOOKS.read().unwrap_or_else(|e| e.into_inner());
+    f(&looks)
 }
 
 /// Registers the world fluids the mods declare, before any block table is read from the root.
@@ -3342,7 +3346,7 @@ pub fn biome_modifiers_over_packs(
     let registered_sound = |name: &str| {
         builtin_sounds
             .as_ref()
-            .is_some_and(|b| crate::music::registered_sound(b, name))
+            .is_some_and(|b| biomes::registered_sound(b, name))
     };
     let mut warnings = Vec::new();
     let mut modifiers = Vec::new();
@@ -3754,20 +3758,19 @@ fn tables(base: &Path, plan: &Plan, overlay: &Overlay<'_>, jobs: &[(&str, u64)])
 }
 
 struct ModLayer<'a> {
-    assets: crate::packs::Pack,
     data: crate::datapack::DataPack,
     jar: Option<&'a JarRef>,
 }
 
 impl<'a> ModLayer<'a> {
-    fn new(id: String, source: crate::packs::Source, jar: Option<&'a JarRef>) -> Result<Self> {
+    fn new(
+        id: String,
+        source: sunrise_level::pack_meta::Source,
+        jar: Option<&'a JarRef>,
+    ) -> Result<Self> {
         let source = source.open()?;
-        let data = crate::datapack::DataPack::from_source(id.clone(), source.clone());
-        Ok(Self {
-            assets: crate::packs::Pack::mod_layer(id, crate::packs::Source::Opened(source)),
-            data,
-            jar,
-        })
+        let data = crate::datapack::DataPack::from_source(id, source);
+        Ok(Self { data, jar })
     }
 }
 
@@ -3789,12 +3792,12 @@ fn load_layers<'a>(jar_store: &Path, mods: &'a [ContentMod]) -> Result<Vec<ModLa
         for jar in &m.jars {
             layers.push(ModLayer::new(
                 format!("{}/{}", m.id, jar.id()),
-                crate::packs::Source::Zip(jar.cache_path(jar_store)),
+                sunrise_level::pack_meta::Source::Zip(jar.cache_path(jar_store)),
                 Some(jar),
             )?);
         }
         if !m.content.files.is_empty() {
-            use crate::packs::Source;
+            use sunrise_level::pack_meta::Source;
             let source = if let Some(content) = m.content.admitted_source() {
                 use std::hash::{DefaultHasher, Hash, Hasher};
                 use sunrise_assets::resource_source::ResourceSource;
@@ -3869,12 +3872,16 @@ const GENERATED_FILES: &str = "sunrise-generated-content-files.json";
 
 /// Open the passive layers for one load. Assets and data retain the same jar
 /// readers; only files the table builder generated override the raw data.
-pub fn resolved_resources(
+pub fn resolved_resources_with(
     base: &Path,
     prepared: PathBuf,
     jar_store: &Path,
     mods: &[ContentMod],
     cache: PathBuf,
+    merge_assets: impl FnOnce(
+        sunrise_assets::resource_source::ResourceSource,
+        Vec<(String, sunrise_assets::resource_source::ResourceSource)>,
+    ) -> std::io::Result<sunrise_assets::resource_source::ResourceSource>,
 ) -> Result<sunrise_assets::resource_source::ResourceRoot> {
     use sunrise_assets::resource_source::{Resource, ResourceRoot, ResourceSource};
     let base_source = ResourceSource::directory(base.to_path_buf());
@@ -3941,10 +3948,7 @@ pub fn resolved_resources(
         .iter()
         .map(|(_, source)| source.clone())
         .collect();
-    let layers = loaded
-        .into_iter()
-        .flat_map(|group| group.layers.into_iter().map(|layer| layer.assets))
-        .collect::<Vec<_>>();
+    let layer_sources = data_layers.iter().cloned().collect::<Vec<_>>();
     // Client resource readers also consume passive registry data (for
     // example trim materials and dimension effects). Selected asset packs
     // remain above the asset names without changing the server data source.
@@ -3960,7 +3964,7 @@ pub fn resolved_resources(
         files.extend(changes.clone());
         assets_base = ResourceSource::indexed(files);
     }
-    let assets = crate::packs::resources(assets_base, &layers)?;
+    let assets = merge_assets(assets_base, layer_sources)?;
     data.extend(changes.clone());
     Ok(ResourceRoot::new(prepared, cache, assets)
         .with_data(
@@ -3968,6 +3972,40 @@ pub fn resolved_resources(
             ResourceSource::indexed_with_sources(changes, data_layers),
         )
         .with_mod_layers(mod_layers))
+}
+
+/// Open the passive layers for a server load without client pack merging.
+pub fn resolved_server_resources(
+    base: &Path,
+    prepared: PathBuf,
+    jar_store: &Path,
+    mods: &[ContentMod],
+    cache: PathBuf,
+) -> Result<sunrise_assets::resource_source::ResourceRoot> {
+    use sunrise_assets::resource_source::{Resource, ResourceSource};
+    resolved_resources_with(
+        base,
+        prepared,
+        jar_store,
+        mods,
+        cache,
+        |assets_base, layer_sources| {
+            if layer_sources.is_empty() {
+                return Ok(assets_base);
+            }
+            let mut files = assets_base
+                .list("")
+                .into_iter()
+                .map(|name| (name.clone(), Resource::file(assets_base.clone(), name)))
+                .collect::<BTreeMap<_, _>>();
+            for (_, source) in layer_sources {
+                for name in source.list("assets/") {
+                    files.insert(name.clone(), Resource::file(source.clone(), name));
+                }
+            }
+            Ok(ResourceSource::indexed(files))
+        },
+    )
 }
 
 /// The root to load: `base` itself with no content, else the mods' overlay
@@ -4190,6 +4228,9 @@ fn stamp(
     }
     Ok(format!("{:x}", hasher.finalize()))
 }
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_fixtures;
 
 #[cfg(test)]
 #[path = "mod_content_tests.rs"]

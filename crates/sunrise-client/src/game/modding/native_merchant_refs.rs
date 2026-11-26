@@ -3,7 +3,10 @@ use super::{Game, commands::Target};
 use mod_api::{EntityRef, MerchantRef, PlayerRef};
 use sunrise_client::{
     merchant::{MerchantOffer, Trader},
-    mobs::{Species, render::VILLAGER_TYPES, villager},
+    mobs::{
+        Species,
+        villager::{self, VILLAGER_TYPES},
+    },
 };
 use sunrise_core::identifier::Identifier;
 

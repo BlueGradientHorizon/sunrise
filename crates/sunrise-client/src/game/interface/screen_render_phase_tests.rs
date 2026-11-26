@@ -51,7 +51,7 @@ impl Hooks for PaintPhases {
 fn chest(game: &mut crate::game::ClientGame<'_>) -> (u32, u32) {
     game.side.title.0 = None;
     game.side.screen = Screen::Inventory;
-    game.ui.hide_gui = true;
+    game.side.chat_ui.hide_gui = true;
     game.container = Some(POS);
     game.craft_size = 2;
     game.level.recipe_book.open = [false; 4];

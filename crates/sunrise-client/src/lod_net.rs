@@ -17,12 +17,10 @@
 //!
 //! It is off unless the owner sets the key: far tiles show the generator's
 //! terrain far beyond view distance, which helps crack a world's seed.
-use crate::{
-    columns::Surface,
-    lod::{Column, Span, Spans},
-};
+use crate::columns::Surface;
 use std::{collections::HashMap, time::Instant};
 use sunrise_core::vanilla_bytes::Writer;
+use sunrise_level::lod_data::{Column, Span, Spans};
 use sunrise_protocol::{Error, Result, buf::Reader};
 use sunrise_world::registry::BlockStateId;
 

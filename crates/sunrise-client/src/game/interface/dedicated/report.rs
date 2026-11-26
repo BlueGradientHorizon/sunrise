@@ -17,8 +17,8 @@ use sunrise_client::server_perf::{
     traffic::{Conn, Wire},
     world::{LevelCounts, MobCost, MobCosts, WorkerJobs},
 };
-use sunrise_client::streaming::job_stats;
 pub(in crate::game) use sunrise_gameplay::dedicated::report::*;
+use sunrise_level::chunk_streamer::job_stats;
 use sunrise_perf_format::{
     files,
     v1::{GpuMode, Start, StopReason, SunriseOptions, Trigger},

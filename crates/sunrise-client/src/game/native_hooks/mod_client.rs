@@ -106,6 +106,9 @@ pub(in crate::game) mod fluid_draw;
 #[path = "gui_ticks_client.rs"]
 pub(in crate::game) mod gui_ticks;
 
+#[path = "hud_mode_client.rs"]
+pub(in crate::game) mod hud_mode;
+
 #[path = "item_picked_up_client.rs"]
 pub(in crate::game) mod item_picked_up;
 
@@ -277,7 +280,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match self.side.screen {
             Screen::Inventory => self.close_container_client(),
             Screen::Creative => self.close_creative_menu(),
-            Screen::Options => self.ui.options.discard_draw(),
+            Screen::Options => self.side.chat_ui.options.discard_draw(),
             _ => {}
         }
         if self.side.book.is_some() {
@@ -390,11 +393,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.server_packs.0.prompt = None;
         self.side.pause_focus = None;
         if self.side.screen == Screen::Options {
-            self.ui.options.discard_draw();
+            self.side.chat_ui.options.discard_draw();
         }
         if screen == Screen::Dead && self.side.screen != Screen::Dead {
-            self.ui.death_time = 0;
-            self.ui.death_confirm = None;
+            self.side.chat_ui.death_time = 0;
+            self.side.chat_ui.death_confirm = None;
         }
         if let Some(mut title) = title {
             title.set_rule_registry(Arc::new(crate::game::api_values::game_rule_registry()));
@@ -1543,7 +1546,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         before(self);
         if self.side.screen == Screen::Options {
-            self.ui.options.discard_draw();
+            self.side.chat_ui.options.discard_draw();
         }
         self.apply_screen_with_mod_book(screen, owner);
     }

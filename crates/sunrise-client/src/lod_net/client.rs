@@ -5,8 +5,7 @@
 //! hands over ([`Inbox::deliver`]), within the server's [`Offer`]. A tile
 //! refused, lost or unreadable comes back as no columns: `Lod` asks again.
 use super::{Bucket, Offer, Request, SIDE, decode_reply, reply_id};
-use crate::streaming::{LodSampler, LodSource};
-use crate::{columns::Surface, lod::Column};
+use crate::columns::Surface;
 use std::{
     collections::HashMap,
     sync::{
@@ -15,6 +14,10 @@ use std::{
         mpsc,
     },
     time::{Duration, Instant},
+};
+use sunrise_level::{
+    chunk_streamer::{LodSampler, LodSource},
+    lod_data::Column,
 };
 
 /// How long a client waits for a tile before asking again.

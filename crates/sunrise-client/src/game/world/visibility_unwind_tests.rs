@@ -38,7 +38,7 @@ pub(in crate::game::server_side) fn with_save_game(
             autosave: true,
         })));
         game.build_registries();
-        game.ui.dispatcher = chat::SessionDispatcher(Arc::new(
+        game.ui.dispatcher = chat_common::SessionDispatcher(Arc::new(
             sunrise_client::command::vanilla::build_for(false, true),
         ));
         game.world

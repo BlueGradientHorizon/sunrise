@@ -1625,6 +1625,8 @@ pub(in crate::game) struct ServerState {
         ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
     pub(in crate::game::server_side) fns: ServerOnly<functions::FnState>,
     pub(in crate::game::server_side) exec: ServerOnly<commands::execute::ExecState>,
+    pub(in crate::game::server_side) profile_resolver:
+        Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
 }
 
 impl ServerState {
@@ -1632,6 +1634,7 @@ impl ServerState {
     #[inline(never)]
     pub(in crate::game) fn build(
         structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
+        profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
         save: ServerShared<Arc<SaveDir>>,
         creative_catalog: ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
         ws: Box<super::WrappedServerInit>,
@@ -1802,6 +1805,7 @@ impl ServerState {
             guest_combat: ws.guest_combat,
             fns: ws.fns,
             exec: ws.exec,
+            profile_resolver,
         })
     }
 }

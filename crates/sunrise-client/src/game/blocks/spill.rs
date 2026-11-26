@@ -2431,7 +2431,7 @@ mod tests {
                 "Ominous Banner"
             );
             assert_eq!(
-                sunrise_client::item_tooltip::rarity(&dropped, "common"),
+                sunrise_client::stations::rarity(&dropped, "common"),
                 "uncommon"
             );
             assert_eq!(

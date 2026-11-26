@@ -13,11 +13,11 @@
 //! now. A correction is counted, and never counts toward the floating kick.
 use super::{Hub, TickCtx};
 use std::sync::atomic::Ordering;
-use sunrise_client_render::moving_colliders::{as_mover, at_age, with_history};
 use sunrise_core::geometry::{
     Aabb, Vec3,
     carried::{Ages, Body, Carried, Fit, Footing, footing, judge},
 };
+use sunrise_world::moving_colliders::{as_mover, at_age, with_history};
 
 /// How a report stands to the colliders of the level.
 pub(super) enum Plan {

@@ -893,7 +893,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             self.send(riding_jump(id, self.mount.jump_scale));
         }
-        let [strafe, forward] = sunrise_client::input::modify_input(keys.direction(), None, None);
+        let [strafe, forward] =
+            sunrise_client_core::move_input::modify_input(keys.direction(), None, None);
         let m = &mut self.mobs[i];
         if jump > 0.0 && equine::is_equine(m.species()) {
             // `onPlayerJump`: the mount slides on the rider's keys and rears

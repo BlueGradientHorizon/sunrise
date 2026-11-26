@@ -8,7 +8,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         if let Some((kind, burst)) =
-            sunrise_client::particles::entity_event_burst(&m.kind.id, event as u8)
+            sunrise_level::particle_options::entity_event_burst(&m.kind.id, event as u8)
         {
             self.particles_around_mob(id, kind, burst);
         }

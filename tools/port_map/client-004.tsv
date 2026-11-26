@@ -51,9 +51,9 @@ GiantMobRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/anim.rs:
 GlowSquidRenderer.getBlockLightLevel	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	gap: player: glow squid dark-tick light is not read, so its body never brightens in the dark
 GoatRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::goat	horns and ramming head pitch
 GuardianRenderer.shouldRender	skip:other		frustum culling of the beam only; the guardian body is culled by the entity culler
-GuardianRenderer.getPosition	inline	crates/sunrise-client/src/mobs/guardian.rs::beam_geometry	target and eye positions
-GuardianRenderer.submit	port	crates/sunrise-client/src/mobs/guardian.rs::beam_geometry	beam to the attack target
-GuardianRenderer.vertex	inline	crates/sunrise-client/src/mobs/guardian.rs::beam_geometry	vertex built inline
+GuardianRenderer.getPosition	inline	crates/sunrise-client/src/mobs_render.rs::guardian_beam_geometry	target and eye positions
+GuardianRenderer.submit	port	crates/sunrise-client/src/mobs_render.rs::guardian_beam_geometry	beam to the attack target
+GuardianRenderer.vertex	inline	crates/sunrise-client/src/mobs_render.rs::guardian_beam_geometry	vertex built inline
 GuardianRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/guardian.rs::beam	beam attack scale and time
 HappyGhastRenderer.getBoundingBoxForCulling	port	crates/sunrise-client-gameplay/src/entity_occlusion.rs::cull_box	setMinY(minY - getBbHeight() / 2) for the riders hanging below it
 HappyGhastRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/happy_ghast.rs::wearing_harness	the harnessed state is read here; the harness (body item) is drawn by render::layers

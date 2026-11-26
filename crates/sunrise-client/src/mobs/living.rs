@@ -1307,7 +1307,7 @@ impl Mob {
     }
     /// Entity.applyMovementEmissionAndPlaySound: walked distance, footsteps
     /// and swimming sounds.
-    pub(super) fn movement_emission(
+    pub(crate) fn movement_emission(
         &mut self,
         w: &MobWorld,
         moved: Vec3,
@@ -3077,7 +3077,6 @@ mod tests {
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             facts.states.len(),
-            false,
         )
         .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
@@ -3120,7 +3119,7 @@ mod tests {
             }
             let w = MobWorld {
                 side: sunrise_client::motion::dry_side(),
-                mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
+                mob_maps: crate::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
                 goal_host: None,
                 live_mobs: None,
                 teams: Default::default(),
@@ -3223,7 +3222,6 @@ mod tests {
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             facts.states.len(),
-            false,
         )
         .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
@@ -3258,7 +3256,7 @@ mod tests {
                 .unwrap();
             let w = MobWorld {
                 side: sunrise_client::motion::dry_side(),
-                mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
+                mob_maps: crate::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
                 goal_host: None,
                 live_mobs: None,
                 teams: Default::default(),
@@ -3360,7 +3358,6 @@ mod tests {
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
             facts.states.len(),
-            false,
         )
         .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
@@ -3397,7 +3394,7 @@ mod tests {
         }
         let w = MobWorld {
             side: sunrise_client::motion::dry_side(),
-            mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
+            mob_maps: crate::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
             goal_host: None,
             live_mobs: None,
             teams: Default::default(),
@@ -3504,7 +3501,6 @@ mod tests {
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
             facts.states.len(),
-            false,
         )
         .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
@@ -3541,7 +3537,7 @@ mod tests {
             let others = [below.seen(None, &crate::items::Items::empty())];
             let w = MobWorld {
                 side: sunrise_client::motion::dry_side(),
-                mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
+                mob_maps: crate::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
                 professions: crate::mobs::villager::profession_table(),
                 loop_context: crate::test_resources::server_loop_context(),
                 attributes: &motion.attributes,

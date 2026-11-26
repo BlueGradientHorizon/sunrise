@@ -1481,7 +1481,7 @@ sunrise-client game::native_hooks::fluid_draw::tests::a_mod_edits_a_fluid_toolti
 sunrise-client game::native_hooks::fluid_tick::tests::fluid_tick_dispatch_keeps_arguments_cancel_and_authority lib daily resources
 sunrise-client game::native_hooks::guest_death_lifecycle_tests::cancelled_corpse_teleported_in_player_tick_keeps_original_removal_deadline lib daily resources
 sunrise-client game::native_hooks::guest_death_lifecycle_tests::listener_healed_guest_stays_visible_through_player_tick_teleport lib daily resources
-sunrise-client game::native_hooks::hud_mode::tests::hud_mode_game_bridge_respects_client_and_guest_guards lib daily resources
+sunrise-client game::client_side::native_hooks_client::hud_mode::tests::hud_mode_game_bridge_respects_client_and_guest_guards lib daily resources
 sunrise-client game::server_side::native_hooks_server::incoming_tests::held_durability_retains_the_stack_hand_and_explicit_break_slot lib daily resources
 sunrise-client game::native_hooks::ingredient_test::enumeration_tests::ingredient_keys_are_exact_for_tags_shapes_and_refuse_component_predicates lib daily resources
 sunrise-client game::server_side::native_hooks_server::item_fall_on_tests::a_dropped_item_lands_on_a_fall_on_part lib daily resources

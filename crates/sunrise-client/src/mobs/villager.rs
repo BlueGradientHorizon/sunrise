@@ -18,6 +18,9 @@ use sunrise_core::random::RandomSource;
 
 pub const NONE: u8 = 0;
 pub const NITWIT: u8 = 11;
+pub const VILLAGER_TYPES: [&str; 7] = [
+    "plains", "desert", "jungle", "savanna", "snow", "swamp", "taiga",
+];
 
 #[path = "villager_professions.rs"]
 pub mod professions;
@@ -1497,11 +1500,10 @@ mod tests {
     }
 
     fn villager() -> Mob {
-        use crate::mobs::{Anim, Brain, Flags, MobType, Part, Species};
+        use crate::mobs::{Anim, Brain, Flags, MobType, Species};
         use std::sync::Arc;
         let kind = Arc::new(MobType {
             type_key: Default::default(),
-            shadow: None,
             id: "minecraft:villager".into(),
             species: Species::Villager,
             width: 0.6,
@@ -1534,9 +1536,6 @@ mod tests {
             max_head_y_rot: 75.0,
             ambient_interval: 80,
             flags: Flags::default(),
-            model: Arc::new(Part::parse("root", &serde_json::json!({}))),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Villager,
             sounds: [""; 3],

@@ -484,7 +484,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         game.native_configs_client_start();
         if let Some(error) = pack_error {
             game.open_options_at(true, sunrise_client::options_ui::Page::Packs);
-            game.ui.options.resource_error = Some(error);
+            game.side.chat_ui.options.resource_error = Some(error);
         }
         match game.options.world.clone() {
             _ if game.options.server.is_some() => {

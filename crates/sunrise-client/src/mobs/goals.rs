@@ -899,8 +899,8 @@ impl Mob {
                 float("min_reach", 0.0) * factor,
             ));
         }
-        crate::spear::Kinetic::of(item).map(|_| {
-            let r = &crate::spear::REACH;
+        crate::spear_sim::Kinetic::of(item).map(|_| {
+            let r = &crate::spear_sim::REACH;
             (r.max * r.mob_factor, r.min * r.mob_factor)
         })
     }

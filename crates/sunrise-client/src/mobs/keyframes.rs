@@ -2,11 +2,22 @@
 //! `KeyframeAnimation`) exported from the client's animation definitions,
 //! applied to a pose map exactly like `KeyframeAnimation.Entry.apply`.
 use mod_api::{AnimationChannel, AnimationTarget, Interpolation, Keyframe};
+use std::collections::HashMap;
+use std::path::Path;
 
 #[cfg(test)]
 #[path = "keyframes_parity_tests.rs"]
 mod parity_tests;
 use serde_json::Value;
+
+pub fn load_animations(root: &Path) -> std::io::Result<HashMap<String, Animation>> {
+    let definitions: HashMap<String, Value> =
+        sunrise_world::json_file::read(&root.join("mob-animations.json"))?;
+    Ok(definitions
+        .into_iter()
+        .map(|(k, a)| (k, Animation::parse(&a)))
+        .collect())
+}
 
 /// A vanilla animation as the game exports it: channels and their sampling are `mod_api`'s, the
 /// one code path the game and a mod's animations share.

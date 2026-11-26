@@ -623,7 +623,7 @@ mod tests {
         x: i32,
         z: i32,
     ) -> Vec<String> {
-        use crate::streaming::{ChunkGenerator, Proto};
+        use sunrise_level::chunk_streamer::{ChunkGenerator, Proto};
         let assets = crate::assets::Assets::load(root).unwrap();
         let biomes = crate::biome::Biomes::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),

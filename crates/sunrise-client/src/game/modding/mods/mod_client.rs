@@ -102,7 +102,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 waiting.push(id);
             }
         }
-        self.ui.options.mods_note = (!waiting.is_empty())
+        self.side.chat_ui.options.mods_note = (!waiting.is_empty())
             .then(|| lang::tr("sunrise.mods.switch.restart", &[&waiting.join(", ")]));
         let changed = applied
             .symmetric_difference(&next)

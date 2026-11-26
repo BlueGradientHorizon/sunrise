@@ -58,6 +58,7 @@ pub(in crate::game) mod camera_hud;
 #[cfg(feature = "client")]
 #[path = "network/cauldron_prediction_client.rs"]
 pub(in crate::game) mod cauldron_prediction_client;
+#[cfg(feature = "client")]
 #[path = "interface/chat.rs"]
 pub(in crate::game) mod chat;
 #[cfg(feature = "client")]
@@ -1288,7 +1289,7 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) lod_covered_at: Option<(u64, (i32, i32), i32)>,
     /// Whether the view's columns have all arrived, and how new it is: large
     /// translucent pages wait for both before they shrink (`set_terrain_loading`).
-    pub(in crate::game::client_side) view_arrival: sunrise_client::streaming::ViewArrival,
+    pub(in crate::game::client_side) view_arrival: sunrise_level::chunk_streamer::ViewArrival,
     pub(in crate::game::client_side) drop_spam_throttler: sunrise_client::menu::DropSpamThrottler,
     /// `yRotO` / `xRotO` of the local player: the view at the start of the tick,
     /// moved by `Entity.turn` and a boat's `clampRotation` as the view is
@@ -1627,6 +1628,8 @@ pub(in crate::game) struct ClientState {
     pub(in crate::game::client_side) remote_knots: HashMap<u32, [i32; 3]>,
     pub(in crate::game::client_side) text_display_vertices: usize,
     pub(in crate::game::client_side) skin_slots: sunrise_client::skins::SkinSlots,
+    pub(in crate::game::client_side) skin_profiles: RefCell<sunrise_client::skins::Resolver>,
+    pub(in crate::game::client_side) chat_ui: chat::ChatUiState,
     pub(in crate::game::client_side) map_slots: super::atlas_slots::AtlasSlots<i32>,
     /// Runtime trim slots and the last completed preparation for this atlas.
     pub(in crate::game::client_side) trim_slots: sunrise_client::trims::TrimSlots,
@@ -1924,6 +1927,8 @@ pub(in crate::game) struct ClientConstructEffects {
     pub(in crate::game) narration: sunrise_client::screen_narrator::ScreenNarrator,
     pub(in crate::game) tick_script: tick_script::TickScript,
     pub(in crate::game) social: social::Social,
+    pub(in crate::game) skin_profiles: RefCell<sunrise_client::skins::Resolver>,
+    pub(in crate::game) chat_ui: chat::ChatUiState,
 }
 
 #[cfg(feature = "client")]
@@ -2132,6 +2137,8 @@ impl ClientState {
             remote_knots: Default::default(),
             text_display_vertices: 0,
             skin_slots: sunrise_client::skins::SkinSlots::new(sunrise_client::hud::SKIN_SLOTS),
+            skin_profiles: effects.skin_profiles,
+            chat_ui: effects.chat_ui,
             map_slots: super::atlas_slots::AtlasSlots::new(sunrise_client::hud::MAP_SLOTS),
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,

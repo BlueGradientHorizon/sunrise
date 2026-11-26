@@ -293,9 +293,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.watch_events();
         }
         if self.side.screen == Screen::Options
-            && self.ui.options.page() == sunrise_client::options_ui::Page::Agent
+            && self.side.chat_ui.options.page() == sunrise_client::options_ui::Page::Agent
         {
-            self.ui.options.set_agent_status(
+            self.side.chat_ui.options.set_agent_status(
                 self.agent_status_lines(),
                 self.side.repro.0.recording_active(),
             );
@@ -412,8 +412,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             Screen::DebugOptions if self.vanilla_text_field_focused() => {
                 self.debug_options_type(text)
             }
-            Screen::Options if self.ui.options.typing() && !self.options_waiting_for_key() => {
-                self.ui.options.type_text(&self.gui.atlas, text)
+            Screen::Options
+                if self.side.chat_ui.options.typing() && !self.options_waiting_for_key() =>
+            {
+                self.side.chat_ui.options.type_text(&self.gui.atlas, text)
             }
             // The port, or the game rules' search and number boxes.
             Screen::WorldOptions if self.world_options_typing() => {
@@ -1179,7 +1181,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // the recent list apply to a connected server too.
                 self.handle_chat_input(text);
                 Ok(Some(
-                    json!({ "ok": true, "chat": self.ui.chat.recent_lines(5) }),
+                    json!({ "ok": true, "chat": self.side.chat_ui.chat.recent_lines(5) }),
                 ))
             }
             "type" => {
@@ -1274,7 +1276,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.capture(false);
                 }
                 self.open_options(self.side.title.0.is_some());
-                self.ui.options.show(page);
+                self.side.chat_ui.options.show(page);
                 if page == Page::ShaderPacks {
                     self.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
@@ -1286,7 +1288,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let n = words.get(1).map_or(Ok(10), |n| n.parse())?;
                 let lines = self
                     .remote_chat(n)
-                    .unwrap_or_else(|| self.ui.chat.recent_lines(n));
+                    .unwrap_or_else(|| self.side.chat_ui.chat.recent_lines(n));
                 Ok(Some(json!({ "chat": lines })))
             }
             "narration" => {

@@ -313,7 +313,7 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
                     )
                 })
         };
-        let buttons = |map: &sunrise_client::lan::recipes::StonecutterButtons| {
+        let buttons = |map: &sunrise_client::menu::StonecutterButtons| {
             [0, 1].map(|i| map.recipe("minecraft:stick", i).unwrap().to_owned())
         };
         let (old_window, old_buttons) = menu(server).unwrap();

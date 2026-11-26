@@ -47,7 +47,7 @@ impl Hub {
         // The guest's move, as the entity a moving collider is asked about: the player is never
         // stopped by a collider of its own vehicle stack. `settle`, the carried check's, names
         // the collider that carries the guest instead, so `settle_in` names no one.
-        sunrise_client_render::moving_colliders::as_mover(self.guests[i].entity_id as u32, || {
+        sunrise_world::moving_colliders::as_mover(self.guests[i].entity_id as u32, || {
             self.settle_in(i, from, to, world, binding, entities)
         })
     }
@@ -197,7 +197,7 @@ impl Hub {
         let overridden = gate.overridden();
         // The guest's move, as the entity a block's parts are asked about (the gate names it
         // for its own moves): the server asks the same question the guest's client did.
-        sunrise_client_render::moving_colliders::as_mover(g.entity_id as u32, || {
+        sunrise_world::moving_colliders::as_mover(g.entity_id as u32, || {
             // A move with no exclusions pays this one check.
             if g.collision_exclusions.is_empty() {
                 return check_move(g, from, to, requested, movement, overridden, &mut scene);
@@ -343,7 +343,7 @@ where
     let shrink = Vec3::new(shrink, shrink, shrink);
     // The same for each box of a moving collider (a mod's `set_collider`): one the old box was
     // not already in, box by box. Outside a level that holds colliders this answers at once.
-    if sunrise_client_render::moving_colliders::new_collision(
+    if sunrise_world::moving_colliders::new_collision(
         EntityIdentity(g.entity_id as u64),
         old.deflate(shrink),
         new.deflate(shrink),

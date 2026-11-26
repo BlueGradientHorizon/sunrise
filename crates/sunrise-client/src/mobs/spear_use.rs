@@ -12,7 +12,7 @@ use super::{
     gear,
     goals::{Cx, Goal, LOOK, MOVE, goal_clone, reduced},
 };
-use crate::spear::{Kinetic, REACH, hits_in_reach};
+use crate::spear_sim::{Kinetic, REACH, hits_in_reach};
 use sunrise_core::geometry::{Aabb, Vec3, trig::Mth};
 
 /// The kinetic weapon in the main hand (`getMainHandItem().get(KINETIC_WEAPON)`).

@@ -147,7 +147,7 @@ pub(in crate::game) mod tests {
             "game::client_side::titles::tests::a_mods_overlay_line_replaces_the_action_bar_and_restarts_its_timer",
             || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
-                    let chat = game.ui.chat.recent_lines(usize::MAX);
+                    let chat = game.side.chat_ui.chat.recent_lines(usize::MAX);
                     let host: &mut dyn ClientHost = game;
                     assert_eq!(
                         host.set_overlay_message(Text::literal("Now Playing"), true),
@@ -179,7 +179,7 @@ pub(in crate::game) mod tests {
                     let host: &mut dyn ClientHost = game;
                     assert_eq!(host.set_overlay_message(Text::literal(""), false), Ok(()));
                     assert_eq!(shown(game), Some((String::new(), 60, false)));
-                    assert_eq!(game.ui.chat.recent_lines(usize::MAX), chat);
+                    assert_eq!(game.side.chat_ui.chat.recent_lines(usize::MAX), chat);
                 });
             },
         );

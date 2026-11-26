@@ -465,10 +465,8 @@ fn unmodified_container_nbt_has_no_stack_limit() {
 #[test]
 #[ignore = "daily"]
 fn generated_structure_chest_stays_pending_after_save_and_reload() {
-    use crate::{
-        streaming::{ChunkGenerator, Proto},
-        vanillagen::{TerrainResources, VanillaTerrain},
-    };
+    use crate::vanillagen::{TerrainResources, VanillaTerrain};
+    use sunrise_level::chunk_streamer::{ChunkGenerator, Proto};
     let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let assets = crate::assets::Assets::load(&root).unwrap();
     let biomes = Biomes::load(&sunrise_assets::resource_source::ResourceRoot::directory(

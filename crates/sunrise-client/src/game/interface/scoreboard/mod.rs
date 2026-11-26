@@ -2,7 +2,7 @@
 //! player (health, food, xp, deaths, kills, statistics), score holders for
 //! entities, the selector options `scores=`, `team=` and `tag=`, the
 //! commands' [`Env`] and the sidebar.
-use super::{Game, chat::PLAYER_NAME, commands::Target};
+use super::{Game, chat_common::PLAYER_NAME, commands::Target};
 use mod_api::EntityTags;
 use std::collections::{HashMap, HashSet};
 #[allow(unused_imports)]

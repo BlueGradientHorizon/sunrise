@@ -265,10 +265,7 @@ pub fn component_tag(v: &crate::server::json::Json) -> sunrise_core::nbt::Tag {
     }
 }
 
-/// StringUtil.isValidPlayerName.
-pub fn valid_name(name: &str) -> bool {
-    (1..=16).contains(&name.len()) && name.chars().all(|c| c as u32 > 32 && (c as u32) < 127)
-}
+pub use crate::offline_name::valid_name;
 
 thread_local! {
     static HOLDING: Cell<bool> = const { Cell::new(false) };
@@ -1193,7 +1190,7 @@ fn authenticate(
         }
     };
     let ip = online.prevent_proxy.then(|| address.ip());
-    match crate::auth::has_joined(name, &digest, ip) {
+    match (online.verify)(name, &digest, ip) {
         Ok(Some(profile)) => {
             log(
                 "INFO",

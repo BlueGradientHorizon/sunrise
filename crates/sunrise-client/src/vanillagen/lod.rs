@@ -3,8 +3,6 @@ use super::*;
 use crate::{
     columns::Surface,
     fast_hash::{FxHashMap, FxHashSet},
-    lod::{Column, Span},
-    streaming::LodDetail,
 };
 use std::{
     collections::VecDeque,
@@ -14,6 +12,10 @@ use std::{
         mpsc,
     },
     thread,
+};
+use sunrise_level::{
+    chunk_streamer::LodDetail,
+    lod_data::{Column, Span},
 };
 use sunrise_world::{
     heightmap::HeightmapState,
@@ -88,7 +90,7 @@ impl Builder {
         let (tx, results) = mpsc::channel();
         // Idle priority, and within far terrain's share of the cores
         // (`lod::decoration_threads`).
-        let count = crate::lod::decoration_threads(sunrise_threads::worker_count());
+        let count = sunrise_level::lod_data::decoration_threads(sunrise_threads::worker_count());
         let threads = (0..count)
             .map(|_| Self::spawn(terrain.clone(), shared.clone(), tx.clone(), background))
             .collect();
@@ -458,7 +460,7 @@ fn fill_under_surface(column: &mut Column, fluid: impl Fn(BlockStateId) -> bool)
     let mut state = ground.state;
     let mut filled = Column {
         surface: column.surface,
-        spans: crate::lod::Spans::with_capacity(column.spans.len()),
+        spans: sunrise_level::lod_data::Spans::with_capacity(column.spans.len()),
     };
     for (index, &span) in column.spans.iter().enumerate() {
         let mut span = span;
@@ -655,7 +657,7 @@ impl VanillaLodSampler {
         let registry = self.generator.generator.data().registry();
         let mut column = Column {
             surface,
-            spans: crate::lod::Spans::new(),
+            spans: sunrise_level::lod_data::Spans::new(),
         };
         for (min, max, state) in spans.into_iter().rev() {
             column.push(Span {

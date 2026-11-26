@@ -712,7 +712,7 @@ pub(in crate::game) mod tests {
         );
         assert!(game.side.title.0.is_some());
         // Gui treats the title as an open screen even when F1 hides the HUD.
-        game.ui.hide_gui = true;
+        game.side.chat_ui.hide_gui = true;
         let mut hidden_hud = HudBatch::new([1280, 720], game.settings.gui_scale_inputs());
         game.draw_debug_overlay_under(&mut hidden_hud, [1280, 720]);
         assert!(!hidden_hud.vertices.is_empty());
@@ -729,7 +729,7 @@ pub(in crate::game) mod tests {
         game.side.title.0 = None;
         game.side.screen = Screen::Playing;
         assert!(!ScreensClientHost::debug_overlay_visible(&game));
-        game.ui.hide_gui = false;
+        game.side.chat_ui.hide_gui = false;
         assert!(ScreensClientHost::debug_overlay_visible(&game));
     }
 

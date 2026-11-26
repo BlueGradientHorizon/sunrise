@@ -22,7 +22,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.repro_tick();
         // Hud.tick ends with ChatComponent.tick.
         let chat_ticks = self.visual_ticks();
-        self.ui.chat.tick(&self.gui.atlas, chat_ticks);
+        self.side.chat_ui.chat.tick(&self.gui.atlas, chat_ticks);
         self.tick_sign_editor();
         self.track_experience_display();
         self.tick_enchanting_book();

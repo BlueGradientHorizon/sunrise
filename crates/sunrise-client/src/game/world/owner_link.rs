@@ -61,7 +61,7 @@ pub(in crate::game) enum OwnerRequest {
     /// Far terrain for a client in `dim`.
     LodSource(
         Dim,
-        Reply<Option<Arc<dyn sunrise_client::streaming::LodSource>>>,
+        Reply<Option<Arc<dyn sunrise_level::chunk_streamer::LodSource>>>,
     ),
     /// The pregen commands are on or off.
     SetPregen(bool),
@@ -353,7 +353,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self.ui.dispatcher.0.find("pregen").is_some() != enabled {
             vanilla::set_sunrise_commands(enabled);
             self.ui.dispatcher =
-                super::chat::SessionDispatcher(Arc::new(vanilla::session_dispatcher(
+                super::chat_common::SessionDispatcher(Arc::new(vanilla::session_dispatcher(
                     &self.level.rule_registry,
                     &self.level.enabled_features,
                 )));

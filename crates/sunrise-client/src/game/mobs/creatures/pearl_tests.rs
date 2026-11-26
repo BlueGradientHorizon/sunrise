@@ -25,7 +25,6 @@ fn a_pearl_feels_the_water_its_box_touches() {
     let data = sunrise_client::mobs::MobData::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
         facts.states.len(),
-        false,
     )
     .unwrap();
     let biomes = sunrise_client::biome::Biomes::load(

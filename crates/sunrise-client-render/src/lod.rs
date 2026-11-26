@@ -7,8 +7,6 @@ use crate::{
     mesher::SectionMesh,
     streaming::{LodSource, WorkerContext},
 };
-pub mod bake;
-pub mod cache;
 mod detail;
 mod kept;
 mod mesh;
@@ -28,7 +26,7 @@ use sunrise_world::registry::BlockStateId;
 
 pub use sunrise_level::lod_data::{
     CELLS, Column, MAX_CHUNKS, MAX_LEVEL, MAX_ZOOM_BOOST, OBSERVE_AHEAD, Span, Spans, TileKey,
-    ZOOM_YAW_STEP, ZoomAim, decoration_threads,
+    ZOOM_YAW_STEP, ZoomAim, bake, cache, decoration_threads,
 };
 
 const MAX_SAVED: usize = 1024;

@@ -81,7 +81,7 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     .unwrap();
                 }
                 // This fixture skips world open, which normally loads the built-in sound holders.
-                let registries = crate::game::chat::command_export(&original, false)
+                let registries = crate::game::chat_common::command_export(&original, false)
                     .expect("prepared command registries");
                 game.ui.registries.fill_from_exported(&registries);
                 game.reload_datapacks(true, &[]).unwrap();

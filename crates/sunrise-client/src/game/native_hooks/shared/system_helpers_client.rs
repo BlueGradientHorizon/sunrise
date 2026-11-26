@@ -28,7 +28,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let line = Text::literal(text);
         let ticks = self.visual_ticks();
         let atlas = &self.gui.atlas;
-        self.ui
+        self.side
+            .chat_ui
             .chat
             .add(atlas, line, None, ChatSource::Client, ticks, focused);
     }

@@ -1636,7 +1636,7 @@ impl Painting {
 /// The `DyeColor` ordinal of a colour name (`DyeColor.byName`), white when
 /// the name is unknown.
 pub fn dye_index(name: &str) -> u8 {
-    crate::mobs::render::DYE_NAMES
+    sunrise_level::dyes::DYE_NAMES
         .iter()
         .position(|n| *n == name)
         .unwrap_or(0) as u8
@@ -1673,7 +1673,7 @@ impl Cushion {
     }
     /// The `DyeColor` name of the cushion.
     pub fn color_name(&self) -> &'static str {
-        crate::mobs::render::DYE_NAMES[usize::from(self.color.min(15))]
+        sunrise_level::dyes::DYE_NAMES[usize::from(self.color.min(15))]
     }
     /// `Cushion.getCushionItemStackWithData`: the matching coloured item.
     pub fn item(&self) -> String {
@@ -2077,7 +2077,8 @@ impl ArmorStand {
     /// (`LivingEntityRenderer.solveBodyRot`: `Mth.rotLerp(partialTick,
     /// yBodyRotO, yBodyRot)`).
     pub fn render_yaw(&self, alpha: f32) -> f32 {
-        self.previous_yaw + alpha * crate::camera::wrap_degrees(self.yaw - self.previous_yaw)
+        self.previous_yaw
+            + alpha * sunrise_level::camera_math::wrap_degrees(self.yaw - self.previous_yaw)
     }
     /// A server's stand on its client, each tick:
     /// `setOldPosAndRot` (`ClientLevel.tickNonPassenger`), then the step of
@@ -2091,7 +2092,7 @@ impl ArmorStand {
         self.previous_pitch = self.pitch;
         if let Some((at, yaw, pitch)) = step {
             self.position = at;
-            self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
+            self.yaw += sunrise_level::camera_math::wrap_degrees(yaw - self.yaw);
             self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         }
     }

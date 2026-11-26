@@ -179,12 +179,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The Browse mods page's layout reads the browser: a worker's answer
         // arriving makes the built page again at its next draw.
         let (installed, changed) = self.side.mod_jobs.0.poll(
-            &mut self.ui.options.mod_browser,
+            &mut self.side.chat_ui.options.mod_browser,
             &mut self.settings.mods,
             self.player.is_some(),
         );
         if changed {
-            self.ui.options.layout_changed();
+            self.side.chat_ui.options.layout_changed();
         }
         if installed {
             self.settings.save(&crate::game::options_path());
@@ -193,8 +193,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // A mod with blocks, items or worldgen waits for a restart: the
             // project page says so instead of "installed and on".
             if let (Some(note), Some((message, _))) = (
-                &self.ui.options.mods_note,
-                &mut self.ui.options.mod_browser.message,
+                &self.side.chat_ui.options.mods_note,
+                &mut self.side.chat_ui.options.mod_browser.message,
             ) {
                 *message = format!("{message} {note}");
             }

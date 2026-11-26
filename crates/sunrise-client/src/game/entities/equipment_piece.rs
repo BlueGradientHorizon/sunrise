@@ -160,7 +160,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             ) else {
                 continue;
             };
-            let Some(key) = render::equipment_model_key(mob, layer) else {
+            let Some(key) = render::equipment_model_key(mob, layer, self.res.client_mob_models())
+            else {
                 continue;
             };
             // The mob renderer resolves CEM textures before applying their emissive overlay.
@@ -234,7 +235,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .and_then(|t| bind(&t.sprite()));
         let emissive = self
             .res
-            .mob_data()
+            .client_mob_data()
             .emissive
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);

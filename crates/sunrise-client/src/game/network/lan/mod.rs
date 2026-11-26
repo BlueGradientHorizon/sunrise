@@ -644,7 +644,7 @@ pub(in crate::game) fn mob_meta(
         }
         // Villager.DATA_VILLAGER_DATA and ZombieVillager's (after Zombie's three).
         "minecraft:villager" | "minecraft:zombie_villager" => {
-            use sunrise_client::mobs::render::VILLAGER_TYPES;
+            use sunrise_client::mobs::villager::VILLAGER_TYPES;
             if kind == "minecraft:villager" {
                 unhappy_counter(m, meta, defaults);
             } else {

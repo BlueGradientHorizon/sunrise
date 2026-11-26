@@ -23,10 +23,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn stack_rarity_color(&self, stack: &ItemStack) -> u32 {
         use sunrise_client::text;
         let props = self.stations().enchantments.props(&stack.item);
-        match sunrise_client::item_tooltip::rarity(
-            stack,
-            props.map_or("common", |p| p.rarity.as_str()),
-        ) {
+        match sunrise_client::stations::rarity(stack, props.map_or("common", |p| p.rarity.as_str()))
+        {
             "uncommon" => text::YELLOW,
             "rare" => text::AQUA,
             "epic" => text::LIGHT_PURPLE,

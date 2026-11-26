@@ -1,7 +1,7 @@
 //! Model animation: ports of each vanilla `EntityModel.setupAnim` family
 //! (quadrupeds, humanoids, creepers, spiders, chickens...) applied to a map of
 //! part poses before the model is drawn.
-use super::{Mob, Part, keyframes::AnimationState, living::wrap, render::BakedFrameModel};
+use super::{Mob, keyframes::AnimationState, living::wrap};
 use crate::fast_hash::{FxHashMap, FxHashSet};
 use mod_api::HumanoidPart;
 use std::collections::HashMap;
@@ -109,7 +109,7 @@ impl AnimState {
 /// nothing (a mob farm resets one per layer per mob each frame). Names are short
 /// and few per model; `no_two_part_names_share_a_key` checks every vanilla model.
 #[inline]
-pub(crate) fn key(name: &str) -> u64 {
+pub fn key(name: &str) -> u64 {
     use std::hash::Hasher;
     let mut h = crate::fast_hash::FxHasher::default();
     h.write(name.as_bytes());
@@ -130,6 +130,86 @@ static HUMANOID_POSE_KEYS: LazyLock<[Option<u64>; HumanoidPart::ALL.len()]> = La
         _ => None,
     })
 });
+
+pub trait PosePart {
+    fn part_name(&self) -> &str;
+    fn bind_pose(&self) -> [f32; 9];
+    /// Root-first preorder traversal; `Poses::reset_animation` preserves first-name-wins insertion.
+    fn visit_parts(&self, f: &mut impl FnMut(&str, [f32; 9]))
+    where
+        Self: Sized;
+    fn part_identity(&self) -> usize {
+        self as *const Self as *const () as usize
+    }
+}
+
+impl<T: PosePart> PosePart for &T {
+    fn part_name(&self) -> &str {
+        (**self).part_name()
+    }
+
+    fn bind_pose(&self) -> [f32; 9] {
+        (**self).bind_pose()
+    }
+
+    fn visit_parts(&self, f: &mut impl FnMut(&str, [f32; 9])) {
+        (**self).visit_parts(f);
+    }
+
+    fn part_identity(&self) -> usize {
+        (**self).part_identity()
+    }
+}
+
+impl<T: PosePart> PosePart for Arc<T> {
+    fn part_name(&self) -> &str {
+        (**self).part_name()
+    }
+
+    fn bind_pose(&self) -> [f32; 9] {
+        (**self).bind_pose()
+    }
+
+    fn visit_parts(&self, f: &mut impl FnMut(&str, [f32; 9])) {
+        (**self).visit_parts(f);
+    }
+
+    fn part_identity(&self) -> usize {
+        (**self).part_identity()
+    }
+}
+
+/// Concrete portable part-address-to-node-index table built once at bake time and shared via `Arc`
+/// between `BakedFrameModel` and `Poses`. Used for identity only; never dereferenced.
+#[derive(Clone, Debug, Default)]
+pub struct FramePartIndex {
+    node_count: usize,
+    by_part: FxHashMap<usize, usize>,
+}
+
+impl FramePartIndex {
+    pub fn new(node_count: usize, by_part: FxHashMap<usize, usize>) -> Self {
+        Self {
+            node_count,
+            by_part,
+        }
+    }
+
+    #[inline]
+    pub fn node_count(&self) -> usize {
+        self.node_count
+    }
+
+    #[inline]
+    pub fn index_of_identity(&self, part_ptr: usize) -> Option<usize> {
+        self.by_part.get(&part_ptr).copied()
+    }
+}
+
+/// Static-dispatch seam for borrowing the baked concrete index during frame preparation.
+pub trait FrameLayoutIndex {
+    fn part_index(&self) -> &Arc<FramePartIndex>;
+}
 
 #[derive(Clone, Copy)]
 struct PoseEntry {
@@ -156,7 +236,7 @@ pub struct Poses {
     /// Number of parts with `visible` cleared by animation.
     base_hidden_count: usize,
     /// Draw-local visibility indexed by the selected tree, independent of animation names.
-    frame_layout: Option<Arc<BakedFrameModel>>,
+    frame_layout: Option<Arc<FramePartIndex>>,
     frame_hidden: Vec<bool>,
     has_frame_edits: bool,
     apply_frame_visibility: bool,
@@ -200,9 +280,20 @@ impl Drop for PooledPoses {
     }
 }
 impl Poses {
-    pub fn new(model: &Part) -> Self {
+    pub fn new<P: PosePart>(model: &P) -> Self {
         let mut poses = Self::default();
         poses.reset(model);
+        poses
+    }
+    /// Portable constructor for portable unit tests without a client `Part` tree.
+    pub fn from_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut poses = Self::default();
+        for name in names {
+            poses.map.entry(key(name)).or_insert(PoseEntry::new([
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+            ]));
+        }
+        poses.changed();
         poses
     }
     /// Spare `Poses` of an earlier draw on this thread, to fill with `reset` or
@@ -241,7 +332,7 @@ impl Poses {
     }
     /// Refills this for another model, keeping the map and set capacity:
     /// a mob draws its body and every equipment layer each frame.
-    pub fn reset(&mut self, model: &Part) {
+    pub fn reset<P: PosePart>(&mut self, model: &P) {
         self.frame_layout = None;
         self.frame_hidden.clear();
         self.has_frame_edits = false;
@@ -250,21 +341,17 @@ impl Poses {
 
     /// Restore the selected model's bind pose and base visibility for another mirror, without
     /// losing its shared Pre edits. The next setupAnim starts with the override inactive.
-    pub(super) fn reset_animation(&mut self, model: &Part) {
-        fn walk(p: &Part, map: &mut FxHashMap<u64, PoseEntry>) {
-            // ModelPart.createPartLookup fills its map with putIfAbsent: the first part keeps a name.
-            map.entry(key(&p.name)).or_insert(PoseEntry::new(p.pose));
-            for c in &p.children {
-                walk(c, map);
-            }
-        }
+    pub fn reset_animation<P: PosePart>(&mut self, model: &P) {
         self.map.clear();
         self.dummy = [0.0; 9];
         self.skipped.clear();
         self.base_hidden_count = 0;
         self.apply_frame_visibility = false;
         self.data.clear();
-        walk(model, &mut self.map);
+        model.visit_parts(&mut |name, pose| {
+            // ModelPart.createPartLookup fills its map with putIfAbsent: the first part keeps a name.
+            self.map.entry(key(name)).or_insert(PoseEntry::new(pose));
+        });
         self.changed();
     }
     pub fn get(&mut self, name: &str) -> &mut [f32; 9] {
@@ -278,11 +365,12 @@ impl Poses {
     pub fn pose_of(&self, name: &str) -> Option<[f32; 9]> {
         self.pose_by_key(key(name)).copied()
     }
-    pub(super) fn pose_by_key(&self, key: u64) -> Option<&[f32; 9]> {
+    pub fn pose_by_key(&self, key: u64) -> Option<&[f32; 9]> {
         self.map.get(&key).map(|entry| &entry.pose)
     }
-    pub fn pose(&self, part: &Part) -> [f32; 9] {
-        self.pose_of(&part.name).unwrap_or(part.pose)
+    pub fn pose<P: PosePart>(&self, part: &P) -> [f32; 9] {
+        self.pose_of(part.part_name())
+            .unwrap_or_else(|| part.bind_pose())
     }
     fn set_humanoid_vector(&mut self, part: HumanoidPart, start: usize, values: [f32; 3]) -> bool {
         let Some(entry) = HUMANOID_POSE_KEYS[part as usize].and_then(|key| self.map.get_mut(&key))
@@ -298,8 +386,8 @@ impl Poses {
             self.changed();
         }
     }
-    pub fn skips(&self, part: &Part) -> bool {
-        self.skips_named(&part.name)
+    pub fn skips<P: PosePart>(&self, part: &P) -> bool {
+        self.skips_named(part.part_name())
     }
     /// `skips` by the part's name.
     pub fn skips_named(&self, name: &str) -> bool {
@@ -343,13 +431,14 @@ impl Poses {
                 .is_some_and(|entry| entry.base_hidden)
     }
     /// Refill pooled visibility storage before calling Pre, so edits never grow it.
-    pub(super) fn prepare_frame_visibility(&mut self, layout: Arc<BakedFrameModel>) {
-        self.frame_hidden.resize(layout.nodes().len(), false);
-        self.frame_layout = Some(layout);
+    pub fn prepare_frame_visibility<L: FrameLayoutIndex>(&mut self, layout: &L) {
+        let index = layout.part_index();
+        self.frame_hidden.resize(index.node_count(), false);
+        self.frame_layout = Some(Arc::clone(index));
         self.apply_frame_visibility(true);
     }
 
-    pub(super) fn hide_frame_part(&mut self, index: usize) -> bool {
+    pub fn hide_frame_part(&mut self, index: usize) -> bool {
         let Some(hidden) = self.frame_hidden.get_mut(index) else {
             return false;
         };
@@ -394,7 +483,7 @@ impl Poses {
         }
     }
     /// Select whether the next draw sees the frame override or only the animated visibility.
-    pub(super) fn apply_frame_visibility(&mut self, apply: bool) {
+    pub fn apply_frame_visibility(&mut self, apply: bool) {
         if self.apply_frame_visibility != apply {
             self.apply_frame_visibility = apply;
             if self.has_frame_edits {
@@ -403,19 +492,19 @@ impl Poses {
         }
     }
     /// Effective visibility for drawing; an inactive overlay costs no part lookup.
-    pub fn is_hidden(&self, part: &Part) -> bool {
-        self.is_hidden_named(&part.name)
+    pub fn is_hidden<P: PosePart>(&self, part: &P) -> bool {
+        self.is_hidden_named(part.part_name())
             || self.frame_visibility_active()
                 && self
                     .frame_layout
                     .as_ref()
-                    .and_then(|layout| layout.index_of(part))
+                    .and_then(|layout| layout.index_of_identity(part.part_identity()))
                     .is_some_and(|index| self.frame_hidden[index])
     }
-    pub(super) fn has_hidden_parts(&self) -> bool {
+    pub fn has_hidden_parts(&self) -> bool {
         self.base_hidden_count != 0 || self.frame_visibility_active()
     }
-    pub(super) fn is_hidden_at(&self, index: usize, key: u64) -> bool {
+    pub fn is_hidden_at(&self, index: usize, key: u64) -> bool {
         (self.base_hidden_count != 0 && self.map.get(&key).is_some_and(|entry| entry.base_hidden))
             || self.frame_visibility_active() && self.frame_hidden[index]
     }
@@ -591,7 +680,7 @@ pub fn humanoid_arm_poses(m: &Mob, declared: [Option<ArmPose>; 2], swing: f32) -
         } else if m.kind.anim != Anim::Skeleton
             && m.extra
                 .main_hand_id()
-                .and_then(crate::spear::Kinetic::of)
+                .and_then(crate::spear_sim::Kinetic::of)
                 .is_some()
         {
             ArmPose::Spear
@@ -612,7 +701,7 @@ pub fn humanoid_arm_poses(m: &Mob, declared: [Option<ArmPose>; 2], swing: f32) -
     let using_main = m.extra.using_item > 0 && !m.extra.using_off_hand;
     let using_off = m.extra.using_item > 0 && m.extra.using_off_hand;
     // AvatarRenderer.getArmPose: an arm holding a spear (at rest too).
-    let spear_in = |hand: Option<&str>| hand.and_then(crate::spear::Kinetic::of);
+    let spear_in = |hand: Option<&str>| hand.and_then(crate::spear_sim::Kinetic::of);
     let (main_spear, off_spear) = (
         spear_in(m.extra.main_hand_id()),
         spear_in(m.extra.off_hand_id()),
@@ -718,7 +807,7 @@ pub struct Hum {
     pub left_main: bool,
     /// The spear each arm (right, left) holds, and how long that arm has
     /// been using it (`ticksUsingItem(arm)`, 0 when it is not).
-    pub spear: [Option<crate::spear::Kinetic>; 2],
+    pub spear: [Option<crate::spear_sim::Kinetic>; 2],
     pub spear_ticks: [f32; 2],
 }
 impl Hum {
@@ -747,8 +836,14 @@ impl Hum {
 /// Kinetic data belongs to the physical arm holding the item, including a mob's off hand.
 pub(super) fn humanoid_spears(m: &Mob, h: &mut Hum, partial: f32) {
     let main_side = usize::from(m.main_arm_left());
-    h.spear[main_side] = m.extra.main_hand_id().and_then(crate::spear::Kinetic::of);
-    h.spear[1 - main_side] = m.extra.off_hand_id().and_then(crate::spear::Kinetic::of);
+    h.spear[main_side] = m
+        .extra
+        .main_hand_id()
+        .and_then(crate::spear_sim::Kinetic::of);
+    h.spear[1 - main_side] = m
+        .extra
+        .off_hand_id()
+        .and_then(crate::spear_sim::Kinetic::of);
     if m.extra.using_item > 0 {
         let using_side = if m.extra.using_off_hand {
             1 - main_side
@@ -850,7 +945,7 @@ fn pose_arm(p: &mut Poses, pose: ArmPose, right: bool, h: &Hum) {
             let Some(kinetic) = h.spear[side] else {
                 return;
             };
-            let (x, y, z) = crate::spear::third_person_arm(
+            let (x, y, z) = crate::spear_sim::third_person_arm(
                 &kinetic,
                 h.spear_ticks[side],
                 right,
@@ -935,7 +1030,7 @@ pub fn humanoid_with_setup(p: &mut Poses, s: &State, h: &Hum, setup: impl FnOnce
         let arm = if swing_left { "left_arm" } else { "right_arm" };
         if h.stab {
             // SpearAnimations.thirdPersonAttackHand: the arms keep their turn.
-            p.get(arm)[3] += crate::spear::third_person_attack_arm(swing);
+            p.get(arm)[3] += crate::spear_sim::third_person_attack_arm(swing);
         } else {
             p.get("right_arm")[4] += body_y;
             p.get("left_arm")[4] += body_y;
@@ -1696,7 +1791,7 @@ mod flight_pose_tests {
             ..state
         };
         humanoid(&mut stabbing, &stab, &h);
-        let arm_pitch = crate::spear::third_person_attack_arm(0.2);
+        let arm_pitch = crate::spear_sim::third_person_attack_arm(0.2);
         assert!(same_angle(
             stabbing.get("right_arm")[3],
             still.get("right_arm")[3] + arm_pitch
@@ -2117,22 +2212,43 @@ mod flight_pose_tests {
     /// parts sharing a name the first registered keeps it, not the last.
     #[test]
     fn a_name_two_parts_share_belongs_to_the_first() {
-        let child = |xrot: f32| Part {
+        let child = |xrot: f32| TestPart {
             name: "leg".into(),
             pose: [0.0, 0.0, 0.0, xrot, 0.0, 0.0, 1.0, 1.0, 1.0],
-            polygons: Vec::new(),
             children: Vec::new(),
-            layer: None,
         };
-        let root = Part {
+        let root = TestPart {
             name: "root".into(),
             pose: [0.0; 9],
-            polygons: Vec::new(),
             children: vec![child(0.5), child(-0.5)],
-            layer: None,
         };
         let mut p = Poses::new(&root);
         assert_eq!(p.get("leg")[3], 0.5);
+    }
+}
+
+#[cfg(test)]
+struct TestPart {
+    name: String,
+    pose: [f32; 9],
+    children: Vec<TestPart>,
+}
+
+#[cfg(test)]
+impl PosePart for TestPart {
+    fn part_name(&self) -> &str {
+        &self.name
+    }
+
+    fn bind_pose(&self) -> [f32; 9] {
+        self.pose
+    }
+
+    fn visit_parts(&self, f: &mut impl FnMut(&str, [f32; 9])) {
+        f(&self.name, self.pose);
+        for child in &self.children {
+            child.visit_parts(f);
+        }
     }
 }
 
@@ -2156,10 +2272,16 @@ mod part_data_tests {
     /// side by side on one part.
     #[test]
     fn writing_a_parts_data_changes_the_version() {
-        let model = Part::parse(
-            "root",
-            &serde_json::json!({"children": {"right_arm": {}, "left_arm": {}}}),
-        );
+        let leaf = |name: &str| TestPart {
+            name: name.into(),
+            pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            children: Vec::new(),
+        };
+        let model = TestPart {
+            name: "root".into(),
+            pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            children: vec![leaf("left_arm"), leaf("right_arm")],
+        };
         let mut poses = Poses::new(&model);
         let start = poses.version();
         poses.set_data(

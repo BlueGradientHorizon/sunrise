@@ -29,17 +29,21 @@ impl ScreenshotWrite {
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn poll_screenshot_writes(&mut self) {
         let mut index = 0;
-        while index < self.ui.screenshot_writes.len() {
-            let Some((path, result)) = self.ui.screenshot_writes[index].save.try_complete() else {
+        while index < self.side.chat_ui.screenshot_writes.len() {
+            let Some((path, result)) = self.side.chat_ui.screenshot_writes[index]
+                .save
+                .try_complete()
+            else {
                 index += 1;
                 continue;
             };
-            let write = self.ui.screenshot_writes.remove(index);
+            let write = self.side.chat_ui.screenshot_writes.remove(index);
             if write.chat {
-                self.ui
+                self.side
+                    .chat_ui
                     .screenshot_messages
                     .retain(|path| *path != write.save.original);
-                self.ui.screenshot_messages.insert(0, path);
+                self.side.chat_ui.screenshot_messages.insert(0, path);
                 self.finish_screenshot(&result, write.message);
             } else if let Err(error) = result {
                 log::warn!("Sunrise: couldn't save the world icon: {error}");

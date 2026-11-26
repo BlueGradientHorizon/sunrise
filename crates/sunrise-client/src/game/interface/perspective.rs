@@ -164,7 +164,7 @@ pub(in crate::game) fn player_type(root: &Path) -> Option<Arc<MobType>> {
     if let Some((_, kind)) = cache.iter().find(|(cached, _)| cached == root) {
         return kind.clone();
     }
-    let models = sunrise_client::mobs::EntityModelDocument::load(root).ok();
+    let models = sunrise_client::mobs_render::EntityModelDocument::load(root).ok();
     let kind = models.as_ref().and_then(load_player_type);
     cache.push((root.to_owned(), kind.clone()));
     kind
@@ -173,7 +173,7 @@ pub(in crate::game) fn player_type(root: &Path) -> Option<Arc<MobType>> {
 /// one parse for the whole startup rather than one more beside it.
 pub(in crate::game) fn player_type_with_document(
     root: &Path,
-    models: &sunrise_client::mobs::EntityModelDocument,
+    models: &sunrise_client::mobs_render::EntityModelDocument,
 ) -> Option<Arc<MobType>> {
     let mut cache = PLAYER_TYPES.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, kind)) = cache.iter().find(|(cached, _)| cached == root) {
@@ -183,70 +183,63 @@ pub(in crate::game) fn player_type_with_document(
     cache.push((root.to_owned(), kind.clone()));
     kind
 }
-/// `player_type` from the document: the model and its layers from one parse.
+/// `player_type` from the document: checks presence without building a `Part`.
 pub(in crate::game::client_side) fn load_player_type(
-    models: &sunrise_client::mobs::EntityModelDocument,
+    models: &sunrise_client::mobs_render::EntityModelDocument,
 ) -> Option<Arc<MobType>> {
-    models.model("minecraft:player#main").map(|model| {
-        Arc::new(MobType {
-            type_key: Default::default(),
-            shadow: None,
-            id: "minecraft:player".into(),
-            // Players render as a humanoid; the species only drives local AI.
-            species: sunrise_client::mobs::Species::Zombie,
-            width: 0.6,
-            height: 1.8,
-            eye_height: 1.62,
-            category: "misc".into(),
-            max_health: 20.0,
-            speed: 0.1,
-            flying_speed: 0.02,
-            attack_damage: 1.0,
-            attack_knockback: 0.0,
-            follow_range: 0.0,
-            step_height: 0.6,
-            armor: 0.0,
-            armor_toughness: 0.0,
-            knockback_resistance: 0.0,
-            jump_strength: 0.42,
-            attributes: Default::default(),
-            item_stack_limits: Default::default(),
-            attribute_bounds: Default::default(),
-            gravity: 0.08,
-            safe_fall_distance: 3.0,
-            fall_damage_multiplier: 1.0,
-            water_efficiency: 0.0,
-            water_slowdown: 0.8,
-            air_speed: 0.02,
-            baby_scale: 0.5,
-            head_rot_speed: 10.0,
-            max_head_x_rot: 40.0,
-            max_head_y_rot: 75.0,
-            ambient_interval: 80,
-            flags: Default::default(),
-            model: Arc::new(model),
-            // PlayerModel's slim arms, for slim skins, and PlayerCapeModel.
-            layers: ["player_slim#main", "player#cape"]
-                .into_iter()
-                .filter_map(|key| {
-                    let model = models.model(&format!("minecraft:{key}"))?;
-                    Some((key.to_owned(), Arc::new(model)))
-                })
-                .collect(),
-            texture: "entity/player/wide/steve".into(),
-            brain: Brain::Passive,
-            anim: Anim::Humanoid { zombie_arms: false },
-            sounds: [
-                "entity.player.hurt",
-                "entity.player.hurt",
-                "entity.player.death",
-            ],
-            sound_overrides: Default::default(),
-            food: Arc::from([]),
-            tempt: Arc::from([]),
-            passenger_attachments: Vec::new(),
+    models
+        .value()
+        .get("minecraft:player#main")
+        .is_some()
+        .then(|| {
+            Arc::new(MobType {
+                type_key: Default::default(),
+                id: "minecraft:player".into(),
+                // Players render as a humanoid; the species only drives local AI.
+                species: sunrise_client::mobs::Species::Zombie,
+                width: 0.6,
+                height: 1.8,
+                eye_height: 1.62,
+                category: "misc".into(),
+                max_health: 20.0,
+                speed: 0.1,
+                flying_speed: 0.02,
+                attack_damage: 1.0,
+                attack_knockback: 0.0,
+                follow_range: 0.0,
+                step_height: 0.6,
+                armor: 0.0,
+                armor_toughness: 0.0,
+                knockback_resistance: 0.0,
+                jump_strength: 0.42,
+                attributes: Default::default(),
+                item_stack_limits: Default::default(),
+                attribute_bounds: Default::default(),
+                gravity: 0.08,
+                safe_fall_distance: 3.0,
+                fall_damage_multiplier: 1.0,
+                water_efficiency: 0.0,
+                water_slowdown: 0.8,
+                air_speed: 0.02,
+                baby_scale: 0.5,
+                head_rot_speed: 10.0,
+                max_head_x_rot: 40.0,
+                max_head_y_rot: 75.0,
+                ambient_interval: 80,
+                flags: Default::default(),
+                brain: Brain::Passive,
+                anim: Anim::Humanoid { zombie_arms: false },
+                sounds: [
+                    "entity.player.hurt",
+                    "entity.player.hurt",
+                    "entity.player.death",
+                ],
+                sound_overrides: Default::default(),
+                food: Arc::from([]),
+                tempt: Arc::from([]),
+                passenger_attachments: Vec::new(),
+            })
         })
-    })
 }
 /// What sets the body's yaw of a player riding something (`Game::ridden_body`).
 #[derive(Clone, Copy)]
@@ -1186,7 +1179,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             p
         };
-        sunrise_client::mobs::render_model(
+        sunrise_client::mobs_render::render_model(
             model,
             base,
             &pose,
@@ -1202,7 +1195,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .then(|| {
                 let emissive = self
                     .res
-                    .mob_data()
+                    .client_mob_data()
                     .emissive
                     .read()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -1213,7 +1206,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             })
             .flatten();
         if let Some(g) = glow {
-            sunrise_client::mobs::render_model(
+            sunrise_client::mobs_render::render_model(
                 model,
                 base,
                 &pose,
@@ -1292,12 +1285,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let sprites = &self.gui.atlas.sprites;
         // The body's own fallback: a skin with no sprite draws the default.
-        let Some(rect) = m
-            .skin
-            .as_deref()
-            .and_then(|s| sprites.get(s))
-            .or_else(|| sprites.get(&m.kind.texture))
-        else {
+        let Some(rect) = m.skin.as_deref().and_then(|s| sprites.get(s)).or_else(|| {
+            self.res
+                .client_mob_models()
+                .texture(&m.kind.id)
+                .and_then(|t| sprites.get(t))
+        }) else {
             return;
         };
         sunrise_client::mobs::render::ears(
@@ -1438,7 +1431,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         light: u32,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(parrot) = self.res.mob_types().get("minecraft:parrot") else {
+        let Some(parrot) = self.res.client_mob_models().get("minecraft:parrot") else {
             return;
         };
         let atlas = &self.gui.atlas;
@@ -1472,7 +1465,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         };
         let age = m.age as f32 + partial;
-        sunrise_client::mobs::render_model(
+        sunrise_client::mobs_render::render_model(
             model,
             sunrise_client::mobs::render::base_transform(m, partial, camera),
             &|part| {
@@ -2052,32 +2045,26 @@ pub(in crate::game) mod preview_tests {
             return;
         };
         let m = Mob::new(1, kind.clone(), Vec3::ZERO, 0.0);
-        let armour = [(&*kind.model, [0.5, 0.5, 0.75, 0.75], u32::MAX, 0, false)];
+        let models = sunrise_client::mobs_render::ClientMobModels::load(&root).unwrap();
+        let armour = [(
+            &**models.model(&kind.id).expect("missing player visual"),
+            [0.5, 0.5, 0.75, 0.75],
+            u32::MAX,
+            0,
+            false,
+        )];
         let atlas = |_: &str| Some([0.0, 0.0, 0.25, 0.25]);
-        let data = sunrise_client::mobs::MobData {
-            states: Vec::new(),
-            placements: Default::default(),
-            heightmaps: Default::default(),
-            animations: Default::default(),
-            biome_tags: Default::default(),
-            villager_hats: Default::default(),
-            frame_models: Default::default(),
-            cem: Default::default(),
-            random_textures: Default::default(),
-            emissive: Default::default(),
-            blinks: Default::default(),
-            pois: Default::default(),
-            species_placements: Default::default(),
-            mod_spawns: Default::default(),
-            vanilla_spawn_placements: None,
-            resolved: Default::default(),
+        let data = sunrise_client::mobs_render::ClientMobData::default();
+        let source = sunrise_client::mobs_render::ClientMobRender {
+            models: &models,
+            data: &data,
         };
         let draw = |body: bool| {
             let mut out = Vec::new();
             let at = glam::DVec3::ZERO;
             if body {
                 sunrise_client::mobs::render::render_with(
-                    &m, 1.0, at, &atlas, 0xF0F0, &data, &armour, &mut out,
+                    &m, 1.0, at, &atlas, 0xF0F0, &source, &armour, &mut out,
                 );
             } else {
                 sunrise_client::mobs::render::render_layers(
@@ -2086,7 +2073,7 @@ pub(in crate::game) mod preview_tests {
                     at,
                     &atlas,
                     0xF0F0,
-                    &data,
+                    &source,
                     &armour,
                     &mut FrameDraw::default(),
                     &mut out,
@@ -2112,7 +2099,7 @@ pub(in crate::game) mod preview_tests {
                 glam::DVec3::ZERO,
                 &atlas,
                 0xF0F0,
-                &data,
+                &source,
                 armour,
                 &mut FrameDraw::default(),
                 out,

@@ -12,9 +12,14 @@ use std::{fs, path::Path};
 pub const FILE: &str = "sunrise-player.txt";
 const KEY: &str = "name:";
 
+/// StringUtil.isValidPlayerName.
+pub fn valid_name(name: &str) -> bool {
+    (1..=16).contains(&name.len()) && name.chars().all(|c| c as u32 > 32 && (c as u32) < 127)
+}
+
 /// StringUtil.isValidPlayerName, plus not empty (the login screen sends at least one character).
 pub fn is_valid(name: &str) -> bool {
-    crate::lan::conn::valid_name(name)
+    valid_name(name)
 }
 
 /// `Player` and five digits (vanilla's default has three: one shared name in a

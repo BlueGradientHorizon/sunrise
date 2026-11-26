@@ -10,7 +10,7 @@ pub(in crate::game) struct HubClockSnapshot {
 }
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// The clock `World.day_time` follows (`UiState::active_clock`).
+    /// The clock `World.day_time` follows (`WorldCommandState::active_clock`).
     pub(in crate::game) fn active_clock(&self) -> &str {
         if self.ui.active_clock.is_empty() {
             OVERWORLD_CLOCK

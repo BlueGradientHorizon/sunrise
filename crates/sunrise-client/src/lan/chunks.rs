@@ -2100,9 +2100,9 @@ mod tests {
         chunk.set(notice.0, notice.1, notice.2, 1);
         chunk.set(lantern.0, lantern.1, lantern.2, 2);
         chunk.set(casing.0, casing.1, casing.2, 3);
-        let mut sign = crate::signs::SignData::default();
+        let mut sign = sunrise_level::signs_data::SignData::default();
         sign.front.lines[0] = "Hello".into();
-        let hanging = crate::signs::SignData {
+        let hanging = sunrise_level::signs_data::SignData {
             hanging: true,
             ..Default::default()
         };
@@ -2605,7 +2605,7 @@ mod tests {
         let mut entities = HashMap::new();
         entities.insert(
             (-7 * 16 + 8, 64, 12 * 16 + 1),
-            BlockEntity::Sign(crate::signs::SignData::default()),
+            BlockEntity::Sign(sunrise_level::signs_data::SignData::default()),
         );
         let packet = |encoder: &ChunkEncoder, around: SectionMask| {
             let mut packet = encoder.encode_blocks(&chunk, &entities);
@@ -2702,7 +2702,7 @@ mod tests {
                 Arc::make_mut(&mut chunk.sections[(n % 24) as usize]).light = Light::Full(light);
                 world.block_entities.insert(
                     (x * 16 + 2, 70, z * 16 + 3),
-                    BlockEntity::Sign(crate::signs::SignData::default()),
+                    BlockEntity::Sign(sunrise_level::signs_data::SignData::default()),
                 );
                 chunk.set(2, 70, 3, 3);
                 world.chunks.insert((x, z), Arc::new(chunk));

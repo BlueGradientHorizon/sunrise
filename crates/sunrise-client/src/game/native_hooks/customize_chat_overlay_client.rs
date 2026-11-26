@@ -44,7 +44,7 @@ pub(in crate::game) mod customize_chat_overlay_tests {
                 };
                 assert_eq!(*seen.lock().unwrap(), [(w, h, false, 0, h - 40)]);
                 // Hidden: F1 with the chat closed asks nothing.
-                game.ui.hide_gui = true;
+                game.side.chat_ui.hide_gui = true;
                 chat_top(game);
                 assert_eq!(seen.lock().unwrap().len(), 1);
                 // Focused, the chat shows under F1 and is asked again.

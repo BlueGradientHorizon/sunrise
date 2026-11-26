@@ -463,7 +463,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             screen_effect_scale: self.screen_effect_scale(),
         };
         let mut scope = self.side.scope_scale;
-        let gui_overlays = if self.ui.hide_gui {
+        let gui_overlays = if self.side.chat_ui.hide_gui {
             Vec::new()
         } else {
             hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope)
@@ -506,7 +506,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     custom.state,
                     custom.pos,
                     partial,
-                    self.ui.hide_gui,
+                    self.side.chat_ui.hide_gui,
                     &mut GameCameraDrawContext::new(self, &mut quads),
                 ),
             ) else {
@@ -1335,7 +1335,7 @@ mod tests {
                         super::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
                     );
                     game.side.camera_type = CameraType::FirstPerson;
-                    game.ui.hide_gui = false;
+                    game.side.chat_ui.hide_gui = false;
                     game.gui.atlas.sprites.clear();
                     let expected = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
                     let mut stack = |slot: &str, u0: f32| {

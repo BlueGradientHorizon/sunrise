@@ -62,7 +62,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn pad_binding(&self) -> bool {
         !self.prompt_open()
             && self.side.screen == Screen::Options
-            && (self.options_waiting_for_key() || self.ui.options.selected_pad_action.is_some())
+            && (self.options_waiting_for_key()
+                || self.side.chat_ui.options.selected_pad_action.is_some())
     }
 
     /// The declared buttons the pad can do now.

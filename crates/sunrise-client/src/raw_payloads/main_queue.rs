@@ -1,37 +1,34 @@
 //! A receiving main provider reserves capacity before enqueue_work reports Queued.
-use super::{Delivery, Endpoint, Incoming};
+use super::{ClientEvent, Delivery, Endpoint, Incoming, NoClientEvent};
 use crate::{
     lan::NetEvent,
-    net::{
-        Event,
-        ingress::{Prepared, Producer, ReceiveLease, Refusal, Refused},
-    },
+    net_ingress::{Prepared, Producer, ReceiveLease, Refusal, Refused},
 };
 use mod_api::PayloadContextError;
 
-pub enum MainQueue {
-    Client(Producer<Event>),
+pub enum MainQueue<E = NoClientEvent> {
+    Client(Producer<E>),
     ClientBundle(BundleWork),
     Server {
         events: Producer<NetEvent>,
-        endpoint: Endpoint,
+        endpoint: Endpoint<NoClientEvent>,
         conn: Option<u32>,
     },
 }
 type BundleWork = std::sync::Arc<std::sync::Mutex<Vec<Incoming>>>;
 
-pub(crate) enum PreparedMain {
-    Client(Prepared<Event>),
+pub(crate) enum PreparedMain<E = NoClientEvent> {
+    Client(Prepared<E>),
     ClientBundle(Box<(BundleWork, Incoming)>),
     Server(Prepared<NetEvent>),
 }
 /// Keeps failed opaque work alive until after the caller releases its epoch gate.
 /// Boxing occurs only on failed publication, adding no allocation to successful publication.
-pub(crate) enum FailedMain {
-    Client(Box<Refused<Event>>),
+pub(crate) enum FailedMain<E = NoClientEvent> {
+    Client(Box<Refused<E>>),
     Server(Box<Refused<NetEvent>>),
 }
-impl FailedMain {
+impl<E> FailedMain<E> {
     pub fn reason(&self) -> Refusal {
         match self {
             Self::Client(error) => error.reason,
@@ -39,19 +36,19 @@ impl FailedMain {
         }
     }
 }
-impl MainQueue {
+impl<E: ClientEvent> MainQueue<E> {
     pub(crate) fn prepare(
         &self,
         incoming: Incoming,
-        credit: Option<ReceiveLease<Event>>,
-    ) -> Result<PreparedMain, PayloadContextError> {
+        credit: Option<ReceiveLease<E>>,
+    ) -> Result<PreparedMain<E>, PayloadContextError> {
         let refusal = |reason| match reason {
             Refusal::Pressure => PayloadContextError::Backpressure,
             Refusal::Closed => PayloadContextError::Disconnected,
         };
         match self {
             Self::Client(events) => {
-                let event = Event::RawPayload(Box::new(incoming));
+                let event = E::raw_payload(incoming);
                 match credit {
                     Some(credit) => events.prepare_replacing(event, credit),
                     None => events.prepare(event),
@@ -82,8 +79,8 @@ impl MainQueue {
         }
     }
 }
-impl PreparedMain {
-    pub(crate) fn publish(self) -> Result<(), FailedMain> {
+impl<E> PreparedMain<E> {
+    pub(crate) fn publish(self) -> Result<(), FailedMain<E>> {
         match self {
             Self::Client(prepared) => prepared
                 .publish()

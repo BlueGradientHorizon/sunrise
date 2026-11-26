@@ -466,7 +466,6 @@ pub(in crate::game) mod gui_ticks;
 pub(in crate::game) mod held_item_tint;
 pub(in crate::game) mod highlight_tip;
 pub(in crate::game) mod hotbar_attack_indicator_progress;
-pub(in crate::game) mod hud_mode;
 pub(in crate::game) mod humanoid_setup_anim;
 pub(in crate::game) mod ignited_by_lava;
 pub(in crate::game) mod incoming_tests;

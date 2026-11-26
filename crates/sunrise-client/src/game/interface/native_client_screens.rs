@@ -51,14 +51,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Returns whether it closed, or `None` when no such screen is open.
     fn close_foreground(&mut self) -> Option<bool> {
         if self.side.screen == Screen::Dead
-            && let Some(shown) = self.ui.death_confirm
+            && let Some(shown) = self.side.chat_ui.death_confirm
         {
             if shown.elapsed().as_millis() >= 1000
                 && let Err(e) = self.death_confirm_answer(false)
             {
                 log::warn!("Sunrise: closing the death-exit confirmation: {e:#}");
             }
-            return Some(self.ui.death_confirm.is_none());
+            return Some(self.side.chat_ui.death_confirm.is_none());
         }
         if self.side.command_prompt.0.is_some() {
             self.command_prompt_key(KeyCode::Escape);

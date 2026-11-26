@@ -118,7 +118,7 @@ impl Goal for SwimToTreasure {
                 feet: [m.position.x, m.position.y, m.position.z],
                 width: f64::from(m.width()),
                 height: f64::from(m.height()),
-                burst: crate::particles::Burst::DOLPHIN,
+                burst: sunrise_level::particle_options::Burst::DOLPHIN,
             });
         }
     }

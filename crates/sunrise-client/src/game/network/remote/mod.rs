@@ -64,9 +64,9 @@ use sunrise_client::{
     motion::PlayerMotion,
     net::{Event, Session},
     sprint::Keys,
-    streaming::{ChunkGenerator, Proto},
 };
 use sunrise_core::{geometry::Vec3, profile::AccountProperty};
+use sunrise_level::chunk_streamer::{ChunkGenerator, Proto};
 #[allow(unused_imports)]
 use sunrise_protocol::{
     item::Stack,

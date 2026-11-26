@@ -3,9 +3,9 @@ use super::{tests::*, *};
 use crate::{
     assets::Assets,
     biome::Biomes,
-    streaming::ChunkGenerator,
     vanillagen::{TerrainResources, VanillaTerrain},
 };
+use sunrise_level::chunk_streamer::ChunkGenerator;
 use sunrise_world::{native_load_context::DataLoadOrigin, worldgen::overrides::WorldgenOverrides};
 
 #[test]

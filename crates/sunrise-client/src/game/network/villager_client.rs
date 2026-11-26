@@ -1,5 +1,5 @@
 //! Villager registry indices shared by matching mod loads; no additional packet format.
-use sunrise_client::mobs::render::VILLAGER_TYPES;
+use sunrise_client::mobs::villager::VILLAGER_TYPES;
 use sunrise_client::mobs::{Mob, Species, villager::ResolvedProfessions};
 use sunrise_protocol::{entity_data::Value, registry::Builtin};
 /// VillagerData as the network sends it: the type and the profession by

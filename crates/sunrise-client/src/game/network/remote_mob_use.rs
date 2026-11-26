@@ -245,12 +245,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
             sunrise_client::particles::ParticleType::HappyVillager,
         );
         let mut spawned = Vec::new();
-        sunrise_client::particles::around_self(
+        sunrise_level::particle_options::around_self(
             self.side.particles.0.random(),
             feet,
             width,
             height,
-            sunrise_client::particles::Burst::HORSE_EATING,
+            sunrise_level::particle_options::Burst::HORSE_EATING,
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {

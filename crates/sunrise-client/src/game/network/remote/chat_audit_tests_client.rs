@@ -27,7 +27,7 @@ fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
             packet.filter = (2, vec![0b0110]);
             let partially_filtered = deliver_signed(game, &key, packet);
             assert_eq!(tracker_offset(game), 0);
-            assert!(game.ui.chat.recent_lines(3).is_empty());
+            assert!(game.side.chat_ui.chat.recent_lines(3).is_empty());
             assert_eq!(game.chat_queue_len(), 3);
 
             game.side.social.hidden.insert(ALICE);
@@ -38,13 +38,14 @@ fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
             assert_eq!(seen.last_seen, vec![partially_filtered]);
             assert!(!seen.last_seen.contains(&blocked));
             assert!(!seen.last_seen.contains(&fully_filtered));
-            let lines = game.ui.chat.recent_lines(3);
+            let lines = game.side.chat_ui.chat.recent_lines(3);
             assert_eq!(lines.len(), 1);
             assert!(lines[0].contains("h##lo"));
 
             let hidden = deliver_signed(game, &key, player_chat(BOB, 3, "hide with Chat option"));
             let font = &game.gui.atlas.font;
-            game.ui
+            game.side
+                .chat_ui
                 .chat
                 .set_abilities(font, ChatAbilities::new(ChatVisibility::System));
             game.accept_next_delayed_message();
@@ -52,7 +53,7 @@ fn delayed_player_chat_checks_block_filter_and_visibility_on_accept() {
             assert_eq!(seen.update.offset, 1);
             assert_eq!(seen.last_seen, vec![partially_filtered]);
             assert!(!seen.last_seen.contains(&hidden));
-            assert_eq!(game.ui.chat.recent_lines(3), lines);
+            assert_eq!(game.side.chat_ui.chat.recent_lines(3), lines);
         },
     );
 }
@@ -84,7 +85,7 @@ fn validation_error_acks_on_accept_and_checks_the_current_block_list() {
             let seen = take_seen_update(game);
             assert_eq!(seen.update.offset, 1);
             assert!(seen.last_seen.is_empty());
-            assert!(game.ui.chat.recent_lines(1).is_empty());
+            assert!(game.side.chat_ui.chat.recent_lines(1).is_empty());
             assert_eq!(sunrise_narrator::recent(), prior_speech);
 
             // An unhidden invalid message shows and narrates on acceptance, still acked as not shown.
@@ -94,7 +95,7 @@ fn validation_error_acks_on_accept_and_checks_the_current_block_list() {
             game.handle_packet(C::PlayerChat(packet)).unwrap();
             assert_eq!(game.chat_queue_len(), 1);
             assert_eq!(tracker_offset(game), 0);
-            assert!(game.ui.chat.recent_lines(1).is_empty());
+            assert!(game.side.chat_ui.chat.recent_lines(1).is_empty());
             assert_eq!(sunrise_narrator::recent(), prior_speech);
 
             game.tick_chat_queue();
@@ -102,9 +103,9 @@ fn validation_error_acks_on_accept_and_checks_the_current_block_list() {
             let seen = take_seen_update(game);
             assert_eq!(seen.update.offset, 1);
             assert!(seen.last_seen.is_empty());
-            assert_eq!(game.ui.chat.recent_lines(1).len(), 1);
+            assert_eq!(game.side.chat_ui.chat.recent_lines(1).len(), 1);
             assert_ne!(sunrise_narrator::recent(), prior_speech);
-            let chat = &mut game.ui.chat;
+            let chat = &mut game.side.chat_ui.chat;
             let font = &game.gui.atlas.font;
             chat.options = ChatOptions::default();
             chat.smooth = false;

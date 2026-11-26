@@ -21,7 +21,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// events (ChatComponent.addMessage). The lines the Chat option hides
     /// are dropped there (its `visibleMessageFilter`).
     pub(in crate::game) fn add_chat_line(&mut self, content: Text, source: ChatSource) -> bool {
-        if !self.ui.chat.shows(source) {
+        if !self.side.chat_ui.chat.shows(source) {
             return false;
         }
         self.push_chat_line(content, source, None, None);
@@ -125,7 +125,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         r.secure_chat.ignore_pending(&signature);
         if !r.remove_queued_chat(&signature) {
             let ticks = self.visual_ticks();
-            self.ui
+            self.side
+                .chat_ui
                 .chat
                 .delete_message(&self.gui.atlas, &signature, ticks);
         }
@@ -142,7 +143,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let text = content.plain();
         let focused = self.side.screen == Screen::Chat;
         if source == ChatSource::Player {
-            self.ui.chat.add_signed(
+            self.side.chat_ui.chat.add_signed(
                 &self.gui.atlas,
                 content,
                 signature,
@@ -154,7 +155,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // addServerSystemMessage and addClientSystemMessage both carry
             // GuiMessageTag.systemSinglePlayer: the grey bar at the line's left.
             let indicator = Some(sunrise_client::chat::SYSTEM_INDICATOR);
-            self.ui.chat.add(
+            self.side.chat_ui.chat.add(
                 &self.gui.atlas,
                 content,
                 indicator,
@@ -217,7 +218,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } = chat;
         let has_player = self.remote.as_ref().is_some_and(|r| r.has_logical_player);
         let source = ChatSource::Player;
-        let visible = self.ui.chat.shows(source);
+        let visible = self.side.chat_ui.chat.shows(source);
         let (chat_type, mut line, narration, tag, info) = match kind {
             QueuedChatKind::Filtered => return false,
             QueuedChatKind::Player {

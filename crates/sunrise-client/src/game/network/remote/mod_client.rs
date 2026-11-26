@@ -1155,7 +1155,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let Some((id, command)) = self
-            .ui
+            .side
+            .chat_ui
             .chat_screen
             .as_mut()
             .and_then(|s| s.take_request())

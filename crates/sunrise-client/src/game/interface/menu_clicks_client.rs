@@ -222,7 +222,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         button: i32,
         input: sunrise_client::menu::Input,
     ) {
-        use sunrise_client::creative::DisplayClick;
+        use sunrise_client::menu::DisplayClick;
         if self.side.creative_screen.0.tab().search {
             // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
             // setHighlightPos(0), so typing replaces the whole query.
@@ -241,7 +241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .as_deref()
             .unwrap_or_else(|| self.res.items());
         let max = |s: &ItemStack| catalog.get(&s.item).map_or(64, |i| i.max_stack);
-        match sunrise_client::creative::click_display(
+        match sunrise_client::menu::click_display(
             &mut self.carried,
             shown.as_ref(),
             max,

@@ -65,7 +65,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         &mut self,
         _id: u32,
         _kind: &'static str,
-        _burst: sunrise_client::particles::Burst,
+        _burst: sunrise_level::particle_options::Burst,
     ) {
     }
 

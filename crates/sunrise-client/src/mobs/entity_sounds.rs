@@ -125,7 +125,7 @@ pub fn step(
 }
 /// The step a content type declares (`playSound(step, volume, pitch)`, or
 /// silence), or `None` when the slot inherits the template's.
-fn declared_step(sounds: &Sounds) -> Option<Option<(Cow<'static, str>, f32, f32)>> {
+pub fn declared_step(sounds: &Sounds) -> Option<Option<(Cow<'static, str>, f32, f32)>> {
     match sounds.step {
         Selection::Inherit => None,
         Selection::Id(id) => {
@@ -135,7 +135,3 @@ fn declared_step(sounds: &Sounds) -> Option<Option<(Cow<'static, str>, f32, f32)
         Selection::Mute => Some(None),
     }
 }
-
-#[cfg(test)]
-#[path = "entity_sounds_tests.rs"]
-mod tests;

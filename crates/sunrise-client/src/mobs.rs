@@ -19,8 +19,6 @@ pub mod brain;
 pub mod breeze;
 pub mod camel;
 pub mod caravan;
-pub mod cem;
-pub mod cem_anim;
 pub mod combat;
 pub mod control;
 pub mod conversion;
@@ -59,7 +57,6 @@ pub mod living;
 pub mod llama;
 mod mob_slot;
 pub mod mod_behaviors;
-pub mod model_layers;
 pub mod monster_brain;
 pub mod nautilus;
 pub mod neutral_anger;
@@ -83,14 +80,12 @@ pub mod player_selection;
 pub mod polar_bear;
 pub mod rabbit;
 pub mod raider;
-pub mod random_textures;
+pub mod random_texture_choice;
 pub mod ravager;
-pub mod render;
 pub mod riders;
 pub mod seen_grid;
 pub mod sheep_dye;
 pub mod shulker;
-pub mod skin;
 pub mod sniffer;
 pub mod spawn_rules;
 pub mod spawn_selection;
@@ -113,7 +108,6 @@ pub mod undead;
 pub mod vex;
 pub mod villager;
 pub mod villager_brain;
-pub mod villager_hats;
 pub mod visibility;
 pub use visibility::mob_visibility;
 pub mod warden;
@@ -127,7 +121,7 @@ mod equine_graze_tests;
 mod invisible_follow_tests;
 #[cfg(test)]
 mod template_mob_tests;
-mod world;
+pub mod world;
 pub use world::{TargetInfo, single_player_pos, visual_clip};
 pub mod zombie_villager;
 /// A mob's stored active effect with its registry index resolved once at creation.
@@ -186,7 +180,6 @@ impl StoredEffect {
 use crate::{
     blocks::BlockFacts,
     health::{DamageContainer, DamageLevel, Reduction},
-    mesher::Vertex,
     world::World,
 };
 pub use data::MobData;
@@ -198,9 +191,6 @@ use sunrise_core::{
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
 use sunrise_world::native_load_context::LoopContext;
-
-mod model;
-pub use model::{ModelNormals, Part, Polygon};
 
 /// Kept for callers of the earlier simple AI; species now select behaviour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -227,8 +217,6 @@ mod powder_snow_move_tests;
 
 #[derive(Clone, Debug)]
 pub struct MobType {
-    /// Resolved content renderer shadow; vanilla uses its normal table.
-    pub shadow: Option<(f32, f32)>,
     pub id: String,
     pub species: Species,
     pub width: f64,
@@ -267,11 +255,6 @@ pub struct MobType {
     pub max_head_y_rot: f32,
     pub ambient_interval: i32,
     pub flags: Flags,
-    pub model: Arc<Part>,
-    /// Every baked layer of this entity's models keyed by `model#layer`
-    /// (e.g. `sheep#wool`, `zombie_baby#main`).
-    pub layers: crate::fast_hash::FxHashMap<String, Arc<Part>>,
-    pub texture: String,
     pub brain: Brain,
     pub anim: Anim,
     pub sounds: [&'static str; 3],
@@ -308,8 +291,14 @@ impl MobType {
             })
     }
 
-    pub fn layer(&self, key: &str) -> Option<&Arc<Part>> {
-        self.layers.get(key)
+    /// The main model layer key without the namespace.
+    pub fn model_key(&self) -> String {
+        self.model_name().to_owned()
+    }
+
+    /// `model_key` without the copy.
+    pub fn model_name(&self) -> &'static str {
+        species::def(self.species).model
     }
 }
 /// Each type's default attribute values, parsed exactly (serde_json's
@@ -334,9 +323,29 @@ pub(crate) fn exact_attributes(bytes: &[u8]) -> HashMap<String, HashMap<String, 
         .collect()
 }
 
-/// The models that draw with `RenderTypes::entityCutoutCull`.
-fn culls_back_faces(key: &str) -> bool {
-    matches!(key, "minecraft:bat#main" | "minecraft:turtle_baby#main")
+/// Vanilla and content-mod template `(id, def, row)` pairs whose `entity-types.json`
+/// row is present and non-null.
+pub fn species_entries(
+    types: &serde_json::Map<String, Value>,
+) -> Vec<(String, &'static species::Def, &Value)> {
+    // A content mod's living type (its row names a vanilla `template`) is
+    // its template's mob under its own id: the template's model, sounds
+    // and behaviour, with the attributes its row has.
+    let mod_types = types.iter().filter_map(|(id, row)| {
+        let template = row["template"].as_str()?.strip_prefix("minecraft:")?;
+        let def = species::ALL.iter().find(|d| d.name == template)?;
+        Some((id.clone(), def))
+    });
+    let vanilla = species::ALL
+        .iter()
+        .map(|def| (format!("minecraft:{}", def.name), def));
+    vanilla
+        .chain(mod_types)
+        .filter_map(|(id, def)| {
+            let row = types.get(&id).filter(|row| !row.is_null())?;
+            Some((id, def, row))
+        })
+        .collect()
 }
 
 pub struct MobTypes {
@@ -346,10 +355,10 @@ impl MobTypes {
     /// The types with the attribute catalog of the same resources
     /// (`attributes.json`), for a caller without the game's own.
     pub fn load(root: &Path) -> crate::Result<Self> {
-        Self::load_with_models(root, true, None, None, &Self::root_catalog(root)?)
+        Self::load_internal(root, None, &Self::root_catalog(root)?)
     }
 
-    /// Load client mob data using defaults already decoded by the resource
+    /// Load portable mob types using item defaults already decoded by the resource
     /// bootstrap. This avoids decoding `items.json` a second time for Allay
     /// inventory limits.
     pub fn load_with_defaults(
@@ -357,35 +366,15 @@ impl MobTypes {
         defaults: &sunrise_world::item_defaults::Defaults,
         attributes: &sunrise_world::attributes::entity::Catalog,
     ) -> crate::Result<Self> {
-        Self::load_with_models(root, true, None, Some(defaults), attributes)
+        Self::load_internal(root, Some(defaults), attributes)
     }
 
-    /// The dedicated server needs entity facts and AI, but never their render
-    /// geometry. Keep one empty part for the fields shared with the client
-    /// rather than parsing and retaining every entity-model layer.
+    /// Load portable mob types for a dedicated server using the attribute catalog.
     pub fn load_for_server(
         root: &Path,
         attributes: &sunrise_world::attributes::entity::Catalog,
     ) -> crate::Result<Self> {
-        Self::load_with_models(root, false, None, None, attributes)
-    }
-
-    /// The client startup already parsed `entity-models.json` for the handoff
-    /// and the other model loaders; read the model layers from that copy.
-    pub fn load_with_document(root: &Path, document: &EntityModelDocument) -> crate::Result<Self> {
-        Self::load_with_models(root, true, Some(document), None, &Self::root_catalog(root)?)
-    }
-
-    /// The client startup already has the entity model document, the item
-    /// defaults and the attribute catalog. Reuse them instead of decoding
-    /// their files again.
-    pub fn load_with_document_and_defaults(
-        root: &Path,
-        document: &EntityModelDocument,
-        defaults: &sunrise_world::item_defaults::Defaults,
-        attributes: &sunrise_world::attributes::entity::Catalog,
-    ) -> crate::Result<Self> {
-        Self::load_with_models(root, true, Some(document), Some(defaults), attributes)
+        Self::load_internal(root, None, attributes)
     }
 
     fn root_catalog(root: &Path) -> crate::Result<sunrise_world::attributes::entity::Catalog> {
@@ -396,10 +385,8 @@ impl MobTypes {
     }
 
     /// `attributes`: the catalog whose bounds the types' mobs clamp to.
-    fn load_with_models(
+    fn load_internal(
         root: &Path,
-        models_needed: bool,
-        document: Option<&EntityModelDocument>,
         item_defaults: Option<&sunrise_world::item_defaults::Defaults>,
         attributes: &sunrise_world::attributes::entity::Catalog,
     ) -> crate::Result<Self> {
@@ -408,15 +395,6 @@ impl MobTypes {
         let types: serde_json::Map<String, Value> = serde_json::from_slice(&bytes)?;
         let entity_ids = crate::items::EntityTypeTags::registry_ids(&types)?;
         let exact = exact_attributes(&bytes);
-        let models = models_needed
-            .then(|| -> crate::Result<EntityModelDocument> {
-                match document {
-                    Some(document) => Ok(document.clone()),
-                    None => EntityModelDocument::load(root),
-                }
-            })
-            .transpose()?;
-        let empty_model = Arc::new(Part::parse("root", &Value::Null));
         let item_tags =
             crate::items::load_tags(root, "item", &sunrise_world::loot::PackOverlay::NONE)
                 .unwrap_or_default();
@@ -471,46 +449,9 @@ impl MobTypes {
             Arc::new(HashMap::new())
         };
         let mut out = HashMap::new();
-        // A content mod's living type (its row names a vanilla `template`) is
-        // its template's mob under its own id: the template's model, sounds
-        // and behaviour, with the attributes its row has.
-        let mod_types = types.iter().filter_map(|(id, row)| {
-            let template = row["template"].as_str()?.strip_prefix("minecraft:")?;
-            let def = species::ALL.iter().find(|d| d.name == template)?;
-            Some((id.clone(), def))
-        });
-        let vanilla = species::ALL
-            .iter()
-            .map(|def| (format!("minecraft:{}", def.name), def));
-        for (id, def) in vanilla.chain(mod_types) {
-            let Some(t) = types.get(&id).filter(|row| !row.is_null()) else {
-                continue;
-            };
-            let model_key = format!("minecraft:{}", def.model);
-            let model = models
-                .as_ref()
-                .and_then(|models| models.value().get(&model_key));
-            if models_needed && model.is_none() {
-                continue;
-            }
+        for (id, def, t) in species_entries(&types) {
             let defaults = exact.get(&id).cloned().unwrap_or_default();
             let fields = MobType::catalog_fields(&defaults, attributes);
-            let mut layers = crate::fast_hash::FxHashMap::default();
-            if let Some(all) = models.as_ref().and_then(|m| m.value().as_object()) {
-                for prefix in def.layer_prefixes() {
-                    let start = format!("minecraft:{prefix}#");
-                    for (k, v) in all.iter().filter(|(k, _)| k.starts_with(&start)) {
-                        let mut part = Part::parse_layer(k, v);
-                        if culls_back_faces(k) {
-                            part.set_cull_back();
-                        }
-                        layers.insert(
-                            k.trim_start_matches("minecraft:").to_owned(),
-                            Arc::new(part),
-                        );
-                    }
-                }
-            }
             let category = t["category"].as_str().unwrap_or("creature").to_owned();
             let mut flags = def.flags(t["fire_immune"].as_bool().unwrap_or(false));
             if let Some(allowed) = t["allowed_in_peaceful"].as_bool() {
@@ -523,7 +464,6 @@ impl MobTypes {
             out.insert(
                 id.clone(),
                 MobType {
-                    shadow: crate::shadows::content_shadow(t),
                     species: def.species,
                     item_stack_limits: item_stack_limits.clone(),
                     attribute_bounds,
@@ -556,20 +496,6 @@ impl MobTypes {
                         .ambient_interval
                         .unwrap_or_else(|| def.ambient_interval()),
                     flags,
-                    model: model.map_or_else(
-                        || empty_model.clone(),
-                        |model| {
-                            Arc::new({
-                                let mut part = Part::parse_layer(&model_key, model);
-                                if culls_back_faces(&model_key) {
-                                    part.set_cull_back();
-                                }
-                                part
-                            })
-                        },
-                    ),
-                    layers,
-                    texture: def.texture.to_owned(),
                     brain: def.brain(),
                     anim: def.anim,
                     sounds: def.sounds,
@@ -1253,7 +1179,7 @@ pub struct Extra {
     pub elytra: ElytraAnimation,
     pub swim: SwimAnimation,
     /// `ClientAvatarState` of a player: the cloak, bob and walked distance its cape swings with.
-    pub avatar: crate::camera::AvatarBob,
+    pub avatar: sunrise_level::camera_math::AvatarBob,
     /// The arm the current swing moves (`currentSwing.hand().asArm`): `Some(true)`
     /// for the right arm.
     pub swing_right_arm: Option<bool>,
@@ -1309,7 +1235,7 @@ pub struct Extra {
     pub ambient_effects: Vec<&'static str>,
     /// `LivingEntity.DATA_EFFECT_PARTICLES` and `DATA_EFFECT_AMBIENCE_ID` as a
     /// server gave them: the swirls around it, and whether they are all faint.
-    pub effect_particles: Vec<crate::particles::ParticleOptions>,
+    pub effect_particles: Vec<sunrise_level::particle_options::ParticleOptions>,
     pub effect_ambient: bool,
     /// The swirls of `effects` as the native mods left them
     /// (`effect_particle_modification`), sent while one listens.
@@ -1774,7 +1700,7 @@ pub struct Mob {
     /// `textures` property resolves to `skin` like a player's.
     pub profile: Option<sunrise_protocol::entity_data::Profile>,
     /// The packs' random texture variants it wears (`random_textures::choose`).
-    pub random_textures: random_textures::Choice,
+    pub random_textures: random_texture_choice::RandomTextureChoice,
     /// What `entity_size` answered for its pose and vanilla size (`EntityEvent.Size`):
     /// `dims` uses it while it holds.
     pub size_answer: Option<crate::pose::SizeAnswer>,
@@ -2477,7 +2403,7 @@ pub enum MobEvent {
         feet: [f64; 3],
         width: f64,
         height: f64,
-        burst: crate::particles::Burst,
+        burst: sunrise_level::particle_options::Burst,
     },
     /// One particle exactly at `at`, moving at `velocity`.
     ParticleAt {
@@ -5383,152 +5309,6 @@ impl Mob {
         events.push(MobEvent::Sound(event, at, ai::sound_volume(self), pitch));
     }
 }
-/// Model geometry for a mob, posed for its animation state, as camera-relative
-/// vertices textured from the shared atlas.
-pub fn render(
-    mob: &Mob,
-    alpha: f32,
-    camera: glam::DVec3,
-    uv: [f32; 4],
-    light: u32,
-    out: &mut Vec<Vertex>,
-) {
-    render::render_single(mob, alpha, camera, uv, light, out);
-}
-/// A parsed `entity-models.json` document, shared while loading model batches.
-/// Each lookup still constructs an independent part tree for the caller.
-#[derive(Clone)]
-pub struct EntityModelDocument(Arc<Value>);
-
-impl EntityModelDocument {
-    pub fn load(root: &Path) -> crate::Result<Self> {
-        Ok(Self(Arc::new(serde_json::from_slice(&fs::read(
-            root.join("entity-models.json"),
-        )?)?)))
-    }
-
-    pub fn model(&self, key: &str) -> Option<Part> {
-        self.0.get(key).map(|m| Part::parse_layer(key, m))
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.0
-            .as_object()
-            .into_iter()
-            .flat_map(|all| all.keys().map(String::as_str))
-    }
-
-    /// The parsed document, for loaders that read several keys from it.
-    pub fn value(&self) -> &Value {
-        &self.0
-    }
-}
-
-/// Load one baked model layer from `entity-models.json` (e.g. `minecraft:chest#main`).
-/// Batch loaders should share an `EntityModelDocument` instead.
-pub fn load_model(root: &Path, key: &str) -> Option<Part> {
-    EntityModelDocument::load(root).ok()?.model(key)
-}
-/// ModelPart.render: translate, rotate ZYX, scale, then children.
-pub fn render_model(
-    part: &Part,
-    base: glam::Mat4,
-    pose_for: &dyn Fn(&Part) -> [f32; 9],
-    uv: [f32; 4],
-    light: u32,
-    overlay: u32,
-    out: &mut Vec<Vertex>,
-) {
-    render_model_filtered(
-        part,
-        (base, ModelNormals::new(base)),
-        &|p| Some(pose_for(p)),
-        uv,
-        light,
-        overlay,
-        out,
-    );
-}
-
-/// Draw a posed model, skipping a part and its descendants when its pose is `None`. Each part's
-/// own geometry goes through the step every baked model's draw takes (`render::compile_part`
-/// when a mod replaced it), with the model's layer and empty `Poses`: these draws are posed by
-/// `pose_for`, not by `anim`.
-pub fn render_model_filtered(
-    part: &Part,
-    base: (glam::Mat4, ModelNormals),
-    pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
-    uv: [f32; 4],
-    light: u32,
-    overlay: u32,
-    out: &mut Vec<Vertex>,
-) {
-    let paint = skin::Paint {
-        uv,
-        scroll: 0.0,
-        color: 0xFFFF_FFFF,
-        light,
-        overlay,
-    };
-    let compile = render::compiler();
-    // Built only for a replacement to read: empty maps allocate nothing.
-    let poses = anim::Poses::default();
-    let draw = Draw {
-        layer: part.layer.as_deref(),
-        compile,
-        paint,
-        poses: &poses,
-    };
-    visit(
-        part,
-        base.0,
-        base.1,
-        pose_for,
-        &draw,
-        &mut render::Quads::new(out),
-    );
-    /// What every part of one draw shares.
-    struct Draw<'a> {
-        layer: Option<&'a str>,
-        compile: Option<render::CompilePart>,
-        paint: skin::Paint,
-        poses: &'a anim::Poses,
-    }
-    fn visit(
-        part: &Part,
-        parent: glam::Mat4,
-        normals: ModelNormals,
-        pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
-        draw: &Draw<'_>,
-        quads: &mut render::Quads<'_>,
-    ) {
-        let Some(p) = pose_for(part) else {
-            return;
-        };
-        let m = parent
-            * glam::Mat4::from_translation(glam::Vec3::new(p[0], p[1], p[2]) / 16.0)
-            * glam::Mat4::from_quat(glam::Quat::from_euler(
-                glam::EulerRot::ZYX,
-                p[5],
-                p[4],
-                p[3],
-            ))
-            * glam::Mat4::from_scale(glam::Vec3::new(p[6], p[7], p[8]));
-        let normals = normals.part(p);
-        render::emit_part(
-            draw.compile,
-            draw.layer,
-            part,
-            (m, normals),
-            draw.paint,
-            draw.poses,
-            quads,
-        );
-        for c in &part.children {
-            visit(c, m, normals, pose_for, draw, quads);
-        }
-    }
-}
 
 impl Mob {
     /// The saddle worn, with its components.
@@ -5545,10 +5325,6 @@ impl Mob {
             .set(sunrise_items::equipment::SADDLE, saddle);
     }
 }
-
-#[cfg(test)]
-#[path = "mobs/lighting_tests.rs"]
-mod lighting_tests;
 
 /// `LivingEntity.elytraAnimationState`: eased wing angles and render interpolation.
 #[derive(Clone, Copy, Debug, Default)]
@@ -5793,16 +5569,14 @@ mod teams_tests {
         }
     }
 }
-#[cfg(any(test, feature = "test-mob-kind"))]
+#[cfg(any(test, feature = "test-mob-kind", feature = "test-support"))]
 #[cfg_attr(not(test), allow(dead_code))] // only kind() is used by the gameplay crates' tests
 pub mod sensor_scan_tests {
     use super::*;
-    use serde_json::json;
     use sunrise_core::geometry::Vec3;
 
     pub fn kind() -> Arc<MobType> {
         Arc::new(MobType {
-            shadow: None,
             id: "minecraft:cow".into(),
             species: Species::Cow,
             width: 0.9,
@@ -5844,9 +5618,6 @@ pub mod sensor_scan_tests {
                 animal: true,
                 ..Default::default()
             },
-            model: Arc::new(Part::parse("root", &json!({}))),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Rabbit,
             sounds: [""; 3],
@@ -7481,66 +7252,6 @@ fn content_mob_tag_slot_uses_the_entity_registry_index() {
     );
 }
 
-#[cfg(test)]
-mod model_document_sharing_tests {
-    use super::*;
-
-    fn part_dump(part: &Part) -> String {
-        format!("{part:?}")
-    }
-
-    /// The startup reads `entity-models.json` once and hands the same document
-    /// to every model loader; reading it again per loader must build the same
-    /// types, model for model and layer for layer.
-    #[test]
-    fn a_shared_document_builds_the_same_types() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/sunrise-client")
-            .join(sunrise_core::VANILLA_VERSION);
-        if !root.join("entity-models.json").exists() {
-            return;
-        }
-        let document = EntityModelDocument::load(&root).unwrap();
-        let shared = MobTypes::load_with_document(&root, &document).unwrap();
-        let independent = MobTypes::load(&root).unwrap();
-        assert_eq!(shared.types.len(), independent.types.len());
-        for (id, independent) in &independent.types {
-            let shared = shared.types.get(id).unwrap_or_else(|| panic!("{id}"));
-            assert_eq!(independent.id, shared.id);
-            assert_eq!(independent.species, shared.species);
-            assert_eq!(
-                (
-                    independent.width,
-                    independent.height,
-                    independent.eye_height,
-                ),
-                (shared.width, shared.height, shared.eye_height)
-            );
-            assert_eq!(independent.attributes, shared.attributes);
-            assert_eq!(independent.item_stack_limits, shared.item_stack_limits);
-            assert_eq!(
-                part_dump(&independent.model),
-                part_dump(&shared.model),
-                "{id} model"
-            );
-            let mut independent_layers: Vec<_> = independent.layers.iter().collect();
-            let mut shared_layers: Vec<_> = shared.layers.iter().collect();
-            independent_layers.sort_by_key(|(key, _)| key.as_str());
-            shared_layers.sort_by_key(|(key, _)| key.as_str());
-            assert_eq!(independent_layers.len(), shared_layers.len(), "{id} layers");
-            for ((independent_key, independent_part), (shared_key, shared_part)) in
-                independent_layers.into_iter().zip(shared_layers)
-            {
-                assert_eq!(independent_key, shared_key, "{id} layer key");
-                assert_eq!(
-                    part_dump(independent_part),
-                    part_dump(shared_part),
-                    "{id} layer {independent_key}"
-                );
-            }
-        }
-    }
-}
 crate::impl_joined!(Mob);
 sunrise_mod_runtime::impl_attachment_lifetime!(Mob);
 
@@ -8835,3 +8546,19 @@ mod live_damage_reduction_tests {
         assert_eq!(RAN.with_borrow(Clone::clone), vec![(Reduction::Armor, 0.0)]);
     }
 }
+
+// BEGIN CLIENT-ONLY MOBS BLOCK (stripped into sunrise-client/src/mobs.rs shim in M6)
+pub mod cem;
+pub mod cem_anim;
+pub mod model;
+pub mod model_layers;
+pub mod random_textures;
+pub mod render;
+pub mod skin;
+pub mod villager_hats;
+pub use crate::mobs_render::{
+    EntityModelDocument, load_model, render_model, render_model_filtered,
+    render_single_mob as render,
+};
+pub use model::{ModelNormals, Part, Polygon};
+// END CLIENT-ONLY MOBS BLOCK

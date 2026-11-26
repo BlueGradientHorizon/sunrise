@@ -156,12 +156,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
     assert_eq!(block_flags[dry_plant.0 as usize], (false, false));
 
     let facts = BlockFacts::load(&root, &registry).unwrap();
-    let mobs = MobData::load(
-        &ResourceRoot::directory(root.clone()),
-        facts.states.len(),
-        false,
-    )
-    .unwrap();
+    let mobs = MobData::load(&ResourceRoot::directory(root.clone()), facts.states.len()).unwrap();
     assert_eq!(mobs.path_type(plant), PathType::Water);
     assert_eq!(mobs.path_type(dry_plant), PathType::Open);
     assert!(mobs.pathfindable(plant, PathComputationType::Water));
@@ -183,7 +178,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
     let blocks: &'static sunrise_world::registry::BlockRegistry = Box::leak(Box::new(
         sunrise_world::level::data::load_registry(&root).unwrap(),
     ));
-    let names = crate::creative::Names::default().with_item_names(&Default::default(), blocks);
+    let names = crate::item_names::Names::default().with_item_names(&Default::default(), blocks);
     for (item, key) in [
         ("wet:stone", "block.wet.stone"),
         ("wet:plain_item", "item.wet.plain_item"),

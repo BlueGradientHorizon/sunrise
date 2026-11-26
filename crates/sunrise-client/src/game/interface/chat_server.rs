@@ -1,6 +1,6 @@
 use super::Game;
+use crate::game::chat_common::SessionDispatcher;
 use crate::game::chat_common::command_export;
-use crate::game::client_side::chat::SessionDispatcher;
 use std::sync::Arc;
 use sunrise_client::{command::Registries, text::Text};
 use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;

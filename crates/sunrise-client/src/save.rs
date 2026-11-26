@@ -35,7 +35,6 @@ use crate::{
     biome::Biomes,
     chunk::{BIOME_STRATEGY, Chunk, ColumnLayout, Light, Section, block_strategy},
     mobs::{spawner::SpawnerExt, trial_spawner::TrialSpawnerExt},
-    streaming::ChunkGenerator,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -52,6 +51,7 @@ use sunrise_core::{
     position::{BlockPos, ChunkPos},
     ticks::{SavedTick, TickPriority, TickTypeId},
 };
+use sunrise_level::chunk_streamer::ChunkGenerator;
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, attachment_compound};
 use sunrise_world::worldgen::blending::BlendingData;
 use {

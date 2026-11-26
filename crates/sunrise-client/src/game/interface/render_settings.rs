@@ -190,7 +190,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.bind_mod_mappings();
         // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
         let abilities = self.chat_abilities();
-        self.ui.chat.set_abilities(&self.gui.atlas.font, abilities);
+        self.side
+            .chat_ui
+            .chat
+            .set_abilities(&self.gui.atlas.font, abilities);
         self.apply_streaming_settings();
         self.side.audio.0.master = self.settings.master_volume as f32;
         if self.settings.sound_device != self.side.audio.0.device() {

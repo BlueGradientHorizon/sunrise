@@ -10,8 +10,8 @@ use sunrise_client::{
     Result,
     clipboard::EditShortcut,
     confirm_screen::Confirm,
-    dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind},
-    dialog_screen::{BOX, Layout, Part, WARNING_SPRITES, text_height, waiting_button},
+    dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind, text_height},
+    dialog_screen::{BOX, Layout, Part, WARNING_SPRITES, waiting_button},
     font::Font,
     hud::{HudBatch, rgba},
     multiline_edit::MultiLineEdit,
@@ -501,13 +501,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // defaultHandleClickEvent: `activeScreen.insertText(command, true)`.
             // Only the chat screen (opened under the dialog) takes text.
             Some(Click::SuggestCommand(command)) => {
-                if !self.dialog_open() && self.ui.chat_screen.is_some() {
+                if !self.dialog_open() && self.side.chat_ui.chat_screen.is_some() {
                     let m = sunrise_client::screen_draw::Measure(&self.gui.atlas.font);
                     let c = sunrise_client::chat::Commands {
                         dispatcher: super::chat::chat_tree(&self.remote),
                         registries: &self.ui.registries,
                     };
-                    if let Some(screen) = self.ui.chat_screen.as_mut() {
+                    if let Some(screen) = self.side.chat_ui.chat_screen.as_mut() {
                         screen.suggest_command(&m, &c, &command);
                     }
                 }

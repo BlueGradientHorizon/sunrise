@@ -168,13 +168,13 @@ pub struct TickCtx<'a> {
     /// The level's columns still being generated: a column is sent once
     /// each neighbour is loaded or a decorated proto chunk (#4294). None:
     /// every column there is is loaded.
-    pub streaming: Option<&'a crate::streaming::Streaming>,
+    pub streaming: Option<&'a sunrise_level::chunk_streamer::ChunkState>,
 }
 
 /// What the gameplay code has to do for a guest.
 pub enum HostEvent {
     /// Release input reservations only after this segment has finished in Game.
-    InputCredits(Vec<crate::net::ingress::ReceiveLease<NetEvent>>),
+    InputCredits(Vec<crate::net_ingress::ReceiveLease<NetEvent>>),
     RawPayload(Box<crate::raw_payloads::Delivery>),
     /// A joined player's play pong; dispatch before resuming their inbox.
     PlayerPong {
@@ -3172,7 +3172,7 @@ impl Hub {
         &mut self,
         i: usize,
         world: &'w World,
-        streaming: Option<&crate::streaming::Streaming>,
+        streaming: Option<&sunrise_level::chunk_streamer::ChunkState>,
     ) -> Option<Vec<(usize, &'w Chunk)>> {
         let budget = self.guests.update(i, |g| {
             if self.ticks <= g.placed_at + 1 || g.unacknowledged >= g.max_unacknowledged {
@@ -3260,10 +3260,10 @@ impl Hub {
     /// None for a particle whose data isn't sent from here (items, trails).
     pub fn particle(
         &self,
-        options: &crate::particles::ParticleOptions,
+        options: &sunrise_level::particle_options::ParticleOptions,
         state: Option<sunrise_world::registry::BlockStateId>,
     ) -> Option<Particle> {
-        use crate::particles::ParticleType as T;
+        use sunrise_level::particle_options::ParticleType as T;
         // Custom types use the existing Sunrise-only particle envelope.
         if let Some(name) = &options.mod_particle {
             let bytes = if let Some((value, _)) = &options.typed_particle {
@@ -3480,7 +3480,7 @@ impl Hub {
     /// `ambient`, each left out at its default.
     pub fn particle_meta(
         &self,
-        particles: &[crate::particles::ParticleOptions],
+        particles: &[sunrise_level::particle_options::ParticleOptions],
         ambient: bool,
     ) -> Vec<(u8, i32, Value)> {
         let particles: Vec<_> = (particles.iter())
@@ -5036,7 +5036,7 @@ impl Hub {
         // A moving collider's box under the feet holds the player up as a block does: it is not
         // floating on one, and the colliders are where they stand now, as the player is committed.
         no_blocks_in(world, lo, hi, &self.encoder)
-            && !sunrise_client_render::moving_colliders::overlaps(
+            && !sunrise_world::moving_colliders::overlaps(
                 sunrise_world::entity_obstruction::EntityIdentity(self.guests[i].entity_id as u64),
                 sunrise_core::geometry::Aabb::new(
                     sunrise_core::geometry::Vec3::new(lo[0], lo[1], lo[2]),
@@ -7166,7 +7166,7 @@ mod tests {
         };
 
         // What a listener's replacement becomes.
-        let named = crate::particles::ParticleOptions::named("example:swirl");
+        let named = sunrise_level::particle_options::ParticleOptions::named("example:swirl");
         let only_named = hub.particle_meta(std::slice::from_ref(&named), false);
         let Value::Particles(list) = &only_named[0].2 else {
             panic!("expected particles");

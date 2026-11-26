@@ -17,24 +17,24 @@ pub struct Persistent<G> {
     pub registry: Arc<crate::assets::Assets>,
     pub biomes: Arc<Biomes>,
 }
-pub(super) type LodSurfaces = Arc<[crate::lod::Column; 256]>;
+pub(super) type LodSurfaces = Arc<[sunrise_level::lod_data::Column; 256]>;
 /// The coarsest far tile spacing whose columns read saved chunks: 16 blocks
 /// a column, and 4 with Reduced far detail (`LodSampler::set_approximate`).
 pub(super) const SAVED_LOD_STRIDE: i32 = 16;
 const SAVED_LOD_STRIDE_REDUCED: i32 = 4;
 pub(super) struct SavedLodSampler<G: ChunkGenerator> {
     pub(super) generator: Arc<Persistent<G>>,
-    pub(super) inner: Box<dyn crate::streaming::LodSampler>,
+    pub(super) inner: Box<dyn sunrise_level::chunk_streamer::LodSampler>,
     pub(super) cache: std::collections::VecDeque<((i32, i32), Option<LodSurfaces>)>,
-    pub(super) details: Vec<crate::streaming::LodDetail>,
+    pub(super) details: Vec<sunrise_level::chunk_streamer::LodDetail>,
     /// Reduced far detail: saved chunks only in tiles up to
     /// `SAVED_LOD_STRIDE_REDUCED` blocks a column.
     pub(super) approximate: bool,
     /// Chunks the generator decorated for far terrain alone, kept from
     /// earlier sessions; saved chunks take precedence over them.
-    pub(super) generated: Arc<crate::lod::cache::DiskCache>,
+    pub(super) generated: Arc<sunrise_level::lod_data::cache::DiskCache>,
     /// The generator's far samples from earlier sessions (`lod::bake`).
-    pub(super) bake: Option<Arc<crate::lod::bake::LodBake>>,
+    pub(super) bake: Option<Arc<sunrise_level::lod_data::bake::LodBake>>,
 }
 impl<G: ChunkGenerator> SavedLodSampler<G> {
     fn saved_columns(&mut self, key: (i32, i32)) -> Option<LodSurfaces> {
@@ -56,8 +56,8 @@ impl<G: ChunkGenerator> SavedLodSampler<G> {
         columns
     }
 }
-impl<G: ChunkGenerator> crate::streaming::LodSampler for SavedLodSampler<G> {
-    fn fork(&self) -> Option<Box<dyn crate::streaming::LodSampler>> {
+impl<G: ChunkGenerator> sunrise_level::chunk_streamer::LodSampler for SavedLodSampler<G> {
+    fn fork(&self) -> Option<Box<dyn sunrise_level::chunk_streamer::LodSampler>> {
         Some(Box::new(Self {
             generator: self.generator.clone(),
             inner: self.inner.fork()?,
@@ -89,7 +89,7 @@ impl<G: ChunkGenerator> crate::streaming::LodSampler for SavedLodSampler<G> {
         }
         self.inner.request_detail(&missing, center);
     }
-    fn drain_details(&mut self) -> Vec<crate::streaming::LodDetail> {
+    fn drain_details(&mut self) -> Vec<sunrise_level::chunk_streamer::LodDetail> {
         let mut details = std::mem::take(&mut self.details);
         for (key, generated) in self.inner.drain_details() {
             // A generation batch also returns neighbouring, unrequested chunks.
@@ -102,7 +102,13 @@ impl<G: ChunkGenerator> crate::streaming::LodSampler for SavedLodSampler<G> {
         }
         details
     }
-    fn grid(&mut self, x: i32, z: i32, stride: i32, side: usize) -> Vec<crate::lod::Column> {
+    fn grid(
+        &mut self,
+        x: i32,
+        z: i32,
+        stride: i32,
+        side: usize,
+    ) -> Vec<sunrise_level::lod_data::Column> {
         let approximate = self.approximate;
         let baked = (self.bake.as_ref()).and_then(|b| b.grid(approximate, [x, z], stride, side));
         let mut columns = baked.unwrap_or_else(|| {
@@ -130,7 +136,7 @@ impl<G: ChunkGenerator> crate::streaming::LodSampler for SavedLodSampler<G> {
                     z + (index / side) as i32 * stride,
                 );
                 if let Some(saved) = self.saved_columns((wx >> 4, wz >> 4)) {
-                    *column = crate::lod::Column::reduced(
+                    *column = sunrise_level::lod_data::Column::reduced(
                         &saved,
                         (wx & 15) as usize,
                         (wz & 15) as usize,
@@ -144,14 +150,14 @@ impl<G: ChunkGenerator> crate::streaming::LodSampler for SavedLodSampler<G> {
     fn sample(&mut self, x: i32, z: i32) -> Option<crate::columns::Surface> {
         self.column(x, z).surface
     }
-    fn column(&mut self, x: i32, z: i32) -> crate::lod::Column {
+    fn column(&mut self, x: i32, z: i32) -> sunrise_level::lod_data::Column {
         self.reduced_column(x, z, 1)
     }
-    fn reduced_column(&mut self, x: i32, z: i32, width: i32) -> crate::lod::Column {
+    fn reduced_column(&mut self, x: i32, z: i32, width: i32) -> sunrise_level::lod_data::Column {
         if width <= 16
             && let Some(columns) = self.saved_columns((x >> 4, z >> 4))
         {
-            return crate::lod::Column::reduced(
+            return sunrise_level::lod_data::Column::reduced(
                 &columns,
                 (x & 15) as usize,
                 (z & 15) as usize,
@@ -266,10 +272,10 @@ pub(super) fn decode_lod_surfaces(
         })
         .collect();
     sections.sort_unstable_by_key(|(y, _)| std::cmp::Reverse(*y));
-    let mut columns: Box<[crate::lod::Column; 256]> =
-        Box::new(std::array::from_fn(|_| crate::lod::Column {
+    let mut columns: Box<[sunrise_level::lod_data::Column; 256]> =
+        Box::new(std::array::from_fn(|_| sunrise_level::lod_data::Column {
             surface: None,
-            spans: crate::lod::Spans::new(),
+            spans: sunrise_level::lod_data::Spans::new(),
         }));
     let mut water = [None; 256];
     let light = lod_light_layers(&sections, layout, sky_light);
@@ -374,7 +380,7 @@ pub(super) fn decode_lod_surfaces(
                         {
                             previous.min = min;
                         } else {
-                            column.spans.push(crate::lod::Span {
+                            column.spans.push(sunrise_level::lod_data::Span {
                                 min,
                                 max,
                                 state,
@@ -412,13 +418,16 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         }));
         self.inner.worker()
     }
-    fn lod_sampler(self: Arc<Self>) -> Box<dyn crate::streaming::LodSampler> {
+    fn lod_sampler(self: Arc<Self>) -> Box<dyn sunrise_level::chunk_streamer::LodSampler> {
         let inner = ChunkGenerator::lod_sampler(self.inner.clone());
-        let generated = Arc::new(crate::lod::cache::DiskCache::new(
+        let generated = Arc::new(sunrise_level::lod_data::cache::DiskCache::new(
             self.save.root.join("data/sunrise_far_terrain"),
-            crate::lod::cache::build_key(self.registry.registry.len(), self.biomes.list.len()),
+            sunrise_level::lod_data::cache::build_key(
+                self.registry.registry.len(),
+                self.biomes.list.len(),
+            ),
         ));
-        let bake = crate::lod::bake::LodBake::open(
+        let bake = sunrise_level::lod_data::bake::LodBake::open(
             &self.save.root,
             self.save.shape,
             self.registry.registry.len(),
@@ -466,7 +475,12 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
     fn idle(&self, worker: &mut G::Worker) {
         self.inner.idle(worker);
     }
-    fn proto(&self, worker: &mut G::Worker, x: i32, z: i32) -> crate::streaming::Proto {
+    fn proto(
+        &self,
+        worker: &mut G::Worker,
+        x: i32,
+        z: i32,
+    ) -> sunrise_level::chunk_streamer::Proto {
         let mut proto = self.inner.proto(worker, x, z);
         if let Some(saved) = self
             .save
@@ -476,34 +490,41 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         }
         proto
     }
-    fn is_decorated(&self, proto: &crate::streaming::Proto) -> bool {
+    fn is_decorated(&self, proto: &sunrise_level::chunk_streamer::Proto) -> bool {
         self.inner.is_decorated(proto)
     }
     fn proto_status(
         &self,
-        proto: &crate::streaming::Proto,
+        proto: &sunrise_level::chunk_streamer::Proto,
     ) -> Option<sunrise_world::chunk_status::ChunkStatus> {
         self.inner.proto_status(proto)
     }
-    fn proto_block(&self, proto: &crate::streaming::Proto, pos: [i32; 3]) -> Option<u32> {
+    fn proto_block(
+        &self,
+        proto: &sunrise_level::chunk_streamer::Proto,
+        pos: [i32; 3],
+    ) -> Option<u32> {
         self.inner.proto_block(proto, pos)
     }
-    fn light_view(&self, proto: &crate::streaming::Proto) -> Option<Chunk> {
+    fn light_view(&self, proto: &sunrise_level::chunk_streamer::Proto) -> Option<Chunk> {
         self.inner.light_view(proto)
     }
     fn non_air_sections(
         &self,
-        proto: &crate::streaming::Proto,
+        proto: &sunrise_level::chunk_streamer::Proto,
     ) -> Option<crate::section_mask::SectionMask> {
         self.inner.non_air_sections(proto)
     }
     fn cache_census(&self) -> Vec<(&'static str, usize, Option<usize>)> {
         self.inner.cache_census()
     }
-    fn proto_heap_bytes(&self, proto: &crate::streaming::Proto) -> ([usize; 6], [usize; 16]) {
+    fn proto_heap_bytes(
+        &self,
+        proto: &sunrise_level::chunk_streamer::Proto,
+    ) -> ([usize; 6], [usize; 16]) {
         self.inner.proto_heap_bytes(proto)
     }
-    fn save_protos(&self, protos: &[&crate::streaming::Proto]) {
+    fn save_protos(&self, protos: &[&sunrise_level::chunk_streamer::Proto]) {
         self.save
             .tables
             .get_or_init(|| Arc::new(SaveTables::new(&self.registry)));
@@ -542,26 +563,30 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         &self,
         worker: &mut G::Worker,
         snapshot: &Chunk,
-    ) -> Option<crate::streaming::Proto> {
+    ) -> Option<sunrise_level::chunk_streamer::Proto> {
         self.inner.proto_beside_final(worker, snapshot)
     }
     fn final_writes(
         &self,
         snapshot: &Chunk,
-        proto: &crate::streaming::Proto,
+        proto: &sunrise_level::chunk_streamer::Proto,
     ) -> Vec<([i32; 3], u32)> {
         self.inner.final_writes(snapshot, proto)
     }
     fn final_block_entities(
         &self,
-        entries: &[(&crate::streaming::Proto, &[([i32; 3], u32)])],
+        entries: &[(&sunrise_level::chunk_streamer::Proto, &[([i32; 3], u32)])],
     ) -> Vec<((i32, i32, i32), crate::chunk::block_entity::BlockEntity)> {
         self.inner.final_block_entities(entries)
     }
-    fn decorate(&self, worker: &mut G::Worker, region: &mut [crate::streaming::Proto; 9]) {
+    fn decorate(
+        &self,
+        worker: &mut G::Worker,
+        region: &mut [sunrise_level::chunk_streamer::Proto; 9],
+    ) {
         self.inner.decorate(worker, region);
     }
-    fn finish(&self, proto: crate::streaming::Proto) -> Chunk {
+    fn finish(&self, proto: sunrise_level::chunk_streamer::Proto) -> Chunk {
         self.inner.finish(proto)
     }
 }

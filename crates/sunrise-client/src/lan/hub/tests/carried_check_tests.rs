@@ -3,12 +3,12 @@
 //! server judges each report in the collider's frames of the last ticks.
 use super::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc, sync::atomic::Ordering};
-use sunrise_client_render::moving_colliders::{History, HistoryScope, Placed, Prepared, in_level};
 use sunrise_core::geometry::{
     Aabb, Vec3,
     carried::Carried,
     oriented::{ColliderBoxes, Frame, OrientedCollider},
 };
+use sunrise_world::moving_colliders::{History, HistoryScope, Placed, Prepared, in_level};
 
 /// Where the deck's origin starts, above a floor whose top is at y 5.
 pub(super) const ORIGIN: [f64; 3] = [20.5, 9.0, 12.0];
@@ -1337,7 +1337,7 @@ fn a_carried_guests_settle_asks_a_part_about_the_guest() {
         side.hub
             .settle(0, [20.5, 9.0, 12.5], [22.0, 9.0, 12.5], &ctx);
         parts.begin_tick(&looped);
-        sunrise_client_render::moving_colliders::as_mover(DECK, || {
+        sunrise_world::moving_colliders::as_mover(DECK, || {
             side.hub
                 .settle(0, [20.5, 9.0, 12.5], [22.0, 9.0, 12.5], &ctx)
         });

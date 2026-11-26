@@ -969,7 +969,7 @@ impl SyncData {
                 );
             }
         }
-        crate::creative::live_holders(&self.builtin, &holders)
+        crate::item_names::live_holders(&self.builtin, &holders)
     }
 
     /// Whether a synchronized registry holds an entry from a world's pack.

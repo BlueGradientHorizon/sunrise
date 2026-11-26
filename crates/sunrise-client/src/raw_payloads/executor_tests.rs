@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     lan::{NetEvent, PlayerSender},
-    net::ingress::{Consumer, Producer},
+    net_ingress::{Consumer, Producer},
 };
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,

@@ -30,7 +30,7 @@ fn the_collars_own_dye_leaves_a_wolf_as_it_was() {
     let mut game = game(&mut resources);
     let red = game.mobs[0].extra.color;
     assert_eq!(
-        sunrise_client::mobs::render::DYE_NAMES[usize::from(red)],
+        sunrise_level::dyes::DYE_NAMES[usize::from(red)],
         "red",
         "a tamed wolf's collar starts red"
     );
@@ -39,10 +39,7 @@ fn the_collars_own_dye_leaves_a_wolf_as_it_was() {
     // Another colour dyes the collar and is used up; the wolf keeps standing.
     let (sitting, color, left) = use_on_wolf(&mut game, "minecraft:blue_dye");
     assert!(!sitting);
-    assert_eq!(
-        sunrise_client::mobs::render::DYE_NAMES[usize::from(color)],
-        "blue"
-    );
+    assert_eq!(sunrise_level::dyes::DYE_NAMES[usize::from(color)], "blue");
     assert_eq!(left, 0);
     // Any other item still makes the owner's wolf sit.
     assert!(use_on_wolf(&mut game, "minecraft:stick").0);

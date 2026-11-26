@@ -76,10 +76,12 @@ impl Players for ServerGame<'_> {
 }
 impl Profiles for ServerGame<'_> {
     fn resolve_name(&self, name: &str) -> ProfileResolution {
-        self.native_resolve_profile(sunrise_client::skins::NameOrId::Name(name.to_owned()))
+        self.native_resolve_profile(sunrise_level::profile_lookup::NameOrId::Name(
+            name.to_owned(),
+        ))
     }
     fn resolve_id(&self, uuid: u128) -> ProfileResolution {
-        self.native_resolve_profile(sunrise_client::skins::NameOrId::Id(uuid))
+        self.native_resolve_profile(sunrise_level::profile_lookup::NameOrId::Id(uuid))
     }
 }
 impl RuntimeLevels for ServerGame<'_> {

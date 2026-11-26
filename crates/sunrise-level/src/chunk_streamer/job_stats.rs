@@ -8,10 +8,10 @@ static COUNT: [AtomicU64; 7] = [const { AtomicU64::new(0) }; 7];
 pub fn enable(on: bool) {
     ENABLED.store(on, Ordering::Relaxed);
 }
-pub(super) fn enabled() -> bool {
+pub fn enabled() -> bool {
     ENABLED.load(Ordering::Relaxed)
 }
-pub(super) fn add(kind: usize, nanos: u64) {
+pub fn add(kind: usize, nanos: u64) {
     NANOS[kind].fetch_add(nanos, Ordering::Relaxed);
     COUNT[kind].fetch_add(1, Ordering::Relaxed);
 }

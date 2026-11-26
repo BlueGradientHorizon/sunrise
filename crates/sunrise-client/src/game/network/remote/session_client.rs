@@ -489,7 +489,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.ui.registries = Default::default();
         self.build_registries();
         self.ui.registries.permission = 0;
-        self.ui.chat.clear();
+        self.side.chat_ui.chat.clear();
         self.set_screen(Screen::Playing);
         self.side.title.0 = None;
         self.dim = Dim::Overworld;
@@ -769,7 +769,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.ui.registries = Default::default();
         self.build_registries();
         self.ui.registries.permission = 0;
-        self.ui.chat.clear();
+        self.side.chat_ui.chat.clear();
         self.set_screen(Screen::Playing);
         self.hide_title();
         self.dim = Dim::Overworld;
@@ -1099,7 +1099,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             {
                 r.health.0 = max;
             }
-            self.ui.death_time = 0;
+            self.side.chat_ui.death_time = 0;
             self.input_player_replaced();
         }
         self.bind_local_player_residency();

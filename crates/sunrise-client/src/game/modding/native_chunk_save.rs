@@ -1,7 +1,7 @@
 //! Server capture seams. Disk callbacks run only in the persistence owner.
 use super::*;
 use sunrise_client::chunk::Chunk;
-use sunrise_client::streaming::{ProtoSave, ProtoSnapshot};
+use sunrise_level::chunk_streamer::{ProtoSave, ProtoSnapshot};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Bind the existing world's identity and immutable resources, before workers start.

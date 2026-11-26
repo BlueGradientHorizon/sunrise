@@ -261,7 +261,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if self.player.is_some() {
             return false;
         }
-        self.ui
+        self.side
+            .chat_ui
             .options
             .pack_screen
             .as_ref()

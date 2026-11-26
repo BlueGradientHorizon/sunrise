@@ -4,6 +4,7 @@ pub mod connection;
 pub mod droppable;
 mod encode;
 mod engine;
+pub mod queued_writer;
 pub use engine::{is_engine, negotiated};
 #[cfg(test)]
 mod droppable_wire_tests;
@@ -23,11 +24,28 @@ mod raw_channel_tests;
 pub mod staging_probe;
 #[cfg(test)]
 mod typed_schema_tests;
-pub use executor::{dispatch, dispatch_bundle, dispatch_pending, mod_of};
+pub use executor::{after_size, dispatch, dispatch_bundle, dispatch_pending, mod_of};
 mod main_queue;
 pub use main_queue::MainQueue;
 #[cfg(test)]
 pub(crate) mod test_support;
+
+/// Client-side event constructor monomorphised into `Endpoint<E>` and `MainQueue<E>`.
+pub trait ClientEvent: Sized + Send + 'static {
+    fn raw_payload(incoming: Incoming) -> Self;
+    fn disconnected(reason: String) -> Self;
+}
+
+/// Uninhabited client event type used by server-only `Endpoint` and `MainQueue` values.
+pub enum NoClientEvent {}
+impl ClientEvent for NoClientEvent {
+    fn raw_payload(_incoming: Incoming) -> Self {
+        unreachable!("NoClientEvent cannot construct a client event")
+    }
+    fn disconnected(_reason: String) -> Self {
+        unreachable!("NoClientEvent cannot construct a client event")
+    }
+}
 /// Physical server ingress identity, moved unchanged from I/O through Hub to main.
 /// Boxed only on mod-bearing paths so ordinary event unions do not grow.
 pub struct Delivery {
@@ -48,8 +66,7 @@ use sunrise_protocol::{
     packets::custom_payload::{PayloadCodecs, PayloadFlow, PayloadProtocol as CodecProtocol},
     payload_negotiation::{self as negotiation, Flow, Manifest, Phase, RegistrationPhase},
 };
-pub(crate) use transport::PlayTransition;
-pub use transport::Transport;
+pub use transport::{PlayTransition, Transport};
 
 /// Logical receiving side, never inferred from application bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,7 +176,7 @@ impl Local {
         local.budgets = droppable::Budgets::from_env();
         Ok(Arc::new(local))
     }
-    pub(crate) fn empty() -> Arc<Self> {
+    pub fn empty() -> Arc<Self> {
         static EMPTY: OnceLock<Arc<Local>> = OnceLock::new();
         EMPTY
             .get_or_init(|| Arc::new(Self::new(Manifest::default(), None)))

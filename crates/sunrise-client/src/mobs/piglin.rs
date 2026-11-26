@@ -2248,7 +2248,7 @@ pub fn piglin_anim(m: &Mob, s: &State, p: &mut Poses) {
     let spear = m
         .extra
         .main_hand_id()
-        .and_then(crate::spear::Kinetic::of)
+        .and_then(crate::spear_sim::Kinetic::of)
         .map(|kinetic| {
             let using = m.extra.using_item > 0 && m.extra.off_hand_id().is_none();
             (
@@ -2316,7 +2316,7 @@ pub fn piglin_pose_holding(
     (max_charge, ticks): (f32, f32),
     left: bool,
     passenger: bool,
-    spear: Option<(crate::spear::Kinetic, f32)>,
+    spear: Option<(crate::spear_sim::Kinetic, f32)>,
 ) {
     piglin_pose_humanoid(
         p,
@@ -2335,7 +2335,7 @@ fn piglin_pose_humanoid(
     pose: PiglinPose,
     (max_charge, ticks): (f32, f32),
     (left, passenger): (bool, bool),
-    spear: Option<(crate::spear::Kinetic, f32)>,
+    spear: Option<(crate::spear_sim::Kinetic, f32)>,
     selected: Option<&Mob>,
 ) {
     use super::anim::{ArmPose, Hum, crossbow_charge, crossbow_hold, humanoid};

@@ -107,16 +107,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             match self.streaming.prepare_save(&mut self.world, wait, deadline) {
-                sunrise_client::streaming::SaveStep::Full(chunk) => {
+                sunrise_level::chunk_streamer::SaveStep::Full(chunk) => {
                     self.native_late_full_chunk_snapshot(&chunk);
                     self.streaming.save_finished(chunk);
                 }
-                sunrise_client::streaming::SaveStep::Protos(protos) => {
+                sunrise_level::chunk_streamer::SaveStep::Protos(protos) => {
                     self.native_proto_snapshots(&protos);
                     self.streaming.finish_save(protos, wait);
                     break;
                 }
-                sunrise_client::streaming::SaveStep::Pending => unreachable!(),
+                sunrise_level::chunk_streamer::SaveStep::Pending => unreachable!(),
             }
         }
         let keys: Vec<_> = self.world.modified.iter().copied().collect();
@@ -193,12 +193,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let deadline = Instant::now() + budget;
                     loop {
                         match self.streaming.prepare_poll_save(&mut self.world, deadline) {
-                            sunrise_client::streaming::SaveStep::Pending => break,
-                            sunrise_client::streaming::SaveStep::Full(chunk) => {
+                            sunrise_level::chunk_streamer::SaveStep::Pending => break,
+                            sunrise_level::chunk_streamer::SaveStep::Full(chunk) => {
                                 self.native_late_full_chunk_snapshot(&chunk);
                                 self.streaming.save_finished(chunk);
                             }
-                            sunrise_client::streaming::SaveStep::Protos(protos) => {
+                            sunrise_level::chunk_streamer::SaveStep::Protos(protos) => {
                                 self.native_proto_snapshots(&protos);
                                 if self.streaming.submit_protos(protos) {
                                     save.stage = Stage::Chunks(

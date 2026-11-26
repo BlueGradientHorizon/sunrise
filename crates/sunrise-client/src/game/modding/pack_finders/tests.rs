@@ -647,7 +647,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
             );
             game.refresh_pack_lists();
             assert!(
-                game.ui
+                game.chat_ui_for_test()
                     .options
                     .pack_infos
                     .iter()

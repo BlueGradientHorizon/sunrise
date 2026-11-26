@@ -26,7 +26,7 @@ use sunrise_client::{
     Result,
     block_entity_anim::Ticker,
     items::ItemStack,
-    mobs::{Species, render::VILLAGER_TYPES},
+    mobs::{Species, villager::VILLAGER_TYPES},
     widgets,
 };
 use sunrise_core::geometry::Vec3;
@@ -862,7 +862,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             "screen": self.screen_label(),
             "buttons": buttons,
         });
-        if let Some(chat) = &self.ui.chat_screen {
+        if let Some(chat) = &self.side.chat_ui.chat_screen {
             v["chat_input"] = json!(chat.input.value);
             v["chat_suggestions"] = json!(chat.suggestions_visible());
         }
@@ -918,10 +918,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn messages_value(&self, n: usize) -> Value {
         let titles = &self.side.titles;
         json!({
-            "chat": self.remote_chat(n).unwrap_or_else(|| self.ui.chat.recent_lines(n)),
+            "chat": self.remote_chat(n).unwrap_or_else(|| self.side.chat_ui.chat.recent_lines(n)),
             "order": "newest first",
             // The chat lines as drawn: colours, click and hover events.
-            "styled": self.ui.chat.recent_components(n),
+            "styled": self.side.chat_ui.chat.recent_components(n),
             "title": (titles.time > 0).then(|| titles.title.as_ref().map(|t| t.plain())).flatten(),
             "subtitle": (titles.time > 0).then(|| titles.subtitle.as_ref().map(|t| t.plain())).flatten(),
             "actionbar": (titles.overlay_time > 0).then(|| titles.overlay.as_ref().map(|t| t.plain())).flatten(),
@@ -1823,7 +1823,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // A native mod's command first, as typed chat does; the
                 // server's console cannot run a client mod's command.
                 if self.client_mod_command(text) {
-                    return ok(json!({ "ok": true, "chat": self.ui.chat.recent_lines(5) }));
+                    return ok(
+                        json!({ "ok": true, "chat": self.side.chat_ui.chat.recent_lines(5) }),
+                    );
                 }
                 let command = format!("/{text}");
                 // Single player's console is its server thread's.

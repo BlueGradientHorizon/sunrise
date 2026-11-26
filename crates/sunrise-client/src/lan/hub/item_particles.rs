@@ -3,9 +3,9 @@ use super::*;
 pub(super) fn encode(
     hub: &Hub,
     id: i32,
-    options: &crate::particles::ParticleOptions,
+    options: &sunrise_level::particle_options::ParticleOptions,
 ) -> Option<Particle> {
-    if options.ty != crate::particles::ParticleType::Item {
+    if options.ty != sunrise_level::particle_options::ParticleType::Item {
         return None;
     }
     let stack = options.item_stack.as_ref()?;

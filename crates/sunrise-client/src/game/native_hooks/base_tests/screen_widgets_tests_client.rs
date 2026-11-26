@@ -323,7 +323,7 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
             assert_eq!(take_log(&log), ["submit:a"]);
             assert!(game.side.pad.0.menu.osk.is_none());
 
-            game.ui.chat.add_recent("from history");
+            game.side.chat_ui.chat.add_recent("from history");
             game.begin_chat_screen("native draft", false);
             let field = game.mounted_widget_targets()[0];
             game.side.pad.0.menu.focus = Some(field);
@@ -333,7 +333,7 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
             game.pad_osk_output(Output::Text("mounted draft".into()));
             game.pad_osk_output(Output::Previous);
             assert_eq!(
-                game.ui.chat_screen.as_ref().unwrap().value(),
+                game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
                 "native draft"
             );
             assert_eq!(
@@ -345,13 +345,13 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
             game.clear_mounted_widget_focus();
             game.pad_osk_output(Output::Previous);
             assert_eq!(
-                game.ui.chat_screen.as_ref().unwrap().value(),
+                game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
                 "from history"
             );
             game.sync_mounted_focus(field);
             game.pad_osk_output(Output::Next);
             assert_eq!(
-                game.ui.chat_screen.as_ref().unwrap().value(),
+                game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
                 "from history"
             );
             game.pad_osk_output(Output::Enter);

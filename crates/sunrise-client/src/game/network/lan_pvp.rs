@@ -5,8 +5,8 @@
 //! (`ServerPlayer.canHarmPlayer`, `isPvpAllowed`). A player's arrow on
 //! another player lands the same way.
 use super::{
-    Game, chat::PLAYER_NAME, commands::Target, lan_actions::CombatPlayer, lan_mobs::guest_bounds,
-    mace::Spared,
+    Game, chat_common::PLAYER_NAME, commands::Target, lan_actions::CombatPlayer,
+    lan_mobs::guest_bounds, mace::Spared,
 };
 use sunrise_client::enchant::EffectContext;
 

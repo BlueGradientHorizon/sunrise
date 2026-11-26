@@ -102,7 +102,11 @@ fn a_mod_type_on_the_skeleton_draws_and_shoots_an_arrow() {
             );
             assert_eq!(archer.species, Species::Skeleton);
             assert_eq!(archer.class_id(), "minecraft:skeleton");
-            assert_eq!(archer.texture, vanilla.texture);
+            assert_eq!(archer.model_name(), vanilla.model_name());
+            assert_eq!(
+                super::species::def(archer.species).texture,
+                super::species::def(vanilla.species).texture
+            );
             assert_eq!(archer.sounds, vanilla.sounds);
             assert_eq!(archer.max_health, vanilla.max_health);
 
@@ -171,7 +175,11 @@ fn a_mod_type_on_the_drowned_swims_and_fights_in_water() {
             );
             assert_eq!(diver.species, Species::Drowned);
             assert_eq!(diver.class_id(), "minecraft:drowned");
-            assert_eq!(diver.texture, vanilla.texture);
+            assert_eq!(diver.model_name(), vanilla.model_name());
+            assert_eq!(
+                super::species::def(diver.species).texture,
+                super::species::def(vanilla.species).texture
+            );
 
             let mut w = w.clone();
             let player = Vec3::new(6.5, 58.0, 5.5);

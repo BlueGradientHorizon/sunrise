@@ -990,8 +990,12 @@ impl Projectile {
     pub fn arrow_trail(
         &self,
         water: bool,
-    ) -> Vec<(crate::particles::ParticleType, [f64; 3], [f64; 3])> {
-        use crate::particles::ParticleType;
+    ) -> Vec<(
+        sunrise_level::particle_options::ParticleType,
+        [f64; 3],
+        [f64; 3],
+    )> {
+        use sunrise_level::particle_options::ParticleType;
         let mut trail = Vec::new();
         if self.stuck || !self.is_arrow() {
             return trail;
@@ -4552,7 +4556,7 @@ mod tests {
 #[cfg(test)]
 mod trail_tests {
     use super::*;
-    use crate::particles::ParticleType;
+    use sunrise_level::particle_options::ParticleType;
     fn arrow(critical: bool) -> Projectile {
         let mut p = Projectile::new(
             ProjectileKind::Arrow {

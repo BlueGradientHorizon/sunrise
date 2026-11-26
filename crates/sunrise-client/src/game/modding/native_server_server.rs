@@ -136,7 +136,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<PlayerRef> {
         if !self.level_in_place(level)
             || !self.side.lan_guest_swaps.is_empty()
-            || !sunrise_client::lan::conn::valid_name(name)
+            || !sunrise_client::offline_name::valid_name(name)
         {
             return None;
         }

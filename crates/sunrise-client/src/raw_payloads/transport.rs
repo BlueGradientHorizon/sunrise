@@ -15,6 +15,16 @@ impl Transport {
     pub fn capture(side: Side) -> Result<Arc<Self>, String> {
         Ok(Self::new(Local::capture(side)?, side))
     }
+    pub fn capture_with_event_size(
+        side: Side,
+        client_event_size: usize,
+    ) -> Result<Arc<Self>, String> {
+        Ok(Self::new_with_event_size(
+            Local::capture(side)?,
+            side,
+            client_event_size,
+        ))
+    }
     /// A listener shares Local, never mutable connection epochs, across guests.
     pub fn new(local: Arc<Local>, side: Side) -> Arc<Self> {
         if !local.has_declarations() {
@@ -25,7 +35,24 @@ impl Transport {
             local,
         })
     }
-    pub(crate) fn empty() -> Arc<Self> {
+    pub fn new_with_event_size(
+        local: Arc<Local>,
+        side: Side,
+        client_event_size: usize,
+    ) -> Arc<Self> {
+        if !local.has_declarations() {
+            return Self::empty();
+        }
+        Arc::new(Self {
+            connection: Some(Connection::new_with_event_size(
+                local.clone(),
+                side,
+                client_event_size,
+            )),
+            local,
+        })
+    }
+    pub fn empty() -> Arc<Self> {
         static EMPTY: OnceLock<Arc<Transport>> = OnceLock::new();
         EMPTY
             .get_or_init(|| {
@@ -82,7 +109,7 @@ impl Transport {
     }
     /// Wait on the physical reader while main finishes configuration payload
     /// work. The ordered finish action takes the resulting non-waiting commit.
-    pub(crate) fn prepare_play(&self) -> Result<PlayTransition, String> {
+    pub fn prepare_play(&self) -> Result<PlayTransition, String> {
         let Some(connection) = &self.connection else {
             return Ok(PlayTransition(None));
         };
@@ -91,7 +118,7 @@ impl Transport {
     }
     /// If configuration had no Offer, there is no old payload work to wait
     /// for. Install its declarations and commit before resuming the reader.
-    pub(crate) fn accept_empty_and_play(
+    pub fn accept_empty_and_play(
         &self,
         publish: impl FnOnce() -> Result<(), String>,
     ) -> Result<(), String> {
@@ -107,10 +134,10 @@ impl Transport {
     }
 }
 
-pub(crate) struct PlayTransition(Option<(Arc<Connection>, Arc<Epoch>)>);
+pub struct PlayTransition(Option<(Arc<Connection>, Arc<Epoch>)>);
 
 impl PlayTransition {
-    pub(crate) fn commit(self, publish: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+    pub fn commit(self, publish: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
         match self.0 {
             Some((connection, epoch)) => connection.commit_play(epoch, publish),
             None => publish(),

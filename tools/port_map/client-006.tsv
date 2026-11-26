@@ -83,9 +83,9 @@ BabyWolfModel.shakeOffWater	port	crates/sunrise-client/src/mobs/tame.rs::anim	sh
 BabyWolfModel.setSittingPose	port	crates/sunrise-client/src/mobs/tame.rs::anim	baby sitting pose: body xRot minus pi/2
 WolfModel.setSittingPose	port	crates/sunrise-client/src/mobs/tame.rs::anim	sitting pose, adult and baby
 EvokerFangsModel.setupAnim	port	crates/sunrise-client/src/game/mobs/fangs_client.rs::Game::fangs_geometry	jaws, base sink and pre-scale
-SpearAnimations.thirdPersonAttackHand	port	crates/sunrise-client/src/spear.rs::third_person_attack_arm	what a STAB swing adds to the swinging arm's x rotation
+SpearAnimations.thirdPersonAttackHand	port	crates/sunrise-sim/src/spear_sim.rs::third_person_attack_arm	what a STAB swing adds to the swinging arm's x rotation
 SpearAnimations.firstPersonAttack	port	crates/sunrise-client/src/spear.rs::first_person_attack	the first-person jab, applied after the arm transform
-SpearAnimations.UseParams.fromKineticWeapon	port	crates/sunrise-client/src/spear.rs::UseParams::of	the charge timeline and sway values
+SpearAnimations.UseParams.fromKineticWeapon	port	crates/sunrise-sim/src/spear_sim.rs::UseParams::of	the charge timeline and sway values
 SpinAttackEffectModel.createLayer	skip:data		geometry baked into entity-models.json, which Sunrise loads as a resource
 EntityModelSet.bakeLayer	skip:data		baking a layer; Sunrise loads each layer from entity-models.json via load_model
 LayerDefinitions.createRoots	skip:data		layer registry; Sunrise names layers by string key (minecraft:x#main)

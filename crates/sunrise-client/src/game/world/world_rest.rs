@@ -90,15 +90,7 @@ pub(in crate::game) fn load_world_rest(
         let _step = startup::step("rest.mobs");
         let catalog = &resources.motion().attributes;
         let mut types = if draws {
-            match entity_models {
-                Some(document) => MobTypes::load_with_document_and_defaults(
-                    root,
-                    document,
-                    item_defaults.entries(),
-                    catalog,
-                )?,
-                None => MobTypes::load_with_defaults(root, item_defaults.entries(), catalog)?,
-            }
+            MobTypes::load_with_defaults(root, item_defaults.entries(), catalog)?
         } else {
             MobTypes::load_for_server(root, catalog)?
         };
@@ -141,8 +133,7 @@ pub(in crate::game) fn load_world_rest(
                 (k, Arc::new(v))
             })
             .collect();
-        let mut mob_data =
-            sunrise_client::mobs::MobData::load(resource_root, facts.states.len(), draws)?;
+        let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts.states.len())?;
         // NeoForge keys placements by EntityType, not by the subset backed by MobTypes.
         // Use exactly the registry the spawners will consult, with facts already validated.
         mob_data
@@ -153,13 +144,28 @@ pub(in crate::game) fn load_world_rest(
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
         })?;
-        mob_data.cem = std::sync::RwLock::new(Arc::new(if draws {
-            sunrise_client::mobs::cem::CemModels::load(resource_root.source(), &mob_types)
+        #[cfg(feature = "client")]
+        let client_mobs = if draws {
+            let models = match entity_models {
+                Some(document) => sunrise_client::mobs_render::ClientMobModels::load_with_document(
+                    root, document,
+                )?,
+                None => sunrise_client::mobs_render::ClientMobModels::load(root)?,
+            };
+            let data = sunrise_client::mobs_render::ClientMobData::load(resource_root, &models)?;
+            Some(ClientMobTables { models, data })
         } else {
-            sunrise_client::mobs::cem::CemModels::default()
-        }));
+            None
+        };
         sunrise_client::mobs::trial_spawner::load_registry(root);
-        Ok((mob_types, mob_data))
+        #[cfg(feature = "client")]
+        {
+            Ok((mob_types, mob_data, client_mobs))
+        }
+        #[cfg(not(feature = "client"))]
+        {
+            Ok((mob_types, mob_data))
+        }
     };
     let load_transformers = || -> Result<_> {
         let _step = startup::step("rest.transformers_models");
@@ -289,18 +295,11 @@ pub(in crate::game) fn load_world_rest(
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
     let (animate, fog) = animate?;
-    let (mob_types, mut mob_data) = mobs?;
+    #[cfg(feature = "client")]
+    let (mob_types, mob_data, client_mobs) = mobs?;
+    #[cfg(not(feature = "client"))]
+    let (mob_types, mob_data) = mobs?;
     let (transformers, (player_type, player_arm, player_arm_slim, spin_attack)) = transformers?;
-    if draws {
-        mob_data.frame_models = startup::time("rest.frame_models", || {
-            sunrise_client::mobs::render::BakedFrameModels::bake(
-                mob_types
-                    .values()
-                    .chain(player_type.iter())
-                    .map(Arc::as_ref),
-            )
-        });
-    }
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
     log::info!(
@@ -329,6 +328,8 @@ pub(in crate::game) fn load_world_rest(
         mob_types,
         living_type_keys: sunrise_client::health::LivingTypeKeys::resolve(),
         mob_data,
+        #[cfg(feature = "client")]
+        client_mobs,
         spawner_types,
         player_type,
         player_arm,

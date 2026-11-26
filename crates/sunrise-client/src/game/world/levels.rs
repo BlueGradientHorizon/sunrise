@@ -1514,7 +1514,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn lod_source_in(
         &self,
         dim: Dim,
-    ) -> Option<Arc<dyn sunrise_client::streaming::LodSource>> {
+    ) -> Option<Arc<dyn sunrise_level::chunk_streamer::LodSource>> {
         if dim == self.dim {
             return Some(self.streaming.lod_source());
         }
@@ -2258,7 +2258,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         chunk: (i32, i32),
     ) -> std::result::Result<(), mod_api::ChunkLoadError> {
         use mod_api::ChunkLoadError;
-        use sunrise_client::streaming::{FullColumn, full_column_ready};
+        use sunrise_level::chunk_streamer::{FullColumn, full_column_ready};
         let id = parked.map(|level| level.dimension_id());
         let Some((streaming, world)) = self.full_load_level(id) else {
             return Err(ChunkLoadError::Unloaded);
@@ -3129,7 +3129,7 @@ mod tests {
                 stop: false,
                 autosave: true,
             })));
-            game.ui.dispatcher = crate::game::chat::SessionDispatcher(Arc::new(
+            game.ui.dispatcher = crate::game::chat_common::SessionDispatcher(Arc::new(
                 sunrise_client::command::vanilla::build_for(false, true),
             ));
             game.lan_host(

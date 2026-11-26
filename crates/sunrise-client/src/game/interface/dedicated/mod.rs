@@ -959,6 +959,16 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let online = if props.online_mode {
             Some(Arc::new(OnlineMode::generate(
                 props.prevent_proxy_connections,
+                Arc::new(|name, digest, ip| {
+                    sunrise_client::auth::has_joined(name, digest, ip)
+                        .map(|opt| {
+                            opt.map(|p| sunrise_client::lan::VerifiedSession {
+                                uuid: p.uuid,
+                                properties: p.properties,
+                            })
+                        })
+                        .map_err(|_| sunrise_client::lan::SessionVerifyError::Unavailable)
+                }),
             )?))
         } else {
             None

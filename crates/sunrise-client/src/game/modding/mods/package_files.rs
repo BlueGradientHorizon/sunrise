@@ -394,7 +394,8 @@ pub(in crate::game) mod tests {
         mods: &ModsState,
         path: &Path,
     ) -> (Content, sunrise_assets::resource_source::ResourceRoot) {
-        use sunrise_client::mod_content::{ContentMod, resolved_resources};
+        use sunrise_client::mod_content::ContentMod;
+        use sunrise_client::mod_content_client::resolved_resources;
         let id = &mods.selected[0].package.manifest.id;
         let content = read_contents(&[ContentRequest {
             path,

@@ -1030,6 +1030,23 @@ mod tests {
         root
     }
 
+    fn server_sources(
+        root: &std::path::Path,
+        overlay: &sunrise_world::loot::PackOverlay,
+    ) -> crate::crafting::ResolvedSources {
+        let defaults =
+            sunrise_world::item_defaults::read(root).expect("test item defaults must load");
+        let items =
+            crate::items::Items::catalog(root, overlay, &defaults).expect("test items must load");
+        crate::crafting::ResolvedSources::load(
+            root,
+            &items,
+            overlay,
+            &crate::test_resources::server_load(),
+        )
+        .expect("test recipe sources must load")
+    }
+
     /// The server's sync over `root`, and the one entry of `id` read back as
     /// the client's `RecipeBookEntry::read` reads it.
     fn entry(root: &std::path::Path, id: &str) -> (SyncData, RecipeBookEntry) {
@@ -1038,7 +1055,7 @@ mod tests {
             root,
             &sunrise_world::loot::PackOverlay::NONE,
             &defaults,
-            &crate::test_resources::server_sources(root, &sunrise_world::loot::PackOverlay::NONE),
+            &server_sources(root, &sunrise_world::loot::PackOverlay::NONE),
         )
         .unwrap();
         let entries = sync
@@ -1306,13 +1323,8 @@ mod tests {
             None => sunrise_world::loot::PackOverlay::NONE,
         };
         let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-        let sync = SyncData::load(
-            &root,
-            &overlay,
-            &defaults,
-            &crate::test_resources::server_sources(&root, &overlay),
-        )
-        .unwrap();
+        let sync =
+            SyncData::load(&root, &overlay, &defaults, &server_sources(&root, &overlay)).unwrap();
         // What the craft hands the book: find_with over the crafting
         // copy, the way award_crafted calls it.
         let items = crate::items::Items::catalog(&root, &overlay, &defaults).unwrap();
@@ -1559,7 +1571,7 @@ mod tests {
             &root,
             &sunrise_world::loot::PackOverlay::NONE,
             &defaults,
-            &crate::test_resources::server_sources(&root, &sunrise_world::loot::PackOverlay::NONE),
+            &server_sources(&root, &sunrise_world::loot::PackOverlay::NONE),
         )
         .unwrap();
         let item = |n: &str| sync.id("minecraft:item", n).unwrap();
@@ -1611,13 +1623,8 @@ mod tests {
         )];
         let overlay = sunrise_world::loot::PackOverlay::new(&packs);
         let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-        let sync = SyncData::load(
-            &root,
-            &overlay,
-            &defaults,
-            &crate::test_resources::server_sources(&root, &overlay),
-        )
-        .unwrap();
+        let sync =
+            SyncData::load(&root, &overlay, &defaults, &server_sources(&root, &overlay)).unwrap();
         let item = |n: &str| sync.id("minecraft:item", n).unwrap();
         let mut r = Reader::new(&sync.recipes);
         for _ in 0..r.varint().unwrap() {
@@ -1685,7 +1692,7 @@ mod tests {
         let brewing = Brewing::load(&root, &items, &PackOverlay::NONE);
         let banners = Banners::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         // Literal registry ids, counts and item names, independent of either
         // projection's order. With no file, retain vanilla registration order.
         for (priority_file, expected) in [
@@ -1709,7 +1716,7 @@ mod tests {
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();
                 std::fs::write(path, file).unwrap();
             }
-            let sources = crate::test_resources::server_sources(&root, &PackOverlay::NONE);
+            let sources = server_sources(&root, &PackOverlay::NONE);
             let sync = SyncData::load(&root, &PackOverlay::NONE, &defaults, &sources).unwrap();
             let recipes =
                 Recipes::from_resolved(&root, &items, &PackOverlay::NONE, &sources).unwrap();
@@ -1804,14 +1811,14 @@ mod tests {
             &root,
             &sunrise_world::loot::PackOverlay::NONE,
             &sunrise_world::item_defaults::read(&root).unwrap(),
-            &crate::test_resources::server_sources(&root, &sunrise_world::loot::PackOverlay::NONE),
+            &server_sources(&root, &sunrise_world::loot::PackOverlay::NONE),
         )
         .unwrap();
         let packed = SyncData::load(
             &root,
             &overlay,
             &sunrise_world::item_defaults::read(&root).unwrap(),
-            &crate::test_resources::server_sources(&root, &overlay),
+            &server_sources(&root, &overlay),
         )
         .unwrap();
         let over = SyncData::load_over(
@@ -1820,7 +1827,7 @@ mod tests {
             None,
             &packed,
             &sunrise_world::item_defaults::read(&root).unwrap(),
-            &crate::test_resources::server_sources(&root, &overlay),
+            &server_sources(&root, &overlay),
         )
         .unwrap();
         let full = SyncData::load_with_kept(
@@ -1829,7 +1836,7 @@ mod tests {
             None,
             Some(&packed),
             &sunrise_world::item_defaults::read(&root).unwrap(),
-            &crate::test_resources::server_sources(&root, &overlay),
+            &server_sources(&root, &overlay),
         )
         .unwrap();
         assert_ne!(full.recipes, vanilla.recipes, "the pack's recipe is sent");
@@ -1866,7 +1873,7 @@ mod tests {
             &root,
             &sunrise_world::loot::PackOverlay::NONE,
             &defaults,
-            &crate::test_resources::server_sources(&root, &sunrise_world::loot::PackOverlay::NONE),
+            &server_sources(&root, &sunrise_world::loot::PackOverlay::NONE),
         )
         .unwrap();
         assert_eq!(
@@ -1962,13 +1969,8 @@ mod tests {
         )];
         let overlay = sunrise_world::loot::PackOverlay::new(&packs);
         let defaults = sunrise_world::item_defaults::read(&root).unwrap();
-        let sync = SyncData::load(
-            &root,
-            &overlay,
-            &defaults,
-            &crate::test_resources::server_sources(&root, &overlay),
-        )
-        .unwrap();
+        let sync =
+            SyncData::load(&root, &overlay, &defaults, &server_sources(&root, &overlay)).unwrap();
         let entries = sync.advancements.book_entries(
             "minecraft:copper_ingot_from_smelting_raw_copper",
             &sync,
@@ -2064,7 +2066,7 @@ mod tests {
             &root,
             none,
             &sunrise_world::item_defaults::read(&root).unwrap(),
-            &crate::test_resources::server_sources(&root, none),
+            &server_sources(&root, none),
         )
         .unwrap();
         let items = Items::catalog(

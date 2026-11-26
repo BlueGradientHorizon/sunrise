@@ -81,7 +81,8 @@ struct DetachedPlayerHud {
     main_hand: Option<ItemStack>,
 }
 
-struct Ui { hide_gui: bool }
+struct ChatUi { hide_gui: bool }
+struct Side { chat_ui: ChatUi }
 
 #[derive(Clone)]
 struct ResolvedCameraEntity {
@@ -97,7 +98,7 @@ mod game_impl {
 
     pub struct Game {
         pub world: World,
-        pub ui: Ui,
+        pub side: Side,
         pub mobs: Vec<Mob>,
         pub mob_index: MobIndex,
         pub camera: Option<ResolvedCameraEntity>,
@@ -147,7 +148,7 @@ use game_impl::Game;
 fn base_game() -> Game {
     Game {
         world: World,
-        ui: Ui { hide_gui: false },
+        side: Side { chat_ui: ChatUi { hide_gui: false } },
         mobs: Vec::new(),
         mob_index: MobIndex,
         camera: Some(ResolvedCameraEntity {
@@ -224,7 +225,7 @@ fn camera_entity_and_mode_gate_block_outline_before_hook() {
     assert_eq!(game.run_outline(), game.hit);
 
     // Hidden HUD suppresses outline.
-    game.ui.hide_gui = true;
+    game.side.chat_ui.hide_gui = true;
     assert_eq!(game.run_outline(), None);
 }
 """.replace("GATE_HIT", gate_hit).replace("GATE_FN", gate_fn).replace("FILTER", source[start:end])

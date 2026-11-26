@@ -1,10 +1,10 @@
 //! How a forced chunk's ring is ranked (#13175).
-use super::{Band, FORCED_TERRAIN_RING, Ranges, Streaming};
+use super::{Band, ChunkState, FORCED_TERRAIN_RING, Ranges};
 use std::collections::HashSet;
 
 type Chunks = HashSet<(i32, i32)>;
 
-/// What queued jobs were ranked from (`Streaming::requeue`): the centre, the
+/// What queued jobs were ranked from (`ChunkStreamer::requeue`): the centre, the
 /// band, the extra areas, and the forced chunks.
 #[derive(Default)]
 pub(super) struct Basis {
@@ -14,7 +14,7 @@ pub(super) struct Basis {
 }
 
 /// Whether the queued jobs' ranking is out of date; it is brought up to date.
-pub(super) fn basis_changed(s: &mut Streaming) -> bool {
+pub(super) fn basis_changed(s: &mut ChunkState) -> bool {
     let b = &mut s.queue_basis;
     let same = b.player == (s.center, s.band) && b.extra == s.extra && b.forced == s.forced;
     if !same {
@@ -152,17 +152,19 @@ mod tests {
     }
 
     /// Jobs queued before a chunk was forced follow it once it is
-    /// (`Streaming::requeue` ranks them again).
+    /// (`ChunkStreamer::requeue` ranks them again).
     #[test]
     fn queued_jobs_follow_a_forced_chunk() {
         use super::super::{Job, Queued, rank_again};
         use std::collections::BinaryHeap;
-        let job = |x, z, order| Queued {
-            priority: 0,
-            at: Some((x, z)),
-            bias: 0,
-            order,
-            job: Job::Generate(x, z),
+        let job = |x, z, order| -> Queued {
+            Queued {
+                priority: 0,
+                at: Some((x, z)),
+                bias: 0,
+                order,
+                job: Job::Generate(x, z),
+            }
         };
         let first_after = |forced: &HashSet<(i32, i32)>| {
             let ranges = Ranges {

@@ -142,9 +142,12 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
             let run = |game: &mut crate::game::ServerGame<'_>, line: &str| {
+                let prev = game.side.chat_capture.replace(Vec::new());
                 game.execute_line(line, game.player_source())
                     .unwrap_or_else(|e| panic!("{line}: {}", e.message.plain()));
-                game.ui.chat.recent_lines(1).concat()
+                let lines =
+                    std::mem::replace(&mut game.side.chat_capture, prev).unwrap_or_default();
+                lines.last().map(|t| t.plain()).unwrap_or_default()
             };
             let summoned = run(
                 game,

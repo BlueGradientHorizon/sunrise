@@ -2,7 +2,7 @@
 //! `this.createWitherRose(killer)` for a dying player: the killer's kill
 //! counts and `player_kills` whatever killed them, and the wither rose a
 //! wither's kill leaves where they fell.
-use super::{chat::PLAYER_NAME, native_entity_refs::tests::run_fresh_cases, *};
+use super::{chat_common::PLAYER_NAME, native_entity_refs::tests::run_fresh_cases, *};
 use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost, StatType};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
 use sunrise_client::{

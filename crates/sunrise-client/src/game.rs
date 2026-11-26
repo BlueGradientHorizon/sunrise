@@ -394,6 +394,7 @@ mod cauldron_prediction;
 pub(in crate::game) use server_side::cauldron_underwater_tests;
 #[path = "game/blocks/cauldrons.rs"]
 mod cauldrons;
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::chat;
 #[allow(unused_imports)]
@@ -3063,7 +3064,7 @@ use sunrise_client::{
     collisions,
     containers::{BlockEntity, Providers},
     crafting::Recipes,
-    creative::{Creative, Names},
+    creative::Creative,
     entities::{Experience, ExperienceOrb, ItemEntity},
     environment::Environment,
     first_person::{Hand, SwingAnimation},
@@ -3086,7 +3087,6 @@ use sunrise_client::{
     spans,
     sprint::Keys,
     streaming::{Streaming, WorkerContext},
-    testgen::TestTerrain,
     title::{Action, Title},
     vanillagen::VanillaTerrain,
     world::World,
@@ -3099,8 +3099,10 @@ use sunrise_core::{
 };
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_level::testgen::TestTerrain;
 #[allow(unused_imports)]
 use sunrise_mod_package::selection::{Argument, LaunchArguments};
+use sunrise_sim::item_names::Names;
 #[allow(unused_imports)]
 use winit::{
     application::ApplicationHandler,
@@ -3671,6 +3673,12 @@ struct WorldCore {
     threads: usize,
 }
 
+#[cfg(feature = "client")]
+pub(in crate::game) struct ClientMobTables {
+    pub(in crate::game) models: sunrise_client::mobs_render::ClientMobModels,
+    pub(in crate::game) data: sunrise_client::mobs_render::ClientMobData,
+}
+
 struct WorldRest {
     items: Arc<Items>,
     recipes: Recipes,
@@ -3680,6 +3688,8 @@ struct WorldRest {
     /// resources as each mob type's own key is ([`MobType::type_key`]).
     living_type_keys: sunrise_client::health::LivingTypeKeys,
     mob_data: sunrise_client::mobs::MobData,
+    #[cfg(feature = "client")]
+    client_mobs: Option<ClientMobTables>,
     /// Complete pre-creation facts for the registered entity types.
     spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
     providers: Providers,
@@ -4175,9 +4185,6 @@ struct Game<'a, S> {
     dragon: native_entity_refs::dragon_parts_table::DragonSlot,
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
     breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
-    /// `ProfileResolver.Cached`: `Dynamic` profiles (name- or id-only heads
-    /// and mannequins) resolve through the services in the background.
-    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     /// The boat the player rides.
     riding: Option<u32>,
     /// The mount the last `position_rider` put the player on, to tell the tick
@@ -4261,7 +4268,7 @@ struct Game<'a, S> {
     block_reach: f64,
     /// Live attachments and original snapshots retained during player replacement.
     player_state: original_player::PlayerState,
-    ui: chat::UiState,
+    ui: chat_common::WorldCommandState,
     mount: mounts::MountState,
     stats: stats::Stats,
     score: scoreboard::ScoreState,
@@ -5819,9 +5826,9 @@ struct ServerConstructEffects {
     structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
     clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
-    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
+    profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver>,
     profile: profile_capture::Profile,
-    ui: chat::UiState,
+    ui: chat_common::WorldCommandState,
 }
 
 #[cfg(feature = "client")]
@@ -5829,11 +5836,10 @@ struct ClientConstructEffectsBundle {
     clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
     skin_downloads: RefCell<sunrise_client::skins::Downloader>,
-    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     profile: profile_capture::Profile,
     registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
     debug_entries: sunrise_client::debug_entries::DebugEntries,
-    ui: chat::UiState,
+    ui: chat_common::WorldCommandState,
     client: Box<client_state::ClientConstructEffects>,
 }
 
@@ -5953,7 +5959,6 @@ pub(in crate::game) struct WrappedRendererInit {
 
 struct WrappedPrepInit {
     item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
-    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     level: Level,
     painting_variants: paintings::PaintingVariants,
     world: World,
@@ -5966,7 +5971,7 @@ struct WrappedPrepInit {
     clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
     profile: profile_capture::Profile,
-    ui: chat::UiState,
+    ui: chat_common::WorldCommandState,
 }
 
 // Const-generic impl keeps constructor helpers out of line without creating replacement slots.
@@ -6086,13 +6091,13 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
         let ws = Self::build_wrapped_server();
         let server = ServerState::build(
             effects.structure_spawns,
+            effects.profile_resolver,
             server_side::ServerShared::new(prep.save),
             server_side::ServerOnly::new(prep.creative_catalog),
             ws,
         );
         let wp = Box::new(WrappedPrepInit {
             item_features: prep.item_features,
-            skin_profiles: effects.skin_profiles,
             level: prep.level,
             painting_variants: prep.painting_variants,
             world: prep.world,
@@ -6143,7 +6148,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
         );
         let wp = Box::new(WrappedPrepInit {
             item_features: prep.item_features,
-            skin_profiles: effects.skin_profiles,
             level: prep.level,
             painting_variants: prep.painting_variants,
             world: prep.world,
@@ -6265,7 +6269,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             dragon: Default::default(),
             crystals: Default::default(),
             breath_clouds: Default::default(),
-            skin_profiles: wp.skin_profiles,
             riding: None,
             posed_rider: None,
             pending: Default::default(),
@@ -6418,14 +6421,17 @@ impl<'a> ServerGame<'a> {
         let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
         let clock = FixedStep::default();
         let tick = sunrise_client::parallel::TickThread::mint();
-        let skin_profiles = RefCell::new(sunrise_client::skins::Resolver::new());
+        let profile_resolver: Box<dyn sunrise_level::profile_lookup::ProfileResolver> =
+            Box::new(sunrise_client::skins::SharedResolver(
+                std::sync::Mutex::new(sunrise_client::skins::Resolver::new()),
+            ));
         let profile = profile_capture::Profile::new(slow_frame_ms);
-        let ui = chat::UiState::new();
+        let ui = chat_common::WorldCommandState::default();
         Box::new(ServerConstructEffects {
             structure_spawns,
             clock,
             tick,
-            skin_profiles,
+            profile_resolver,
             profile,
             ui,
         })
@@ -6648,7 +6654,8 @@ impl<'a> ClientGame<'a> {
         let debug_entries = sunrise_client::debug_entries::DebugEntries::load(
             &std::env::current_dir().unwrap_or_default(),
         );
-        let ui = chat::UiState::new();
+        let ui = chat_common::WorldCommandState::default();
+        let chat_ui = chat::ChatUiState::new();
         let client = Box::new(client_state::ClientConstructEffects {
             fog,
             vanilla_mappings,
@@ -6659,12 +6666,13 @@ impl<'a> ClientGame<'a> {
             narration,
             tick_script,
             social,
+            skin_profiles,
+            chat_ui,
         });
         Box::new(ClientConstructEffectsBundle {
             clock,
             tick,
             skin_downloads,
-            skin_profiles,
             profile,
             registered_debug_entries,
             debug_entries,

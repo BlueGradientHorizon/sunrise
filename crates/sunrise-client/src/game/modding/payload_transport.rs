@@ -7,7 +7,9 @@ use mod_api::{
     TransactionContext, TransactionScopeError, TransactionUnavailable,
 };
 use std::sync::Arc;
-use sunrise_client::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, connection::Epoch};
+use sunrise_client::raw_payloads::{
+    Body, ClientEvent, Endpoint, Incoming, Prepared, Side, connection::Epoch,
+};
 use sunrise_protocol::payload_negotiation::Phase;
 
 /// Fits the journal-growth allowance already charged by each prepared operation.
@@ -71,9 +73,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .and_then(|remote| remote.session.payload_transport().epoch())
             .is_some_and(|epoch| epoch.sends(&id.0))
     }
-    pub(in crate::game) fn queue_current_payload(
+    pub(in crate::game) fn queue_current_payload<E: ClientEvent>(
         &mut self,
-        endpoint: Endpoint,
+        endpoint: Endpoint<E>,
         id: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<PayloadAccepted, PayloadSendError> {
@@ -83,9 +85,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .ok_or(PayloadSendError::NotNegotiated)?;
         self.queue_payload(endpoint, epoch, id, bytes)
     }
-    pub(in crate::game) fn queue_payload(
+    pub(in crate::game) fn queue_payload<E: ClientEvent>(
         &mut self,
-        endpoint: Endpoint,
+        endpoint: Endpoint<E>,
         epoch: Arc<Epoch>,
         id: &PayloadId,
         bytes: PayloadBytes,
@@ -98,7 +100,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-    pub(in crate::game) fn run_payload(&mut self, endpoint: Endpoint, incoming: Incoming) {
+    pub(in crate::game) fn run_payload<E: ClientEvent>(
+        &mut self,
+        endpoint: Endpoint<E>,
+        incoming: Incoming,
+    ) {
         if !incoming.epoch.active() {
             return;
         }
@@ -159,15 +165,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         // The rest of Incoming releases the turn and ingress credit after publication/rollback.
     }
 }
-struct MainContext<'a, 'resources, S: crate::game::Side> {
+struct MainContext<'a, 'resources, S: crate::game::Side, E: ClientEvent> {
     game: &'a mut Game<'resources, S>,
     epoch: &'a Arc<Epoch>,
-    endpoint: Endpoint,
+    endpoint: Endpoint<E>,
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
     failure: Option<CallbackFailure>,
 }
-impl<S: crate::game::Side> IPayloadContext for MainContext<'_, '_, S> {
+impl<S: crate::game::Side, E: ClientEvent> IPayloadContext for MainContext<'_, '_, S, E> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
         if !self.epoch.active() || self.disconnect.is_some() {
             return Err(PayloadContextError::Disconnected);

@@ -418,11 +418,11 @@ fn server_close_restores_inventory_under_chat_without_echo() {
                                 && stack.count == inventory_carry.count)
                     );
                     assert_eq!(game.side.screen, Screen::Playing);
-                    assert!(game.ui.chat_screen.is_none());
+                    assert!(game.side.chat_ui.chat_screen.is_none());
                     assert!(game.side.inv_drag.is_none());
                     game.open_chat_method("");
                     assert_eq!(
-                        game.ui.chat_screen.as_ref().unwrap().value(),
+                        game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
                         "draft from a container"
                     );
                     game.close_chat(crate::game::chat::ChatExit::Intentional);

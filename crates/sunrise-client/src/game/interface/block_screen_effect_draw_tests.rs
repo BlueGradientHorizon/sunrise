@@ -210,9 +210,9 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
                 ..LEAVE
             };
             *PLAN.lock().unwrap() = plan;
-            game.ui.hide_gui = true;
+            game.side.chat_ui.hide_gui = true;
             let prepended = quads(game);
-            game.ui.hide_gui = false;
+            game.side.chat_ui.hide_gui = false;
             assert_eq!(names(&prepended), ["mod block", "block", "fire", "fire"]);
             assert_eq!(
                 ASKED.lock().unwrap().drain(..).collect::<Vec<_>>(),
@@ -668,16 +668,16 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
             assert!(!overlays.contains(&"water") && !overlays.contains(&"mod water"));
         });
         assert_eq!(dry, None);
-        assert_eq!(game.ui.death_time, 1);
+        assert_eq!(game.side.chat_ui.death_time, 1);
 
         // Tick 20 still samples before the local player is removed from the level.
         for _ in 1..19 {
             game.tick_remote().unwrap();
         }
-        assert_eq!(game.ui.death_time, 19);
+        assert_eq!(game.side.chat_ui.death_time, 19);
         game.world.set(8, 65, 8, water).unwrap();
         game.tick_remote().unwrap();
-        assert_eq!(game.ui.death_time, 20);
+        assert_eq!(game.side.chat_ui.death_time, 20);
         assert!(names(&quads(game)).contains(&"water"));
 
         // Extraction still reads that last sample after removal, even as the world ticks.
@@ -691,7 +691,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
             );
         });
         assert_eq!(still_wet.unwrap().pos, BlockPos::new(8, 65, 8));
-        assert_eq!(game.ui.death_time, 20);
+        assert_eq!(game.side.chat_ui.death_time, 20);
         server.shutdown();
     });
 }

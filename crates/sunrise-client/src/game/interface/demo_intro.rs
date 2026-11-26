@@ -294,7 +294,7 @@ mod tests {
                         .unwrap();
                         game.remote.as_mut().unwrap().level_load.finish();
                         game.side.focused = true;
-                        game.ui.chat.set_abilities(
+                        game.side.chat_ui.chat.set_abilities(
                             &game.gui.atlas.font,
                             ChatAbilities::new(ChatVisibility::Hidden),
                         );
@@ -407,8 +407,8 @@ mod tests {
                             assert_eq!(game.side.screen, Screen::Playing);
                             assert_eq!(game.remote.as_ref().unwrap().chat_received, count + 1);
                             let expected = json!({"translate": key, "with": args.iter().map(|label| json!({"text": label.to_string()})).collect::<Vec<_>>()});
-                            assert_eq!(game.ui.chat.recent_components(1), [expected]);
-                            let chat = game.ui.chat.recent_lines(1).pop().unwrap();
+                            assert_eq!(game.side.chat_ui.chat.recent_components(1), [expected]);
+                            let chat = game.side.chat_ui.chat.recent_lines(1).pop().unwrap();
                             assert_eq!(
                                 std::mem::take(&mut *spoken.lock().unwrap()),
                                 [(chat, false)]

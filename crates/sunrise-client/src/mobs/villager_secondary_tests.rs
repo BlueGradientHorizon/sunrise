@@ -39,7 +39,7 @@ fn fixture(
             );
             super::super::super::villager::set_profession(
                 &mut m,
-                sunrise_client::mobs::villager::profession_table(),
+                crate::mobs::villager::profession_table(),
                 usize::from(profession),
             );
             let tags = if entries.is_empty() {

@@ -220,7 +220,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The skin's OptiFine emissive overlay, full bright.
         let glow = self
             .res
-            .mob_data()
+            .client_mob_data()
             .emissive
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

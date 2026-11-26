@@ -522,7 +522,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             page_keys: self.pad_radial_page_keys(),
             cancel: self.menu_glyph(MenuJob::Back),
             backing: (self.settings.text_background(radial_overlay::CHIP_BACKING) >> 24) as u8,
-            room: &self.ui.room,
+            room: &self.side.chat_ui.room,
         };
         let painter = super::super::item_draw::IconPainter { game: self };
         radial_overlay::draw_overlay(batch, &self.gui.atlas, &painter, &dial, look, clock);
@@ -552,7 +552,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 CameraType::ThirdPersonBack => View::ThirdPersonBack,
                 CameraType::ThirdPersonFront => View::ThirdPersonFront,
             },
-            hud_hidden: self.ui.hide_gui,
+            hud_hidden: self.side.chat_ui.hide_gui,
             cinematic: self.side.smooth_camera,
         }
     }

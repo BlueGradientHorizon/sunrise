@@ -4180,7 +4180,9 @@ pub(in crate::game) mod network_settings_tests {
         // online-mode=false: no key.
         assert!(!online_mode_of(&config));
         // online-mode=true: the server's key.
-        config.online = Some(std::sync::Arc::new(OnlineMode::generate(false).unwrap()));
+        config.online = Some(std::sync::Arc::new(
+            OnlineMode::generate(false, std::sync::Arc::new(|_, _, _| Ok(None))).unwrap(),
+        ));
         assert!(online_mode_of(&config));
     }
 }

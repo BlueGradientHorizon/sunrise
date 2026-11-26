@@ -665,7 +665,7 @@ impl EmissionWorld for Eater<'_> {
         let m = &mut *self.m;
         let (at, eye) = ([m.position.x, m.position.y, m.position.z], m.eye_y());
         let (pitch, yaw) = (m.head_pitch, m.yaw);
-        crate::particles::item_use_particles(
+        sunrise_level::particle_options::item_use_particles(
             &mut m.random,
             pitch,
             yaw,

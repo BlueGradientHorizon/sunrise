@@ -165,7 +165,7 @@ pub mod studio_ui;
 pub mod tab_list;
 pub use sunrise_level::test_block;
 pub use sunrise_level::test_instance_block;
-pub mod testgen;
+pub use sunrise_level::testgen;
 pub mod trims;
 pub mod ui;
 pub use sunrise_level::vault;

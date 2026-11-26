@@ -6,7 +6,10 @@ use super::{
     Game,
     stations::{Kind, Station},
 };
-use sunrise_client::mobs::{Mob, Species, render::VILLAGER_TYPES, villager};
+use sunrise_client::mobs::{
+    Mob, Species,
+    villager::{self, VILLAGER_TYPES},
+};
 use sunrise_client::{
     items::ItemStack,
     merchant::{self, MerchantOffer, TradeContext, TradeFeedback},

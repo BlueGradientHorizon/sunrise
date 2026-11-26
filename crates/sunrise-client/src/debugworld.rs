@@ -1,9 +1,7 @@
 //! `DebugLevelSource`: the `minecraft:debug` generator of the Debug world preset,
 //! a grid of every block state floating over a layer of barriers.
-use crate::{
-    chunk::{Chunk, LevelShape},
-    streaming::ChunkGenerator,
-};
+use crate::chunk::{Chunk, LevelShape};
+use sunrise_level::chunk_streamer::ChunkGenerator;
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockRegistry};
 
 /// `DebugLevelSource.HEIGHT`: the layer the block states stand in.
@@ -78,12 +76,12 @@ impl ChunkGenerator for DebugTerrain {
     /// DebugLevelSource's proto is already its decorated column. Keep a copy
     /// for lighting a finished neighbour outside the kept area, matching the
     /// vanilla FEATURES neighbour path.
-    fn light_view(&self, proto: &crate::streaming::Proto) -> Option<Chunk> {
+    fn light_view(&self, proto: &sunrise_level::chunk_streamer::Proto) -> Option<Chunk> {
         proto.downcast_ref::<Chunk>().cloned()
     }
     /// `DebugLevelSource.buildTerrain` builds nothing; `applyBiomeDecoration`
     /// writes the barriers and the grid.
-    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> crate::streaming::Proto {
+    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> sunrise_level::chunk_streamer::Proto {
         let mut chunk = Chunk::with_layout(cx, cz, self.shape.column());
         for s in &mut chunk.sections {
             std::sync::Arc::make_mut(s).biomes = sunrise_core::paletted::PalettedContainer::new(
@@ -106,7 +104,7 @@ impl ChunkGenerator for DebugTerrain {
         Box::new(chunk)
     }
     /// `spawnOriginalMobs` is empty.
-    fn finish(&self, proto: crate::streaming::Proto) -> Chunk {
+    fn finish(&self, proto: sunrise_level::chunk_streamer::Proto) -> Chunk {
         *proto.downcast::<Chunk>().expect("debug terrain proto")
     }
 }
@@ -145,7 +143,7 @@ mod tests {
         };
         let mut chunk = Chunk::empty(-2, 5);
         chunk.set(0, 0, 0, 42);
-        let proto: crate::streaming::Proto = Box::new(chunk);
+        let proto: sunrise_level::chunk_streamer::Proto = Box::new(chunk);
         let view = terrain.light_view(&proto).expect("debug proto light view");
         assert_eq!((view.x, view.z), (-2, 5));
         assert_eq!(view.block(0, 0, 0).0, 42);

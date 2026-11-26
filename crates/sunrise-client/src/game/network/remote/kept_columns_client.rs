@@ -57,8 +57,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if gone.is_empty() {
             return;
         }
-        let freed =
-            sunrise_client::streaming::Streaming::take_remote_columns(&mut self.world, gone);
+        let freed = sunrise_level::chunk_streamer::ChunkStreamer::take_remote_columns(
+            &mut self.world,
+            gone,
+        );
         self.streaming.forget_columns(&mut self.world, gone);
         if keep_terrain && let Some(lod) = &mut self.side.lod.0 {
             for chunk in &freed {

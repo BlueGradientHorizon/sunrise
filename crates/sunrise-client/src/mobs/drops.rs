@@ -4,9 +4,10 @@
 //! sequence), `Mob.dropCustomDeathLoot` (equipment by drop chance, with the
 //! entity random), the species' extra drops (an enderman's carried block) and
 //! the experience orbs.
-use super::{Mob, Species, equine, gear, raider, render::DYE_NAMES};
+use super::{Mob, Species, equine, gear, raider};
 use crate::random_sequences::RandomSequences;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_level::dyes::DYE_NAMES;
 use sunrise_world::{
     loot::{EnchantedLevel, EntityLootParams, LootDamage, LootData, LootEntity, LootStack},
     registry::BlockStateId,

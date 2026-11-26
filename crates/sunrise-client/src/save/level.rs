@@ -119,18 +119,20 @@ pub struct Level {
     pub singleplayer_file: bool,
 }
 
+const DIFFICULTIES: [&str; 4] = ["peaceful", "easy", "normal", "hard"];
+
 impl Level {
     /// `PrimaryLevelData.setDifficulty`: the level data holds the world's
     /// difficulty, so the game and the file follow each other and a world
     /// that was set to hard is hard when it is opened again.
     pub fn set_difficulty(&mut self, difficulty: u8) {
-        self.difficulty = crate::title::DIFFICULTIES[difficulty as usize % 4].to_owned();
+        self.difficulty = DIFFICULTIES[difficulty as usize % 4].to_owned();
     }
 
     /// `PrimaryLevelData.getDifficulty`: the id of the level data's
     /// difficulty (peaceful 0 .. hard 3), normal when it is not one of them.
     pub fn difficulty_id(&self) -> u8 {
-        crate::title::DIFFICULTIES
+        DIFFICULTIES
             .iter()
             .position(|d| *d == self.difficulty)
             .map_or(2, |i| i as u8)

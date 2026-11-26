@@ -222,7 +222,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             frame
                                 .name
                                 .clone()
-                                .unwrap_or_else(|| super::chat::PLAYER_NAME.to_owned()),
+                                .unwrap_or_else(|| super::chat_common::PLAYER_NAME.to_owned()),
                         )
                     })
                 },

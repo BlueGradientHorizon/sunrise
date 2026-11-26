@@ -3,12 +3,10 @@
 //! carvers, structures or features, over the stem's one biome or a biome source
 //! a mod registered. One that asks for a stage runs on the vanilla pipeline
 //! (`VanillaTerrain::for_mod`).
-use crate::{
-    chunk::{Chunk, LevelShape},
-    streaming::ChunkGenerator,
-};
+use crate::chunk::{Chunk, LevelShape};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
+use sunrise_level::chunk_streamer::ChunkGenerator;
 use sunrise_world::{
     registry::{BlockRegistry, BlockStateId},
     worldgen::{
@@ -128,7 +126,7 @@ impl ChunkAccess for Filling<'_> {
 impl ChunkGenerator for ModTerrain {
     type Worker = ();
     fn worker(&self) {}
-    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> crate::streaming::Proto {
+    fn proto(&self, _: &mut (), cx: i32, cz: i32) -> sunrise_level::chunk_streamer::Proto {
         let mut chunk = Chunk::with_layout(cx, cz, self.shape.column());
         match &self.biomes {
             Biomes::Fixed(biome) => {
@@ -163,7 +161,7 @@ impl ChunkGenerator for ModTerrain {
         }
         Box::new(chunk)
     }
-    fn finish(&self, proto: crate::streaming::Proto) -> Chunk {
+    fn finish(&self, proto: sunrise_level::chunk_streamer::Proto) -> Chunk {
         *proto.downcast::<Chunk>().expect("mod terrain proto")
     }
 }

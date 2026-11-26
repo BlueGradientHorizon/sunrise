@@ -553,9 +553,8 @@ mod camel_pose_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mobs::{Anim, Brain, Flags, MobType, Part, Species};
+    use crate::mobs::{Anim, Brain, Flags, MobType, Species};
     use crate::mobs::{leash::Holder, world::with_test_world};
-    use serde_json::json;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
 
@@ -641,10 +640,8 @@ mod tests {
     }
 
     fn camel() -> Mob {
-        let model = Arc::new(Part::parse("root", &json!({"children": {"head": {}}})));
         let kind = Arc::new(MobType {
             type_key: Default::default(),
-            shadow: None,
             id: "minecraft:camel".into(),
             species: Species::Camel,
             width: 1.7,
@@ -680,9 +677,6 @@ mod tests {
                 animal: true,
                 ..Default::default()
             },
-            model,
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Camel,
             sounds: [""; 3],

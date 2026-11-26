@@ -1066,7 +1066,7 @@ pub(in crate::game) fn dye_color_mix_in_recipes(
     b: u8,
 ) -> Option<u8> {
     let dye = |c: u8| {
-        let name = sunrise_client::mobs::render::DYE_NAMES[usize::from(c) & 15];
+        let name = sunrise_level::dyes::DYE_NAMES[usize::from(c) & 15];
         Some(ItemStack::new(&format!("minecraft:{name}_dye"), 1))
     };
     let grid = [dye(a), dye(b), None, None];
@@ -1075,7 +1075,7 @@ pub(in crate::game) fn dye_color_mix_in_recipes(
         .item
         .strip_prefix("minecraft:")?
         .strip_suffix("_dye")?;
-    let index = sunrise_client::mobs::render::DYE_NAMES
+    let index = sunrise_level::dyes::DYE_NAMES
         .iter()
         .position(|n| *n == name)?;
     u8::try_from(index).ok()

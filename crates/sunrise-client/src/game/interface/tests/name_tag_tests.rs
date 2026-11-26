@@ -249,7 +249,7 @@ fn an_armour_stands_name_ignores_f1_and_team_visibility() {
     let camera = glam::DVec3::new(0.5, 65.0, 0.5);
     assert_eq!(game.shown_name_tags(camera), vec!["Holo".to_owned()]);
     // F1 hides the HUD: `ArmorStandRenderer.shouldShowName` never asks.
-    game.ui.hide_gui = true;
+    game.side.chat_ui.hide_gui = true;
     assert_eq!(
         game.shown_name_tags(camera),
         vec!["Holo".to_owned()],

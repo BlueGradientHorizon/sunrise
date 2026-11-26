@@ -699,7 +699,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return false;
         };
         if !super::hud_render::block_outline_drawn(
-            self.ui.hide_gui,
+            self.side.chat_ui.hide_gui,
             false,
             true,
             self.shows_panorama(),

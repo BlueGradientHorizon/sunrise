@@ -1,4 +1,4 @@
-use super::{Dim, Game, chat::PLAYER_NAME, vehicle_teleport::TeleportMotion};
+use super::{Dim, Game, chat_common::PLAYER_NAME, vehicle_teleport::TeleportMotion};
 use crate::game::commands::OtherEntity;
 use crate::game::commands::R;
 use crate::game::commands::Target;

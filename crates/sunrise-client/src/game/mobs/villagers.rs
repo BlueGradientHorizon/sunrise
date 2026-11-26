@@ -714,7 +714,7 @@ pub(in crate::game) mod entity_event_particle_tests {
     #[test]
     fn the_table_draws_the_raid_sweat_and_the_dolphin_event() {
         let kind = |entity, event| {
-            sunrise_client::particles::entity_event_burst(entity, event).map(|(k, _)| k)
+            sunrise_level::particle_options::entity_event_burst(entity, event).map(|(k, _)| k)
         };
         assert_eq!(kind("villager", 42), Some("splash"));
         assert_eq!(kind("dolphin", 38), Some("happy_villager"));

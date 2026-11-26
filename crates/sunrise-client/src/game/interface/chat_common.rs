@@ -5,7 +5,8 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use sunrise_client::command::Registries;
+use sunrise_client::{command::Registries, gamerules::GameRules};
+use sunrise_gameplay::world_clock::WorldClock;
 use sunrise_world::{
     heightmap::{HeightmapState, HeightmapType},
     registry::{BlockRegistry, BlockStateId},
@@ -19,6 +20,44 @@ pub const PLAYER_NAME: &str = "Player";
 pub(in crate::game) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
 #[allow(unused_imports)]
 pub use sunrise_gameplay::world_clock::TimeMarker;
+
+/// An owned command tree, initialized even before a world is opened.
+pub struct SessionDispatcher(pub Arc<sunrise_client::command::Dispatcher>);
+impl Default for SessionDispatcher {
+    fn default() -> Self {
+        let registry = sunrise_client::gamerules::RuleRegistry::vanilla();
+        Self(Arc::new(
+            sunrise_client::command::vanilla::session_dispatcher(&registry, &[]),
+        ))
+    }
+}
+
+/// Server- and common-accessible command, rule, clock, difficulty, and death-cause state.
+#[derive(Default)]
+pub struct WorldCommandState {
+    pub registries: Registries,
+    pub rules: GameRules,
+    /// The server session command tree.
+    pub dispatcher: SessionDispatcher,
+    pub clock: WorldClock,
+    /// The totals and state of the clocks the world has met, the Overworld's total among them
+    /// while another clock is the one in `active_clock`. The active clock's total is
+    /// World.day_time; the Overworld's state stays in `clock`.
+    pub command_clocks: BTreeMap<String, (i64, WorldClock)>,
+    /// The clock `World.day_time` follows: the default clock of the level in place, the
+    /// Overworld's while empty. The totals of the others are in `command_clocks`.
+    pub active_clock: String,
+    pub end_clock: WorldClock,
+    /// Time markers and timelines of the overworld clock.
+    pub markers: BTreeMap<String, TimeMarker>,
+    pub timelines: BTreeMap<String, Option<i64>>,
+    /// 0 peaceful .. 3 hard.
+    pub difficulty: u8,
+    /// Death message key set by the cause of death (e.g. /kill).
+    pub death_cause: Option<String>,
+    /// The prepared resources before resource packs are layered on.
+    pub vanilla_root: std::path::PathBuf,
+}
 
 /// The ids `build_registries` lists from the prepared resources' folders (cached per root).
 pub(in crate::game) struct ResourceIds {
@@ -570,3 +609,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         };
     }
 }
+
+#[cfg(test)]
+#[path = "tests/end_clock_tests.rs"]
+pub(in crate::game) mod end_clock_tests;

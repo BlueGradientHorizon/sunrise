@@ -58,11 +58,7 @@ fn farmer(types: &super::super::MobTypes) -> Mob {
         Vec3::new(0.5, 1.0, 0.5),
         0.0,
     );
-    super::super::villager::set_profession(
-        &mut m,
-        sunrise_client::mobs::villager::profession_table(),
-        5,
-    );
+    super::super::villager::set_profession(&mut m, crate::mobs::villager::profession_table(), 5);
     m
 }
 

@@ -23,9 +23,9 @@ fn the_lightmap_readback_is_asked_for_only_while_f3_charts_the_lightmap() {
         assert!(game.side.debug && game.side.debug_charts.lightmap);
         assert!(game.debug_shows_lightmap(), "the chart is on screen");
         // F1 hides the overlay, chart and all, with no screen open.
-        game.ui.hide_gui = true;
+        game.side.chat_ui.hide_gui = true;
         assert!(!game.debug_shows_lightmap(), "hidden by F1");
-        game.ui.hide_gui = false;
+        game.side.chat_ui.hide_gui = false;
         // F3 alone closes the overlay; the chart's switch stays, and comes back with it.
         game.debug_key(KeyCode::F3, KeyAction::Press);
         game.debug_key(KeyCode::F3, KeyAction::Release);

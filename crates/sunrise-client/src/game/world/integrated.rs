@@ -735,7 +735,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // No network until it is opened to the LAN; the memory connection
             // is not compressed (`Connection.isMemoryConnection`).
             listen: false,
-            online: sunrise_client::lan::OnlineMode::lan(),
+            online: sunrise_client::lan::OnlineMode::lan(
+                sunrise_client::auth::current().is_some(),
+                Arc::new(|name, digest, ip| {
+                    sunrise_client::auth::has_joined(name, digest, ip)
+                        .map(|opt| {
+                            opt.map(|p| sunrise_client::lan::VerifiedSession {
+                                uuid: p.uuid,
+                                properties: p.properties,
+                            })
+                        })
+                        .map_err(|_| sunrise_client::lan::SessionVerifyError::Unavailable)
+                }),
+            ),
             gate: Some(Arc::new(move |address, uuid, _| {
                 refused(
                     uuid == owner,

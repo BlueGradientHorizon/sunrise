@@ -1211,7 +1211,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let owner = self
                     .remote
                     .as_ref()
-                    .map_or(super::chat::PLAYER_NAME, |r| r.profile_name.as_str());
+                    .map_or(super::chat_common::PLAYER_NAME, |r| r.profile_name.as_str());
                 let by = tr("book.byAuthor", "by %1$s").replace("%1$s", owner);
                 let tw = HudBatch::text_width(atlas, &by);
                 batch.text(

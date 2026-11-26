@@ -1,4 +1,4 @@
-use crate::game::client_side::chat::end_clock_tests::game;
+use crate::game::chat_common::end_clock_tests::game;
 use crate::save::Level;
 
 /// `/time <line>`; the feedback it printed.

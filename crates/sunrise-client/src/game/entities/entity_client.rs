@@ -4,48 +4,28 @@ use crate::game::server_side::entity::DrawExtras;
 use crate::game::server_side::entity::DrawRun;
 use crate::game::server_side::entity::*;
 use sunrise_client::entities::{ArmorStand, Cushion, ItemEntity, ItemFrame, Painting};
-use sunrise_client::mobs::{Mob, Species};
+use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_core::position::BlockPos;
 
-/// Bounds and identity needed by the render occlusion culler. Moving renderers
-/// use interpolated entity bounds; attached entities use their own world bounds.
-pub(in crate::game) trait RenderEntityBounds {
+/// Identity and glowing state needed by the render occlusion culler.
+pub(in crate::game) trait RenderEntity {
     fn render_id(&self) -> u32;
-    fn render_bounds(&self, alpha: f64) -> Aabb;
     #[cfg(feature = "client")]
     fn render_glowing(&self, game: &Game<'_, crate::game::client_side::ClientState>) -> bool {
         game.tracked_entity_glowing(self.render_id())
     }
 }
 
-impl RenderEntityBounds for Mob {
+/// Bounds and identity needed by the render occlusion culler. Moving renderers
+/// use interpolated entity bounds; attached entities use their own world bounds.
+pub(in crate::game) trait RenderEntityBounds: RenderEntity {
+    fn render_bounds(&self, alpha: f64) -> Aabb;
+}
+
+impl RenderEntity for Mob {
     fn render_id(&self) -> u32 {
         self.id
-    }
-
-    fn render_bounds(&self, alpha: f64) -> Aabb {
-        let (width, height, _) = self.awake_dims();
-        let at = self.previous.lerp(self.position, f64::from(alpha as f32));
-        if matches!(
-            self.species(),
-            Species::Guardian | Species::ElderGuardian | Species::Phantom
-        ) {
-            let root_scale = self.kind.model.pose[6..]
-                .iter()
-                .copied()
-                .map(f32::abs)
-                .fold(1.0, f32::max);
-            let radius = width.max(height) * 2.5 + 3.0 * f64::from(root_scale * self.model_scale());
-            return Aabb::of_size(at, Vec3::new(radius * 2.0, radius * 2.0, radius * 2.0));
-        }
-
-        let horizontal = (width * 2.0).max(height * 1.5).max(3.5);
-        let vertical = height * 3.0 + 0.5;
-        Aabb::new(
-            at.subtract(Vec3::new(horizontal, vertical, horizontal)),
-            at.add_vector(Vec3::new(horizontal, vertical, horizontal)),
-        )
     }
 
     #[cfg(feature = "client")]
@@ -54,11 +34,43 @@ impl RenderEntityBounds for Mob {
     }
 }
 
-impl RenderEntityBounds for ArmorStand {
+#[cfg(feature = "client")]
+pub(in crate::game) fn mob_render_bounds(
+    mob: &Mob,
+    models: &sunrise_client::mobs_render::ClientMobModels,
+    alpha: f64,
+) -> Option<Aabb> {
+    use sunrise_client::mobs::Species;
+    let visuals = models.get(&mob.kind.id)?;
+    let (width, height, _) = mob.awake_dims();
+    let at = mob.previous.lerp(mob.position, f64::from(alpha as f32));
+    if matches!(
+        mob.species(),
+        Species::Guardian | Species::ElderGuardian | Species::Phantom
+    ) {
+        let root_scale = visuals.root_scale();
+        let radius = width.max(height) * 2.5 + 3.0 * f64::from(root_scale * mob.model_scale());
+        return Some(Aabb::of_size(
+            at,
+            Vec3::new(radius * 2.0, radius * 2.0, radius * 2.0),
+        ));
+    }
+
+    let horizontal = (width * 2.0).max(height * 1.5).max(3.5);
+    let vertical = height * 3.0 + 0.5;
+    Some(Aabb::new(
+        at.subtract(Vec3::new(horizontal, vertical, horizontal)),
+        at.add_vector(Vec3::new(horizontal, vertical, horizontal)),
+    ))
+}
+
+impl RenderEntity for ArmorStand {
     fn render_id(&self) -> u32 {
         self.id
     }
+}
 
+impl RenderEntityBounds for ArmorStand {
     fn render_bounds(&self, alpha: f64) -> Aabb {
         let at = self.previous.lerp(self.position, alpha);
         let scale = if self.small { 0.5 } else { 1.0 };
@@ -78,11 +90,13 @@ impl RenderEntityBounds for ArmorStand {
     }
 }
 
-impl RenderEntityBounds for ItemEntity {
+impl RenderEntity for ItemEntity {
     fn render_id(&self) -> u32 {
         self.id
     }
+}
 
+impl RenderEntityBounds for ItemEntity {
     fn render_bounds(&self, alpha: f64) -> Aabb {
         let at = self.previous.lerp(self.position, alpha);
         Aabb::new(
@@ -92,11 +106,13 @@ impl RenderEntityBounds for ItemEntity {
     }
 }
 
-impl RenderEntityBounds for Boat {
+impl RenderEntity for Boat {
     fn render_id(&self) -> u32 {
         self.id
     }
+}
 
+impl RenderEntityBounds for Boat {
     fn render_bounds(&self, alpha: f64) -> Aabb {
         let at = self.previous.lerp(self.position, alpha);
         Aabb::new(
@@ -106,11 +122,13 @@ impl RenderEntityBounds for Boat {
     }
 }
 
-impl RenderEntityBounds for Minecart {
+impl RenderEntity for Minecart {
     fn render_id(&self) -> u32 {
         self.id
     }
+}
 
+impl RenderEntityBounds for Minecart {
     fn render_bounds(&self, alpha: f64) -> Aabb {
         let at = self.previous.lerp(self.position, alpha);
         let offset = self.custom_offset.map_or_else(
@@ -140,21 +158,25 @@ fn aabb_from_extents(bounds: ([f64; 3], [f64; 3])) -> Aabb {
     )
 }
 
-impl RenderEntityBounds for Painting {
+impl RenderEntity for Painting {
     fn render_id(&self) -> u32 {
         self.id
     }
+}
 
+impl RenderEntityBounds for Painting {
     fn render_bounds(&self, _alpha: f64) -> Aabb {
         aabb_from_extents(self.bounds())
     }
 }
 
-impl RenderEntityBounds for ItemFrame {
+impl RenderEntity for ItemFrame {
     fn render_id(&self) -> u32 {
         self.id
     }
+}
 
+impl RenderEntityBounds for ItemFrame {
     fn render_bounds(&self, _alpha: f64) -> Aabb {
         let (lo, hi) = self.bounds();
         let step = self.step().map(f64::from);
@@ -168,11 +190,13 @@ impl RenderEntityBounds for ItemFrame {
     }
 }
 
-impl RenderEntityBounds for Cushion {
+impl RenderEntity for Cushion {
     fn render_id(&self) -> u32 {
         self.id
     }
+}
 
+impl RenderEntityBounds for Cushion {
     fn render_bounds(&self, _alpha: f64) -> Aabb {
         aabb_from_extents(self.bounds())
     }

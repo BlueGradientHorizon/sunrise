@@ -4,7 +4,7 @@
 //! own simulation, which a client of a server doesn't run.
 use super::Game;
 #[cfg(test)]
-use sunrise_client::mobs::render::VILLAGER_TYPES;
+use sunrise_client::mobs::villager::VILLAGER_TYPES;
 use sunrise_client::mobs::{
     Mob, Species, Who, armadillo, bat, bee, camel, creaking, equine, finalize, illusioner, panda,
     phantom, raider, sniffer, species::can_be_a_baby, sync, tame, zombie_villager,
@@ -569,7 +569,7 @@ pub(in crate::game) mod tests {
 
     pub(super) fn fixture_mob(kind: &str) -> Mob {
         use std::sync::Arc;
-        use sunrise_client::mobs::{Anim, Brain, Flags, MobType, Part};
+        use sunrise_client::mobs::{Anim, Brain, Flags, MobType};
         let species = match kind {
             "minecraft:cow" => Species::Cow,
             "minecraft:axolotl" => Species::Axolotl,
@@ -589,7 +589,6 @@ pub(in crate::game) mod tests {
         // initializes process-wide item tags used by unrelated mob tests.
         let kind = Arc::new(MobType {
             type_key: Default::default(),
-            shadow: None,
             id: kind.into(),
             species,
             width: 0.6,
@@ -622,15 +621,6 @@ pub(in crate::game) mod tests {
             max_head_y_rot: 75.0,
             ambient_interval: 120,
             flags: Flags::default(),
-            model: Arc::new(Part {
-                name: "root".into(),
-                pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-                polygons: Vec::new(),
-                children: Vec::new(),
-                layer: None,
-            }),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Zombie,
             sounds: [""; 3],
@@ -1296,6 +1286,7 @@ pub(in crate::game) mod tests {
         )
         .unwrap();
         let mut types = MobTypes::load(&root).unwrap();
+        let models = sunrise_client::mobs_render::ClientMobModels::load(&root).unwrap();
         fs::remove_dir_all(root).unwrap();
         let position = Vec3::new(1.0, 2.25, 3.0);
         let velocity = Vec3::new(0.2, 0.3, 0.4);
@@ -1321,7 +1312,7 @@ pub(in crate::game) mod tests {
                 [[0,[0,0,0],[0,0,0],"linear"],[1,[0,1,0],[0,1,0],"linear"]]}]}}));
         let animations = HashMap::from([("BatAnimation.BAT_FLYING".into(), curve)]);
         let wing = |partial| {
-            let mut poses = anim::Poses::new(&m.kind.model);
+            let mut poses = anim::Poses::new(models.model(&m.kind.id).unwrap());
             anim::setup(&m, &anim::state(&m, partial), &mut poses, &animations);
             poses.get("right_wing")[4]
         };

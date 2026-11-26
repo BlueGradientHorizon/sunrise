@@ -32,7 +32,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.tickDeath`: the level stops ticking the player at death tick 20,
     /// but the client keeps the player for death-screen rendering until respawn.
     pub(in crate::game::client_side) fn local_player_removed_by_death(&self) -> bool {
-        self.side.screen == Screen::Dead && self.ui.death_time >= 20
+        self.side.screen == Screen::Dead && self.side.chat_ui.death_time >= 20
     }
     pub(in crate::game::client_side) fn remote_effect_def(
         &self,

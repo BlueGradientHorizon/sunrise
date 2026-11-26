@@ -28,7 +28,7 @@ AbstractHorse.executeRidersJump	port	crates/sunrise-client/src/mobs/equine.rs::r
 AbstractHorse.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	gap: minor: Tame, Temper and Owner are read; EatingHaystack and Bred are not
 AbstractHorse.setOffspringAttribute	port	crates/sunrise-client/src/mobs/equine.rs::inherit	max health, jump strength and speed from both parents
 AbstractHorse.onPlayerJump	inline	crates/sunrise-client/src/game/mobs/mounts.rs::Game::tick_mount_riding	gap: minor: the rear and the jump sound; donkeys and mules play the horse jump sound
-AbstractHorse.handleEntityEvent	port	crates/sunrise-client-render/src/particles.rs::entity_event_burst	events 7 and 6: hearts and smoke around the mount
+AbstractHorse.handleEntityEvent	port	crates/sunrise-level/src/particle_options.rs::entity_event_burst	events 7 and 6: hearts and smoke around the mount
 AbstractHorse.positionRider	port	crates/sunrise-client/src/game/mobs/mounts_common.rs::Game::position_rider	gap: minor: the player's own body yaw is not copied (its model is drawn by solveBodyRot); mob riders take it in riders::takes_vehicle_body
 AbstractHorse.generateMaxHealth	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::horse_health
 AbstractHorse.generateJumpStrength	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::horse_jump
@@ -108,7 +108,7 @@ Ocelot.customServerAiStep	port	crates/sunrise-client/src/mobs/tame.rs::cat_anim	
 Ocelot.removeWhenFarAway	port	crates/sunrise-client/src/mobs/ai.rs::feline_removed_when_far	`!isTrusting() && tickCount > 2400`, the same rule as the cat's
 Ocelot.createAttributes	skip:data		attributes come from entity-types.json
 Ocelot.mobInteract	inline	crates/sunrise-client/src/game/mobs/creatures/mod_server.rs::Game::interact_mob
-Ocelot.handleEntityEvent	port	crates/sunrise-client-render/src/particles.rs::entity_event_burst	events 41 and 40: hearts and smoke; nothing sends them without the trust roll
+Ocelot.handleEntityEvent	port	crates/sunrise-level/src/particle_options.rs::entity_event_burst	events 41 and 40: hearts and smoke; nothing sends them without the trust roll
 Ocelot.reassessTrustingGoals	port	crates/sunrise-client/src/mobs/tame.rs::register_cat	gap: player: the player-avoidance and tempt goals are always registered; trust is not modelled, so a trusting ocelot keeps them
 Ocelot.checkSpawnObstruction	port	crates/sunrise-client/src/mobs/spawn_selection.rs::spawn_obstruction	unobstructed, no liquid, at or above sea level on grass or leaves
 Ocelot.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	baby chance 1.0 for a group

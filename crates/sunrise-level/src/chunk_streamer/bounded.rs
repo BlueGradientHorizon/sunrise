@@ -7,7 +7,7 @@
 /// again, from the current centre, as capacity frees, the way vanilla's
 /// chunk task queues follow the current ticket levels. The selection is
 /// O(n); the sort orders only what is submitted.
-pub(super) fn nearest_first<T: Ord>(candidates: &mut Vec<T>, room: usize) {
+pub fn nearest_first<T: Ord>(candidates: &mut Vec<T>, room: usize) {
     if candidates.len() > room {
         candidates.select_nth_unstable(room);
         candidates.truncate(room);

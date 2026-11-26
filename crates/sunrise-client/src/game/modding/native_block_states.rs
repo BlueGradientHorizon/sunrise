@@ -192,7 +192,7 @@ pub(super) fn block_registries(registry: &BlockRegistry) -> Arc<Registries> {
         return reg.clone();
     }
     let reg = Arc::new(Registries {
-        blocks: (*super::chat::block_properties(registry)).clone(),
+        blocks: (*super::chat_common::block_properties(registry)).clone(),
         ..Registries::default()
     });
     cache.push((key, reg.clone()));

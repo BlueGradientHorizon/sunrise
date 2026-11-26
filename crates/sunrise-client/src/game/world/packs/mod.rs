@@ -269,10 +269,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn drop_pack_file(&mut self, path: &Path) {
         let size = self.gui_size();
         let handled = self.side.screen == super::Screen::Options
-            && self
-                .ui
-                .options
-                .drop_resource_pack(path.to_path_buf(), &self.gui.atlas, size);
+            && self.side.chat_ui.options.drop_resource_pack(
+                path.to_path_buf(),
+                &self.gui.atlas,
+                size,
+            );
         if !handled
             && self.title_input_active()
             && let Some(title) = &mut self.side.title.0
@@ -323,7 +324,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let infos = self.resource_pack_infos();
         let configs = pack_configs(&self.vanilla_root());
         let browsing = self.settings.extras.pack_browser;
-        let o = &mut self.ui.options;
+        let o = &mut self.side.chat_ui.options;
         o.pack_browser = browsing;
         o.pack_infos = infos;
         o.pack_configs = configs;
@@ -342,7 +343,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// Sunrise's pack browser: what its worker finished since the last
     /// frame. A pack that landed becomes an entry in the available list.
     pub(in crate::game::client_side) fn drive_pack_browser(&mut self) {
-        let Some(screen) = &mut self.ui.options.pack_screen else {
+        let Some(screen) = &mut self.side.chat_ui.options.pack_screen else {
             return;
         };
         let Some(browser) = &mut screen.browser else {
@@ -369,10 +370,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // refresh what the lists read.
             let selection = self.settings.resource_packs.clone();
             let infos = self.resource_pack_infos();
-            self.ui.options.pack_infos = infos;
-            self.ui.options.pack_configs = pack_configs(&self.vanilla_root());
-            self.ui.options.pack_selection = selection;
-            self.ui.options.pack_screen = None;
+            self.side.chat_ui.options.pack_infos = infos;
+            self.side.chat_ui.options.pack_configs = pack_configs(&self.vanilla_root());
+            self.side.chat_ui.options.pack_selection = selection;
+            self.side.chat_ui.options.pack_screen = None;
         }
     }
     pub(in crate::game) fn reload_packs(&mut self) {
@@ -404,7 +405,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 sunrise_client::options_ui::Page::Packs,
             );
         }
-        self.ui.options.resource_error = Some(error.to_string());
+        self.side.chat_ui.options.resource_error = Some(error.to_string());
     }
     /// Stages the selection with the server's active packs on top on a
     /// worker (`createReload`'s background executor); the frame draws its
@@ -692,7 +693,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // Villager hats come from the pack's texture metadata (shared data, swapped in place).
             *game
                 .res
-                .mob_data()
+                .client_mob_data()
                 .villager_hats
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
@@ -700,7 +701,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game.install_client_professions(&professions);
             *game
                 .res
-                .mob_data()
+                .client_mob_data()
                 .cem
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = cem;
@@ -711,21 +712,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // a new generation: every mob chooses again on its next tick.
             *game
                 .res
-                .mob_data()
+                .client_mob_data()
                 .random_textures
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
                 std::mem::take(&mut game.gui.atlas.random_textures);
             *game
                 .res
-                .mob_data()
+                .client_mob_data()
                 .emissive
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
                 game.gui.atlas.emissive.clone();
             *game
                 .res
-                .mob_data()
+                .client_mob_data()
                 .blinks
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
@@ -757,7 +758,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             game.side.native_shaders = super::native_shaders::NativeShaders::picking(
                 &std::mem::take(&mut game.side.native_shaders.picked),
             );
-            game.ui.chat.rescale(&game.gui.atlas);
+            game.side.chat_ui.chat.rescale(&game.gui.atlas);
             game.install_loop_context(loop_context);
             game.resolve_entity_renderers();
             game.native_model_baking_completed();
@@ -851,7 +852,7 @@ pub(in crate::game) fn stage_pack(
             let textures = prepare_renderer_textures(&pack);
             let cem = Arc::new(sunrise_client::mobs::cem::CemModels::load(
                 &source,
-                res.mob_types(),
+                res.client_mob_models(),
             ));
             let block_entity_shapes = res.block_entity_render().shapes_for(&source);
             let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);

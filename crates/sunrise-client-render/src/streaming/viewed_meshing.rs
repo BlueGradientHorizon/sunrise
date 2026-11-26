@@ -104,7 +104,7 @@ impl Streaming {
     /// Viewed levels mesh with the player's mesher and graphics settings, each with its own
     /// dimension's shading.
     pub fn viewed_mesh_source(&self) -> MeshSource {
-        let context = self.shared.context.read().unwrap().clone();
+        let context = self.mesh_shared.context.read().unwrap().clone();
         MeshSource(Kind::Mesher(context, self.mesh_settings()))
     }
 }

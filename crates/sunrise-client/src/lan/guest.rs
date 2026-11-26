@@ -143,11 +143,11 @@ struct GuestInit {
 pub enum InboxItem {
     Packet(
         play::Serverbound,
-        Option<crate::net::ingress::ReceiveLease<super::NetEvent>>,
+        Option<crate::net_ingress::ReceiveLease<super::NetEvent>>,
     ),
     Raw(
         Box<crate::raw_payloads::Delivery>,
-        crate::net::ingress::ReceiveLease<super::NetEvent>,
+        crate::net_ingress::ReceiveLease<super::NetEvent>,
     ),
 }
 #[cfg(test)]
@@ -1360,7 +1360,7 @@ impl Guest {
 
 /// `FireworkExplosion.STREAM_CODEC`'s fields (`Shape` by its BY_ID order).
 fn network_explosion(
-    e: &crate::particles::FireworkExplosion,
+    e: &sunrise_items::firework::FireworkExplosion,
 ) -> sunrise_protocol::item::FireworkExplosion {
     sunrise_protocol::item::FireworkExplosion {
         shape: e.shape as i32,
@@ -1397,7 +1397,7 @@ pub fn firework_components(
 
 /// `DyeColor.getId` of a dye's name.
 fn dye_id(name: &str) -> Option<i32> {
-    crate::block_entity_render::DYES
+    sunrise_level::dyes::DYES
         .iter()
         .position(|d| d.0 == name)
         .map(|i| i as i32)

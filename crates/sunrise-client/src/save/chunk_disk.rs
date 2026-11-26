@@ -2,7 +2,7 @@
 //! Server code captures encoded envelopes; only workers execute mod code.
 use super::*;
 use mod_api::{ChunkDiskContext, ChunkDiskJob, ChunkDiskKind, ChunkDiskPhase, WorldEpoch};
-use sunrise_client_render::api_context::WorldgenReader;
+use sunrise_level::api_context::WorldgenReader;
 use sunrise_mod_runtime::attachments::Attachments;
 
 pub(super) struct DiskRuntime {

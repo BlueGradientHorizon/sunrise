@@ -142,7 +142,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 Screen::GameModeSwitcher => self.close_gamemode_switcher(false),
                 Screen::Dead => {
-                    if self.ui.death_confirm.is_some() {
+                    if self.side.chat_ui.death_confirm.is_some() {
                         self.death_confirm_answer(false)?;
                     }
                 }

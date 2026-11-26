@@ -1701,7 +1701,9 @@ mod hub_tests {
     /// Decodes the compound of a record back into its tag.
     fn compound_of(record: &serde_json::Value) -> sunrise_core::nbt::Tag {
         use sunrise_core::nbt::{Limits, read_named};
-        let bytes = crate::skins::base64_decode(record["player"].as_str().unwrap()).unwrap();
+        let bytes =
+            sunrise_level::profile_lookup::base64_decode(record["player"].as_str().unwrap())
+                .unwrap();
         read_named(&bytes, Limits::saved()).unwrap().0.tag
     }
 

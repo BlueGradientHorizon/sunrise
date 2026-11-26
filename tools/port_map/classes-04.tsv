@@ -206,7 +206,7 @@ LinearPalette	skip:java		palette storage; Sunrise's chunk.rs keeps block ids in 
 PalettedContainerFactory	skip:java		factory for palette storage; Sunrise's chunk.rs keeps block ids in plain arrays
 SingleValuePalette	skip:java		palette storage; Sunrise's chunk.rs keeps block ids in plain arrays
 UpgradeData	missing		the block upgrades an old chunk takes when it loads (the Sides bits a save carries); the datafix writes and keeps UpgradeData (datafix/chunk_leaves.rs) but no load path applies the upgrades
-ChunkDependencies.getRadiusOf	inline	crates/sunrise-client-render/src/streaming.rs::Ranges::margins	fixed margins instead of a per-status radius
+ChunkDependencies.getRadiusOf	inline	crates/sunrise-level/src/chunk_streamer.rs::Ranges::margins	fixed margins instead of a per-status radius
 ChunkPyramid.Builder	skip:java		builder for the status pyramid; Sunrise uses fixed margins
 ChunkStatusTasks.buildTerrain	inline	crates/sunrise-world/src/worldgen/generator.rs::Pipeline::generate_with_context	terrain pass
 ChunkStatusTasks.collectPossibleBiomes	inline	crates/sunrise-world/src/worldgen/generator.rs::Pipeline::biome_chunk	biome set folded into the biome pass
@@ -220,7 +220,7 @@ ChunkStatusTasks.initializeLight	port	crates/sunrise-level/src/light.rs::light_c
 ChunkStatusTasks.isLighted	skip:other		status check; streaming tracks which chunks are lit
 ChunkStep.apply	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	stage advance
 ChunkStep.completeChunkGeneration	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	final stage hand-over
-ChunkStep.getAccumulatedRadiusOf	inline	crates/sunrise-client-render/src/streaming.rs::Ranges::margins	fixed margins
+ChunkStep.getAccumulatedRadiusOf	inline	crates/sunrise-level/src/chunk_streamer.rs::Ranges::margins	fixed margins
 ChunkStep.Builder	skip:java		builder for chunk steps
 ChunkIOErrorReporter.createMisplacedChunkReport	skip:other		report text for a chunk saved at another position; Sunrise logs its own load error
 RecreatingSimpleRegionStorage	skip:java		close: Rust closes the file on drop

@@ -7,9 +7,9 @@ use crate::game::commands::extra::two_places;
 use std::time::Instant;
 use sunrise_client::{
     lan::waypoints::Icon,
-    skins::{NameOrId, Resolve, ResolvedProfile},
     text::{Style, Text},
 };
+use sunrise_level::profile_lookup::{NameOrId, Resolve, ResolvedProfile};
 use sunrise_protocol::packets::{
     Empty,
     play::{self, Clientbound as C, DialogHolder},
@@ -343,13 +343,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a `/fetchprofile` lookup is still in flight (the command
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game::server_side) fn profile_fetches_pending(&mut self) -> bool {
-        let mut resolver = self.skin_profiles.borrow_mut();
         self.side
             .cmds
             .0
             .profile_fetches
             .iter()
-            .any(|f| matches!(resolver.state(&f.key), Resolve::Pending))
+            .any(|f| matches!(self.side.profile_resolver.lookup(&f.key), Resolve::Pending))
     }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
     /// acting player's packet queue otherwise.
@@ -458,7 +457,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_profile_fetches(&mut self) {
         let fetches = std::mem::take(&mut self.side.cmds.0.profile_fetches);
         for fetch in fetches {
-            let state = self.skin_profiles.borrow_mut().state(&fetch.key);
+            let state = self.side.profile_resolver.lookup(&fetch.key);
             match state {
                 Resolve::Pending => self.side.cmds.0.profile_fetches.push(fetch),
                 Resolve::Done(result) => {

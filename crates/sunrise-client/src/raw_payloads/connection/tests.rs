@@ -152,7 +152,7 @@ fn epoch_end_wakes_a_dedicated_payload_receiver_before_the_main_root_finishes() 
 #[test]
 fn ingress_leases_survive_phase_churn_and_refund_outside_queues() {
     let connection = connection();
-    let cost = INGRESS_RECORD_OVERHEAD + byte_channel::message_overhead::<()>();
+    let cost = connection.record_overhead() + byte_channel::message_overhead::<()>();
     let snapshot_charge = connection.ingress.stats().reserved_bytes;
     let mut leases = Vec::new();
     for _ in 0..(INGRESS_BUDGET - snapshot_charge) / cost {

@@ -1,8 +1,13 @@
 //! Physical reply targets usable by either receiving executor without borrowing Game.
-use super::{Side, Transport, connection::Epoch, encode, encoded_len};
+use super::{
+    ClientEvent, NoClientEvent, Side, Transport,
+    connection::Epoch,
+    encode, encoded_len,
+    queued_writer::{PreparedPayload, QueuedWriter},
+};
 use crate::{
     lan::{PlayerSender, config_payloads::ConfigSender},
-    net::{Event, PreparedPayload, queued_writer::QueuedWriter},
+    net_ingress::Producer,
 };
 use mod_api::{PayloadBytes, PayloadFrameStage, PayloadId, PayloadSendError, Text};
 use std::sync::{
@@ -11,21 +16,46 @@ use std::sync::{
 };
 use sunrise_protocol::{connection::Framing, frame, payload_negotiation::Phase};
 
-#[derive(Clone)]
-pub struct Endpoint(Target);
-#[derive(Clone)]
-enum Target {
+pub struct Endpoint<E = NoClientEvent>(Target<E>);
+impl<E> Clone for Endpoint<E> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+enum Target<E> {
     Client {
         writer: Arc<Mutex<Option<QueuedWriter>>>,
         configuring: Arc<AtomicBool>,
         transport: Arc<Transport>,
-        events: crate::net::ingress::Producer<Event>,
+        events: Producer<E>,
     },
     Server(PlayerSender),
     Configuration {
         sender: ConfigSender,
         session: Option<std::sync::Weak<crate::lan::configuration_tasks::Session>>,
     },
+}
+impl<E> Clone for Target<E> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Client {
+                writer,
+                configuring,
+                transport,
+                events,
+            } => Self::Client {
+                writer: writer.clone(),
+                configuring: configuring.clone(),
+                transport: transport.clone(),
+                events: events.clone(),
+            },
+            Self::Server(sender) => Self::Server(sender.clone()),
+            Self::Configuration { sender, session } => Self::Configuration {
+                sender: sender.clone(),
+                session: session.clone(),
+            },
+        }
+    }
 }
 /// Retains no endpoint, sender, producer, writer, transport or payload lease.
 #[cfg(any(test, feature = "test-payload-probe"))]
@@ -36,7 +66,7 @@ pub(super) struct Observation {
 }
 #[cfg(any(test, feature = "test-payload-probe"))]
 impl Observation {
-    pub(super) fn same_target(&self, endpoint: &Endpoint) -> bool {
+    pub(super) fn same_target<E>(&self, endpoint: &Endpoint<E>) -> bool {
         self.transport.ptr_eq(&Arc::downgrade(endpoint.transport())) && self.side == endpoint.side()
     }
     pub(super) fn diagnostics(&self) -> String {
@@ -81,20 +111,7 @@ impl Prepared {
         }
     }
 }
-impl Endpoint {
-    pub(crate) fn client(
-        writer: Arc<Mutex<Option<QueuedWriter>>>,
-        configuring: Arc<AtomicBool>,
-        transport: Arc<Transport>,
-        events: crate::net::ingress::Producer<Event>,
-    ) -> Self {
-        Self(Target::Client {
-            writer,
-            configuring,
-            transport,
-            events,
-        })
-    }
+impl Endpoint<NoClientEvent> {
     pub fn server(sender: PlayerSender) -> Self {
         Self(Target::Server(sender))
     }
@@ -104,6 +121,23 @@ impl Endpoint {
     ) -> Self {
         Self(Target::Configuration { sender, session })
     }
+}
+impl<E: ClientEvent> Endpoint<E> {
+    pub fn client(
+        writer: Arc<Mutex<Option<QueuedWriter>>>,
+        configuring: Arc<AtomicBool>,
+        transport: Arc<Transport>,
+        events: Producer<E>,
+    ) -> Self {
+        Self(Target::Client {
+            writer,
+            configuring,
+            transport,
+            events,
+        })
+    }
+}
+impl<E> Endpoint<E> {
     pub fn configuration_session(
         &self,
     ) -> Option<&std::sync::Weak<crate::lan::configuration_tasks::Session>> {
@@ -256,6 +290,8 @@ impl Endpoint {
             encode(epoch.phase, self.side(), id, bytes),
         ))
     }
+}
+impl<E: ClientEvent> Endpoint<E> {
     /// A failure closes this physical connection only; a client reason joins its ordered events.
     pub fn disconnect(&self, reason: Text) {
         let reason = crate::api_text::to_serialized_engine(&reason).unwrap_or_else(|error| {
@@ -273,11 +309,7 @@ impl Endpoint {
                 ..
             } => {
                 let writer = writer.lock().unwrap();
-                let _ = events.send_terminal(Event::Disconnected {
-                    reason: reason.plain(),
-                    key: None,
-                    from_server: false,
-                });
+                let _ = events.send_terminal(E::disconnected(reason.plain()));
                 if let Some(writer) = writer.as_ref() {
                     if configuring.load(Ordering::Acquire) {
                         writer.shutdown();

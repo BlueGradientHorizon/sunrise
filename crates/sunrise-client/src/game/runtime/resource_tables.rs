@@ -109,6 +109,29 @@ impl Resources {
     }
 }
 
+#[cfg(feature = "client")]
+impl Resources {
+    pub(in crate::game) fn client_mob_models(
+        &self,
+    ) -> &sunrise_client::mobs_render::ClientMobModels {
+        &self
+            .rest()
+            .client_mobs
+            .as_ref()
+            .expect("client_mob_models called on resources loaded without client drawing")
+            .models
+    }
+
+    pub(in crate::game) fn client_mob_data(&self) -> &sunrise_client::mobs_render::ClientMobData {
+        &self
+            .rest()
+            .client_mobs
+            .as_ref()
+            .expect("client_mob_data called on resources loaded without client drawing")
+            .data
+    }
+}
+
 /// Everything the title and menus draw: the GUI atlas with its font, the
 /// title panorama and the splash pool. Kept apart from the world bundle so the
 /// title can appear before the block sprites, models and gameplay tables are ready.

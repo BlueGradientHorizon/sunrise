@@ -71,7 +71,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .into_iter()
                     .filter_map(|pack| pack.selection)
                     .collect();
-                self.ui
+                self.side
+                    .chat_ui
                     .options
                     .open_data_packs(dir, selected, resources, additional);
             }

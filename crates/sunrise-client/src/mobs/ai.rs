@@ -597,7 +597,7 @@ impl Mob {
     pub fn swing_hand_modified(
         &mut self,
         off_hand: bool,
-        animation: crate::first_person::SwingAnimation,
+        animation: crate::first_person_sim::SwingAnimation,
     ) -> bool {
         let amplifier = |id: &str| {
             self.extra
@@ -608,7 +608,7 @@ impl Mob {
         };
         let dig_speed = amplifier("minecraft:haste").max(amplifier("minecraft:conduit_power"));
         let fatigue = amplifier("minecraft:mining_fatigue");
-        let duration = crate::first_person::swing_duration(animation, dig_speed, fatigue);
+        let duration = crate::first_person_sim::swing_duration(animation, dig_speed, fatigue);
         if self.start_swing(duration) {
             self.extra.swing_right_arm = Some(!off_hand != self.main_arm_left());
             self.extra.swing_stab = animation.kind == 2;
@@ -2828,7 +2828,7 @@ fn continue_base_tick(
                 };
                 // A collider box at the eyes is a wall as well: the crush a moving collider gives.
                 let in_collider = m.species() != Species::Vex
-                    && sunrise_client_render::moving_colliders::overlaps(
+                    && sunrise_world::moving_colliders::overlaps(
                         sunrise_world::entity_obstruction::EntityIdentity(u64::from(m.id)),
                         eye_bounds(m.width(), [m.position.x, m.eye_y(), m.position.z]),
                     );

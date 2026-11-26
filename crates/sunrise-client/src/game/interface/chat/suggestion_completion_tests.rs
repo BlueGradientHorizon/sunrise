@@ -1,7 +1,11 @@
 use super::*;
 use crate::game::{Audio, Options, Progress, Settings, load_resources};
 use mod_api::{self, ChatSuggestionAppliedEvent, ClientHost, Hooks};
-use std::sync::{Arc, Mutex};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+use sunrise_client::chat::{ChatAbilities, ChatVisibility};
 
 /// Exercise the actual Game keyboard/mouse handlers and generated mod dispatch.
 #[test]
@@ -77,7 +81,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
     mod_platform::testing::with_mods(mods, || {
         game.side.screen = Screen::Chat;
         game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
-        game.ui.chat_screen = Some(ChatScreen::new(
+        game.side.chat_ui.chat_screen = Some(ChatScreen::new(
             &Measure(&game.gui.atlas.font),
             &Commands {
                 dispatcher: chat_tree(&game.remote),
@@ -98,7 +102,7 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
         assert_eq!(*calls.lock().unwrap(), ["😀 hi Steve", "😀 hi Steven"]);
 
         // Click the suggestion's rendered text rather than assuming its coordinates.
-        let draws = game.ui.chat_screen.as_mut().unwrap().draw(
+        let draws = game.side.chat_ui.chat_screen.as_mut().unwrap().draw(
             &Measure(&game.gui.atlas.font),
             (-1, -1),
             0,
@@ -122,7 +126,8 @@ fn chat_completion_reaches_mods_from_keyboard_and_mouse_isolated() {
             ["😀 hi Steve", "😀 hi Steven", "😀 hi Steve"]
         );
         assert!(
-            game.ui
+            game.side
+                .chat_ui
                 .chat_screen
                 .as_mut()
                 .unwrap()

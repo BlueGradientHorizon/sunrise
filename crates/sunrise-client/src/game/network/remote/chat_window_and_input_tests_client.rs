@@ -44,19 +44,25 @@ fn mod_open_chat_fills_the_box_only_over_the_world() {
     // No player: the title screen.
     game.player = None;
     assert!(game.open_chat("/tp ").is_err());
-    assert!(game.ui.chat_screen.is_none());
+    assert!(game.side.chat_ui.chat_screen.is_none());
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
             .unwrap(),
     );
     game.side.screen = Screen::Paused;
     assert!(game.open_chat("/tp ").is_err());
-    assert!(game.ui.chat_screen.is_none());
+    assert!(game.side.chat_ui.chat_screen.is_none());
     game.side.screen = Screen::Playing;
     assert!(game.open_chat("/tp ").is_ok());
     assert!(game.side.screen == Screen::Chat);
-    assert_eq!(game.ui.chat_screen.as_ref().unwrap().input.value, "/tp ");
+    assert_eq!(
+        game.side.chat_ui.chat_screen.as_ref().unwrap().input.value,
+        "/tp "
+    );
     // The chat is a screen too: a second call doesn't replace what's typed.
     assert!(game.open_chat("hello").is_err());
-    assert_eq!(game.ui.chat_screen.as_ref().unwrap().input.value, "/tp ");
+    assert_eq!(
+        game.side.chat_ui.chat_screen.as_ref().unwrap().input.value,
+        "/tp "
+    );
 }

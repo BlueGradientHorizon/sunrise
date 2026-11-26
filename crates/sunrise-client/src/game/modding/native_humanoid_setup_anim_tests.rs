@@ -105,7 +105,10 @@ fn client_humanoid_setup_reaches_body_skinned_and_layer_routes() {
                             glam::DVec3::ZERO,
                             &lookup,
                             0xf0f0,
-                            game.res.mob_data(),
+                            &sunrise_client::mobs_render::ClientMobRender {
+                                models: game.res.client_mob_models(),
+                                data: game.res.client_mob_data(),
+                            },
                             &[],
                             &mut render::FrameDraw::default(),
                             &mut baseline,

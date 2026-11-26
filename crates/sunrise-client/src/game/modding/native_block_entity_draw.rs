@@ -1839,7 +1839,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return Some(definition.bake_root());
         }
         let key = layer.strip_prefix("minecraft:")?;
-        if let Some(part) = self.res.mob_types().values().find_map(|t| t.layer(key)) {
+        if let Some(part) = self.res.client_mob_models().layer_any(key) {
             return Some(model_layers::from_part(part));
         }
         let models = sunrise_client::mobs::EntityModelDocument::load(&self.vanilla_root()).ok()?;

@@ -9,7 +9,7 @@ use crate::{
 /// Whether the 3x3 a light job for (x, z) reads is all there: every
 /// neighbour a finished column whose `dynamic_light` cells are asked, or a
 /// decorated proto chunk past the area (the last FULL ring lights against
-/// neighbours at FEATURES, as `Streaming::light_region` reads them).
+/// neighbours at FEATURES, as `ChunkStreamer::light_region` reads them).
 pub(super) fn light_region_ready(
     world: &World,
     in_range: impl Fn(i32, i32) -> bool,

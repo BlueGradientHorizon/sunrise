@@ -5,7 +5,6 @@
 use super::{
     Bucket, IN_FLIGHT, MAX_DISTANCE, Offer, PER_SECOND, Request, SIDE, encode_reply, refusal,
 };
-use crate::streaming::{LodSampler, LodSource};
 use std::{
     collections::{HashMap, VecDeque},
     panic::{AssertUnwindSafe, catch_unwind},
@@ -13,6 +12,7 @@ use std::{
     thread,
     time::Instant,
 };
+use sunrise_level::chunk_streamer::{LodSampler, LodSource};
 
 /// Tiles the server lets a player ask for at once, past [`PER_SECOND`]: the
 /// network bunches requests the client spaced out.

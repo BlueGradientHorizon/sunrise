@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Part, Species};
+use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Species};
 use sunrise_core::geometry::Vec3;
 
 /// A mob of `species` with the box of its vanilla type, built without the
@@ -11,13 +11,6 @@ pub(in crate::game) fn mob(
     width: f64,
     height: f64,
 ) -> Mob {
-    let part = Part {
-        name: "root".into(),
-        pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-        polygons: Vec::new(),
-        children: Vec::new(),
-        layer: None,
-    };
     let kind = MobType {
         type_key: Default::default(),
         id: entity.into(),
@@ -51,15 +44,11 @@ pub(in crate::game) fn mob(
         max_head_y_rot: 75.0,
         ambient_interval: 80,
         flags: Default::default(),
-        model: Arc::new(part),
-        layers: Default::default(),
-        texture: String::new(),
         brain: Brain::Passive,
         anim: Anim::Humanoid { zombie_arms: false },
         sounds: ["entity.cow.hurt", "entity.cow.hurt", "entity.cow.death"],
         food: Default::default(),
         tempt: Default::default(),
-        shadow: None,
         attribute_bounds: Default::default(),
         sound_overrides: Default::default(),
         passenger_attachments: Vec::new(),

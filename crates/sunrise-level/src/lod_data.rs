@@ -1,4 +1,6 @@
 //! Portable far-terrain column, span, tile-key, and zoom-aim data types.
+pub mod bake;
+pub mod cache;
 use crate::columns::Surface;
 use sunrise_world::registry::BlockStateId;
 

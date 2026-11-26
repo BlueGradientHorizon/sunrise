@@ -4,7 +4,6 @@ use crate::{
     biome::Biomes,
     chunk::{BIOME_STRATEGY, Chunk, ColumnLayout, Section},
     save::SavedProto,
-    streaming::{ChunkGenerator, LodSampler, Proto},
 };
 use std::{path::Path, sync::Arc};
 use sunrise_core::{
@@ -12,6 +11,7 @@ use sunrise_core::{
     position::ChunkPos,
     ticks::{ProtoChunkTicks, SavedTick, TickTypeId},
 };
+use sunrise_level::chunk_streamer::{ChunkGenerator, LodSampler, Proto};
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::{

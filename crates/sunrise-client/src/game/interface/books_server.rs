@@ -1,4 +1,4 @@
-use super::{Game, chat::PLAYER_NAME};
+use super::{Game, chat_common::PLAYER_NAME};
 use sunrise_client::{
     containers::{BlockEntity, Lectern},
     first_person::Hand,
@@ -212,7 +212,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .side
             .lan_acting_name
             .clone()
-            .unwrap_or_else(|| super::chat::PLAYER_NAME.to_owned());
+            .unwrap_or_else(|| super::chat_common::PLAYER_NAME.to_owned());
         self.write_book_with_author(slot, pages, title, author);
     }
 

@@ -14,11 +14,11 @@ use super::{
 use crate::blocks::Fluid;
 use crate::health::DamageLevel;
 use crate::join_seq::JoinList;
-use crate::particles::ParticleType;
 use std::f32::consts::PI;
 use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_level::particle_options::ParticleType;
 
 // Squid animation slots in AnimState.v.
 const TENTACLE_MOVEMENT: usize = 0;

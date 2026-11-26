@@ -477,7 +477,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             banners: &self.stations().banners,
             sprites: &self.gui.atlas.sprites,
             skins: &self.side.skin_downloads.0,
-            profiles: &self.skin_profiles,
+            profiles: &self.side.skin_profiles,
         }
     }
     /// The client level as item models read it: worked out once a frame (a

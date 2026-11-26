@@ -354,7 +354,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             &self.side.registered_debug_entries.0,
             self.side.debug,
             self.reduced_debug_info(),
-        ) && (!self.ui.hide_gui || screen_open)
+        ) && (!self.side.chat_ui.hide_gui || screen_open)
     }
 
     /// `DebugScreenOverlay.extractRenderState`: the enabled entries' lines
@@ -449,7 +449,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn debug_lists_gpu_passes(&self) -> bool {
         self.side.debug
             && self.side.title.0.is_none()
-            && !(self.ui.hide_gui && self.side.screen == Screen::Playing)
+            && !(self.side.chat_ui.hide_gui && self.side.screen == Screen::Playing)
             && self.debug_entry("system_specs")
     }
     /// The monitor's refresh rate in millihertz, asked of the OS at most once a second (on
@@ -747,7 +747,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
             DebugAction::ClearChat => {
                 // ChatComponent.clearMessages(false): sent history stays.
-                self.ui.chat.clear();
+                self.side.chat_ui.chat.clear();
                 true
             }
             DebugAction::ShowChunkBorders if player => {

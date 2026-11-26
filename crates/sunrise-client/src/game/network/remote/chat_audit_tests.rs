@@ -154,7 +154,7 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
             assert_eq!(game.chat_queue_len(), 1);
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
-            assert!(game.ui.chat.recent_lines(1).is_empty());
+            assert!(game.chat_ui_for_test().chat.recent_lines(1).is_empty());
             game.remote.as_mut().unwrap().has_logical_player = true;
 
             game.handle_packet(C::SystemChat(play::SystemChat {
@@ -168,14 +168,14 @@ fn disguised_chat_has_a_system_tag_but_is_player_chat() {
             }))
             .unwrap();
             assert_eq!(game.chat_queue_len(), 1);
-            assert_eq!(game.ui.chat.recent_lines(2), ["server"]);
+            assert_eq!(game.chat_ui_for_test().chat.recent_lines(2), ["server"]);
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
-            assert!(game.ui.chat.recent_lines(1)[0].contains("disguised"));
+            assert!(game.chat_ui_for_test().chat.recent_lines(1)[0].contains("disguised"));
             assert_eq!(tracker_offset(game), 0);
 
-            let chat = &mut game.ui.chat;
-            let font = &game.gui.atlas.font;
+            let (chat_ui, font) = game.chat_ui_and_font_for_test();
+            let chat = &mut chat_ui.chat;
             chat.options = ChatOptions::default();
             chat.smooth = false;
             chat.hide_indicator = false;
@@ -245,7 +245,7 @@ fn delete_chat_removes_a_queued_fully_filtered_message_without_ack() {
             let seen = take_seen_update(game);
             assert_eq!(seen.update.offset, 0);
             assert!(seen.last_seen.is_empty());
-            assert!(game.ui.chat.recent_lines(1).is_empty());
+            assert!(game.chat_ui_for_test().chat.recent_lines(1).is_empty());
         },
     );
 }
@@ -264,14 +264,14 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
             game.settings.file.set("onlyShowSecureChat", V::Bool(false));
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
-            assert!(game.ui.chat.recent_lines(1).is_empty());
+            assert!(game.chat_ui_for_test().chat.recent_lines(1).is_empty());
 
             game.handle_packet(C::PlayerChat(player_chat(ALICE, 1, "unsigned, visible")))
                 .unwrap();
             game.settings.file.set("onlyShowSecureChat", V::Bool(true));
             game.tick_chat_queue();
             assert_eq!(game.chat_queue_len(), 0);
-            assert!(game.ui.chat.recent_lines(1)[0].contains("unsigned, visible"));
+            assert!(game.chat_ui_for_test().chat.recent_lines(1)[0].contains("unsigned, visible"));
 
             // Language changes while queued re-evaluate decoration and trust on acceptance.
             game.settings.file.set("onlyShowSecureChat", V::Bool(false));
@@ -299,10 +299,10 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
             ));
             game.accept_next_delayed_message();
             assert_eq!(game.chat_queue_len(), 0);
-            let newest = game.ui.chat.recent_lines(1);
+            let newest = game.chat_ui_for_test().chat.recent_lines(1);
             assert!(newest[0].contains("after"), "{newest:?}");
-            let chat = &mut game.ui.chat;
-            let font = &game.gui.atlas.font;
+            let (chat_ui, font) = game.chat_ui_and_font_for_test();
+            let chat = &mut chat_ui.chat;
             chat.options = ChatOptions::default();
             chat.smooth = false;
             chat.hide_indicator = false;

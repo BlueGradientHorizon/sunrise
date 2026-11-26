@@ -892,7 +892,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             self.server_system_message(Text::translate(
                 key,
-                &[Text::literal(super::chat::PLAYER_NAME)],
+                &[Text::literal(super::chat_common::PLAYER_NAME)],
             ));
         }
     }

@@ -432,7 +432,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // LivingEntity.baseTick reaches LocalPlayer.tickDeath after the fluid update.
         // The last sample is therefore the one taken on death tick 20.
         if dead {
-            self.ui.death_time = self.ui.death_time.saturating_add(1);
+            self.side.chat_ui.death_time = self.side.chat_ui.death_time.saturating_add(1);
             // LivingEntity.tick runs LocalPlayer.aiStep only while `!this.isRemoved()`.
             if !self.local_player_removed_by_death() {
                 self.tick_local_water_vision();

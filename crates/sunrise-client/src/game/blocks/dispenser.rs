@@ -2984,8 +2984,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     );
                 }
                 Species::Sheep if !m.extra.sheared && !m.is_baby() => {
-                    let color =
-                        sunrise_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
+                    let color = sunrise_level::dyes::DYE_NAMES[m.extra.color as usize & 15];
                     self.play_bound_sound(
                         shear_sound("minecraft:entity.sheep.shear"),
                         entity_id,

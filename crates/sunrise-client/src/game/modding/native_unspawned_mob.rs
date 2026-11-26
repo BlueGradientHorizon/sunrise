@@ -20,7 +20,7 @@ use mod_api::{
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{cell::RefCell, rc::Rc};
 use sunrise_client::mobs::finalize::{Ageable, Group};
-use sunrise_client::mobs::{Mob, equine, llama, render, tame};
+use sunrise_client::mobs::{Mob, equine, llama, tame};
 use sunrise_client::text::Text;
 use sunrise_mod_runtime::pending_children::PendingChildren;
 use sunrise_world::attribute_map::ValueKind;
@@ -388,8 +388,8 @@ pub(in crate::game) fn native_spawn_group(group: &Group, epoch: WorldEpoch) -> O
             tropical: match look {
                 Some((pattern, base, color)) => Some(TropicalVariant::new(
                     named(&sunrise_client::entity_nbt::TROPICAL_PATTERNS, *pattern)?,
-                    named(&render::DYE_NAMES, *base)?,
-                    named(&render::DYE_NAMES, *color)?,
+                    named(&sunrise_level::dyes::DYE_NAMES, *base)?,
+                    named(&sunrise_level::dyes::DYE_NAMES, *color)?,
                 )),
                 None => None,
             },
@@ -467,8 +467,8 @@ pub(in crate::game) fn spawn_group(group: &SpawnGroup) -> Option<Group> {
                         &sunrise_client::entity_nbt::TROPICAL_PATTERNS,
                         &look.pattern,
                     )?,
-                    index(&render::DYE_NAMES, &look.base_color)?,
-                    index(&render::DYE_NAMES, &look.pattern_color)?,
+                    index(&sunrise_level::dyes::DYE_NAMES, &look.base_color)?,
+                    index(&sunrise_level::dyes::DYE_NAMES, &look.pattern_color)?,
                 )),
                 None => None,
             },

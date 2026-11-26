@@ -5,53 +5,7 @@
 use std::collections::HashSet;
 use winit::keyboard::{KeyCode, ModifiersState};
 
-fn length(v: [f32; 2]) -> f32 {
-    f64::from(v[0] * v[0] + v[1] * v[1]).sqrt() as f32
-}
-fn scale(v: [f32; 2], factor: f32) -> [f32; 2] {
-    [v[0] * factor, v[1] * factor]
-}
-pub use sunrise_client_core::move_input::keyboard_direction;
-
-/// LocalPlayer.modifyInput with already selected multipliers. `item_use` is
-/// Some only when using an item and not riding; `sneaking` only when moving
-/// slowly. Zero input returns before either multiplier is applied.
-#[sunrise_mod_api_macros::replaceable]
-pub fn modify_input(input: [f32; 2], item_use: Option<f32>, sneaking: Option<f32>) -> [f32; 2] {
-    if input[0] * input[0] + input[1] * input[1] == 0.0 {
-        return input;
-    }
-    let mut v = scale(input, 0.98);
-    if let Some(multiplier) = item_use {
-        v = scale(v, multiplier);
-    }
-    if let Some(multiplier) = sneaking {
-        v = scale(v, multiplier);
-    }
-    square_movement(v)
-}
-
-fn square_movement(v: [f32; 2]) -> [f32; 2] {
-    let magnitude = length(v);
-    if magnitude <= 0.0 {
-        return v;
-    }
-    let unit = scale(v, 1.0 / magnitude);
-    let x = unit[0].abs();
-    let y = unit[1].abs();
-    let ratio = if y > x { x / y } else { y / x };
-    let distance = f64::from(1.0 + ratio * ratio).sqrt() as f32;
-    let speed = magnitude * distance;
-    // Java Math.min propagates NaN, unlike Rust's f32::min.
-    scale(
-        unit,
-        if speed.is_nan() || speed < 1.0 {
-            speed
-        } else {
-            1.0
-        },
-    )
-}
+pub use sunrise_client_core::move_input::{keyboard_direction, modify_input};
 
 /// `InputQuirks.isQuitShortcutDown`: checks whether the platform's window-closing
 /// keyboard shortcut is held.

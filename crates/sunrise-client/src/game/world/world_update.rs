@@ -297,7 +297,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         renderer
                             .lod_detail_columns()
                             .filter(|&(x, z)| {
-                                sunrise_client::streaming::in_view_distance(at.1, at.2, x, z)
+                                sunrise_level::chunk_streamer::in_view_distance(at.1, at.2, x, z)
                             })
                             .collect()
                     })
@@ -442,7 +442,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             (None, Some(offer), Some(remote)) => {
                 let states = self.res.facts().states.len() as u32;
                 let biomes = self.res.biomes().index.clone();
-                let source: Arc<dyn sunrise_client::streaming::LodSource> =
+                let source: Arc<dyn sunrise_level::chunk_streamer::LodSource> =
                     remote.session.far_terrain(offer, biomes, states);
                 Some(source)
             }

@@ -71,7 +71,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .is_some_and(|s| s.search_focused()),
             // The language list's search, the settings search and the pack
             // screen's search (OptionsUi::typing).
-            Screen::Options => self.ui.options.typing(),
+            Screen::Options => self.side.chat_ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
             Screen::Creative => {
                 self.mod_browser_typing() || self.side.creative_screen.0.tab().search
@@ -315,7 +315,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Screen::CommandBlock => self.command_block_type(text),
                 Screen::Social => self.social_type(text),
                 Screen::DebugOptions => self.debug_options_type(text),
-                Screen::Options => self.ui.options.type_text(&self.gui.atlas, text),
+                Screen::Options => self.side.chat_ui.options.type_text(&self.gui.atlas, text),
                 Screen::WorldOptions => self.world_options_text(Some(text)),
                 Screen::BlockEditor => self.block_editor_type(text),
                 Screen::Inventory | Screen::Creative if self.mod_browser_typing() => {

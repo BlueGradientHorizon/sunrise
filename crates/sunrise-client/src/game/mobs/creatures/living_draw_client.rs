@@ -86,7 +86,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
             && (0..6).all(|slot| mob.extra.slot_stack(slot).is_none())
             && beam.is_none()
         {
-            self.entity_cull_decision(mob, alpha)
+            let Some(bounds) = super::super::entity_client::mob_render_bounds(
+                mob,
+                self.res.client_mob_models(),
+                alpha,
+            ) else {
+                return;
+            };
+            self.entity_cull_decision_in_bounds(mob, bounds)
         } else {
             EntityCullDecision::CheckVertices
         };
@@ -296,7 +303,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 mob.previous.y + (mob.position.y - mob.previous.y) * a + mob.eye_height(),
                 mob.previous.z + (mob.position.z - mob.previous.z) * a,
             ) - camera;
-            sunrise_client::mobs::guardian::beam_geometry(
+            sunrise_client::mobs_render::guardian_beam_geometry(
                 eye.as_vec3(),
                 (target - camera).as_vec3(),
                 time,

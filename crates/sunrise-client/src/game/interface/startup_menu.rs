@@ -184,10 +184,15 @@ impl StartupMenu {
         game.side.narration = std::mem::take(&mut self.narration);
         // Preserve an existing resource-error screen opened by start_game.
         if self.options_open {
-            let resource_error = game.ui.options.resource_error.take();
-            game.ui.options = std::mem::take(&mut self.options);
-            game.ui.options.resource_error =
-                game.ui.options.resource_error.take().or(resource_error);
+            let resource_error = game.side.chat_ui.options.resource_error.take();
+            game.side.chat_ui.options = std::mem::take(&mut self.options);
+            game.side.chat_ui.options.resource_error = game
+                .side
+                .chat_ui
+                .options
+                .resource_error
+                .take()
+                .or(resource_error);
             game.set_screen(Screen::Options);
             game.side.options_from_title = true;
             if self.dragging {
@@ -1831,10 +1836,18 @@ mod tests {
                 None,
                 None,
             );
-            assert!(game.ui.options.pack_screen.as_ref().unwrap().confirming());
+            assert!(
+                game.side
+                    .chat_ui
+                    .options
+                    .pack_screen
+                    .as_ref()
+                    .unwrap()
+                    .confirming()
+            );
             assert!(!packs::packs_dir().join("Game pack").exists());
             let size = game.gui_size();
-            let events = game.ui.options.click(
+            let events = game.side.chat_ui.options.click(
                 &mut game.settings,
                 &game.gui.atlas,
                 size.0 / 2.0 - 150.0,
@@ -1848,7 +1861,8 @@ mod tests {
             game.handle_option_events(events).unwrap();
             assert!(packs::packs_dir().join("Game pack/pack.mcmeta").is_file());
             assert!(
-                game.ui
+                game.side
+                    .chat_ui
                     .options
                     .pack_infos
                     .iter()

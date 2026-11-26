@@ -289,7 +289,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         mods::register_gui_layers(ExecutionRole::Client);
         game.side.title.0 = None;
         game.side.screen = super::Screen::Playing;
-        game.ui.hide_gui = false;
+        game.side.chat_ui.hide_gui = false;
         game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
         player.set_health(12.0, false).unwrap();
@@ -317,7 +317,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             } else {
                 sunrise_client::command::args::GameMode::Survival
             });
-            game.ui.hide_gui = hidden;
+            game.side.chat_ui.hide_gui = hidden;
             if under_water && !game.player.as_ref().unwrap().is_eye_in_fluid(WATER) {
                 let water = game
                     .pack
@@ -395,15 +395,15 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                     painted_replacement,
                 );
                 if painted_replacement {
-                    assert_eq!(game.ui.room.bottom(), 100.0);
+                    assert_eq!(game.side.chat_ui.room.bottom(), 100.0);
                 } else if !vanilla_eligible {
                     assert_eq!(
-                        game.ui.room.bottom(),
+                        game.side.chat_ui.room.bottom(),
                         batch.height,
                         "no vanilla status paint"
                     );
                 } else {
-                    assert!(game.ui.room.bottom() > 100.0);
+                    assert!(game.side.chat_ui.room.bottom() > 100.0);
                 }
                 assert_eq!(
                     game.side.health_hud.last_health,
@@ -972,7 +972,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
             };
             // A client of a server takes its mode from the server: only its local mode changes.
             game.set_local_mode(mode);
-            game.ui.hide_gui = frame.variant == Variant::Hidden;
+            game.side.chat_ui.hide_gui = frame.variant == Variant::Hidden;
             game.settings.attack_indicator = match frame.variant {
                 Variant::Off => 0,
                 Variant::Crosshair => 1,
@@ -1273,7 +1273,7 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
                     .chain(after_hud.iter().copied())
                     .collect();
                 for hidden in [false, true] {
-                    game.ui.hide_gui = hidden;
+                    game.side.chat_ui.hide_gui = hidden;
                     let frame = game.hud_layers(size);
                     assert_eq!(take(), expected, "{screen:?}, F1 hidden: {hidden}");
                     assert_eq!(has_hotbar(&frame), !hidden);
@@ -1513,7 +1513,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                 );
                 enter_test_world(game);
                 game.toggle_hide_gui();
-                assert!(game.ui.player_hides_gui && game.ui.hide_gui);
+                assert!(game.side.chat_ui.player_hides_gui && game.side.chat_ui.hide_gui);
                 let size = [640, 480];
                 let _ = game.hud(size);
                 assert_eq!(
@@ -1627,7 +1627,7 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             mods::register_gui_layers(ExecutionRole::Client);
             enter_test_world(game);
             game.toggle_hide_gui();
-            assert!(game.ui.player_hides_gui && game.ui.hide_gui);
+            assert!(game.side.chat_ui.player_hides_gui && game.side.chat_ui.hide_gui);
             use crate::game::toast_manager::{SystemToastId, Toast};
             game.add_system_toast(
                 Some(SystemToastId::PackLoadFailure),

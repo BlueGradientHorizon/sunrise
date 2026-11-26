@@ -2709,7 +2709,8 @@ mod tests {
     fn mod_tickets_save_apart_from_vanillas_tickets_and_release_with_the_world() {
         use mod_api::TicketOwner::{Block, Entity};
         use std::sync::Arc;
-        use sunrise_client::{streaming::Streaming, testgen::TestTerrain};
+        use sunrise_client::streaming::Streaming;
+        use sunrise_level::testgen::TestTerrain;
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = game.level_chunk_ref(level, [-9, 4]).unwrap();

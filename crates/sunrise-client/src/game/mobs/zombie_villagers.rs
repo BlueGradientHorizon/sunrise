@@ -416,11 +416,10 @@ mod tests {
     /// A villager-shaped mob of `species` with the registered `attributes`.
     fn test_mob(id: u32, species: Species, name: &str, attributes: &[(&str, f64)]) -> Mob {
         use std::sync::Arc;
-        use sunrise_client::mobs::{Anim, Brain, MobType, Part};
+        use sunrise_client::mobs::{Anim, Brain, MobType};
         use sunrise_core::geometry::Vec3;
         let kind = MobType {
             type_key: Default::default(),
-            shadow: None,
             id: name.into(),
             species,
             width: 0.6,
@@ -458,15 +457,6 @@ mod tests {
             max_head_y_rot: 75.0,
             ambient_interval: 80,
             flags: Default::default(),
-            model: Arc::new(Part {
-                name: "root".into(),
-                pose: [0.0; 9],
-                polygons: Vec::new(),
-                children: Vec::new(),
-                layer: None,
-            }),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Humanoid { zombie_arms: true },
             sounds: ["entity.villager.ambient"; 3],

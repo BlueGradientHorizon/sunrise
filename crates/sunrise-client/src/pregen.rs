@@ -4,7 +4,7 @@
 //! streaming generates the band's chunks and keeps them until they are lit,
 //! then the band moves on and the rows behind it unload and are saved, so
 //! memory stays bounded whatever the radius.
-use crate::streaming::Band;
+use sunrise_level::chunk_streamer::Band;
 
 /// The opt-in command's report-format tree, beside vanilla's exported report.
 /// The server sends this to clients so they can complete the command too.

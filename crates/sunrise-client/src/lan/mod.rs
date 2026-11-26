@@ -108,20 +108,20 @@ pub struct Joined {
 }
 
 pub(crate) fn event_channel() -> (
-    crate::net::ingress::Producer<NetEvent>,
-    crate::net::ingress::Consumer<NetEvent>,
+    crate::net_ingress::Producer<NetEvent>,
+    crate::net_ingress::Consumer<NetEvent>,
 ) {
-    crate::net::ingress::channel(96 << 20, NetEvent::ingress_charge)
+    crate::net_ingress::channel(96 << 20, NetEvent::ingress_charge)
         .expect("positive incoming byte budget")
 }
 #[cfg(test)]
 pub(crate) fn event_channel_with_capacity(
     capacity: usize,
 ) -> (
-    crate::net::ingress::Producer<NetEvent>,
-    crate::net::ingress::Consumer<NetEvent>,
+    crate::net_ingress::Producer<NetEvent>,
+    crate::net_ingress::Consumer<NetEvent>,
 ) {
-    crate::net::ingress::channel(capacity, NetEvent::ingress_charge)
+    crate::net_ingress::channel(capacity, NetEvent::ingress_charge)
         .expect("positive test incoming byte budget")
 }
 impl NetEvent {
@@ -164,7 +164,7 @@ impl NetEvent {
                 Self,
                 play::Serverbound,
                 hub::HostEvent,
-                crate::net::ingress::ReceiveLease<Self>,
+                crate::net_ingress::ReceiveLease<Self>,
                 usize,
                 usize,
             )>(),
@@ -186,6 +186,29 @@ pub enum Out {
 pub type LoginGate =
     Arc<dyn Fn(SocketAddr, u128, &str) -> Option<sunrise_core::nbt::Tag> + Send + Sync>;
 
+#[derive(Clone, Debug)]
+pub struct VerifiedSession {
+    pub uuid: u128,
+    pub properties: Vec<sunrise_core::profile::AccountProperty>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SessionVerifyError {
+    Unavailable,
+}
+
+/// `MinecraftSessionService.hasJoinedServer`:
+/// `Ok(Some(session))` verified, `Ok(None)` invalid session, `Err(_)` auth servers unavailable.
+pub type SessionVerifier = Arc<
+    dyn Fn(
+            &str,
+            &str,
+            Option<std::net::IpAddr>,
+        ) -> Result<Option<VerifiedSession>, SessionVerifyError>
+        + Send
+        + Sync,
+>;
+
 /// online-mode=true: the key pair the server made at startup
 /// (MinecraftServer.initializeKeyPair) and how players are verified.
 pub struct OnlineMode {
@@ -194,25 +217,29 @@ pub struct OnlineMode {
     pub public_der: Vec<u8>,
     /// prevent-proxy-connections: the session service also checks the address.
     pub prevent_proxy: bool,
+    pub verify: SessionVerifier,
 }
 
 impl OnlineMode {
     /// MinecraftServer.initializeKeyPair.
-    pub fn generate(prevent_proxy: bool) -> Result<Self, String> {
+    pub fn generate(prevent_proxy: bool, verify: SessionVerifier) -> Result<Self, String> {
         let key = sunrise_protocol::rsa::RsaPrivateKey::generate(1024)
             .map_err(|e| format!("Failed to generate key pair: {e}"))?;
         Ok(Self {
             public_der: key.public_der(),
             key,
             prevent_proxy,
+            verify,
         })
     }
     /// IntegratedServer.initServer (`setUsesAuthentication(true)`): a LAN or
     /// friends world authenticates its guests when the host is signed in;
     /// an offline name hosts in offline mode.
-    pub fn lan() -> Option<Arc<Self>> {
-        crate::auth::current()?;
-        Self::generate(false)
+    pub fn lan(signed_in: bool, verify: SessionVerifier) -> Option<Arc<Self>> {
+        if !signed_in {
+            return None;
+        }
+        Self::generate(false, verify)
             .map_err(|e| log::warn!("LAN stays in offline mode: {e}"))
             .ok()
             .map(Arc::new)
@@ -480,7 +507,7 @@ pub struct Shared {
     payload_local: Arc<crate::raw_payloads::Local>,
     /// What the next login is sent; `PlayerList.reloadResources` swaps it.
     sync: Mutex<Arc<data::SyncData>>,
-    pub events: crate::net::ingress::Producer<NetEvent>,
+    pub events: crate::net_ingress::Producer<NetEvent>,
     /// Handshakes waiting for the server tick, when a game drives this listener.
     handoffs: Option<Mutex<Vec<Handoff>>>,
     handshake_listeners: mod_api::__private::EnabledListeners,
@@ -752,7 +779,7 @@ pub fn base64(data: &[u8]) -> String {
 pub struct Lan {
     pub shared: Arc<Shared>,
     pub configuration_tasks: configuration_tasks::Tasks,
-    events: crate::net::ingress::Consumer<NetEvent>,
+    events: crate::net_ingress::Consumer<NetEvent>,
     configuration_requests: Option<Receiver<configuration_tasks::ConfigurationRequest>>,
     login_profiles: Option<Receiver<login_profile::LoginProfileRequest>>,
     pub port: u16,
@@ -964,7 +991,7 @@ impl Lan {
         Ok(client)
     }
     /// Everything the connection threads reported since the last call.
-    pub fn poll(&self) -> Vec<crate::net::ingress::OwnedReceipt<NetEvent>> {
+    pub fn poll(&self) -> Vec<crate::net_ingress::OwnedReceipt<NetEvent>> {
         self.events.take_turn()
     }
     pub fn stop(&mut self) {

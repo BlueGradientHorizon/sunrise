@@ -1327,7 +1327,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         let at = [m.position.x, m.position.y, m.position.z];
         self.lan_entity_event(id as i32, 42, at);
-        self.particles_around_mob(id, "splash", sunrise_client::particles::Burst::VILLAGER);
+        self.particles_around_mob(
+            id,
+            "splash",
+            sunrise_level::particle_options::Burst::VILLAGER,
+        );
     }
 
     /// The raid bars a player `uuid` is in (`Raid.getPlayers`): red, notched

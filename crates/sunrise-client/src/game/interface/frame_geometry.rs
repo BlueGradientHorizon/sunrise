@@ -157,7 +157,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             pose[5] = if std::ptr::eq(p, arm) { z_rot } else { 0.0 };
             Some(pose)
         };
-        sunrise_client::mobs::render_model_filtered(
+        sunrise_client::mobs_render::render_model_filtered(
             arm,
             base,
             &pose,
@@ -179,7 +179,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // no player-view hand.
         if !fov::studio_draws_hand(
             self.side.studio.flying(),
-            self.ui.hands_drawn(
+            self.side.chat_ui.hands_drawn(
                 self.spectator(),
                 self.camera_subject().is_some_and(|c| c.is_sleeping),
                 self.side.camera_type.is_first_person(),

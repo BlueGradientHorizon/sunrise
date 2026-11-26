@@ -5,8 +5,9 @@
 //! once nothing of it is left. Its entities go in the tracking pass (`entities`).
 use super::super::hub::{Hub, TickCtx, game_event};
 use super::view::View;
-use crate::{chunk::Chunk, streaming::Streaming, world::World};
+use crate::{chunk::Chunk, world::World};
 use std::sync::atomic::{AtomicBool, Ordering};
+use sunrise_level::chunk_streamer::ChunkState;
 use sunrise_protocol::{
     frame,
     packets::{
@@ -148,7 +149,7 @@ impl Runs {
 /// `ChunkStatus.LIGHT` needs its neighbours at `INITIALIZE_LIGHT`: a column whose light layers
 /// would leave one out waits for it (as `Hub::next_batch`). So does one still waiting for its
 /// postprocessing, which vanilla runs before a chunk is sent (`ChunkMap.prepareTickingChunk`).
-fn ready(world: &World, streaming: Option<&Streaming>, c: &Chunk) -> bool {
+fn ready(world: &World, streaming: Option<&ChunkState>, c: &Chunk) -> bool {
     c.lit
         && c.postprocess.is_empty()
         && streaming.is_none_or(|streaming| {
@@ -304,7 +305,7 @@ impl Hub {
 
     /// The next batch of the level in place guest `i` views: its ready columns nearest to an
     /// area's centre first, as many as the batch quota its own level left.
-    fn send_view_batch(&mut self, i: usize, world: &World, streaming: Option<&Streaming>) {
+    fn send_view_batch(&mut self, i: usize, world: &World, streaming: Option<&ChunkState>) {
         let g = &self.guests[i];
         if self.ticks <= g.placed_at + 1
             || g.unacknowledged >= g.max_unacknowledged

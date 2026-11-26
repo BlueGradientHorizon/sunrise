@@ -1448,7 +1448,13 @@ pub(in crate::game) fn content_overlay_with_refusals(
     let prepared = super::load_conditions::content_root_with_conditions(
         root, jar_store, &mods, &cache, &inventory, sources,
     )?;
-    let root = mod_content::resolved_resources(root, prepared, jar_store, &mods, cache)?;
+    let root = if sources.installation_side == sunrise_mod_package::manifest::Side::Server {
+        mod_content::resolved_server_resources(root, prepared, jar_store, &mods, cache)?
+    } else {
+        sunrise_client::mod_content_client::resolved_resources(
+            root, prepared, jar_store, &mods, cache,
+        )?
+    };
     let _ = sources.content_base.set(original_base);
     *sources.load_notices.lock().unwrap() = resolved.warnings;
     Ok(ContentOverlay {
@@ -1606,7 +1612,11 @@ pub(in crate::game) fn content_root(
     })?;
     register_entity_types(&overlay.mods);
     register_menu_types(&overlay.mods)?;
-    sunrise_client::mod_content::set_fluid_looks(&overlay.mods);
+    if sources.installation_side == sunrise_mod_package::manifest::Side::Server {
+        sunrise_client::mod_content::set_fluid_looks(&overlay.mods);
+    } else {
+        sunrise_client::mod_content_client::set_fluid_looks(&overlay.mods);
+    }
     sunrise_client::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
     // reloads can change layers but cannot replace the registered blocks and block entity types.
@@ -2311,6 +2321,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 #[cfg(test)]
 pub(in crate::game) fn living_mod_types()
 -> std::collections::HashMap<String, std::sync::Arc<sunrise_client::mobs::MobType>> {
+    living_mod_types_and_models().0
+}
+
+#[cfg(test)]
+fn living_mod_types_and_models() -> (
+    std::collections::HashMap<String, std::sync::Arc<sunrise_client::mobs::MobType>>,
+    sunrise_client::mobs_render::ClientMobModels,
+) {
     let zombie =
         r#""width":0.6,"height":1.95,"eye_height":1.74,"category":"monster","fire_immune":false"#;
     let villager =
@@ -2348,6 +2366,11 @@ pub(in crate::game) fn living_mod_types()
     ));
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("entity-types.json"), table).unwrap();
+    std::fs::write(
+        root.join("entity-models.json"),
+        r#"{"minecraft:zombie#main":{}}"#,
+    )
+    .unwrap();
     // No attribute catalog: the rows' values stay as written.
     let attributes = &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
         "data_version": sunrise_world::DATA_VERSION,
@@ -2356,12 +2379,16 @@ pub(in crate::game) fn living_mod_types()
     }))
     .unwrap();
     let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
+    let models = sunrise_client::mobs_render::ClientMobModels::load(&root).unwrap();
     let _ = std::fs::remove_dir_all(&root);
-    types
-        .types
-        .into_iter()
-        .map(|(id, t)| (id, std::sync::Arc::new(t)))
-        .collect()
+    (
+        types
+            .types
+            .into_iter()
+            .map(|(id, t)| (id, std::sync::Arc::new(t)))
+            .collect(),
+        models,
+    )
 }
 
 /// The block states native mods add to vanilla POI types (`native_extend_poi_types`),
@@ -4419,7 +4446,7 @@ pub(in crate::game) mod tests {
     fn a_mod_living_type_is_its_templates_mob_with_its_own_attributes() {
         use sunrise_client::mobs::{Mob, Species, drops::death_loot_table};
         use sunrise_core::geometry::Vec3;
-        let types = living_mod_types();
+        let (types, models) = living_mod_types_and_models();
         let (zombie, ghoul) = (&types["minecraft:zombie"], &types["ruby:ghoul"]);
         assert_eq!(ghoul.species, Species::Zombie);
         assert_eq!(ghoul.class_id(), "minecraft:zombie");
@@ -4428,9 +4455,18 @@ pub(in crate::game) mod tests {
         assert_eq!((zombie.max_health, ghoul.max_health), (20.0, 40.0));
         assert_eq!(ghoul.speed.to_bits(), zombie.speed.to_bits());
         assert_eq!(
-            (ghoul.sounds, ghoul.texture.as_str()),
-            (zombie.sounds, zombie.texture.as_str())
+            (
+                ghoul.sounds,
+                ghoul.model_name(),
+                models.texture("ruby:ghoul")
+            ),
+            (
+                zombie.sounds,
+                zombie.model_name(),
+                models.texture("minecraft:zombie"),
+            )
         );
+        assert!(models.texture("ruby:ghoul").is_some());
 
         let at = Vec3::new(0.5, 64.0, 0.5);
         let (zombie, ghoul) = (

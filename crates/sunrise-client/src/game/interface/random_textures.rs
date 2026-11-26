@@ -11,7 +11,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_random_textures(&mut self) {
         let res = self.res.clone();
         let textures = res
-            .mob_data()
+            .client_mob_data()
             .random_textures
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -21,7 +21,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for i in 0..self.mobs.len() {
             let m = &mut self.mobs[i];
             let id = m.id;
-            if !m.random_textures.due(&textures, id) {
+            if !m.random_textures.due_generation(textures.generation(), id) {
                 continue;
             }
             let m = &self.mobs[i];

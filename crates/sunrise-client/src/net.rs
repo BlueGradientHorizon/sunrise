@@ -175,6 +175,24 @@ pub enum Event {
     },
 }
 
+impl crate::raw_payloads::ClientEvent for Event {
+    fn raw_payload(incoming: crate::raw_payloads::Incoming) -> Self {
+        Self::RawPayload(Box::new(incoming))
+    }
+    fn disconnected(reason: String) -> Self {
+        Self::Disconnected {
+            reason,
+            key: None,
+            from_server: false,
+        }
+    }
+}
+
+const _: () = assert!(
+    std::mem::size_of::<Event>() <= crate::raw_payloads::connection::CLIENT_EVENT_SIZE_BOUND
+);
+const _: () = assert!(crate::raw_payloads::after_size::<Event>() <= 256);
+
 const EVENT_BUDGET: usize = 96 << 20;
 fn event_channel() -> (ingress::Producer<Event>, ingress::Consumer<Event>) {
     ingress::channel(EVENT_BUDGET, Event::ingress_charge).expect("positive incoming byte budget")
@@ -432,8 +450,10 @@ impl Session {
     ) -> Self {
         let (send, events) = event_channel();
         let payload_events = send.clone();
-        let captured_payloads =
-            crate::raw_payloads::Transport::capture(crate::raw_payloads::Side::Client);
+        let captured_payloads = crate::raw_payloads::Transport::capture_with_event_size(
+            crate::raw_payloads::Side::Client,
+            std::mem::size_of::<Event>(),
+        );
         let payloads = captured_payloads
             .as_ref()
             .cloned()
@@ -667,7 +687,7 @@ impl Session {
         }
     }
     /// Physical reply target, preserving this session's ordered event stream.
-    pub fn payload_endpoint(&self) -> crate::raw_payloads::Endpoint {
+    pub fn payload_endpoint(&self) -> crate::raw_payloads::Endpoint<Event> {
         crate::raw_payloads::Endpoint::client(
             self.writer.clone(),
             self.configuring.clone(),
@@ -2010,7 +2030,7 @@ fn receive_play(
 }
 
 fn receive_application(
-    endpoint: &crate::raw_payloads::Endpoint,
+    endpoint: &crate::raw_payloads::Endpoint<Event>,
     phase: sunrise_protocol::payload_negotiation::Phase,
     payload: cfg::CustomPayload,
     send: &ingress::Producer<Event>,

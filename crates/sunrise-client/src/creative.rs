@@ -142,78 +142,8 @@ impl Creative {
         }
     }
 }
-/// The same registries a vanilla client finishes configuring, in network ID order.
-/// Known-pack entries have already been filled from local resources by configuration.
-pub fn live_holders(
-    builtin: &sunrise_protocol::registry::Builtin,
-    dynamic: &sunrise_protocol::registry::Dynamic,
-) -> sunrise_items::creative_catalog::Holders {
-    use std::num::NonZeroU8;
-    use sunrise_core::nbt::Tag;
-    use sunrise_items::creative_catalog::{Enchantment, Holders, Painting};
-    let size = |value: &Tag| {
-        let n = match *value {
-            Tag::Byte(n) => i64::from(n),
-            Tag::Short(n) => i64::from(n),
-            Tag::Int(n) => i64::from(n),
-            Tag::Long(n) => n,
-            _ => return None,
-        };
-        NonZeroU8::new(u8::try_from(n).ok()?)
-    };
-    let entries = |kind: &str| dynamic.registries.get(kind).into_iter().flatten();
-    let text = |data: &Tag, key: &str| data.get(key).map(crate::scoreboard::tag_to_json);
-    let enchantments = entries("minecraft:enchantment")
-        .filter_map(|(id, data)| {
-            let data = data.as_ref()?;
-            Some(Enchantment {
-                id: id.clone(),
-                max_level: size(data.get("max_level")?)?,
-                description: text(data, "description").unwrap_or_default(),
-            })
-        })
-        .collect();
-    let placeable = dynamic
-        .tag("minecraft:painting_variant", "minecraft:placeable")
-        .unwrap_or_default();
-    let paintings = entries("minecraft:painting_variant")
-        .enumerate()
-        .filter_map(|(i, (id, data))| {
-            let data = data.as_ref()?;
-            Some(Painting {
-                id: id.clone(),
-                width: size(data.get("width")?)?,
-                height: size(data.get("height")?)?,
-                placeable: placeable.contains(&(i as i32)),
-                title: text(data, "title"),
-                author: text(data, "author"),
-            })
-        })
-        .collect();
-    let horns = dynamic
-        .tag("minecraft:instrument", "minecraft:goat_horns")
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|&id| dynamic.name("minecraft:instrument", id).map(str::to_owned))
-        .collect();
-    let instrument_descriptions = entries("minecraft:instrument")
-        .filter_map(|(id, data)| Some((id.clone(), text(data.as_ref()?, "description")?)))
-        .collect();
-    let banner_patterns = entries("minecraft:banner_pattern")
-        .map(|(id, _)| id.clone())
-        .collect();
-    let potions = builtin
-        .get("minecraft:potion")
-        .map_or_else(Vec::new, |registry| registry.names.clone());
-    Holders {
-        potions,
-        enchantments,
-        paintings,
-        horns,
-        instrument_descriptions,
-        banner_patterns,
-    }
-}
+pub use crate::menu::{DisplayClick, click_display, slot_locked};
+pub use sunrise_sim::item_names::{Names, live_holders};
 
 fn append_unique(items: &mut Vec<ItemStack>, added: &[ItemStack]) {
     for stack in added {
@@ -258,99 +188,6 @@ struct Shown {
     search: String,
     language_generation: u64,
     items: Arc<[ItemStack]>,
-}
-/// Display names from the pinned en_us language file.
-#[derive(Default)]
-pub struct Names {
-    map: HashMap<String, String>,
-    item_names: HashMap<String, serde_json::Value>,
-    /// The block registry, which says whether an item is a block's (`Item.Properties.useBlockDescriptionPrefix`).
-    blocks: Option<&'static sunrise_world::registry::BlockRegistry>,
-}
-impl Names {
-    pub fn load(root: &sunrise_assets::resource_source::ResourceSource) -> Self {
-        let read = |namespace: &str| {
-            root.read(&format!("assets/{namespace}/lang/en_us.json"))
-                .ok()
-                .and_then(|b| serde_json::from_slice::<HashMap<String, String>>(&b).ok())
-                .unwrap_or_default()
-        };
-        let mut map = read("minecraft");
-        // Content mods' names (docs/modpacks.md); none in a vanilla root.
-        for namespace in root
-            .namespaces("assets")
-            .into_iter()
-            .filter(|ns| ns != "minecraft")
-        {
-            map.extend(read(&namespace));
-        }
-        Self {
-            map,
-            item_names: HashMap::new(),
-            blocks: None,
-        }
-    }
-    /// Keep each item's default `minecraft:item_name` component from the items' prototypes:
-    /// `Item.getDescriptionId` is its translation key, so the key is the item's own, never
-    /// guessed from the language.
-    pub fn with_item_names(
-        mut self,
-        prototypes: &std::collections::BTreeMap<
-            String,
-            std::collections::BTreeMap<String, serde_json::Value>,
-        >,
-        blocks: &'static sunrise_world::registry::BlockRegistry,
-    ) -> Self {
-        self.blocks = Some(blocks);
-        self.item_names = prototypes
-            .iter()
-            .filter_map(|(id, components)| {
-                Some((id.clone(), components.get("minecraft:item_name")?.clone()))
-            })
-            .collect();
-        self
-    }
-    /// Whether `id` is the item of a block of the same id, which takes its block's `block.*`
-    /// description id (a mod block item, whose prototype carries no `item_name`).
-    pub fn is_block_item(&self, id: &str) -> bool {
-        self.blocks
-            .is_some_and(|blocks| blocks.default_state(id).is_some())
-    }
-    /// An item's default `minecraft:item_name` component, as its prototype has it.
-    pub fn item_name(&self, id: &str) -> Option<&serde_json::Value> {
-        self.item_names.get(id)
-    }
-    pub fn item(&self, id: &str) -> String {
-        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        self.map
-            .get(&format!("item.{namespace}.{path}"))
-            .or_else(|| self.map.get(&format!("block.{namespace}.{path}")))
-            .cloned()
-            .unwrap_or_else(|| path.replace('_', " "))
-    }
-    /// An item's display name in the selected language: `item.*` then
-    /// `block.*`, then the pinned English map (`Names::item`).
-    pub fn display_item(&self, id: &str) -> String {
-        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        if let Some(lang) = crate::lang::current() {
-            for prefix in ["item", "block"] {
-                if let Some(name) = lang.get(&format!("{prefix}.{namespace}.{path}")) {
-                    return name.to_owned();
-                }
-            }
-        }
-        self.item(id)
-    }
-    /// A translation key's text in the selected language, else the pinned
-    /// English map (`HoverName` and tooltip keys such as potion names).
-    pub fn display_get(&self, key: &str) -> Option<String> {
-        crate::lang::current()
-            .and_then(|lang| lang.get(key).map(str::to_owned))
-            .or_else(|| self.get(key).map(str::to_owned))
-    }
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.map.get(key).map(String::as_str)
-    }
 }
 
 /// `CreativeModeTabs`' key for an exported tab id (`itemGroup.*`); the
@@ -1248,102 +1085,6 @@ pub fn search_key_swaps(numeric: bool, hotbar_key: bool, hover: Hover, carrying:
     quick_swap && numeric && hotbar_key && !carrying && hover != Hover::Nothing
 }
 
-/// What a click on an item tab's display slot does besides changing the
-/// carried stack.
-#[derive(Clone, PartialEq, Debug)]
-pub enum DisplayClick {
-    Nothing,
-    /// SWAP: the hotbar slot gets a full stack of the item.
-    Hotbar(usize, ItemStack),
-    /// SWAP with button 40 (Key F): the off-hand gets a full stack of the item.
-    Offhand(ItemStack),
-    /// THROW: a copy of the item is dropped.
-    Drop(ItemStack),
-}
-
-/// Whether a stack has `minecraft:creative_slot_lock`.
-pub fn slot_locked(stack: &ItemStack) -> bool {
-    stack
-        .data()
-        .is_some_and(|d| d.other("minecraft:creative_slot_lock").is_some())
-}
-
-/// `CreativeModeInventoryScreen.slotClicked` on a display slot
-/// (`slot.container == CONTAINER`): `shown` is the slot's item (None past
-/// the tab's end) and `max` gives an item's max stack size. The tab's items
-/// are never changed: clicks make copies.
-pub fn click_display(
-    carried: &mut Option<ItemStack>,
-    shown: Option<&ItemStack>,
-    max: impl Fn(&ItemStack) -> u32,
-    button: i32,
-    input: crate::menu::Input,
-) -> DisplayClick {
-    use crate::menu::Input;
-    // CustomCreativeSlot.mayPickup: a `creative_slot_lock` stack (the saved
-    // toolbars' hint) can't be clicked at all.
-    if shown.is_some_and(slot_locked) {
-        return DisplayClick::Nothing;
-    }
-    let copy = |s: &ItemStack, count: u32| ItemStack { count, ..s.clone() };
-    let quick_key = input == Input::QuickMove;
-    match input {
-        Input::Swap => {
-            return match shown {
-                Some(s) if button == 40 => DisplayClick::Offhand(copy(s, max(s))),
-                Some(s) if (0..9).contains(&button) => {
-                    DisplayClick::Hotbar(button as usize, copy(s, max(s)))
-                }
-                Some(_) | None => DisplayClick::Nothing,
-            };
-        }
-        Input::Clone => {
-            if carried.is_none()
-                && let Some(s) = shown
-            {
-                *carried = Some(copy(s, max(s)));
-            }
-            return DisplayClick::Nothing;
-        }
-        Input::Throw => {
-            return match shown {
-                Some(s) => DisplayClick::Drop(copy(s, if button == 0 { 1 } else { max(s) })),
-                None => DisplayClick::Nothing,
-            };
-        }
-        _ => {}
-    }
-    match (carried.as_mut(), shown) {
-        (Some(c), Some(s)) if c.item == s.item && c.extra == s.extra && c.damage == s.damage => {
-            // isSameItemSameComponents: grow, fill or shrink what is carried.
-            if button == 0 {
-                if quick_key {
-                    c.count = max(c);
-                } else if c.count < max(c) {
-                    c.count += 1;
-                }
-            } else {
-                c.count -= 1;
-            }
-        }
-        (None, Some(s)) => {
-            *carried = Some(copy(s, if quick_key { max(s) } else { s.count }));
-        }
-        (Some(c), _) => {
-            if button == 0 {
-                *carried = None;
-            } else {
-                c.count -= 1;
-            }
-        }
-        (None, None) => {}
-    }
-    if carried.as_ref().is_some_and(|c| c.count == 0) {
-        *carried = None;
-    }
-    DisplayClick::Nothing
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1657,15 +1398,19 @@ mod tests {
             }],
             ..Default::default()
         });
-        let names = Names {
-            map: HashMap::from([
-                ("attribute.name.armor".into(), "Armor".into()),
-                ("attribute.modifier.plus.0".into(), "+%s %s".into()),
-                ("painting.dimensions".into(), "%s by %s".into()),
-            ]),
-            ..Default::default()
-        };
-        let lang = lang::Language::of("en_us", names.map.clone());
+        let map: HashMap<String, String> = HashMap::from([
+            ("attribute.name.armor".into(), "Armor".into()),
+            ("attribute.modifier.plus.0".into(), "+%s %s".into()),
+            ("painting.dimensions".into(), "%s by %s".into()),
+        ]);
+        let names = Names::load(&sunrise_assets::resource_source::ResourceSource::indexed(
+            [(
+                "assets/minecraft/lang/en_us.json".into(),
+                sunrise_assets::resource_source::Resource::bytes(serde_json::to_vec(&map).unwrap()),
+            )]
+            .into(),
+        ));
+        let lang = lang::Language::of("en_us", map);
         let (local, _) = lang::scoped(lang, || creative.localized_lines(&names));
         let search = |term| creative.search_results_in(term, &names, &local, false);
         assert_eq!(search("+2 armor"), [0, 2]);
@@ -1989,10 +1734,7 @@ mod tests {
         let mut c = creative(90);
         c.select(2);
         assert!(c.tab().inventory);
-        assert!(!c.can_scroll(&Names {
-            map: HashMap::new(),
-            ..Default::default()
-        }));
+        assert!(!c.can_scroll(&Names::default()));
     }
 
     #[test]
@@ -2298,10 +2040,7 @@ mod tests {
         );
         // A saved sword in slot 0, an empty slot, then the hint.
         c.set_saved_hotbars(vec![stack("diamond_sword", 1), stack("air", 0), hint]);
-        let names = Names {
-            map: HashMap::new(),
-            ..Default::default()
-        };
+        let names = Names::default();
         assert_eq!(c.shown(&names, 0), Some(stack("diamond_sword", 1)));
         assert_eq!(c.shown(&names, 1), None);
         assert_eq!(c.shown(&names, 3), None);
@@ -2347,10 +2086,7 @@ mod tests {
     #[test]
     fn search_matches_vanilla_trees() {
         let c = creative(0);
-        let names = Names {
-            map: HashMap::new(),
-            ..Default::default()
-        };
+        let names = Names::default();
         let q = |s: &str| c.search_results(s, &names);
         assert_eq!(q(""), [0, 1, 2]);
         assert_eq!(q("ANVIL"), [0]);
@@ -2375,14 +2111,18 @@ mod tests {
     #[test]
     fn search_matches_the_display_name_in_the_selected_language() {
         let c = creative(0);
-        let names = Names {
-            map: HashMap::from([
-                ("item.minecraft.anvil".to_owned(), "铁砧".to_owned()),
-                ("item.minecraft.wooden_hoe".to_owned(), "木锄".to_owned()),
-            ]),
-            ..Default::default()
-        };
-        let lang = lang::Language::of("zh_cn", names.map.clone());
+        let map: HashMap<String, String> = HashMap::from([
+            ("item.minecraft.anvil".to_owned(), "铁砧".to_owned()),
+            ("item.minecraft.wooden_hoe".to_owned(), "木锄".to_owned()),
+        ]);
+        let names = Names::load(&sunrise_assets::resource_source::ResourceSource::indexed(
+            [(
+                "assets/minecraft/lang/en_us.json".into(),
+                sunrise_assets::resource_source::Resource::bytes(serde_json::to_vec(&map).unwrap()),
+            )]
+            .into(),
+        ));
+        let lang = lang::Language::of("zh_cn", map);
         let (local, _) = lang::scoped(lang, || c.localized_lines(&names));
         let q = |s: &str| c.search_results_in(s, &names, &local, false);
         assert_eq!(q("铁砧"), [0]);
@@ -2440,10 +2180,7 @@ mod tests {
     #[test]
     fn scrollbar_drag_follows_the_mouse_while_held() {
         let mut c = creative(90);
-        let names = Names {
-            map: HashMap::new(),
-            ..Default::default()
-        };
+        let names = Names::default();
         c.select(1);
         // Pressing the track holds the scrollbar without moving it.
         assert!(c.press_scrollbar(180.0, 60.0, &names));
@@ -2510,10 +2247,7 @@ mod tests {
     #[test]
     fn wheel_moves_one_row_per_notch() {
         let mut c = creative(90);
-        let names = Names {
-            map: HashMap::new(),
-            ..Default::default()
-        };
+        let names = Names::default();
         c.select(1);
         let rows = (93usize.div_ceil(9) - 5) as f32;
         c.wheel(-1.0, &names);
@@ -2594,10 +2328,7 @@ mod tests {
         // Fallback tab: no panic, empty id, not search.
         assert_eq!(c.tab().id, "");
         assert!(!c.tab().search);
-        let names = Names {
-            map: HashMap::new(),
-            ..Default::default()
-        };
+        let names = Names::default();
         assert!(c.items(&names).is_empty());
         assert!(c.tab_headers().is_empty());
         assert_eq!(c.search_tab(), None);

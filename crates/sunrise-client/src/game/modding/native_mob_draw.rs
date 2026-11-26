@@ -177,7 +177,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// [`Game::mob_render_listened`].
     #[allow(clippy::too_many_arguments)]
     pub(in crate::game::client_side) fn mod_render_pre<'m>(
-        &self,
+        &'m self,
         mob: &'m Mob,
         who: Option<PlayerRender<'_>>,
         listened: bool,
@@ -196,7 +196,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !living_pre && player_pre.is_none() {
             return true;
         }
-        let Some(model) = frame_draw.prepare(mob, self.res.mob_data()) else {
+        let Some(model) = frame_draw.prepare(
+            mob,
+            self.res.client_mob_data(),
+            self.res.client_mob_models(),
+        ) else {
             return true;
         };
         let local = who.as_ref().is_some_and(|who| who.local);

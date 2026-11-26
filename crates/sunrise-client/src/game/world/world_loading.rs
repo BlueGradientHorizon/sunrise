@@ -1916,7 +1916,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_stem_naming_a_mods_generator_opens_on_mod_terrain() {
-        use sunrise_client::streaming::ChunkGenerator as _;
+        use sunrise_level::chunk_streamer::ChunkGenerator as _;
         use sunrise_world::worldgen::{
             mod_generators::{
                 ChunkAccess, ModChunkGenerator, ModChunkGenerators, install_mod_chunk_generators,

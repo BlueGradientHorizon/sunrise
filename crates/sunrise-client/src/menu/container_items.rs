@@ -36,7 +36,7 @@ pub fn native_can_fit_inside_container_items(
     fits: &mut bool,
 ) {
     mod_api::dispatch_can_fit_inside_container_items(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         stack,
         fits,
     );

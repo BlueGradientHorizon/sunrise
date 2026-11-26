@@ -2,12 +2,12 @@
 //! resolver `/fetchprofile` and dynamic player heads use.
 use super::Game;
 use mod_api::{AccountProfile, AccountProfileProperty, ProfileResolution};
-use sunrise_client::skins::{NameOrId, Resolve};
+use sunrise_level::profile_lookup::{NameOrId, Resolve};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Where the lookup of `key` stands, starting it the first time.
     pub(in crate::game) fn native_resolve_profile(&self, key: NameOrId) -> ProfileResolution {
-        match self.skin_profiles.borrow_mut().state(&key) {
+        match self.side.profile_resolver.lookup(&key) {
             Resolve::Pending => ProfileResolution::Pending,
             Resolve::Done(profile) => ProfileResolution::Done(profile.map(|profile| {
                 AccountProfile {

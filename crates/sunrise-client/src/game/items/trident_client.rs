@@ -65,7 +65,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The texture's OptiFine emissive overlay, drawn again full bright.
         let glow = self
             .res
-            .mob_data()
+            .client_mob_data()
             .emissive
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

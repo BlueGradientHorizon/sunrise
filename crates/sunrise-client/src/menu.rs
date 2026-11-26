@@ -29,7 +29,7 @@ pub use models::{
 };
 mod slot_context;
 pub use slot_context::{apply_menu_slot_rules, lan_container};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 mod bundle;
 pub use bundle::{vanilla_carried_override, vanilla_clicked_override};
@@ -122,7 +122,7 @@ pub struct Env<'a> {
     pub enchantments: &'a crate::enchant::Enchantments,
     /// Item display names: the anvil compares the rename box with the
     /// input's hover name.
-    pub names: &'a crate::creative::Names,
+    pub names: &'a crate::item_names::Names,
     /// What a merchant menu needs for offers made while it is open (level-ups).
     pub trade: Option<&'a crate::merchant::TradeEnv<'a>>,
     /// The level's maps (`ContainerLevelAccess`): the cartography table reads
@@ -418,6 +418,112 @@ pub struct Anvil {
     pub renamed: Vec<String>,
 }
 
+/// For each item, the packet's matching holder-set entries in button order. Values are
+/// actual server recipe IDs, not a promise that the item's full stack passes the predicate.
+#[derive(Debug, Default, PartialEq)]
+pub struct StonecutterButtons(pub(crate) HashMap<Arc<str>, Vec<Arc<str>>>);
+
+impl StonecutterButtons {
+    pub fn recipe(&self, input: &str, index: usize) -> Option<&str> {
+        self.0.get(input)?.get(index).map(AsRef::as_ref)
+    }
+}
+
+/// What a click on an item tab's display slot does besides changing the
+/// carried stack.
+#[derive(Clone, PartialEq, Debug)]
+pub enum DisplayClick {
+    Nothing,
+    /// SWAP: the hotbar slot gets a full stack of the item.
+    Hotbar(usize, ItemStack),
+    /// SWAP with button 40 (Key F): the off-hand gets a full stack of the item.
+    Offhand(ItemStack),
+    /// THROW: a copy of the item is dropped.
+    Drop(ItemStack),
+}
+
+/// Whether a stack has `minecraft:creative_slot_lock`.
+pub fn slot_locked(stack: &ItemStack) -> bool {
+    stack
+        .data()
+        .is_some_and(|d| d.other("minecraft:creative_slot_lock").is_some())
+}
+
+/// `CreativeModeInventoryScreen.slotClicked` on a display slot
+/// (`slot.container == CONTAINER`): `shown` is the slot's item (None past
+/// the tab's end) and `max` gives an item's max stack size. The tab's items
+/// are never changed: clicks make copies.
+pub fn click_display(
+    carried: &mut Option<ItemStack>,
+    shown: Option<&ItemStack>,
+    max: impl Fn(&ItemStack) -> u32,
+    button: i32,
+    input: Input,
+) -> DisplayClick {
+    // CustomCreativeSlot.mayPickup: a `creative_slot_lock` stack (the saved
+    // toolbars' hint) can't be clicked at all.
+    if shown.is_some_and(slot_locked) {
+        return DisplayClick::Nothing;
+    }
+    let copy = |s: &ItemStack, count: u32| ItemStack { count, ..s.clone() };
+    let quick_key = input == Input::QuickMove;
+    match input {
+        Input::Swap => {
+            return match shown {
+                Some(s) if button == 40 => DisplayClick::Offhand(copy(s, max(s))),
+                Some(s) if (0..9).contains(&button) => {
+                    DisplayClick::Hotbar(button as usize, copy(s, max(s)))
+                }
+                Some(_) | None => DisplayClick::Nothing,
+            };
+        }
+        Input::Clone => {
+            if carried.is_none()
+                && let Some(s) = shown
+            {
+                *carried = Some(copy(s, max(s)));
+            }
+            return DisplayClick::Nothing;
+        }
+        Input::Throw => {
+            return match shown {
+                Some(s) => DisplayClick::Drop(copy(s, if button == 0 { 1 } else { max(s) })),
+                None => DisplayClick::Nothing,
+            };
+        }
+        _ => {}
+    }
+    match (carried.as_mut(), shown) {
+        (Some(c), Some(s)) if c.item == s.item && c.extra == s.extra && c.damage == s.damage => {
+            // isSameItemSameComponents: grow, fill or shrink what is carried.
+            if button == 0 {
+                if quick_key {
+                    c.count = max(c);
+                } else if c.count < max(c) {
+                    c.count += 1;
+                }
+            } else {
+                c.count -= 1;
+            }
+        }
+        (None, Some(s)) => {
+            *carried = Some(copy(s, if quick_key { max(s) } else { s.count }));
+        }
+        (Some(c), _) => {
+            if button == 0 {
+                *carried = None;
+            } else {
+                c.count -= 1;
+            }
+        }
+        (None, None) => {}
+    }
+    if carried.as_ref().is_some_and(|c| c.count == 0) {
+        *carried = None;
+    }
+    DisplayClick::Nothing
+}
+
 /// `StonecutterMenu`'s state besides its slots and `selectedRecipeIndex`.
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Stonecutter {
@@ -428,7 +534,7 @@ pub struct Stonecutter {
     /// The full stack checked by the projected server menu's ingredient predicates.
     server_input: Option<ItemStack>,
     /// The button map sent to the guest of this server menu, pinned until close.
-    pub server_buttons: Option<Arc<crate::lan::recipes::StonecutterButtons>>,
+    pub server_buttons: Option<Arc<StonecutterButtons>>,
     /// `ResultContainer.recipeUsed`.
     pub used: Option<usize>,
 }
@@ -1449,7 +1555,7 @@ impl Menu {
     pub fn rename(&mut self, env: &Env, name: &str) -> bool {
         self.touch();
         // StringUtil.filterText, then validateName's length limit.
-        let name = crate::clipboard::filter_text(name, false);
+        let name = crate::text::filter_text(name, false);
         if self.state.kind != Kind::Anvil
             || name.encode_utf16().count() > 50
             || self.state.anvil.name.as_deref() == Some(&name)
@@ -3301,7 +3407,7 @@ pub(crate) mod tests {
         )
         .unwrap();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let env = Env {
             crafting_remainder: None,
             player: None,
@@ -3471,7 +3577,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let env = Env {
             crafting_remainder: None,
             player: None,
@@ -3521,7 +3627,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let env = Env {
             crafting_remainder: None,
             player: None,
@@ -5408,7 +5514,7 @@ pub(crate) mod tests {
         assert_eq!(potion.potion(), Some("minecraft:swiftness"));
         // The creative screen hands the stack over...
         let mut carried = None;
-        crate::creative::click_display(
+        click_display(
             &mut carried,
             Some(&potion),
             |_: &ItemStack| 1,
@@ -5454,7 +5560,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let env = Env {
             crafting_remainder: None,
@@ -5510,7 +5616,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let known = ["minecraft:stick"];
         let env = Env {
@@ -5567,7 +5673,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let known = ["minecraft:oak_planks"];
         let env = Env {
@@ -5628,7 +5734,7 @@ pub(crate) mod tests {
         let banners = Banners::default();
         let station_recipes = crate::stations::StationRecipes::default();
         let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
 
         let known: [&str; 0] = [];
         let env = Env {

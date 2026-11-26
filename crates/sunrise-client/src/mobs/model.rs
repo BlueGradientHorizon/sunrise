@@ -11,7 +11,7 @@ pub struct Polygon {
     pub cull_back: bool,
 }
 impl Polygon {
-    pub(super) fn vertex_normal(&self, pose: ModelNormals) -> [i8; 4] {
+    pub(crate) fn vertex_normal(&self, pose: ModelNormals) -> [i8; 4] {
         let n = pose.matrix * glam::Vec3::from_array(self.normal);
         let n = if pose.trusted {
             n
@@ -124,7 +124,7 @@ impl ModelNormals {
             zz - yy - xx + ww,
         ])
     }
-    pub(super) fn part(self, pose: [f32; 9]) -> Self {
+    pub(crate) fn part(self, pose: [f32; 9]) -> Self {
         self.part_rotated(pose, Self::rotation(pose[3], pose[4], pose[5]))
     }
     pub(super) fn part_rotated(mut self, pose: [f32; 9], rotation: glam::Mat3) -> Self {
@@ -150,7 +150,7 @@ pub struct Part {
 impl Part {
     /// The model layer `key` (`minecraft:player#main`) of `entity-models.json`, as
     /// [`Part::parse`] bakes its root, recording the layer on it.
-    pub(super) fn parse_layer(key: &str, v: &Value) -> Self {
+    pub(crate) fn parse_layer(key: &str, v: &Value) -> Self {
         let mut part = Self::parse("root", v);
         part.layer = Some(key.into());
         part
@@ -164,7 +164,7 @@ impl Part {
         Some(child)
     }
     /// Marks every polygon as drawn by a back-face-culling render type.
-    pub(super) fn set_cull_back(&mut self) {
+    pub(crate) fn set_cull_back(&mut self) {
         for poly in &mut self.polygons {
             poly.cull_back = true;
         }
@@ -172,7 +172,7 @@ impl Part {
             child.set_cull_back();
         }
     }
-    pub(super) fn parse(name: &str, v: &Value) -> Self {
+    pub(crate) fn parse(name: &str, v: &Value) -> Self {
         let pose: Vec<f32> = v["pose"]
             .as_array()
             .into_iter()
@@ -244,5 +244,26 @@ impl Part {
             children,
             layer: None,
         }
+    }
+}
+
+impl super::anim::PosePart for Part {
+    fn part_name(&self) -> &str {
+        &self.name
+    }
+
+    fn bind_pose(&self) -> [f32; 9] {
+        self.pose
+    }
+
+    fn visit_parts(&self, f: &mut impl FnMut(&str, [f32; 9])) {
+        f(&self.name, self.pose);
+        for child in &self.children {
+            child.visit_parts(f);
+        }
+    }
+
+    fn part_identity(&self) -> usize {
+        self as *const Self as usize
     }
 }

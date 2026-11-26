@@ -18,6 +18,63 @@ pub use models::{AnvilResult, EnchantmentRow};
 use serde_json::Value;
 use std::{collections::HashSet, fs, path::Path, sync::Arc};
 
+/// `PlayerHeadItem.getName`: a player head whose profile has a name is titled
+/// after it.
+pub struct PlayerHeadName(String);
+
+impl PlayerHeadName {
+    /// The title as `getName`'s `%s's Head` translation.
+    pub fn title(&self, translate: &dyn Fn(&str) -> Option<String>) -> String {
+        translate("block.minecraft.player_head.named")
+            .unwrap_or_else(|| "%s's Head".to_owned())
+            .replacen("%s", &self.0, 1)
+    }
+    /// The title as a component, for command feedback.
+    pub fn text(&self) -> crate::text::Text {
+        crate::text::Text::from(serde_json::json!({
+            "translate": "block.minecraft.player_head.named",
+            "with": [&self.0],
+        }))
+    }
+}
+
+/// The name in a player head's `minecraft:profile`, if it has one.
+pub fn player_head_name(stack: &ItemStack) -> Option<PlayerHeadName> {
+    if &*stack.item != "minecraft:player_head" {
+        return None;
+    }
+    Some(PlayerHeadName(stack.profile_name()?))
+}
+
+/// ItemStack.getRarity: the stack's `minecraft:rarity` (the item's default
+/// unless a command or server set it; the ominous banner's uncommon), then
+/// the enchantment upgrade.
+pub fn rarity<'a>(stack: &ItemStack, default: &'a str) -> &'a str {
+    let set = match stack.data().and_then(|d| d.other("minecraft:rarity")) {
+        Some(sunrise_core::nbt::Tag::String(s)) => match &*s.to_string_lossy() {
+            "common" => Some("common"),
+            "uncommon" => Some("uncommon"),
+            "rare" => Some("rare"),
+            "epic" => Some("epic"),
+            _ => None,
+        },
+        _ => None,
+    };
+    let rarity = if let Some(set) = set {
+        set
+    } else if stack
+        .data()
+        .is_some_and(|data| data.other("!minecraft:rarity").is_some())
+    {
+        "common"
+    } else if stack.data().is_some_and(|data| data.ominous_banner) {
+        "uncommon"
+    } else {
+        default
+    };
+    sunrise_items::properties::ItemRarity::of(rarity, !stack.enchantments().is_empty()).as_str()
+}
+
 /// Everything the workstation menus read, loaded once with the resources.
 pub struct StationData {
     /// The same registry `Items` carries (`Items::enchantments`).
@@ -294,7 +351,7 @@ pub fn increased_repair_cost(cost: u32) -> u32 {
 /// `ItemStack.getHoverName` as a component: the custom name, a written book's nonblank title,
 /// or the item's name. It stays translatable so each viewer renders it in their own language.
 /// The name a mod item's part gives the stack is not asked: [`hover_name_in`] asks it.
-pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> crate::text::Text {
+pub fn hover_name_text(names: &crate::item_names::Names, stack: &ItemStack) -> crate::text::Text {
     hover_name_text_with(names, stack, |_| None, None)
 }
 /// [`hover_name_text`] with the name the parts of a mod item give the stack
@@ -302,7 +359,7 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
 /// side naming it, when the stack has no custom name or book title.
 pub fn hover_name_in(
     context: &LoopContext,
-    names: &crate::creative::Names,
+    names: &crate::item_names::Names,
     stack: &ItemStack,
 ) -> crate::text::Text {
     hover_name_in_reusing(context, names, stack, None)
@@ -311,7 +368,7 @@ pub fn hover_name_in(
 /// with the previous HUD tick.
 pub fn hover_name_in_reusing(
     context: &LoopContext,
-    names: &crate::creative::Names,
+    names: &crate::item_names::Names,
     stack: &ItemStack,
     previous: Option<&crate::text::Text>,
 ) -> crate::text::Text {
@@ -327,7 +384,7 @@ pub fn hover_name_in_reusing(
 /// nor a book's title: `ItemEntity.getName` puts the entity's own custom name before it.
 pub fn item_name_in(
     context: &LoopContext,
-    names: &crate::creative::Names,
+    names: &crate::item_names::Names,
     stack: &ItemStack,
 ) -> crate::text::Text {
     item_name_text_with(names, stack, |stack| item_name_part(context, stack), None)
@@ -358,13 +415,13 @@ pub fn native_item_name(
     name: &mut Option<mod_api::Text>,
 ) {
     mod_api::dispatch_item_name(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         stack,
         name,
     );
 }
 fn hover_name_text_with(
-    names: &crate::creative::Names,
+    names: &crate::item_names::Names,
     stack: &ItemStack,
     part: impl FnOnce(&ItemStack) -> Option<crate::text::Text>,
     previous: Option<&crate::text::Text>,
@@ -389,7 +446,7 @@ fn hover_name_text_with(
 /// `ItemStack.getItemName` (`Item.getName(ItemStack)`): the item's own name, without the custom
 /// name or a book's title, asking the part of a mod item first.
 fn item_name_text_with(
-    names: &crate::creative::Names,
+    names: &crate::item_names::Names,
     stack: &ItemStack,
     part: impl FnOnce(&ItemStack) -> Option<crate::text::Text>,
     previous: Option<&crate::text::Text>,
@@ -418,7 +475,7 @@ fn item_name_text_with(
         // `CompassItem.getName`: a lodestone tracker names it, over `item_name`.
         return translate("item.minecraft.lodestone_compass");
     }
-    if let Some(head) = crate::item_tooltip::player_head_name(stack) {
+    if let Some(head) = player_head_name(stack) {
         // `PlayerHeadItem.getName`: a profile's name, else the item name.
         return head.text();
     }
@@ -460,7 +517,7 @@ fn item_name_text_with(
 /// [`hover_name_text`], rendered. Tests only: the game names a stack with [`hover_name_in`], which
 /// asks a mod item's part first.
 #[cfg(test)]
-pub fn hover_name(names: &crate::creative::Names, stack: &ItemStack) -> String {
+pub fn hover_name(names: &crate::item_names::Names, stack: &ItemStack) -> String {
     hover_name_text(names, stack).plain()
 }
 /// `AnvilMenu.createResult`. `name` is the rename box text (None = untouched).
@@ -652,7 +709,7 @@ pub fn native_can_grindstone_repair(
     can_repair: &mut bool,
 ) {
     mod_api::dispatch_can_grindstone_repair(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
+        &sunrise_level::api_context::LoopReader(context).context(),
         stack,
         can_repair,
     );
@@ -1885,7 +1942,7 @@ mod tests {
     /// item's name in the client's language.
     #[test]
     fn hover_name_prefers_custom_name_then_book_title_then_item_name() {
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let stack = |snbt: &str| item_data::parse_stack(snbt).unwrap().unwrap();
         let lang = crate::lang::Language::of(
             "en_us",
@@ -1921,7 +1978,7 @@ mod tests {
     #[test]
     fn hover_name_component_of_each_branch() {
         use sunrise_core::nbt::Tag;
-        let names = crate::creative::Names::default();
+        let names = crate::item_names::Names::default();
         let parse = |snbt: &str| item_data::parse_stack(snbt).unwrap().unwrap();
         let mut head = ItemStack::new("minecraft:player_head", 1);
         head.data_mut()
@@ -2014,7 +2071,7 @@ mod tests {
         ));
         let sword = ItemStack::new("minecraft:diamond_sword", 1);
         let name = json!({"translate": "item.minecraft.diamond_sword"});
-        let names = crate::creative::Names::default().with_item_names(
+        let names = crate::item_names::Names::default().with_item_names(
             &BTreeMap::from([(
                 sword.item.to_string(),
                 BTreeMap::from([("minecraft:item_name".into(), name.clone())]),
@@ -2042,7 +2099,7 @@ mod tests {
             "!minecraft:item_name",
             Some(Tag::compound(Vec::<(&str, Tag)>::new())),
         );
-        assert_eq!(hover_name(&crate::creative::Names::default(), &sword), "");
+        assert_eq!(hover_name(&crate::item_names::Names::default(), &sword), "");
     }
 
     /// Grindstone: transmuting an empty enchanted book to a book drops the
@@ -2525,7 +2582,9 @@ mod tests {
 
     #[test]
     fn smithing_transform_overlay_matches_optional_inputs_and_takes_template_result() {
-        use crate::{banner::Banners, brewing::Brewing, crafting::Recipes, creative::Names, menu};
+        use crate::{
+            banner::Banners, brewing::Brewing, crafting::Recipes, item_names::Names, menu,
+        };
         let root = std::env::temp_dir().join(format!("sunrise-smithing-{}", std::process::id()));
         fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
         fs::write(

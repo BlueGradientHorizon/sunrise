@@ -181,7 +181,7 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                 );
                 game.clear_waypoints();
                 track_block(game, 5, 5, [122, 64, 0]);
-                game.ui.hide_gui = false;
+                game.side.chat_ui.hide_gui = false;
                 game.side.locator_camera = Some(([0.0, 65.62, 0.0], 180.0, 0.0, 70.0));
                 add_armor_stand_facing(game, 25, 25, [100.5, 64.0, 0.5], -64);
                 game.apply_packet(C::SetCamera(play::SetCamera { camera_id: 25 }))

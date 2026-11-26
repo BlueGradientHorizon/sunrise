@@ -499,7 +499,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_native_mods_data_damage_type_hurts_and_names_the_death() {
-        use sunrise_client::mod_content::{ContentMod, resolved_resources};
+        use sunrise_client::mod_content::ContentMod;
+        use sunrise_client::mod_content_client::resolved_resources;
         use sunrise_mod_package::{Package, content::Content};
 
         let scratch = tempfile::tempdir().unwrap();

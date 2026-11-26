@@ -619,11 +619,11 @@ pub fn texture(m: &Mob) -> String {
 }
 /// The body model: `ZombieNautilusRenderer` picks the coral model for the
 /// warm variant.
-pub fn model(m: &Mob) -> &'static str {
+pub fn model(m: &Mob, has_baby_layer: bool) -> &'static str {
     match (zombie(m), m.is_baby(), m.extra.variant) {
         (true, _, 1) => "zombie_nautilus_coral#main",
         (true, _, _) => "zombie_nautilus#main",
-        (false, true, _) if m.kind.layer("nautilus_baby#main").is_some() => "nautilus_baby#main",
+        (false, true, _) if has_baby_layer => "nautilus_baby#main",
         _ => "nautilus#main",
     }
 }

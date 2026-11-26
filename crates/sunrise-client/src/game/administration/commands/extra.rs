@@ -8,11 +8,11 @@ use std::{collections::HashMap, time::Instant};
 use sunrise_client::{
     command::CommandError,
     lan::waypoints::Icon,
-    skins::{NameOrId, ResolvedProfile},
     snbt,
     text::{self, ClickEvent, InlineObject, Style, Text},
 };
 use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_level::profile_lookup::{NameOrId, ResolvedProfile};
 use sunrise_protocol::packets::play::DialogHolder;
 
 /// A `/fetchprofile` lookup in flight: what it resolves, the message ids it

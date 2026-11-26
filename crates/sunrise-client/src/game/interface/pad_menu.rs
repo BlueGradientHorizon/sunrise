@@ -375,7 +375,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 | Screen::Stats
                 | Screen::Advancements
         ) || self.side.book.is_some()
-            || (self.side.screen == Screen::Options && self.ui.options.page() == Page::Packs)
+            || (self.side.screen == Screen::Options
+                && self.side.chat_ui.options.page() == Page::Packs)
     }
 
     pub(in crate::game::client_side) fn pad_focus_mode(&self) -> bool {
@@ -834,7 +835,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // cancels).
         if !prompt
             && self.side.screen == Screen::Options
-            && let Some(action) = self.ui.options.selected_pad_action.take()
+            && let Some(action) = self.side.chat_ui.options.selected_pad_action.take()
         {
             // Start cancels, and so does a button the action can't take (the radial menu's
             // opener under the selecting thumb or on B, `gamepad::opener_refused`): the binding
@@ -1175,7 +1176,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let focus = self.pad_reveal(focus);
         self.side.pad.0.menu.focus = Some(focus);
         // A step, not a press: a radial slot's press opens its list.
-        self.ui.options.pad_clicks_step(true);
+        self.side.chat_ui.options.pad_clicks_step(true);
         if button == Button::DPadLeft {
             self.pad_with_modifier(KeyCode::ShiftLeft, |game| {
                 game.pad_click_at(event_loop, focus.center(), false)
@@ -1183,7 +1184,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             self.pad_click_at(event_loop, focus.center(), false);
         }
-        self.ui.options.pad_clicks_step(false);
+        self.side.chat_ui.options.pad_clicks_step(false);
         true
     }
 
@@ -1296,7 +1297,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let size = self.gui_size();
         let mut moved = target;
-        if let Some(dy) = self.ui.options.reveal(&self.settings, size, target.rect) {
+        if let Some(dy) = self
+            .side
+            .chat_ui
+            .options
+            .reveal(&self.settings, size, target.rect)
+        {
             moved.rect[1] += dy;
             self.side.pad.0.menu.revealed = Some(widgets::generation());
         }
@@ -1363,7 +1369,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         self.side.pause_focus = None;
         self.side.death_focus = None;
-        self.ui.options.clear_click_focus();
+        self.side.chat_ui.options.clear_click_focus();
         if let Some(options) = self.side.world_options.0.as_mut() {
             options.clear_click_focus();
         }
@@ -1935,11 +1941,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
             // A settings page that says where its focus opens (a radial slot's list on the slot's
             // action, the slot again after it), once its row is drawn.
             let opened = (self.side.screen == Screen::Options)
-                .then(|| self.ui.options.shell_opened_focus())
+                .then(|| self.side.chat_ui.options.shell_opened_focus())
                 .flatten()
                 .and_then(|rect| gamepad::refind(rect, &rects, 2.0));
             if let Some(i) = opened {
-                self.ui.options.clear_shell_opened_focus();
+                self.side.chat_ui.options.clear_shell_opened_focus();
                 self.side.pad.0.menu.focus = Some(targets[i]);
             } else if let Some(focus) = self.side.pad.0.menu.focus {
                 let kind = std::mem::discriminant(&focus.kind);
@@ -2146,7 +2152,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || self.side.screen == Screen::Win
             || (self.side.screen == Screen::Options
                 && (self.options_waiting_for_key()
-                    || self.ui.options.selected_pad_action.is_some()))
+                    || self.side.chat_ui.options.selected_pad_action.is_some()))
     }
 
     /// `Screen.clearFocus`, which `Gui.setScreen` runs on the screen it takes
@@ -2330,7 +2336,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         std::mem::discriminant(&self.side.screen).hash(&mut hasher);
         self.remote_menu_id().hash(&mut hasher);
         if self.side.screen == Screen::Options {
-            std::mem::discriminant(&self.ui.options.page()).hash(&mut hasher);
+            std::mem::discriminant(&self.side.chat_ui.options.page()).hash(&mut hasher);
         }
         self.side
             .title
@@ -2580,7 +2586,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn pad_chat_owns_keyboard(&self) -> bool {
         self.side.screen == Screen::Chat
             && self.side.title.0.is_none()
-            && self.ui.chat_screen.is_some()
+            && self.side.chat_ui.chat_screen.is_some()
             && !self.screen_over_playing()
             && !self.mounted_widget_captures_input()
     }
@@ -2627,7 +2633,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.side.pad.0.in_use,
             menu.open_polls,
             !self.prompt_open()
-                && ((self.side.screen == Screen::Chat && !self.ui.in_bed_chat)
+                && ((self.side.screen == Screen::Chat && !self.side.chat_ui.in_bed_chat)
                     || self.side.sign_edit.is_some()),
         ) {
             self.side.pad.0.menu.osk_dismissed = true;
@@ -2759,7 +2765,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if self.side.screen == Screen::Options {
             let result = match text {
                 Some(t) => {
-                    self.ui.options.type_text(&self.gui.atlas, t);
+                    self.side.chat_ui.options.type_text(&self.gui.atlas, t);
                     Ok(())
                 }
                 None => self.options_key(key.expect("a key"), None).map(|_| ()),
@@ -2826,7 +2832,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 || self.side.screen == Screen::Chat;
             let mut ui =
                 sunrise_client::ui_theme::Ui::new(&self.gui.atlas, batch, self.side.cursor);
-            let options = &self.ui.options;
+            let options = &self.side.chat_ui.options;
             keyboard.draw(
                 &mut ui,
                 at_top,

@@ -38,8 +38,8 @@ impl Hooks for Skillet {
         }
     }
 }
-fn arms(mob: &Mob) -> [[f32; 9]; 2] {
-    let mut poses = Poses::new(&mob.kind.model);
+fn arms(mob: &Mob, models: &sunrise_client::mobs_render::ClientMobModels) -> [[f32; 9]; 2] {
+    let mut poses = Poses::new(models.model(&mob.kind.id).unwrap());
     anim::setup(mob, &anim::state(mob, 0.0), &mut poses, &HashMap::new());
     [*poses.get("right_arm"), *poses.get("left_arm")]
 }
@@ -78,7 +78,9 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
                 .set_slot_stack(MAINHAND, Some(ItemStack::new("minecraft:stick", 1)));
             game.mobs.push(mob);
         }
-        let baseline: Vec<_> = game.mobs.iter().map(arms).collect();
+        let res = game.res.clone();
+        let models = res.client_mob_models();
+        let baseline: Vec<_> = game.mobs.iter().map(|m| arms(m, models)).collect();
         mod_platform::testing::with_mods(
             vec![ModEntry::new("skillet", Box::new(Skillet(OnceLock::new())))].into(),
             || {
@@ -89,7 +91,7 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
                     &game.mobs[0],
                     &game.mobs[1],
                 ] {
-                    let posed = arms(mob);
+                    let posed = arms(mob, models);
                     let age = anim::state(mob, 0.0).age;
                     // Vanilla's arm bobbing follows the custom pose at the model's age.
                     // Mth's 65536-entry trig table differs from sin/cos by at most
@@ -108,11 +110,17 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
                     assert!((posed[0][5] - (0.63 + bob_z)).abs() < 0.000005);
                 }
                 // Zombie animation is later than the base pose and overrides its arms.
-                assert_eq!(arms(&game.mobs[2]), baseline[2]);
+                assert_eq!(arms(&game.mobs[2], models), baseline[2]);
             },
         );
         game.tick_remote_arm_poses();
-        assert_eq!(game.mobs.iter().map(arms).collect::<Vec<_>>(), baseline);
+        assert_eq!(
+            game.mobs
+                .iter()
+                .map(|m| arms(m, models))
+                .collect::<Vec<_>>(),
+            baseline
+        );
     });
 }
 

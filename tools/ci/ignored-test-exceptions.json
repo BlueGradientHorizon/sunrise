@@ -456,18 +456,18 @@
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: a measurement, not a check. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "sunrise-client-render",
+    "package": "sunrise-level",
     "target": "lib",
-    "test": "streaming::forced_cover::tests::forced_cover_cost",
-    "path": "crates/sunrise-client-render/src/streaming/forced_cover.rs",
+    "test": "chunk_streamer::forced_cover::tests::forced_cover_cost",
+    "path": "crates/sunrise-level/src/chunk_streamer/forced_cover.rs",
     "reason": "timings; run with --release --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: timings; run with --release --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "sunrise-client-render",
+    "package": "sunrise-level",
     "target": "lib",
-    "test": "streaming::tests::generation_scan_benchmark",
-    "path": "crates/sunrise-client-render/src/streaming.rs",
+    "test": "chunk_streamer::tests::generation_scan_benchmark",
+    "path": "crates/sunrise-level/src/chunk_streamer.rs",
     "reason": "reproducible actual generation scheduler benchmark; run with --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: reproducible actual generation scheduler benchmark; run with --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },

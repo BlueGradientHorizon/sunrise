@@ -130,8 +130,8 @@ LocalPlayer.isSlowDueToUsingItem	port	crates/sunrise-client/src/game.rs::Game::s
 LocalPlayer.onSyncedDataUpdated	inline	crates/sunrise-client/src/game/interface/music.rs::Game::tick_sound_engine	starting to glide starts the elytra flying sound; the living flags are local state on this side
 LocalPlayer.jumpableVehicle	inline	crates/sunrise-client/src/game/mobs/mounts_common.rs::Game::charge_mount_jump	gap: minor: saddle and jump-capable check only; no separate vehicle lookup
 LocalPlayer.openTextEdit	port	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::open_sign_editor
-LocalPlayer.modifyInputSpeedForSquareMovement	port	crates/sunrise-client-input/src/input.rs::square_movement
-LocalPlayer.distanceToUnitSquare	inline	crates/sunrise-client-input/src/input.rs::square_movement
+LocalPlayer.modifyInputSpeedForSquareMovement	port	crates/sunrise-client-core/src/move_input.rs::square_movement
+LocalPlayer.distanceToUnitSquare	inline	crates/sunrise-client-core/src/move_input.rs::square_movement
 LocalPlayer.resetPos	inline	crates/sunrise-client/src/game/interface/screens.rs::Game::respawn_player	gap: minor: no free-height search, pose, rotation or velocity reset
 LocalPlayer.shouldStopRunSprinting	port	crates/sunrise-sim/src/sprint.rs::Conditions::should_stop	gap: player: minor_horizontal_collision is always false, so wall slides stop the sprint
 LocalPlayer.shouldStopSwimSprinting	port	crates/sunrise-sim/src/sprint.rs::Conditions::should_stop

@@ -1,7 +1,8 @@
 //! `DyeItem.interactLivingEntity`: the client hears it, the server changes wool.
-use super::{Mob, Species, render::DYE_NAMES};
+use super::{Mob, Species};
 use crate::items::ItemStack;
 use sunrise_core::nbt::Tag;
+use sunrise_level::dyes::DYE_NAMES;
 
 /// The sixteen vanilla DyeItems dispatch this interaction. Their DYE component
 /// can be overridden or removed without changing the underlying Item class.

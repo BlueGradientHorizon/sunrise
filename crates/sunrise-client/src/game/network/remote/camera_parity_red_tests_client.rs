@@ -314,7 +314,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
         game.border.set_size(200.0);
         game.border.warning_distance = 10;
         game.settings.vignette = true;
-        game.ui.hide_gui = false;
+        game.side.chat_ui.hide_gui = false;
         let hand_proj = sunrise_client::camera::hand_projection(70.0, 1280.0, 800.0, 512.0);
         let quads_shown = game.screen_quads(1.0, [1280, 800], 1.0, hand_proj);
         let vignette_quad = quads_shown
@@ -327,7 +327,7 @@ pub(in crate::game) fn run_camera_consumers_bob_fog_dark_disc_and_vignette_26_3(
             "border warning at camera x=95.5 must tint vignette green/blue channels (subtracting into red): {color:?}"
         );
 
-        game.ui.hide_gui = true;
+        game.side.chat_ui.hide_gui = true;
         let quads_hidden = game.screen_quads(1.0, [1280, 800], 1.0, hand_proj);
         assert!(
             quads_hidden.iter().all(|q| q.blend != Blend::Vignette),
@@ -1042,7 +1042,7 @@ pub(in crate::game) fn run_camera_player_fov_modifier_and_death_isolation_26_3()
             let local = game.player.as_mut().unwrap();
             local.set_health(0.0, false).unwrap();
             local.speed = 0.3;
-            game.ui.death_time = 10;
+            game.side.chat_ui.death_time = 10;
             game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
             game.selected = 0;
             assert!(game.start_using_item());
@@ -1688,7 +1688,7 @@ pub(in crate::game) fn run_review_followup_camera_parity_26_3() {
             param: 3.0,
         }))
         .unwrap();
-        game.ui.hide_gui = false;
+        game.side.chat_ui.hide_gui = false;
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 1 }))
             .unwrap();
         let craft_hit = crate::game::Hit {

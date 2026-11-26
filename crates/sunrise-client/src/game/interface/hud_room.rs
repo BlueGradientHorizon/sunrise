@@ -61,9 +61,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         h: f32,
     ) {
         let top = vertices.iter().map(|v| v.pos[1]).fold(h, f32::min);
-        if top < self.ui.room.bottom() {
+        if top < self.side.chat_ui.room.bottom() {
             let half = hud_overlays::HOTBAR_HALF_WIDTH;
-            self.ui.room.add(
+            self.side.chat_ui.room.add(
                 Keep::StatusRows,
                 [
                     ((w as i32) / 2 - half) as f32,

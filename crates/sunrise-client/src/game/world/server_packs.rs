@@ -1304,7 +1304,7 @@ mod tests {
                         );
 
                         game.set_hud_mode(mod_api::HudMode::NoHud);
-                        assert!(game.ui.hide_gui);
+                        assert!(game.side.chat_ui.hide_gui);
                         let mut mod_hidden = HudBatch::scratch([640, 480]);
                         game.draw_every_toast(&mut mod_hidden);
                         assert!(
@@ -1314,7 +1314,7 @@ mod tests {
 
                         game.toggle_hide_gui();
                         game.set_hud_mode(mod_api::HudMode::AllVisible);
-                        assert!(game.ui.player_hides_gui);
+                        assert!(game.side.chat_ui.player_hides_gui);
                         let mut player_hidden = HudBatch::scratch([640, 480]);
                         game.draw_every_toast(&mut player_hidden);
                         assert!(

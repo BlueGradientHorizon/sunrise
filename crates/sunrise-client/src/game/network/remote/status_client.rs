@@ -247,12 +247,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         (None, Some(id)) => Some(sunrise_client::skins::NameOrId::Id(id)),
                         _ => None,
                     });
-                    key.and_then(|key| match self.skin_profiles.borrow_mut().state(&key) {
-                        sunrise_client::skins::Resolve::Done(Some(profile)) => {
-                            profile.textures().map(skins::unpack_insecure)
-                        }
-                        _ => None,
-                    })
+                    key.and_then(
+                        |key| match self.side.skin_profiles.borrow_mut().state(&key) {
+                            sunrise_client::skins::Resolve::Done(Some(profile)) => {
+                                profile.textures().map(skins::unpack_insecure)
+                            }
+                            _ => None,
+                        },
+                    )
                     .unwrap_or_default()
                 };
                 (i, textures)

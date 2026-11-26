@@ -456,7 +456,7 @@ impl MobWorld<'_> {
             } else {
                 [0.0; 3]
             };
-            let published = sunrise_client::collisions::published_outline(
+            let published = sunrise_level::collisions::published_outline(
                 self.world,
                 self.collision,
                 state,
@@ -932,8 +932,8 @@ pub(crate) fn with_built_test_world_rules(
     run_test_world(resources, others, mob_griefing, mob_drops, build, f)
 }
 /// The same mob world loaded from a content mod's resource root.
-#[cfg(test)]
-pub(crate) fn with_resource_test_world(
+#[cfg(any(test, feature = "test-support"))]
+pub fn with_resource_test_world(
     root: &std::path::Path,
     others: &[Seen],
     mob_griefing: bool,
@@ -951,7 +951,7 @@ pub(crate) fn with_resource_test_world(
 /// What every mob test world reads from its resource root. Tests only read
 /// it (each builds its own `World` over it), so the vanilla root's copy is
 /// loaded once per test process: the load took most of a mob test's time.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 struct TestResources {
     assets: crate::assets::Assets,
     facts: BlockFacts,
@@ -963,7 +963,7 @@ struct TestResources {
     collision: std::sync::Arc<BlockCollisionRegistry<'static>>,
     suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl TestResources {
     /// `None` when `root` has no prepared vanilla data.
     fn load(root: &std::path::Path) -> Option<Self> {
@@ -977,7 +977,7 @@ impl TestResources {
         let facts = BlockFacts::load(root, registry).unwrap();
         let motion = crate::motion::MotionResources::load(root, &assets).unwrap();
         let source = sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf());
-        let data = super::MobData::load(&source, facts.states.len(), false).unwrap();
+        let data = super::MobData::load(&source, facts.states.len()).unwrap();
         let types = super::MobTypes::load(root).unwrap();
         let biomes = crate::biome::Biomes::load(&source).unwrap();
         let defaults = sunrise_world::item_defaults::read(root).unwrap();
@@ -1004,6 +1004,9 @@ impl TestResources {
             suffocation,
         })
     }
+}
+#[cfg(test)]
+impl TestResources {
     /// The checkout's prepared vanilla data, loaded on first use; `None`
     /// when it is missing.
     fn vanilla() -> Option<&'static Self> {
@@ -1051,7 +1054,7 @@ pub(crate) fn with_built_contact_test_world(
 }
 
 /// Runs `f` over a fresh `World` (`build` places its blocks) on `resources`.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn run_test_world(
     resources: &TestResources,
     others: &[Seen],
@@ -1078,7 +1081,7 @@ fn run_test_world(
     let lid_openers = std::collections::HashMap::new();
     let w = MobWorld {
         side: &crate::motion::surface::DrySide(&motion.health.damage),
-        mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
+        mob_maps: crate::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
         goal_host: None,
         teams: Default::default(),
         professions: crate::mobs::villager::profession_table(),

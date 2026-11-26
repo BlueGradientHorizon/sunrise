@@ -212,7 +212,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return;
         }
         let was_disabled = cycle_status(&mut self.settings);
-        self.ui.options.layout_changed();
+        self.side.chat_ui.options.layout_changed();
         // OptionInstance.set runs the option's onValueUpdate.
         self.narrator_status_changed();
         self.settings.save(&crate::game::options_path());
@@ -256,7 +256,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         match self.side.screen {
             Screen::Chat if self.side.title.0.is_none() => true,
-            Screen::Options => self.ui.options.typing(),
+            Screen::Options => self.side.chat_ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
             Screen::CommandBlock | Screen::Social => true,
             Screen::Inventory => self.station_typing() || self.mod_browser_typing(),

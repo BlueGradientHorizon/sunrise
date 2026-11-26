@@ -1,4 +1,4 @@
-use super::{Game, chat::PLAYER_NAME};
+use super::{Game, chat_common::PLAYER_NAME};
 use crate::game::server_side::scoreboard::tab_players_needed;
 use crate::game::server_side::scoreboard::*;
 use std::collections::HashMap;
@@ -46,7 +46,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let has_objective = self.score.board.display_objective(sb::SLOT_LIST).is_some();
         let shown = tab_list::visible(
             // `Hud.extractRenderState` draws the list inside `if (!isHidden)`.
-            !self.ui.hide_gui,
+            !self.side.chat_ui.hide_gui,
             key,
             self.has_singleplayer_server(),
             count,

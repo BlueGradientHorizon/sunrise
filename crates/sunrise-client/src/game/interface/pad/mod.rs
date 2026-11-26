@@ -274,13 +274,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         Glyph::of(
             of.into(),
             &self.settings.controller,
-            self.ui.options.pad_glyphs,
+            self.side.chat_ui.options.pad_glyphs,
         )
     }
 
     /// A menu job's glyph in this player's glyphs.
     pub(in crate::game::client_side) fn menu_glyph(&self, job: MenuJob) -> Glyph {
-        Glyph::menu(job, self.ui.options.pad_glyphs)
+        Glyph::menu(job, self.side.chat_ui.options.pad_glyphs)
     }
 
     pub(in crate::game::client_side) fn pad_context(&self) -> Context {
@@ -347,8 +347,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         for change in std::mem::take(&mut self.side.pad.0.connections) {
             self.pad_connection_notice(change);
         }
-        self.ui.options.pad_glyphs = Glyphs::of(&self.settings.controller, self.side.pad.0.style);
-        self.ui.options.pad_driving = self.side.pad.0.in_use && self.pad_focus_mode();
+        self.side.chat_ui.options.pad_glyphs =
+            Glyphs::of(&self.settings.controller, self.side.pad.0.style);
+        self.side.chat_ui.options.pad_driving = self.side.pad.0.in_use && self.pad_focus_mode();
         let mut state = hardware.merge(&self.side.pad.0.injected);
         let activity = self
             .side
@@ -732,7 +733,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn pad_back(&mut self) -> Result<()> {
         // The death confirm's buttons wait a second, as its Escape does.
         if self
-            .ui
+            .side
+            .chat_ui
             .death_confirm
             .is_some_and(|shown| shown.elapsed() < DEATH_CONFIRM_WAIT)
         {
@@ -882,7 +884,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.controller_notice.draw(
             batch,
             &self.gui.atlas,
-            self.ui.room.below_top(18.0),
+            self.side.chat_ui.room.below_top(18.0),
             shown_for,
         );
     }

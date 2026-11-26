@@ -1,7 +1,7 @@
 //! The player's advancements in the game: criteria triggered from game
 //! events (`CriteriaTriggers`), awarding with rewards, the toast and the
 //! chat announcement, and `players/advancements/<uuid>.json`.
-use super::{Dim, Game, chat::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats};
+use super::{Dim, Game, chat_common::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats};
 pub(in crate::game) mod icons;
 
 #[cfg(test)]

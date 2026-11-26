@@ -4,7 +4,7 @@ use super::{FORCED_FEATURES_RING, FORCED_FULL_RING, FORCED_TERRAIN_RING, Ranges}
 use crate::fast_hash::FxHashMap;
 use std::collections::HashSet;
 
-/// The combined `Streaming::forced` set as the Chebyshev distance from each column within
+/// The combined `ChunkState::forced` set as the Chebyshev distance from each column within
 /// `REACH` of one to the nearest: `Ranges::in_main_range` answers by one lookup instead of going
 /// through every forced chunk (it is asked for every column, several times a tick). Past `MOST`
 /// forced chunks, and for a reach past `REACH`, their tiles answer.
@@ -326,7 +326,7 @@ mod tests {
     }
 
     /// What a question and the cover cost by how many chunks are forced: run with
-    /// `cargo test --release -p sunrise-client-render forced_cover_cost -- --ignored --nocapture`.
+    /// `cargo test --release -p sunrise-level forced_cover_cost -- --ignored --nocapture`.
     #[test]
     #[ignore = "timings; run with --release --ignored --nocapture"]
     fn forced_cover_cost() {

@@ -88,7 +88,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         aspect: f32,
         out: &mut Vec<Vertex>,
     ) {
-        if self.ui.hide_gui {
+        if self.side.chat_ui.hide_gui {
             return;
         }
         let (Some(stack), Some(pose)) = (

@@ -17,7 +17,6 @@ fn load() -> (&'static BlockRegistry, BlockFacts, MobData) {
     let data = MobData::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root),
         facts.states.len(),
-        false,
     )
     .unwrap();
     (registry, facts, data)

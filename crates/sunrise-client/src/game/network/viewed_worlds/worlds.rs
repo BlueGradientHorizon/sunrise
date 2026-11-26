@@ -19,9 +19,10 @@ use sunrise_client::{
     chunk::known_block_state,
     chunk_map::ChunkMap,
     fast_hash::{FxHashMap, FxHashSet},
-    streaming::{ViewedMeshing, take_resent_column},
+    streaming::ViewedMeshing,
     world::World,
 };
+use sunrise_level::chunk_streamer::take_resent_column;
 use sunrise_protocol::{
     chunk::BlockEntityInfo,
     connection_groups::Section,

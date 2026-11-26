@@ -1,4 +1,4 @@
-PlayerHeadItem.getName	port	crates/sunrise-client/src/item_tooltip.rs::player_head_name	name_line titles a head whose profile has a name through block.minecraft.player_head.named ("%s's Head")
+PlayerHeadItem.getName	port	crates/sunrise-client/src/stations.rs::player_head_name	name_line titles a head whose profile has a name through block.minecraft.player_head.named ("%s's Head")
 ShearsItem.createToolProperties	skip:data		tool rules (cobweb speed, shears breaking-speed tags) come from item data; items.rs reads minecraft:tool
 ShearsItem.mineBlock	port	crates/sunrise-client/src/game/blocks/block_breaking_server.rs::Game::mine_block_with_held	shears wear one damage_per_block on any block but fire
 ShearsItem.useOn	port	crates/sunrise-client/src/game/blocks/growth_server.rs::Game::shears_crop	shears crop a growing plant head to age 25 with block.growing_plant.crop, a block_change and one wear; pumpkin carving is PumpkinBlock's own path (game/blocks/pumpkin.rs)

@@ -870,7 +870,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         match self.side.screen {
             Screen::Chat => {
-                if let Some(screen) = self.ui.chat_screen.as_mut() {
+                if let Some(screen) = self.side.chat_ui.chat_screen.as_mut() {
                     screen.resize(&m, &c, w as i32, h as i32);
                 }
             }
@@ -963,11 +963,11 @@ mod tests {
             };
             let abilities = ChatAbilities::new(ChatVisibility::Full);
             let screen = ChatScreen::new(&m, &c, "/say hi", false, 0, 427, 240, abilities);
-            game.ui.chat_screen = Some(screen);
+            game.side.chat_ui.chat_screen = Some(screen);
             game.side.screen = Screen::Chat;
             game.build_screen();
             let input = |game: &crate::game::ClientGame<'_>| {
-                let i = &game.ui.chat_screen.as_ref().unwrap().input;
+                let i = &game.side.chat_ui.chat_screen.as_ref().unwrap().input;
                 [i.x, i.y, i.width, i.height]
             };
             assert_eq!(input(game), [4, 228, 423, 12]);
@@ -986,7 +986,10 @@ mod tests {
             game.build_screen();
             assert_eq!(game.side.screen_state.0.build.builds, builds + 1);
             assert_eq!(input(game), [4, 708, 1276, 12]);
-            assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "/say hi");
+            assert_eq!(
+                game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
+                "/say hi"
+            );
             assert_eq!(leave_bed(game, 1280.0, 720.0), Some((540, 680, 200, 20)));
             assert_eq!(leave_bed(game, 427.0, 240.0), None);
         });

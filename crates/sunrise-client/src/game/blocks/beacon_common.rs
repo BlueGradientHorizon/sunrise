@@ -1,10 +1,8 @@
 //! Common beacon constants, color/base queries, and beam scan shared by server and client.
 use super::{Game, stations_common::Kind};
-use sunrise_client::{
-    containers::{Beacon, BlockEntity},
-    mobs::render::{DYE, DYE_NAMES},
-};
+use sunrise_client::containers::{Beacon, BlockEntity};
 use sunrise_core::position::BlockPos;
+use sunrise_level::dyes::{DYE_DIFFUSE, DYE_NAMES};
 use sunrise_world::registry::BlockStateId;
 
 /// `BEACON_EFFECTS` in order, with the pyramid level each needs.
@@ -47,13 +45,16 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The beam color of a `BeaconBeamBlock` (stained glass and panes, the beacon).
     pub(in crate::game) fn beam_color(&self, name: &str) -> Option<u32> {
         if name == "minecraft:beacon" {
-            return Some(DYE[0]);
+            return Some(DYE_DIFFUSE[0]);
         }
         let n = name.strip_prefix("minecraft:")?;
         let dye = n
             .strip_suffix("_stained_glass")
             .or_else(|| n.strip_suffix("_stained_glass_pane"))?;
-        DYE_NAMES.iter().position(|d| *d == dye).map(|i| DYE[i])
+        DYE_NAMES
+            .iter()
+            .position(|d| *d == dye)
+            .map(|i| DYE_DIFFUSE[i])
     }
 
     /// `IBlockStateExtension.getBeaconColorMultiplier` of `state` at `pos` for `beacon`.

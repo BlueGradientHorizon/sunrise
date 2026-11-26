@@ -121,7 +121,7 @@ pub(in crate::game) mod item_resource_property_tests {
                     item.foil(game)
                 );
                 assert_eq!(
-                    sunrise_client::item_tooltip::rarity(
+                    sunrise_client::stations::rarity(
                         &stack,
                         props.map_or("common", |value| value.rarity.as_str())
                     ),

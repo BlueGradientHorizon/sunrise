@@ -1,5 +1,5 @@
 # Survey function targets (classified.json, 181 injections). One declaration per line.
-sunrise_client_input::input::modify_input
+sunrise_client_core::move_input::modify_input
 sunrise_client_lib::vanillagen::shared_data_with
 sunrise_client_render::assets::RenderAssets::load_with
 sunrise_client_render::camera::view_matrix

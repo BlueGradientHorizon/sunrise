@@ -268,7 +268,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let options = self.item_particle(&ItemStack::new(item, 1));
         let mut spawned = Vec::new();
-        sunrise_client::particles::item_use_particles(
+        sunrise_level::particle_options::item_use_particles(
             &mut self.world.random,
             pitch,
             yaw,

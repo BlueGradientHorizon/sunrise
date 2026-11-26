@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn a_saved_mod_sign_uses_its_vanilla_entity_type() {
         for hanging in [false, true] {
-            let mut sign = crate::signs::SignData {
+            let mut sign = sunrise_level::signs_data::SignData {
                 hanging,
                 ..Default::default()
             };

@@ -852,6 +852,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let mut casters: Vec<(glam::DVec3, glam::DVec3, f32, f32)> =
                 sunrise_client::shadows::mob_casters(
                     self.mobs.iter().filter(|m| !self.hides_as_camera(m.id)),
+                    self.res.client_mob_models(),
                     a,
                 )
                 .map(|(pos, r, s)| (pos, pos, r, s))
@@ -1954,7 +1955,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     }
                     self.clock.end_frame(self.pause);
                     self.poll_screenshot_writes();
-                    let mut consumed = !self.ui.screenshot_messages.is_empty();
+                    let mut consumed = !self.side.chat_ui.screenshot_messages.is_empty();
                     let finished = self
                         .side
                         .renderer
@@ -2102,7 +2103,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let (w, h) = (batch.width, batch.height);
         // HDR calibration ends when its page does, whatever moved the screen
         // off Options (a death screen opened by a server, say).
-        if self.side.screen != Screen::Options && self.ui.options.calibration_window.is_some() {
+        if self.side.screen != Screen::Options
+            && self.side.chat_ui.options.calibration_window.is_some()
+        {
             self.show_calibration((w, h));
         }
         if self.side.screen == Screen::Win {
@@ -2203,7 +2206,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.native_render_gui_pre(&mut gui_canceled);
         }
         // F1 hides vanilla drawing; RenderGuiEvent.Pre instead cancels the layer walk.
-        let hide_hud = self.ui.hide_gui || replaying;
+        let hide_hud = self.side.chat_ui.hide_gui || replaying;
         let show_hud = !hide_hud && !gui_canceled;
         // A screen that keeps the in-game UI defers subtitles to its background,
         // even under F1. With no screen, Gui draws them after the debug overlay.
@@ -2220,7 +2223,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         );
         let dispatch_hud = !gui_canceled && !replaying;
         self.side.hud_layer_next = dispatch_hud.then_some(0);
-        self.ui.room = self.hud_room(w, h, show_hud);
+        self.side.chat_ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
         if dispatch_hud {
             if show_hud {
@@ -2668,7 +2671,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Off a world (title, options, Win, a prompt before joining) the HUD shows nothing to
         // keep clear of; `hud_layers` fills it in once the world's HUD draws.
         let gui = HudBatch::new(size, self.settings.gui_scale_inputs());
-        self.ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
+        self.side.chat_ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
         self.settle_title_toasts();
@@ -4126,7 +4129,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if debug_crosshair_drawn(
             self.debug_crosshair(),
             self.side.camera_type.is_first_person(),
-            self.ui.hide_gui,
+            self.side.chat_ui.hide_gui,
             self.shows_panorama(),
             self.overlay_holds_view(),
         ) {
@@ -4249,7 +4252,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         });
         if reload_overlay.is_none() {
             self.flush_ime(&mut hud);
-            self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.side.focused);
+            self.native_gui_render_post(&mut hud, self.side.chat_ui.hide_gui, self.side.focused);
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");

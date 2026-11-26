@@ -129,7 +129,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let p = self.player.as_ref()?;
         p.health
             .dead_or_dying()
-            .then(|| self.ui.death_time.min(i32::MAX as u32) as i32)
+            .then(|| self.side.chat_ui.death_time.min(i32::MAX as u32) as i32)
     }
     /// `modifyFovBasedOnDeathOrFluid`'s death time: the camera entity's, so a spectated entity's.
     fn camera_death_time(&self) -> Option<i32> {

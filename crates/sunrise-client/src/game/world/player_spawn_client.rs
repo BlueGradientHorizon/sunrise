@@ -13,9 +13,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if player.health.dead_or_dying() {
             self.set_screen(Screen::Dead);
             self.side.death_focus = None;
-            self.ui.died_at = Some(Instant::now());
-            self.ui.death_text = None;
-            self.ui.death_confirm = None;
+            self.side.chat_ui.died_at = Some(Instant::now());
+            self.side.chat_ui.death_text = None;
+            self.side.chat_ui.death_confirm = None;
             self.capture(false);
         }
         self.previous_position = feet;

@@ -300,7 +300,7 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
             assert_eq!(
                 game.score
                     .board
-                    .score(crate::game::chat::PLAYER_NAME, "mined")
+                    .score(crate::game::chat_common::PLAYER_NAME, "mined")
                     .unwrap()
                     .value,
                 2
@@ -340,7 +340,7 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
             assert_eq!(
                 game.score
                     .board
-                    .score(crate::game::chat::PLAYER_NAME, "steps")
+                    .score(crate::game::chat_common::PLAYER_NAME, "steps")
                     .unwrap()
                     .value,
                 3

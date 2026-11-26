@@ -141,7 +141,7 @@ pub(in crate::game::server_side) fn load<'a>(
                 |value| {
                     let id = format!(
                         "minecraft:{}",
-                        sunrise_client::mobs::render::VILLAGER_TYPES[*value as usize]
+                        sunrise_client::mobs::villager::VILLAGER_TYPES[*value as usize]
                     );
                     Tag::String(id.as_str().into())
                 },

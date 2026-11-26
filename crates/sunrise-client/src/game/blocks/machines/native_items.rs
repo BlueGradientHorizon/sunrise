@@ -32,7 +32,8 @@ enum ItemTarget {
 
 /// `Level.isInValidBounds` and the resident-only `getChunkNow` / `getChunk(..., false)` query.
 fn valid_resident_position(world: &sunrise_client::world::World, [x, y, z]: [i32; 3]) -> bool {
-    sunrise_client::streaming::chunk_pos_is_valid((x >> 4, z >> 4)) && world.is_loaded_at(x, y, z)
+    sunrise_level::chunk_streamer::chunk_pos_is_valid((x >> 4, z >> 4))
+        && world.is_loaded_at(x, y, z)
 }
 
 impl super::Containers<'_> {

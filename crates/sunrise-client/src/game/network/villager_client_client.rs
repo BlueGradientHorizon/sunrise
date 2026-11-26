@@ -14,7 +14,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
             table,
             &self
                 .res
-                .mob_data()
+                .client_mob_data()
                 .villager_hats
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),

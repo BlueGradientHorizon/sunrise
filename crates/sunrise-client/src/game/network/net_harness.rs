@@ -106,7 +106,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         prompts.push(self.command_prompt_message());
                     } else if let Some(answer) = line.strip_prefix(".answer ") {
                         self.answer_command_prompt(answer == "yes");
-                        chat_box = self.ui.chat_screen.as_ref().map(|c| c.value().to_owned());
+                        chat_box = self
+                            .side
+                            .chat_ui
+                            .chat_screen
+                            .as_ref()
+                            .map(|c| c.value().to_owned());
                     } else {
                         self.send_signed_chat_input(line);
                     }

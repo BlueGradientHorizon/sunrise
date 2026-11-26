@@ -1,7 +1,7 @@
 //! Configuration transport has no player. Its replies share the engine writer queue.
-use crate::{
-    net::{PreparedPayload, queued_writer::QueuedWriter},
-    raw_payloads::{Incoming, Transport},
+use crate::raw_payloads::{
+    Incoming, Transport,
+    queued_writer::{PreparedPayload, QueuedWriter},
 };
 use mod_api::{PayloadId, PayloadSendError};
 use std::sync::Arc;
@@ -91,7 +91,7 @@ impl EngineChannels {
 pub(super) struct ConfigIo<'a> {
     connection: &'a mut Connection,
     pub sender: Option<ConfigSender>,
-    events: crate::net::ingress::Producer<super::NetEvent>,
+    events: crate::net_ingress::Producer<super::NetEvent>,
     handed_off: bool,
     pub channels: EngineChannels,
     configuration_session: Option<std::sync::Weak<super::configuration_tasks::Session>>,
@@ -100,7 +100,7 @@ impl<'a> ConfigIo<'a> {
     pub fn new(
         connection: &'a mut Connection,
         transport: Arc<Transport>,
-        events: crate::net::ingress::Producer<super::NetEvent>,
+        events: crate::net_ingress::Producer<super::NetEvent>,
     ) -> sunrise_protocol::Result<Self> {
         let sender = if transport.local.manifest.entries().is_empty() {
             None

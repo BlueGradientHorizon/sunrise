@@ -1,6 +1,6 @@
 //! Simple rolling terrain used only until the vanilla overworld generator is
 //! bound (`--test-terrain`). Not vanilla generation.
-use crate::{chunk::Chunk, streaming::ChunkGenerator};
+use crate::{chunk::Chunk, chunk_streamer::ChunkGenerator};
 use sunrise_world::registry::BlockRegistry;
 
 pub struct TestTerrain {
@@ -77,15 +77,15 @@ impl ChunkGenerator for TestTerrain {
             biome: self.plains,
         })
     }
-    fn proto(&self, w: &mut (), x: i32, z: i32) -> crate::streaming::Proto {
+    fn proto(&self, w: &mut (), x: i32, z: i32) -> crate::chunk_streamer::Proto {
         Box::new(self.generate(w, x, z))
     }
     // The proto already has all terrain and features. The last FULL ring
     // needs these blocks for lighting without promoting its neighbours.
-    fn light_view(&self, proto: &crate::streaming::Proto) -> Option<Chunk> {
+    fn light_view(&self, proto: &crate::chunk_streamer::Proto) -> Option<Chunk> {
         proto.downcast_ref::<Chunk>().cloned()
     }
-    fn finish(&self, proto: crate::streaming::Proto) -> Chunk {
+    fn finish(&self, proto: crate::chunk_streamer::Proto) -> Chunk {
         let mut chunk = *proto.downcast::<Chunk>().expect("test terrain proto");
         chunk.fresh = true;
         chunk

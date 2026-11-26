@@ -158,7 +158,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let minecart_improvements = self.minecart_improvements();
         // Restore fullbright when leaving another server.
         self.hold_fullbright();
-        let ui = &mut self.ui.options;
+        let ui = &mut self.side.chat_ui.options;
         ui.open_at(!from_title && self.side.title.0.is_none(), page);
         ui.capture_video_atlas(&self.settings);
         ui.minecart_improvements = minecart_improvements;
@@ -169,7 +169,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// and the list found again when its packs changed (`PackSelectionScreen.tick`'s
     /// watcher).
     fn watch_pack_folder(&mut self) {
-        if !self.ui.options.resource_packs_open() {
+        if !self.side.chat_ui.options.resource_packs_open() {
             self.side.pack_folder = None;
             return;
         }
@@ -204,8 +204,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.pack_folder = Some((now, signature));
         if changed {
             let infos = self.resource_pack_infos();
-            self.ui.options.update_pack_infos(infos);
-            self.ui.options.pack_configs = super::packs::pack_configs(&self.vanilla_root());
+            self.side.chat_ui.options.update_pack_infos(infos);
+            self.side.chat_ui.options.pack_configs =
+                super::packs::pack_configs(&self.vanilla_root());
         }
     }
     pub(in crate::game::client_side) fn draw_options(
@@ -214,13 +215,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         allowed: bool,
     ) {
         if !allowed {
-            self.ui.options.discard_draw();
+            self.side.chat_ui.options.discard_draw();
             return;
         }
         self.watch_pack_folder();
         let context = self.controller_settings_context();
-        if self.ui.options.controller_open() {
-            self.ui.options.set_controller_context(context);
+        if self.side.chat_ui.options.controller_open() {
+            self.side.chat_ui.options.set_controller_context(context);
         }
         let output = self
             .side
@@ -228,15 +229,20 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .0
             .as_ref()
             .map_or(Default::default(), |r| r.output());
-        self.ui
+        self.side
+            .chat_ui
             .options
             .draw_background(&self.settings, output, batch, &self.gui.atlas);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        self.ui
-            .options
-            .draw_contents(&self.settings, batch, &self.gui.atlas, self.side.cursor);
+        self.side.chat_ui.options.draw_contents(
+            &self.settings,
+            batch,
+            &self.gui.atlas,
+            self.side.cursor,
+        );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
-        self.ui
+        self.side
+            .chat_ui
             .options
             .draw_overlays(batch, &self.gui.atlas, self.side.cursor);
         self.show_calibration((batch.width, batch.height));
@@ -249,14 +255,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.side.pad.0.device.as_ref(),
                 self.side.pad.0.style,
             ),
-            glyphs: self.ui.options.pad_glyphs,
+            glyphs: self.side.chat_ui.options.pad_glyphs,
         }
     }
     /// HDR calibration's test picture to the renderer, full screen while it runs: the
     /// window goes fullscreen for it and back after, as it was (maximized, say).
     pub(in crate::game::client_side) fn show_calibration(&mut self, size: (f32, f32)) {
         let picture = (self.side.screen == Screen::Options)
-            .then(|| self.ui.options.calibration_picture(&self.gui.atlas, size))
+            .then(|| {
+                self.side
+                    .chat_ui
+                    .options
+                    .calibration_picture(&self.gui.atlas, size)
+            })
             .flatten();
         if let Some(r) = self.side.renderer.0.as_mut() {
             r.set_hdr_calibration(picture.map(|(step, nits, band)| {
@@ -270,7 +281,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let Some(window) = &self.side.window.0 else {
             return;
         };
-        match (picture.is_some(), self.ui.options.calibration_window) {
+        match (
+            picture.is_some(),
+            self.side.chat_ui.options.calibration_window,
+        ) {
             (true, None) => {
                 // Before entering fullscreen, which un-maximizes a window on Windows.
                 let was = WindowState::of(window.fullscreen().is_some(), window.is_maximized());
@@ -278,7 +292,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let borderless = sunrise_client::window::borderless_fullscreen(window);
                     sunrise_client::window::enter_fullscreen(window, borderless);
                 }
-                self.ui.options.calibration_window = Some(was);
+                self.side.chat_ui.options.calibration_window = Some(was);
             }
             (false, Some(was)) => {
                 let (leave_fullscreen, maximize) = was.leaving();
@@ -288,7 +302,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if maximize {
                     window.set_maximized(true);
                 }
-                self.ui.options.calibration_window = None;
+                self.side.chat_ui.options.calibration_window = None;
             }
             _ => {}
         }
@@ -302,7 +316,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             if right {
                 return Ok(false);
             }
-            let (events, handled) = self.ui.options.release_with_outcome();
+            let (events, handled) = self.side.chat_ui.options.release_with_outcome();
             self.handle_option_events(events)?;
             return Ok(handled);
         }
@@ -310,7 +324,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let framebuffer = self.side.renderer.0.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
-        let mut ui = std::mem::take(&mut self.ui.options);
+        let mut ui = std::mem::take(&mut self.side.chat_ui.options);
         ui.shift = self.side.modifiers.shift_key();
         let (events, handled) = ui.click_with_outcome(
             &mut self.settings,
@@ -322,7 +336,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             false,
             right,
         );
-        self.ui.options = ui;
+        self.side.chat_ui.options = ui;
         self.handle_option_events(events)?;
         Ok(handled)
     }
@@ -331,7 +345,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let framebuffer = self.side.renderer.0.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
-        let mut ui = std::mem::take(&mut self.ui.options);
+        let mut ui = std::mem::take(&mut self.side.chat_ui.options);
         let (handled, events) = ui.drag(
             &mut self.settings,
             &self.gui.atlas,
@@ -340,7 +354,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             framebuffer,
             false,
         );
-        self.ui.options = ui;
+        self.side.chat_ui.options = ui;
         self.handle_option_events(events)?;
         Ok(handled)
     }
@@ -354,12 +368,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let framebuffer = self.side.renderer.0.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
-        self.ui.options.size = size;
-        self.ui.options.framebuffer = framebuffer;
-        let mut ui = std::mem::take(&mut self.ui.options);
+        self.side.chat_ui.options.size = size;
+        self.side.chat_ui.options.framebuffer = framebuffer;
+        let mut ui = std::mem::take(&mut self.side.chat_ui.options);
         ui.modifiers = self.modifiers().bits;
         let (handled, events) = ui.key_input(&mut self.settings, &self.gui.atlas, key, text, shift);
-        self.ui.options = ui;
+        self.side.chat_ui.options = ui;
         self.handle_option_events(events)?;
         self.refresh_screen_widgets();
         Ok(handled)
@@ -368,8 +382,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         key: KeyCode,
     ) -> Result<bool> {
-        self.ui.options.modifiers = self.modifiers().bits;
-        let events = self.ui.options.key_released(&mut self.settings, key);
+        self.side.chat_ui.options.modifiers = self.modifiers().bits;
+        let events = self
+            .side
+            .chat_ui
+            .options
+            .key_released(&mut self.settings, key);
         let handled = !events.is_empty();
         self.handle_option_events(events)?;
         Ok(handled)
@@ -379,14 +397,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) -> bool {
-        self.ui
+        self.side
+            .chat_ui
             .options
             .shortcut(&self.gui.atlas, shortcut, &mut self.side.clipboard.0)
     }
     pub(in crate::game::client_side) fn options_scroll(&mut self, amount: f32) -> Result<bool> {
         if self.pad_stick_scroll() {
             let size = self.gui_size();
-            self.ui
+            self.side
+                .chat_ui
                 .options
                 .scroll_at(&self.settings, size, self.side.cursor, amount);
             return Ok(true);
@@ -394,16 +414,16 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let framebuffer = self.side.renderer.0.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
-        if self.ui.options.video_open() && self.has_control_down() {
+        if self.side.chat_ui.options.video_open() && self.has_control_down() {
             // VideoSettingsScreen.mouseScrolled: Ctrl with the wheel steps the GUI scale.
-            let mut ui = std::mem::take(&mut self.ui.options);
+            let mut ui = std::mem::take(&mut self.side.chat_ui.options);
             let events = ui.video_wheel_gui_scale(&mut self.settings, framebuffer, amount);
-            self.ui.options = ui;
+            self.side.chat_ui.options = ui;
             self.handle_option_events(events)?;
             return Ok(true);
         }
         let size = self.gui_size();
-        let (handled, events) = self.ui.options.wheel_input(
+        let (handled, events) = self.side.chat_ui.options.wheel_input(
             &mut self.settings,
             size,
             self.side.cursor,
@@ -415,14 +435,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// Mouse buttons pressed while a key is being bound.
     pub(in crate::game::client_side) fn options_waiting_for_key(&self) -> bool {
-        self.ui.options.selected_key.is_some()
+        self.side.chat_ui.options.selected_key.is_some()
     }
     pub(in crate::game::client_side) fn options_bind_mouse(
         &mut self,
         button: MouseButton,
     ) -> Result<()> {
-        self.ui.options.modifiers = self.modifiers().bits;
-        let events = self.ui.options.bind_mouse(&mut self.settings, button);
+        self.side.chat_ui.options.modifiers = self.modifiers().bits;
+        let events = self
+            .side
+            .chat_ui
+            .options
+            .bind_mouse(&mut self.settings, button);
         self.handle_option_events(events)
     }
     pub(in crate::game::client_side) fn handle_option_events(
@@ -441,7 +465,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.sync_native_switches();
                     self.sync_pregen_option();
                     self.sync_agent_control();
-                    self.ui.options.agent_status = self.agent_status_lines();
+                    self.side.chat_ui.options.agent_status = self.agent_status_lines();
                 }
                 Event::SliderDrag => {
                     self.apply_settings();
@@ -461,9 +485,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 Event::ToggleRecording => self.toggle_recording_key(),
                 Event::ExportRepro => self.export_repro_key(),
                 // The Music page: the situations' tracks, and playing one now.
-                Event::ListMusicTracks => self.ui.options.music_groups = self.music_groups(),
+                Event::ListMusicTracks => {
+                    self.side.chat_ui.options.music_groups = self.music_groups()
+                }
                 Event::PlayMusicTrack(event, track) => self.play_music_track(&event, &track),
-                Event::Close if self.ui.options.resource_error.is_some() => {}
+                Event::Close if self.side.chat_ui.options.resource_error.is_some() => {}
                 Event::Close => {
                     self.settings.save(&crate::game::options_path());
                     self.leave_options();
@@ -482,7 +508,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 Event::PackOptions { entries, chosen } => {
                     super::packs::save_pack_options(&entries, chosen);
-                    self.ui.options.pack_configs = super::packs::pack_configs(&self.vanilla_root());
+                    self.side.chat_ui.options.pack_configs =
+                        super::packs::pack_configs(&self.vanilla_root());
                     self.reload_packs();
                 }
                 Event::OpenPackFolder => {
@@ -494,7 +521,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     let additional = self.discover_mod_packs(mod_api::PackType::ClientResources);
                     let vanilla = self.vanilla_root();
                     super::packs::import_resource_packs(
-                        &mut self.ui.options,
+                        &mut self.side.chat_ui.options,
                         &vanilla,
                         &self.side.server_packs.0.active,
                         &paths,
@@ -505,7 +532,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // owns the folder it lands in.
                 Event::DownloadPack(i) => {
                     let dir = super::packs::packs_dir();
-                    if let Some(screen) = &mut self.ui.options.pack_screen
+                    if let Some(screen) = &mut self.side.chat_ui.options.pack_screen
                         && let Some(browser) = &mut screen.browser
                     {
                         browser.download(i, &dir, sunrise_core::VANILLA_VERSION);
@@ -533,12 +560,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     self.side.clipboard.0.set(&text);
                 }
                 Event::BrowseMods => {
-                    let ui = &mut self.ui.options.mod_browser;
+                    let ui = &mut self.side.chat_ui.options.mod_browser;
                     self.side.mod_jobs.0.browse(ui, crate::game::game_dir());
                 }
                 Event::InstallMod(id) => {
                     if self.player.is_none() {
-                        let ui = &mut self.ui.options.mod_browser;
+                        let ui = &mut self.side.chat_ui.options.mod_browser;
                         self.side
                             .mod_jobs
                             .0
@@ -602,7 +629,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn load_language(&mut self, code: &str) {
         lang::set(lang::Language::load(&[&self.pack.source], code));
         self.refresh_remote_language();
-        self.ui.chat.rescale(&self.gui.atlas);
+        self.side.chat_ui.chat.rescale(&self.gui.atlas);
         self.side.creative_screen.0.forget_items();
     }
     /// Window.updateFullscreenIfChanged: only a changed option asks the
@@ -620,7 +647,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 self.settings.video_modes = modes;
             }
             let in_video_screen =
-                self.side.screen == Screen::Options && self.ui.options.video_open();
+                self.side.screen == Screen::Options && self.side.chat_ui.options.video_open();
             let wanted = self.settings.fullscreen;
             let exclusive = self.settings.file.bool("exclusiveFullscreen");
             let preferred = self
@@ -698,19 +725,19 @@ impl Game<'_, crate::game::client_side::ClientState> {
         super::narrator::sync(s);
         let chat = s.chat_options();
         let rescale = {
-            let o = &self.ui.chat.options;
+            let o = &self.side.chat_ui.chat.options;
             o.width != chat.width || o.scale != chat.scale || o.line_spacing != chat.line_spacing
         };
-        self.ui.chat.options = chat;
+        self.side.chat_ui.chat.options = chat;
         if rescale {
-            self.ui.chat.rescale(&self.gui.atlas);
+            self.side.chat_ui.chat.rescale(&self.gui.atlas);
         }
         let font = &mut self.gui.atlas.font;
         if font.uniform != s.force_unicode || font.japanese != s.japanese_glyphs {
             font.uniform = s.force_unicode;
             font.japanese = s.japanese_glyphs;
             font.reset_cache();
-            self.ui.chat.rescale(&self.gui.atlas);
+            self.side.chat_ui.chat.rescale(&self.gui.atlas);
         }
         self.notify_window_resize();
         // GUI-scale changes rebuild mounted children before the next input.
@@ -760,7 +787,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn observe_fullscreen(&mut self) {
         // HDR calibration's own fullscreen is not the player's option: it
         // goes back to what it was when the calibration ends.
-        if self.ui.options.calibration_window.is_some() {
+        if self.side.chat_ui.options.calibration_window.is_some() {
             return;
         }
         let Some(w) = &self.side.window.0 else { return };

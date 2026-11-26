@@ -133,7 +133,7 @@ impl Streaming {
             shader_pack_lighting: self.shader_pack_lighting,
             separate_ao: self.separate_ao,
             shader_pack: self.shader_pack,
-            zoom: self.biome_zoom,
+            zoom: self.chunks.biome_zoom,
             blend_radius: self.biome_blend,
             smooth_lighting: self.smooth_lighting,
             cutout_leaves: self.cutout_leaves,

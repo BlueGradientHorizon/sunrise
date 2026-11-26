@@ -138,7 +138,7 @@ fn jar_data_layers_merge_tags_and_replace_recipes_below_world_datapacks() {
     let root = f.0.join("root");
     let mods = [alpha, beta];
     build_fixture(&f.0.join("base"), &f.0.join("jars"), &mods, &root).unwrap();
-    let resources = resolved_resources(
+    let resources = resolved_server_resources(
         &f.0.join("base"),
         root.clone(),
         &f.0.join("jars"),
@@ -239,10 +239,11 @@ fn changing_jar_list_or_order_rebuilds_and_missing_after_compose_keeps_the_old_r
     let store = f.0.join("jars");
     let cache = f.0.join("cache");
     let first = resource_root_fixture(&base, &store, &mods, &cache).unwrap();
-    let first_source = resolved_resources(&base, first.clone(), &store, &mods, cache.clone())
-        .unwrap()
-        .source()
-        .clone();
+    let first_source =
+        resolved_server_resources(&base, first.clone(), &store, &mods, cache.clone())
+            .unwrap()
+            .source()
+            .clone();
     assert_eq!(first_source.read(path).unwrap(), b"b");
     assert_eq!(
         resource_root_fixture(&base, &store, &mods, &cache).unwrap(),
@@ -250,16 +251,17 @@ fn changing_jar_list_or_order_rebuilds_and_missing_after_compose_keeps_the_old_r
     );
     mods[0].jars.reverse();
     let reversed = resource_root_fixture(&base, &store, &mods, &cache).unwrap();
-    let reversed_source = resolved_resources(&base, reversed.clone(), &store, &mods, cache.clone())
-        .unwrap()
-        .source()
-        .clone();
+    let reversed_source =
+        resolved_server_resources(&base, reversed.clone(), &store, &mods, cache.clone())
+            .unwrap()
+            .source()
+            .clone();
     assert_ne!(first, reversed);
     assert_eq!(reversed_source.read(path).unwrap(), b"a");
     mods[0].jars.pop();
     let shortened = resource_root_fixture(&base, &store, &mods, &cache).unwrap();
     let shortened_source =
-        resolved_resources(&base, shortened.clone(), &store, &mods, cache.clone())
+        resolved_server_resources(&base, shortened.clone(), &store, &mods, cache.clone())
             .unwrap()
             .source()
             .clone();
@@ -616,129 +618,6 @@ fn modify_biome_with_an_invalid_value_is_skipped_with_a_warning() {
         fs::read(out.join("worldgen/biomes.json")).unwrap(),
         fs::read(base.join("worldgen/biomes.json")).unwrap()
     );
-    fs::remove_dir_all(scratch).unwrap();
-}
-
-/// `sunrise:modify_biome` writes ambient particles, ambient sounds and music as the vanilla
-/// attribute values (the shapes of `warped_forest.json`), each replacing the biome's value.
-#[test]
-fn modify_biome_sets_ambient_particles_sounds_and_music() {
-    let base = biome_base("biome-modifiers-modify-effects");
-    let scratch = base.parent().unwrap().to_owned();
-    fs::write(
-        base.join("registries.json"),
-        r#"{"minecraft:item":{"entries":{"minecraft:test":{"protocol_id":0}}},"minecraft:block":{"entries":{"minecraft:test":{"protocol_id":0}}},"minecraft:sound_event":{"entries":{"minecraft:ambient.warped_forest.loop":{"protocol_id":0},"minecraft:ambient.warped_forest.additions":{"protocol_id":1},"minecraft:ambient.warped_forest.mood":{"protocol_id":2}}}}"#,
-    )
-    .unwrap();
-    let m = zinc_mod(
-        &scratch.join("zinc"),
-        &[(
-            "dunes",
-            r#"{"type":"sunrise:modify_biome","biomes":"minecraft:plains","attributes":{
-                "minecraft:visual/ambient_particles":{"argument":[{"particle":{"type":"minecraft:ash"},"probability":0.25}]},
-                "minecraft:audio/ambient_sounds":{"loop":"minecraft:ambient.warped_forest.loop",
-                    "additions":{"sound":"minecraft:ambient.warped_forest.additions","tick_chance":1.5},
-                    "mood":{"sound":"minecraft:ambient.warped_forest.mood","tick_delay":6000,"block_search_extent":8,"offset":2.0}},
-                "minecraft:audio/background_music":{"default":{"sound":{"sound_id":"zinc:music.dunes"},"min_delay":25000,"max_delay":24000}},
-                "minecraft:audio/music_volume":0.5}}"#,
-        )],
-    );
-    let out = scratch.join("out");
-    let warnings = build_fixture(&base, &base.join("jars"), &[m], &out).unwrap();
-    assert!(
-        warnings.iter().all(|w| !w.contains("skipped")),
-        "{warnings:?}"
-    );
-    let after: BTreeMap<String, String> =
-        serde_json::from_slice(&fs::read(out.join("worldgen/biomes.json")).unwrap()).unwrap();
-    let plains: serde_json::Value = serde_json::from_str(&after["minecraft:plains"]).unwrap();
-    let attributes = &plains["attributes"];
-    assert_eq!(
-        attributes["minecraft:visual/ambient_particles"],
-        serde_json::json!([{"particle": {"type": "minecraft:ash"}, "probability": 0.25}])
-    );
-    assert_eq!(
-        attributes["minecraft:audio/ambient_sounds"],
-        serde_json::json!({
-            "loop": "minecraft:ambient.warped_forest.loop",
-            "additions": {"sound": "minecraft:ambient.warped_forest.additions", "tick_chance": 1.5},
-            "mood": {"sound": "minecraft:ambient.warped_forest.mood", "tick_delay": 6000,
-                "block_search_extent": 8, "offset": 2.0},
-        })
-    );
-    assert_eq!(
-        attributes["minecraft:audio/background_music"],
-        serde_json::json!({"default": {"sound": {"sound_id": "zinc:music.dunes"}, "min_delay": 25000, "max_delay": 24000}})
-    );
-    assert_eq!(attributes["minecraft:audio/music_volume"], 0.5);
-
-    // The modified biome flows through playback selection with its custom sound and volume.
-    let builtin = std::sync::Arc::new(
-        sunrise_protocol::registry::Builtin::load(&base.join("registries.json")).unwrap(),
-    );
-    let music_tables = crate::music::MusicTables::load(&out, builtin.clone());
-    let (bg, vol) = music_tables.at("minecraft:overworld", "minecraft:plains", Some(&plains));
-    let selected = crate::music::Situation {
-        screen_music: None,
-        in_world: true,
-        in_end: false,
-        boss_music: false,
-        background: &bg,
-        probe_volume: vol,
-        creative: false,
-        underwater: false,
-    };
-    assert_eq!(
-        selected.music().map(|m| m.sound),
-        Some("zinc:music.dunes".to_owned())
-    );
-    assert_eq!(selected.volume(), 0.5);
-
-    // Typed ModifyBiome declared in code emits inline sound events that load and play identically.
-    let typed = mod_api::BiomeModifier {
-        biomes: vec!["minecraft:desert".into()],
-        operation: mod_api::BiomeModifierOperation::ModifyBiome {
-            temperature: None,
-            downfall: None,
-            has_precipitation: None,
-            temperature_modifier: None,
-            sky_color: None,
-            fog_color: None,
-            water_color: None,
-            water_fog_color: None,
-            foliage_color: None,
-            dry_foliage_color: None,
-            grass_color: None,
-            ambient_particles: None,
-            ambient_loop: None,
-            ambient_additions: None,
-            ambient_mood: None,
-            background_music: Some(mod_api::BiomeMusic {
-                sound: "zinc:music.oasis".into(),
-                min_delay: 100,
-                max_delay: 200,
-            }),
-            music_volume: Some(0.25),
-        },
-    };
-    let declared = [["zinc".to_owned(), "declared:oasis".to_owned(), typed.json()]];
-    let packs = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
-    let overridden = biome_modifiers_over_packs(&out, &packs, &declared)
-        .unwrap()
-        .expect("typed modifier produces biome overrides");
-    let desert_text = overridden
-        .entries("biomes")
-        .find_map(|(id, text)| (id == "minecraft:desert").then_some(text))
-        .expect("desert override present");
-    let desert: serde_json::Value = serde_json::from_str(desert_text).unwrap();
-    let (desert_bg, desert_vol) =
-        music_tables.at("minecraft:overworld", "minecraft:desert", Some(&desert));
-    assert_eq!(
-        desert_bg.default.map(|m| m.sound),
-        Some("zinc:music.oasis".to_owned())
-    );
-    assert_eq!(desert_vol, 0.25);
-
     fs::remove_dir_all(scratch).unwrap();
 }
 

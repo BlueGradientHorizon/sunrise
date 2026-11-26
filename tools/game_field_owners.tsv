@@ -361,7 +361,6 @@ knot_ids	HashMap<[i32; 3], u32>	server	server (survey; review=common from unprun
 broken_knots	Vec<[i32; 3]>	server	server (survey; review=common from unpruned BFS, group=entities)	359	game	-
 text_display_vertices	usize	client	client (survey + review)	360	side	-
 skin_downloads	RefCell<sunrise_client::skins::Downloader>	game	drop-order (client): RefCell<Downloader> holds skin download mpsc Sender/Receiver; precedes remote (460), fangs (603)	361	-	client_only
-skin_profiles	RefCell<sunrise_client::skins::Resolver>	game	shared (skin profile resolver used on both sides)	362	-	-
 skin_slots	sunrise_client::skins::SkinSlots	client	client (survey + review)	363	side	-
 trim_slots	sunrise_client::trims::TrimSlots	client	client (survey + review)	364	side	-
 cart_models	minecarts::CartModels	client	client (survey + review)	365	side	-
@@ -577,7 +576,7 @@ rcon_source	bool	server	server (survey; review=common from unpruned BFS, group=c
 server_lists	Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>	game	drop-order (server): Option<Arc<Mutex<Lists>>> shared with login threads and owns UserList watcher Box<dyn Fn(Change<E>) + Send>; precedes reload_resources (577)	575	-	server_only
 cmds	commands::extra::CommandExtras	game	drop-order (server): CommandExtras retains EntityAttributes sharing Arc<Catalog> with res (0); precedes reload_resources (577)	576	-	server_only
 reload_resources	mod_api::RetainedListeners	game	drop-order (server): RetainedListeners holds Arc<dyn Any + Send + Sync> mod-owned objects with mod Drops; precedes ui (578) and fangs (603)	577	-	server_only
-ui	chat::UiState	game	shared (survey + review)	578	-	-
+ui	chat_common::WorldCommandState	game	shared (survey + review)	578	-	-
 combat	combat::CombatTracker	game	drop-order (server): CombatTracker retains EntityView -> PlayerFacts sharing Arc<Tree> with adv (596); precedes mount (581) and fangs (603)	579	-	server_only
 guest_combat	std::collections::HashMap<u32, combat::CombatTracker>	game	drop-order (server): HashMap<u32, CombatTracker> retains EntityView -> PlayerFacts sharing Arc<Tree> with adv (596); precedes mount (581) and fangs (603)	580	-	server_only
 mount	mounts::MountState	game	shared (survey + review)	581	-	-
@@ -620,3 +619,6 @@ map_slots	super::atlas_slots::AtlasSlots<i32>	client	client-only map atlas slots
 station_ui	Option<stations_client::StationUi>	client	client-only station UI widgets (split from Station in H1 L4-2)	618	side	-
 remote_clouds	Vec<sunrise_client_gameplay::remote::projectiles::RemoteCloud>	client	client-only remote cloud visuals (H1 L2-2)	619	side	-
 mining_crack	Option<client_cracks::ClientCrack>	client	client-only mining crack animation (split from Mining in H1 L3-2)	620	side	-
+profile_resolver	Box<dyn sunrise_level::profile_lookup::ProfileResolver>	server	server-only profile lookup resolver (split from Game.skin_profiles in H2 L3-3)	621	side	-
+skin_profiles	RefCell<sunrise_client::skins::Resolver>	client	client-only skin profile resolver (split from Game.skin_profiles in H2 L3-3)	622	side	-
+chat_ui	chat::ChatUiState	client	client-only chat and death UI state (split from UiState in H2 L5-2)	623	side	-

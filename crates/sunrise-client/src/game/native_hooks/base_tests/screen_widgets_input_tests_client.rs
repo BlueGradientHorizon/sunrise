@@ -175,7 +175,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         );
         assert!(!preedit::should_suppress_key());
         assert_eq!(
-            game.ui.chat_screen.as_ref().unwrap().value(),
+            game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
             "native draft"
         );
     });

@@ -319,7 +319,7 @@ pub(in crate::game) mod tests {
     use super::*;
     use mod_api::{self, ServerHost};
     use std::sync::Arc;
-    use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Part, Species};
+    use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Species};
     use sunrise_core::geometry::Vec3;
 
     /// `LightningBolt.spawnFire` places nothing, and draws no extra sources,
@@ -448,7 +448,6 @@ pub(in crate::game) mod tests {
         let make_pig = |baby: bool| {
             let kind = Arc::new(MobType {
                 type_key: Default::default(),
-                shadow: None,
                 id: "minecraft:pig".into(),
                 species: Species::Pig,
                 width: 0.9,
@@ -481,15 +480,6 @@ pub(in crate::game) mod tests {
                 max_head_y_rot: 75.0,
                 ambient_interval: 80,
                 flags: Default::default(),
-                model: Arc::new(Part {
-                    name: "root".into(),
-                    pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-                    polygons: Vec::new(),
-                    children: Vec::new(),
-                    layer: None,
-                }),
-                layers: Default::default(),
-                texture: String::new(),
                 brain: Brain::Passive,
                 anim: Anim::Quadruped,
                 sounds: ["", "", ""],

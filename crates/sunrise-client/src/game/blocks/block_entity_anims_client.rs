@@ -36,7 +36,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // `Dynamic` (name- or id-only) profile.
         let download = skin.download.clone().or_else(|| {
             let key = skin.dynamic.as_ref()?;
-            let skins::Resolve::Done(Some(profile)) = self.skin_profiles.borrow_mut().state(key)
+            let skins::Resolve::Done(Some(profile)) =
+                self.side.skin_profiles.borrow_mut().state(key)
             else {
                 return None;
             };

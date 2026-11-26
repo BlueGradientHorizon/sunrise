@@ -789,7 +789,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         // DeathScreen.handleExitToTitleScreen: the TitleConfirmScreen takes the
         // screen over, on the same background.
-        if let Some(opened) = self.ui.death_confirm {
+        if let Some(opened) = self.side.chat_ui.death_confirm {
             let (title, labels) = death_confirm_texts();
             // ConfirmScreen.getNarrationMessage: its title and its (empty)
             // message.
@@ -829,7 +829,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             2.0,
             u32::MAX,
         );
-        if let Some(cause) = &self.ui.death_text {
+        if let Some(cause) = &self.side.chat_ui.death_text {
             let cw = atlas.font.width_text(cause);
             batch.text_styled(atlas, cause, ((w - cw) / 2.0).floor(), 85.0, u32::MAX, true);
         }
@@ -850,7 +850,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             true,
         );
         let active = self
-            .ui
+            .side
+            .chat_ui
             .died_at
             .is_none_or(|t| t.elapsed().as_millis() >= 1000);
         for (x, y, key, id) in death_buttons(w, h, self.level.hardcore) {
@@ -872,7 +873,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // DeathScreen.visitText(HoveredTextEffects.TOOLTIP_AND_CURSOR): a
         // styled cause shows its hover tooltip, and a clickable one asks for
         // the hand.
-        if let Some(cause) = &self.ui.death_text
+        if let Some(cause) = &self.side.chat_ui.death_text
             && let Some(style) = death_style_at(
                 &|c, style| atlas.font.advance(c, style),
                 cause,
@@ -892,7 +893,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// button, or at once with `immediate_respawn`).
     pub(in crate::game::client_side) fn respawn_player(&mut self) -> Result<()> {
         self.side.death_focus = None;
-        self.ui.death_text = None;
+        self.side.chat_ui.death_text = None;
         // LocalPlayer.respawn: KeyMapping.resetToggleKeys.
         self.reset_toggle_keys();
         self.side.vanilla_mappings.reset_toggle_keys();
@@ -901,13 +902,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn death_click(&mut self) -> Result<bool> {
         if self
-            .ui
+            .side
+            .chat_ui
             .died_at
             .is_some_and(|t| t.elapsed().as_millis() < 1000)
         {
             return Ok(false);
         }
-        if let Some(opened) = self.ui.death_confirm {
+        if let Some(opened) = self.side.chat_ui.death_confirm {
             // ConfirmScreen.setDelay: both buttons wait 20 ticks.
             if opened.elapsed().as_millis() < 1000 {
                 return Ok(false);
@@ -928,7 +930,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // DeathScreen.mouseClicked first looks for a click event on the
         // cause line: an open_url link goes through the chat link flow.
-        if let Some(cause) = &self.ui.death_text {
+        if let Some(cause) = &self.side.chat_ui.death_text {
             let atlas = &self.gui.atlas;
             let mid = self.gui_size().0;
             if let Some(text::Style {
@@ -960,7 +962,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         // handleExitToTitleScreen: outside hardcore, Title Screen asks first.
         if hit == Some(1) && !self.level.hardcore {
-            self.ui.death_confirm = Some(std::time::Instant::now());
+            self.side.chat_ui.death_confirm = Some(std::time::Instant::now());
             self.side.audio.0.play_button_click();
             return Ok(true);
         }
@@ -969,13 +971,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     pub(in crate::game::client_side) fn death_key(&mut self, key: KeyCode) -> Result<bool> {
         if self
-            .ui
+            .side
+            .chat_ui
             .died_at
             .is_some_and(|t| t.elapsed().as_millis() < 1000)
         {
             return Ok(false);
         }
-        if let Some(opened) = self.ui.death_confirm {
+        if let Some(opened) = self.side.chat_ui.death_confirm {
             if opened.elapsed().as_millis() < 1000 {
                 return Ok(false);
             }
@@ -1047,7 +1050,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 };
                 self.side.audio.0.play_button_click();
                 if hit == 1 && !self.level.hardcore {
-                    self.ui.death_confirm = Some(std::time::Instant::now());
+                    self.side.chat_ui.death_confirm = Some(std::time::Instant::now());
                     self.side.death_focus = Some(0);
                     return Ok(true);
                 }
@@ -1060,7 +1063,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The confirm screen's answer: yes leaves the world, no respawns
     /// (`DeathScreen.handleExitToTitleScreen`'s callback).
     pub(in crate::game::client_side) fn death_confirm_answer(&mut self, yes: bool) -> Result<()> {
-        self.ui.death_confirm = None;
+        self.side.chat_ui.death_confirm = None;
         if yes {
             self.side.audio.0.play_button_click();
             self.close_world()

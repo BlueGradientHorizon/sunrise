@@ -105,22 +105,27 @@ pub struct IngressLease {
     _permit: byte_channel::Permit<()>,
     pub(super) owned_bytes: usize,
 }
+/// Checked upper bound on client event size for server-only constructions.
+pub const CLIENT_EVENT_SIZE_BOUND: usize = 128;
+
 // Four slots cover Vec's initial growth and later geometric staging. Provider
 // queue storage is separately charged by the typed ingress channel. This charge
 // covers both main routes and network-staged work, including boxed identities.
-const INGRESS_RECORD_OVERHEAD: usize = 4
-    * (std::mem::size_of::<crate::lan::NetEvent>()
+pub const fn record_overhead(client_event_size: usize) -> usize {
+    4 * (std::mem::size_of::<crate::lan::NetEvent>()
         + std::mem::size_of::<crate::lan::hub::HostEvent>()
-        + std::mem::size_of::<crate::net::Event>()
+        + client_event_size
         + std::mem::size_of::<super::Incoming>())
-    + std::mem::size_of::<super::Delivery>()
-    + 128;
+        + std::mem::size_of::<super::Delivery>()
+        + 128
+}
 const INGRESS_BUDGET: usize = 16 << 20;
 
 /// Allocate only for a nonempty local installation; unmodded connections need no dispatch state.
 pub struct Connection {
     local: Arc<Local>,
     side: Side,
+    record_overhead: usize,
     current: Mutex<Current>,
     ingress: byte_channel::Sender<()>,
     _ingress_receiver: byte_channel::Receiver<()>,
@@ -157,6 +162,13 @@ impl Connection {
         }
     }
     pub fn new(local: Arc<Local>, side: Side) -> Arc<Self> {
+        Self::new_with_event_size(local, side, CLIENT_EVENT_SIZE_BOUND)
+    }
+    pub fn new_with_event_size(
+        local: Arc<Local>,
+        side: Side,
+        client_event_size: usize,
+    ) -> Arc<Self> {
         let (ingress, receiver) = byte_channel::channel(INGRESS_BUDGET).unwrap();
         let droppable = local.has_droppable().then(|| {
             let budgets = local.budgets;
@@ -176,12 +188,17 @@ impl Connection {
             payload_pending: AtomicBool::new(false),
             local,
             side,
+            record_overhead: record_overhead(client_event_size),
             current: Mutex::new(Current {
                 closed: false,
                 epoch: None,
                 player: None,
             }),
         })
+    }
+    #[cfg(test)]
+    pub(super) fn record_overhead(&self) -> usize {
+        self.record_overhead
     }
     /// Retain bytes across arbitrary ingress staging queues and phase changes.
     /// The layout-derived allowance covers envelope and geometric actor staging;
@@ -192,7 +209,7 @@ impl Connection {
             return Err(PayloadSendError::Disconnected);
         }
         let charge = owned_bytes
-            .checked_add(INGRESS_RECORD_OVERHEAD)
+            .checked_add(self.record_overhead)
             .ok_or(PayloadSendError::Backpressure)?;
         self.ingress
             .reserve(charge)

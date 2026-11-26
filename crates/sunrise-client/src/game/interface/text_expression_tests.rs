@@ -106,13 +106,13 @@ fn a_packs_text_draws_its_expression_uniforms() {
         game.side.renderer.0.as_mut().unwrap().fullbright = fullbright;
         // The world text over the frame with the GUI hidden (F1), then the GUI's (F3's text)
         // over it.
-        game.ui.hide_gui = true;
+        game.side.chat_ui.hide_gui = true;
         assert_eq!(
             corner(game, frame),
             [153, 192, 255],
             "fullbright {fullbright}"
         );
-        game.ui.hide_gui = false;
+        game.side.chat_ui.hide_gui = false;
         game.side.debug = true;
         assert_eq!(corner(game, frame), [51, 192, 0], "fullbright {fullbright}");
         // The title screen: no world runs, the GUI text's value and `PolyGlobals` are 0.

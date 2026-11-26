@@ -3,7 +3,7 @@
 use super::particle_culling::section_scene;
 use super::{
     Game, Vertex,
-    entity_client::RenderEntityBounds,
+    entity_client::{RenderEntity, RenderEntityBounds},
     occlusion_culling::{AsyncOcclusionCuller, opaque},
 };
 use sunrise_client::graphics::EntityCullingMode;
@@ -87,7 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// Cull from a renderer-computed envelope when the rendered transform has
     /// extra offsets or model geometry that the entity type alone cannot see.
-    pub(in crate::game::client_side) fn entity_cull_decision_in_bounds<T: RenderEntityBounds>(
+    pub(in crate::game::client_side) fn entity_cull_decision_in_bounds<T: RenderEntity>(
         &self,
         entity: &T,
         render_bounds: Aabb,
@@ -173,7 +173,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     /// Refine an AABB-visible result with the exact bounds of the rendered mesh.
-    pub(in crate::game) fn finish_entity_occlusion<T: RenderEntityBounds>(
+    pub(in crate::game) fn finish_entity_occlusion<T: RenderEntity>(
         &self,
         decision: EntityCullDecision,
         entity: &T,
@@ -379,9 +379,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod precheck_envelope_tests {
-    use super::super::entity_client::RenderEntityBounds;
+    use super::super::entity_client::mob_render_bounds;
     use std::{path::Path, sync::Arc};
-    use sunrise_client::mobs::{Mob, MobData, MobTypes, Species, render};
+    use sunrise_client::mobs::{Mob, MobTypes, Species, render};
+    use sunrise_client::mobs_render::{ClientMobData, ClientMobModels, ClientMobRender};
     use sunrise_core::geometry::Vec3;
 
     #[test]
@@ -392,23 +393,14 @@ mod precheck_envelope_tests {
             return;
         }
         let types = MobTypes::load(&root).unwrap();
-        let data = MobData {
-            resolved: Default::default(),
-            states: Vec::new(),
-            placements: Default::default(),
-            heightmaps: Default::default(),
-            animations: MobData::load_animations(&root).unwrap(),
-            villager_hats: Default::default(),
-            frame_models: Default::default(),
-            cem: Default::default(),
-            random_textures: Default::default(),
-            emissive: Default::default(),
-            blinks: Default::default(),
-            biome_tags: Default::default(),
-            pois: Default::default(),
-            species_placements: Default::default(),
-            mod_spawns: Default::default(),
-            vanilla_spawn_placements: None,
+        let models = ClientMobModels::load(&root).unwrap();
+        let data = ClientMobData {
+            animations: ClientMobData::load_animations(&root).unwrap(),
+            ..Default::default()
+        };
+        let source = ClientMobRender {
+            models: &models,
+            data: &data,
         };
         let camera = glam::DVec3::new(3.0, 62.0, -4.0);
         let mut checked = 0;
@@ -440,7 +432,8 @@ mod precheck_envelope_tests {
                     mob.custom_name = Some("Dinnerbone".into());
                 }
                 for partial in [0.0, 0.4, 1.0] {
-                    let bounds = mob.render_bounds(f64::from(partial));
+                    let bounds = mob_render_bounds(&mob, &models, f64::from(partial))
+                        .unwrap_or_else(|| panic!("missing visual for {}", kind.id));
                     let lo = bounds.min_position();
                     let hi = bounds.max_position();
                     let lo = [lo.x, lo.y, lo.z];
@@ -452,7 +445,7 @@ mod precheck_envelope_tests {
                         camera,
                         &|_| Some([0.0, 0.0, 1.0, 1.0]),
                         0xF0F0,
-                        &data,
+                        &source,
                         &[],
                         &mut vertices,
                     );

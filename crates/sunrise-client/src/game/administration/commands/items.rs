@@ -1066,7 +1066,12 @@ pub(in crate::game) mod mob_equipment_command_tests {
         n: i32,
     ) -> (String, u32) {
         let uuid = format!("00000019-0000-0000-0000-{n:012x}");
-        assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;25,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h025_raw:7,Tags:[h025]}}")), "{kind}/{n}: {:?}", game.ui.chat.recent_lines(3));
+        let prev = game.side.chat_capture.replace(Vec::new());
+        let ok = game.run_command(&format!(
+            "summon {kind} 4.5 200 5.5 {{UUID:[I;25,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h025_raw:7,Tags:[h025]}}"
+        ));
+        let lines = std::mem::replace(&mut game.side.chat_capture, prev).unwrap_or_default();
+        assert!(ok, "{kind}/{n}: {lines:?}");
         let mob = game
             .mobs
             .iter()
@@ -1368,7 +1373,12 @@ pub(in crate::game) mod mob_equipment_stack_tests {
 
     fn actor(game: &mut crate::game::ServerGame<'_>, kind: &str, n: i32) -> (String, u32) {
         let uuid = format!("00000017-0000-0000-0000-{n:012x}");
-        assert!(game.run_command(&format!("summon {kind} 4.5 200 5.5 {{UUID:[I;23,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h023_raw:7,Tags:[h023]}}")), "{kind}/{n}: {:?}", game.ui.chat.recent_lines(3));
+        let prev = game.side.chat_capture.replace(Vec::new());
+        let ok = game.run_command(&format!(
+            "summon {kind} 4.5 200 5.5 {{UUID:[I;23,0,0,{n}],NoAI:1b,NoGravity:1b,Silent:1b,h023_raw:7,Tags:[h023]}}"
+        ));
+        let lines = std::mem::replace(&mut game.side.chat_capture, prev).unwrap_or_default();
+        assert!(ok, "{kind}/{n}: {lines:?}");
         let mob = game
             .mobs
             .iter()

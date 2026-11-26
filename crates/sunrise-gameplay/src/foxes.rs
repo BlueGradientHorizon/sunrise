@@ -206,7 +206,7 @@ mod tests {
         fast_hash::FxHashSet,
         items::{ItemStack, Items},
         join_seq::JoinList,
-        mobs::{Anim, Brain, Mob, MobType, Part},
+        mobs::{Anim, Brain, Mob, MobType},
         world::World,
     };
     use sunrise_world::registry::BlockStateId;
@@ -214,7 +214,6 @@ mod tests {
     fn kind(id: &str, species: Species) -> Arc<MobType> {
         Arc::new(MobType {
             type_key: Default::default(),
-            shadow: None,
             id: id.into(),
             species,
             width: 0.6,
@@ -247,15 +246,6 @@ mod tests {
             max_head_y_rot: 75.0,
             ambient_interval: 80,
             flags: Default::default(),
-            model: Arc::new(Part {
-                name: "root".into(),
-                pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-                polygons: Vec::new(),
-                children: Vec::new(),
-                layer: None,
-            }),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
             anim: Anim::Rabbit,
             sounds: [""; 3],

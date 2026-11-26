@@ -67,7 +67,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     registries: &self.ui.registries,
                 };
                 let screen = if self.side.screen == Screen::Chat {
-                    self.ui.chat_screen.as_mut()?
+                    self.side.chat_ui.chat_screen.as_mut()?
                 } else {
                     &mut self.side.command_block_screen.0.as_mut()?.command
                 };
@@ -252,7 +252,7 @@ mod tests {
                 // The chat box: its completions follow the replaced text.
                 game.side.screen = Screen::Chat;
                 game.ui.registries.players = vec!["Steve".into(), "Steven".into()];
-                game.ui.chat_screen = Some(ChatScreen::new(
+                game.side.chat_ui.chat_screen = Some(ChatScreen::new(
                     &Measure(&game.gui.atlas.font),
                     &Commands {
                         dispatcher: super::super::chat::chat_tree(&game.remote),
@@ -270,13 +270,13 @@ mod tests {
                 game.chat_key_code(KeyCode::Tab, None);
                 game.chat_key_code(KeyCode::Tab, None);
                 assert_eq!(
-                    game.ui.chat_screen.as_ref().unwrap().value(),
+                    game.side.chat_ui.chat_screen.as_ref().unwrap().value(),
                     "\u{1f600} hi Steve"
                 );
 
                 // No box to offer: the mod's `Some` goes nowhere.
                 game.side.screen = Screen::Inventory;
-                game.ui.chat_screen = None;
+                game.side.chat_ui.chat_screen = None;
                 game.screen_chars_typed(Some("q"));
                 assert_eq!(taken(), ["q"]);
 

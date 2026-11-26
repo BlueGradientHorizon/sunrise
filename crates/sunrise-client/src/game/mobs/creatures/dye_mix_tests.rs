@@ -21,7 +21,7 @@ fn two_dyes_mix_by_their_crafting_recipe() {
     let recipes = Recipes::load(&root, &items, &overlay, &crate::game::test_server_load()).unwrap();
     let dye = |name: &str| {
         u8::try_from(
-            sunrise_client::mobs::render::DYE_NAMES
+            sunrise_level::dyes::DYE_NAMES
                 .iter()
                 .position(|n| *n == name)
                 .unwrap_or_else(|| panic!("{name} is not a dye colour")),

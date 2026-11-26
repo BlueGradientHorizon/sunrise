@@ -20,6 +20,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use sunrise_world::worldgen::structure::start::STEPS;
 
+/// Static `SOUND_EVENT` registry, not the resource pack's playable sound pools.
+pub fn registered_sound(builtin: &sunrise_protocol::registry::Builtin, name: &str) -> bool {
+    builtin
+        .get("minecraft:sound_event")
+        .is_some_and(|ids| ids.ids.contains_key(name))
+}
+
 /// The folders a biome modifier sits in, under `data/<ns>`.
 const FOLDERS: [&str; 2] = ["/neoforge/biome_modifier/", "/forge/biome_modifier/"];
 

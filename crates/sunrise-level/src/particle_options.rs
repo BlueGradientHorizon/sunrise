@@ -2,6 +2,10 @@
 use mod_api::client::particles::PositionSource;
 use std::{collections::BTreeMap, sync::Arc};
 pub use sunrise_client_core::particle_type::ParticleType;
+use sunrise_core::{
+    geometry::{Vec3, trig},
+    random::RandomSource,
+};
 use sunrise_world::particle_options::ParticleOptions as PersistentOptions;
 
 /// What an emitter seeds on the custom particle it spawns: its own `red`... `custom` and customs.
@@ -222,5 +226,146 @@ impl ParticleOptions {
     pub fn with_source(mut self, id: &str) -> Self {
         self.source = Some(Arc::from(id));
         self
+    }
+}
+
+/// A burst of particles about an entity's box (`around_self`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Burst {
+    pub count: u32,
+    /// Scale of the Gaussian speeds; `None` spawns them at rest without drawing any.
+    pub speed: Option<f64>,
+    /// Added to `getRandomY()`.
+    pub y: f64,
+}
+impl Burst {
+    /// `AbstractVillager.addParticlesAroundSelf`.
+    pub const VILLAGER: Self = Self {
+        count: 5,
+        speed: Some(0.02),
+        y: 1.0,
+    };
+    /// `TamableAnimal`/`AbstractHorse.spawnTamingParticles`,
+    /// `Ocelot.spawnTrustingParticles`, `Animal`'s entity event 18.
+    pub const TAMING: Self = Self {
+        count: 7,
+        speed: Some(0.02),
+        y: 0.5,
+    };
+    /// `Allay`'s entity event 18: three `spawnHeartParticle`.
+    pub const ALLAY: Self = Self {
+        count: 3,
+        speed: Some(0.02),
+        y: 0.5,
+    };
+    /// `Dolphin.addParticlesAroundSelf`.
+    pub const DOLPHIN: Self = Self {
+        count: 7,
+        speed: Some(0.01),
+        y: 0.2,
+    };
+    /// `AbstractHorse.handleEating`'s growth particle.
+    pub const HORSE_EATING: Self = Self {
+        count: 1,
+        speed: None,
+        y: 0.5,
+    };
+}
+/// The particle bursts entity events show on the client: the particle and
+/// burst of `handleEntityEvent(event)` for the entity type `entity`.
+pub fn entity_event_burst(entity: &str, event: u8) -> Option<(&'static str, Burst)> {
+    let entity = entity.strip_prefix("minecraft:").unwrap_or(entity);
+    let tamable = matches!(
+        entity,
+        "wolf" | "cat" | "parrot" | "nautilus" | "zombie_nautilus"
+    );
+    let horse = matches!(
+        entity,
+        "horse"
+            | "donkey"
+            | "mule"
+            | "llama"
+            | "trader_llama"
+            | "camel"
+            | "camel_husk"
+            | "skeleton_horse"
+            | "zombie_horse"
+    );
+    Some(match (entity, event) {
+        ("villager", 12) => ("heart", Burst::VILLAGER),
+        ("villager", 13) => ("angry_villager", Burst::VILLAGER),
+        ("villager", 14) => ("happy_villager", Burst::VILLAGER),
+        ("villager", 42) => ("splash", Burst::VILLAGER),
+        ("allay", 18) => ("heart", Burst::ALLAY),
+        ("dolphin", 38) => ("happy_villager", Burst::DOLPHIN),
+        ("ocelot", 41) => ("heart", Burst::TAMING),
+        ("ocelot", 40) => ("smoke", Burst::TAMING),
+        (_, 7) if tamable || horse => ("heart", Burst::TAMING),
+        (_, 6) if tamable || horse => ("smoke", Burst::TAMING),
+        (_, 18) if !matches!(entity, "villager" | "allay") => ("heart", Burst::TAMING),
+        _ => return None,
+    })
+}
+
+/// Particles about an entity's box, as `AbstractVillager.addParticlesAroundSelf`,
+/// `Animal`'s love hearts (entity event 18), `TamableAnimal` and
+/// `AbstractHorse.spawnTamingParticles`, `Ocelot.spawnTrustingParticles`,
+/// `Allay`'s hearts and `Dolphin.addParticlesAroundSelf` place them: `count`
+/// times three Gaussian speeds scaled by `speed` (none drawn without one), then
+/// `getRandomX(1.0)`, `getRandomY() + y` and `getRandomZ(1.0)`.
+pub fn around_self(
+    random: &mut impl RandomSource,
+    feet: [f64; 3],
+    width: f64,
+    height: f64,
+    burst: Burst,
+    mut emit: impl FnMut([f64; 3], [f64; 3]),
+) {
+    for _ in 0..burst.count {
+        let v = burst.speed.map_or([0.0; 3], |s| {
+            [
+                random.next_gaussian() * s,
+                random.next_gaussian() * s,
+                random.next_gaussian() * s,
+            ]
+        });
+        let p = [
+            feet[0] + width * ((2.0 * random.next_double() - 1.0) * 1.0),
+            feet[1] + height * random.next_double() + burst.y,
+            feet[2] + width * ((2.0 * random.next_double() - 1.0) * 1.0),
+        ];
+        emit(p, v);
+    }
+}
+
+/// `LivingEntity.spawnItemParticles(stack, count)` (eating, drinking, an item
+/// breaking): `count` crumbs in front of the eyes, thrown up and forwards,
+/// both turned by the pitch and yaw in degrees.
+pub fn item_use_particles(
+    random: &mut impl RandomSource,
+    pitch: f32,
+    yaw: f32,
+    position: [f64; 3],
+    eye_y: f64,
+    count: u32,
+    mut emit: impl FnMut([f64; 3], [f64; 3]),
+) {
+    let (x_rot, y_rot) = (-pitch * trig::DEG_TO_RAD, -yaw * trig::DEG_TO_RAD);
+    for _ in 0..count {
+        let d = Vec3::new(
+            (f64::from(random.next_float()) - 0.5) * 0.1,
+            f64::from(random.next_float()) * 0.1 + 0.1,
+            0.0,
+        )
+        .rotate_x(x_rot)
+        .rotate_y(y_rot);
+        let y = f64::from(-random.next_float()) * 0.6 - 0.3;
+        let p = Vec3::new((f64::from(random.next_float()) - 0.5) * 0.3, y, 0.6)
+            .rotate_x(x_rot)
+            .rotate_y(y_rot);
+        emit(
+            [p.x + position[0], p.y + eye_y, p.z + position[2]],
+            [d.x, d.y + 0.05, d.z],
+        );
     }
 }

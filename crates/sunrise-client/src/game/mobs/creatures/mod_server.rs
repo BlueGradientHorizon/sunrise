@@ -3396,7 +3396,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Species::Sheep if shears && !m.extra.sheared && !m.is_baby() => {
                 let silent = m.silent;
                 m.extra.sheared = true;
-                let color = sunrise_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
+                let color = sunrise_level::dyes::DYE_NAMES[m.extra.color as usize & 15];
                 if !silent {
                     self.play_bound_sound(
                         LevelSound::new("minecraft:entity.sheep.shear", feet, 1.0, 1.0)
@@ -3483,7 +3483,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if m.extra.tame
                     && m.extra.owner == Some(acting)
                     && item.ends_with("_dye")
-                    && sunrise_client::mobs::render::DYE_NAMES
+                    && sunrise_level::dyes::DYE_NAMES
                         .iter()
                         .position(|d| {
                             item.trim_start_matches("minecraft:")
@@ -3495,7 +3495,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let name = item
                     .trim_start_matches("minecraft:")
                     .trim_end_matches("_dye");
-                if let Some(c) = sunrise_client::mobs::render::DYE_NAMES
+                if let Some(c) = sunrise_level::dyes::DYE_NAMES
                     .iter()
                     .position(|d| *d == name)
                 {
@@ -3557,7 +3557,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if m.extra.tame
                     && m.extra.owner == Some(acting)
                     && item.ends_with("_dye")
-                    && sunrise_client::mobs::render::DYE_NAMES
+                    && sunrise_level::dyes::DYE_NAMES
                         .iter()
                         .position(|d| {
                             item.trim_start_matches("minecraft:")
@@ -3569,7 +3569,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let name = item
                     .trim_start_matches("minecraft:")
                     .trim_end_matches("_dye");
-                if let Some(c) = sunrise_client::mobs::render::DYE_NAMES
+                if let Some(c) = sunrise_level::dyes::DYE_NAMES
                     .iter()
                     .position(|d| *d == name)
                 {
@@ -3750,7 +3750,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 self.particles_around_mob(
                     self.mobs[index].id,
                     "happy_villager",
-                    sunrise_client::particles::Burst::HORSE_EATING,
+                    sunrise_level::particle_options::Burst::HORSE_EATING,
                 );
             }
             // Bee.mobInteract: a wither rose or an open eyeblossom is eaten for

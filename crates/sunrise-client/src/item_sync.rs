@@ -16,6 +16,96 @@ pub(crate) mod kinetic;
 use sunrise_world::consumable::Consumable;
 pub type ItemConsumable = Consumable<String, ConsumeEffect>;
 
+/// Wire round-trip fixture shared with `item_tooltip::tests` for raid banner tooltip checks.
+#[cfg(any(test, feature = "test-support"))]
+pub fn raid_banner_round_trip_fixture() -> (ItemStack, ItemStack) {
+    use sunrise_core::vanilla_bytes::Writer;
+    use sunrise_protocol::{item::Slot, registry::Ids};
+    let mut components = vec![String::new(); component::BANNER_PATTERNS as usize + 1];
+    for (id, name) in [
+        (component::ITEM_NAME, "minecraft:item_name"),
+        (component::RARITY, "minecraft:rarity"),
+        (component::TOOLTIP_DISPLAY, "minecraft:tooltip_display"),
+        (component::BANNER_PATTERNS, "minecraft:banner_patterns"),
+    ] {
+        components[id as usize] = name.to_owned();
+    }
+    let items = ["minecraft:air", "minecraft:white_banner"];
+    let builtin = Builtin {
+        registries: [
+            (
+                "minecraft:item".to_owned(),
+                Ids::from_names(items.iter().map(|s| s.to_string()).collect()),
+            ),
+            (
+                "minecraft:data_component_type".to_owned(),
+                Ids::from_names(components),
+            ),
+        ]
+        .into(),
+    };
+    let layers = crate::item_data::OMINOUS_LAYERS;
+    let dynamic = Dynamic {
+        registries: [(
+            "minecraft:banner_pattern".to_owned(),
+            layers
+                .iter()
+                .map(|(pattern, _)| (format!("minecraft:{pattern}"), None))
+                .collect(),
+        )]
+        .into(),
+        ..Default::default()
+    };
+    let id = |registry: &str, name: &str| {
+        builtin
+            .get(registry)
+            .and_then(|ids| ids.id(name))
+            .or_else(|| dynamic.id(registry, name))
+    };
+    let round_trip = |stack| {
+        let wire = crate::lan::guest::stack_to_network(
+            |name| id("minecraft:item", name).unwrap_or(0),
+            id,
+            &Some(stack),
+        );
+        let mut w = Writer::new();
+        Slot::write(&wire, &mut w);
+        let mut r = Reader::new(&w.data);
+        let read = Slot::read(&mut r).unwrap().unwrap();
+        assert_eq!(r.remaining(), 0);
+        from_network(&read, &builtin, &dynamic)
+    };
+    let mut edited = crate::mobs::raider::ominous_banner();
+    let name = Tag::String("Renamed raid banner".into());
+    let (_, extra) =
+        crate::item_data::decode_components(Some(&Tag::compound([("minecraft:item_name", name)])));
+    let snapshot = ItemStack {
+        extra,
+        ..edited.clone()
+    };
+    edited.apply_component_fields_from(snapshot, std::iter::once("minecraft:item_name"));
+    let renamed = round_trip(edited.clone());
+
+    edited.data_mut().set_other(
+        "minecraft:tooltip_display",
+        Some(Tag::compound([(
+            "hidden_components",
+            Tag::List(
+                [
+                    "banner_patterns",
+                    "minecraft:item_name",
+                    "minecraft:banner_patterns",
+                    "banner_patterns",
+                ]
+                .map(|id| Tag::String(id.into()))
+                .into(),
+            ),
+        )])),
+    );
+    let hidden = round_trip(edited);
+    (renamed, hidden)
+}
+
 /// Publish native consume-effect codecs to the persistent and protocol layers.
 pub fn install_consume_effect_codecs() -> Result<(), String> {
     use sunrise_world::component_value::consume_effects::{self, Type};
@@ -3188,9 +3278,6 @@ mod tests {
             received.data().unwrap().other("minecraft:item_name"),
             Some(&name)
         );
-        assert!(
-            !crate::item_tooltip::tooltip_display(&received).shows("minecraft:banner_patterns")
-        );
         assert!(received.matches(&edited));
 
         edited.data_mut().set_other(
@@ -3209,16 +3296,13 @@ mod tests {
                 ),
             )])),
         );
-        let (received, slot) = round_trip(edited);
+        let (_, slot) = round_trip(edited);
         assert_eq!(
             slot.component(component::TOOLTIP_DISPLAY),
             Some(&Component::TooltipDisplay {
                 hide: false,
                 hidden: vec![component::BANNER_PATTERNS, component::ITEM_NAME],
             })
-        );
-        assert!(
-            !crate::item_tooltip::tooltip_display(&received).shows("minecraft:banner_patterns")
         );
     }
 
@@ -3539,7 +3623,7 @@ mod tests {
             back.data().and_then(|d| d.other("minecraft:rarity")),
             Some(&Tag::String("epic".into()))
         );
-        assert_eq!(crate::item_tooltip::rarity(&back, "common"), "epic");
+        assert_eq!(crate::stations::rarity(&back, "common"), "epic");
     }
 
     /// A cobblestone stack of 20 whose own limit is 16, plus a custom-data
