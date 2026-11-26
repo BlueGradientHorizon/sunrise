@@ -180,14 +180,14 @@ impl Game<'_> {
     /// `inventory_origin` from the game's state alone: the container build's
     /// own arithmetic, and the fallback when no build holds this size. The
     /// open book moves the window right, the room the mods ask beside it
-    /// (`screen_room`) left.
+    /// (`screen_room`) either way.
     pub(super) fn inventory_origin_unbuilt(&self, batch: &HudBatch) -> (f32, f32) {
         if self.screen == Screen::Creative {
             return Self::creative_origin(batch);
         }
         let width = self.native_screen_width().unwrap_or(176.0);
         let (x, y) = batch.centered_origin(width, self.screen_height());
-        let x = x + self.recipe_book_shift(batch.width) - self.screen_room_shift(batch);
+        let x = x + self.recipe_book_shift(batch.width) + self.screen_room_offset(batch);
         (x, y)
     }
     /// InventoryMenu / CraftingMenu slot layouts.
