@@ -2,7 +2,6 @@
 //! arguments against (what the server's registry access holds).
 use std::collections::BTreeMap;
 
-/// Registry contents and source state used to validate and complete arguments.
 /// A selector token a mod registered: the word after `@` and the base selection it parses to,
 /// before its `[...]` options.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +27,7 @@ pub struct CommandSender {
     /// Their account name.
     pub name: String,
 }
+/// Registry contents and source state used to validate and complete arguments.
 #[derive(Clone, Debug, Default)]
 pub struct Registries {
     /// Permission level of the command source.
@@ -102,7 +102,8 @@ pub struct Registries {
     /// Every registry's element and tag ids (`minecraft:item` -> ...), as
     /// the server's registry access and reloadable registries hold them.
     pub by_registry: BTreeMap<String, RegistryIds>,
-    /// The selector tokens mods registered (`@allies`), in registration order.
+    /// Selector tokens mods registered (`@allies`), in token-name order on the host.
+    /// A remote snapshot keeps the order its server sent.
     pub selector_tokens: Vec<SelectorToken>,
     /// Blocks whose default state has a block entity.
     pub block_entities: std::collections::BTreeSet<String>,
