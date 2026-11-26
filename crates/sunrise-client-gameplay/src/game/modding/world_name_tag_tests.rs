@@ -13,7 +13,7 @@ use sunrise_client::{mesher::Vertex, world_geometry::WorldGeometry};
 mod scene;
 
 /// Four blocks in front of the label's anchor (0.5 above (0.5, 70, 0.5)), facing south (+Z).
-const CAMERA: [f64; 3] = [0.5, 70.5, -3.5];
+pub(super) const CAMERA: [f64; 3] = [0.5, 70.5, -3.5];
 
 /// The view the tests draw with: the camera looking south, reversed depth as the game's.
 fn view_proj() -> Mat4 {
@@ -22,7 +22,7 @@ fn view_proj() -> Mat4 {
 }
 
 /// The game's camera at [`CAMERA`]'s facing: south, first person.
-fn face_south(game: &mut crate::game::ClientGame<'_>) {
+pub(super) fn face_south(game: &mut crate::game::ClientGame<'_>) {
     game.common.yaw = 0.0;
     game.common.pitch = 0.0;
     game.client.posed_rotation = None;
