@@ -230,6 +230,7 @@ fn a_cancelled_mob_hit_on_a_mob_plays_sounds_and_draws_the_attacking_mobs_random
             kind: DamageKind::MobAttack,
             attacker: Some(Who::Mob(302)),
             from: Some([0.0, 0.0, 0.0]),
+            direct: None,
             attacker_species: None,
         };
         assert!(!game.mob_hits_mob(300, 4.0, source));

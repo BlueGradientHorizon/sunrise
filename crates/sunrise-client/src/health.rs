@@ -3691,6 +3691,7 @@ mod tests {
             kind: DamageKind::PlayerAttack,
             attacker: None,
             from: Some([3.0, 0.0, 0.0]),
+            direct: None,
             attacker_species: None,
         };
         // Canceled: no damage, cooldown, sound or knockback.

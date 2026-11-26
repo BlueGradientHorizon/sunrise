@@ -412,6 +412,7 @@ pub fn sting(m: &mut Mob, who: Who, cx: &mut Cx) {
         kind: DamageKind::Sting,
         attacker: Some(Who::Mob(m.id)),
         from: Some(from),
+        direct: None,
         attacker_species: Some(Species::Bee),
     };
     cx.events.push(cx.w.route_player_event(MobEvent::Sting {

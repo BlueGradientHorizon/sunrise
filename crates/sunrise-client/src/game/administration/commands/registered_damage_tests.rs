@@ -204,6 +204,7 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
         kind: DamageKind::Fireball,
         attacker: Some(Who::Player),
         from: None,
+        direct: None,
         attacker_species: None,
     };
     assert_eq!(large_attack.projectile_kind, DirectEntity::LargeFireball);

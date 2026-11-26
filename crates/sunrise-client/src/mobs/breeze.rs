@@ -587,6 +587,7 @@ mod invulnerability_tests {
             kind: DamageKind::Thrown,
             attacker: Some(Who::Mob(2)),
             from: Some([1.0, 0.0, 0.0]),
+            direct: None,
             attacker_species: Some(Species::Breeze),
         };
         assert!(

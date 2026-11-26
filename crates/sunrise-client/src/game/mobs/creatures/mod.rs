@@ -3277,8 +3277,11 @@ impl Game<'_> {
                     let mut source =
                         super::explosion::ExplosionSource::default().with_silence(silent);
                     if let Some(id) = source_mob {
-                        source = source
-                            .with_damage_direct(id, sunrise_client::health::DirectEntity::Living);
+                        source = source.with_damage_direct(
+                            id,
+                            None,
+                            sunrise_client::health::DirectEntity::Living,
+                        );
                     }
                     if let Some(id) = source_mob
                         && matches!(species, Species::Creeper | Species::Wither)
@@ -3459,6 +3462,7 @@ impl Game<'_> {
                                 kind: DamageKind::SonicBoom,
                                 attacker: Some(Who::Mob(attacker)),
                                 from: Some(from),
+                                direct: None,
                                 attacker_species: Some(Species::Warden),
                             };
                             let hurt = self.mob_hits_mob(id, 10.0, source);
@@ -6899,6 +6903,7 @@ impl Game<'_> {
             kind: source_kind,
             attacker: arrow.owner,
             from: Some([arrow.previous.x, arrow.previous.y, arrow.previous.z]),
+            direct: Some(arrow.entity_type()),
             attacker_species,
         };
         let aim = self.attacker_aim(source.attacker);
@@ -7631,6 +7636,7 @@ impl Game<'_> {
             kind: source_kind,
             attacker: p.owner,
             from: Some([p.previous.x, p.previous.y, p.previous.z]),
+            direct: Some(p.entity_type()),
             attacker_species,
         };
         let aim = self.attacker_aim(source.attacker);
@@ -8055,7 +8061,7 @@ impl Game<'_> {
                 self.combat.explosion_in_water = p.touching_water;
                 self.set_blast_by_player(p.owner == Some(Who::Player));
                 let fire = self.large_fireball_fire(p.owner, p.guest);
-                self.combat.explosion_direct = Some(p.id);
+                self.combat.explosion_direct = Some((p.id, p.entity_type()));
                 let result = self.explode_mob(
                     atp,
                     *power as f32,

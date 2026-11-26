@@ -840,6 +840,7 @@ impl Game<'_> {
                             kind: DamageKind::Thorns,
                             attacker: Some(Who::Player),
                             from,
+                            direct: None,
                             attacker_species: None,
                         },
                     );
