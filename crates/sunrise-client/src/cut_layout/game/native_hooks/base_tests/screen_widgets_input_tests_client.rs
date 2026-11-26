@@ -6,11 +6,11 @@ use crate::game::native_hooks::base::screen_widgets_tests::input_routing::send;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::take;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::with_input_game;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::with_input_game_as;
+use mod_api::prelude::ScreensClientHost;
 use sunrise_client::{keybinds::VanillaMappingSlot, preedit, widgets};
+use sunrise_client_gameplay::game::{ClientGame, WindowKeyInput};
 use sunrise_gameplay_common::game::Screen;
 use sunrise_items::items::ItemStack;
-use mod_api::prelude::ScreensClientHost;
-use sunrise_client_gameplay::game::{ClientGame, WindowKeyInput};
 use winit::{dpi::PhysicalPosition, event::Ime, keyboard::PhysicalKey};
 
 fn window_key(game: &mut ClientGame<'_>, input: WindowKeyInput<'_>) {
@@ -755,8 +755,8 @@ fn a_pointer_grab_is_refused_while_the_window_is_unfocused() {
 #[test]
 #[ignore = "daily"]
 fn context_menu_overlay_draw_order_disposal_and_action_reopen() {
-    use sunrise_client_gameplay::game::client_side::books::BookScreen;
     use mod_api::client::widgets::ContextMenuEntry;
+    use sunrise_client_gameplay::game::client_side::books::BookScreen;
 
     if run_fresh_cases(
         "game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::context_menu_overlay_draw_order_disposal_and_action_reopen",
@@ -1037,14 +1037,28 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         );
         assert!(!preedit::composing());
         send(game, id, WindowEvent::Ime(Ime::Commit("日".into())));
-        assert_eq!(game.chat_ui_for_test().chat_screen.as_ref().unwrap().value(), "base");
+        assert_eq!(
+            game.chat_ui_for_test()
+                .chat_screen
+                .as_ref()
+                .unwrap()
+                .value(),
+            "base"
+        );
 
         // Actual control socket `key` command goes through the menu before Chat.
         send_key_control(game, "key down tap");
         send_key_control(game, "key enter tap");
         assert!(picked.load(Ordering::SeqCst));
         assert_eq!(game.client.screen, Screen::Chat);
-        assert_eq!(game.chat_ui_for_test().chat_screen.as_ref().unwrap().value(), "base");
+        assert_eq!(
+            game.chat_ui_for_test()
+                .chat_screen
+                .as_ref()
+                .unwrap()
+                .value(),
+            "base"
+        );
 
         // With the chat on-screen keyboard already open, right-stick input and OSK output
         // stay gated while the context menu is active and do not change chat history/suggestions
@@ -1055,11 +1069,22 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         let tall: Vec<_> = (0..12)
             .map(|i| ContextMenuEntry::action(ApiText::literal(format!("Row {i}")), |_| {}))
             .collect();
-        assert!(ScreensClientHost::open_context_menu(game, [20.0, 20.0], tall));
+        assert!(ScreensClientHost::open_context_menu(
+            game,
+            [20.0, 20.0],
+            tall
+        ));
         game.client.pad.0.state.right = [0.0, 1.0];
         game.test_pad_menu_frame(&NoLoop);
         game.pad_osk_output(sunrise_client::osk::Output::Previous);
-        assert_eq!(game.chat_ui_for_test().chat_screen.as_ref().unwrap().value(), "base");
+        assert_eq!(
+            game.chat_ui_for_test()
+                .chat_screen
+                .as_ref()
+                .unwrap()
+                .value(),
+            "base"
+        );
         // Dismiss via controller button while still holding the right stick up: the wheel
         // accumulator resets and the first closed-menu poll must not trigger OSK Previous.
         game.pad_menu_button(&NoLoop, sunrise_client::gamepad::Button::East, true)
@@ -1070,7 +1095,11 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         assert_eq!(game.client.pad.0.menu.test_wheel(), [0.0, 0.0]);
         game.test_pad_menu_frame(&NoLoop);
         assert_eq!(
-            game.chat_ui_for_test().chat_screen.as_ref().unwrap().value(),
+            game.chat_ui_for_test()
+                .chat_screen
+                .as_ref()
+                .unwrap()
+                .value(),
             "base",
             "held right stick stays suppressed until neutral after menu dismissal"
         );
@@ -1078,7 +1107,14 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         game.test_pad_menu_frame(&NoLoop);
         game.client.pad.0.state.right = [0.0, 1.0];
         game.test_pad_menu_frame(&NoLoop);
-        assert_eq!(game.chat_ui_for_test().chat_screen.as_ref().unwrap().value(), "older");
+        assert_eq!(
+            game.chat_ui_for_test()
+                .chat_screen
+                .as_ref()
+                .unwrap()
+                .value(),
+            "older"
+        );
         game.client.pad.0.state.right = [0.0, 0.0];
         game.client.pad.0.menu.osk = None;
 
@@ -1266,7 +1302,11 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         game.client.settings.controller.enabled = true;
         game.client.pad.0.test_set_in_use(true);
         game.client.pad.0.menu.focus = Some(mounted_button);
-        game.client.pad.0.menu.test_set_pos(Some(mounted_button.center()));
+        game.client
+            .pad
+            .0
+            .menu
+            .test_set_pos(Some(mounted_button.center()));
         game.client.cursor = mounted_button.center();
         assert!(ScreensClientHost::open_context_menu(
             game,
@@ -1373,7 +1413,9 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         );
         game.client.physical_keys.remove(&KeyCode::Space);
         key(game, KeyCode::Space, ElementState::Released);
-        assert!(!game.client.vanilla_mappings.is_down(jump) && !game.client.keys.raw(&KeyCode::Space));
+        assert!(
+            !game.client.vanilla_mappings.is_down(jump) && !game.client.keys.raw(&KeyCode::Space)
+        );
 
         // A socket-owned Space press in the menu must not suppress a fresh physical Keyboard
         // Space press during pointer recapture.

@@ -443,7 +443,12 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                         records[0].get("sunrise:death_canceled").is_none(),
                         "veto is not written as a raw entity NBT field"
                     );
-                    let meta_path = game.server.save.0.root.join("data/sunrise/entity_metadata.dat");
+                    let meta_path = game
+                        .server
+                        .save
+                        .0
+                        .root
+                        .join("data/sunrise/entity_metadata.dat");
                     let meta = sunrise_sim::save::read_dat(&meta_path).unwrap();
                     assert_eq!(meta.get("version"), Some(&Tag::Int(1)));
                     game.dragon.discard();
@@ -539,7 +544,12 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
             }
 
             // 1c. Pre-existing raw sunrise:death_canceled fields stay intact and never act as vetoes.
-            let meta_path = game.server.save.0.root.join("data/sunrise/entity_metadata.dat");
+            let meta_path = game
+                .server
+                .save
+                .0
+                .root
+                .join("data/sunrise/entity_metadata.dat");
             for (i, raw_val) in [Tag::Byte(1), Tag::Byte(0)].into_iter().enumerate() {
                 game.dragon.discard();
                 game.persist.dragon_death_canceled = None;
@@ -603,7 +613,8 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
             );
             shot.id = 912;
             shot.arrow.as_mut().unwrap().fired_from_weapon = Some(bow);
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:stick", 1));
             game.hit_special(SPECIAL, 50.0, true, DamageKind::Arrow, Some(&shot));
             {
                 let deaths = probe.deaths.lock().unwrap();

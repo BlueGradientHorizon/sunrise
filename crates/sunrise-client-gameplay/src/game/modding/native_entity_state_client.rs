@@ -72,26 +72,79 @@ impl crate::game::ClientGame<'_> {
             }
             Target::Item(id) => {
                 let item = common.dropped.iter().find(|item| item.id == id)?;
-                let immune = self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false);
+                let immune =
+                    self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false);
                 (item.fire_ticks, immune, None)
             }
-            Target::Orb(id) => (common.orbs.iter().find(|orb| orb.id == id)?.fire_ticks, false, None),
-            Target::Boat(id) => (common.boats.iter().find(|boat| boat.id == id)?.fire_ticks, false, None),
+            Target::Orb(id) => (
+                common.orbs.iter().find(|orb| orb.id == id)?.fire_ticks,
+                false,
+                None,
+            ),
+            Target::Boat(id) => (
+                common.boats.iter().find(|boat| boat.id == id)?.fire_ticks,
+                false,
+                None,
+            ),
             Target::Projectile(id) => {
-                let shot = common.creatures.projectiles.iter().find(|shot| shot.id == id)?;
+                let shot = common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|shot| shot.id == id)?;
                 let kind = match shot.kind {
                     ProjectileKind::WitherSkull { .. } => Some(BuiltinKind::WitherSkull),
                     ProjectileKind::ShulkerBullet { .. } => Some(BuiltinKind::ShulkerBullet),
                     _ => None,
                 };
-                let ticks = shot.arrow.as_ref().map_or(shot.fire_ticks, |arrow| arrow.fire_ticks);
+                let ticks = shot
+                    .arrow
+                    .as_ref()
+                    .map_or(shot.fire_ticks, |arrow| arrow.fire_ticks);
                 (ticks, false, kind)
             }
-            Target::Trident(id) => (common.tridents.iter().find(|trident| trident.id == id)?.fire_ticks, false, None),
-            Target::Falling(id) => (common.falling.iter().find(|block| block.id == id)?.fire_ticks, false, None),
-            Target::Crystal(id) => (common.crystals.iter().find(|crystal| crystal.id == id)?.fire, false, Some(BuiltinKind::EndCrystal)),
-            Target::Bolt(id) => (common.bolts.iter().find(|bolt| bolt.id == id)?.fire_ticks, false, None),
-            Target::Fangs(id) => (common.fangs.list.iter().find(|fangs| fangs.id == id)?.fire_ticks, false, None),
+            Target::Trident(id) => (
+                common
+                    .tridents
+                    .iter()
+                    .find(|trident| trident.id == id)?
+                    .fire_ticks,
+                false,
+                None,
+            ),
+            Target::Falling(id) => (
+                common
+                    .falling
+                    .iter()
+                    .find(|block| block.id == id)?
+                    .fire_ticks,
+                false,
+                None,
+            ),
+            Target::Crystal(id) => (
+                common
+                    .crystals
+                    .iter()
+                    .find(|crystal| crystal.id == id)?
+                    .fire,
+                false,
+                Some(BuiltinKind::EndCrystal),
+            ),
+            Target::Bolt(id) => (
+                common.bolts.iter().find(|bolt| bolt.id == id)?.fire_ticks,
+                false,
+                None,
+            ),
+            Target::Fangs(id) => (
+                common
+                    .fangs
+                    .list
+                    .iter()
+                    .find(|fangs| fangs.id == id)?
+                    .fire_ticks,
+                false,
+                None,
+            ),
             Target::Dragon(_) | Target::DragonPart(_) => (0, false, Some(BuiltinKind::EnderDragon)),
             Target::Cloud(_) => (0, false, Some(BuiltinKind::AreaEffectCloud)),
             Target::Tnt(_) => (0, false, Some(BuiltinKind::Tnt)),
@@ -101,7 +154,11 @@ impl crate::game::ClientGame<'_> {
             }
             _ => (0, false, None),
         };
-        Some((ticks, immune || kind.is_some_and(BuiltinKind::fire_immune), kind))
+        Some((
+            ticks,
+            immune || kind.is_some_and(BuiltinKind::fire_immune),
+            kind,
+        ))
     }
 
     pub(in crate::game) fn entity_type_category(&self, key: EntityTypeKey) -> Option<MobCategory> {

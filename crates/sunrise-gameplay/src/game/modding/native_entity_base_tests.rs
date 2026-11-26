@@ -15,7 +15,8 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 fn open_chunk(game: &mut ServerGame<'_>) {
-    game.common.world
+    game.common
+        .world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
 }
@@ -45,7 +46,8 @@ fn write_and_read_back(game: &mut ServerGame<'_>, entity: EntityRef) {
 fn a_boat_keeps_its_base_state() {
     with_game(|game| {
         open_chunk(game);
-        game.common.boats
+        game.common
+            .boats
             .push(Boat::new(31, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0));
         let entity = game.entity(31).unwrap();
         write_and_read_back(game, entity);
@@ -122,11 +124,7 @@ fn a_fishing_hook_keeps_its_base_state_in_memory() {
         open_chunk(game);
         game.common.options.dedicated = Some(Vec::new());
         let id = game.take_entity_id();
-        game.install_fishing_hook(Hook::remote(
-            id,
-            Vec3::ZERO,
-            [1, 2, 3, 4],
-        ));
+        game.install_fishing_hook(Hook::remote(id, Vec3::ZERO, [1, 2, 3, 4]));
         let entity = game.entity(id).unwrap();
         write_and_read_back(game, entity);
         assert_eq!(entity.fire_immune(game), Some(false));
@@ -146,9 +144,7 @@ fn a_leash_knot_keeps_its_base_state_in_its_saved_tags() {
         assert_eq!(entity.fire_immune(game), Some(false));
         assert!(entity.set_silent(game, true));
         assert!(entity.set_remaining_fire_ticks(game, 40));
-        let tag = game
-            .command_target_nbt(Target::Knot(id))
-            .unwrap();
+        let tag = game.command_target_nbt(Target::Knot(id)).unwrap();
         assert_eq!(tag.get("Silent"), Some(&Tag::Byte(1)));
         assert_eq!(tag.get("Glowing"), Some(&Tag::Byte(1)));
         assert_eq!(tag.get("Invulnerable"), Some(&Tag::Byte(1)));
@@ -170,9 +166,7 @@ fn an_end_crystal_keeps_the_fire_ticks_it_was_given() {
         assert!(entity.set_remaining_fire_ticks(game, 40_000));
         assert_eq!(entity.fire_ticks(game), Some(40_000));
         // The save truncates to a short, as `Entity.saveWithoutId` does.
-        let tag = game
-            .command_target_nbt(Target::Crystal(id))
-            .unwrap();
+        let tag = game.command_target_nbt(Target::Crystal(id)).unwrap();
         assert_eq!(tag.get("Fire"), Some(&Tag::Short(40_000_i32 as i16)));
     });
 }

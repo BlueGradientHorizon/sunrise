@@ -10,7 +10,7 @@ use crate::{
     game::{ClientGame, host::draw::GameDrawContext},
     input_trace::InputOrigin,
 };
-use mod_api::{DrawContext, __private::game::CallbackOwner, client::widgets::ContextMenuEntry};
+use mod_api::{__private::game::CallbackOwner, DrawContext, client::widgets::ContextMenuEntry};
 use std::collections::HashSet;
 use sunrise_client::{gamepad::Button as PadButton, held::Source, hud::HudBatch};
 use sunrise_gameplay_common::game::api_values::TryIntoEngine;
@@ -878,7 +878,9 @@ impl ClientGame<'_> {
         self.live_context_menu();
         let closed = self.client.screen_state.0.context_menu.take().is_some();
         if closed {
-            self.client.screen_state.0
+            self.client
+                .screen_state
+                .0
                 .context_menu_input
                 .clear_unowned_keys_if_idle();
             self.clear_context_menu_pad_state();
@@ -891,14 +893,25 @@ impl ClientGame<'_> {
     #[inline(always)]
     pub(super) fn context_menu_key_active(&self) -> bool {
         self.client.screen_state.0.context_menu.is_some()
-            || !self.client.screen_state.0.context_menu_input.owned_keys.is_empty()
+            || !self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .owned_keys
+                .is_empty()
     }
 
     /// Single entry gate for controller menu polling: false when no menu or pad ownership is live.
     #[inline(always)]
     pub(super) fn context_menu_pad_active(&self) -> bool {
         self.client.screen_state.0.context_menu.is_some()
-            || self.client.screen_state.0.context_menu_input.has_pad_ownership()
+            || self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .has_pad_ownership()
     }
 
     pub(in crate::game) fn has_context_menu(&self) -> bool {
@@ -908,11 +921,16 @@ impl ClientGame<'_> {
     /// Read-only live check for `&self` callers (such as `set_pointer_grab`).
     #[inline(always)]
     pub(super) fn has_live_context_menu(&self) -> bool {
-        self.client.screen_state.0.context_menu.as_ref().is_some_and(|menu| {
-            menu.instance == self.client.screen_state.0.screen_instance
-                && menu.owner.is_enabled()
-                && self.observed_screen_view().is_some()
-        })
+        self.client
+            .screen_state
+            .0
+            .context_menu
+            .as_ref()
+            .is_some_and(|menu| {
+                menu.instance == self.client.screen_state.0.screen_instance
+                    && menu.owner.is_enabled()
+                    && self.observed_screen_view().is_some()
+            })
     }
 
     /// Whether a menu is open over the current screen (dropping one whose screen closed or
@@ -934,7 +952,9 @@ impl ClientGame<'_> {
             || self.observed_screen_view().is_none()
         {
             self.client.screen_state.0.context_menu = None;
-            self.client.screen_state.0
+            self.client
+                .screen_state
+                .0
                 .context_menu_input
                 .clear_unowned_keys_if_idle();
             self.clear_context_menu_pad_state();
@@ -973,31 +993,41 @@ impl ClientGame<'_> {
         let key = (source, button);
         if !pressed {
             return !self
-                .client.screen_state.0
+                .client
+                .screen_state
+                .0
                 .context_menu_input
                 .owned_buttons
                 .is_empty()
                 && self
-                    .client.screen_state.0
+                    .client
+                    .screen_state
+                    .0
                     .context_menu_input
                     .owned_buttons
                     .remove(&key);
         }
         if !self.live_context_menu() {
             if !self
-                .client.screen_state.0
+                .client
+                .screen_state
+                .0
                 .context_menu_input
                 .owned_buttons
                 .is_empty()
             {
-                self.client.screen_state.0
+                self.client
+                    .screen_state
+                    .0
                     .context_menu_input
                     .owned_buttons
                     .remove(&key);
             }
             return false;
         }
-        self.client.screen_state.0
+        self.client
+            .screen_state
+            .0
             .context_menu_input
             .owned_buttons
             .insert(key);
@@ -1069,9 +1099,17 @@ impl ClientGame<'_> {
     /// repeats/text/release stay out of the screen underneath even after the menu closes).
     #[inline(always)]
     pub(super) fn context_menu_owns_key(&self, source: Source, key: KeyCode) -> bool {
-        !self.client.screen_state.0.context_menu_input.owned_keys.is_empty()
+        !self
+            .client
+            .screen_state
+            .0
+            .context_menu_input
+            .owned_keys
+            .is_empty()
             && self
-                .client.screen_state.0
+                .client
+                .screen_state
+                .0
                 .context_menu_input
                 .owned_keys
                 .contains(&(source.into(), key))
@@ -1105,8 +1143,20 @@ impl ClientGame<'_> {
         repeat: bool,
     ) -> bool {
         if self.client.screen_state.0.context_menu.is_none()
-            && self.client.screen_state.0.context_menu_input.owned_keys.is_empty()
-            && self.client.screen_state.0.context_menu_input.unowned_keys.is_empty()
+            && self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .owned_keys
+                .is_empty()
+            && self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .unowned_keys
+                .is_empty()
         {
             return false;
         }
@@ -1125,7 +1175,9 @@ impl ClientGame<'_> {
         }
         if repeat {
             if self
-                .client.screen_state.0
+                .client
+                .screen_state
+                .0
                 .context_menu_input
                 .owned_keys
                 .contains(&owned)
@@ -1150,11 +1202,15 @@ impl ClientGame<'_> {
             }
             return false;
         }
-        self.client.screen_state.0
+        self.client
+            .screen_state
+            .0
             .context_menu_input
             .unowned_keys
             .remove(&owned);
-        self.client.screen_state.0
+        self.client
+            .screen_state
+            .0
             .context_menu_input
             .owned_keys
             .insert(owned);
@@ -1216,7 +1272,9 @@ impl ClientGame<'_> {
             Outcome::Stay => return,
             Outcome::Close => {
                 self.client.screen_state.0.context_menu = None;
-                self.client.screen_state.0
+                self.client
+                    .screen_state
+                    .0
                     .context_menu_input
                     .clear_unowned_keys_if_idle();
                 self.clear_context_menu_pad_state();
@@ -1235,7 +1293,9 @@ impl ClientGame<'_> {
             .map(|entry| std::mem::replace(entry, ContextMenuEntry::Separator));
         let owner = menu.owner.clone();
         drop(menu);
-        self.client.screen_state.0
+        self.client
+            .screen_state
+            .0
             .context_menu_input
             .clear_unowned_keys_if_idle();
         self.clear_context_menu_pad_state();

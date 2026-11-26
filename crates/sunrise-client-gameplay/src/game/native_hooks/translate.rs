@@ -37,9 +37,9 @@ impl crate::game::ClientGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
     use crate::game::native_entity_refs::tests::with_client_game;
     use sunrise_game_data::lang::{self, Language};
+    use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
 
     #[test]
     #[ignore = "daily"]
@@ -70,7 +70,11 @@ mod tests {
                 Some("mod value")
             );
 
-            game.client.settings.mods.disabled.insert("switch-owner".into());
+            game.client
+                .settings
+                .mods
+                .disabled
+                .insert("switch-owner".into());
             game.sync_native_switches();
             assert_eq!(game.translate("test.switch.k").as_deref(), Some("pack v1"));
 

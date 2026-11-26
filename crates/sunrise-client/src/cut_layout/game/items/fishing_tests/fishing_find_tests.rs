@@ -25,7 +25,8 @@ fn a_cast_bobber_is_found_by_selectors_and_entities_in() {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:fishing_rod", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:fishing_rod", 1));
             bind_local_player(game, 20, 7);
             game.set_allow_commands(true);
             game.build_registries();
@@ -36,8 +37,7 @@ fn a_cast_bobber_is_found_by_selectors_and_entities_in() {
             game.tick_fishing();
             let at = game.hook.as_ref().expect("the bobber stays out").position;
             assert!(
-                game.level_candidates(false)
-                    .contains(&Target::Hook(id)),
+                game.level_candidates(false).contains(&Target::Hook(id)),
                 "a selector's candidates"
             );
             assert!(game.run_command("execute if entity @e[type=minecraft:fishing_bobber]"));
@@ -65,7 +65,10 @@ fn a_cast_bobber_is_found_by_selectors_and_entities_in() {
 #[ignore = "daily"]
 fn a_bobber_is_a_candidate_of_its_casters_level_only() {
     in_own_process(
-        concat!(module_path!(), "::a_bobber_is_a_candidate_of_its_casters_level_only"),
+        concat!(
+            module_path!(),
+            "::a_bobber_is_a_candidate_of_its_casters_level_only"
+        ),
         || {
             mod_platform::testing::with_mods(Default::default(), || {
                 with_guests(|game| {
@@ -92,7 +95,9 @@ fn a_bobber_is_a_candidate_of_its_casters_level_only() {
                         let global = parse("@e[type=minecraft:fishing_bobber]");
                         let bounded = parse("@e[type=minecraft:fishing_bobber,distance=..8]");
                         // Query at the same coordinates while the turn still owns the hook.
-                        let back = game.enter_command_level(Dim::Nether).expect("the Nether opens");
+                        let back = game
+                            .enter_command_level(Dim::Nether)
+                            .expect("the Nether opens");
                         let wrong_level = game.select(&bounded);
                         game.enter_command_level(back);
                         assert!(

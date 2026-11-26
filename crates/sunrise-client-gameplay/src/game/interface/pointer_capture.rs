@@ -118,7 +118,12 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.client.physical_keys.iter().copied().collect();
         let options = self.toggle_options();
-        let has_menu_keys = !self.client.screen_state.0.context_menu_input.owned_keys_empty();
+        let has_menu_keys = !self
+            .client
+            .screen_state
+            .0
+            .context_menu_input
+            .owned_keys_empty();
         for key in held {
             let restore_sources = if has_menu_keys {
                 match self.context_menu_restore_sources(key) {

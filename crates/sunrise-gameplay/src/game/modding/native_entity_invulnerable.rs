@@ -88,8 +88,9 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.setInvulnerable` sets the flag on the entity's base state.
     pub fn entity_set_invulnerable(&mut self, entity: EntityRef, invulnerable: bool) -> bool {
-        self.native_entity_target(entity)
-            .is_some_and(|target| self.update_entity_base(target, |b| b.invulnerable = invulnerable))
+        self.native_entity_target(entity).is_some_and(|target| {
+            self.update_entity_base(target, |b| b.invulnerable = invulnerable)
+        })
     }
 
     fn timer_read_target(&self, entity: EntityRef) -> Option<Target> {

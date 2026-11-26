@@ -205,7 +205,9 @@ pub(crate) mod tests {
     }
 
     /// Boots a server with the origin's entity-ticking neighbourhood loaded.
-    pub(crate) fn with_resident_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_resident_game(
+        test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+    ) {
         with_game(|game| {
             prepare_entity_ticking_neighborhood(game, sunrise_core::position::ChunkPos::new(0, 0));
             test(game);

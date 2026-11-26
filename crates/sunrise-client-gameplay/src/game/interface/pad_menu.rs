@@ -791,8 +791,16 @@ impl crate::game::ClientGame<'_> {
     #[inline(always)]
     pub(super) fn settle_pad_for_context_menu(&mut self) {
         self.direct_craft_stop();
-        self.client.screen_state.0.context_menu_input.take_pad_repeat_owned();
-        self.client.screen_state.0.context_menu_input.take_pad_wheel_owned();
+        self.client
+            .screen_state
+            .0
+            .context_menu_input
+            .take_pad_repeat_owned();
+        self.client
+            .screen_state
+            .0
+            .context_menu_input
+            .take_pad_wheel_owned();
         let menu = &mut self.client.pad.0.menu;
         menu.armed = None;
         menu.trigger = None;
@@ -808,10 +816,22 @@ impl crate::game::ClientGame<'_> {
     /// Clear any pad direction repeat or wheel accumulation started by the context menu on close.
     #[inline(always)]
     pub(super) fn clear_context_menu_pad_state(&mut self) {
-        if self.client.screen_state.0.context_menu_input.take_pad_repeat_owned() {
+        if self
+            .client
+            .screen_state
+            .0
+            .context_menu_input
+            .take_pad_repeat_owned()
+        {
             self.client.pad.0.menu.repeat = None;
         }
-        if self.client.screen_state.0.context_menu_input.take_pad_wheel_owned() {
+        if self
+            .client
+            .screen_state
+            .0
+            .context_menu_input
+            .take_pad_wheel_owned()
+        {
             self.client.pad.0.menu.wheel = [0.0, 0.0];
         }
     }
@@ -824,10 +844,20 @@ impl crate::game::ClientGame<'_> {
         down: bool,
     ) -> Result<()> {
         if !down {
-            if self.client.screen_state.0.context_menu_input.take_pad(button) {
+            if self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .take_pad(button)
+            {
                 if self.client.pad.0.menu.repeat.is_some_and(|r| r.0 == button) {
                     self.client.pad.0.menu.repeat = None;
-                    self.client.screen_state.0.context_menu_input.take_pad_repeat_owned();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .take_pad_repeat_owned();
                 }
                 return Ok(());
             }
@@ -893,30 +923,50 @@ impl crate::game::ClientGame<'_> {
         self.client.pad.0.menu.keyboard = false;
         if self.context_menu_open() {
             self.settle_pad_for_context_menu();
-            self.client.screen_state.0.context_menu_input.own_pad(button);
+            self.client
+                .screen_state
+                .0
+                .context_menu_input
+                .own_pad(button);
             match button {
                 Button::DPadUp => {
                     self.client.pad.0.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowUp);
-                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .own_pad_repeat();
                     self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::DPadDown => {
                     self.client.pad.0.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowDown);
-                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .own_pad_repeat();
                     self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::DPadLeft => {
                     self.client.pad.0.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowLeft);
-                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .own_pad_repeat();
                     self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::DPadRight => {
                     self.client.pad.0.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowRight);
-                    self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .own_pad_repeat();
                     self.client.pad.0.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::South => {
@@ -1687,7 +1737,9 @@ impl crate::game::ClientGame<'_> {
                 .context_menu_input
                 .has_pad_stick_or_repeat()
             {
-                self.client.screen_state.0
+                self.client
+                    .screen_state
+                    .0
                     .context_menu_input
                     .clear_pad_stick_and_repeat();
             }
@@ -1778,11 +1830,17 @@ impl crate::game::ClientGame<'_> {
             self.client.settings.controller.look_deadzone,
         );
         let state = self.client.pad.0.state;
-        let stick_suppressed =
-            MENU && !context_menu && self.client.screen_state.0.context_menu_input.stick_owned() && {
+        let stick_suppressed = MENU
+            && !context_menu
+            && self.client.screen_state.0.context_menu_input.stick_owned()
+            && {
                 let left_radial = gamepad::radial(state.left, move_deadzone);
                 if left_radial == [0.0, 0.0] {
-                    self.client.screen_state.0.context_menu_input.release_stick();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .release_stick();
                     self.client.pad.0.menu.stick = None;
                     false
                 } else {
@@ -1809,7 +1867,11 @@ impl crate::game::ClientGame<'_> {
                 {
                     self.client.pad.0.menu.repeat = None;
                     if MENU && context_menu {
-                        self.client.screen_state.0.context_menu_input.take_pad_repeat_owned();
+                        self.client
+                            .screen_state
+                            .0
+                            .context_menu_input
+                            .take_pad_repeat_owned();
                     }
                 }
                 self.client.pad.0.menu.stick = dir;
@@ -1827,12 +1889,20 @@ impl crate::game::ClientGame<'_> {
                         }
                     }
                     if MENU && context_menu {
-                        self.client.screen_state.0.context_menu_input.own_pad_repeat();
+                        self.client
+                            .screen_state
+                            .0
+                            .context_menu_input
+                            .own_pad_repeat();
                         self.client.screen_state.0.context_menu_input.own_stick();
                     }
                     self.client.pad.0.menu.repeat = Some((button, now, false));
                 } else if MENU && context_menu {
-                    self.client.screen_state.0.context_menu_input.release_stick();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .release_stick();
                 }
             }
         } else {
@@ -1880,22 +1950,52 @@ impl crate::game::ClientGame<'_> {
         // An open context menu takes the right stick ahead of the on-screen keyboard.
         let scroll = if MENU && context_menu {
             let right = gamepad::radial(state.right, look_deadzone);
-            if right != [0.0, 0.0] || (self.client.pad.0.menu.osk.is_some() && state.right[1].abs() >= 0.3) {
-                self.client.screen_state.0.context_menu_input.own_right_stick();
+            if right != [0.0, 0.0]
+                || (self.client.pad.0.menu.osk.is_some() && state.right[1].abs() >= 0.3)
+            {
+                self.client
+                    .screen_state
+                    .0
+                    .context_menu_input
+                    .own_right_stick();
                 if right != [0.0, 0.0] {
-                    self.client.screen_state.0.context_menu_input.own_pad_wheel();
+                    self.client
+                        .screen_state
+                        .0
+                        .context_menu_input
+                        .own_pad_wheel();
                 }
-            } else if self.client.screen_state.0.context_menu_input.right_stick_owned()
+            } else if self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .right_stick_owned()
                 && state.right[1].abs() < 0.3
             {
-                self.client.screen_state.0.context_menu_input.release_right_stick();
+                self.client
+                    .screen_state
+                    .0
+                    .context_menu_input
+                    .release_right_stick();
             }
             right
-        } else if MENU && self.client.screen_state.0.context_menu_input.right_stick_owned() {
+        } else if MENU
+            && self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .right_stick_owned()
+        {
             if gamepad::radial(state.right, look_deadzone) == [0.0, 0.0]
                 && state.right[1].abs() < 0.3
             {
-                self.client.screen_state.0.context_menu_input.release_right_stick();
+                self.client
+                    .screen_state
+                    .0
+                    .context_menu_input
+                    .release_right_stick();
             }
             [0.0, 0.0]
         } else {
@@ -1935,7 +2035,12 @@ impl crate::game::ClientGame<'_> {
         if let Some((button, since, repeating)) = self.client.pad.0.menu.repeat {
             if MENU
                 && !context_menu
-                && (self.client.screen_state.0.context_menu_input.owns_pad(button)
+                && (self
+                    .client
+                    .screen_state
+                    .0
+                    .context_menu_input
+                    .owns_pad(button)
                     || self.client.screen_state.0.context_menu_input.stick_owned())
             {
                 self.client.pad.0.menu.repeat = None;
@@ -1947,7 +2052,8 @@ impl crate::game::ClientGame<'_> {
                 };
                 if now.duration_since(since).as_secs_f32() >= wait {
                     self.client.pad.0.menu.repeat = Some((button, now, true));
-                    self.client.pad.0.menu.repeats = self.client.pad.0.menu.repeats.saturating_add(1);
+                    self.client.pad.0.menu.repeats =
+                        self.client.pad.0.menu.repeats.saturating_add(1);
                     self.pad_step(event_loop, button);
                     if !MENU && self.client.screen_state.0.context_menu.is_some() {
                         return;

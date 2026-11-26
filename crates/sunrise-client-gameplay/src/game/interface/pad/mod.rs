@@ -585,7 +585,12 @@ impl crate::game::ClientGame<'_> {
             self.capture(true);
         }
         if !down && playing {
-            let _ = self.client.screen_state.0.context_menu_input.take_pad(button);
+            let _ = self
+                .client
+                .screen_state
+                .0
+                .context_menu_input
+                .take_pad(button);
         }
         if !playing {
             self.pad_menu_button(event_loop, button, down)?;
