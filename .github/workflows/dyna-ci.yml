@@ -703,29 +703,7 @@ jobs:
       - name: Build the source stage generator (test profile)
         id: stage
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false' && (github.event_name == 'pull_request' || inputs.pr != '')) }}
-        run: |
-          started=$SECONDS
-          cargo build $JOBS --locked --profile test -p sunrise-stage --bin sunrise-stage --message-format=json-render-diagnostics > "$RUNNER_TEMP/stage-artifacts.jsonl"
-          echo "Stage generator build: $((SECONDS - started))s"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          artifacts = [json.loads(line) for line in Path(os.environ["RUNNER_TEMP"], "stage-artifacts.jsonl").read_text().splitlines()]
-          executables = {item["executable"] for item in artifacts
-                         if item.get("reason") == "compiler-artifact"
-                         and item["target"]["name"] == "sunrise-stage"
-                         and "bin" in item["target"]["kind"]
-                         and not item["profile"]["test"] and item.get("executable")}
-          if len(executables) != 1:
-              raise SystemExit(f"expected one normal sunrise-stage executable, got {executables}")
-          executable = str(Path(executables.pop()).resolve(strict=True))
-          if "\r" in executable or "\n" in executable:
-              raise SystemExit("sunrise-stage executable path must not contain CR or LF")
-          with open(os.environ["GITHUB_ENV"], "a") as environment:
-              environment.write(f"SUNRISE_STAGE_TOOL={executable}\n")
-          PY
+        run: python3 tools/ci/surface_report.py --build-tool
       - name: Report the mod API surface change
         id: report_the_mod_api_surface_change
         # Each tree's own sunrise-stage exports its stable API; the head's tool reads both engine catalogs and
@@ -868,6 +846,30 @@ jobs:
       - name: Check generated extension tag catalog
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/surface_extension_tags.py --check
+      # docs/layers.md: server-side gameplay may not reach the engine's rendering, audio or window modules.
+      - name: Engine boundary
+        id: engine_boundary
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            python3 tools/ci/check_engine_boundary.py --base "$BASE_SHA"
+          else
+            python3 tools/ci/check_engine_boundary.py
+          fi
+      # The launcher's copies of game crates move only when the pull request says which copy must follow.
+      - name: Launcher mirrors
+        id: launcher_mirrors
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            python3 tools/ci/check_launcher_mirrors.py --base "$BASE_SHA" --event "$GITHUB_EVENT_PATH"
+          else
+            python3 tools/ci/check_launcher_mirrors.py
+          fi
       - name: Check native hook wiring
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.changes.outputs.rust_required != 'false' }}
         run: bash tools/ci/check_hook_wiring.sh
@@ -946,6 +948,11 @@ jobs:
         id: process_starting_tests_are_daily_tests
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/check_process_tests.py
+      # Its one rustc outgrew the 16 GiB parity runner (#4896): a harness runs a fixture from lab.parity_fixtures().
+      - name: Parity harnesses do not build the client lib test
+        id: parity_harnesses_do_not_build_the_client_lib_test
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: python3 tools/ci/check_parity_harness_builds.py
       # A test that reruns its own test executable by --exact must select it ignored or not, or a daily one checks nothing.
       - name: Test reruns select ignored tests too
         id: test_reruns_select_ignored_tests_too

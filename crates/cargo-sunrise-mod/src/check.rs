@@ -979,6 +979,64 @@ mod tests {
         assert_eq!(report.json()["dependencies"], dependencies);
     }
 
+    /// #6022: a shader using a set-1 uniform block and a sampler of the mod's own layout passes
+    /// `check`, declared in the shader or in an include, as the game accepts it; the same shader
+    /// with a real syntax error is still refused.
+    #[test]
+    fn pipeline_shaders_take_the_mods_own_set_1_block_and_sampler() {
+        const DECLARE: &str =
+            "layout(std140, set = 1, binding = 0) uniform SceneUniform { vec4 Tint; };
+layout(set = 1, binding = 1) uniform sampler2D SsaoTex;
+";
+        const BODY: &str = "in vec2 texCoord0;
+out vec4 fragColor;
+void main() { fragColor = Tint * texture(SsaoTex, texCoord0); }
+";
+        let check = |fsh: String| {
+            let mut files = BTreeMap::new();
+            files.insert(
+                "assets/example/shaders/core/ssao.fsh".to_owned(),
+                fsh.into_bytes(),
+            );
+            files.insert(
+                "assets/example/shaders/include/scene.glsl".to_owned(),
+                DECLARE.as_bytes().to_vec(),
+            );
+            pipeline_shaders(&files, None)
+        };
+        for fsh in [
+            format!(
+                "#version 330
+{DECLARE}{BODY}"
+            ),
+            format!(
+                "#version 330
+#moj_import <example:scene.glsl>
+{BODY}"
+            ),
+            format!(
+                "#version 330
+#include <example:scene.glsl>
+{BODY}"
+            ),
+        ] {
+            let (count, refused) = check(fsh.clone());
+            assert_eq!((count, refused), (1, Vec::<String>::new()), "{fsh}");
+        }
+        let broken = format!(
+            "#version 330
+{DECLARE}{}",
+            BODY.replace("Tint *", "Tint * *")
+        );
+        let (_, refused) = check(broken);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(
+            refused[0].starts_with("assets/example/shaders/core/ssao.fsh:")
+                && !refused[0].contains("is not a block or sampler"),
+            "{refused:?}"
+        );
+    }
+
     #[test]
     fn pipeline_shaders_validates_oit_variants_and_refuses_alpha_only_color_output() {
         let mut files = BTreeMap::new();

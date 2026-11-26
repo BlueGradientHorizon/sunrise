@@ -5,8 +5,8 @@
 //! prepared resources.
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{
-    BlockEntityPart, BlockPart, Hooks, MenuContainer, MenuPart, MenuQuickMoveEvent,
-    MenuSlotRulesEvent, ModEntry, Mods, Registrar,
+    BlockEntityPart, BlockPart, Hooks, MenuContainer, MenuPart, MenuPickAllEvent,
+    MenuQuickMoveEvent, MenuSlotRulesEvent, ModEntry, Mods, Registrar,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -63,6 +63,10 @@ thread_local! {
     static QUICK_MOVE_CONSUME: Cell<Option<usize>> = const { Cell::new(None) };
     static LINK_CHANGE: Cell<Option<LinkChange>> = const { Cell::new(None) };
     static LINK_CHANGED: Cell<bool> = const { Cell::new(false) };
+    /// The pot slot `menu_pick_all` keeps out of a gather, if any.
+    static PICK_ALL_KEEPS: Cell<Option<usize>> = const { Cell::new(None) };
+    /// Every `menu_pick_all` question: slot, its count and the cursor's count.
+    static PICK_ALL_ASKED: RefCell<Vec<(usize, u32, u32)>> = const { RefCell::new(Vec::new()) };
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -74,6 +78,16 @@ enum LinkChange {
 struct Pot;
 #[mod_api::sunrise_part]
 impl MenuPart for Pot {
+    fn menu_pick_all(&self, _: &dyn mod_api::Host, event: &mut MenuPickAllEvent<'_>) {
+        if event.container == MenuContainer::Main {
+            PICK_ALL_ASKED.with_borrow_mut(|asked| {
+                asked.push((event.slot, event.stack.count(), event.carried.count()))
+            });
+            if PICK_ALL_KEEPS.get() == Some(event.slot) {
+                event.allowed = false;
+            }
+        }
+    }
     fn menu_slot_rules(&self, _: &dyn mod_api::Host, event: &mut MenuSlotRulesEvent<'_>) {
         let item = mod_api::__private::item_key_id(event.stack.item())
             .unwrap()
@@ -1210,6 +1224,39 @@ fn pick_all_on_a_refusing_slot_gathers_from_the_others_and_skips_it() {
             assert!(sent.is_empty(), "{sent:?}");
             assert_eq!(served(game), predicted(&menu));
         }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_menu_part_keeps_a_slot_out_of_pick_all() {
+    with_pot(|game, rx| {
+        // The pot keeps slot 0 out of a gather: a double click on an empty slot gathers the stone
+        // of slot 5 and leaves slot 0's, in the prediction and on the server alike.
+        PICK_ALL_KEEPS.set(Some(0));
+        PICK_ALL_ASKED.take();
+        let mut menu = prediction(&[(0, stone(3)), (5, stone(2))], stone(1));
+        serve(game, &menu);
+        menu.click(&game.menu_env(), 6, 0, Input::PickupAll)
+            .unwrap();
+        assert_eq!(menu.slot(0).map(|s| s.count), Some(3));
+        assert_eq!(menu.slot(5), None);
+        assert_eq!(menu.carried.as_ref().map(|c| c.count), Some(3));
+        // The part heard the slots the gather would take, with the cursor gathering into.
+        let heard = PICK_ALL_ASKED.take();
+        assert!(heard.contains(&(0, 3, 1)), "{heard:?}");
+        assert!(heard.contains(&(5, 2, 1)), "{heard:?}");
+        let cursor = claim(game, 3);
+        let sent = click(game, rx, (6, 0, Input::PickupAll), vec![(5, None)], cursor);
+        assert!(sent.is_empty(), "{sent:?}");
+        assert_eq!(served(game), predicted(&menu));
+        // Without the part's refusal both slots are gathered.
+        PICK_ALL_KEEPS.set(None);
+        let mut menu = prediction(&[(0, stone(3)), (5, stone(2))], stone(1));
+        menu.click(&game.menu_env(), 6, 0, Input::PickupAll)
+            .unwrap();
+        assert_eq!((menu.slot(0), menu.slot(5)), (None, None));
+        assert_eq!(menu.carried.as_ref().map(|c| c.count), Some(6));
     });
 }
 

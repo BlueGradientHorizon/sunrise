@@ -109,6 +109,7 @@ pub(super) fn draw_terrain_model(
         special(pose, light, &mut scope);
     }
     draw.lit_since(start, BlockEntityDraw::cell_centre, draw.light() & 0xffff);
+    draw.crumbling_since(start);
 }
 
 #[cfg(test)]

@@ -129,7 +129,12 @@ impl MotionWorld<'_, '_, '_> {
             gravity,
         ));
         let movement = self.player.velocity;
-        self.move_self(gate, movement)?;
+        let made = living_air::LivingAirWorld::move_self(self, gate, movement)?;
+        living_air::LivingAirWorld::travel_moved(
+            self,
+            sunrise_world::travel::TravelMode::Glide,
+            made,
+        )?;
         // LivingEntity.handleFallFlyingCollisions: the fall-damage sound plays
         // on both sides (a glider's own travel is client-side, and the sound
         // must reach its own ears, #8906), only the server hurts, and it
@@ -193,7 +198,10 @@ impl MotionWorld<'_, '_, '_> {
 mod tests {
     use crate::motion::{MotionWorld, PlayerMotion, dry_side};
     use crate::world::World;
-    use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext};
+    use mod_api::{
+        Flow, Hooks, LivingTravelEvent, LivingTravelMovedEvent, LoopContext, TravelMode as Mode,
+    };
+    use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
 
     /// A listener that replaces the velocity (when it names one) and answers `Flow`.
@@ -270,5 +278,115 @@ mod tests {
         let (position, velocity, start) = flying_travel(Decide(Flow::Cancel, None), true);
         assert_eq!(position, start);
         assert_eq!(velocity, Vec3::new(0.2, 0.5, 0.0));
+    }
+    /// What a `living_travel_moved` listener heard: the side, mode, displacement, ground flags
+    /// and jump input of one move.
+    type MovedHeard = Vec<(mod_api::LoopSide, Mode, [f64; 3], bool, bool, bool)>;
+
+    /// A `living_travel_moved` listener that records what it hears and replaces the velocity.
+    struct Moved(Option<[f64; 3]>, Arc<Mutex<MovedHeard>>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Moved {
+        fn living_travel_moved(
+            &self,
+            context: &dyn LoopContext,
+            event: &mut LivingTravelMovedEvent<'_>,
+        ) {
+            self.1.lock().unwrap().push((
+                context.side(),
+                event.mode,
+                event.moved,
+                event.on_ground_before,
+                event.on_ground,
+                event.jumping,
+            ));
+            if let Some(velocity) = self.0 {
+                *event.velocity = velocity;
+            }
+        }
+    }
+
+    /// One `player_travel` of a walking (not flying) player in the air at `(20.5, 4, 20.5)` with
+    /// velocity `(0.2, 0.5, 0)` under `listener`, on the loop of `side`: the velocity it leaves.
+    fn air_travel(listener: Moved, side: sunrise_world::native_load_context::LoopSide) -> Vec3 {
+        let v = crate::test_fixtures::vanilla().expect("prepared resources are required");
+        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let mut player = PlayerMotion::new(resources, Vec3::new(20.5, 4.0, 20.5)).unwrap();
+        player.velocity = Vec3::new(0.2, 0.5, 0.0);
+        let context = crate::test_resources::loop_context(side);
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("moved", Box::new(listener))].into();
+        mod_platform::testing::with_mods(mods, || {
+            MotionWorld {
+                side: dry_side(),
+                tag_items: None,
+                block_registries: None,
+                loop_context: &context,
+                damage_hooks: &crate::health::DamageHooks::NONE,
+                entities: &[],
+                player: &mut player,
+                scene: &mut scene,
+                assets,
+                collision_binding: binding,
+                resources,
+                health: &resources.health,
+            }
+            .player_travel(Vec3::ZERO)
+            .unwrap();
+        });
+        player.velocity
+    }
+
+    /// A velocity the listener sets right after the move is what the air branch's gravity and
+    /// drag act on, the same on the server's loop and on the client's own prediction: the
+    /// expected values are vanilla's `travelInAir` arithmetic on the edit (gravity `0.08`, then
+    /// `0.91F` horizontal and `0.98F` vertical drag), not the game's own result.
+    #[test]
+    #[ignore = "daily"]
+    fn a_moved_velocity_edit_is_what_drag_and_gravity_act_on() {
+        use sunrise_world::native_load_context::LoopSide;
+        for side in [LoopSide::Server, LoopSide::Client] {
+            let heard = Arc::new(Mutex::new(Vec::new()));
+            let velocity = air_travel(Moved(Some([0.5, 0.0, -0.25]), Arc::clone(&heard)), side);
+            assert_eq!(
+                velocity,
+                Vec3::new(
+                    0.5 * f64::from(0.91_f32),
+                    (0.0 - 0.08) * f64::from(0.98_f32),
+                    -0.25 * f64::from(0.91_f32)
+                )
+            );
+            let heard = heard.lock().unwrap();
+            assert_eq!(heard.len(), 1, "once per travel branch");
+            let (_, mode, moved, on_ground_before, _, jumping) = heard[0];
+            assert_eq!(mode, Mode::Air);
+            assert_eq!(
+                moved,
+                [20.5_f64 + 0.2 - 20.5, 4.0_f64 + 0.5 - 4.0, 0.0],
+                "the displacement the move made"
+            );
+            assert!(!on_ground_before && !jumping);
+        }
+    }
+
+    /// A non-finite velocity is dropped: the game's own post-move velocity goes through drag
+    /// and gravity.
+    #[test]
+    #[ignore = "daily"]
+    fn a_non_finite_moved_edit_is_dropped() {
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let velocity = air_travel(
+            Moved(Some([f64::NAN, 0.0, 0.0]), Arc::clone(&heard)),
+            sunrise_world::native_load_context::LoopSide::Server,
+        );
+        assert_eq!(
+            velocity,
+            Vec3::new(
+                0.2 * f64::from(0.91_f32),
+                (0.5 - 0.08) * f64::from(0.98_f32),
+                0.0
+            )
+        );
     }
 }

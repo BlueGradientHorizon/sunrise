@@ -445,6 +445,12 @@ pub struct BlockEntityDraw<'v> {
     pub(super) level_lit: bool,
     /// `unlit` is on: elements drawn now skip face shading and draw full bright.
     pub(super) unlit: bool,
+    /// `crumbling` is on: elements drawn now are covered by the breaking crack.
+    crumbling: bool,
+    /// The breaking stage at the block drawn, when it is cracked (`crumbling_stage`).
+    crumbling_stage: Option<u8>,
+    /// The vertex ranges drawn under `crumbling`, beside `spins`.
+    crumbled: Vec<(usize, usize)>,
     /// Each element drawn under `level_light` (vertex range and local centre),
     /// beside `spins`.
     lit: Vec<LitElement>,
@@ -559,6 +565,8 @@ struct PreparedRecord {
     pose: Mat4,
     tint: u32,
     light: u32,
+    /// Drawn under `crumbling`: its baked vertices join `crumbled`.
+    crumbling: bool,
 }
 
 /// Instance tint in the same bytes the CPU vertex colour uses.
@@ -671,6 +679,27 @@ fn place_geometry(
     }
 }
 
+/// Adds to `overlay` the placed vertices of one block's `ranges` (offsets into `placed`,
+/// camera-relative, turned by any `spin`) projected onto the crack stage whose sprite starts at
+/// `sprite`: what `submitCrumblingOverlay` draws again over the parts a renderer chose.
+fn crack_overlay(
+    placed: &[Vertex],
+    ranges: &[(usize, usize)],
+    origin: Vec3,
+    sprite: [f32; 2],
+    overlay: &mut Vec<Vertex>,
+) {
+    for &(from, to) in ranges {
+        let to = to.min(placed.len());
+        if from >= to {
+            continue;
+        }
+        let at = overlay.len();
+        overlay.extend_from_slice(&placed[from..to]);
+        sunrise_client::breaking::entity_geometry(&mut overlay[at..], origin, sprite);
+    }
+}
+
 #[allow(dead_code)]
 impl<'v> BlockEntityDraw<'v> {
     /// A frame drawn from `pose` (relative to the camera), borrowing `view`, lit by `light` and
@@ -698,6 +727,9 @@ impl<'v> BlockEntityDraw<'v> {
             spins: Vec::new(),
             level_lit: false,
             unlit: false,
+            crumbling: false,
+            crumbling_stage: None,
+            crumbled: Vec::new(),
             lit: Vec::new(),
             prepared: false,
             records: Vec::new(),
@@ -748,7 +780,8 @@ impl<'v> BlockEntityDraw<'v> {
         self.spins.last().is_some_and(|(_, spin)| spin.is_some())
     }
 
-    /// Record a prepared copy at the current vertex, unless this draw is CPU-only or spinning.
+    /// Record a prepared copy at the current vertex, unless this draw is CPU-only or spinning,
+    /// or the cracked block's overlay needs the model's vertices.
     fn defer_model(&mut self, slot: u32, generation: u64, tint: u32) -> bool {
         self.defer_model_at(slot, generation, self.pose(), tint, self.light)
     }
@@ -763,7 +796,12 @@ impl<'v> BlockEntityDraw<'v> {
         tint: u32,
         light: u32,
     ) -> bool {
-        if !self.prepared || self.spinning() || self.level_lit || self.unlit {
+        if !self.prepared
+            || self.spinning()
+            || self.level_lit
+            || self.unlit
+            || (self.crumbling && self.crumbling_stage.is_some())
+        {
             return false;
         }
         self.records.push(PreparedRecord {
@@ -773,6 +811,7 @@ impl<'v> BlockEntityDraw<'v> {
             pose,
             tint,
             light,
+            crumbling: self.crumbling,
         });
         true
     }
@@ -802,6 +841,21 @@ impl<'v> BlockEntityDraw<'v> {
                     e.start += count;
                     e.end += count;
                 }
+            }
+            let mut shifted = Vec::with_capacity(self.crumbled.len() + 1);
+            for &(start, end) in &self.crumbled {
+                if end <= record.at {
+                    shifted.push((start, end));
+                } else if start >= record.at {
+                    shifted.push((start + count, end + count));
+                } else {
+                    shifted.push((start, record.at));
+                    shifted.push((record.at + count, end + count));
+                }
+            }
+            self.crumbled = shifted;
+            if record.crumbling && count > 0 {
+                self.crumbled.push((record.at, record.at + count));
             }
             self.vertices.splice(record.at..record.at, extra);
         }
@@ -1001,6 +1055,23 @@ impl<'v> BlockEntityDraw<'v> {
     pub(super) fn unlit(&mut self, on: bool) {
         self.unlit = on;
     }
+    /// What is drawn next by `quad`, `cube`, `block`, `model` and `terrain_model` gets the
+    /// breaking crack while `on` (`native_draw_crumbling`).
+    fn crumbling(&mut self, on: bool) {
+        self.crumbling = on;
+    }
+    /// Marks the vertices from `start` as drawn under `crumbling`, joining the range before
+    /// them when they follow it.
+    pub(super) fn crumbling_since(&mut self, start: usize) {
+        let end = self.vertices.len();
+        if !self.crumbling || end <= start {
+            return;
+        }
+        match self.crumbled.last_mut() {
+            Some((_, last_end)) if *last_end == start => *last_end = end,
+            _ => self.crumbled.push((start, end)),
+        }
+    }
     /// The vertices from `start` of an element `unlit` covers: under `unlit` they lose their
     /// shading normal and draw full bright (their colours carry no shade), else `lit_since`.
     /// `terrain_model` keeps its own shading and calls `lit_since` directly.
@@ -1077,6 +1148,7 @@ impl<'v> BlockEntityDraw<'v> {
             },
             self.light,
         );
+        self.crumbling_since(start);
     }
 
     /// A quad of `corners` showing a dynamic texture: `quad`'s shading and light, UVs in the
@@ -1201,6 +1273,7 @@ impl<'v> BlockEntityDraw<'v> {
         );
         self.quad_scope().retain_valid_since(start);
         self.drawn_since(start, Self::cell_centre, self.light & 0xffff);
+        self.crumbling_since(start);
     }
 }
 
@@ -1272,6 +1345,8 @@ struct KeptEntry {
     /// Its elements lit by the level (`BlockEntityDraw::level_light`), from the
     /// start of `vertices`.
     lit: Vec<LitElement>,
+    /// The vertex ranges drawn under `BlockEntityDraw::crumbling`, from the start of `vertices`.
+    crumbled: Vec<(usize, usize)>,
 }
 
 /// Geometry mods kept (`BlockEntityDraw::keep`), by position. As
@@ -1318,6 +1393,7 @@ impl KeptGeometry {
         vertices: &[Vertex],
         spins: Vec<(usize, Option<Spin>)>,
         lit: Vec<LitElement>,
+        crumbled: Vec<(usize, usize)>,
         now: i64,
     ) -> &mut KeptEntry {
         use std::collections::hash_map::Entry;
@@ -1329,6 +1405,7 @@ impl KeptGeometry {
             vertices: Vec::new(),
             spins,
             lit,
+            crumbled,
         };
         let entry = match self.entries.entry(pos) {
             Entry::Vacant(slot) => slot.insert(entry),
@@ -1352,11 +1429,14 @@ impl KeptGeometry {
         draw: &mut BlockEntityDraw<'v>,
         origin: Vec3,
         level: &LevelLight<'_>,
+        crack: Option<(u8, Option<[f32; 2]>)>,
+        overlay: &mut Vec<Vertex>,
         bounds: impl FnOnce() -> [f32; 6],
         visible: impl FnOnce([f32; 6], usize) -> bool,
         submit: impl FnOnce(&mut BlockEntityDraw<'v>),
     ) {
         let start = draw.vertices.len();
+        let sprite = crack.and_then(|(_, sprite)| sprite);
         if let Some(entry) = self.get(pos, key, revision, draw.view.game_time) {
             if visible(entry.bounds, start) {
                 let take = entry
@@ -1387,6 +1467,15 @@ impl KeptGeometry {
                     );
                     draw.quad_scope().retain_valid_since(start);
                 }
+                if let Some(sprite) = sprite {
+                    crack_overlay(
+                        &draw.vertices[start..],
+                        &entry.crumbled,
+                        origin,
+                        sprite,
+                        overlay,
+                    );
+                }
             }
             return;
         }
@@ -1402,6 +1491,9 @@ impl KeptGeometry {
         draw.spins.clear();
         draw.level_lit = false;
         draw.unlit = false;
+        draw.crumbling = false;
+        draw.crumbling_stage = crack.map(|(stage, _)| stage);
+        draw.crumbled.clear();
         draw.lit.clear();
         draw.records.clear();
         submit(draw);
@@ -1413,12 +1505,16 @@ impl KeptGeometry {
             e.start -= start;
             e.end -= start;
         }
+        for (from, to) in &mut draw.crumbled {
+            *from -= start;
+            *to -= start;
+        }
         // The scope drops quads only once it is full, so a draw that leaves room dropped none:
         // only a complete extraction is retained. A full one may have been cut short, and a
         // later frame with more room must extract it again.
         let complete = draw.quad_scope().has_room();
         let vertices = &mut draw.vertices[start..];
-        let (spins, lit, cached) = if draw.kept && complete {
+        let (spins, lit, crumbled, cached) = if draw.kept && complete {
             // Keep the intrinsic floors, not the sampled light written into the frame.
             let entry = self.keep(
                 pos,
@@ -1428,16 +1524,18 @@ impl KeptGeometry {
                 vertices,
                 std::mem::take(&mut draw.spins),
                 std::mem::take(&mut draw.lit),
+                std::mem::take(&mut draw.crumbled),
                 draw.view.game_time,
             );
             (
                 &entry.spins,
                 &entry.lit,
+                &entry.crumbled,
                 Some(entry.vertices.as_mut_slice()),
             )
         } else {
             self.forget(pos);
-            (&draw.spins, &draw.lit, None)
+            (&draw.spins, &draw.lit, &draw.crumbled, None)
         };
         place_geometry(
             vertices,
@@ -1450,6 +1548,9 @@ impl KeptGeometry {
                 pass: LightPass::Fresh(cached),
             }),
         );
+        if let Some(sprite) = sprite {
+            crack_overlay(vertices, crumbled, origin, sprite, overlay);
+        }
     }
 
     fn forget(&mut self, pos: [i32; 3]) {
@@ -1625,14 +1726,17 @@ impl Game<'_> {
     /// `BlockEntityRenderer.getViewDistance` to the camera (`shouldRender`) and with its bounds
     /// (`native_block_entity_render_bounding_box`) in the frustum. Ordinary (non-global)
     /// renderers require an eye-visible section, matching built-in block entities.
+    /// Returns the crack overlay of the geometry its mods drew under `crumbling` (the
+    /// `DESTROY` stage's vertices, for the caller to draw after marking that stage), empty
+    /// when nothing is being mined.
     pub(super) fn mod_block_entity_geometry<'a>(
         &self,
         blocks: impl Iterator<Item = (&'a ([i32; 3], u32), bool)>,
         camera: DVec3,
         partial: f32,
         out: &mut Vec<Vertex>,
-    ) {
-        self.mod_block_entity_geometry_with_view(blocks, camera, partial, None, out);
+    ) -> Vec<Vertex> {
+        self.mod_block_entity_geometry_with_view(blocks, camera, partial, None, out)
     }
 
     /// [`Self::mod_block_entity_geometry`] with an explicit [`mod_api::WorldRenderView`] for
@@ -1644,7 +1748,7 @@ impl Game<'_> {
         partial: f32,
         explicit_view: Option<&mod_api::WorldRenderView<'_>>,
         out: &mut Vec<Vertex>,
-    ) {
+    ) -> Vec<Vertex> {
         self.with_world_view(camera, partial, explicit_view, |view| {
             let mut draw = BlockEntityDraw {
                 view,
@@ -1661,6 +1765,9 @@ impl Game<'_> {
                 spins: Vec::new(),
                 level_lit: false,
                 unlit: false,
+                crumbling: false,
+                crumbling_stage: None,
+                crumbled: Vec::new(),
                 lit: Vec::new(),
                 prepared: prepared_route(
                     self.pack_ids.is_some(),
@@ -1676,6 +1783,9 @@ impl Game<'_> {
             let now = view.game_time;
             let mut kept = self.kept_block_entities.borrow_mut();
             kept.sweep(now);
+            // The stage stored at each cracked position: empty, and never looked in, with no crack.
+            let cracks = self.crack_stage_map();
+            let mut overlay = Vec::new();
             let distances = self.view_distances();
             let light_at = |b: [i32; 3]| self.world.light(b[0], b[1], b[2]);
             for (&(pos, state), eye_visible) in blocks {
@@ -1710,6 +1820,11 @@ impl Game<'_> {
                         origin: corner,
                         light_at: &light_at,
                     },
+                    (!cracks.is_empty())
+                        .then(|| cracks.get(&pos))
+                        .flatten()
+                        .map(|&stage| (stage, self.crack_origin(u32::from(stage)))),
+                    &mut overlay,
                     || {
                         let mut bounds = DEFAULT_BOUNDS;
                         self.api_block_entity_render_bounding_box(
@@ -1741,7 +1856,8 @@ impl Game<'_> {
                 );
             }
             *out = draw.vertices;
-        });
+            overlay
+        })
     }
 
     pub(super) fn prepared_copy_room(&self, already: u64, incoming: usize) -> Option<usize> {
@@ -1878,6 +1994,15 @@ impl Game<'_> {
     /// (`BlockEntityDrawContext::unlit`).
     pub(super) fn native_draw_unlit(&self, draw: &mut BlockEntityDraw, on: bool) {
         draw.unlit(on);
+    }
+    /// The breaking stage at the block drawn (`BlockEntityDrawContext::crumbling_stage`).
+    pub(super) fn native_draw_crumbling_stage(&self, draw: &BlockEntityDraw) -> Option<u8> {
+        draw.crumbling_stage
+    }
+    /// What is drawn next by `quad`, `cube`, `block`, `model` and `terrain_model` gets the
+    /// breaking crack while `on` (`BlockEntityDrawContext::crumbling`).
+    pub(super) fn native_draw_crumbling(&self, draw: &mut BlockEntityDraw, on: bool) {
+        draw.crumbling(on);
     }
     /// Draws a quad with `corners` in blocks under `draw`'s pose, in a model
     /// face's order (top left, bottom left, bottom right, top right as seen
@@ -2058,6 +2183,7 @@ impl Game<'_> {
             },
             draw.light,
         );
+        draw.crumbling_since(start);
         all
     }
 
@@ -2086,6 +2212,7 @@ impl Game<'_> {
             &mut draw.vertices,
         );
         draw.drawn_since(start, BlockEntityDraw::cell_centre, draw.light & 0xffff);
+        draw.crumbling_since(start);
         true
     }
 
@@ -4384,6 +4511,8 @@ mod tests {
                 &mut draw,
                 Vec3::ZERO,
                 &level,
+                None,
+                &mut Vec::new(),
                 || DEFAULT_BOUNDS,
                 |_, _| true,
                 |draw| {
@@ -4582,6 +4711,8 @@ mod tests {
                 &mut draw,
                 Vec3::new(4.0, -2.0, 3.0),
                 &level,
+                None,
+                &mut Vec::new(),
                 || {
                     bounds_calls.set(bounds_calls.get() + 1);
                     DEFAULT_BOUNDS
@@ -4689,6 +4820,8 @@ mod tests {
                         0x42
                     },
                 },
+                None,
+                &mut Vec::new(),
                 || DEFAULT_BOUNDS,
                 |_, _| true,
                 |draw| {
@@ -4720,6 +4853,7 @@ mod tests {
             drawn,
             DEFAULT_BOUNDS,
             &[vertex(0.5)],
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             0,
@@ -4765,6 +4899,7 @@ mod tests {
             &[vertex(0.25)],
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             2,
         );
         assert!(kept.get(pos, KEY, drawn, 2).is_none());
@@ -4802,6 +4937,8 @@ mod tests {
                 &mut draw,
                 Vec3::ZERO,
                 &level,
+                None,
+                &mut Vec::new(),
                 || DEFAULT_BOUNDS,
                 |_, _| true,
                 |draw| {
@@ -4834,6 +4971,7 @@ mod tests {
             &[vertex(0.0)],
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             0,
         );
         kept.keep(
@@ -4842,6 +4980,7 @@ mod tests {
             m,
             DEFAULT_BOUNDS,
             &[vertex(0.0)],
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             0,
@@ -4915,6 +5054,8 @@ mod tests {
                     origin: corner,
                     light_at: &|_| 0xF0,
                 },
+                None,
+                &mut Vec::new(),
                 || bounds,
                 |b, _| mod_block_entity_visible(Some(&frustum), origin, b, in_eye, false),
                 |draw| {
@@ -4974,6 +5115,257 @@ mod tests {
             4
         );
         assert_eq!(submits.get(), 3);
+    }
+
+    /// What `crumbling(true)` covers, and no more: `quad`, `cube`, `block`, `model` and
+    /// `terrain_model` drawn under it are projected onto the crack's destroy stage
+    /// (`breaking::entity_geometry`), the same draws under `crumbling(false)` are not, and
+    /// `crumbling_stage` reads the stage the frame gave the block (none for a posed frame).
+    #[test]
+    #[ignore = "daily"]
+    fn crumbling_overlay_covers_quad_cube_block_model_and_terrain_model_only_while_on() {
+        use super::super::host::draw::GameBlockEntityDrawContext;
+        use mod_api::BlockEntityDrawContext;
+
+        let _fixture =
+            sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            game.gui
+                .atlas
+                .sprites
+                .insert("mymod:block/casing".into(), sprite());
+            let id = Identifier::parse("minecraft:block/grass_block").unwrap();
+            let model = game.render_assets().model(&id).unwrap();
+            let game = &*game;
+            let mut faces = [None; 6];
+            faces[1] = Some(mod_api::CubeFace::new("mymod:block/casing"));
+            let all_kinds = |surface: &mut BlockEntityDraw| {
+                let mut drawn = GameBlockEntityDrawContext {
+                    game,
+                    surface: &mut *surface,
+                };
+                assert!(drawn.quad(
+                    "mymod:block/casing",
+                    [[0.0, 1.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+                    [0.0, 0.0, 16.0, 16.0],
+                    0xFFFFFF,
+                ));
+                assert!(drawn.cube([0.0; 3], [16.0; 3], faces, 0xFFFFFF));
+                assert_eq!(drawn.model(model, u32::MAX), Ok(()));
+                assert_eq!(
+                    drawn.terrain_model(model, mod_api::TerrainModelOptions::default()),
+                    Ok(())
+                );
+                assert!(game.native_draw_block(surface, BlockStateId(1)));
+            };
+
+            let posed = BlockEntityDraw::posed(
+                0.0,
+                0,
+                0xF0F0,
+                [0; 3],
+                Mat4::IDENTITY,
+                diffuse_lights(false),
+                Vec::new(),
+            );
+            assert_eq!(game.native_draw_crumbling_stage(&posed), None);
+
+            let mut surface = draw();
+            surface.crumbling_stage = Some(4);
+            assert_eq!(game.native_draw_crumbling_stage(&surface), Some(4));
+            all_kinds(&mut surface);
+            let before = surface.vertices.len();
+            assert!(before > 0 && surface.crumbled.is_empty(), "off by default");
+            surface.crumbling(true);
+            all_kinds(&mut surface);
+            surface.crumbling(false);
+            let covered = surface.vertices.len() - before;
+            assert!(covered > 0);
+            all_kinds(&mut surface);
+            assert_eq!(
+                surface.crumbled,
+                [(before, before + covered)],
+                "the five draws under crumbling(true) and no others"
+            );
+
+            let stage = [0.25, 0.5];
+            let mut overlay = Vec::new();
+            crack_overlay(
+                &surface.vertices,
+                &surface.crumbled,
+                Vec3::ZERO,
+                stage,
+                &mut overlay,
+            );
+            assert_eq!(overlay.len(), covered);
+            let mut expected = surface.vertices[before..before + covered].to_vec();
+            sunrise_client::breaking::entity_geometry(&mut expected, Vec3::ZERO, stage);
+            let bytes = |vertices: &[Vertex]| bytemuck::cast_slice::<_, u8>(vertices).to_vec();
+            assert_eq!(bytes(&overlay), bytes(&expected));
+            assert!(overlay.iter().all(|v| {
+                v.layer == 11 && v.light == sunrise_client::breaking::stage_light(stage)
+            }));
+        });
+    }
+
+    /// Kept geometry marked with `crumbling` shows the crack as it is each frame without a new
+    /// submit: it starts, advances to another stage sprite, turns with `spin` and clears, and
+    /// only the marked part is covered.
+    #[test]
+    fn kept_crumbling_follows_the_stage_and_the_spin_without_a_new_submit() {
+        use std::cell::Cell;
+        use sunrise_client::breaking::stage_light;
+
+        const TURNING: [[f32; 3]; 4] = [
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ];
+        let pos = [1, 2, 3];
+        let mut kept = KeptGeometry::default();
+        let mut draw = draw();
+        let revision = machine();
+        let submits = Cell::new(0);
+        let seen = Cell::new(None);
+        let mut frame = |tick: f64, crack: Option<(u8, Option<[f32; 2]>)>| {
+            draw.view =
+                mod_api::WorldRenderView::new(&DEFAULT_DRAW_CAMERA, None, 0.0, 0, tick, false, &[]);
+            draw.vertices.clear();
+            let mut overlay = Vec::new();
+            kept.render(
+                pos,
+                KEY,
+                revision,
+                &mut draw,
+                Vec3::ZERO,
+                &LevelLight {
+                    origin: DVec3::from_array(pos.map(f64::from)),
+                    light_at: &|_| 0xF0,
+                },
+                crack,
+                &mut overlay,
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    submits.set(submits.get() + 1);
+                    seen.set(draw.crumbling_stage);
+                    draw.keep();
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                    draw.crumbling(true);
+                    draw.spin([0.0, 1.0, 0.0], [0.5; 3], 90.0, 0.0);
+                    draw.quad(TURNING, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                    draw.crumbling(false);
+                    draw.still();
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                },
+            );
+            (draw.vertices.clone(), overlay)
+        };
+        let positions = |vertices: &[Vertex]| vertices.iter().map(|v| v.pos).collect::<Vec<_>>();
+
+        // Submitted once, with the stage the frame gave the block.
+        let (vertices, overlay) = frame(0.0, Some((2, Some([0.25, 0.5]))));
+        assert_eq!((submits.get(), seen.get()), (1, Some(2)));
+        assert_eq!(vertices.len(), 12);
+        assert_eq!(overlay.len(), 4, "only the part drawn under crumbling");
+        assert!(overlay.iter().all(|v| {
+            v.layer == 11 && v.light == stage_light([0.25, 0.5]) && v.color == 0xFFFF_FFFF
+        }));
+        let at_rest = positions(&vertices[4..8]);
+        assert_eq!(positions(&overlay), at_rest);
+
+        // The stage advances: no new submit, the new stage's sprite, and the part's turn.
+        let (vertices, overlay) = frame(1.0, Some((3, Some([0.5, 0.5]))));
+        assert_eq!(submits.get(), 1);
+        assert_eq!(overlay.len(), 4);
+        assert!(overlay.iter().all(|v| v.light == stage_light([0.5, 0.5])));
+        let turned = positions(&vertices[4..8]);
+        assert_ne!(turned, at_rest, "the part turned with the clock");
+        assert_eq!(positions(&overlay), turned, "and the crack with it");
+
+        // The crack clears, then starts again, still with no new submit.
+        let (vertices, overlay) = frame(1.0, None);
+        assert_eq!((submits.get(), vertices.len(), overlay.len()), (1, 12, 0));
+        let (_, overlay) = frame(2.0, Some((9, Some([0.0, 0.5]))));
+        assert_eq!((submits.get(), overlay.len()), (1, 4));
+        // A stage whose sprite the atlas lacks draws no crack.
+        let (_, overlay) = frame(2.0, Some((4, None)));
+        assert!(overlay.is_empty());
+    }
+
+    /// A prepared model recorded between two crumbling draws is spliced in at its record: the
+    /// range the two draws merged into splits around it, so the model is not cracked and both
+    /// quads are.
+    #[test]
+    fn a_deferred_model_between_crumbling_draws_splits_the_merged_range() {
+        let quad = bake_flat_face(
+            [0.0; 3],
+            [16.0; 3],
+            [0.0, 0.0, 16.0, 16.0],
+            Direction::South,
+            Material {
+                sprite: String::new(),
+                force_translucent: false,
+            },
+            -1,
+        )
+        .unwrap();
+        let slots = vec![Some(vec![super::super::minecarts::PreparedModelFace::new(
+            &quad,
+            sprite(),
+        )])];
+        let mut d = draw();
+        d.prepared = true;
+        d.crumbling(true);
+        d.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+        d.crumbling(false);
+        assert!(d.defer_model(0, 1, u32::MAX));
+        d.crumbling(true);
+        d.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+        assert_eq!(d.crumbled, [(0, 8)], "the two quads' ranges join");
+        d.bake_recorded(&slots);
+        assert_eq!(d.vertices.len(), 12);
+        assert_eq!(
+            d.crumbled,
+            [(0, 4), (8, 12)],
+            "the model at 4..8 is left out"
+        );
+    }
+
+    /// `crumbling` lasts to the end of one block entity's draw: the next one drawn through the
+    /// same scratch draw is not covered unless it turns it on.
+    #[test]
+    fn crumbling_ends_with_the_block_entity_that_turned_it_on() {
+        let level = LevelLight {
+            origin: DVec3::ZERO,
+            light_at: &|_| 0,
+        };
+        let mut kept = KeptGeometry::default();
+        let mut draw = draw();
+        let mut overlay = Vec::new();
+        for (pos, crumbling) in [([0, 64, 0], true), ([1, 64, 0], false)] {
+            kept.render(
+                pos,
+                KEY,
+                machine(),
+                &mut draw,
+                Vec3::ZERO,
+                &level,
+                Some((1, Some([0.0, 0.0]))),
+                &mut overlay,
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    if crumbling {
+                        draw.crumbling(true);
+                    }
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                },
+            );
+        }
+        assert_eq!(draw.vertices.len(), 8);
+        assert_eq!(overlay.len(), 4, "the first block's quad alone");
     }
 
     /// A carried block entity's submit draws one level deep: inside it `refuse_nested` refuses,

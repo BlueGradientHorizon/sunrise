@@ -395,6 +395,14 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
         self.game.native_draw_unlit(&mut *self.surface, on)
     }
     #[inline]
+    fn crumbling_stage(&self) -> Option<u8> {
+        self.game.native_draw_crumbling_stage(&*self.surface)
+    }
+    #[inline]
+    fn crumbling(&mut self, on: bool) {
+        self.game.native_draw_crumbling(&mut *self.surface, on)
+    }
+    #[inline]
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         self.game
             .native_draw_quad(&mut *self.surface, sprite, corners, uv, tint)
@@ -1030,10 +1038,11 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
             return Err(FrameGraphError::Unavailable);
         };
         let owner = mod_api::content::crash::current_native_mod();
-        // Validate imported mod render target ownership/liveness up front.
+        // Validate imported mod render target ownership/liveness, and the mip level the pass
+        // renders into, up front.
         if let FrameTarget::Mod(rt) = desc.target {
             renderer
-                .render_target_size(owner, rt)
+                .resolve_mod_render_target(owner, rt, desc.mip_level)
                 .map_err(FrameGraphError::InvalidTarget)?;
         }
         for &t in desc.reads.iter().chain(desc.writes.iter()) {
@@ -1052,6 +1061,11 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
                 renderer.warn_frame_graph_cycle_once(passes);
             }
             return Err(err);
+        }
+        if matches!(desc.target, FrameTarget::Transient(_)) && desc.mip_level != 0 {
+            return Err(FrameGraphError::InvalidTarget(
+                RenderTargetError::InvalidMipLevels,
+            ));
         }
         let mut recorded =
             sunrise_client::gfx::mod_frame_graph::RecordedFramePass::from_descriptor(desc, owner);

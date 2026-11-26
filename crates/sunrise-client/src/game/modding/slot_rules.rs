@@ -55,4 +55,41 @@ impl SlotRules for Game<'_> {
             });
         });
     }
+
+    fn pick_all_listens(&self, menu: &str) -> bool {
+        mod_api::__private::has_part_hook(mod_api::HookId::MenuPickAll)
+            && mod_api::__private::menu_listens(mod_api::HookId::MenuPickAll, menu)
+    }
+
+    fn pick_all(
+        &self,
+        menu: &str,
+        slot: usize,
+        carried: &ItemStack,
+        stack: &ItemStack,
+        context: SlotContext<'_>,
+        allowed: &mut bool,
+    ) {
+        ASKING_SLOT_RULES.with(|active| {
+            // As for slot rules: a Part's nested menu read answers without asking Parts again.
+            let Ok(_asking) = active.try_borrow_mut() else {
+                return;
+            };
+            // A stack that cannot cross to the API is not asked about: the gather takes it.
+            let (Ok(carried), Ok(stack)) = (carried.try_into_api(), stack.try_into_api()) else {
+                return;
+            };
+            let read = |container, index| context.slot(container, index)?.try_into_api().ok();
+            let view = mod_api::MenuSlotContext::new(context.player, context.pos, &read);
+            self.native_menu_pick_all(mod_api::__private::MenuPickAllCall {
+                menu,
+                slot,
+                container: context.container,
+                carried: &carried,
+                stack: &stack,
+                context: &view,
+                allowed,
+            });
+        });
+    }
 }

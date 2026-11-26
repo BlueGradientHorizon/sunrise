@@ -4,6 +4,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from dataclasses import asdict
@@ -11,10 +12,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from test_ci_concurrency import yaml
+from tests.os_support import needs_runner_shell
 from tools.ci import daily_fuzz as fuzz
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tools/ci/vendor/pyyaml-6.0.3.zip'))
+import yaml
+
 COMMIT = 'ab0123456789'
 URL = 'https://github.com/example/project/actions/runs/1'
 SCENE = {'family': 'persist', 'seed': 1, 'steps': [{'k': 'read_block', 'at': [7, 0, 7]}]}
@@ -151,6 +155,7 @@ class DailyWorkflowTests(unittest.TestCase):
             self.assertNotIn('fuzz', dependencies(job))
         self.assertEqual(daily['fuzz']['uses'], './.github/workflows/parity-fuzz.yml')
 
+    @needs_runner_shell
     def test_private_directory_step_prunes_only_old_runs_and_needs_no_keep_variable(self):
         workflow = yaml.load((ROOT / '.github/workflows/parity-fuzz.yml').read_text(), Loader=yaml.BaseLoader)
         step = next(s for job in workflow['jobs'].values() for s in job['steps'] if s.get('id') == 'private')

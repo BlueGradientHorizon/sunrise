@@ -47,7 +47,8 @@ mod item_no_physics;
 pub mod nameplate;
 mod obstacles;
 pub use fluids::{
-    fall_reset_hit, fluid_flow, swept_fluid_contact, update_entity_fluids, water_clip,
+    fall_reset_hit, fluid_flow, scan_entity_fluids, swept_fluid_contact, update_entity_fluids,
+    water_clip,
 };
 pub use item_merge::{ItemCells, merge_with_neighbours, merge_with_neighbours_recording};
 pub use obstacles::ObstacleGrid;

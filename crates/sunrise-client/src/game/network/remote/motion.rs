@@ -34,8 +34,7 @@ impl Game<'_> {
         // dragon where it spawned (#2083).
         let dragon = self.dragon.as_ref().is_some_and(|d| d.id as i32 == id);
         let driven = self.driven_mount().is_some_and(|m| m.id as i32 == id)
-            || u32::try_from(id)
-                .is_ok_and(|id| self.controls_boat(id) && self.boats.iter().any(|b| b.id == id));
+            || u32::try_from(id).is_ok_and(|id| self.controls_boat(id));
         let mob = self
             .mob_index
             .get_mut(&mut self.mobs, id as u32)
@@ -532,7 +531,7 @@ impl Game<'_> {
         // Vanilla `Entity.canSimulateMovement`: refuse vehicles driven by the
         // local player (`AUTHORITATIVE_SIDE`) and every `SERVER_AND_CLIENT` body.
         let simulated = self.driven_mount().is_some_and(|m| m.id == entity_id)
-            || (self.controls_boat(entity_id) && self.boats.iter().any(|b| b.id == entity_id))
+            || self.controls_boat(entity_id)
             || self.dropped.iter().any(|d| d.id == entity_id)
             || remote.pending_items.contains_key(&id)
             || self.tnts.iter().any(|t| t.id == entity_id)

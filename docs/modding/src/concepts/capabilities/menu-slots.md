@@ -150,6 +150,32 @@ gives up all of its stack or none of it. The slot's own rule comes first, and on
 with `menu_quick_move` is asked the pickup rule before that hook. Each live check during a click
 queries the rule directly against the current slots.
 
+### Keeping a slot out of pick-all
+
+`menu_pick_all` is vanilla's `AbstractContainerMenu.canTakeItemForPickAll(carried, slot)` for a mod menu type, on
+its `MenuPart`. A double click's gather asks it for each slot it would take from, on the server and in client
+prediction alike: `event.carried` is the cursor's stack being gathered into, `event.stack` the slot's, and `slot`
+and `container` name the slot as `menu_slot_rules` does. It is asked only once the game's own checks passed (the
+cursor can take the item and the slot's pickup rule allows it), so `event.allowed` arrives true. Set it false to
+leave that slot's stack where it is; the gather goes on to the next slot. A part's refusal stands: a later part
+cannot turn it back. Only registered mod menu types are asked; vanilla menu types keep their own answer. The
+pickup rule above still decides whether a slot gives anything at all, while `menu_pick_all` keeps a slot out of
+the gather alone, such as a locked slot the player may still click.
+
+```rust,ignore
+struct LockedSlots;
+#[mod_api::sunrise_part]
+impl mod_api::MenuPart for LockedSlots {
+    fn menu_pick_all(&self, _: &dyn mod_api::Host, event: &mut mod_api::MenuPickAllEvent<'_>) {
+        if event.container == mod_api::MenuContainer::Main && event.slot < 3 {
+            event.allowed = false;
+        }
+    }
+}
+// In Hooks::register:
+// registrar.menu_part("mymod:workbench", LockedSlots);
+```
+
 ## Taking from a slot
 
 `menu_slot_take` (v3) is `Slot.onTake` for a mod menu type, on its `MenuPart`: heard on the server after a player

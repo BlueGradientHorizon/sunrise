@@ -153,7 +153,6 @@
     "sunrise-client -> sunrise-optifine",
     "sunrise-client -> sunrise-shaders",
     "sunrise-client -> sunrise-theme",
-    "sunrise-client-lib -> sunrise-dualsense",
     "sunrise-client-lib -> sunrise-mcp",
     "sunrise-client-lib -> sunrise-optifine",
     "sunrise-client-lib -> sunrise-shaders",
