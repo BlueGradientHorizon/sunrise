@@ -12,12 +12,11 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-try:
-    from . import lab, test_rust_parity as base, test_model_baking_parity as baking
-except ImportError:
-    import lab
-    import test_rust_parity as base
-    import test_model_baking_parity as baking
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, test_rust_parity as base, test_model_baking_parity as baking
 
 FIXTURE = 'game::explosion::tests::explosion_items_parity_fixture'
 

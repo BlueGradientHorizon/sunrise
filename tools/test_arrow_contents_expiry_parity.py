@@ -16,11 +16,11 @@ import re
 from pathlib import Path
 import subprocess
 import tempfile
-try:
-    from . import lab, test_rust_parity as artifacts
-except ImportError:
-    import lab
-    import test_rust_parity as artifacts
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, test_rust_parity as artifacts
 
 TEST = 'game::potions::arrow_contents::actual_arrow_contents_match_pinned_methods'
 ORACLE = 'VanillaArrowContentsExpiryOracle'

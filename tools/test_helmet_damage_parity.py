@@ -7,10 +7,11 @@ import re
 import subprocess
 import tempfile
 
-try:
-    from . import lab, test_rust_parity as base, integration_env
-except ImportError:
-    import lab, test_rust_parity as base, integration_env
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, test_rust_parity as base, integration_env
 
 PARITY_RUST_SCOPE = [
     'crates/sunrise-world/src/living_hurt.rs',

@@ -30,16 +30,11 @@ import zipfile
 import zlib
 from pathlib import Path
 
-if __package__:
-    from . import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12
-    from .lab import free_port, offline_uuid, parse_varint, varint
-else:
-    import datafix_paths
-    import datafix_scene as scene
-    import datafix_scene_12 as scene12
-    from lab import free_port, offline_uuid, parse_varint, varint
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from tools import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12
+from tools.lab import free_port, offline_uuid, parse_varint, varint
+
 LOCAL = datafix_paths.writable_root()
 
 
@@ -138,8 +133,10 @@ def java(version):
     if component in ('java-runtime-delta', 'java-runtime-epsilon'):
         return 'java'  # 1.20.5 on: the JDK that runs 26.3 runs them
     runtimes = LOCK[platform()]
+    if component not in {name for plat, names in LOCK.items() if plat != 'note' for name in names}:
+        raise ValueError(f'{version}: javaVersion component {component} is in no platform of research-lock.json java_runtimes')
     if component not in runtimes:
-        component = 'java-runtime-gamma'
+        component = 'java-runtime-gamma'  # research-lock.json java_runtimes note: a component this platform lacks falls back to gamma
     pin = runtimes[component]
     home = LOCAL / 'java' / f'{component}-{platform()}'
     stamp = home / '.complete'
@@ -230,8 +227,8 @@ class Server:
             self.process.stdin.write('stop\n')
             self.process.stdin.flush()
             self.process.wait(120)
-        except Exception:
-            self.process.kill()
+        finally:
+            self.process.kill()   # a no-op once it has exited; after a failed stop the error still reaches the caller
             self.process.wait()   # the world folder and port are reused only once the process is gone
 
 
