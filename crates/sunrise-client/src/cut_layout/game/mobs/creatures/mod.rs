@@ -86,8 +86,8 @@ pub(in crate::game) mod projectile_targets_tests;
 #[cfg(test)]
 #[path = "projectiles_120_124_tests.rs"]
 pub(in crate::game) mod projectiles_120_124_tests;
-pub(in crate::game) mod pufferfish_player;
+pub(crate) mod pufferfish_player;
 
-pub(in crate::game) mod death_weapon;
+pub(crate) mod death_weapon;
 
-pub(in crate::game) mod borrowed_tick;
+pub(crate) mod borrowed_tick;

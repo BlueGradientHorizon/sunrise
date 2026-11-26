@@ -1220,8 +1220,8 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
-pub(in crate::game) mod native_items;
+pub(crate) mod native_items;
 
-pub(in crate::game) mod native_fluids;
+pub(crate) mod native_fluids;
 
-pub(in crate::game) mod crafter;
+pub(crate) mod crafter;

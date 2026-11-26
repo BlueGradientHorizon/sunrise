@@ -20,4 +20,4 @@ pub(in crate::game) mod fishing_medium_tests;
 #[path = "fishing_tests/fishing_targets_tests.rs"]
 pub(in crate::game) mod fishing_targets_tests;
 #[path = "fishing/impact.rs"]
-pub(in crate::game) mod impact;
+pub(crate) mod impact;

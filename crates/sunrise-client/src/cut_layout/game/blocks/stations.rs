@@ -361,7 +361,7 @@ pub(in crate::game) mod brewing_tick_tests;
 #[path = "stations/stonecutter_scroll_tests.rs"]
 pub(in crate::game) mod stonecutter_scroll_tests;
 #[path = "stations/tooltip.rs"]
-pub(in crate::game) mod tooltip;
+pub(crate) mod tooltip;
 
 #[path = "stations/anvil.rs"]
-pub(in crate::game) mod anvil;
+pub(crate) mod anvil;

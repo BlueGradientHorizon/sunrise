@@ -241,4 +241,4 @@ pub(in crate::game) mod cobweb_tests {
 }
 use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
 
-pub(in crate::game) mod below_world;
+pub(crate) mod below_world;

@@ -121,116 +121,116 @@ pub(in crate::game) mod vehicle_removal_tests_client;
 pub(in crate::game) mod world_fluids_tests_client;
 #[cfg(feature = "client")]
 #[path = "world/server_packs.rs"]
-pub(in crate::game) mod server_packs;
+pub(crate) mod server_packs;
 
 #[path = "world/packs/mod.rs"]
-pub(in crate::game) mod packs;
+pub(crate) mod packs;
 
 #[cfg(feature = "client")]
 #[path = "runtime/launch_timeout.rs"]
-pub(in crate::game) mod launch_timeout;
+pub(crate) mod launch_timeout;
 
 #[path = "runtime/agent/mod.rs"]
-pub(in crate::game) mod agent;
+pub(crate) mod agent;
 
 #[path = "network/viewed_worlds/mod.rs"]
-pub(in crate::game) mod viewed_worlds;
+pub(crate) mod viewed_worlds;
 
 #[path = "network/remote_vehicles.rs"]
-pub(in crate::game) mod remote_vehicles;
+pub(crate) mod remote_vehicles;
 
 #[cfg(feature = "client")]
 #[path = "network/remote_tags.rs"]
-pub(in crate::game) mod remote_tags;
+pub(crate) mod remote_tags;
 
 #[cfg(feature = "client")]
 #[path = "network/remote_removal.rs"]
-pub(in crate::game) mod remote_removal;
+pub(crate) mod remote_removal;
 
 #[path = "network/remote_projectiles.rs"]
-pub(in crate::game) mod remote_projectiles;
+pub(crate) mod remote_projectiles;
 
 #[path = "network/remote_chunks.rs"]
-pub(in crate::game) mod remote_chunks;
+pub(crate) mod remote_chunks;
 
 #[path = "network/remote_camera.rs"]
-pub(in crate::game) mod remote_camera;
+pub(crate) mod remote_camera;
 
 #[path = "network/remote/mod_client.rs"]
-pub(in crate::game) mod remote_client;
+pub(crate) mod remote_client;
 
 #[cfg(feature = "client")]
 #[path = "network/lan_particles_client.rs"]
-pub(in crate::game) mod lan_particles_client;
+pub(crate) mod lan_particles_client;
 
 #[cfg(feature = "client")]
 #[path = "network/lan/mod_client.rs"]
-pub(in crate::game) mod lan_client;
+pub(crate) mod lan_client;
 
 #[cfg(feature = "client")]
 #[path = "native_hooks/mod_client.rs"]
-pub(in crate::game) mod native_hooks_client;
+pub(crate) mod native_hooks_client;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_visuals.rs"]
-pub(in crate::game) mod native_visuals;
+pub(crate) mod native_visuals;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_viewed_levels.rs"]
-pub(in crate::game) mod native_viewed_levels;
+pub(crate) mod native_viewed_levels;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_special_renderers.rs"]
-pub(in crate::game) mod native_special_renderers;
+pub(crate) mod native_special_renderers;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_panel.rs"]
-pub(in crate::game) mod native_panel;
+pub(crate) mod native_panel;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_packet_builders.rs"]
-pub(in crate::game) mod native_packet_builders;
+pub(crate) mod native_packet_builders;
 
 #[path = "modding/native_net.rs"]
-pub(in crate::game) mod native_net;
+pub(crate) mod native_net;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_local_player_writes.rs"]
-pub(in crate::game) mod native_local_player_writes;
+pub(crate) mod native_local_player_writes;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_living_effects_client.rs"]
-pub(in crate::game) mod native_living_effects_client;
+pub(crate) mod native_living_effects_client;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_key_mappings.rs"]
-pub(in crate::game) mod native_key_mappings;
+pub(crate) mod native_key_mappings;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_item_particles.rs"]
-pub(in crate::game) mod native_item_particles;
+pub(crate) mod native_item_particles;
 
 #[path = "modding/native_hotbar_slot.rs"]
-pub(in crate::game) mod native_hotbar_slot;
+pub(crate) mod native_hotbar_slot;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_riding_client.rs"]
-pub(in crate::game) mod native_entity_riding_client;
+pub(crate) mod native_entity_riding_client;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_refs_client.rs"]
-pub(in crate::game) mod native_entity_refs_client;
+pub(crate) mod native_entity_refs_client;
 
 #[path = "modding/native_connection_groups.rs"]
-pub(in crate::game) mod native_connection_groups;
+pub(crate) mod native_connection_groups;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_client_particles.rs"]
-pub(in crate::game) mod native_client_particles;
+pub(crate) mod native_client_particles;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_block_sprites.rs"]
-pub(in crate::game) mod native_block_sprites;
+pub(crate) mod native_block_sprites;
 
 #[cfg(feature = "client")]
 #[path = "modding/native_block_entity_draw.rs"]
@@ -238,265 +238,265 @@ pub mod native_block_entity_draw;
 
 #[cfg(feature = "client")]
 #[path = "modding/gui_clips.rs"]
-pub(in crate::game) mod gui_clips;
+pub(crate) mod gui_clips;
 
 #[cfg(feature = "client")]
 #[path = "modding/entity_sizes_client.rs"]
-pub(in crate::game) mod entity_sizes_client;
+pub(crate) mod entity_sizes_client;
 
 #[cfg(feature = "client")]
 #[path = "modding/client_executor.rs"]
-pub(in crate::game) mod client_executor;
+pub(crate) mod client_executor;
 
 #[cfg(feature = "client")]
 #[path = "modding/client_cracks.rs"]
-pub(in crate::game) mod client_cracks;
+pub(crate) mod client_cracks;
 
 #[cfg(feature = "client")]
 #[path = "mobs/sniffers.rs"]
-pub(in crate::game) mod sniffers;
+pub(crate) mod sniffers;
 
 #[cfg(feature = "client")]
 #[path = "mobs/ominous_item_spawner/mod_client.rs"]
-pub(in crate::game) mod ominous_item_spawner_client;
+pub(crate) mod ominous_item_spawner_client;
 
 #[cfg(feature = "client")]
 #[path = "mobs/nautili.rs"]
-pub(in crate::game) mod nautili;
+pub(crate) mod nautili;
 
 #[cfg(feature = "client")]
 #[path = "mobs/dragon_client.rs"]
-pub(in crate::game) mod dragon_client;
+pub(crate) mod dragon_client;
 
 #[cfg(feature = "client")]
 #[path = "mobs/creatures/mod_client.rs"]
-pub(in crate::game) mod creatures_client;
+pub(crate) mod creatures_client;
 
 #[cfg(feature = "client")]
 #[path = "mobs/breezes_client.rs"]
-pub(in crate::game) mod breezes_client;
+pub(crate) mod breezes_client;
 
 #[cfg(feature = "client")]
 #[path = "items/use_hand_client.rs"]
-pub(in crate::game) mod use_hand_client;
+pub(crate) mod use_hand_client;
 
 #[cfg(feature = "client")]
 #[path = "items/trident_client.rs"]
-pub(in crate::game) mod trident_client;
+pub(crate) mod trident_client;
 
 #[cfg(feature = "client")]
 #[path = "items/trading_client.rs"]
-pub(in crate::game) mod trading_client;
+pub(crate) mod trading_client;
 
 #[path = "items/recipe_book.rs"]
-pub(in crate::game) mod recipe_book;
+pub(crate) mod recipe_book;
 
 #[path = "items/potions.rs"]
-pub(in crate::game) mod potions;
+pub(crate) mod potions;
 
 #[cfg(feature = "client")]
 #[path = "items/item_use_client.rs"]
-pub(in crate::game) mod item_use_client;
+pub(crate) mod item_use_client;
 
 #[cfg(feature = "client")]
 #[path = "items/item_entities_client.rs"]
-pub(in crate::game) mod item_entities_client;
+pub(crate) mod item_entities_client;
 
 #[cfg(feature = "client")]
 #[path = "items/fishing_client.rs"]
-pub(in crate::game) mod fishing_client;
+pub(crate) mod fishing_client;
 
 #[cfg(feature = "client")]
 #[path = "items/crossbow_client.rs"]
-pub(in crate::game) mod crossbow_client;
+pub(crate) mod crossbow_client;
 
 #[cfg(feature = "client")]
 #[path = "items/combat_client.rs"]
-pub(in crate::game) mod combat_client;
+pub(crate) mod combat_client;
 
 #[cfg(feature = "client")]
 #[path = "items/client_attack_targets.rs"]
-pub(in crate::game) mod client_attack_targets;
+pub(crate) mod client_attack_targets;
 
 #[cfg(feature = "client")]
 #[path = "interface/wind_client.rs"]
-pub(in crate::game) mod wind_client;
+pub(crate) mod wind_client;
 
 #[cfg(feature = "client")]
 #[path = "interface/tutorial.rs"]
-pub(in crate::game) mod tutorial;
+pub(crate) mod tutorial;
 
 #[cfg(feature = "client")]
 #[path = "interface/titles.rs"]
-pub(in crate::game) mod titles;
+pub(crate) mod titles;
 
 #[cfg(feature = "client")]
 #[path = "interface/startup_menu.rs"]
-pub(in crate::game) mod startup_menu;
+pub(crate) mod startup_menu;
 
 #[cfg(feature = "client")]
 #[path = "interface/spectator.rs"]
-pub(in crate::game) mod spectator;
+pub(crate) mod spectator;
 
 #[cfg(feature = "client")]
 #[path = "interface/sign_edit.rs"]
-pub(in crate::game) mod sign_edit;
+pub(crate) mod sign_edit;
 
 #[cfg(feature = "client")]
 #[path = "interface/shader_packs.rs"]
-pub(in crate::game) mod shader_packs;
+pub(crate) mod shader_packs;
 
 #[path = "interface/screen_build.rs"]
-pub(in crate::game) mod screen_build;
+pub(crate) mod screen_build;
 
 #[path = "interface/render_tick.rs"]
-pub(in crate::game) mod render_tick;
+pub(crate) mod render_tick;
 
 #[cfg(feature = "client")]
 #[path = "interface/pointer_capture.rs"]
-pub(in crate::game) mod pointer_capture;
+pub(crate) mod pointer_capture;
 
 #[cfg(feature = "client")]
 #[path = "interface/play_keys.rs"]
-pub(in crate::game) mod play_keys;
+pub(crate) mod play_keys;
 
 #[cfg(feature = "client")]
 #[path = "interface/pad/mod.rs"]
-pub(in crate::game) mod pad;
+pub(crate) mod pad;
 
 #[path = "interface/options.rs"]
-pub(in crate::game) mod options;
+pub(crate) mod options;
 
 #[cfg(feature = "client")]
 #[path = "interface/native_client_screens.rs"]
-pub(in crate::game) mod native_client_screens;
+pub(crate) mod native_client_screens;
 
 #[path = "interface/names.rs"]
-pub(in crate::game) mod names;
+pub(crate) mod names;
 
 #[cfg(feature = "client")]
 #[path = "interface/music.rs"]
-pub(in crate::game) mod music;
+pub(crate) mod music;
 
 #[path = "interface/mount_menu.rs"]
-pub(in crate::game) mod mount_menu;
+pub(crate) mod mount_menu;
 
 #[cfg(feature = "client")]
 #[path = "interface/mod_toasts.rs"]
-pub(in crate::game) mod mod_toasts;
+pub(crate) mod mod_toasts;
 
 #[cfg(feature = "client")]
 #[path = "interface/locator_bar.rs"]
-pub(in crate::game) mod locator_bar;
+pub(crate) mod locator_bar;
 
 #[cfg(feature = "client")]
 #[path = "interface/level_particles_client.rs"]
-pub(in crate::game) mod level_particles_client;
+pub(crate) mod level_particles_client;
 
 #[path = "interface/item_draw.rs"]
-pub(in crate::game) mod item_draw;
+pub(crate) mod item_draw;
 
 #[cfg(feature = "client")]
 #[path = "interface/gui_entity.rs"]
-pub(in crate::game) mod gui_entity;
+pub(crate) mod gui_entity;
 
 #[cfg(feature = "client")]
 #[path = "interface/extras.rs"]
-pub(in crate::game) mod extras;
+pub(crate) mod extras;
 
 #[path = "interface/dialogs.rs"]
-pub(in crate::game) mod dialogs;
+pub(crate) mod dialogs;
 
 #[cfg(feature = "client")]
 #[path = "interface/demo_intro.rs"]
-pub(in crate::game) mod demo_intro;
+pub(crate) mod demo_intro;
 
 #[cfg(feature = "client")]
 #[path = "interface/debug_options.rs"]
-pub(in crate::game) mod debug_options;
+pub(crate) mod debug_options;
 
 #[path = "interface/debug_keys.rs"]
-pub(in crate::game) mod debug_keys;
+pub(crate) mod debug_keys;
 
 #[cfg(feature = "client")]
 #[path = "interface/container_hooks.rs"]
-pub(in crate::game) mod container_hooks;
+pub(crate) mod container_hooks;
 
 #[cfg(feature = "client")]
 #[path = "interface/clipboard.rs"]
-pub(in crate::game) mod clipboard;
+pub(crate) mod clipboard;
 
 #[cfg(feature = "client")]
 #[path = "interface/client_reload/mod.rs"]
-pub(in crate::game) mod client_reload;
+pub(crate) mod client_reload;
 
 #[cfg(feature = "client")]
 #[path = "interface/client_ambient.rs"]
-pub(in crate::game) mod client_ambient;
+pub(crate) mod client_ambient;
 
 #[cfg(feature = "client")]
 #[path = "interface/chat.rs"]
-pub(in crate::game) mod chat;
+pub(crate) mod chat;
 
 #[path = "interface/books.rs"]
-pub(in crate::game) mod books;
+pub(crate) mod books;
 
 #[cfg(feature = "client")]
 #[path = "interface/advancements_screen.rs"]
-pub(in crate::game) mod advancements_screen;
+pub(crate) mod advancements_screen;
 
 #[cfg(feature = "client")]
 #[path = "interface/advancements/mod_client.rs"]
-pub(in crate::game) mod advancements_client;
+pub(crate) mod advancements_client;
 
 #[path = "entities/text_displays.rs"]
-pub(in crate::game) mod text_displays;
+pub(crate) mod text_displays;
 
 #[cfg(feature = "client")]
 #[path = "entities/pick_accumulator.rs"]
-pub(in crate::game) mod pick_accumulator;
+pub(crate) mod pick_accumulator;
 
 #[cfg(feature = "client")]
 #[path = "entities/minecarts_client.rs"]
-pub(in crate::game) mod minecarts_client;
+pub(crate) mod minecarts_client;
 
 #[path = "entities/lightning.rs"]
-pub(in crate::game) mod lightning;
+pub(crate) mod lightning;
 
 #[cfg(feature = "client")]
 #[path = "entities/fireworks_client.rs"]
-pub(in crate::game) mod fireworks_client;
+pub(crate) mod fireworks_client;
 
 #[path = "blocks/stations.rs"]
-pub(in crate::game) mod stations;
+pub(crate) mod stations;
 
 #[cfg(feature = "client")]
 #[path = "blocks/shelf.rs"]
-pub(in crate::game) mod shelf;
+pub(crate) mod shelf;
 
 #[path = "blocks/sculk.rs"]
-pub(in crate::game) mod sculk;
+pub(crate) mod sculk;
 
 #[cfg(feature = "client")]
 #[path = "blocks/piston_push_client.rs"]
-pub(in crate::game) mod piston_push_client;
+pub(crate) mod piston_push_client;
 
 #[cfg(feature = "client")]
 #[path = "blocks/nether_portal_client.rs"]
-pub(in crate::game) mod nether_portal_client;
+pub(crate) mod nether_portal_client;
 
 #[cfg(feature = "client")]
 #[path = "blocks/cauldron_interactions_client.rs"]
-pub(in crate::game) mod cauldron_interactions_client;
+pub(crate) mod cauldron_interactions_client;
 
 #[cfg(feature = "client")]
 #[path = "blocks/block_entity_anims_client.rs"]
-pub(in crate::game) mod block_entity_anims_client;
+pub(crate) mod block_entity_anims_client;
 
 #[cfg(feature = "client")]
 #[path = "administration/commands/mod_client.rs"]
-pub(in crate::game) mod commands_client;
+pub(crate) mod commands_client;
 
 #[cfg(feature = "client")]
 #[path = "administration/command_minecarts.rs"]
-pub(in crate::game) mod command_minecarts;
+pub(crate) mod command_minecarts;

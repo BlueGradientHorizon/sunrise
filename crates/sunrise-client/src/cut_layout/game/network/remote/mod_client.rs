@@ -393,22 +393,22 @@ pub(in crate::game) mod rider_tick_tests;
 mod sync_reads;
 
 #[path = "raw_ingress_client.rs"]
-pub(in crate::game) mod raw_ingress;
+pub(crate) mod raw_ingress;
 
 #[path = "raw_ingress.rs"]
-pub(in crate::game) mod ingress_state;
+pub(crate) mod ingress_state;
 
 #[path = "item_use_client.rs"]
-pub(in crate::game) mod item_use;
+pub(crate) mod item_use;
 
 #[path = "fall_sound_client.rs"]
-pub(in crate::game) mod fall_sound;
+pub(crate) mod fall_sound;
 
 #[path = "client_level_tick_client.rs"]
-pub(in crate::game) mod client_level_tick;
+pub(crate) mod client_level_tick;
 
 #[path = "attack_target_client.rs"]
-pub(in crate::game) mod attack_target;
+pub(crate) mod attack_target;
 
 #[path = "abilities_client.rs"]
-pub(in crate::game) mod abilities;
+pub(crate) mod abilities;

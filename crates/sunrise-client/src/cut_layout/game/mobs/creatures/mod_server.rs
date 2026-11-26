@@ -80,12 +80,12 @@ pub(in crate::game) mod leash_without_item_postbaseline_controls;
 #[path = "projectiles_120_124_tests_server.rs"]
 pub(in crate::game) mod projectiles_120_124_tests;
 #[path = "pufferfish_player_server.rs"]
-pub(in crate::game) mod pufferfish_player;
+pub(crate) mod pufferfish_player;
 
 #[path = "death_weapon_server.rs"]
-pub(in crate::game) mod death_weapon;
+pub(crate) mod death_weapon;
 
-pub(in crate::game) mod conversion_identity;
+pub(crate) mod conversion_identity;
 
 #[path = "borrowed_tick_server.rs"]
-pub(in crate::game) mod borrowed_tick;
+pub(crate) mod borrowed_tick;

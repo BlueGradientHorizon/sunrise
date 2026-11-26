@@ -1,10 +1,10 @@
 
-pub(in crate::game) mod tick;
+pub(crate) mod tick;
 
 include!("shared.rs");
 
-pub(in crate::game) mod pickups;
+pub(crate) mod pickups;
 
-pub(in crate::game) mod movement;
+pub(crate) mod movement;
 
-pub(in crate::game) mod guest_body;
+pub(crate) mod guest_body;

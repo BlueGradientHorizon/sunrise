@@ -166,4 +166,4 @@ pub(in crate::game) mod tests {
     }
 }
 #[path = "fireworks/impact.rs"]
-pub(in crate::game) mod impact;
+pub(crate) mod impact;

@@ -24,34 +24,34 @@ pub(in crate::game) mod runtime_environment_tests;
 #[path = "shared/screen_position_tests_client.rs"]
 pub(in crate::game) mod screen_position_tests;
 #[path = "shared/book_screen_client.rs"]
-pub(in crate::game) mod book_screen;
+pub(crate) mod book_screen;
 
 #[path = "resolve_player_skin_client.rs"]
-pub(in crate::game) mod resolve_player_skin;
+pub(crate) mod resolve_player_skin;
 
 #[path = "render_gui_pre_client.rs"]
-pub(in crate::game) mod render_gui_pre;
+pub(crate) mod render_gui_pre;
 
 #[path = "menu_extra_data_client.rs"]
-pub(in crate::game) mod menu_extra_data;
+pub(crate) mod menu_extra_data;
 
 #[path = "hud_mode_client.rs"]
-pub(in crate::game) mod hud_mode;
+pub(crate) mod hud_mode;
 
 #[path = "customize_chat_overlay_client.rs"]
-pub(in crate::game) mod customize_chat_overlay;
+pub(crate) mod customize_chat_overlay;
 
 #[path = "client_pick_client.rs"]
-pub(in crate::game) mod client_pick;
+pub(crate) mod client_pick;
 
 #[path = "client_input_reads_tests_client.rs"]
-pub(in crate::game) mod client_input_reads_tests;
+pub(crate) mod client_input_reads_tests;
 
 #[path = "camera_type_client.rs"]
-pub(in crate::game) mod camera_type;
+pub(crate) mod camera_type;
 
 #[path = "build_creative_mode_tab_contents_client.rs"]
-pub(in crate::game) mod build_creative_mode_tab_contents;
+pub(crate) mod build_creative_mode_tab_contents;
 
 #[path = "base_client.rs"]
-pub(in crate::game) mod base;
+pub(crate) mod base;

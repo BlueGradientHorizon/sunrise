@@ -28,34 +28,34 @@ pub(in crate::game) mod placement_context_tests;
 #[path = "trident_family_tests_server.rs"]
 pub(in crate::game) mod trident_family_tests;
 #[path = "server_tick_rate_changed_server.rs"]
-pub(in crate::game) mod server_tick_rate_changed;
+pub(crate) mod server_tick_rate_changed;
 
 #[path = "register_enchantment_damage_effects_server.rs"]
-pub(in crate::game) mod register_enchantment_damage_effects;
+pub(crate) mod register_enchantment_damage_effects;
 
 #[path = "player_leave_server.rs"]
-pub(in crate::game) mod player_leave;
+pub(crate) mod player_leave;
 
 #[path = "incoming_tests_server.rs"]
-pub(in crate::game) mod incoming_tests;
+pub(crate) mod incoming_tests;
 
 #[path = "general_entity_tick_server.rs"]
-pub(in crate::game) mod general_entity_tick;
+pub(crate) mod general_entity_tick;
 
 #[path = "farmland_trample_server.rs"]
-pub(in crate::game) mod farmland_trample;
+pub(crate) mod farmland_trample;
 
 #[path = "entity_inside_server.rs"]
-pub(in crate::game) mod entity_inside;
+pub(crate) mod entity_inside;
 
 #[path = "build_creative_mode_tab_contents_server.rs"]
-pub(in crate::game) mod build_creative_mode_tab_contents;
+pub(crate) mod build_creative_mode_tab_contents;
 
 #[path = "block_entity_tick_server.rs"]
-pub(in crate::game) mod block_entity_tick;
+pub(crate) mod block_entity_tick;
 
 #[path = "block_entity_save_additional_tests_server.rs"]
-pub(in crate::game) mod block_entity_save_additional_tests;
+pub(crate) mod block_entity_save_additional_tests;
 
 #[path = "base_server.rs"]
-pub(in crate::game) mod base;
+pub(crate) mod base;

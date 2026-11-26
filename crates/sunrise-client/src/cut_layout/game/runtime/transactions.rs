@@ -1438,7 +1438,7 @@ use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommon
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 #[path = "transactions/scratch.rs"]
-pub(in crate::game) mod scratch;
+pub(crate) mod scratch;
 
 #[path = "transactions/decision.rs"]
-pub(in crate::game) mod decision;
+pub(crate) mod decision;

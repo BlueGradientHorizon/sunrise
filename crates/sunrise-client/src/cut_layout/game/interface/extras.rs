@@ -1,3 +1,3 @@
 
 #[path = "extras/mouse_tweaks.rs"]
-pub(in crate::game) mod mouse_tweaks;
+pub(crate) mod mouse_tweaks;

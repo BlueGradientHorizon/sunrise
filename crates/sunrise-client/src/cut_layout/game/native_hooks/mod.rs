@@ -45,76 +45,76 @@ pub(in crate::game) mod registered_potions_tests;
 pub(in crate::game) mod remove_block_tests;
 #[cfg(test)]
 pub(in crate::game) mod trident_family_tests;
-pub(in crate::game) mod tick_target_millis;
+pub(crate) mod tick_target_millis;
 
 include!("shared.rs");
 
-pub(in crate::game) mod server_tick_rate_changed;
+pub(crate) mod server_tick_rate_changed;
 
-pub(in crate::game) mod runtime_environment;
+pub(crate) mod runtime_environment;
 
-pub(in crate::game) mod render_tooltip_texture;
+pub(crate) mod render_tooltip_texture;
 
-pub(in crate::game) mod render_gui_post;
+pub(crate) mod render_gui_post;
 
-pub(in crate::game) mod render_frame_pre;
+pub(crate) mod render_frame_pre;
 
-pub(in crate::game) mod register_preset_editors;
+pub(crate) mod register_preset_editors;
 
-pub(in crate::game) mod player_leave;
+pub(crate) mod player_leave;
 
-pub(in crate::game) mod player_heart_type;
+pub(crate) mod player_heart_type;
 
-pub(in crate::game) mod player_game_mode_changed;
+pub(crate) mod player_game_mode_changed;
 
-pub(in crate::game) mod player_bed_leave;
+pub(crate) mod player_bed_leave;
 
-pub(in crate::game) mod mod_mismatch;
+pub(crate) mod mod_mismatch;
 
-pub(in crate::game) mod math;
+pub(crate) mod math;
 
-pub(in crate::game) mod living_death_post;
+pub(crate) mod living_death_post;
 
-pub(in crate::game) mod level_tick_tests;
+pub(crate) mod level_tick_tests;
 
-pub(in crate::game) mod item_toss;
+pub(crate) mod item_toss;
 
-pub(in crate::game) mod item_destroyed;
+pub(crate) mod item_destroyed;
 
-pub(in crate::game) mod ingredient_test;
+pub(crate) mod ingredient_test;
 
-pub(in crate::game) mod fluid_tick;
+pub(crate) mod fluid_tick;
 
-pub(in crate::game) mod flip_frame;
+pub(crate) mod flip_frame;
 
-pub(in crate::game) mod farmland_trample;
+pub(crate) mod farmland_trample;
 
-pub(in crate::game) mod entity_place;
+pub(crate) mod entity_place;
 
-pub(in crate::game) mod entity_interact_specific;
+pub(crate) mod entity_interact_specific;
 
-pub(in crate::game) mod entity_inside;
+pub(crate) mod entity_inside;
 
-pub(in crate::game) mod customize_boss_event_progress;
+pub(crate) mod customize_boss_event_progress;
 
-pub(in crate::game) mod component_hover;
+pub(crate) mod component_hover;
 
-pub(in crate::game) mod client_visual_text;
+pub(crate) mod client_visual_text;
 
-pub(in crate::game) mod client_text;
+pub(crate) mod client_text;
 
-pub(in crate::game) mod client_packet_send;
+pub(crate) mod client_packet_send;
 
-pub(in crate::game) mod client_information_updated;
+pub(crate) mod client_information_updated;
 
-pub(in crate::game) mod build_creative_mode_tab_contents;
+pub(crate) mod build_creative_mode_tab_contents;
 
-pub(in crate::game) mod block_landing;
+pub(crate) mod block_landing;
 
-pub(in crate::game) mod block_entity_save_additional_tests;
+pub(crate) mod block_entity_save_additional_tests;
 
-pub(in crate::game) mod block_entity_on_load_tests;
+pub(crate) mod block_entity_on_load_tests;
 
-pub(in crate::game) mod block_entity_on_load_routes_tests;
+pub(crate) mod block_entity_on_load_routes_tests;
 
-pub(in crate::game) mod base;
+pub(crate) mod base;

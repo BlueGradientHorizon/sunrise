@@ -782,10 +782,10 @@ pub(crate) fn run_with(
 #[path = "game/interface/tests/sign_use_tests.rs"]
 mod sign_use_tests;
 #[path = "game/server_side.rs"]
-pub(in crate::game) mod server_side;
+pub(crate) mod server_side;
 
 #[path = "game/runtime/transactions.rs"]
-pub(in crate::game) mod transactions;
+pub(crate) mod transactions;
 
 #[path = "game/runtime/resource_load.rs"]
 mod resource_load;
@@ -799,13 +799,13 @@ mod lan_actions;
 mod native_hooks;
 
 #[path = "game/modding/payload_transport.rs"]
-pub(in crate::game) mod payload_transport;
+pub(crate) mod payload_transport;
 
 #[path = "game/modding/pack_finders/mod.rs"]
-pub(in crate::game) mod pack_discovery;
+pub(crate) mod pack_discovery;
 
 #[path = "game/modding/native_world_read.rs"]
-pub(in crate::game) mod native_world_read_common;
+pub(crate) mod native_world_read_common;
 
 #[path = "game/modding/native_tags.rs"]
 mod native_tags;
@@ -823,7 +823,7 @@ mod native_server;
 pub(crate) mod native_rotate;
 
 #[path = "game/modding/native_resources.rs"]
-pub(in crate::game) mod native_resources;
+pub(crate) mod native_resources;
 
 #[path = "game/modding/native_player_reach.rs"]
 mod native_player_reach;
@@ -832,16 +832,16 @@ mod native_player_reach;
 mod native_player_death;
 
 #[path = "game/modding/native_passages.rs"]
-pub(in crate::game) mod native_passages;
+pub(crate) mod native_passages;
 
 #[path = "game/modding/native_living_blocking.rs"]
-pub(in crate::game) mod native_living_blocking;
+pub(crate) mod native_living_blocking;
 
 #[path = "game/modding/native_item_registry.rs"]
 mod native_item_registry;
 
 #[path = "game/modding/native_entity_selectors.rs"]
-pub(in crate::game) mod native_entity_selectors;
+pub(crate) mod native_entity_selectors;
 
 #[path = "game/modding/native_effect_category.rs"]
 mod native_effect_category;
@@ -856,7 +856,7 @@ mod native_data_bound;
 mod native_configs;
 
 #[path = "game/modding/native_components.rs"]
-pub(in crate::game) mod native_components;
+pub(crate) mod native_components;
 
 #[path = "game/modding/native_cauldron_contents.rs"]
 mod native_cauldron_contents;
@@ -871,10 +871,10 @@ pub(crate) mod native_block_sounds;
 mod native_block_extra_models;
 
 #[path = "game/modding/mod_api_host.rs"]
-pub(in crate::game) mod mod_api_host;
+pub(crate) mod mod_api_host;
 
 #[path = "game/modding/load_conditions.rs"]
-pub(in crate::game) mod load_conditions;
+pub(crate) mod load_conditions;
 
 #[path = "game/modding/entity_sections.rs"]
 mod entity_sections;
@@ -892,7 +892,7 @@ mod breezes;
 mod equip_answers;
 
 #[path = "game/interface/chat_common.rs"]
-pub(in crate::game) mod chat_common;
+pub(crate) mod chat_common;
 
 mod host;
 
@@ -903,7 +903,7 @@ mod residency_tick;
 mod minecarts;
 
 #[path = "game/entities/general.rs"]
-pub(in crate::game) mod general;
+pub(crate) mod general;
 
 #[path = "game/entities/fireworks.rs"]
 mod fireworks;
@@ -912,7 +912,7 @@ mod fireworks;
 mod closest_space;
 
 #[path = "game/client_side.rs"]
-pub(in crate::game) mod client_side;
+pub(crate) mod client_side;
 
 #[path = "game/blocks/piston_push.rs"]
 mod piston_push;
@@ -921,7 +921,7 @@ mod piston_push;
 mod piston_carry;
 
 #[path = "game/blocks/cauldron_interactions.rs"]
-pub(in crate::game) mod cauldron_interactions;
+pub(crate) mod cauldron_interactions;
 
 #[path = "game/blocks/block_items.rs"]
 mod block_items;

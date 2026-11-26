@@ -293,7 +293,7 @@ mod console_source_tests {
 }
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-pub(in crate::game) mod report;
+pub(crate) mod report;
 
 mod missing_mods;
 

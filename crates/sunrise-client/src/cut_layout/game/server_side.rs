@@ -333,637 +333,637 @@ pub(in crate::game) mod stacked_on_other_tests_server;
 #[path = "blocks/world_fluids_tests.rs"]
 pub(in crate::game) mod world_fluids_tests;
 #[path = "world/world_loading.rs"]
-pub(in crate::game) mod world_loading;
+pub(crate) mod world_loading;
 
 #[path = "world/wake_time.rs"]
-pub(in crate::game) mod wake_time;
+pub(crate) mod wake_time;
 
 #[path = "world/villager_professions.rs"]
-pub(in crate::game) mod villager_professions;
+pub(crate) mod villager_professions;
 
 #[path = "world/view_pass.rs"]
-pub(in crate::game) mod view_pass;
+pub(crate) mod view_pass;
 
 #[path = "world/storage_server.rs"]
-pub(in crate::game) mod storage_server;
+pub(crate) mod storage_server;
 
 #[path = "world/server_travel.rs"]
-pub(in crate::game) mod server_travel;
+pub(crate) mod server_travel;
 
 #[path = "world/server_reload/mod.rs"]
-pub(in crate::game) mod server_reload;
+pub(crate) mod server_reload;
 
 #[path = "world/server_lifecycle/mod.rs"]
-pub(in crate::game) mod server_lifecycle;
+pub(crate) mod server_lifecycle;
 
 #[path = "world/saving_server.rs"]
-pub(in crate::game) mod saving_server;
+pub(crate) mod saving_server;
 
 #[path = "world/persist.rs"]
-pub(in crate::game) mod persist;
+pub(crate) mod persist;
 
 #[path = "world/ordered_tick.rs"]
-pub(in crate::game) mod ordered_tick;
+pub(crate) mod ordered_tick;
 
 #[path = "world/levels.rs"]
-pub(in crate::game) mod levels;
+pub(crate) mod levels;
 
 #[path = "world/integrated.rs"]
-pub(in crate::game) mod integrated;
+pub(crate) mod integrated;
 
 #[path = "world/end.rs"]
-pub(in crate::game) mod end;
+pub(crate) mod end;
 
 #[path = "world/container_loot.rs"]
-pub(in crate::game) mod container_loot;
+pub(crate) mod container_loot;
 
 #[path = "world/carrier_transfers.rs"]
-pub(in crate::game) mod carrier_transfers;
+pub(crate) mod carrier_transfers;
 
 #[path = "network/remote_tags_server.rs"]
-pub(in crate::game) mod remote_tags_server;
+pub(crate) mod remote_tags_server;
 
 #[path = "network/remote/mod_server.rs"]
-pub(in crate::game) mod remote_server;
+pub(crate) mod remote_server;
 
 #[path = "network/lan_vehicles.rs"]
-pub(in crate::game) mod lan_vehicles;
+pub(crate) mod lan_vehicles;
 
 #[path = "network/lan_trading.rs"]
-pub(in crate::game) mod lan_trading;
+pub(crate) mod lan_trading;
 
 #[path = "network/lan_stations.rs"]
-pub(in crate::game) mod lan_stations;
+pub(crate) mod lan_stations;
 
 #[path = "network/lan_pvp.rs"]
-pub(in crate::game) mod lan_pvp;
+pub(crate) mod lan_pvp;
 
 #[path = "network/lan_mount_menu.rs"]
-pub(in crate::game) mod lan_mount_menu;
+pub(crate) mod lan_mount_menu;
 
 #[path = "network/lan_entities.rs"]
-pub(in crate::game) mod lan_entities;
+pub(crate) mod lan_entities;
 
 #[path = "network/lan_crafting.rs"]
-pub(in crate::game) mod lan_crafting;
+pub(crate) mod lan_crafting;
 
 #[path = "network/lan_attributes.rs"]
-pub(in crate::game) mod lan_attributes;
+pub(crate) mod lan_attributes;
 
 #[path = "network/lan_actions/mod_server.rs"]
-pub(in crate::game) mod lan_actions_server;
+pub(crate) mod lan_actions_server;
 
 #[path = "network/lan/mod.rs"]
-pub(in crate::game) mod lan;
+pub(crate) mod lan;
 
 #[path = "native_hooks/mod_server.rs"]
-pub(in crate::game) mod native_hooks_server;
+pub(crate) mod native_hooks_server;
 
 #[path = "modding/original_player.rs"]
-pub(in crate::game) mod original_player;
+pub(crate) mod original_player;
 
 #[path = "modding/native_world_columns_server.rs"]
-pub(in crate::game) mod native_world_columns_server;
+pub(crate) mod native_world_columns_server;
 
 #[path = "modding/native_unspawned_mob.rs"]
-pub(in crate::game) mod native_unspawned_mob;
+pub(crate) mod native_unspawned_mob;
 
 #[path = "modding/native_tick_time.rs"]
-pub(in crate::game) mod native_tick_time;
+pub(crate) mod native_tick_time;
 
 #[path = "modding/native_sound_refs.rs"]
-pub(in crate::game) mod native_sound_refs;
+pub(crate) mod native_sound_refs;
 
 #[path = "modding/native_server_server.rs"]
-pub(in crate::game) mod native_server_server;
+pub(crate) mod native_server_server;
 
 #[path = "modding/native_server_distances.rs"]
-pub(in crate::game) mod native_server_distances;
+pub(crate) mod native_server_distances;
 
 #[path = "modding/native_scoreboard.rs"]
-pub(in crate::game) mod native_scoreboard;
+pub(crate) mod native_scoreboard;
 
 #[path = "modding/native_ride_player.rs"]
-pub(in crate::game) mod native_ride_player;
+pub(crate) mod native_ride_player;
 
 #[path = "modding/native_recipes_server.rs"]
-pub(in crate::game) mod native_recipes_server;
+pub(crate) mod native_recipes_server;
 
 #[path = "modding/native_raid_refs.rs"]
-pub(in crate::game) mod native_raid_refs;
+pub(crate) mod native_raid_refs;
 
 #[path = "modding/native_projectiles.rs"]
-pub(in crate::game) mod native_projectiles;
+pub(crate) mod native_projectiles;
 
 #[path = "modding/native_projectile_refs.rs"]
-pub(in crate::game) mod native_projectile_refs;
+pub(crate) mod native_projectile_refs;
 
 #[path = "modding/native_profiles.rs"]
-pub(in crate::game) mod native_profiles;
+pub(crate) mod native_profiles;
 
 #[path = "modding/native_portal_destination.rs"]
-pub(in crate::game) mod native_portal_destination;
+pub(crate) mod native_portal_destination;
 
 #[path = "modding/native_player_stats.rs"]
-pub(in crate::game) mod native_player_stats;
+pub(crate) mod native_player_stats;
 
 #[path = "modding/native_player_modes.rs"]
-pub(in crate::game) mod native_player_modes;
+pub(crate) mod native_player_modes;
 
 #[path = "modding/native_player_food_server.rs"]
-pub(in crate::game) mod native_player_food_server;
+pub(crate) mod native_player_food_server;
 
 #[path = "modding/native_player_cooldowns.rs"]
-pub(in crate::game) mod native_player_cooldowns;
+pub(crate) mod native_player_cooldowns;
 
 #[path = "modding/native_player_break.rs"]
-pub(in crate::game) mod native_player_break;
+pub(crate) mod native_player_break;
 
 #[path = "modding/native_pending_children.rs"]
-pub(in crate::game) mod native_pending_children;
+pub(crate) mod native_pending_children;
 
 #[path = "modding/native_mob_refs.rs"]
-pub(in crate::game) mod native_mob_refs;
+pub(crate) mod native_mob_refs;
 
 #[path = "modding/native_mob_navigation.rs"]
-pub(in crate::game) mod native_mob_navigation;
+pub(crate) mod native_mob_navigation;
 
 #[path = "modding/native_mob_goals.rs"]
-pub(in crate::game) mod native_mob_goals;
+pub(crate) mod native_mob_goals;
 
 #[path = "modding/native_minecart_refs.rs"]
-pub(in crate::game) mod native_minecart_refs;
+pub(crate) mod native_minecart_refs;
 
 #[path = "modding/native_merchant_refs.rs"]
-pub(in crate::game) mod native_merchant_refs;
+pub(crate) mod native_merchant_refs;
 
 #[path = "modding/native_menus.rs"]
-pub(in crate::game) mod native_menus;
+pub(crate) mod native_menus;
 
 #[path = "modding/native_menu_refs_server.rs"]
-pub(in crate::game) mod native_menu_refs_server;
+pub(crate) mod native_menu_refs_server;
 
 #[path = "modding/native_menu_places.rs"]
-pub(in crate::game) mod native_menu_places;
+pub(crate) mod native_menu_places;
 
 #[path = "modding/native_living_writes.rs"]
-pub(in crate::game) mod native_living_writes;
+pub(crate) mod native_living_writes;
 
 #[path = "modding/native_living_refs.rs"]
-pub(in crate::game) mod native_living_refs;
+pub(crate) mod native_living_refs;
 
 #[path = "modding/native_living_position.rs"]
-pub(in crate::game) mod native_living_position;
+pub(crate) mod native_living_position;
 
 #[path = "modding/native_living_flags.rs"]
-pub(in crate::game) mod native_living_flags;
+pub(crate) mod native_living_flags;
 
 #[path = "modding/native_living_effects.rs"]
-pub(in crate::game) mod native_living_effects;
+pub(crate) mod native_living_effects;
 
 #[path = "modding/native_living_absorption_server.rs"]
-pub(in crate::game) mod native_living_absorption_server;
+pub(crate) mod native_living_absorption_server;
 
 #[path = "modding/native_lifecycle.rs"]
-pub(in crate::game) mod native_lifecycle;
+pub(crate) mod native_lifecycle;
 
 #[path = "modding/native_level_world.rs"]
-pub(in crate::game) mod native_level_world;
+pub(crate) mod native_level_world;
 
 #[path = "modding/native_level_weather.rs"]
-pub(in crate::game) mod native_level_weather;
+pub(crate) mod native_level_weather;
 
 #[path = "modding/native_level_ticking.rs"]
-pub(in crate::game) mod native_level_ticking;
+pub(crate) mod native_level_ticking;
 
 #[path = "modding/native_level_spawning.rs"]
-pub(in crate::game) mod native_level_spawning;
+pub(crate) mod native_level_spawning;
 
 #[path = "modding/native_level_refs.rs"]
-pub(in crate::game) mod native_level_refs;
+pub(crate) mod native_level_refs;
 
 #[path = "modding/native_level_players.rs"]
-pub(in crate::game) mod native_level_players;
+pub(crate) mod native_level_players;
 
 #[path = "modding/native_level_items.rs"]
-pub(in crate::game) mod native_level_items;
+pub(crate) mod native_level_items;
 
 #[path = "modding/native_level_events.rs"]
-pub(in crate::game) mod native_level_events;
+pub(crate) mod native_level_events;
 
 #[path = "modding/native_level_effects.rs"]
-pub(in crate::game) mod native_level_effects;
+pub(crate) mod native_level_effects;
 
 #[path = "modding/native_level_border.rs"]
-pub(in crate::game) mod native_level_border;
+pub(crate) mod native_level_border;
 
 #[path = "modding/native_item_places.rs"]
-pub(in crate::game) mod native_item_places;
+pub(crate) mod native_item_places;
 
 #[path = "modding/native_item_entity_refs_server.rs"]
-pub(in crate::game) mod native_item_entity_refs_server;
+pub(crate) mod native_item_entity_refs_server;
 
 #[path = "modding/native_harvest_queries.rs"]
-pub(in crate::game) mod native_harvest_queries;
+pub(crate) mod native_harvest_queries;
 
 #[path = "modding/native_goal_ticks/mod.rs"]
-pub(in crate::game) mod native_goal_ticks;
+pub(crate) mod native_goal_ticks;
 
 #[path = "modding/native_game_event_context.rs"]
-pub(in crate::game) mod native_game_event_context;
+pub(crate) mod native_game_event_context;
 
 #[path = "modding/native_fishing_hook_refs.rs"]
-pub(in crate::game) mod native_fishing_hook_refs;
+pub(crate) mod native_fishing_hook_refs;
 
 #[path = "modding/native_entity_state.rs"]
-pub(in crate::game) mod native_entity_state;
+pub(crate) mod native_entity_state;
 
 #[path = "modding/native_entity_sounds.rs"]
-pub(in crate::game) mod native_entity_sounds;
+pub(crate) mod native_entity_sounds;
 
 #[path = "modding/native_entity_selectors_server.rs"]
-pub(in crate::game) mod native_entity_selectors_server;
+pub(crate) mod native_entity_selectors_server;
 
 #[path = "modding/native_entity_refs.rs"]
-pub(in crate::game) mod native_entity_refs;
+pub(crate) mod native_entity_refs;
 
 #[path = "modding/native_entity_motion.rs"]
-pub(in crate::game) mod native_entity_motion;
+pub(crate) mod native_entity_motion;
 
 #[path = "modding/native_entity_kind.rs"]
-pub(in crate::game) mod native_entity_kind;
+pub(crate) mod native_entity_kind;
 
 #[path = "modding/native_entity_invulnerable.rs"]
-pub(in crate::game) mod native_entity_invulnerable;
+pub(crate) mod native_entity_invulnerable;
 
 #[path = "modding/native_entity_data.rs"]
-pub(in crate::game) mod native_entity_data;
+pub(crate) mod native_entity_data;
 
 #[path = "modding/native_entity_commands.rs"]
-pub(in crate::game) mod native_entity_commands;
+pub(crate) mod native_entity_commands;
 
 #[path = "modding/native_entities.rs"]
-pub(in crate::game) mod native_entities;
+pub(crate) mod native_entities;
 
 #[path = "modding/native_dragon_refs.rs"]
-pub(in crate::game) mod native_dragon_refs;
+pub(crate) mod native_dragon_refs;
 
 #[path = "modding/native_display_refs.rs"]
-pub(in crate::game) mod native_display_refs;
+pub(crate) mod native_display_refs;
 
 #[path = "modding/native_config_files.rs"]
-pub(in crate::game) mod native_config_files;
+pub(crate) mod native_config_files;
 
 #[path = "modding/native_components_server.rs"]
-pub(in crate::game) mod native_components_server;
+pub(crate) mod native_components_server;
 
 #[path = "modding/native_command_reads.rs"]
-pub(in crate::game) mod native_command_reads;
+pub(crate) mod native_command_reads;
 
 #[path = "modding/native_collision_exclusions.rs"]
-pub(in crate::game) mod native_collision_exclusions;
+pub(crate) mod native_collision_exclusions;
 
 #[path = "modding/native_chunk_save.rs"]
-pub(in crate::game) mod native_chunk_save;
+pub(crate) mod native_chunk_save;
 
 #[path = "modding/native_chunk_queries.rs"]
-pub(in crate::game) mod native_chunk_queries;
+pub(crate) mod native_chunk_queries;
 
 #[path = "modding/native_chunk_areas.rs"]
-pub(in crate::game) mod native_chunk_areas;
+pub(crate) mod native_chunk_areas;
 
 #[path = "modding/native_boss_bar_refs.rs"]
-pub(in crate::game) mod native_boss_bar_refs;
+pub(crate) mod native_boss_bar_refs;
 
 #[path = "modding/native_book_apply.rs"]
-pub(in crate::game) mod native_book_apply;
+pub(crate) mod native_book_apply;
 
 #[path = "modding/native_block_entity_refs.rs"]
-pub(in crate::game) mod native_block_entity_refs;
+pub(crate) mod native_block_entity_refs;
 
 #[path = "modding/native_ai_pause.rs"]
-pub(in crate::game) mod native_ai_pause;
+pub(crate) mod native_ai_pause;
 
 #[path = "modding/mods/mod_server.rs"]
-pub(in crate::game) mod mods_server;
+pub(crate) mod mods_server;
 
 #[path = "modding/entity_initialization.rs"]
-pub(in crate::game) mod entity_initialization;
+pub(crate) mod entity_initialization;
 
 #[path = "modding/attachment_sync.rs"]
-pub(in crate::game) mod attachment_sync;
+pub(crate) mod attachment_sync;
 
 #[path = "modding/attachment_index/mod.rs"]
-pub(in crate::game) mod attachment_index;
+pub(crate) mod attachment_index;
 
 #[path = "mobs/xp_orb_targeting.rs"]
-pub(in crate::game) mod xp_orb_targeting;
+pub(crate) mod xp_orb_targeting;
 
 #[path = "mobs/villagers.rs"]
-pub(in crate::game) mod villagers;
+pub(crate) mod villagers;
 
 #[path = "mobs/sulfur_cubes.rs"]
-pub(in crate::game) mod sulfur_cubes;
+pub(crate) mod sulfur_cubes;
 
 #[path = "mobs/spawner.rs"]
-pub(in crate::game) mod spawner;
+pub(crate) mod spawner;
 
 #[path = "mobs/shoulders.rs"]
-pub(in crate::game) mod shoulders;
+pub(crate) mod shoulders;
 
 #[path = "mobs/raids/mod.rs"]
-pub(in crate::game) mod raids;
+pub(crate) mod raids;
 
 #[path = "mobs/piglins.rs"]
-pub(in crate::game) mod piglins;
+pub(crate) mod piglins;
 
 #[path = "mobs/pandas.rs"]
-pub(in crate::game) mod pandas;
+pub(crate) mod pandas;
 
 #[path = "mobs/ominous_item_spawner/mod.rs"]
-pub(in crate::game) mod ominous_item_spawner;
+pub(crate) mod ominous_item_spawner;
 
 #[path = "mobs/natural_spawning.rs"]
-pub(in crate::game) mod natural_spawning;
+pub(crate) mod natural_spawning;
 
 #[path = "mobs/mounts.rs"]
-pub(in crate::game) mod mounts;
+pub(crate) mod mounts;
 
 #[path = "mobs/mob_looting.rs"]
-pub(in crate::game) mod mob_looting;
+pub(crate) mod mob_looting;
 
 #[path = "mobs/mob_gear.rs"]
-pub(in crate::game) mod mob_gear;
+pub(crate) mod mob_gear;
 
 #[path = "mobs/living_attributes.rs"]
-pub(in crate::game) mod living_attributes;
+pub(crate) mod living_attributes;
 
 #[path = "mobs/ghasts.rs"]
-pub(in crate::game) mod ghasts;
+pub(crate) mod ghasts;
 
 #[path = "mobs/finalize_spawn.rs"]
-pub(in crate::game) mod finalize_spawn;
+pub(crate) mod finalize_spawn;
 
 #[path = "mobs/fangs.rs"]
-pub(in crate::game) mod fangs;
+pub(crate) mod fangs;
 
 #[path = "mobs/enderman.rs"]
-pub(in crate::game) mod enderman;
+pub(crate) mod enderman;
 
 #[path = "mobs/dragon.rs"]
-pub(in crate::game) mod dragon;
+pub(crate) mod dragon;
 
 #[path = "mobs/custom_spawners.rs"]
-pub(in crate::game) mod custom_spawners;
+pub(crate) mod custom_spawners;
 
 #[path = "mobs/creatures/mod_server.rs"]
-pub(in crate::game) mod creatures_server;
+pub(crate) mod creatures_server;
 
 #[path = "mobs/creaking.rs"]
-pub(in crate::game) mod creaking;
+pub(crate) mod creaking;
 
 #[path = "mobs/copper_golems_server.rs"]
-pub(in crate::game) mod copper_golems_server;
+pub(crate) mod copper_golems_server;
 
 #[path = "mobs/cat_spawner.rs"]
-pub(in crate::game) mod cat_spawner;
+pub(crate) mod cat_spawner;
 
 #[path = "mobs/beehives.rs"]
-pub(in crate::game) mod beehives;
+pub(crate) mod beehives;
 
 #[path = "items/use_hand.rs"]
-pub(in crate::game) mod use_hand;
+pub(crate) mod use_hand;
 
 #[path = "items/trident.rs"]
-pub(in crate::game) mod trident;
+pub(crate) mod trident;
 
 #[path = "items/special_attack_fixture.rs"]
-pub(in crate::game) mod special_attack_fixture;
+pub(crate) mod special_attack_fixture;
 
 #[path = "items/shield.rs"]
-pub(in crate::game) mod shield;
+pub(crate) mod shield;
 
 #[path = "items/potions_server.rs"]
-pub(in crate::game) mod potions_server;
+pub(crate) mod potions_server;
 
 #[path = "items/mace.rs"]
-pub(in crate::game) mod mace;
+pub(crate) mod mace;
 
 #[path = "items/item_use.rs"]
-pub(in crate::game) mod item_use;
+pub(crate) mod item_use;
 
 #[path = "items/item_entities.rs"]
-pub(in crate::game) mod item_entities;
+pub(crate) mod item_entities;
 
 #[path = "items/fishing.rs"]
-pub(in crate::game) mod fishing;
+pub(crate) mod fishing;
 
 #[path = "items/enchant_effects.rs"]
-pub(in crate::game) mod enchant_effects;
+pub(crate) mod enchant_effects;
 
 #[path = "items/crossbow.rs"]
-pub(in crate::game) mod crossbow;
+pub(crate) mod crossbow;
 
 #[path = "items/consume.rs"]
-pub(in crate::game) mod consume;
+pub(crate) mod consume;
 
 #[path = "items/combat.rs"]
-pub(in crate::game) mod combat;
+pub(crate) mod combat;
 
 #[path = "items/buckets.rs"]
-pub(in crate::game) mod buckets;
+pub(crate) mod buckets;
 
 #[path = "interface/wind.rs"]
-pub(in crate::game) mod wind;
+pub(crate) mod wind;
 
 #[path = "interface/stats.rs"]
-pub(in crate::game) mod stats;
+pub(crate) mod stats;
 
 #[path = "interface/shader_packs_server.rs"]
-pub(in crate::game) mod shader_packs_server;
+pub(crate) mod shader_packs_server;
 
 #[path = "interface/scoreboard/mod.rs"]
-pub(in crate::game) mod scoreboard;
+pub(crate) mod scoreboard;
 
 #[path = "interface/play_keys_server.rs"]
-pub(in crate::game) mod play_keys_server;
+pub(crate) mod play_keys_server;
 
 #[path = "interface/level_sounds.rs"]
-pub(in crate::game) mod level_sounds;
+pub(crate) mod level_sounds;
 
 #[path = "interface/level_particles.rs"]
-pub(in crate::game) mod level_particles;
+pub(crate) mod level_particles;
 
 #[path = "interface/game_mode.rs"]
-pub(in crate::game) mod game_mode;
+pub(crate) mod game_mode;
 
 #[path = "interface/dedicated/mod.rs"]
 pub(crate) mod dedicated;
 
 #[path = "interface/chat_server.rs"]
-pub(in crate::game) mod chat_server;
+pub(crate) mod chat_server;
 
 #[path = "interface/building_players.rs"]
-pub(in crate::game) mod building_players;
+pub(crate) mod building_players;
 
 #[path = "interface/bossbars.rs"]
-pub(in crate::game) mod bossbars;
+pub(crate) mod bossbars;
 
 #[path = "interface/books_server.rs"]
-pub(in crate::game) mod books_server;
+pub(crate) mod books_server;
 
 #[path = "interface/advancements/mod.rs"]
-pub(in crate::game) mod advancements;
+pub(crate) mod advancements;
 
 #[path = "game_server.rs"]
-pub(in crate::game) mod game_server;
+pub(crate) mod game_server;
 
 #[path = "entities/vehicle_teleport.rs"]
-pub(in crate::game) mod vehicle_teleport;
+pub(crate) mod vehicle_teleport;
 
 #[path = "entities/tnt.rs"]
-pub(in crate::game) mod tnt;
+pub(crate) mod tnt;
 
 #[path = "entities/pick_entity_server.rs"]
-pub(in crate::game) mod pick_entity_server;
+pub(crate) mod pick_entity_server;
 
 #[path = "entities/passengers.rs"]
-pub(in crate::game) mod passengers;
+pub(crate) mod passengers;
 
 #[path = "entities/minecarts_server.rs"]
-pub(in crate::game) mod minecarts_server;
+pub(crate) mod minecarts_server;
 
 #[path = "entities/melee.rs"]
-pub(in crate::game) mod melee;
+pub(crate) mod melee;
 
 #[path = "entities/lightning_server.rs"]
-pub(in crate::game) mod lightning_server;
+pub(crate) mod lightning_server;
 
 #[path = "entities/leads.rs"]
-pub(in crate::game) mod leads;
+pub(crate) mod leads;
 
 #[path = "entities/frames.rs"]
-pub(in crate::game) mod frames;
+pub(crate) mod frames;
 
 #[path = "entities/fireworks_server.rs"]
-pub(in crate::game) mod fireworks_server;
+pub(crate) mod fireworks_server;
 
 #[path = "entities/falling_save.rs"]
-pub(in crate::game) mod falling_save;
+pub(crate) mod falling_save;
 
 #[path = "entities/falling_damage.rs"]
-pub(in crate::game) mod falling_damage;
+pub(crate) mod falling_damage;
 
 #[path = "entities/extinguish.rs"]
-pub(in crate::game) mod extinguish;
+pub(crate) mod extinguish;
 
 #[path = "entities/explosion_detonate.rs"]
-pub(in crate::game) mod explosion_detonate;
+pub(crate) mod explosion_detonate;
 
 #[path = "entities/explosion.rs"]
-pub(in crate::game) mod explosion;
+pub(crate) mod explosion;
 
 #[path = "entities/entity_residency.rs"]
-pub(in crate::game) mod entity_residency;
+pub(crate) mod entity_residency;
 
 #[path = "entities/entity.rs"]
-pub(in crate::game) mod entity_server;
+pub(crate) mod entity_server;
 
 #[path = "entities/cushions.rs"]
 pub(crate) mod cushions;
 
 #[path = "entities/boats/mod.rs"]
-pub(in crate::game) mod boats;
+pub(crate) mod boats;
 
 #[path = "entities/boat_passengers.rs"]
-pub(in crate::game) mod boat_passengers;
+pub(crate) mod boat_passengers;
 
 #[path = "entities/boat_leads.rs"]
-pub(in crate::game) mod boat_leads;
+pub(crate) mod boat_leads;
 
 #[path = "entities/boarding.rs"]
-pub(in crate::game) mod boarding;
+pub(crate) mod boarding;
 
 #[path = "entities/armor_stands.rs"]
-pub(in crate::game) mod armor_stands;
+pub(crate) mod armor_stands;
 
 #[path = "entities/ahead.rs"]
-pub(in crate::game) mod ahead;
+pub(crate) mod ahead;
 
 #[path = "blocks/splash_water.rs"]
-pub(in crate::game) mod splash_water;
+pub(crate) mod splash_water;
 
 #[path = "blocks/spill.rs"]
-pub(in crate::game) mod spill;
+pub(crate) mod spill;
 
 #[path = "blocks/sculk_server.rs"]
-pub(in crate::game) mod sculk_server;
+pub(crate) mod sculk_server;
 
 #[path = "blocks/sculk_fixture.rs"]
-pub(in crate::game) mod sculk_fixture;
+pub(crate) mod sculk_fixture;
 
 #[path = "blocks/respawn_anchor.rs"]
-pub(in crate::game) mod respawn_anchor;
+pub(crate) mod respawn_anchor;
 
 #[path = "blocks/potent_sulfur.rs"]
-pub(in crate::game) mod potent_sulfur;
+pub(crate) mod potent_sulfur;
 
 #[path = "blocks/piston_push_server.rs"]
-pub(in crate::game) mod piston_push_server;
+pub(crate) mod piston_push_server;
 
 #[path = "blocks/nether_portal.rs"]
-pub(in crate::game) mod nether_portal;
+pub(crate) mod nether_portal;
 
 #[path = "blocks/maps/mod.rs"]
-pub(in crate::game) mod maps_server;
+pub(crate) mod maps_server;
 
 #[path = "blocks/machines/mod.rs"]
-pub(in crate::game) mod machines;
+pub(crate) mod machines;
 
 #[path = "blocks/jukebox_server.rs"]
-pub(in crate::game) mod jukebox_server;
+pub(crate) mod jukebox_server;
 
 #[path = "blocks/falling_blocks.rs"]
-pub(in crate::game) mod falling_blocks;
+pub(crate) mod falling_blocks;
 
 #[path = "blocks/dispenser.rs"]
-pub(in crate::game) mod dispenser;
+pub(crate) mod dispenser;
 
 #[path = "blocks/composter.rs"]
-pub(in crate::game) mod composter;
+pub(crate) mod composter;
 
 #[path = "blocks/chiseled_bookshelf.rs"]
-pub(in crate::game) mod chiseled_bookshelf;
+pub(crate) mod chiseled_bookshelf;
 
 #[path = "blocks/cartography_server.rs"]
-pub(in crate::game) mod cartography_server;
+pub(crate) mod cartography_server;
 
 #[path = "blocks/campfire.rs"]
-pub(in crate::game) mod campfire;
+pub(crate) mod campfire;
 
 #[path = "blocks/block_items_server.rs"]
-pub(in crate::game) mod block_items_server;
+pub(crate) mod block_items_server;
 
 #[path = "blocks/block_entity_ticks.rs"]
-pub(in crate::game) mod block_entity_ticks;
+pub(crate) mod block_entity_ticks;
 
 #[path = "blocks/block_entity_anims.rs"]
-pub(in crate::game) mod block_entity_anims;
+pub(crate) mod block_entity_anims;
 
 #[path = "blocks/block_edits.rs"]
-pub(in crate::game) mod block_edits;
+pub(crate) mod block_edits;
 
 #[path = "administration/jigsaw_blocks_server.rs"]
-pub(in crate::game) mod jigsaw_blocks_server;
+pub(crate) mod jigsaw_blocks_server;
 
 #[path = "administration/game_tests.rs"]
-pub(in crate::game) mod game_tests;
+pub(crate) mod game_tests;
 
 #[path = "administration/functions.rs"]
-pub(in crate::game) mod functions;
+pub(crate) mod functions;
 
 #[path = "administration/commands/mod_server.rs"]
-pub(in crate::game) mod commands_server;
+pub(crate) mod commands_server;
 
 #[path = "administration/commands/mod.rs"]
-pub(in crate::game) mod commands;
+pub(crate) mod commands;

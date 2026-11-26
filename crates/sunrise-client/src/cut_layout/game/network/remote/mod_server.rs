@@ -34,7 +34,7 @@ pub(in crate::game) mod movement_input_tests;
 #[path = "placement_prediction_tests_server.rs"]
 pub(in crate::game) mod placement_prediction_tests;
 #[path = "recipe_properties_server.rs"]
-pub(in crate::game) mod recipe_properties;
+pub(crate) mod recipe_properties;
 
 #[path = "general_server.rs"]
-pub(in crate::game) mod general;
+pub(crate) mod general;

@@ -944,18 +944,18 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
-pub(in crate::game) mod world_cmds;
+pub(crate) mod world_cmds;
 
-pub(in crate::game) mod terrain_cmds;
+pub(crate) mod terrain_cmds;
 
-pub(in crate::game) mod raid;
+pub(crate) mod raid;
 
-pub(in crate::game) mod place;
+pub(crate) mod place;
 
-pub(in crate::game) mod misc;
+pub(crate) mod misc;
 
-pub(in crate::game) mod items;
+pub(crate) mod items;
 
-pub(in crate::game) mod execute;
+pub(crate) mod execute;
 
-pub(in crate::game) mod data;
+pub(crate) mod data;

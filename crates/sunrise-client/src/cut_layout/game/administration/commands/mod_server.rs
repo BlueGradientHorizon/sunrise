@@ -213,22 +213,22 @@ pub(in crate::game) mod knot_identity_tests;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 #[path = "world_cmds_server.rs"]
-pub(in crate::game) mod world_cmds;
+pub(crate) mod world_cmds;
 
 #[path = "terrain_cmds_server.rs"]
-pub(in crate::game) mod terrain_cmds;
+pub(crate) mod terrain_cmds;
 
 #[path = "misc_server.rs"]
-pub(in crate::game) mod misc;
+pub(crate) mod misc;
 
 #[path = "items_server.rs"]
-pub(in crate::game) mod items;
+pub(crate) mod items;
 
 #[path = "execute_server.rs"]
-pub(in crate::game) mod execute;
+pub(crate) mod execute;
 
 #[path = "data_server.rs"]
-pub(in crate::game) mod data;
+pub(crate) mod data;
 
 #[path = "compute_server.rs"]
-pub(in crate::game) mod compute;
+pub(crate) mod compute;

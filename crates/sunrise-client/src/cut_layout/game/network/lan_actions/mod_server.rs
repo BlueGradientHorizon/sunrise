@@ -1286,13 +1286,13 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 #[path = "tick_server.rs"]
-pub(in crate::game) mod tick;
+pub(crate) mod tick;
 
 #[path = "pickups_server.rs"]
-pub(in crate::game) mod pickups;
+pub(crate) mod pickups;
 
 #[path = "guest_body_server.rs"]
-pub(in crate::game) mod guest_body;
+pub(crate) mod guest_body;
 
 #[path = "attack_checks_server.rs"]
-pub(in crate::game) mod attack_checks;
+pub(crate) mod attack_checks;

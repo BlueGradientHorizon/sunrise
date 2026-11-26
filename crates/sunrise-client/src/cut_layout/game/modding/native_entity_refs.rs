@@ -4569,4 +4569,4 @@ use sunrise_gameplay_common::game::native_server::NativeServerGameExt3 as _;
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 
 #[path = "native_entity_refs/dragon_query.rs"]
-pub(in crate::game) mod dragon_query;
+pub(crate) mod dragon_query;

@@ -757,10 +757,10 @@ pub(in crate::game) mod smoke_source_tests;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-pub(in crate::game) mod tables;
+pub(crate) mod tables;
 
-pub(in crate::game) mod general;
+pub(crate) mod general;
 
-pub(in crate::game) mod fall_sound;
+pub(crate) mod fall_sound;
 
-pub(in crate::game) mod abilities;
+pub(crate) mod abilities;
