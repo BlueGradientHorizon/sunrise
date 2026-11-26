@@ -508,9 +508,8 @@ pub fn translate(
     };
     let (vertex_text, fragment_text) =
         (stage(vertex, vertex_file)?, stage(fragment, fragment_file)?);
-    let base = other_binding_base(inputs).map_err(|message| {
-        vec![Error::new(vertex_file, 0, message)]
-    })?;
+    let base =
+        other_binding_base(inputs).map_err(|message| vec![Error::new(vertex_file, 0, message)])?;
     let mut names = Names::new(base);
     let rewritten = |text: &Expanded, stage, names: &mut Names| {
         rewrite(text, stage, inputs, glue, names).map_err(|e| vec![in_stage(stage, e)])
@@ -905,9 +904,9 @@ pub fn translate_compute(
         fragment_finish: None,
         interface,
     };
-    let mut names = Names::new(other_binding_base(inputs).map_err(|message| {
-        vec![Error::new(file, 0, message)]
-    })?);
+    let mut names = Names::new(
+        other_binding_base(inputs).map_err(|message| vec![Error::new(file, 0, message)])?,
+    );
     let code =
         rewrite(&expanded, ShaderStage::Compute, inputs, &glue, &mut names).map_err(|e| vec![e])?;
     // The directives run on the rewritten stage, the program's defines first, as for the other
@@ -1569,13 +1568,16 @@ struct Decl<'a> {
     name: &'a str,
 }
 
+/// The precision qualifiers, which GLSL takes before or after the storage word (`in highp vec4 X;`).
+const PRECISION_QUALIFIERS: [&str; 3] = ["highp", "mediump", "lowp"];
+
 /// The memory qualifiers of a declaration: before its storage word, or after it
 /// (`uniform readonly image2D img;`).
 const MEMORY_QUALIFIERS: [&str; 5] = ["readonly", "writeonly", "coherent", "volatile", "restrict"];
 
 /// The other qualifiers that may stand before a declaration's `in`, `out` or `uniform`:
-/// interpolation, auxiliary storage, `invariant`/`precise` and precision.
-const LEADING_QUALIFIERS: [&str; 11] = [
+/// interpolation, auxiliary storage and `invariant`/`precise`.
+const LEADING_QUALIFIERS: [&str; 8] = [
     "flat",
     "smooth",
     "noperspective",
@@ -1584,9 +1586,6 @@ const LEADING_QUALIFIERS: [&str; 11] = [
     "patch",
     "invariant",
     "precise",
-    "highp",
-    "mediump",
-    "lowp",
 ];
 
 /// A line's leading `layout(...)` qualifier split off: what stood inside it (trimmed, empty
@@ -1602,8 +1601,8 @@ fn layout_prefix(line: &str) -> Option<(&str, &str)> {
 }
 
 /// The declaration `line` is, if it is one: a statement of `layout(...)`, then only real
-/// qualifiers (`LEADING_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`, `out` or `uniform`, then
-/// the type and the name. Any other word before the storage word makes it some other statement
+/// qualifiers (`LEADING_QUALIFIERS`, `PRECISION_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`,
+/// `out` or `uniform`, then precision and memory qualifiers, the type and the name. Any other word before the storage word makes it some other statement
 /// (`x = in vec2 y;`, `return out vec4 c;`).
 fn declaration(line: &str) -> Option<Decl<'_>> {
     let (layout, rest) = layout_prefix(line)?;
@@ -1617,15 +1616,20 @@ fn declaration(line: &str) -> Option<Decl<'_>> {
         .iter()
         .position(|w| matches!(*w, "in" | "out" | "uniform"))?;
     let mut qualifiers = words[..storage_at].to_vec();
-    if !qualifiers
+    if !qualifiers.iter().all(|w| {
+        [
+            &LEADING_QUALIFIERS[..],
+            &PRECISION_QUALIFIERS,
+            &MEMORY_QUALIFIERS,
+        ]
         .iter()
-        .all(|w| LEADING_QUALIFIERS.contains(w) || MEMORY_QUALIFIERS.contains(w))
-    {
+        .any(|set| set.contains(w))
+    }) {
         return None;
     }
     let mut tail = &words[storage_at + 1..];
     while let [word, others @ ..] = tail
-        && MEMORY_QUALIFIERS.contains(word)
+        && (PRECISION_QUALIFIERS.contains(word) || MEMORY_QUALIFIERS.contains(word))
     {
         qualifiers.push(*word);
         tail = others;
@@ -3151,8 +3155,15 @@ mod tests {
         );
     }
 
-    /// `text` expanded and rewritten as a vertex stage, the way `translate` reads it.
-    fn rewritten_vertex(text: &str) -> String {
+    /// A preprocessor line is no declaration, whatever words it holds: the classifier lists
+    /// nothing from it, and the translator leaves it as it is (a loose `uniform` declaration
+    /// of an unknown name would be refused if it read as one).
+    #[test]
+    fn a_preprocessor_line_is_no_declaration() {
+        let text = "#version 330\n#define IN in vec3 X;\n#define U uniform float Nope;\n\
+            #define S uniform sampler2D T;\nvoid main() { }\n";
+        assert_eq!(resources(text), []);
+        assert_eq!(stage_inputs(text), []);
         let read = |_: &str| -> Result<Option<String>, String> { Ok(None) };
         let includes = includes(&read);
         let inputs = Inputs {
@@ -3179,36 +3190,28 @@ mod tests {
             &mut Names::new(10),
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        rewritten.text().to_owned()
-    }
-
-    /// A preprocessor line is no declaration, whatever words it holds: the classifier lists
-    /// nothing from it, and the translator leaves it as it is (a loose `uniform` declaration
-    /// of an unknown name would be refused if it read as one).
-    #[test]
-    fn a_preprocessor_line_is_no_declaration() {
-        let text = "#version 330\n#define IN in vec3 X;\n#define U uniform float Nope;\n\
-            #define S uniform sampler2D T;\nvoid main() { }\n";
-        assert_eq!(resources(text), []);
-        assert_eq!(stage_inputs(text), []);
-        let rewritten = rewritten_vertex(text);
+        let rewritten = rewritten.text();
         for line in text.lines().skip(1).take(3) {
             assert!(rewritten.contains(&format!("{line}\n")), "{rewritten}");
         }
     }
 
-    /// A precision word after the storage word (`in highp vec4 X;`) is not GLSL's order, which
-    /// puts it before the type name after the qualifiers; `declaration()` reads the words after
-    /// `in` as type and name only (memory qualifiers apart), so this line is no declaration:
-    /// nothing lists it, and the translator leaves it as it is, for naga to refuse or not.
+    /// GLSL takes a precision word after the storage word too (`in highp vec4 X;`): such a
+    /// line is a declaration of its type and name, as with the word before it.
     #[test]
-    fn a_precision_word_after_the_storage_word_is_no_declaration() {
+    fn a_precision_word_after_the_storage_word_is_a_declaration() {
         let text = "#version 330\nin highp vec4 X;\nuniform lowp sampler2D T;\nvoid main() { }\n";
-        assert_eq!(stage_inputs(text), []);
-        assert_eq!(resources(text), []);
-        let rewritten = rewritten_vertex(text);
-        assert!(rewritten.contains("\nin highp vec4 X;\n"), "{rewritten}");
-        assert!(rewritten.contains("\nuniform lowp sampler2D T;\n"), "{rewritten}");
+        assert_eq!(
+            stage_inputs(text),
+            [(text.find("X;").unwrap(), "X", "vec4")]
+        );
+        assert_eq!(
+            resources(text),
+            [Resource {
+                name: "T",
+                kind: ResourceKind::Sampler2D
+            }]
+        );
     }
 
     /// Only a storage buffer's declaration names a storage block, with its memory qualifiers.

@@ -529,7 +529,9 @@ fn declared_vertex_inputs(
         }
         out.push((name.to_owned(), ty.to_owned()));
         if out.len() > 16 {
-            return Err(refuse("vertex shader declares more than 16 vertex inputs".to_owned()));
+            return Err(refuse(
+                "vertex shader declares more than 16 vertex inputs".to_owned(),
+            ));
         }
     }
     Ok(out)
@@ -555,9 +557,7 @@ fn read_include(
 }
 
 /// The [`Includes`] of a program's stages, reading files through `read` ([`read_include`]).
-fn program_includes<'a>(
-    read: &'a dyn Fn(&str) -> Result<Option<String>, String>,
-) -> Includes<'a> {
+fn program_includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>) -> Includes<'a> {
     Includes {
         read,
         namespace: "minecraft",
@@ -920,7 +920,8 @@ fn translate_inner(
     let glue = setup.glue(options, None);
 
     let provided = |name: &str| extra_samplers.contains(&name);
-    let to_problems = |errs: Vec<sunrise_glsl::Error>| map_glsl_errors(sources, &errs, options.textured);
+    let to_problems =
+        |errs: Vec<sunrise_glsl::Error>| map_glsl_errors(sources, &errs, options.textured);
     let mut translated =
         sunrise_glsl::translate(&stages, &inputs, &glue, &provided).map_err(to_problems)?;
     if let Some(pc_binding) = set1.push_constant_binding
@@ -941,8 +942,8 @@ fn translate_inner(
     {
         let finish = linear_fragment_finish(out_name);
         let linear_glue = setup.glue(options, Some(&finish));
-        translated =
-            sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided).map_err(to_problems)?;
+        translated = sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided)
+            .map_err(to_problems)?;
     }
 
     if options.check_backends {
@@ -1867,7 +1868,10 @@ void main() {{
         let refused = extract_program_bindings(&sources(vsh, fsh), &[], &include)
             .expect_err("an unsupported vertex input type is refused");
         assert_eq!(refused.file, "assets/example/shaders/core/glow.vsh");
-        assert!(refused.message.contains("`mat4` for `Matrix`"), "{refused:?}");
+        assert!(
+            refused.message.contains("`mat4` for `Matrix`"),
+            "{refused:?}"
+        );
     }
 
     /// A program whose include cannot be expanded is refused with the include's error, not read
