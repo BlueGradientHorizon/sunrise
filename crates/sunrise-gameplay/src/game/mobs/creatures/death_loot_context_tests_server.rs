@@ -157,7 +157,7 @@ fn death_loot_killer_is_not_the_acting_guest() {
                 .clone();
             for (id, acting) in [(80, Some(13)), (81, None)] {
                 game.as_guest(12, |g| {
-                    g.inventory[g.selected] = Some(hand.clone());
+                    g.common.inventory[g.common.selected] = Some(hand.clone());
                 })
                 .unwrap();
                 let mut victim = Mob::new(id, ty.clone(), Vec3::ZERO, 0.0);
@@ -274,7 +274,7 @@ fn death_loot_uses_call_scoped_source_and_hand() {
             crate::game::native_entity_refs::tests::bind_local_player(game, 11, 123);
             // Reserve the fixture's explicit IDs before spawning experience orbs.
             game.server.next_entity = 1000;
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 2));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 2));
             for (id, environmental) in [(68, false), (69, true)] {
                 let mut victim = Mob::new(id, ty.clone(), Vec3::ZERO, 0.0);
                 victim.ai.last_hurt_by_player = 100;

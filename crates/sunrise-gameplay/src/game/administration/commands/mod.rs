@@ -2375,7 +2375,7 @@ pub(in crate::game) mod forced_respawn_tests {
                     for z in -2..=2 {
                         game.server
                             .streaming
-                            .insert_remote(&mut game.world, Chunk::empty(x, z));
+                            .insert_remote(&mut game.common.world, Chunk::empty(x, z));
                     }
                 }
                 game.level.world_spawn = Some([0, 80, 0]);

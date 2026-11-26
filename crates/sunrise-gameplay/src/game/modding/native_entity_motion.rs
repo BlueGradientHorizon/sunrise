@@ -507,9 +507,9 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
             let entity = game.entity(40).unwrap();
             // Only block 1 is under the box: it supports, not the block of the feet's own column.
             game.world.set(1, 64, 0, stone).unwrap();
-            let _ = game.mobs[0].update_retained_ground(
-                &game.world,
-                game.collision,
+            let _ = game.common.mobs[0].update_retained_ground(
+                &game.common.world,
+                game.common.collision,
                 &world_items!(game).entity_type_tags,
                 true,
                 None,
@@ -518,18 +518,18 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
             // Adding a nearer block doesn't change the support until the next check.
             game.world.set(0, 64, 0, stone).unwrap();
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
-            let _ = game.mobs[0].update_retained_ground(
-                &game.world,
-                game.collision,
+            let _ = game.common.mobs[0].update_retained_ground(
+                &game.common.world,
+                game.common.collision,
                 &world_items!(game).entity_type_tags,
                 true,
                 None,
             );
             assert_eq!(game.entity_on_block(entity), Some([0, 64, 0]));
             game.mobs[0].position = Vec3::new(1.1, 65.0, 0.5);
-            let _ = game.mobs[0].update_retained_ground(
-                &game.world,
-                game.collision,
+            let _ = game.common.mobs[0].update_retained_ground(
+                &game.common.world,
+                game.common.collision,
                 &world_items!(game).entity_type_tags,
                 true,
                 None,
@@ -537,9 +537,9 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
             // Off the ground there is no support: the cell under the feet.
             game.mobs[0].position = Vec3::new(0.9, 65.0, 0.5);
-            let _ = game.mobs[0].update_retained_ground(
-                &game.world,
-                game.collision,
+            let _ = game.common.mobs[0].update_retained_ground(
+                &game.common.world,
+                game.common.collision,
                 &world_items!(game).entity_type_tags,
                 false,
                 None,
@@ -552,9 +552,9 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
                 .default_state("minecraft:air")
                 .unwrap();
             game.world.set(0, 64, 0, air).unwrap();
-            let _ = game.mobs[0].update_retained_ground(
-                &game.world,
-                game.collision,
+            let _ = game.common.mobs[0].update_retained_ground(
+                &game.common.world,
+                game.common.collision,
                 &world_items!(game).entity_type_tags,
                 true,
                 None,

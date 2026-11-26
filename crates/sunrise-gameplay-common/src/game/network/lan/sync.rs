@@ -194,10 +194,10 @@ pub fn forget_server_sources() {
 /// What `sync_data` loaded from this resource generation.
 #[derive(Clone)]
 pub struct Synced {
-    pub(in crate::game) root: std::path::PathBuf,
-    pub(in crate::game) with_packs: bool,
-    pub(in crate::game) generation: u64,
-    pub(in crate::game) result: std::result::Result<Arc<SyncData>, String>,
+    pub root: std::path::PathBuf,
+    pub with_packs: bool,
+    pub generation: u64,
+    pub result: std::result::Result<Arc<SyncData>, String>,
 }
 
 /// Only damage is bound eagerly for gameplay. Full wire data remains lazy
@@ -206,10 +206,10 @@ pub struct Synced {
 pub struct SyncCache {
     pub data: Option<Synced>,
     pub damage: Option<FrozenDamage>,
-    pub(in crate::game) world_tags: Option<WorldTags>,
-    pub(in crate::game) packed_registries: Option<Arc<PackRegistryDefinitions>>,
-    pub(in crate::game) advancements: Option<Arc<Tree>>,
-    pub(in crate::game) world_packs: bool,
+    pub world_tags: Option<WorldTags>,
+    pub packed_registries: Option<Arc<PackRegistryDefinitions>>,
+    pub advancements: Option<Arc<Tree>>,
+    pub world_packs: bool,
 }
 
 static SYNC: Mutex<SyncCache> = Mutex::new(SyncCache {

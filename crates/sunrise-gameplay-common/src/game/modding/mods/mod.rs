@@ -119,9 +119,9 @@ pub(in crate::game) type ContentMaterializer =
 
 #[derive(Clone, Default)]
 pub struct ModsState {
-    pub(in crate::game) active_condition_root: Option<Arc<()>>,
+    pub active_condition_root: Option<Arc<()>>,
     pub load_condition_candidate: Option<sunrise_world::conditions::LoadConditions>,
-    pub(in crate::game) load_conditions:
+    pub load_conditions:
         Arc<std::sync::OnceLock<Result<crate::game::load_conditions::ConditionTable, String>>>,
     pub profession_declarations:
         Arc<std::sync::OnceLock<Vec<(String, mod_api::ProfessionDefinition)>>>,
@@ -129,21 +129,21 @@ pub struct ModsState {
         Arc<std::sync::OnceLock<super::global_loot_modifiers::Serializers>>,
     /// Saved switches gate the first data inventory while registration keeps
     /// its existing startup ordering. Runtime dispatch owns later switches.
-    pub(in crate::game) code_switches: Option<Arc<CodeSwitches>>,
+    pub code_switches: Option<Arc<CodeSwitches>>,
     /// The original prepared input is fixed for this engine load, shared by
     /// the window and its server. A later data reload must not overlay an
     /// already generated root recursively.
-    pub(in crate::game) content_base: Arc<std::sync::OnceLock<PathBuf>>,
+    pub content_base: Arc<std::sync::OnceLock<PathBuf>>,
     pub content_materializer: Option<ContentMaterializer>,
     /// `--dev-mod PATH`: content mods always on.
     pub dev: Vec<PathBuf>,
     pub native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
     pub installation_side: sunrise_mod_package::manifest::Side,
-    pub(in crate::game) overrides_dir: PathBuf,
-    pub(in crate::game) load_notices: Arc<Mutex<Vec<sunrise_mod_package::dependencies::Notice>>>,
+    pub overrides_dir: PathBuf,
+    pub load_notices: Arc<Mutex<Vec<sunrise_mod_package::dependencies::Notice>>>,
     pub selected: std::sync::Arc<[sunrise_mod_package::selection::SelectedPackage]>,
     /// The registration inventory and the file indexes it shares with startup content loading.
-    pub(in crate::game) startup_admission: Option<Arc<package_files::StartupAdmission>>,
+    pub startup_admission: Option<Arc<package_files::StartupAdmission>>,
     /// The content mods the loaded resources were built with: a switch the
     /// game can apply live moves it to the player's choice (`switch_mods`).
     pub applied: Option<std::collections::BTreeSet<String>>,
@@ -162,9 +162,9 @@ pub struct ModsState {
     pub refused: Arc<Mutex<Vec<MissingJar>>>,
     /// Served content packages withheld at startup because their `served_by` host was disabled:
     /// `(content_id, host_id)`.
-    pub(in crate::game) disabled_served: Arc<[(String, String)]>,
+    pub disabled_served: Arc<[(String, String)]>,
     /// Native hosts with active or withheld served packages at startup.
-    pub(in crate::game) restart_bound_hosts: BTreeSet<String>,
+    pub restart_bound_hosts: BTreeSet<String>,
     /// The entries of the mods' datapack registries this world session has published, at the
     /// generation of the load or reload that built them; `None` when no mod declared one.
     pub datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
@@ -665,7 +665,7 @@ pub fn register_map_decoration_types() {
 /// any process-wide registration. A caller that only reads the overlay (the
 /// reload tests) must not freeze the mod registries for the rest of the
 /// process.
-pub(in crate::game) struct ContentOverlay {
+pub struct ContentOverlay {
     /// The root with the mods' content merged in.
     pub root: sunrise_assets::resource_source::ResourceRoot,
     /// The accepted content mods, in overlay order.
@@ -735,8 +735,8 @@ impl std::error::Error for ServedContentLoadError {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DisabledServingHost {
-    pub(in crate::game) content: String,
-    pub(in crate::game) host: String,
+    pub content: String,
+    pub host: String,
 }
 
 impl std::fmt::Display for DisabledServingHost {

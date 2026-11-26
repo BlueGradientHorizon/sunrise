@@ -108,11 +108,11 @@ impl mod_api::ItemPart for Image {
     }
 }
 pub struct Listener {
-    pub(in crate::game) enabled: bool,
-    pub(in crate::game) painted: Arc<AtomicUsize>,
-    pub(in crate::game) mode: Arc<AtomicU8>,
-    pub(in crate::game) calls: Arc<AtomicUsize>,
-    pub(in crate::game) drawn: Arc<Mutex<Vec<Vec<ObservedComponent>>>>,
+    pub enabled: bool,
+    pub painted: Arc<AtomicUsize>,
+    pub mode: Arc<AtomicU8>,
+    pub calls: Arc<AtomicUsize>,
+    pub drawn: Arc<Mutex<Vec<Vec<ObservedComponent>>>>,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Listener {

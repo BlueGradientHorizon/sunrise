@@ -377,7 +377,7 @@ pub mod tests {
                     )
                     .unwrap(),
                 );
-                game.inventory[game.selected] =
+                game.common.inventory[game.common.selected] =
                     Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1));
                 game.using = Some((game.selected, 0));
                 game.tick_player_model();
@@ -392,7 +392,7 @@ pub mod tests {
                 assert_eq!(calls.load(Ordering::Relaxed), 11);
                 // A scoped spear override on a component-patched ordinary item
                 // must reach hand geometry without the old whitelist panic.
-                game.inventory[game.selected] = Some(kinetic_stick);
+                game.common.inventory[game.common.selected] = Some(kinetic_stick);
                 game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
                 let (kinetic_geometry, _) = game.hand_geometry(0.0);
                 assert!(!kinetic_geometry.is_empty());
@@ -409,7 +409,7 @@ pub mod tests {
                 )
                 .unwrap(),
             );
-            game.inventory[game.selected] =
+            game.common.inventory[game.common.selected] =
                 Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1));
             game.using = Some((game.selected, 0));
             game.tick_player_model();

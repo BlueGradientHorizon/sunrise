@@ -1,6 +1,7 @@
 use crate::game::native_entity_refs::tests as fixture;
 use sunrise_gameplay_common::game::{chat_common::ChatCommonGameExt1 as _, execution_role::ExecutionRole};
 use std::sync::{Arc, OnceLock};
+use sunrise_gameplay_common::game::test_fixtures::tempfile;
 use sunrise_level::chunk::Chunk;
 use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
 use sunrise_sim::mod_content::{self, ContentMod};

@@ -347,6 +347,10 @@ pub(in crate::game) mod tests {
     };
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::{
+        native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+        native_living_body::NativeLivingBodyGameExt3 as _,
+    };
     use sunrise_items::items::ItemStack;
     use sunrise_sim::lan::waypoints::Icon;
     use sunrise_sim::mobs::Mob;
@@ -373,11 +377,12 @@ pub(in crate::game) mod tests {
                     };
                     game.potions.effects.clear();
                     let stack = ItemStack::new(item, 2);
-                    game.inventory[game.selected] = Some(if item == "minecraft:potion" {
-                        stack.with_potion("minecraft:swiftness")
-                    } else {
-                        stack
-                    });
+                    game.common.inventory[game.common.selected] =
+                        Some(if item == "minecraft:potion" {
+                            stack.with_potion("minecraft:swiftness")
+                        } else {
+                            stack
+                        });
                     game.inventory[5] = Some(ItemStack::new("minecraft:arrow", 8));
                     assert!(game.living_start_using_item(player, Hand::Main));
                     let projectiles = game.creatures.projectiles.len();
@@ -421,7 +426,8 @@ pub(in crate::game) mod tests {
                     tick_duration: duration,
                     ..Uses::default()
                 };
-                game.inventory[game.selected] = Some(ItemStack::new("minecraft:crossbow", 1));
+                game.common.inventory[game.common.selected] =
+                    Some(ItemStack::new("minecraft:crossbow", 1));
                 assert!(game.living_start_using_item(player, Hand::Main));
                 game.tick_using_server();
                 assert_eq!(game.living_item_use_remaining(player), Some(first));
@@ -446,7 +452,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn tick_completion_applies_the_finish_listeners_result_stack() {
         with_uses(|game, uses, player| {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:apple", 2));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:apple", 2));
             {
                 let mut uses = uses.lock().unwrap();
                 uses.cancel_tick = true;
@@ -467,7 +474,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_zero_start_begins_but_a_cancelled_stop_only_skips_release() {
         with_uses(|game, uses, player| {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:bow", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:bow", 1));
             uses.lock().unwrap().start_duration = Some(0);
             assert!(game.living_start_using_item(player, Hand::Main));
             assert!(game.using.is_some());
@@ -492,7 +499,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_tick_replaces_the_remaining_counter_rather_than_the_original_duration() {
         with_uses(|game, uses, player| {
-            game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
+            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:shield", 1));
             assert!(game.living_start_using_item(player, Hand::Main));
             for _ in 0..10 {
                 game.tick_using_server();
@@ -529,7 +536,8 @@ pub(in crate::game) mod tests {
                     remaining_on_use_tick: Some((player, replacement)),
                     ..Uses::default()
                 };
-                game.inventory[game.selected] = Some(ItemStack::new("minecraft:shield", 1));
+                game.common.inventory[game.common.selected] =
+                    Some(ItemStack::new("minecraft:shield", 1));
                 assert!(game.living_start_using_item(player, Hand::Main));
                 game.tick_using_server();
                 if replacement > 1 {

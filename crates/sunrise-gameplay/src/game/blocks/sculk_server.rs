@@ -22,7 +22,7 @@ use {
     sunrise_sim::mobs::Who, sunrise_sim::mobs::allay, sunrise_sim::mobs::warden,
 };
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay_common::game::side_ops::events::{
     TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS,
@@ -336,13 +336,13 @@ impl crate::game::ServerGame<'_> {
         pos: [f64; 3],
         ctx: Context,
     ) {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         TEST_POSTED_EVENTS.with(|events| {
             if let Some(events) = events.borrow_mut().as_mut() {
                 events.push((event, pos, ctx.source.and_then(|source| source.actor())));
             }
         });
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         TEST_POSTED_EVENT_ORDER.with(|order| {
             if let Some(order) = order.borrow_mut().as_mut() {
                 order.push((

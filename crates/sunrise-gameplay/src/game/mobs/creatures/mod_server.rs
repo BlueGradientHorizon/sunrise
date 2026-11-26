@@ -168,7 +168,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
             inside: false,
         });
         let egg = peaceful_tests::trader_egg();
-        game.inventory[game.selected] = Some(egg.clone());
+        game.common.inventory[game.common.selected] = Some(egg.clone());
         assert!(game.use_spawn_egg(&egg).unwrap());
         assert!(game.server.use_failed);
         assert!(game.mobs.is_empty());
@@ -196,7 +196,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Spawner(Box::default()));
-            game.inventory[game.selected] = Some(egg.clone());
+            game.common.inventory[game.common.selected] = Some(egg.clone());
             assert!(game.use_spawn_egg(&egg).unwrap());
             assert!(game.held().is_none());
             let BlockEntity::Spawner(spawner) = &game.world.block_entities[&key] else {

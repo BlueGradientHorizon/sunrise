@@ -1406,7 +1406,7 @@ use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME
             assert!(world_biomes!(game).contains("test:present"));
             game.server
                 .streaming
-                .set_forced_loaded(&mut game.world, 8, 8, true);
+                .set_forced_loaded(&mut game.common.world, 8, 8, true);
             let chunk = &game.world.chunks[&(8, 8)];
             let id = chunk.biome(4, 16, 8);
             assert_eq!(world_biomes!(game).saved_name(id), "gone_mod:highland");

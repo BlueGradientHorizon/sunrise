@@ -645,7 +645,10 @@ mod tests {
     fn fluid_models_recollection_changes_model_identifiers() {
         use mod_api::{FluidModel, Hooks, ModEntry, RegisterFluidModelsEvent};
         use mod_platform::testing::with_mods;
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
         #[derive(Default)]
         struct Models(Arc<AtomicUsize>);
         #[mod_api::sunrise_mod]

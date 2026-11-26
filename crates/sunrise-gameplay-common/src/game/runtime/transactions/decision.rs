@@ -149,7 +149,7 @@ pub enum Step {
 }
 
 pub struct Plan {
-    steps: Vec<Step>,
+    pub steps: Vec<Step>,
 }
 
 impl Plan {

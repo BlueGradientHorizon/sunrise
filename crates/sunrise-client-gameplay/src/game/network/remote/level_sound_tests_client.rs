@@ -105,9 +105,9 @@ fn game_events_ask_client_level_before_playback() {
                 "a silent curse asks no sound hook"
             );
             let level = sunrise_client::particles::ParticleLevel {
-                world: &game.world,
-                facts: game.res.facts(),
-                collision: game.collision,
+                world: &game.common.world,
+                facts: game.common.res.facts(),
+                collision: game.common.collision,
                 player: None,
                 cached_chunk: std::cell::Cell::new(None),
             };
@@ -137,7 +137,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.0, 64.0, 1.0)).unwrap());
             game.client
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
             let old = game
                 .pack
                 .assets

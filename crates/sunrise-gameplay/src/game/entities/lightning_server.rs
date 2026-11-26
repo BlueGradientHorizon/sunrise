@@ -1046,6 +1046,7 @@ use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 mod fire_radius_tests {
     use crate::game::native_entity_refs::tests::with_game;
     use std::sync::Arc;
+    use sunrise_core::geometry::Vec3;
     use sunrise_core::random::{LegacyRandom, RandomSource};
 
     /// `LightningBolt.spawnFire` places nothing, and draws no extra sources,

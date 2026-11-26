@@ -54,7 +54,7 @@ impl RemoteInteraction {
         }
     }
     /// Unsynced spawns keep EntityType's 0x0 dimensions until refreshDimensions runs.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn seat_height(&self) -> f64 {
         if self.dimensions_refreshed {
             f64::from(self.height)
