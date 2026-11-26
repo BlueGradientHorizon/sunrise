@@ -692,7 +692,12 @@ pub fn compile(
     }
     // Every route's outputs are kept per SDK build (its files, the toolchain and the launcher's
     // settings): a library reused across builds was always compiled from the same SDK inputs.
-    let key = kept_build(rust, package, sdk.commit())?;
+    let key = kept_build(
+        rust.target(),
+        crate::contract::TOOL_COMMIT,
+        package,
+        sdk.commit(),
+    )?;
     if route == Route::Api {
         let out = &builds.join(format!("api-{key}"));
         own_folder(builds, out)?;
@@ -1190,15 +1195,20 @@ pub fn compiling(id: &str) -> String {
 const KEPT_BUILD_FLAGS: u32 = 3;
 
 /// The folder a registry build's cargo output is kept in, under `native/prebuilt-build`: one per
-/// game build, Rust toolchain, tool commit ([`crate::contract::TOOL_COMMIT`]) and tool settings
-/// ([`KEPT_BUILD_FLAGS`]), so two different tools never share one. Inside one, cargo's own
-/// fingerprints decide what to rebuild.
-fn kept_build(rust: &dyn Toolchain, package: &Package, revision: &str) -> Result<String, String> {
+/// game build, Rust toolchain and target, tool commit (the caller passes
+/// [`crate::contract::TOOL_COMMIT`]) and tool settings ([`KEPT_BUILD_FLAGS`]), so two different
+/// tools never share one. Inside one, cargo's own fingerprints decide what to rebuild.
+fn kept_build(
+    target: &str,
+    tool_commit: &str,
+    package: &Package,
+    revision: &str,
+) -> Result<String, String> {
     let mut hasher = Sha256::new();
     hasher.update(KEPT_BUILD_FLAGS.to_le_bytes());
     hasher.update(crate::rust::VERSION.as_bytes());
-    hasher.update(crate::contract::TOOL_COMMIT.as_bytes());
-    hasher.update(rust.target().as_bytes());
+    hasher.update(tool_commit.as_bytes());
+    hasher.update(target.as_bytes());
     // The package's files reach rustc and the linker through the compiler plan, which cargo
     // doesn't fingerprint: a package any of whose files differ is another key. Each file is known
     // by its slice, path, length and modified time, read from the slices themselves (the whole
@@ -1761,12 +1771,28 @@ mod tests {
         assert!(check("abc124", &rustc, host, "client").is_err());
         assert!(check("abc123", &rustc, "x86_64-unknown-linux-gnu", "client").is_err());
         assert!(check("abc123", &rustc, host, "server").is_err());
-        assert!(check("abc123", "rustc x\nrelease: 0.0.1", host, "client").is_err());
+        let older = check("abc123", "rustc x\nrelease: 0.0.1", host, "client")
+            .err()
+            .unwrap();
+        assert!(older.contains("the SDK is older"), "{older}");
+        let newer = check("abc123", "rustc x\nrelease: 999.0.0", host, "client")
+            .err()
+            .unwrap();
+        assert!(newer.contains("this tool is older"), "{newer}");
         let longer = format!("release: {}.1", crate::rust::VERSION);
         assert!(check("abc123", &longer, host, "client").is_err());
         fs::remove_file(dir.join(IDENTITY)).unwrap();
         assert!(check_identity(&dir, "abc123", host, Target::Client).is_err());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn kept_builds_of_two_tool_commits_never_share_a_folder() {
+        let scratch = tempfile::tempdir().unwrap();
+        let package = Package::at(scratch.path());
+        let key = |commit| kept_build("x86_64-unknown-linux-gnu", commit, &package, "abc123");
+        assert_eq!(key("one").unwrap(), key("one").unwrap());
+        assert_ne!(key("one").unwrap(), key("two").unwrap());
     }
 
     #[test]
