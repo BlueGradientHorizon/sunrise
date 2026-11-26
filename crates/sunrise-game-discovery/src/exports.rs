@@ -1,10 +1,48 @@
 //! The source-only module fragments of the API vocabulary, shared with its generator.
 use quote::ToTokens;
 use std::{collections::BTreeMap, fs, path::Path};
-use syn::Item;
+use syn::{Item, parse::Parser};
 
 /// Generated export fragment filenames share this prefix.
 pub const PREFIX: &str = "mod_api_exports_";
+
+/// Parse a literal `concat!(env!(var), "...")` include token stream, substituting `replacement` for `env!(var)`.
+/// Returns `Ok(None)` if the tokens do not match that exact shape.
+pub fn env_concat_include(
+    tokens: proc_macro2::TokenStream,
+    var: &str,
+    replacement: &str,
+) -> Result<Option<String>, String> {
+    let Ok(syn::Expr::Macro(expression)) = syn::parse2::<syn::Expr>(tokens) else {
+        return Ok(None);
+    };
+    if !expression.mac.path.is_ident("concat") {
+        return Ok(None);
+    }
+    let arguments = <syn::punctuated::Punctuated<syn::Expr, syn::Token![,]>>::parse_terminated
+        .parse2(expression.mac.tokens)
+        .map_err(|e| e.to_string())?;
+    let mut path = String::new();
+    let mut saw_var = false;
+    for argument in arguments {
+        match argument {
+            syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(value),
+                ..
+            }) => path.push_str(&value.value()),
+            syn::Expr::Macro(env_macro)
+                if env_macro.mac.path.is_ident("env")
+                    && syn::parse2::<syn::LitStr>(env_macro.mac.tokens.clone())
+                        .is_ok_and(|name| name.value() == var) =>
+            {
+                saw_var = true;
+                path.push_str(replacement);
+            }
+            _ => return Ok(None),
+        }
+    }
+    Ok(saw_var.then_some(path))
+}
 
 fn collect(
     root: &Path,

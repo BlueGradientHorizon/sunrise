@@ -46,9 +46,13 @@ pub(crate) fn expand(root: &Path, source: &str) -> Result<String, String> {
         for mut item in input {
             if let Item::Macro(mac) = &item
                 && mac.mac.path.is_ident("include")
-                && let Some((_, code)) = sources
-                    .iter()
-                    .find(|(name, _)| mac.mac.tokens.to_string().contains(name.as_str()))
+                && let Some(path) = sunrise_game_discovery::exports::env_concat_include(
+                    mac.mac.tokens.clone(),
+                    "OUT_DIR",
+                    "",
+                )?
+                && let Some(file_name) = Path::new(&path).file_name().and_then(|n| n.to_str())
+                && let Some((_, code)) = sources.iter().find(|(name, _)| file_name == name.as_str())
             {
                 out.extend(syn::parse_file(code).map_err(|e| e.to_string())?.items);
                 continue;
@@ -185,6 +189,17 @@ mod tests {
             missing.is_empty(),
             "parts families declare public names but have no exports/parts_<family>.rs \
              (add one, or start the family file with `// exports: none`): {missing:?}"
+        );
+    }
+
+    #[test]
+    fn expand_leaves_ordinary_literal_include_alone() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source = r#"include!("fixtures/mod_api_exports_root.rs");"#;
+        let expanded = expand(&root, source).expect("expand ordinary literal include");
+        assert!(
+            expanded.contains("fixtures/mod_api_exports_root.rs"),
+            "expected ordinary literal include to remain untouched, got: {expanded}"
         );
     }
 }
