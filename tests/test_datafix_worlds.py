@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from tools import datafix_worlds as worlds
@@ -29,6 +30,23 @@ class JavaRuntimeTests(unittest.TestCase):
     def test_a_component_this_platform_lacks_uses_gamma_as_the_lock_says(self):
         exe, home = self.java_for('jre-legacy', 'mac-os-arm64', 'java-runtime-gamma-mac-os-arm64')
         self.assertEqual(exe, str(home / 'bin' / 'java'))
+
+
+class UnpinnedPlatformTests(unittest.TestCase):
+    def test_a_platform_the_lock_does_not_pin_is_refused_by_name_before_any_download(self):
+        for plat in ('windows-x64', 'mac-os'):
+            with self.subTest(plat), mock.patch.object(worlds, 'platform', return_value=plat), \
+                    mock.patch.object(worlds, 'version_meta', return_value={'javaVersion': {'component': 'java-runtime-gamma'}}), \
+                    mock.patch.object(worlds, 'install_runtime', side_effect=AssertionError('no download')), \
+                    self.assertRaisesRegex(ValueError, f'platform {plat};'):
+                worlds.java('x')
+
+    def test_platform_names_what_mojang_calls_the_machine(self):
+        for system, machine, expected in (('win32', 'AMD64', 'windows-x64'), ('win32', 'ARM64', 'windows-arm64'),
+                                          ('darwin', 'x86_64', 'mac-os'), ('darwin', 'arm64', 'mac-os-arm64'), ('linux', 'x86_64', 'linux')):
+            with self.subTest(system, machine=machine), mock.patch.object(worlds, 'sys', SimpleNamespace(platform=system)), \
+                    mock.patch.object(worlds, 'host', SimpleNamespace(machine=lambda: machine)):
+                self.assertEqual(worlds.platform(), expected)
 
 
 class ServerStopTests(unittest.TestCase):

@@ -15,6 +15,7 @@ import hashlib
 import json
 import math
 import os
+import platform as host
 import queue
 import re
 import shutil
@@ -118,10 +119,18 @@ OLD_VERSIONS = {
 }
 
 
+# Mojang's runtime platform names (the keys of its java runtime manifest), by Windows machine.
+WINDOWS_PLATFORMS = {'AMD64': 'windows-x64', 'ARM64': 'windows-arm64', 'x86': 'windows-x86'}
+
+
 def platform():
-    import platform as p
+    """Mojang's name for this machine in its Java runtime manifest."""
     if sys.platform == 'darwin':
-        return 'mac-os-arm64' if p.machine() == 'arm64' else 'mac-os'
+        return 'mac-os-arm64' if host.machine() == 'arm64' else 'mac-os'
+    if sys.platform == 'win32':
+        if host.machine() not in WINDOWS_PLATFORMS:
+            raise ValueError(f'no Mojang Java runtime platform for Windows machine {host.machine()}')
+        return WINDOWS_PLATFORMS[host.machine()]
     return 'linux'
 
 
@@ -132,13 +141,17 @@ def java(version):
     component = meta.get('javaVersion', {}).get('component', 'jre-legacy')
     if component in ('java-runtime-delta', 'java-runtime-epsilon'):
         return 'java'  # 1.20.5 on: the JDK that runs 26.3 runs them
-    runtimes = LOCK[platform()]
-    if component not in {name for plat, names in LOCK.items() if plat != 'note' for name in names}:
+    plat = platform()
+    if plat not in LOCK:
+        raise ValueError(f'{version}: research-lock.json java_runtimes pins no runtime for platform {plat}; pin its components '
+                         f'(manifest_url and manifest_sha1, from Mojang\'s runtime manifest for {plat}) under java_runtimes.{plat}')
+    runtimes = LOCK[plat]
+    if component not in {name for other, names in LOCK.items() if other != 'note' for name in names}:
         raise ValueError(f'{version}: javaVersion component {component} is in no platform of research-lock.json java_runtimes')
     if component not in runtimes:
         component = 'java-runtime-gamma'  # research-lock.json java_runtimes note: a component this platform lacks falls back to gamma
     pin = runtimes[component]
-    home = LOCAL / 'java' / f'{component}-{platform()}'
+    home = LOCAL / 'java' / f'{component}-{plat}'
     stamp = home / '.complete'
     if not stamp.exists() or stamp.read_text() != pin['manifest_sha1']:
         install_runtime(pin, home)
