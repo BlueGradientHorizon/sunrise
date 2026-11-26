@@ -1069,7 +1069,7 @@ class SmokeBuildTests(unittest.TestCase):
             ("win32", []),
         ):
             with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory, \
-                 patch.object(prebuilt_game.sys, "platform", platform):
+                 patch.object(prebuilt_game, "PLATFORM", platform):
                 out = Path(directory) / "sdk"
                 out.mkdir()
                 write_build_data(out, {"facade_crates": [], "rustc": "release: fixture\n"})

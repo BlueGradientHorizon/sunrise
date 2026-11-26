@@ -873,7 +873,7 @@ def smoke(out: Path) -> None:
         shutil.rmtree(installed)
     installed.mkdir()
     # Use the same dylib link arguments as sunrise-native-build, not the executable's link policy.
-    platform = {"darwin": "macos", "win32": "windows"}.get(sys.platform, sys.platform)
+    platform = {"darwin": "macos", "win32": "windows"}.get(PLATFORM, PLATFORM)
     prefix = f"{platform} "
     policy = ROOT / "crates/sunrise-native-build/src/dylib-link-args.txt"
     link_args = [line.removeprefix(prefix) for line in policy.read_text(encoding="utf-8").splitlines()
