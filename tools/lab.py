@@ -24,12 +24,10 @@ import urllib.request
 import uuid
 import zipfile
 
-try:
-    from . import file_lock
-except ImportError:
-    import file_lock
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import file_lock
+
 LOCAL = ROOT / ".local"
 LOCK = ROOT / "research-lock.json"
 # The command every cargo run starts with.

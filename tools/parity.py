@@ -58,16 +58,10 @@ import subprocess
 import sys
 import time
 
-try:
-    from . import parity_reach
-    from . import file_lock
-    from . import process_tree
-except ImportError:
-    import parity_reach
-    import file_lock
-    import process_tree
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import file_lock, parity_reach, process_tree
+
 LOCAL = ROOT / ".local"
 STATE_DIR = LOCAL / "parity-runner"
 STATE = STATE_DIR / "state.json"
