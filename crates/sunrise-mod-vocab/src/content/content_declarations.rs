@@ -466,6 +466,13 @@ pub struct Block {
     pub default_state: BTreeMap<String, String>,
     /// Also add a block item with the same id; true unless set false, as in a file.
     pub item: bool,
+    /// Whether the block item takes the block's name key, `block.<namespace>.<path>`
+    /// (`Item.Properties.useBlockDescriptionPrefix`, which vanilla's `Items.registerBlock`
+    /// calls), or, when false, its own `item.<namespace>.<path>`, as a plain
+    /// `new BlockItem(block, new Item.Properties())` has. Your language file names the
+    /// item under that key. True unless set false, as in a file
+    /// (`"use_block_description_prefix"`). A `minecraft:item_name` in `components` wins.
+    pub use_block_description_prefix: bool,
     /// A fence gate's opening sounds (`WoodType.fenceGateOpen`). `All` replaces
     /// every site; `Sites` keeps the template wood's sound for each missing site.
     /// Needs a `*_fence_gate` template.
@@ -576,6 +583,7 @@ impl Default for Block {
             state_properties: BTreeMap::new(),
             default_state: BTreeMap::new(),
             item: true,
+            use_block_description_prefix: true,
             open_sound: None,
             close_sound: None,
             block_item: None,
