@@ -1,17 +1,17 @@
 VillagerRenderer.getShadowRadius	port	crates/sunrise-client/src/shadows.rs::mob_shadow_radius	a baby villager's radius is halved, as the strider's is
-VillagerRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/villager.rs::anim	unhappy head shake read here; the main-hand item (set while showing trades) is drawn over the crossed arms (render::held_item_transform)
+VillagerRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs/villager.rs::anim	unhappy head shake read here; the main-hand item (set while showing trades) is drawn over the crossed arms (render::held_item_transform)
 WanderingTraderRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/render.rs::render_with	the trader's unhappy counter is never ticked in vanilla (only Villager ticks it), so nothing is read
-WardenRenderer.<init>	port	crates/sunrise-client/src/mobs/warden.rs::emissive_layers	the four emissive layers: bioluminescent, pulsating spots, tendrils, heart
-WardenRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/warden.rs::anim	tendril and heart clocks and the animation states (roar, sniff, emerge, dig, attack, sonic boom)
+WardenRenderer.<init>	port	crates/sunrise-sim/src/mobs/warden.rs::emissive_layers	the four emissive layers: bioluminescent, pulsating spots, tendrils, heart
+WardenRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs/warden.rs::anim	tendril and heart clocks and the animation states (roar, sniff, emerge, dig, attack, sonic boom)
 WindChargeRenderer.submit	port	crates/sunrise-client/src/game/interface/wind_client.rs::Game::wind_charge_geometry	the wind texture scrolls (render::draw_scrolled, WIND_CHARGE_SCROLL)
-WitchRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/witch.rs::anim	nose wobble; the held potion is drawn at the nose (render::held_item_transform, WitchItemLayer.applyTranslation)
-WitherBossRenderer.getTextureLocation	port	crates/sunrise-client/src/mobs/wither.rs::texture	invulnerable blink texture
-WitherBossRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/wither.rs::anim	invulnerable clock feeds the texture and scale; the powered glow is render.rs::energy_swirl
+WitchRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs/witch.rs::anim	nose wobble; the held potion is drawn at the nose (render::held_item_transform, WitchItemLayer.applyTranslation)
+WitherBossRenderer.getTextureLocation	port	crates/sunrise-sim/src/mobs/wither.rs::texture	invulnerable blink texture
+WitherBossRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs/wither.rs::anim	invulnerable clock feeds the texture and scale; the powered glow is render.rs::energy_swirl
 WitherSkullRenderer.createSkullLayer	skip:data		the skull model is baked into entity-models.json
 WitherSkullRenderer.submit	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	gap: player: the skull is drawn as a flat sprite (Projectile::item_sprite), not the 3D skull model
 WitherSkullRenderer.extractRenderState	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	the wither_skull model turned to its flight, with the dangerous (blue) texture
-WolfRenderer.getModelTint	port	crates/sunrise-client/src/mobs/tame.rs::tint	wet shade as a vertex colour
-WolfRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/tame.rs::anim	tail angle, head roll and shake body roll; texture, collar and armour are read at draw
+WolfRenderer.getModelTint	port	crates/sunrise-sim/src/mobs/tame.rs::tint	wet shade as a vertex colour
+WolfRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs/tame.rs::anim	tail angle, head roll and shake body roll; texture, collar and armour are read at draw
 ZombieNautilusRenderer.bakeModels	skip:data		models are baked into entity-models.json
 ZombieNautilusRenderer.submit	port	crates/sunrise-client/src/mobs/render.rs::body	model chosen by variant
 ZombieNautilusRenderer.getTextureLocation	port	crates/sunrise-client/src/mobs/render.rs::body	texture by variant
@@ -48,10 +48,10 @@ IronGolemFlowerLayer.submit	port	crates/sunrise-client/src/game/mobs/mob_blocks.
 ItemInHandLayer.submit	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::held_item_geometry	both hands through the item pipeline
 ItemInHandLayer.useBabyOffset	port	crates/sunrise-client/src/mobs/render.rs::item_from_hand	baby hand offset
 LivingEntityEmissiveLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	emissive layers drawn full bright; warden alpha is in warden::emissive_layers
-LlamaDecorLayer.submit	port	crates/sunrise-client/src/mobs/llama.rs::decor	carpet, or the trader llama's blanket
-LlamaDecorLayer.renderEquipment	port	crates/sunrise-client/src/mobs/llama.rs::decor	same decor model and texture
+LlamaDecorLayer.submit	port	crates/sunrise-sim/src/mobs/llama.rs::decor	carpet, or the trader llama's blanket
+LlamaDecorLayer.renderEquipment	port	crates/sunrise-sim/src/mobs/llama.rs::decor	same decor model and texture
 MushroomCowMushroomLayer.submitMushroomBlock	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::worn_block_geometry	mushrooms on an adult mooshroom
-PandaHoldsItemLayer.submit	port	crates/sunrise-client/src/mobs/panda.rs::item_offset	item in the mouth of a sitting panda, with the eating bob
+PandaHoldsItemLayer.submit	port	crates/sunrise-sim/src/mobs/panda.rs::item_offset	item in the mouth of a sitting panda, with the eating bob
 ParrotOnShoulderLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::shoulder_parrot
 ParrotOnShoulderLayer.submitOnShoulder	port	crates/sunrise-client/src/mobs/render.rs::shoulder_parrot	the shoulder's parrot in the ON_SHOULDER pose with the avatar's walk animation, age and head turn
 PlayerItemInHandLayer.submitArmWithItem	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::held_item_geometry	the spyglass in use is drawn raised to the eye (render::held_to_eye_matrix, renderItemHeldToEye)
@@ -82,7 +82,7 @@ WolfCollarLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	dye
 AvatarRenderer.<init>	port	crates/sunrise-client/src/game/mobs/creatures/mod_client.rs::Game::mob_geometry	gap: player: no cape, ears, worn head, parrot or stuck-arrow layer; armour, held items, wings and spin are drawn
 AvatarRenderer.getRenderOffset	port	crates/sunrise-client/src/game/interface/perspective.rs::Game::tick_player_model	gap: minor: other players are not lowered 0.125 when sneaking; only the local model is
 AvatarRenderer.submitNameDisplay	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tag_geometry	gap: minor: the 10 unit lift for ears is not applied (no ears)
-AvatarRenderer.extractRenderState	port	crates/sunrise-client/src/mobs.rs::Mob::tick_avatar_pose	glide count, wings and swim read here; stuck arrows and stingers, shoulder parrots, ears, the cape and the spyglass are drawn by game/perspective.rs and render::cape
+AvatarRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs.rs::Mob::tick_avatar_pose	glide count, wings and swim read here; stuck arrows and stingers, shoulder parrots, ears, the cape and the spyglass are drawn by game/perspective.rs and render::cape
 AvatarRenderer.shouldShowName	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tags	name tags for players and named mobs
 AvatarRenderer.extractFlightData	port	crates/sunrise-client/src/mobs/render.rs::base_transform_at	glide time drives the tilt; the body turns toward the flight direction (lerped velocity)
 AvatarRenderer.extractCapeState	port	crates/sunrise-level/src/camera_math.rs::AvatarBob::cape	the cape flap, lean and lean2 from the cloak lagging behind the body
@@ -90,8 +90,8 @@ AvatarRenderer.renderRightHand	port	crates/sunrise-client/src/game/interface/fra
 AvatarRenderer.renderLeftHand	port	crates/sunrise-client/src/game/interface/frame_geometry.rs::Game::submit_first_person_arm	first-person arm with local skin, sleeve and outward roll
 AvatarRenderer.renderHand	port	crates/sunrise-client/src/game/interface/frame_geometry.rs::Game::submit_first_person_arm	first-person arm with local skin and sleeve, outward rest-pose roll
 AvatarRenderer.isEntityUpsideDown	port	crates/sunrise-client/src/mobs/render.rs::base_transform_at	Dinnerbone and Grumm flip; gap: minor: the cape-shown check is missing and the flip applies to every mob
-ArmedEntityRenderState.getArmPose	port	crates/sunrise-client/src/mobs/anim.rs::setup	arm poses are chosen per species and hand inside setup
-ArmedEntityRenderState.extractArmedEntityRenderState	port	crates/sunrise-client/src/mobs/anim.rs::state	swing and main arm; the held items are read in Game::held_item_geometry
+ArmedEntityRenderState.getArmPose	port	crates/sunrise-sim/src/mobs/anim.rs::setup	arm poses are chosen per species and hand inside setup
+ArmedEntityRenderState.extractArmedEntityRenderState	port	crates/sunrise-sim/src/mobs/anim.rs::state	swing and main arm; the held items are read in Game::held_item_geometry
 AvatarRenderState.fallFlyingScale	port	crates/sunrise-client/src/mobs/render.rs::base_transform_at	glide scale: ticks squared over 100, clamped to 1
 EnderDragonRenderState.getHeadPartYOffset	port	crates/sunrise-client/src/game/mobs/dragon_client.rs::Game::dragon_geometry	sitting, landing and the part 6 cases
 EntityRenderState.fillCrashReportCategory	skip:debug		crash report detail only
@@ -103,8 +103,8 @@ HumanoidModel.createMesh	skip:data		humanoid mesh is baked into entity-models.js
 HumanoidModel.createArmorMeshSet	skip:data		armour meshes are baked into entity-models.json
 HumanoidModel.createBaseArmorMesh	skip:data		armour mesh is baked into entity-models.json
 HumanoidModel.createBabyArmorMesh	skip:data		baby armour mesh is baked into entity-models.json
-HumanoidModel.setupAttackAnimation	port	crates/sunrise-client/src/mobs/anim.rs::humanoid	body sway and the swinging arm
-Model.resetPose	port	crates/sunrise-client/src/mobs/anim.rs::Poses::reset	resets every part to its rest pose
+HumanoidModel.setupAttackAnimation	port	crates/sunrise-sim/src/mobs/anim.rs::humanoid	body sway and the swinging arm
+Model.resetPose	port	crates/sunrise-sim/src/mobs/anim.rs::Poses::reset	resets every part to its rest pose
 QuadrupedModel.createBodyMesh	skip:data		quadruped mesh is baked into entity-models.json
 QuadrupedModel.createLegs	skip:data		leg meshes are baked into entity-models.json
 BatModel.createBodyLayer	skip:data		bat model is baked into entity-models.json
@@ -112,24 +112,24 @@ AllayModel.createBodyLayer	skip:data		allay model is baked into entity-models.js
 AllayModel.translateToHand	port	crates/sunrise-client/src/mobs/render.rs::allay_hand
 AdultArmadilloModel.createBodyLayer	skip:data		armadillo model is baked into entity-models.json
 BabyArmadilloModel.createBodyLayer	skip:data		baby armadillo model is baked into entity-models.json
-AdultAxolotlModel.setupAnim	port	crates/sunrise-client/src/mobs/body_anim.rs::axolotl	the axolotl pose dispatch
-AdultAxolotlModel.setupLayStillOnGroundAnimation	port	crates/sunrise-client/src/mobs/body_anim.rs::axolotl_lay	lay-still pose on the ground
-AdultAxolotlModel.setupGroundCrawlingAnimation	port	crates/sunrise-client/src/mobs/body_anim.rs::axolotl_crawl	ground crawl pose
-AdultAxolotlModel.setupWaterHoveringAnimation	port	crates/sunrise-client/src/mobs/body_anim.rs::axolotl_hover	hovering in water
-AdultAxolotlModel.setupSwimmingAnimation	port	crates/sunrise-client/src/mobs/body_anim.rs::axolotl_swim	swimming pose
-AdultAxolotlModel.setupPlayDeadAnimation	port	crates/sunrise-client/src/mobs/body_anim.rs::axolotl_dead	playing dead
-AdultAxolotlModel.applyMirrorLegRotations	port	crates/sunrise-client/src/mobs/body_anim.rs::axolotl	mirrored leg rotations, inline in axolotl
-AdultBeeModel.bobUpAndDown	port	crates/sunrise-client/src/mobs/body_anim.rs::bee	adult antennae wiggle (not for babies)
-BeeModel.bobUpAndDown	port	crates/sunrise-client/src/mobs/body_anim.rs::bee	bone, bob and leg swing
+AdultAxolotlModel.setupAnim	port	crates/sunrise-sim/src/mobs/body_anim.rs::axolotl	the axolotl pose dispatch
+AdultAxolotlModel.setupLayStillOnGroundAnimation	port	crates/sunrise-sim/src/mobs/body_anim.rs::axolotl_lay	lay-still pose on the ground
+AdultAxolotlModel.setupGroundCrawlingAnimation	port	crates/sunrise-sim/src/mobs/body_anim.rs::axolotl_crawl	ground crawl pose
+AdultAxolotlModel.setupWaterHoveringAnimation	port	crates/sunrise-sim/src/mobs/body_anim.rs::axolotl_hover	hovering in water
+AdultAxolotlModel.setupSwimmingAnimation	port	crates/sunrise-sim/src/mobs/body_anim.rs::axolotl_swim	swimming pose
+AdultAxolotlModel.setupPlayDeadAnimation	port	crates/sunrise-sim/src/mobs/body_anim.rs::axolotl_dead	playing dead
+AdultAxolotlModel.applyMirrorLegRotations	port	crates/sunrise-sim/src/mobs/body_anim.rs::axolotl	mirrored leg rotations, inline in axolotl
+AdultBeeModel.bobUpAndDown	port	crates/sunrise-sim/src/mobs/body_anim.rs::bee	adult antennae wiggle (not for babies)
+BeeModel.bobUpAndDown	port	crates/sunrise-sim/src/mobs/body_anim.rs::bee	bone, bob and leg swing
 BeeStingerModel.createBodyLayer	skip:data		stinger model is baked into entity-models.json
 AdultCamelModel.createBodyMesh	skip:data		camel mesh is baked into entity-models.json
 BabyCamelModel.createBodyLayer	skip:data		baby camel model is baked into entity-models.json
-CamelModel.applyHeadRotation	port	crates/sunrise-client/src/mobs/camel.rs::anim	head clamp and the jump cooldown lift
+CamelModel.applyHeadRotation	port	crates/sunrise-sim/src/mobs/camel.rs::anim	head clamp and the jump cooldown lift
 CamelSaddleModel.createSaddleLayer	skip:data		saddle model is baked into entity-models.json
-AdultChickenModel.setupAnim	port	crates/sunrise-client/src/mobs/anim.rs::head	head pitch and yaw from the state
+AdultChickenModel.setupAnim	port	crates/sunrise-sim/src/mobs/anim.rs::head	head pitch and yaw from the state
 AdultChickenModel.createBaseChickenModel	skip:data		chicken mesh is baked into entity-models.json
 BabyChickenModel.createBodyLayer	skip:data		baby chicken model is baked into entity-models.json
-ChickenModel.setupAnim	port	crates/sunrise-client/src/mobs/anim.rs::setup	leg swing and wing flap
+ChickenModel.setupAnim	port	crates/sunrise-sim/src/mobs/anim.rs::setup	leg swing and wing flap
 ColdChickenModel.createBodyLayer	skip:data		cold chicken model is baked into entity-models.json
 BabyCowModel.createBodyLayer	skip:data		baby cow model is baked into entity-models.json
 ColdCowModel.createBodyLayer	skip:data		cold cow model is baked into entity-models.json
@@ -137,13 +137,13 @@ CowModel.createBaseCowModel	skip:data		cow mesh is baked into entity-models.json
 WarmCowModel.createBodyLayer	skip:data		warm cow model is baked into entity-models.json
 BabyDolphinModel.createBodyLayer	skip:data		baby dolphin model is baked into entity-models.json
 DolphinModel.createBodyLayer	skip:data		dolphin model is baked into entity-models.json
-DolphinModel.setupAnim	port	crates/sunrise-client/src/mobs/aquatic.rs::anim	body turn and, while moving, the tail and fin swing; gap: minor: moving is read from horizontal velocity, not the isMoving flag
+DolphinModel.setupAnim	port	crates/sunrise-sim/src/mobs/aquatic.rs::anim	body turn and, while moving, the tail and fin swing; gap: minor: moving is read from horizontal velocity, not the isMoving flag
 AbstractEquineModel.createBodyMesh	skip:data		equine mesh is baked into entity-models.json
-AbstractEquineModel.animateHeadPartsPlacement	port	crates/sunrise-client/src/mobs/equine.rs::anim	head part placement while eating and standing
-BabyDonkeyModel.setupAnim	port	crates/sunrise-client/src/mobs/equine.rs::anim	baby donkey head pitch of -30 degrees and head part pose
-BabyDonkeyModel.offsetLegPositionWhenStanding	port	crates/sunrise-client/src/mobs/equine.rs::anim	hind leg heights when standing
-BabyDonkeyModel.animateHeadPartsPlacement	port	crates/sunrise-client/src/mobs/equine.rs::anim	baby donkey head part placement
+AbstractEquineModel.animateHeadPartsPlacement	port	crates/sunrise-sim/src/mobs/equine.rs::anim	head part placement while eating and standing
+BabyDonkeyModel.setupAnim	port	crates/sunrise-sim/src/mobs/equine.rs::anim	baby donkey head pitch of -30 degrees and head part pose
+BabyDonkeyModel.offsetLegPositionWhenStanding	port	crates/sunrise-sim/src/mobs/equine.rs::anim	hind leg heights when standing
+BabyDonkeyModel.animateHeadPartsPlacement	port	crates/sunrise-sim/src/mobs/equine.rs::anim	baby donkey head part placement
 BabyHorseModel.createBabyMesh	skip:data		baby horse mesh is baked into entity-models.json
-BabyHorseModel.animateHeadPartsPlacement	port	crates/sunrise-client/src/mobs/equine.rs::anim	baby horse head part placement
+BabyHorseModel.animateHeadPartsPlacement	port	crates/sunrise-sim/src/mobs/equine.rs::anim	baby horse head part placement
 DonkeyModel.createBodyLayer	skip:data		donkey model is baked into entity-models.json
-DonkeyModel.setupAnim	port	crates/sunrise-client/src/mobs/equine.rs::anim	donkey pose
+DonkeyModel.setupAnim	port	crates/sunrise-sim/src/mobs/equine.rs::anim	donkey pose

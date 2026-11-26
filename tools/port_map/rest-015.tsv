@@ -61,7 +61,7 @@ LootCommand.drop	inline	crates/sunrise-client/src/game/administration/commands/t
 LootContextSources.ContextDecorator.createParams	port	crates/sunrise-client/src/game/administration/commands/compute.rs::Game::compute_context	gap: minor: keeps only the block and entity picks; no origin or this-entity loot params
 LootContextSources.ContextDecorator.createContext	inline	crates/sunrise-client/src/game/administration/commands/compute.rs::Game::compute_context	gap: minor: no LootContext is built
 MsgCommand.register	port	crates/sunrise-command/src/vanilla.rs::registered	msg literal with tell and w aliases
-MsgCommand.sendMessage	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::whisper	the outgoing line for the sender and the incoming one for each target
+MsgCommand.sendMessage	port	crates/sunrise-sim/src/lan/hub/chat.rs::Hub::whisper	the outgoing line for the sender and the incoming one for each target
 OpCommand.register	inline	crates/sunrise-client/src/game/administration/commands/mod_server.rs::Game::execute_command	"op" reaches the op arm of cmd_profiles on a dedicated server: the entry joins the op list, the lists are synced and commands.op.success is said
 OpCommand.opPlayers	port	crates/sunrise-server/src/lists.rs::run	gap: minor: CLI op only (ops.json); no in-game /op
 PardonCommand.register	inline	crates/sunrise-client/src/game/administration/commands/mod_server.rs::Game::execute_command	"pardon" reaches the pardon arm of cmd_profiles on a dedicated server

@@ -19,7 +19,7 @@ PARITY_RUST_SCOPE = [
     'crates/sunrise-world/src/server_player_combat.rs',
     'crates/sunrise-world/src/server_player_damage.rs',
     'crates/sunrise-client/src/health',
-    'crates/sunrise-client/src/health.rs',
+    'crates/sunrise-sim/src/health.rs',
     'crates/sunrise-client/src/game.rs',
     'crates/sunrise-client/src/game/mobs/creatures',
     'crates/sunrise-client/src/game/items/potions.rs',

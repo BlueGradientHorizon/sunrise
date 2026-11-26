@@ -27,10 +27,10 @@ def main(argv=None):
     classes.mkdir(parents=True, exist_ok=True)
     oracle = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaVillagerWitnessOracle.java'
     sources = [Path(__file__), oracle,
-               lab.ROOT / 'crates/sunrise-client/src/mobs/villager.rs',
-               lab.ROOT / 'crates/sunrise-client/src/mobs/villager_brain.rs',
-               lab.ROOT / 'crates/sunrise-client/src/mobs/villager_brain/reputation.rs',
-               lab.ROOT / 'crates/sunrise-client/src/mobs/villager_brain/reputation_witness_tests.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs/villager.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain/reputation.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs/villager_brain/reputation_witness_tests.rs',
                lab.ROOT / 'crates/sunrise-client/src/game/mobs/villagers.rs',
                lab.ROOT / 'crates/sunrise-client/src/game/mobs/tests/villager_witness_tests.rs',
                lab.ROOT / 'crates/sunrise-client/src/game/network/lan/mod.rs',

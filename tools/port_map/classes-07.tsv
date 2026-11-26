@@ -8,11 +8,11 @@ WorldPresets.Bootstrap	skip:data		datagen bootstrap that registers the presets
 SinglePieceStructure.findGenerationPoint	port	crates/sunrise-world/src/worldgen/structure/start.rs::try_generate	DesertPyramid/JungleTemple arm: valid biome, sea-level check, stub on the surface
 SinglePieceStructure.generatePieces	port	crates/sunrise-world/src/worldgen/structure/start.rs::try_generate	same arm builds the piece at the chunk corner
 structure/StructureCheck.canCreateStructure	port	crates/sunrise-world/src/worldgen/structure/start.rs::try_generate	no start when the arm returns None
-structure/StructureCheck.checkStart	inline	crates/sunrise-client/src/vanillagen.rs::VanillaTerrain::locate_for_map	gap: the references maps add live in a sidecar file (data/sunrise_structure_references_<dim>.json), not in the start's chunk; the ones a chunk saved are read from it
-structure/StructureCheck.checkStructureInfo	inline	crates/sunrise-client/src/vanillagen.rs::VanillaTerrain::locate_for_map	gap: the references live in a sidecar file (data/sunrise_structure_references_<dim>.json), not in the start's chunk
-structure/StructureCheck.incrementReference	inline	crates/sunrise-client/src/vanillagen.rs::VanillaTerrain::locate_for_map	gap: the references maps add live in a sidecar file (data/sunrise_structure_references_<dim>.json), not in the start's chunk; the ones a chunk saved are read from it
+structure/StructureCheck.checkStart	inline	crates/sunrise-sim/src/vanillagen.rs::VanillaTerrain::locate_for_map	gap: the references maps add live in a sidecar file (data/sunrise_structure_references_<dim>.json), not in the start's chunk; the ones a chunk saved are read from it
+structure/StructureCheck.checkStructureInfo	inline	crates/sunrise-sim/src/vanillagen.rs::VanillaTerrain::locate_for_map	gap: the references live in a sidecar file (data/sunrise_structure_references_<dim>.json), not in the start's chunk
+structure/StructureCheck.incrementReference	inline	crates/sunrise-sim/src/vanillagen.rs::VanillaTerrain::locate_for_map	gap: the references maps add live in a sidecar file (data/sunrise_structure_references_<dim>.json), not in the start's chunk; the ones a chunk saved are read from it
 structure/StructureCheck.loadStructures	skip:other		reads saved starts for the storage cache; Sunrise places saved starts with use_saved_start
-structure/StructureCheck.onStructureLoad	inline	crates/sunrise-client/src/vanillagen.rs::VanillaTerrain::set_saved_references	the references a chunk saved for its starts count as known (read from the region file by SaveDir::start_references); gap: minor: a start is read when a map asks, not when the chunk loads; legacy Level.Structures.Starts is not read
+structure/StructureCheck.onStructureLoad	inline	crates/sunrise-sim/src/vanillagen.rs::VanillaTerrain::set_saved_references	the references a chunk saved for its starts count as known (read from the region file by SaveDir::start_references); gap: minor: a start is read when a map asks, not when the chunk loads; legacy Level.Structures.Starts is not read
 structure/StructureCheck.storeFullResults	skip:other		cache write for the storage check
 structure/StructureCheck.tryLoadFromStorage	skip:other		chunk NBT scan for the storage cache; Sunrise places saved starts with use_saved_start
 PiecesContainer.isInsidePiece	inline	crates/sunrise-world/src/worldgen/generator_decoration.rs::World::add_entity	start-piece box test that feeds the mob finalize hook
@@ -163,20 +163,20 @@ SkyLightEngine.setLightEnabled	skip:other		light is computed when a chunk loads 
 SkyLightSectionStorage	skip:other		sky data layer bookkeeping per section; Sunrise keeps light in chunk sections
 SkyLightSectionStorage.SkyDataLayerStorageMap	skip:java		copy of sky data layers; collection plumbing
 SpatialLongSet.InternalMap	skip:java		hash set internals for section positions
-NodeEvaluator.getNode	port	crates/sunrise-client/src/mobs/path.rs::Finder::node
-NodeEvaluator.getPathType	port	crates/sunrise-client/src/mobs/path.rs::Finder::path_type
-NodeEvaluator.getTargetNodeAt	port	crates/sunrise-client/src/mobs/path.rs::Finder::node	target lookup is the same arena lookup
-NodeEvaluator.prepare	port	crates/sunrise-client/src/mobs/path.rs::Finder::new	per-query state
-PathTypeCache.compute	port	crates/sunrise-client/src/mobs/path.rs::Finder::compute_path_type
-PathTypeCache.get	port	crates/sunrise-client/src/mobs/path.rs::Finder::cached
-PathTypeCache.getOrCompute	port	crates/sunrise-client/src/mobs/path.rs::Finder::cached
+NodeEvaluator.getNode	port	crates/sunrise-sim/src/mobs/path.rs::Finder::node
+NodeEvaluator.getPathType	port	crates/sunrise-sim/src/mobs/path.rs::Finder::path_type
+NodeEvaluator.getTargetNodeAt	port	crates/sunrise-sim/src/mobs/path.rs::Finder::node	target lookup is the same arena lookup
+NodeEvaluator.prepare	port	crates/sunrise-sim/src/mobs/path.rs::Finder::new	per-query state
+PathTypeCache.compute	port	crates/sunrise-sim/src/mobs/path.rs::Finder::compute_path_type
+PathTypeCache.get	port	crates/sunrise-sim/src/mobs/path.rs::Finder::cached
+PathTypeCache.getOrCompute	port	crates/sunrise-sim/src/mobs/path.rs::Finder::cached
 PathTypeCache.invalidate	skip:java		the cache lives for one query, so nothing is invalidated
-SwimNodeEvaluator.findAcceptedNode	port	crates/sunrise-client/src/mobs/path.rs::Finder::swim_accepted
-SwimNodeEvaluator.getCachedBlockType	port	crates/sunrise-client/src/mobs/path.rs::Finder::cached
-SwimNodeEvaluator.getNeighbors	port	crates/sunrise-client/src/mobs/path.rs::Finder::swim_neighbors
-SwimNodeEvaluator.getPathTypeOfMob	port	crates/sunrise-client/src/mobs/path.rs::Finder::path_type_of_mob
-SwimNodeEvaluator.getStart	port	crates/sunrise-client/src/mobs/path.rs::Finder::start	Swim arm
-SwimNodeEvaluator.hasMalus	inline	crates/sunrise-client/src/mobs/path.rs::Finder::swim_neighbors	diagonal check on both sides
+SwimNodeEvaluator.findAcceptedNode	port	crates/sunrise-sim/src/mobs/path.rs::Finder::swim_accepted
+SwimNodeEvaluator.getCachedBlockType	port	crates/sunrise-sim/src/mobs/path.rs::Finder::cached
+SwimNodeEvaluator.getNeighbors	port	crates/sunrise-sim/src/mobs/path.rs::Finder::swim_neighbors
+SwimNodeEvaluator.getPathTypeOfMob	port	crates/sunrise-sim/src/mobs/path.rs::Finder::path_type_of_mob
+SwimNodeEvaluator.getStart	port	crates/sunrise-sim/src/mobs/path.rs::Finder::start	Swim arm
+SwimNodeEvaluator.hasMalus	inline	crates/sunrise-sim/src/mobs/path.rs::Finder::swim_neighbors	diagonal check on both sides
 CollectingNeighborUpdater.addAndRun	port	crates/sunrise-world/src/level/update.rs::Sim::add_and_run
 CollectingNeighborUpdater.neighborChanged	port	crates/sunrise-world/src/level/update.rs::Sim::neighbor_changed_at	Simple update
 CollectingNeighborUpdater.runUpdates	port	crates/sunrise-world/src/level/update.rs::Sim::run_updates

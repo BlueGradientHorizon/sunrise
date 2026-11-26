@@ -27,7 +27,7 @@ def main():
         'Off-hand components are outside this identity-only regression.',
         sources=[lab.ROOT / 'tools/test_held_item_stack_parity.py',
                  lab.ROOT / 'crates/sunrise-client/src/mobs/render.rs',
-                 lab.ROOT / 'crates/sunrise-client/src/mobs.rs',
+                 lab.ROOT / 'crates/sunrise-sim/src/mobs.rs',
                  lab.ROOT / 'crates/sunrise-client/src/game/mobs/mob_blocks.rs'], expected_lines=100)
 
 

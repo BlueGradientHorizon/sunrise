@@ -11,7 +11,7 @@ sunrise-client-lib	lib	benchmark::tests::a_setting_that_was_on_is_on_again_after
 sunrise-client-lib	lib	benchmark::tests::the_setting_is_put_back_when_the_run_fails_midway	crates/sunrise-client/src/benchmark.rs:1285	child-process
 sunrise-client-lib	lib	benchmark::tests::a_refused_switch_ends_the_run_with_the_games_reason_and_changes_nothing	crates/sunrise-client/src/benchmark.rs:1310	child-process
 sunrise-client-lib	bin:sunrise-ctl	launch::tests::launch_refuses_a_socket_path_too_long	crates/sunrise-client/src/bin/sunrise-ctl/launch.rs:268	child-process
-sunrise-client-lib	lib	block_entity_item::tests::a_mod_block_entity_rides_its_item	crates/sunrise-client/src/block_entity_item.rs:621	child-process
+sunrise-sim	lib	block_entity_item::tests::a_mod_block_entity_rides_its_item	crates/sunrise-sim/src/block_entity_item.rs:621	child-process
 sunrise-client	lib	game::server_side::commands::modprofile::tests::modprofile_state_and_report_side_effects	crates/sunrise-client/src/game/administration/commands/modprofile_tests.rs:14	child-process
 sunrise-client	lib	game::server_side::dedicated::tests::console_logging_survives_closed_stdout	crates/sunrise-client/src/game/interface/dedicated/mod.rs:2893	child-process
 sunrise-client	lib	game::mods::tests::content_overlay_validates_dependencies_and_orders_layers	crates/sunrise-client/src/game/modding/mods/mod.rs:2675	child-process
@@ -20,10 +20,10 @@ sunrise-client	lib	game::mods::tests::a_shared_missing_jar_stops_native_load_and
 sunrise-client	lib	game::native_block_entity_transform_tests::structure_transform_placement_rotations_mirrors_unset_and_refusal	crates/sunrise-client/src/game/modding/native_block_entity_transform_tests.rs:259	child-process
 sunrise-client	lib	game::launch_api::tests::developer_offline_never_consumes_inherited_sessions	crates/sunrise-client/src/game/runtime/launch_api.rs:275	child-process
 sunrise-sim	lib	join_seq::visibility::tests::unbound_passes_block_until_restore_consumption_and_unwind	crates/sunrise-sim/src/join_seq/visibility.rs:115	child-process
-sunrise-client-lib	lib	lan::conn::tests::profession_mod_missing_refused_before_pairing	crates/sunrise-client/src/lan/profession_join_tests.rs:2	child-process
-sunrise-client-lib	lib	mobs::world::missing_data_report_tests::missing_mob_data_reports_one_counted_skip_per_test	crates/sunrise-client/src/mobs/world.rs:1042	child-process
-sunrise-client-lib	lib	save::tests::native_saved_ids_must_match_the_declared_block_membership	crates/sunrise-client/src/save.rs:7256	child-process
-sunrise-client-lib	lib	structure_blocks::tests::declared_structure_entities_keep_template_payload_not_template_type	crates/sunrise-client/src/structure_blocks.rs:347	child-process
+sunrise-sim	lib	lan::conn::tests::profession_mod_missing_refused_before_pairing	crates/sunrise-sim/src/lan/profession_join_tests.rs:2	child-process
+sunrise-sim	lib	mobs::world::missing_data_report_tests::missing_mob_data_reports_one_counted_skip_per_test	crates/sunrise-sim/src/mobs/world.rs:1042	child-process
+sunrise-sim	lib	save::tests::native_saved_ids_must_match_the_declared_block_membership	crates/sunrise-sim/src/save.rs:7256	child-process
+sunrise-sim	lib	structure_blocks::tests::declared_structure_entities_keep_template_payload_not_template_type	crates/sunrise-sim/src/structure_blocks.rs:347	child-process
 sunrise-client-lib	lib	telemetry::tests::benchmark_reports_need_their_own_consent_and_go_dated_to_the_day	crates/sunrise-client/src/telemetry.rs:402	child-process
 sunrise-client-lib	test:lan_bot	a_synced_mod_block_entity_reaches_the_chunks_players_once_a_tick	crates/sunrise-client/tests/lan_bot.rs:1616	child-process
 sunrise-command	lib	item::tests::block_entity_data_takes_a_type_a_mod_declared	crates/sunrise-command/src/item.rs:896	child-process

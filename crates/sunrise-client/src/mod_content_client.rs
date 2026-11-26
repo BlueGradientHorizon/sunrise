@@ -40,21 +40,29 @@ pub fn resolved_resources(
 }
 
 #[cfg(test)]
+#[path = "mod_content_item_metadata_tests.rs"]
+mod item_metadata_tests;
+
+#[cfg(test)]
 mod tests {
+    use super::item_metadata_tests;
     use super::resolved_resources;
     use crate::{
         assets::Assets,
         blocks::BlockFacts,
+        crafting::CraftingRemainder,
+        items::Items,
         mod_content::{
-            ContentMod, biome_modifiers_over_packs,
+            ContentMod, biome_modifiers_over_packs, resolved_server_resources,
             test_fixtures::{
-                biome_base, build_fixture, folder_mod, manifest, prepared, relative_base,
-                resource_root_fixture, small_base, zinc_mod,
+                biome_base, build_fixture, content_files, folder_mod, manifest, prepared,
+                relative_base, resource_root_fixture, ruby_mod_with_pistons, small_base, zinc_mod,
             },
         },
     };
     use std::{collections::BTreeMap, fs, path::Path};
     use sunrise_mod_package::{content::Content, manifest::JarRef};
+    use sunrise_world::{loot::PackOverlay, registry::BlockStateId};
 
     /// A Java jar's assets are a pack layer under the mod's own files, in mod
     /// order under the later mods. Passive assets stay in the jar, and the files
@@ -652,6 +660,606 @@ mod tests {
         );
         assert_eq!(desert_vol, 0.25);
 
+        fs::remove_dir_all(scratch).unwrap();
+    }
+
+    /// The overlay over the real prepared resources: every loader reads it, the
+    /// new blocks behave like their templates with the overrides, and vanilla's
+    /// states are where they were.
+    #[test]
+    #[ignore = "daily"]
+    fn content_root_loads_with_every_table() {
+        let Some(base) = prepared() else {
+            return;
+        };
+        let scratch =
+            std::env::temp_dir().join(format!("sunrise-mod-content-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&scratch);
+        let m = ruby_mod_with_pistons(&scratch.join("ruby"), true);
+        // The base as a relative path (cargo runs tests in the crate's folder):
+        // the overlay's links still resolve.
+        let relative = relative_base(&base);
+        let root = resource_root_fixture(
+            &relative,
+            Path::new(""),
+            std::slice::from_ref(&m),
+            &scratch.join("cache"),
+        )
+        .unwrap();
+        assert_ne!(root, base);
+        let resources = resolved_server_resources(
+            &base,
+            root.clone(),
+            Path::new(""),
+            std::slice::from_ref(&m),
+            scratch.join("cache"),
+        )
+        .unwrap();
+
+        let files = content_files(&resources);
+        let overlay = PackOverlay::new(&files);
+        let vanilla = Assets::load(&base).unwrap();
+        let assets = Assets::load(&root).unwrap();
+        let (old, new) = (vanilla.registry, assets.registry);
+        let n = old.len() as u32;
+        let iron = old.default_state("minecraft:iron_block").unwrap();
+        let door = old.default_state("minecraft:oak_door").unwrap();
+        let door_first = (0..n)
+            .map(BlockStateId)
+            .find(|&s| old.state(s).unwrap().name == "minecraft:oak_door")
+            .unwrap();
+        // Vanilla keeps its ids; blocks come after, sorted: ruby_block, ruby_door, ruby_glass.
+        assert_eq!(new.len(), old.len() + 1 + 64 + 1 + 2);
+        assert_eq!(new.default_state("minecraft:iron_block"), Some(iron));
+        let ruby = new.default_state("ruby:ruby_block").unwrap();
+        assert_eq!(ruby, BlockStateId(n));
+        let ruby_door = new.default_state("ruby:ruby_door").unwrap();
+        assert_eq!(ruby_door, BlockStateId(n + 1 + (door.0 - door_first.0)));
+        assert_eq!(
+            new.default_state("ruby:ruby_glass"),
+            Some(BlockStateId(n + 65))
+        );
+        // Network ids: the new items and blocks follow vanilla's in the registries report, which
+        // the game and its server both read (a missing one travels as air).
+        let report = |root: &Path| {
+            sunrise_protocol::registry::Builtin::load(&root.join("registries.json")).unwrap()
+        };
+        let (vanilla_ids, ids) = (report(&base), report(&root));
+        let item = |b: &sunrise_protocol::registry::Builtin, name: &str| {
+            b.get("minecraft:item").and_then(|r| r.id(name))
+        };
+        let vanilla_items = (0..)
+            .take_while(|&i| vanilla_ids.get("minecraft:item").unwrap().name(i).is_some())
+            .count() as i32;
+        assert_eq!(
+            item(&ids, "minecraft:stone"),
+            item(&vanilla_ids, "minecraft:stone")
+        );
+        let ruby_item = item(&ids, "ruby:ruby_block").unwrap();
+        assert!(ruby_item >= vanilla_items, "{ruby_item} < {vanilla_items}");
+        assert_eq!(
+            ids.get("minecraft:item").unwrap().name(ruby_item),
+            Some("ruby:ruby_block")
+        );
+        assert!(item(&ids, "ruby:ruby_glass").is_none(), "no item declared");
+        assert!(
+            ids.get("minecraft:block")
+                .unwrap()
+                .id("ruby:ruby_glass")
+                .is_some()
+        );
+
+        let old_facts = BlockFacts::load(&base, old).unwrap();
+        let facts = BlockFacts::load(&root, new).unwrap();
+        let shared_json: serde_json::Value = serde_json::from_reader(std::io::BufReader::new(
+            fs::File::open(root.join("block-behaviours.json")).unwrap(),
+        ))
+        .unwrap();
+        let (shared_facts, shared_behaviours) =
+            BlockFacts::load_with_behaviours(&root, new, &shared_json).unwrap();
+        let independent_behaviours = sunrise_world::level::Behaviours::load(new, &root).unwrap();
+        let (deferred_facts, gameplay) =
+            BlockFacts::load_with_projection(&root, new, &shared_json, true).unwrap();
+        let deferred_behaviours = sunrise_world::level::Behaviours::load_with_gameplay(
+            new,
+            &root,
+            &shared_json,
+            &gameplay,
+        )
+        .unwrap();
+        assert_eq!(shared_facts.states.len(), facts.states.len());
+        // `random_ticks` makes the block tick randomly although its template (iron) never does; the
+        // sections' counts read the same flag (`random_tick_candidate`).
+        assert!(independent_behaviours.is_randomly_ticking(ruby));
+        assert!(independent_behaviours.random_tick_candidate(ruby));
+        assert!(!independent_behaviours.is_randomly_ticking(iron));
+        assert!(deferred_behaviours.is_randomly_ticking(ruby));
+        for state in (n + 1)..(n + 65) {
+            assert_eq!(
+                independent_behaviours.facts(BlockStateId(state)).push,
+                sunrise_world::level::PushReaction::Immoveable
+            );
+        }
+        assert_eq!(
+            independent_behaviours.facts(ruby).push,
+            independent_behaviours.facts(iron).push
+        );
+        // `occludes: false` (noOcclusion): the iron-template block occludes nothing, iron still does.
+        assert!(!facts.get(ruby).can_occlude && !facts.get(ruby).solid_render);
+        // Its light dampening is a non-solid full block's, as leaves' and spawners' are (iron's is 15).
+        assert_eq!(
+            (facts.get(ruby).dampening, facts.get(iron).dampening),
+            (1, 15)
+        );
+        assert!(facts.get(iron).can_occlude && facts.get(iron).solid_render);
+        // `destroy_overlay: false` hides the crack on the declared block only.
+        assert!(!facts.get(ruby).destroy_overlay && facts.get(iron).destroy_overlay);
+        let definitions: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.join("render-definitions.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            definitions["ruby:ruby_block"]["can_occlude"], false,
+            "faces beside it are drawn"
+        );
+        assert_eq!(definitions["minecraft:iron_block"]["can_occlude"], true);
+        // `render_shape` leaves the glass's model out of the chunk mesh; the block keeps the template's.
+        assert_eq!(
+            facts.get(BlockStateId(n + 65)).render_shape,
+            crate::blocks::RenderShape::Animated
+        );
+        assert_eq!(
+            facts.get(ruby).render_shape,
+            crate::blocks::RenderShape::Model
+        );
+        for state in [ruby, ruby_door, BlockStateId(n + 65)] {
+            assert_eq!(shared_facts.get(state).hardness, facts.get(state).hardness);
+            assert_eq!(
+                deferred_facts.get(state).hardness,
+                facts.get(state).hardness
+            );
+            assert_eq!(deferred_facts.get(state).classes, facts.get(state).classes);
+            assert_eq!(
+                deferred_behaviours.facts(state).flags,
+                independent_behaviours.facts(state).flags
+            );
+            assert_eq!(
+                deferred_behaviours.data(state).sounds.place,
+                independent_behaviours.data(state).sounds.place
+            );
+            assert_eq!(shared_facts.get(state).emission, facts.get(state).emission);
+            assert_eq!(shared_facts.get(state).classes, facts.get(state).classes);
+            assert_eq!(
+                shared_behaviours.facts(state).flags,
+                independent_behaviours.facts(state).flags,
+            );
+            assert_eq!(
+                shared_behaviours.data(state).sounds.place,
+                independent_behaviours.data(state).sounds.place,
+            );
+        }
+
+        let (a, b) = (old_facts.get(iron), facts.get(ruby));
+        assert_eq!((b.hardness, b.emission, b.friction), (4.0, 3, 0.8));
+        assert_eq!(b.explosion_resistance, a.explosion_resistance);
+        assert_eq!(b.outline, a.outline);
+        assert_eq!(b.classes, a.classes);
+        assert_eq!(&*b.item, "ruby:ruby_block");
+        assert_eq!(b.map_color, 28);
+        let amethyst = old_facts.get(old.default_state("minecraft:amethyst_block").unwrap());
+        assert_eq!(b.sounds.break_sound, amethyst.sounds.break_sound);
+        for i in 0..64 {
+            let (v, m) = (
+                old_facts.get(BlockStateId(door_first.0 + i)),
+                facts.get(BlockStateId(n + 1 + i)),
+            );
+            assert_eq!(
+                (v.outline.clone(), v.hardness, v.classes.clone()),
+                (m.outline.clone(), m.hardness, m.classes.clone())
+            );
+            assert_eq!(&*m.name, "ruby:ruby_door");
+        }
+        let glass = facts.get(BlockStateId(n + 65));
+        assert_eq!(&*glass.item, "minecraft:air");
+        // Vanilla's own rows are untouched.
+        assert_eq!(facts.get(iron).hardness, a.hardness);
+        assert_eq!(&*facts.get(iron).name, "minecraft:iron_block");
+
+        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
+        let items = Items::load(&root, new, &facts, &overlay, &defaults).unwrap();
+        item_metadata_tests::assert_metadata(&root, &items, &defaults, ruby, n);
+        let binding = independent_behaviours.item_binding("ruby:ruby").unwrap();
+        assert_eq!(
+            binding.block,
+            independent_behaviours.block(BlockStateId(n + 65))
+        );
+        // Exercise the same binding as server placement, including its emitted sound.
+        {
+            use sunrise_core::{
+                geometry::{Direction, Vec3},
+                position::BlockPos,
+                random::LegacyRandom,
+            };
+            use sunrise_world::level::{
+                LevelAccess, LevelEvent, PlaceContext, PlaceOutcome, Ticks,
+            };
+            struct TestLevel {
+                blocks: std::collections::HashMap<BlockPos, BlockStateId>,
+                air: BlockStateId,
+                random: LegacyRandom,
+                events: Vec<LevelEvent>,
+                time: i64,
+            }
+            impl sunrise_world::level::BlockEntityNeighbors for TestLevel {}
+            impl LevelAccess for TestLevel {
+                fn block_state(&self, pos: BlockPos) -> BlockStateId {
+                    *self.blocks.get(&pos).unwrap_or(&self.air)
+                }
+                fn set_raw(&mut self, pos: BlockPos, state: BlockStateId) -> Option<BlockStateId> {
+                    Some(self.blocks.insert(pos, state).unwrap_or(self.air))
+                }
+                fn is_loaded(&self, _: BlockPos) -> bool {
+                    true
+                }
+                fn random(&mut self) -> &mut LegacyRandom {
+                    &mut self.random
+                }
+                fn game_time(&self) -> i64 {
+                    self.time
+                }
+                fn emit(&mut self, event: LevelEvent) {
+                    self.events.push(event);
+                }
+            }
+            let floor = BlockPos::new(0, 0, 0);
+            let wheat = new.default_state("minecraft:wheat").unwrap();
+            let mut level = TestLevel {
+                blocks: [(floor, iron)].into_iter().collect(),
+                air: new.default_state("minecraft:air").unwrap(),
+                random: LegacyRandom::new(1),
+                events: Vec::new(),
+                time: 0,
+            };
+            let ctx = PlaceContext {
+                clicked_pos: floor,
+                face: Direction::Up,
+                hit: Vec3::new(0.5, 1.0, 0.5),
+                inside: false,
+                source: sunrise_world::level::PlacementSource::Player {
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    sneaking: false,
+                },
+                item: "ruby:ruby_sword".into(),
+                can_use_game_master_blocks: false,
+            };
+            let denied = independent_behaviours.place_block(&mut level, &mut Ticks::new(1), &ctx);
+            assert!(matches!(denied, PlaceOutcome::Failed));
+            assert!(level.events.is_empty());
+            level
+                .blocks
+                .insert(floor, new.default_state("minecraft:farmland").unwrap());
+            let placed = independent_behaviours.place_block(&mut level, &mut Ticks::new(1), &ctx);
+            assert!(matches!(placed, PlaceOutcome::Placed { state, .. } if state == wheat));
+            assert!(level.events.iter().any(|e| matches!(e, LevelEvent::Sound { sound, .. } if &**sound == "minecraft:item.crop.plant")));
+
+            // Exercise the real piston caller with both stone-based content blocks.
+            let piston = new
+                .resolve(&sunrise_world::chunk::BlockState {
+                    name: "minecraft:piston".into(),
+                    properties: [
+                        ("facing".into(), "east".into()),
+                        ("extended".into(), "false".into()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                })
+                .unwrap();
+            let power = new.default_state("minecraft:redstone_block").unwrap();
+            for (name, moves) in [("ruby:z_stone", true), ("ruby:z_stuck", false)] {
+                let block = new.default_state(name).unwrap();
+                let base = BlockPos::new(0, 1, 0);
+                let front = BlockPos::new(1, 1, 0);
+                let destination = BlockPos::new(2, 1, 0);
+                let mut level = TestLevel {
+                    blocks: Default::default(),
+                    air: new.default_state("minecraft:air").unwrap(),
+                    random: LegacyRandom::new(1),
+                    events: Vec::new(),
+                    time: 0,
+                };
+                let mut ticks = Ticks::new(0);
+                for x in -4..4 {
+                    for z in -4..4 {
+                        ticks
+                            .add_empty_chunk(sunrise_core::position::ChunkPos::new(x, z))
+                            .unwrap();
+                    }
+                }
+                for (pos, state) in [
+                    (base, piston),
+                    (front, block),
+                    (BlockPos::new(-1, 1, 0), power),
+                ] {
+                    independent_behaviours.set_block(
+                        &mut level,
+                        &mut ticks,
+                        pos,
+                        state,
+                        sunrise_world::level::flags::UPDATE_ALL,
+                    );
+                }
+                for _ in 0..4 {
+                    level.time += 1;
+                    independent_behaviours.tick_scheduled(&mut level, &mut ticks);
+                    independent_behaviours.run_block_events(&mut level, &mut ticks);
+                    independent_behaviours.tick_block_entities(&mut level, &mut ticks);
+                }
+                assert_eq!(
+                    new.state(level.block_state(base)).unwrap().properties["extended"],
+                    if moves { "true" } else { "false" }
+                );
+                assert_eq!(
+                    level.block_state(if moves { destination } else { front }),
+                    block
+                );
+            }
+        }
+        let sword = &items.items["ruby:ruby_sword"];
+        assert_eq!(sword.block, new.default_state("minecraft:wheat"));
+        assert_eq!(items.items["minecraft:iron_block"].block, Some(iron));
+        let iron_sword = &items.items["minecraft:iron_sword"];
+        assert_eq!((sword.max_damage, iron_sword.max_damage), (900, 250));
+        assert_eq!(sword.modifiers.len(), 1);
+        assert_eq!(sword.modifiers[0].amount, 7.0);
+        assert_eq!(sword.tool.len(), iron_sword.tool.len());
+        // The stew leaves its bowl in the grid; vanilla's stew leaves none.
+        let stew = &items.items["ruby:ruby_stew"];
+        assert_eq!(stew.crafting_remainder.as_deref(), Some("minecraft:bowl"));
+        assert_eq!(
+            items.items["minecraft:mushroom_stew"].crafting_remainder,
+            None
+        );
+        let recipes = crate::crafting::Recipes::load(
+            &root,
+            &items,
+            &overlay,
+            &crate::test_resources::server_load(),
+        )
+        .unwrap();
+        let grid = [
+            Some(crate::items::ItemStack::new("ruby:ruby_stew", 1)),
+            None,
+            None,
+            None,
+        ];
+        let (id, result) = recipes
+            .find(crate::test_resources::server_loop_context(), &grid, 2)
+            .unwrap();
+        assert_eq!(&*result.item, "ruby:ruby");
+        let rest = recipes.remainders(
+            crate::test_resources::server_loop_context(),
+            id,
+            &grid,
+            2,
+            &|s| items.crafting_remainder(s),
+        );
+        assert_eq!(rest[0].as_ref().map(|s| &*s.item), Some("minecraft:bowl"));
+        assert!(!items.items.contains_key("ruby:ruby_glass"));
+        let pickaxe = &items.block_tags["minecraft:mineable/pickaxe"];
+        assert!(pickaxe.contains("ruby:ruby_block"));
+        assert!(!pickaxe.contains("ruby:left_out") && !pickaxe.contains("othermod:thing"));
+        assert!(pickaxe.contains("minecraft:stone"));
+        // Convention tags load, with the ids nobody registers dropped.
+        assert_eq!(items.item_tag_order["c:gems/ruby"], ["ruby:ruby"]);
+
+        crate::collisions::load(&root, new).unwrap();
+        crate::models::load_visibility(&root, new).unwrap();
+        crate::light::LightTables::load(&root, new, &facts).unwrap();
+        crate::motion::MotionResources::load(&root, &assets).unwrap();
+        sunrise_world::worldgen::generator::GeneratorData::load(&root.join("worldgen"), new)
+            .unwrap();
+        assert!(resources.source().contains("assets/ruby/lang/en_us.json"));
+        // Blocks without a blockstate of their own take their template's.
+        assert_eq!(
+            resources
+                .source()
+                .read("assets/ruby/blockstates/ruby_door.json")
+                .unwrap(),
+            fs::read(base.join("assets/minecraft/blockstates/oak_door.json")).unwrap()
+        );
+
+        // The base root was only read.
+        assert!(
+            fs::symlink_metadata(base.join("facts.json"))
+                .unwrap()
+                .is_file()
+        );
+        fs::remove_dir_all(&scratch).unwrap();
+    }
+
+    /// Load the actual generated tables as the renderer and world generator do.
+    #[test]
+    #[ignore = "daily"]
+    fn declared_shapes_reach_render_and_worldgen_occlusion() {
+        use crate::{
+            chunk::Chunk,
+            light::{LightTables, apply_lighting, light_chunk},
+        };
+        use sunrise_core::geometry::Direction;
+        use sunrise_world::{
+            block_properties::{BlockPropertiesRegistry, BlockProperty},
+            collision::CachedCollisionRegistry,
+            registry::BlockTableFile,
+        };
+        let Some(base) = prepared() else { return };
+        let scratch =
+            std::env::temp_dir().join(format!("sunrise-shape-occlusion-{}", std::process::id()));
+        let manifest = manifest("testmod", "");
+        let m = folder_mod(
+            &scratch.join("mod"),
+            &[
+                ("sunrise-mod.toml", &manifest),
+                (
+                    "data/testmod/sunrise/block/full.json",
+                    r#"{"template":"minecraft:stone","item":false,"shapes":{"default":[[0,0,0,1,1,1]]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/partial.json",
+                    r#"{"template":"minecraft:stone","item":false,"shapes":{"default":[[0,0,0,1,0.5,1]]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/open.json",
+                    r#"{"template":"minecraft:stone","item":false,"properties":{"occludes":false},"shapes":{"default":[[0,0,0,1,1,1]]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/partial_open.json",
+                    r#"{"template":"minecraft:stone","item":false,"properties":{"occludes":false},"shapes":{"default":[[0,0,0,1,0.5,1]]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/bubble.json",
+                    r#"{"template":"minecraft:bubble_column","item":false,"shapes":{"default":[]}}"#,
+                ),
+                (
+                    "data/testmod/sunrise/block/kelp.json",
+                    r#"{"template":"minecraft:kelp","item":false,"shapes":{"default":[[0,0,0,1,0.5625,1]]}}"#,
+                ),
+            ],
+        );
+        let root =
+            resource_root_fixture(&base, Path::new(""), &[m], &scratch.join("cache")).unwrap();
+        let assets = Assets::load(&root).unwrap();
+        let registry = assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let full = registry.default_state("testmod:full").unwrap();
+        let partial = registry.default_state("testmod:partial").unwrap();
+        let open = registry.default_state("testmod:open").unwrap();
+        let facts = BlockFacts::load(&root, registry).unwrap();
+        assert_eq!(
+            (facts.get(full).solid_render, facts.get(full).dampening),
+            (true, 15)
+        );
+        assert_eq!(
+            (
+                facts.get(partial).solid_render,
+                facts.get(partial).dampening
+            ),
+            (false, 0)
+        );
+        assert_eq!(
+            (facts.get(open).solid_render, facts.get(open).dampening),
+            (false, 1)
+        );
+        // Compare against the actual vanilla exports, including the lower slab's
+        // partial outline and leaves' full, non-occluding shape.
+        let slab = registry.default_state("minecraft:stone_slab").unwrap();
+        let leaves = registry.default_state("minecraft:oak_leaves").unwrap();
+        for (content, vanilla) in [(full, stone), (partial, slab), (open, leaves)] {
+            assert_eq!(
+                (
+                    facts.get(content).solid_render,
+                    facts.get(content).dampening,
+                    facts.get(content).skylight_down
+                ),
+                (
+                    facts.get(vanilla).solid_render,
+                    facts.get(vanilla).dampening,
+                    facts.get(vanilla).skylight_down
+                ),
+            );
+        }
+        // Intrinsic water is present without a waterlogged property. Identical
+        // declared outlines must retain the template's exported light facts.
+        for (content, template) in [
+            ("testmod:bubble", "minecraft:bubble_column"),
+            ("testmod:kelp", "minecraft:kelp"),
+        ] {
+            let vanilla = facts.get(registry.default_state(template).unwrap());
+            let declared = facts.get(registry.default_state(content).unwrap());
+            assert_eq!(declared.outline, vanilla.outline);
+            for state in [vanilla, declared] {
+                assert!(!state.waterlogged);
+                assert_eq!((state.skylight_down, state.dampening), (false, 1));
+            }
+        }
+        let tables = LightTables::load(&root, registry, &facts).unwrap();
+        let partial_open = registry.default_state("testmod:partial_open").unwrap();
+        for (roof, below) in [(partial, 0), (slab, 0), (partial_open, 15)] {
+            // A sealed room with a bottom-half roof: its open top admits sky,
+            // but only occluding shapes stop it at the covered bottom face.
+            let mut chunk = Chunk::empty(0, 0);
+            for x in 4..=12 {
+                for z in 4..=12 {
+                    chunk.set(x, -1, z, stone.0);
+                    chunk.set(x, 3, z, roof.0);
+                    if x == 4 || x == 12 || z == 4 || z == 12 {
+                        for y in 0..3 {
+                            chunk.set(x, y, z, stone.0);
+                        }
+                    }
+                }
+            }
+            let mut region = [[None; 3]; 3];
+            region[1][1] = Some(&chunk);
+            let lights = light_chunk(&region, &tables, true);
+            apply_lighting(&mut chunk, lights);
+            assert_eq!(chunk.light(8, 3, 8) >> 4, 15, "open roof top {roof:?}");
+            assert_eq!(chunk.light(8, 2, 8) >> 4, below, "roof bottom {roof:?}");
+        }
+        let mut visibility = crate::models::load_visibility(&root, registry).unwrap();
+        for (content, vanilla) in [(full, stone), (partial, slab), (open, leaves)] {
+            assert_eq!(
+                visibility
+                    .should_render_face(stone, content, Direction::East, false)
+                    .unwrap(),
+                visibility
+                    .should_render_face(stone, vanilla, Direction::East, false)
+                    .unwrap(),
+            );
+        }
+        assert!(
+            !visibility
+                .should_render_face(stone, full, Direction::East, false)
+                .unwrap()
+        );
+        assert!(
+            visibility
+                .should_render_face(stone, partial, Direction::East, false)
+                .unwrap()
+        );
+        assert!(
+            visibility
+                .should_render_face(stone, open, Direction::East, false)
+                .unwrap()
+        );
+        let collisions =
+            BlockTableFile::open(&root.join("worldgen/blocks/cached-collision.nbt"), registry)
+                .unwrap();
+        let collisions =
+            CachedCollisionRegistry::from_table(collisions.table("collision").unwrap()).unwrap();
+        let properties =
+            BlockTableFile::open(&root.join("worldgen/blocks/block-properties.nbt"), registry)
+                .unwrap();
+        let properties = BlockPropertiesRegistry::from_table(
+            properties.table("properties").unwrap(),
+            &collisions,
+        )
+        .unwrap();
+        assert!(
+            properties
+                .property(full, BlockProperty::SolidRender)
+                .unwrap()
+        );
+        assert!(
+            !properties
+                .property(partial, BlockProperty::SolidRender)
+                .unwrap()
+        );
+        assert!(
+            !properties
+                .property(open, BlockProperty::SolidRender)
+                .unwrap()
+        );
+        assert!(!properties.bind_can_occlude().contains(open));
         fs::remove_dir_all(scratch).unwrap();
     }
 }

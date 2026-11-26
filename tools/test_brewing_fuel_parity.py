@@ -42,7 +42,7 @@ def main():
                     lab.ROOT / "crates/sunrise-level/src/brewing.rs",
                     lab.ROOT / "crates/sunrise-level/src/providers.rs",
                     lab.ROOT / "crates/sunrise-items/src/items.rs",
-                    lab.ROOT / "crates/sunrise-client/src/menu.rs",
+                    lab.ROOT / "crates/sunrise-sim/src/menu.rs",
                     lab.ROOT / "crates/sunrise-client/src/game/blocks/machines/mod.rs",
                     lab.ROOT / "crates/sunrise-items/src/item_data.rs", lab.ROOT / "Cargo.lock"]
     tested_sources = base.source_hashes(tested_paths)

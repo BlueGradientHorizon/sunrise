@@ -42,8 +42,8 @@ def main():
                lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
                lab.ROOT / 'crates/sunrise-client/src/game/network/lan/mod.rs',
                lab.ROOT / 'crates/sunrise-client/src/game/network/remote_mob_data.rs',
-               lab.ROOT / 'crates/sunrise-client/src/mobs.rs',
-               lab.ROOT / 'crates/sunrise-client/src/lan/entity.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/mobs.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/lan/entity.rs',
                lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaMobAirOracle.java']
     hashes = base.source_hashes(sources)
     rows = list(cases())

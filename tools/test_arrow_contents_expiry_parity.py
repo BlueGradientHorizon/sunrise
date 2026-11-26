@@ -26,7 +26,7 @@ TEST = 'game::server_side::potions_server::arrow_contents::actual_arrow_contents
 ORACLE = 'VanillaArrowContentsExpiryOracle'
 PRODUCTION = [
     'crates/sunrise-level/src/brewing.rs',
-    'crates/sunrise-client/src/arrows.rs',
+    'crates/sunrise-sim/src/arrows.rs',
     'crates/sunrise-client/src/game/items/potions_server.rs',
 ]
 

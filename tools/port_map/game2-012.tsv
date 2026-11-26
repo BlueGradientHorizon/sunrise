@@ -32,7 +32,7 @@ Block.fallOn	port	crates/sunrise-world/src/block_landing.rs::BlockLandingRegistr
 Block.getShapeForEachState	skip:java		Shape lookup cache over the state table; Sunrise precomputes shapes per state.
 Block.tryDropExperience	inline	crates/sunrise-client/src/game/game_server.rs::Game::break_block_as_player	Sampled block XP and pop folded into the break path; silk touch zeroes it as in vanilla (hard-coded check).
 Block.ShapePairKey.equals	skip:java		Hash key for the shape cache.
-Blocks.ocelotOrParrot	port	crates/sunrise-client/src/mobs/spawn_rules.rs::is_valid_spawn	Leaves spawn rule for ocelots and parrots (VALID_SPAWN_LEAVES).
+Blocks.ocelotOrParrot	port	crates/sunrise-sim/src/mobs/spawn_rules.rs::is_valid_spawn	Leaves spawn rule for ocelots and parrots (VALID_SPAWN_LEAVES).
 Blocks.logProperties	skip:data		Block.Properties builder; the values come from extracted block data.
 Blocks.netherStemProperties	skip:data		Block.Properties builder; the values come from extracted block data.
 Blocks.leavesProperties	skip:data		Block.Properties builder; the values come from extracted block data.
@@ -62,7 +62,7 @@ CampfireBlock.entityInside	port	crates/sunrise-client/src/motion.rs::MotionWorld
 CampfireBlock.getStateForPlacement	port	crates/sunrise-world/src/level/place.rs::Sim::placement_class	Waterlogged, lit, signal fire from hay below, facing from the player.
 CampfireBlock.updateShape	port	crates/sunrise-world/src/level/shapes.rs::Sim::update_shape_class	Waterlogged tick and signal fire from the block below.
 CampfireBlock.placeLiquid	port	crates/sunrise-world/src/level/fluids.rs::Sim::place_liquid	Water puts it out with the extinguish sound and sets waterlogged.
-CampfireBlock.onProjectileHit	port	crates/sunrise-client/src/arrows.rs::Ticker::block_reaction	a burning arrow lights an unlit, dry campfire
+CampfireBlock.onProjectileHit	port	crates/sunrise-sim/src/arrows.rs::Ticker::block_reaction	a burning arrow lights an unlit, dry campfire
 CampfireBlock.getFluidState	port	crates/sunrise-world/src/level/mod.rs::Behaviours::fluid	Waterlogged fluid is read from per-state facts.
 CampfireBlock.rotate	skip:data		Rotation is a precomputed table from extracted data.
 CampfireBlock.createBlockStateDefinition	skip:data		Block state properties come from extracted data.

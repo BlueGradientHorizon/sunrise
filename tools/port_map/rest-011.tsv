@@ -1,6 +1,6 @@
 ProtocolSwapHandler.handleInboundTerminalPacket	port	crates/sunrise-client/src/net.rs::configure	the configuration phase ends on FinishConfiguration and play starts in run; no Netty handler swap
 ProtocolSwapHandler.handleOutboundTerminalPacket	port	crates/sunrise-client/src/net.rs::configure	the client's FinishConfiguration reply is sent inside configure
-RateKickingConnection.tickSecond	inline	crates/sunrise-client/src/lan/conn.rs::PacketRate::received	the rate-limit window counts packets per second and the connection is dropped when it is exceeded
+RateKickingConnection.tickSecond	inline	crates/sunrise-sim/src/lan/conn.rs::PacketRate::received	the rate-limit window counts packets per second and the connection is dropped when it is exceeded
 UnconfiguredPipelineHandler.Inbound.channelRead	skip:other		Netty guard for packets before a protocol is set; Sunrise's connection loops only read their own phase
 UnconfiguredPipelineHandler.Inbound.write	skip:other		Netty guard for configuration tasks on the inbound pipeline; no pipeline in Sunrise
 UnconfiguredPipelineHandler.Outbound.write	skip:other		Netty guard for packets sent before a protocol is set; no pipeline in Sunrise
@@ -8,7 +8,7 @@ VarInt.getByteSize	port	crates/sunrise-core/src/vanilla_bytes.rs::varint_size
 VarLong.getByteSize	skip:java		byte-size helper with no caller here; Sunrise writes varlongs and measures the buffer
 Varint21FrameDecoder.copyVarint	inline	crates/sunrise-protocol/src/frame.rs::split	the 3-byte length read and the 'length wider than 21 bits' error
 Varint21FrameDecoder.decode	port	crates/sunrise-protocol/src/frame.rs::split	the length prefix is read by frame::header, which refuses a zero frame as corrupted, and split cuts the frame at it
-ChatType.bind	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::handle_chat	the bound takes the chat type and the sender's display name
+ChatType.bind	port	crates/sunrise-sim/src/lan/hub/chat.rs::Hub::handle_chat	the bound takes the chat type and the sender's display name
 ChatTypeDecoration.incomingDirectMessage	skip:data		chat_type registry bootstrap; the msg decorations come from the chat_type data
 ChatTypeDecoration.outgoingDirectMessage	skip:data		chat_type registry bootstrap; the msg decorations come from the chat_type data
 ChatTypeDecoration.decorate	port	crates/sunrise-client/src/game/network/remote/chat.rs::chat_type_decorate	the chat type's translation with its style, on the client when a PlayerChat or DisguisedChat arrives
@@ -65,18 +65,18 @@ MutableComponent.getVisualOrderText	skip:ui		bidi reordering for drawing; Sunris
 MutableComponent.equals	skip:java		value equality
 MutableComponent.hashCode	skip:java		hashing
 MutableComponent.toString	skip:debug		debug text
-OutgoingChatMessage.create	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::broadcast_command_chat	a message without signing context goes out as a disguised chat; a signed one as player chat
-OutgoingChatMessage.Player.sendToPlayer	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::send_chat	gap: minor: the filter is always pass-through; the message goes to players who show chat
+OutgoingChatMessage.create	port	crates/sunrise-sim/src/lan/hub/chat.rs::Hub::broadcast_command_chat	a message without signing context goes out as a disguised chat; a signed one as player chat
+OutgoingChatMessage.Player.sendToPlayer	port	crates/sunrise-sim/src/lan/hub/chat.rs::Hub::send_chat	gap: minor: the filter is always pass-through; the message goes to players who show chat
 PlayerChatMessage.withUnsignedContent	missing		minor: the hub never sets unsigned content (there is no chat decorator), so decorated text is not sent
 PlayerChatMessage.removeUnsignedContent	missing		minor: unsigned content is never set, so there is nothing to remove
 PlayerChatMessage.filter	missing		minor: the hub sends pass-through filter masks; there is no text filter
-PlayerChatMessage.removeSignature	port	crates/sunrise-client/src/lan/hub/chat.rs::ChatMessage::new	the unsigned branch keeps the content and drops the signature and the last seen
+PlayerChatMessage.removeSignature	port	crates/sunrise-sim/src/lan/hub/chat.rs::ChatMessage::new	the unsigned branch keeps the content and drops the signature and the last seen
 PlayerChatMessage.verify	port	crates/sunrise-protocol/src/secure_chat.rs::MessageValidator::update_and_validate	the signature over the link and body; also the chain check of Chain::unpack on the server
 PlayerChatMessage.hasSignatureFrom	missing		minor: only decides whether a text filter runs for the message; Sunrise runs no text filter
 PlayerChatMessage.describeSigned	skip:debug		log text for a rejected message
 RemoteChatSession.createMessageValidator	port	crates/sunrise-protocol/src/secure_chat.rs::MessageValidator::keyed	the expiry takes the 8 hour grace period (EXPIRY_GRACE_PERIOD)
 ResolutionContext.Builder.build	skip:java		builder
-SignableCommand.getArgument	port	crates/sunrise-client/src/lan/hub/chat.rs::Hub::signed_arguments	the command's message arguments, looked up by name
+SignableCommand.getArgument	port	crates/sunrise-sim/src/lan/hub/chat.rs::Hub::signed_arguments	the command's message arguments, looked up by name
 SignedMessageBody.updateSignature	inline	crates/sunrise-protocol/src/secure_chat.rs::signed_payload	salt, time, content and last seen in the signed payload
 SignedMessageBody.Packed.unpack	inline	crates/sunrise-client/src/game/network/remote/packets_player_client.rs::Game::apply_player_chat_packet	PlayerChat arm: the last seen only, the body is not kept
 SignedMessageChain.encoder	port	crates/sunrise-protocol/src/secure_chat.rs::Encoder::sign

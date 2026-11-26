@@ -45,7 +45,7 @@ for name in FILES:
         'ClientLevel.EntityCallbacks.onTrackingEnd': 'crates/sunrise-client/src/game/network/remote_removal.rs::Game::remove_entity',
         'ClientPacketListener.handleRemoveEntities': 'crates/sunrise-client/src/game/network/remote_removal.rs::Game::remove_entity',
         'WorldOptionsScreen.updatePortControlsState': 'crates/sunrise-client/src/game/network/lan_screen.rs::WorldOptions::update_port_controls',
-        'Piglin.holdInOffHand': 'crates/sunrise-client/src/mobs/piglin.rs::hold_in_offhand',
+        'Piglin.holdInOffHand': 'crates/sunrise-sim/src/mobs/piglin.rs::hold_in_offhand',
         'AnvilScreen.subInit': 'crates/sunrise-client/src/game/blocks/stations_client.rs::rename_box',
     }
     for key, target in relocations.items():

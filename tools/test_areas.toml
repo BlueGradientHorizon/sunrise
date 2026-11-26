@@ -27,7 +27,7 @@ name = "worldgen"
 about = "terrain, biomes, features, structures, carvers, spawn search"
 paths = [
   "crates/sunrise-world/src/worldgen*", "crates/sunrise-world/src/retrogen.rs", "crates/sunrise-world/src/heightmap.rs",
-  "crates/sunrise-world/src/native_worldgen_hooks.rs", "crates/sunrise-client/src/vanillagen.rs",
+  "crates/sunrise-world/src/native_worldgen_hooks.rs", "crates/sunrise-sim/src/vanillagen.rs",
   "crates/sunrise-client/src/game/world/postprocess.rs", "crates/sunrise-client/src/game/world/initial_spawn.rs",
   "crates/sunrise-client/src/game/world/player_spawn.rs",
 ]
@@ -99,12 +99,12 @@ lan = [
 name = "mobs"
 about = "mob AI, brains, navigation, spawning, villagers and raids, bosses"
 paths = [
-  "crates/sunrise-client/src/mobs*", "crates/sunrise-client/src/raid.rs", "crates/sunrise-sim/src/gossip.rs",
-  "crates/sunrise-client/src/merchant.rs", "crates/sunrise-client/src/game/mobs/*",
+  "crates/sunrise-client/src/mobs*", "crates/sunrise-sim/src/raid.rs", "crates/sunrise-sim/src/gossip.rs",
+  "crates/sunrise-sim/src/merchant.rs", "crates/sunrise-client/src/game/mobs/*",
   "crates/sunrise-client/src/game/creatures/*", "crates/sunrise-world/src/poi*",
 ]
 cargo = [
-  { package = "sunrise-client-lib", target = "lib", filter = "mobs::" },
+  { package = "sunrise-sim", target = "lib", filter = "mobs::" },
   { package = "sunrise-client", target = "lib", filter = "game::creatures::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::creatures_client::" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::creatures_server::" },
@@ -170,12 +170,12 @@ lan = ["distance", "forced-levels"]
 name = "network"
 about = "LAN host and guests, the multiplayer client, the protocol, dedicated servers"
 paths = [
-  "crates/sunrise-client/src/lan/*", "crates/sunrise-client/src/net.rs", "crates/sunrise-client/src/*_net.rs",
+  "crates/sunrise-sim/src/lan/*", "crates/sunrise-client/src/net.rs", "crates/sunrise-client/src/*_net.rs",
   "crates/sunrise-client/src/game/network/*", "crates/sunrise-protocol/*", "crates/sunrise-server*",
   "crates/sunrise-friends/*", "crates/sunrise-relay/*", "tools/lan_e2e.py",
 ]
 cargo = [
-  { package = "sunrise-client-lib", target = "lib", filter = "lan::" },
+  { package = "sunrise-sim", target = "lib", filter = "lan::" },
   { package = "sunrise-protocol", target = "lib", filter = "" },
   { package = "sunrise-client", target = "lib", filter = "game::remote::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::remote_client::" },
@@ -195,7 +195,7 @@ lan = ["*"]
 name = "saves"
 about = "saving and loading worlds, entities and players, region files, datafix"
 paths = [
-  "crates/sunrise-client/src/save.rs", "crates/sunrise-client/src/save/*", "crates/sunrise-client/src/entity_nbt.rs",
+  "crates/sunrise-sim/src/save.rs", "crates/sunrise-sim/src/save/*", "crates/sunrise-sim/src/entity_nbt.rs",
   "crates/sunrise-client/src/game/world/saving.rs", "crates/sunrise-client/src/game/world/persist*",
   "crates/sunrise-client/src/game/world/storage.rs", "crates/sunrise-client/src/game/world/autosave.rs",
   "crates/sunrise-world/src/region.rs", "crates/sunrise-world/src/datafix/*", "crates/sunrise-core/src/nbt.rs",
@@ -203,7 +203,7 @@ paths = [
   "crates/sunrise-client-core/src/block_entity_nbt.rs",
 ]
 cargo = [
-  { package = "sunrise-client-lib", target = "lib", filter = "save::" },
+  { package = "sunrise-sim", target = "lib", filter = "save::" },
   { package = "sunrise-world", target = "lib", filter = "datafix::" },
   { package = "sunrise-world", target = "lib", filter = "region::" },
   { package = "sunrise-client-lib", target = "test:generation_saves", filter = "" },
@@ -219,7 +219,7 @@ lan = ["sleep-reload", "leash_reload", "reopen_player"]
 name = "motion"
 about = "entity and player movement, collision, vehicles and riding, projectiles"
 paths = [
-  "crates/sunrise-client/src/motion*", "crates/sunrise-client/src/projectiles.rs", "crates/sunrise-client/src/arrows.rs",
+  "crates/sunrise-client/src/motion*", "crates/sunrise-sim/src/projectiles.rs", "crates/sunrise-sim/src/arrows.rs",
   "crates/sunrise-world/src/entity_move.rs", "crates/sunrise-world/src/player_travel.rs",
   "crates/sunrise-world/src/*collision*", "crates/sunrise-world/src/movement_*", "crates/sunrise-world/src/living_motion.rs",
   "crates/sunrise-world/src/swimming.rs", "crates/sunrise-world/src/climbing.rs",
@@ -227,7 +227,7 @@ paths = [
   "crates/sunrise-client/src/game/entities/passengers.rs", "crates/sunrise-client/src/game/entities/seats.rs",
 ]
 cargo = [
-  { package = "sunrise-client-lib", target = "lib", filter = "motion::" },
+  { package = "sunrise-sim", target = "lib", filter = "motion::" },
   { package = "sunrise-client", target = "lib", filter = "game::server_side::mounts::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::mounts_client::" },
 ]
@@ -318,15 +318,15 @@ lan = [
 name = "containers"
 about = "menus, inventories, crafting, the recipe book, workstations"
 paths = [
-  "crates/sunrise-client/src/menu.rs", "crates/sunrise-client/src/container_screen.rs", "crates/sunrise-client/src/creative.rs",
-  "crates/sunrise-client/src/crafting.rs", "crates/sunrise-client/src/recipe_book*", "crates/sunrise-client/src/stations.rs",
+  "crates/sunrise-sim/src/menu.rs", "crates/sunrise-client/src/container_screen.rs", "crates/sunrise-client/src/creative.rs",
+  "crates/sunrise-sim/src/crafting.rs", "crates/sunrise-client/src/recipe_book*", "crates/sunrise-sim/src/stations.rs",
   "crates/sunrise-level/src/containers.rs", "crates/sunrise-world/src/simple_container.rs",
   "crates/sunrise-client/src/game/interface/container_*",
   "crates/sunrise-client/src/game/interface/extras/mouse_tweaks.rs",
 ]
 cargo = [
-  { package = "sunrise-client-lib", target = "lib", filter = "menu::" },
-  { package = "sunrise-client-lib", target = "lib", filter = "crafting::" },
+  { package = "sunrise-sim", target = "lib", filter = "menu::" },
+  { package = "sunrise-sim", target = "lib", filter = "crafting::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::container_hooks::" },
   { package = "sunrise-client", target = "lib", filter = "game::client_side::extras::mouse_tweaks::" },
 ]

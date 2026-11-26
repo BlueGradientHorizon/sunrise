@@ -8,6 +8,72 @@
 //! encrypts the connection (ClientHandshakePacketListenerImpl.handleHello).
 use crate::auth::AuthSession;
 mod client_inbox;
+
+#[cfg(test)]
+mod client_payload_test_support {
+    use super::Event;
+    use crate::raw_payloads::{Side, Transport};
+    use mod_api::{
+        Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadId, Registrar,
+    };
+    use std::sync::Arc;
+    pub(super) const CHANNEL: &str = "raw_hub_probe:message";
+    struct Probe;
+    impl IPayloadHandler for Probe {
+        fn handle(
+            &self,
+            _: PayloadBytes,
+            _: &mut dyn IPayloadContext,
+        ) -> Result<(), mod_api::PayloadHandleError> {
+            Ok(())
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            registrar
+                .payload_handlers()
+                .registrar("1")
+                .play_to_server(PayloadId(CHANNEL.into()), Arc::new(Probe));
+        }
+    }
+    pub(super) fn with_peer<R>(run: impl FnOnce(Arc<Transport>) -> R) -> R {
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("raw_hub_probe", Box::new(Probe))].into(),
+            || {
+                mod_platform::__private::part_tests::install_parts_fixture(
+                    mod_api::__private::mods(),
+                )
+                .unwrap();
+                let transport = Transport::capture(Side::Server).unwrap();
+                assert!(
+                    transport.local.owns(CHANNEL),
+                    "fixture declaration was not installed"
+                );
+                transport
+                    .accept(transport.local.manifest.entries())
+                    .unwrap();
+                transport.finish_configuration().unwrap();
+                run(transport)
+            },
+        )
+    }
+    pub(super) fn with_client<R>(run: impl FnOnce(Arc<Transport>) -> R) -> R {
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("raw_hub_probe", Box::new(Probe))].into(),
+            || {
+                mod_platform::__private::part_tests::install_parts_fixture(
+                    mod_api::__private::mods(),
+                )
+                .unwrap();
+                run(
+                    Transport::capture_with_event_size(Side::Client, std::mem::size_of::<Event>())
+                        .unwrap(),
+                )
+            },
+        )
+    }
+}
 pub use client_inbox::{ClientTask, ClientTasks};
 #[cfg(test)]
 #[path = "net/bundle_tests.rs"]
@@ -2743,7 +2809,7 @@ mod tests {
         use sunrise_protocol::payload_negotiation::{CHANNEL, Control};
         for server_asks in [false, true] {
             let (root, data) = empty_item_data(&format!("mod-client-{server_asks}"));
-            let sent = crate::raw_payloads::test_support::with_client(|transport| {
+            let sent = client_payload_test_support::with_client(|transport| {
                 assert!(transport.local.has_mod_declarations());
                 let (client, server) = sunrise_protocol::connection::Pipe::pair();
                 let (mut reader, writer) = Connection::local(client).split();
@@ -2823,7 +2889,7 @@ mod tests {
                     manifest
                         .entries()
                         .iter()
-                        .any(|e| e.id() == crate::raw_payloads::test_support::CHANNEL),
+                        .any(|e| e.id() == client_payload_test_support::CHANNEL),
                     "the Offer lists the mod's channel"
                 );
             } else {

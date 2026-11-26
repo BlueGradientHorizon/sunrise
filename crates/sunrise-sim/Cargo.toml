@@ -63,6 +63,7 @@ mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", featu
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"] }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
 sunrise-world = { path = "../sunrise-world", features = ["test-support"] }
+png = "0.18"
 sunrise-level = { path = "../sunrise-level", features = ["test-support"] }
 sunrise-perf = { path = "../sunrise-perf" }
 sunrise-threads = { path = "../sunrise-threads", features = ["test-allocation-probe", "test-game-dir"] }

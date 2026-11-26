@@ -121,9 +121,9 @@ ButtonListDialogScreen.populateBodyElements	port	crates/sunrise-client/src/dialo
 ButtonListDialogScreen.updateHeaderAndFooter	port	crates/sunrise-client/src/dialog_screen.rs::Layout::new	exit button in the footer, else a 5 pixel footer
 DialogControlSet.addInput	port	crates/sunrise-client/src/dialog_screen.rs::input	gap: player: single-option and number-range inputs get no control, so their value cannot be changed
 DialogControlSet.createDialogButton	port	crates/sunrise-client/src/dialog_screen.rs::Layout::new	button width from the dialog; gap: minor: no button tooltips
-DialogControlSet.bindAction	port	crates/sunrise-client/src/dialog.rs::Action::click	reads the inputs' current values into the action when clicked
+DialogControlSet.bindAction	port	crates/sunrise-sim/src/dialog.rs::Action::click	reads the inputs' current values into the action when clicked
 DialogControlSet.createActionButton	port	crates/sunrise-client/src/game/interface/dialogs.rs::Game::dialog_click	button press runs the action through run_dialog_action
-DialogListDialogScreen.createDialogClickAction	port	crates/sunrise-client/src/dialog.rs::Dialog::set_list	each listed dialog is a button whose action is Click::ShowDialog; game/interface/dialogs.rs run_dialog_action opens it
+DialogListDialogScreen.createDialogClickAction	port	crates/sunrise-sim/src/dialog.rs::Dialog::set_list	each listed dialog is a button whose action is Click::ShowDialog; game/interface/dialogs.rs run_dialog_action opens it
 DialogScreen.repositionElements	skip:ui		layout only: body scroll height and warning clamp, both in Layout::new
 DialogScreen.createTitleWithWarningButton	skip:ui		layout only: title row, warning button 10 px right of the title in Layout::new
 DialogScreen.makeSureWarningButtonIsInBounds	port	crates/sunrise-client/src/dialog_screen.rs::Layout::in_bounds	moves the warning button on screen when it is off

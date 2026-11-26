@@ -40,7 +40,7 @@ def main():
     sources = [Path(__file__), source, lab.ROOT / 'Cargo.lock',
                lab.ROOT / 'crates/sunrise-client/src/game/administration/commands/mod.rs',
                lab.ROOT / 'crates/sunrise-client/src/game/network/lan_actions/mod.rs',
-               lab.ROOT / 'crates/sunrise-client/src/lan/hub.rs',
+               lab.ROOT / 'crates/sunrise-sim/src/lan/hub.rs',
                lab.ROOT / 'crates/sunrise-client/src/game/network/lan/mod.rs',
                lab.ROOT / 'crates/sunrise-client/src/game/world/server_travel.rs']
     hashes = base.source_hashes(sources)

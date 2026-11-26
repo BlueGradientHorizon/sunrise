@@ -63,13 +63,13 @@ class AreaTests(unittest.TestCase):
     def test_paths(self):
         cases = {
             "crates/sunrise-world/src/worldgen/structure/mod.rs": "worldgen",
-            "crates/sunrise-client/src/mobs/ai.rs": "mobs",
+            "crates/sunrise-sim/src/mobs/ai.rs": "mobs",
             "crates/sunrise-client/src/game/mobs/wither.rs": "mobs",
             "crates/sunrise-client-render/src/gfx/cull.rs": "rendering",
             "crates/sunrise-client-render/src/terrain.wgsl": "rendering",
             "crates/sunrise-client/src/game/interface/dedicated/status.rs": "server",
             "crates/sunrise-server-files/src/lib.rs": "server",
-            "crates/sunrise-client/src/lan/hub.rs": "multiplayer",
+            "crates/sunrise-sim/src/lan/hub.rs": "multiplayer",
             "crates/sunrise-client/src/game/network/remote_vehicles.rs": "multiplayer",
             "crates/sunrise-protocol/src/packets/play.rs": "multiplayer",
             "crates/sunrise-mod-package/src/lib.rs": "mods",

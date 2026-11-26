@@ -44,7 +44,7 @@ RotatingSectionStorage.containsSection	skip:java		ring of section nodes; Sunrise
 RotatingSectionStorage.getSectionIndex	skip:java		ring of section nodes; Sunrise keys dirty sections by coordinates (DirtySections)
 RotatingSectionStorage.forEach	skip:java		ring of section nodes; Sunrise keys dirty sections by coordinates (DirtySections)
 Screenshot.grab	port	crates/sunrise-client/src/game/interface/chat.rs::Game::take_screenshot	gap: minor: no downscale factor and no callback; the result line comes from finish_screenshot
-Screenshot.takeScreenshot	port	crates/sunrise-client/src/lan/playerdata.rs::save_now	gap: minor: full size only, no downscale factor
+Screenshot.takeScreenshot	port	crates/sunrise-sim/src/lan/playerdata.rs::save_now	gap: minor: full size only, no downscale factor
 Screenshot.getFile	port	crates/sunrise-client/src/game/interface/chat.rs::screenshot_name	minor: UTC instead of local time in the name
 ScrollWheelHandler.getNextScrollWheelSelection	port	crates/sunrise-client-input/src/mouse.rs::ScrollWheelHandler::next_selection
 SectionUpdateTracker.setDirty	port	crates/sunrise-level/src/world.rs::DirtySections::insert	gap: minor: the from-player flag that orders remeshing is not kept
@@ -62,10 +62,10 @@ StringSplitter.LineBreakFinder.accept	port	crates/sunrise-client-render/src/font
 StringSplitter.LineComponent.visit	skip:java		visitor plumbing over FormattedText
 StringSplitter.WidthLimitedCharSink.accept	port	crates/sunrise-client-render/src/screen_draw.rs::Measure::head
 AnimationDefinition.Builder.addAnimation	skip:java		builder for code-made animations; Sunrise parses animation JSON
-KeyframeAnimation.bake	inline	crates/sunrise-client/src/mobs/keyframes.rs::Animation::apply	gap: minor: bones are looked up per frame; no check that a bone exists
-KeyframeAnimation.getElapsedSeconds	inline	crates/sunrise-client/src/mobs/keyframes.rs::Animation::apply	seconds modulo the length when looping
-KeyframeAnimations.degreeVec	inline	crates/sunrise-client/src/mobs/keyframes.rs::Animation::apply	the vanilla animation definitions call degreeVec when they build their keyframes, so the pre/post targets the exporter writes and Sunrise parses are already radians; apply adds them straight into the pose
-KeyframeAnimations.scaleVec	inline	crates/sunrise-client/src/mobs/keyframes.rs::Animation::apply	the definitions call scaleVec first, so a keyframe scale arrives with 1 already subtracted and adds onto the part's scale, as ModelPart.offsetScale does
+KeyframeAnimation.bake	inline	crates/sunrise-sim/src/mobs/keyframes.rs::Animation::apply	gap: minor: bones are looked up per frame; no check that a bone exists
+KeyframeAnimation.getElapsedSeconds	inline	crates/sunrise-sim/src/mobs/keyframes.rs::Animation::apply	seconds modulo the length when looping
+KeyframeAnimations.degreeVec	inline	crates/sunrise-sim/src/mobs/keyframes.rs::Animation::apply	the vanilla animation definitions call degreeVec when they build their keyframes, so the pre/post targets the exporter writes and Sunrise parses are already radians; apply adds them straight into the pose
+KeyframeAnimations.scaleVec	inline	crates/sunrise-sim/src/mobs/keyframes.rs::Animation::apply	the definitions call scaleVec first, so a keyframe scale arrives with 1 already subtracted and adds onto the part's scale, as ModelPart.offsetScale does
 ColorLerper.getLerpedColor	port	crates/sunrise-client/src/mobs/render.rs::jeb_wool_rgb	a sheep whose custom name is exactly jeb_ cycles through the dye colours by age, as MobRenderer.checkMagicName does
 ColorLerper.getModifiedColor	inline	crates/sunrise-client/src/mobs/render.rs::jeb_wool_rgb	the same table walk, inlined for the jeb_ name
 BlockColors.getTintSource	port	crates/sunrise-client-render/src/mesher.rs::Mesher::tint
@@ -104,7 +104,7 @@ net/minecraft/client/main/Main#isUuidValid	skip:other		the check behind hasValid
 AbstractClientPlayer.getPlayerInfo	inline	crates/sunrise-client/src/game/network/remote/sync_client.rs::Game::remote_pushes	the entity id -> uuid -> tab entry lookups stand in for the PlayerInfo; the name, team and game mode are read from that entry
 AbstractClientPlayer.getSkin	port	crates/sunrise-client/src/game/network/remote/status_client.rs::Game::update_remote_skins	the downloaded skin and slim flag, else DefaultPlayerSkin by uuid, as PlayerInfo.getSkin
 AbstractClientPlayer.getParrotVariantOnShoulder	port	crates/sunrise-client/src/mobs/render.rs::shoulder_parrot	the shoulder slot's stored variant picks the parrot texture and model in the layer
-ClientInput.makeJump	inline	crates/sunrise-client/src/motion.rs::MotionWorld::controlled_simulation_tick	gap: minor: carries the auto-jump flag; no separate jump input
+ClientInput.makeJump	inline	crates/sunrise-sim/src/motion.rs::MotionWorld::controlled_simulation_tick	gap: minor: carries the auto-jump flag; no separate jump input
 FirstPersonHandsAndItems.extractRenderState	inline	crates/sunrise-client/src/game/items/hand.rs::Game::visible_hand_items	gap: minor: bob, swing and map state are read elsewhere; no render-state struct
 FirstPersonHandsAndItems.shouldInstantlyReplaceVisibleItem	port	crates/sunrise-client/src/game/items/hand.rs::shows_held_stack	the same stack object, or an equal one, which plays no swap animation; the slot a replaced hand changed is the exception
 FirstPersonHandsAndItems.extractMapRenderState	inline	crates/sunrise-client/src/game/blocks/maps/mod_client.rs::Game::held_map	the MAP_ID component picks the map data drawn in the hand, its decorations included, and decides the checkerboard background
@@ -120,7 +120,7 @@ LocalPlayer.closeContainer	port	crates/sunrise-client/src/game/network/remote/mo
 LocalPlayer.isSuppressingSlidingDownLadder	port	crates/sunrise-client/src/motion.rs::MotionWorld::suppressing_ladder_slide	gap: minor: sneak only; vanilla also requires not flying
 LocalPlayer.canSpawnSprintParticle	port	crates/sunrise-client/src/game/interface/client_ambient.rs::Game::sprint_dust	gap: minor: the test there is Entity.canSpawnSprintParticle's (sprinting, not spectator, not crouching, alive, out of water and lava) without the !abilities.flying LocalPlayer adds
 LocalPlayer.sendRidingJump	port	crates/sunrise-client/src/game/network/remote_vehicles.rs::riding_jump	START_RIDING_JUMP carrying the jump scale
-LocalPlayer.removeRecipeHighlight	port	crates/sunrise-client/src/recipe_book.rs::Settings::remove_highlight	gap: minor: the seen-recipe packet is not sent, so the server keeps the highlight
+LocalPlayer.removeRecipeHighlight	port	crates/sunrise-sim/src/recipe_book.rs::Settings::remove_highlight	gap: minor: the seen-recipe packet is not sent, so the server keeps the highlight
 LocalPlayer.moveTowardsClosestSpace	port	crates/sunrise-client/src/game.rs::Game::closest_space_nudge	the four body corners, 0.1 towards the nearest free side on its axis, a later corner overwriting an earlier one
 LocalPlayer.suffocatesAt	inline	crates/sunrise-client/src/game.rs::closest_space_nudge	the level suffocation predicate and collision-shape intersection over the deflated body-height column
 LocalPlayer.setExperienceDisplayStartTickToTickCount	inline	crates/sunrise-client/src/game/interface/locator_bar.rs::Game::track_experience_display
@@ -137,7 +137,7 @@ LocalPlayer.shouldStopRunSprinting	port	crates/sunrise-sim/src/sprint.rs::Condit
 LocalPlayer.shouldStopSwimSprinting	port	crates/sunrise-sim/src/sprint.rs::Conditions::should_stop
 LocalPlayer.tickDeath	missing		minor: unsure: the dead local player is not removed after 20 ticks; the death screen flow covers it
 LocalPlayer.rideTick	port	crates/sunrise-client/src/game/network/remote_vehicles.rs::Game::remote_ride	the keys are latched into the boat's input and the seat follows its turn
-LocalPlayer.isHorizontalCollisionMinor	port	crates/sunrise-client/src/motion.rs::EntityMoveWorld::minor_horizontal_collision	the sprint keeps when a move hits a wall at under 8 degrees
+LocalPlayer.isHorizontalCollisionMinor	port	crates/sunrise-sim/src/motion.rs::EntityMoveWorld::minor_horizontal_collision	the sprint keeps when a move hits a wall at under 8 degrees
 LocalPlayer.isMoving	inline	crates/sunrise-sim/src/auto_jump.rs::can_auto_jump
 LocalPlayer.isSprintingPossible	port	crates/sunrise-sim/src/sprint.rs::Conditions::possible
 LocalPlayer.canStartSprinting	port	crates/sunrise-sim/src/sprint.rs::Conditions::can_start	forward, not sprinting, food or may-fly, no slow item in use and not moving slowly unless underwater; `slow_item` is set from the item use (game.rs item_use_slows_sprint), so eating or drinking blocks the start

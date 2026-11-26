@@ -221,5 +221,5 @@ if __name__ == '__main__':
                  lab.ROOT / 'crates/sunrise-client/src/game/blocks/machines/furnace_hopper.tsv',
                  lab.ROOT / 'crates/sunrise-items/src/item_data/cooking_fuel.rs',
                  lab.ROOT / 'crates/sunrise-items/src/properties/resolvable.rs',
-                 lab.ROOT / 'crates/sunrise-client/src/furnace.rs',
-                 lab.ROOT / 'crates/sunrise-client/src/crafting.rs'])
+                 lab.ROOT / 'crates/sunrise-sim/src/furnace.rs',
+                 lab.ROOT / 'crates/sunrise-sim/src/crafting.rs'])

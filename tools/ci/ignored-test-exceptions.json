@@ -224,26 +224,26 @@
     "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-sunrise-client-core.txt: needs a downloaded pack in SUNRISE_LANG_PACK_DIR. Not selected by daily shards."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "arrows::client_tests::client_arrow_parity_fixture",
-    "path": "crates/sunrise-client/src/arrows_client_tests.rs",
+    "path": "crates/sunrise-sim/src/arrows_client_tests.rs",
     "reason": "run by client-arrow differential harness",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_client_arrow_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "entities::entity_collision_tests::obstacle_grid_beats_scanning_every_box_for_a_big_farm",
-    "path": "crates/sunrise-client/src/entities.rs",
+    "path": "crates/sunrise-sim/src/entities.rs",
     "reason": "timing",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: timing. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "entity_nbt::equipment_tests::write_fixtures",
-    "path": "crates/sunrise-client/src/entity_nbt/equipment_tests.rs",
+    "path": "crates/sunrise-sim/src/entity_nbt/equipment_tests.rs",
     "reason": "writes the fixtures; run with SUNRISE_WRITE_FIXTURES=1 on the codec to record",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; SUNRISE_WRITE_FIXTURES supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
@@ -256,10 +256,10 @@
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; SUNRISE_GLINT_ROOT supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "lan::entity::send_bench::tracker_send_benchmark",
-    "path": "crates/sunrise-client/src/lan/entity/send_bench.rs",
+    "path": "crates/sunrise-sim/src/lan/entity/send_bench.rs",
     "reason": "performance measurement; requires SUNRISE_SEND_BENCH=1 on an idle machine",
     "rationale": "Existing separately supplied input SUNRISE_SEND_BENCH in tools/ci/ignored-tests/sync-38-resources.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. performance measurement; requires SUNRISE_SEND_BENCH=1 on an idle machine"
   },
@@ -272,10 +272,10 @@
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_dragon_contacts_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::leash::tests::happy_ghast_leash_dispatch_matches_vanilla",
-    "path": "crates/sunrise-client/src/mobs/leash.rs",
+    "path": "crates/sunrise-sim/src/mobs/leash.rs",
     "reason": "requires SUNRISE_TEST_RESOURCES and the vanilla Happy Ghast leash reference",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_happy_ghast_leash_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
@@ -288,58 +288,58 @@
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: manual benchmark; needs the prepared resources. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::shulker::space_tests::shulker_space_parity_fixture",
-    "path": "crates/sunrise-client/src/mobs/shulker_space_tests.rs",
+    "path": "crates/sunrise-sim/src/mobs/shulker_space_tests.rs",
     "reason": "run by tools/test_shulker_space_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_space_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::villager_brain::farming_tests::vanilla_farming_classification_matches_the_oracle",
-    "path": "crates/sunrise-client/src/mobs/villager_farming_tests.rs",
+    "path": "crates/sunrise-sim/src/mobs/villager_farming_tests.rs",
     "reason": "tools/test_villager_farming_parity.py supplies the vanilla oracle",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_villager_farming_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::villager_brain::poi_classification_tests::vanilla_bed_poi_states",
-    "path": "crates/sunrise-client/src/mobs/villager_brain.rs",
+    "path": "crates/sunrise-sim/src/mobs/villager_brain.rs",
     "reason": "requires the vanilla bed POI oracle output",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_bed_poi_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::villager_brain::reputation_witness_tests::witnesses_use_sensor_candidates_radius_invisibility_and_cached_results",
-    "path": "crates/sunrise-client/src/mobs/villager_brain/reputation_witness_tests.rs",
+    "path": "crates/sunrise-sim/src/mobs/villager_brain/reputation_witness_tests.rs",
     "reason": "requires explicit prepared resources and vanilla oracle output",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_villager_witness_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "save::compression_bench::benches::bench_chunk_compression_speedup",
-    "path": "crates/sunrise-client/src/save/compression_bench.rs",
+    "path": "crates/sunrise-sim/src/save/compression_bench.rs",
     "reason": "a measurement, not a check",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: a measurement, not a check. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "save::far_census::far_floating_cells_per_level",
-    "path": "crates/sunrise-client/src/save/far_census.rs",
+    "path": "crates/sunrise-sim/src/save/far_census.rs",
     "reason": "requires prepared data and a save (see the module docs)",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; SUNRISE_FAR_SAVE supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "save::loot_tests::opened_loot_parity_fixture",
-    "path": "crates/sunrise-client/src/save/loot_tests.rs",
+    "path": "crates/sunrise-sim/src/save/loot_tests.rs",
     "reason": "run by tools/test_opened_loot_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_opened_loot_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
@@ -720,18 +720,18 @@
     "rationale": "Builds a starter native mod that `cargo sunrise-mod new` pins to the Nightly, so it needs the daily run's own SDK as that Nightly (SUNRISE_SDK_BASE, with SUNRISE_SDK_TRUSTED_KEY): against the published one it would test that SDK and fail whenever main's tool reads a newer SDK format. book-quickstart.yml assembles that SDK and runs it there by exact name with --ignored; its manual row is in tools/ci/ignored-tests/manual-cargo-sunrise-mod.txt."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::finalize::load_tests::a_loaded_health_is_clamped_to_the_loaded_max_health",
-    "path": "crates/sunrise-client/src/mobs/finalize_load_tests.rs",
+    "path": "crates/sunrise-sim/src/mobs/finalize_load_tests.rs",
     "reason": "run by tools/test_mob_attribute_nbt_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_attribute_nbt_parity.py records the vanilla 26.3 loaded-health witness into .local and runs this test against it through SUNRISE_MOB_LOADED_HEALTH_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::cube::own_base_tests::a_cube_keeps_the_bases_its_own_size_set",
-    "path": "crates/sunrise-client/src/mobs/cube.rs",
+    "path": "crates/sunrise-sim/src/mobs/cube.rs",
     "reason": "run by tools/test_mob_attribute_nbt_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_attribute_nbt_parity.py records the vanilla 26.3 mob attribute NBT witness into .local and runs this test against it through SUNRISE_MOB_ATTRIBUTE_NBT_WITNESS, so no recorded vanilla data is committed."
   },
@@ -1176,10 +1176,10 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_eye_item_parity.py records the vanilla 26.3 eye_of_ender Item witness into .local and runs this test against it through SUNRISE_EYE_ITEM_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "projectiles::tests::a_shulker_bullet_turns_halfway_towards_its_motion_26_3",
-    "path": "crates/sunrise-client/src/projectiles.rs",
+    "path": "crates/sunrise-sim/src/projectiles.rs",
     "reason": "run by tools/test_shulker_bullet_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_bullet_parity.py records the vanilla 26.3 shulker bullet turn witness into .local and runs this test against it through SUNRISE_SHULKER_BULLET_TURN_WITNESS, so no recorded vanilla data is committed."
   },
@@ -1192,10 +1192,10 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_cloud_falling_loaded_rotation_parity.py records the vanilla 26.3 cloud and falling-block loaded Rotation witness into .local and runs this test against it through SUNRISE_CLOUD_FALLING_ROTATION_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::sulfur_cube::tnt_rule_tests::a_loaded_fuse_is_kept_as_it_is_and_leaves_invulnerable_alone",
-    "path": "crates/sunrise-client/src/mobs/sulfur_cube.rs",
+    "path": "crates/sunrise-sim/src/mobs/sulfur_cube.rs",
     "reason": "run by tools/test_sulfur_cube_fuse_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_sulfur_cube_fuse_parity.py records the vanilla 26.3 sulfur cube fuse witnesses into .local and runs this test against them through SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR, so no recorded vanilla data is committed."
   },
@@ -1232,18 +1232,18 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_arrow_hit_ding_parity.py records the vanilla 26.3 arrow-hit witness into .local and runs this test against it through SUNRISE_ARROW_HIT_DING_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::shulker::saved_bytes_tests::a_loaded_shulker_has_no_motion_and_keeps_its_yaw",
-    "path": "crates/sunrise-client/src/mobs/shulker.rs",
+    "path": "crates/sunrise-sim/src/mobs/shulker.rs",
     "reason": "run by tools/test_shulker_motion_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_motion_parity.py records the vanilla 26.3 shulker motion witness into .local and runs this test against it through SUNRISE_SHULKER_MOTION_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::shulker::saved_bytes_tests::a_noai_shulker_in_flowing_water_keeps_zero_motion",
-    "path": "crates/sunrise-client/src/mobs/shulker.rs",
+    "path": "crates/sunrise-sim/src/mobs/shulker.rs",
     "reason": "run by tools/test_shulker_motion_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_motion_parity.py records the vanilla 26.3 shulker motion witness into .local and runs this test against it through SUNRISE_SHULKER_MOTION_WITNESS, so no recorded vanilla data is committed."
   },
@@ -1264,18 +1264,18 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_writable_book_parity.py records the vanilla 26.3 writable-book witness into .local and runs this test against it through SUNRISE_WRITABLE_BOOK_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::ai::oxygen_bonus_tests::a_mob_losing_air_under_water_saves_oxygen_bonus",
-    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "path": "crates/sunrise-sim/src/mobs/ai.rs",
     "reason": "run by tools/test_mob_oxygen_bonus_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_oxygen_bonus_parity.py records the vanilla 26.3 underwater oxygen_bonus witness into .local and runs this test against it through SUNRISE_MOB_OXYGEN_BONUS_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::ai::noai_ridden_tests::a_ridden_noai_donkey_travels_and_turns_with_its_rider",
-    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "path": "crates/sunrise-sim/src/mobs/ai.rs",
     "reason": "run by tools/test_noai_ridden_travel_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_noai_ridden_travel_parity.py records the vanilla 26.3 ridden NoAI donkey travel witness into .local and runs this test against it through SUNRISE_NOAI_RIDDEN_TRAVEL_WITNESS, so no recorded vanilla data is committed."
   },
@@ -1296,34 +1296,34 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_tooltip_display_parity.py records the vanilla 26.3 tooltip_style sprites witness into .local and runs this test against it through SUNRISE_TOOLTIP_STYLE_SPRITES_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "item_sync::tests::a_tooltip_style_crosses_the_wire",
-    "path": "crates/sunrise-client/src/item_sync.rs",
+    "path": "crates/sunrise-sim/src/item_sync.rs",
     "reason": "run by tools/test_item_wire_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_item_wire_parity.py records the vanilla 26.3 tooltip_style wire witness into .local and runs this test against it through SUNRISE_TOOLTIP_STYLE_WIRE_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::ai::burn_and_rose_tests::a_mob_loaded_in_lava_burns_on_its_first_tick",
-    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "path": "crates/sunrise-sim/src/mobs/ai.rs",
     "reason": "run by tools/test_first_tick_lava_burn_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_first_tick_lava_burn_parity.py records the vanilla 26.3 first-tick lava burn witness into .local and runs this test against it through SUNRISE_FIRST_TICK_LAVA_BURN_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::ai::noai_breather_air_tests::noai_breathers_keep_air_above_their_maximum",
-    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "path": "crates/sunrise-sim/src/mobs/ai.rs",
     "reason": "run by tools/test_noai_breather_air_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_noai_breather_air_parity.py records the vanilla 26.3 NoAI breather air witness into .local and runs this test against it through SUNRISE_NOAI_BREATHER_AIR_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::ai::noai_breather_air_tests::noai_breathers_match_the_pinned_oracle",
-    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "path": "crates/sunrise-sim/src/mobs/ai.rs",
     "reason": "run by tools/test_noai_breather_air_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_noai_breather_air_parity.py records the vanilla 26.3 NoAI breather air witness into .local and runs this test against it through SUNRISE_NOAI_BREATHER_AIR_WITNESS, so no recorded vanilla data is committed."
   },
@@ -1344,18 +1344,18 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_stand_living_counters_parity.py records the vanilla 26.3 armor stand living counters witness into .local and runs this test against it through SUNRISE_STAND_LIVING_COUNTERS_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::fox::pounce_turn_tests::the_pounce_turn_matches_the_pinned_oracle",
-    "path": "crates/sunrise-client/src/mobs/fox.rs",
+    "path": "crates/sunrise-sim/src/mobs/fox.rs",
     "reason": "run by tools/test_mob_turn_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_turn_parity.py records the vanilla 26.3 mob-turn witnesses into .local and runs this test against them through SUNRISE_MOB_TURN_WITNESS_DIR, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "mobs::dolphin::jump_turn_tests::the_jump_turn_matches_the_pinned_oracle",
-    "path": "crates/sunrise-client/src/mobs/dolphin.rs",
+    "path": "crates/sunrise-sim/src/mobs/dolphin.rs",
     "reason": "run by tools/test_mob_turn_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_turn_parity.py records the vanilla 26.3 mob-turn witnesses into .local and runs this test against them through SUNRISE_MOB_TURN_WITNESS_DIR, so no recorded vanilla data is committed."
   },
@@ -1416,10 +1416,10 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_summon_custom_name_parity.py records the vanilla 26.3 summon custom-name witness into .local and runs this test against it through SUNRISE_SUMMON_CUSTOM_NAME_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-sim",
     "target": "lib",
     "test": "projectiles::tests::a_fireball_turns_on_the_tick_it_hits",
-    "path": "crates/sunrise-client/src/projectiles.rs",
+    "path": "crates/sunrise-sim/src/projectiles.rs",
     "reason": "run by tools/test_fireball_hit_turn_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_fireball_hit_turn_parity.py records the vanilla 26.3 fireball hit-turn witness into .local and runs this test against it through SUNRISE_FIREBALL_HIT_TURN_WITNESS, so no recorded vanilla data is committed."
   },

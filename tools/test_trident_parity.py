@@ -108,7 +108,7 @@ def main():
                ROOT / 'Cargo.toml', ROOT / 'Cargo.lock',
                ROOT / 'crates/sunrise-client/examples/probe/trident_probe.rs',
                ROOT / 'crates/sunrise-client/examples/probe/main.rs',
-               ROOT / 'crates/sunrise-client/src/arrows.rs',
+               ROOT / 'crates/sunrise-sim/src/arrows.rs',
                ROOT / 'crates/sunrise-client/src/game/items/trident.rs']
     tested = base.source_hashes(sources)
     cases = fixtures()

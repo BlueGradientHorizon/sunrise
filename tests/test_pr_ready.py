@@ -275,7 +275,7 @@ class PrReadyTests(unittest.TestCase):
                 steps = pr_ready.plan(args(quick=True), "origin/main", {path}, PACKAGES, LIBRARIES, DEPENDENCIES)
             return {step.name: step for step in steps}["content root tests"]
         self.assertEqual(content_step("crates/sunrise-client/src/game.rs").skip, "content root untouched")
-        for path in ["crates/sunrise-client/src/mod_content.rs", "crates/sunrise-client/src/mod_content_tests.rs",
+        for path in ["crates/sunrise-sim/src/mod_content.rs", "crates/sunrise-sim/src/mod_content_tests.rs",
                      "crates/sunrise-mod-package/src/content.rs", "crates/sunrise-assets/src/lib.rs", "Cargo.lock"]:
             with self.subTest(path=path):
                 step = content_step(path)

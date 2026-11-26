@@ -1,6 +1,6 @@
-BinaryAnimator.tick	port	crates/sunrise-client/src/mobs/axolotl.rs::Animation::tick	one axolotl Animation holds the four animators; old/value pair and the clamp to 10 as vanilla
-BinaryAnimator.getFactor	port	crates/sunrise-client/src/mobs/axolotl.rs::Animation::factor	lerp of old and value over 10, then the IN_OUT_SINE curve as vanilla
-BlockUtil.packDifferenceInPositionInternal	port	crates/sunrise-client/src/mobs/shulker.rs::pack_diff	gap: minor: radius fixed at 8 on each axis; the dragon egg packs (16, 8, 16) inline in crates/sunrise-world/src/level/interact.rs::Sim::dragon_egg_teleport
+BinaryAnimator.tick	port	crates/sunrise-sim/src/mobs/axolotl.rs::Animation::tick	one axolotl Animation holds the four animators; old/value pair and the clamp to 10 as vanilla
+BinaryAnimator.getFactor	port	crates/sunrise-sim/src/mobs/axolotl.rs::Animation::factor	lerp of old and value over 10, then the IN_OUT_SINE curve as vanilla
+BlockUtil.packDifferenceInPositionInternal	port	crates/sunrise-sim/src/mobs/shulker.rs::pack_diff	gap: minor: radius fixed at 8 on each axis; the dragon egg packs (16, 8, 16) inline in crates/sunrise-world/src/level/interact.rs::Sim::dragon_egg_teleport
 BlockUtil.checkDifferenceInBounds	skip:other		range guard inside packDifferenceInPosition; radii of 8 and 16 cannot exceed 127
 ByIdMap.createMap	skip:java		id-to-value lookup table; Sunrise enums match their own ids
 ByIdMap.sparse	skip:java		id-to-value lookup table; Sunrise enums match their own ids
@@ -61,8 +61,8 @@ DependencySorter.visitDependenciesAndElement	port	crates/sunrise-world/src/world
 DependencySorter.isCyclic	port	crates/sunrise-world/src/worldgen/tags.rs::reaches	reach test used to refuse a cyclic edge
 DependencySorter.addDependencyIfNotCyclic	inline	crates/sunrise-world/src/worldgen/tags.rs::TagDefinitions::build	adds the edge only when reaches is false
 DependencySorter.orderByDependencies	inline	crates/sunrise-world/src/worldgen/tags.rs::TagDefinitions::build	required edges first, then optional ones, then the visit order
-DirectoryLock.create	port	crates/sunrise-client/src/save/session.rs::SessionLock::acquire	exclusive file lock on session.lock with the two-byte snowman content
-DirectoryLock.isLocked	port	crates/sunrise-client/src/save/session.rs::SessionLock::is_locked	trying for the world's session.lock tells a locked world; title.rs uses it to flag the entry
+DirectoryLock.create	port	crates/sunrise-sim/src/save/session.rs::SessionLock::acquire	exclusive file lock on session.lock with the two-byte snowman content
+DirectoryLock.isLocked	port	crates/sunrise-sim/src/save/session.rs::SessionLock::is_locked	trying for the world's session.lock tells a locked world; title.rs uses it to flag the entry
 Ease.inBack	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
 Ease.inElastic	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
 Ease.inExpo	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two

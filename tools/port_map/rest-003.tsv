@@ -37,8 +37,8 @@ Camera.setPosition	inline	crates/sunrise-client-render/src/camera.rs::Camera::al
 Camera.getViewRotationMatrix	port	crates/sunrise-client-render/src/camera.rs::view_matrix
 Camera.NearPlane.getPointOnPlane	inline	crates/sunrise-client/src/game/items/fishing_client.rs::Game::fishing_line	only the fishing line's anchor uses it
 ClientBootstrap.bootstrap	skip:data		registry bootstrap
-ClientRecipeBook.rebuildCollections	port	crates/sunrise-client/src/recipe_book.rs::ClientBook::collections	tab collections built per call
-ClientRecipeBook.categorizeAndGroupRecipes	port	crates/sunrise-client/src/recipe_book.rs::ClientBook::collections	grouping by category and group id
+ClientRecipeBook.rebuildCollections	port	crates/sunrise-sim/src/recipe_book.rs::ClientBook::collections	tab collections built per call
+ClientRecipeBook.categorizeAndGroupRecipes	port	crates/sunrise-sim/src/recipe_book.rs::ClientBook::collections	grouping by category and group id
 CommandHistory.addCommand	port	crates/sunrise-client-render/src/chat.rs::Chat::add_recent	no repeats; keeps the last 50 saved commands
 CommandHistory.save	inline	crates/sunrise-client-render/src/chat.rs::Chat::add_recent	writes command_history.txt there
 ComponentCollector.getResult	skip:java		collector helper
@@ -46,10 +46,10 @@ DebugQueryHandler.handleResponse	port	crates/sunrise-client/src/game/interface/d
 DebugQueryHandler.startTransaction	port	crates/sunrise-client/src/game/interface/debug_keys.rs::DebugQuery::start
 DebugQueryHandler.queryEntityTag	inline	crates/sunrise-client/src/game/interface/debug_keys.rs::Game::copy_recreate_command	the query waits in Remote.debug_query
 DebugQueryHandler.queryBlockEntityTag	inline	crates/sunrise-client/src/game/interface/debug_keys.rs::Game::copy_recreate_command	the query waits in Remote.debug_query
-DeltaTracker.Timer.pause	port	crates/sunrise-client/src/clock.rs::Timer::update_pause_state	residual kept while paused
-DeltaTracker.Timer.unPause	port	crates/sunrise-client/src/clock.rs::Timer::update_pause_state	residual restored on resume
+DeltaTracker.Timer.pause	port	crates/sunrise-sim/src/clock.rs::Timer::update_pause_state	residual kept while paused
+DeltaTracker.Timer.unPause	port	crates/sunrise-sim/src/clock.rs::Timer::update_pause_state	residual restored on resume
 GameNarrator	home	crates/sunrise-narrator/src/lib.rs,crates/sunrise-client/src/game/interface/narrator.rs	the struct with its say_* methods in lib.rs; the game-side glue (start, option sync, Ctrl+B, the toast) in game/interface/narrator.rs
-HotbarManager.get	port	crates/sunrise-client/src/hotbar.rs::load	file loaded when the creative hotbar opens (creative_hotbar.rs)
+HotbarManager.get	port	crates/sunrise-sim/src/hotbar.rs::load	file loaded when the creative hotbar opens (creative_hotbar.rs)
 KeyMapping.forAllKeyMappings	port	crates/sunrise-client-input/src/keybinds.rs::KeyBinds::mappings_for	one key drives every mapping bound to it
 KeyMapping.setAll	port	crates/sunrise-client/src/game/game_client.rs::handle_window_event_inner	WindowEvent::Focused(false) drops every held key and mouse button, so nothing sticks across alt-tab; ModifiersChanged reconciles the rest
 KeyMapping.resetMapping	skip:other		no lookup table to rebuild; mappings_for reads the current keys
@@ -88,7 +88,7 @@ Minecraft.resizeGui	port	crates/sunrise-client-input/src/window.rs::calculate_sc
 Minecraft.emergencySave	missing		unsure: no world save before a crash report was found; the panic path only writes the report
 Minecraft.debugClientMetricsStart	skip:debug		metrics recording
 Minecraft.archiveProfilingReport	skip:debug		profiling archive
-Minecraft.isLevelRunningNormally	port	crates/sunrise-client/src/clock.rs::TickRateManager::runs_normally
+Minecraft.isLevelRunningNormally	port	crates/sunrise-sim/src/clock.rs::TickRateManager::runs_normally
 Minecraft.isMultiplayerServer	skip:other		no single predicate; remote and LAN code test their own state
 Minecraft.getQuickActionsDialog	port	crates/sunrise-client/src/game/interface/quick_actions.rs::Game::open_quick_actions	key.quickActions opens the tag's dialog, or minecraft:quick_actions when it names several
 Minecraft.disconnectFromWorld	port	crates/sunrise-client/src/game/network/remote/session_client.rs::Game::leave_server	gap: minor: only the remote exit; local worlds exit via close_world
@@ -119,7 +119,7 @@ Minecraft.getGameProfile	skip:service		Mojang profile fetch; Sunrise's account i
 Minecraft.showOnlyReducedInfo	port	crates/sunrise-client/src/game/interface/debug_keys.rs::Game::reduced_debug_info
 Minecraft.grabPanoramixScreenshot	skip:debug		only runs with SharedConstants.DEBUG_PANORAMA_SCREENSHOT
 Minecraft.onTextInputFocusChange	inline	crates/sunrise-client/src/game/interface/ime.rs::Game::sync_ime	the IME is synced to the focused widget each frame
-Minecraft.getTickTargetMillis	port	crates/sunrise-client/src/clock.rs::TickRateManager::milliseconds_per_tick	gap: minor: the max with the default tick time is not in this fn
+Minecraft.getTickTargetMillis	port	crates/sunrise-sim/src/clock.rs::TickRateManager::milliseconds_per_tick	gap: minor: the max with the default tick time is not in this fn
 MouseHandler.fillMousePositionDetails	skip:debug		crash report mouse details
 MouseHandler.onDrop	port	crates/sunrise-client/src/title.rs::Title::drop_file	a file dropped on the window joins the create screen's data packs
 MouseHandler.getScaledYPos	port	crates/sunrise-client-input/src/window.rs::scaled_pos

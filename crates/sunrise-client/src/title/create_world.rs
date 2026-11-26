@@ -60,26 +60,6 @@ pub struct WorldOptions {
     /// button cycles the extended list, with Debug Mode.
     pub alt_down: bool,
 }
-impl crate::save::WorldPreset {
-    /// `WorldPresetTags.EXTENDED`: the list the button cycles while Alt is held.
-    pub const EXTENDED: [Self; 6] = [
-        Self::Normal,
-        Self::Flat,
-        Self::LargeBiomes,
-        Self::Amplified,
-        Self::SingleBiomeSurface,
-        Self::Debug,
-    ];
-    /// `CycleButton.cycleValue`: the preset `step` places on in the Alt
-    /// list (`EXTENDED`) or the normal one (`ALL`). The button's position
-    /// is the preset's place in the extended list, which the normal list
-    /// then wraps (`Mth.positiveModulo`).
-    pub fn step(self, step: i32, alt: bool) -> Self {
-        let index = Self::EXTENDED.iter().position(|p| *p == self).unwrap_or(0);
-        let list: &[Self] = if alt { &Self::EXTENDED } else { &Self::ALL };
-        list[(index as i32 + step).rem_euclid(list.len() as i32) as usize]
-    }
-}
 impl super::Title {
     /// The live Alt state (`Minecraft.hasAltDown`) for an open Create New World screen
     /// and the flat and buffet screens it returns from.

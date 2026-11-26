@@ -189,7 +189,7 @@ class DailyRowsMatchTheSource(unittest.TestCase):
     def test_a_shared_source_folder_belongs_to_both_packages(self):
         owners = check.source_packages()
         self.assertEqual(owners["crates/sunrise-client"], self.CLIENT)
-        functions = [("crates/sunrise-client/src/save.rs", 3, "slow", self.CLIENT)]
+        functions = [("crates/sunrise-sim/src/save.rs", 3, "slow", self.CLIENT)]
         self.assertEqual(check.source_problems([row("sunrise-client-lib", "save::tests::slow")], functions), [])
         self.assertEqual(len(check.source_problems([row("sunrise-world", "save::tests::slow")], functions)), 2)
 

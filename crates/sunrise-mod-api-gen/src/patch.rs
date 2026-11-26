@@ -2248,22 +2248,25 @@ mod tests {
         let crate_ = generate_here(
             &[
                 "sunrise_client::game::autosave::Game<'_>::next_autosave_interval".into(),
-                "sunrise_client_lib::clock::FixedStep::advance".into(),
+                "sunrise_sim::clock::FixedStep::advance".into(),
             ],
             &Extras::default(),
         )
         .unwrap();
         let names: Vec<_> = crate_.libs.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(names, ["sunrise_patch", "sunrise_patch_client_lib"]);
+        assert_eq!(names, ["sunrise_patch", "sunrise_patch_sim"]);
         let lower = &crate_.libs[1].1;
         assert!(lower.contains("pub mod clock"), "{lower}");
         assert!(
-            lower.contains("pub use ::sunrise_client_lib::clock::FixedStep;"),
+            lower.contains("pub use ::sunrise_sim::clock::FixedStep;"),
             "{lower}"
         );
-        assert!(crate_.patched.iter().any(|p| {
-            p.id.starts_with("sunrise_patch_client_lib::clock::<FixedStep as")
-        }));
+        assert!(
+            crate_
+                .patched
+                .iter()
+                .any(|p| { p.id.starts_with("sunrise_patch_sim::clock::<FixedStep as") })
+        );
     }
 
     #[test]

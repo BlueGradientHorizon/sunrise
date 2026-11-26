@@ -3,7 +3,7 @@
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-path = root / "crates/sunrise-client/src/mobs.rs"
+path = root / "crates/sunrise-sim/src/mobs.rs"
 text = path.read_text()
 start = text.index("    /// LivingEntity.knockback(power")
 end = text.index("    /// One game tick. Returns false", start)

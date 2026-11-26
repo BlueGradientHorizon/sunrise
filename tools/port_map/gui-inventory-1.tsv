@@ -141,7 +141,7 @@ CreativeModeInventoryScreen.getTabY	port	crates/sunrise-client/src/creative.rs::
 CreativeModeInventoryScreen.checkTabClicked	inline	crates/sunrise-client/src/game/interface/creative_screen_client.rs::Game::click_creative	loop over the tab rectangles
 CreativeModeInventoryScreen.checkTabHovering	port	crates/sunrise-client/src/creative.rs::hovered_tab	the 3 pixel inset (21x27) of a tab's 26x32 slot; Game::draw_creative draws the display name
 CreativeModeInventoryScreen.extractTabButton	inline	crates/sunrise-client/src/game/interface/creative_screen_client.rs::Game::draw_creative	tab sprite and icon item
-CreativeModeInventoryScreen.CustomCreativeSlot.mayPickup	inline	crates/sunrise-client/src/menu.rs::click_display	a display slot holding a creative_slot_lock stack takes no click; gap: minor: isItemEnabled's feature check is not repeated
+CreativeModeInventoryScreen.CustomCreativeSlot.mayPickup	inline	crates/sunrise-sim/src/menu.rs::click_display	a display slot holding a creative_slot_lock stack takes no click; gap: minor: isItemEnabled's feature check is not repeated
 CreativeModeInventoryScreen.ItemPickerMenu.getRowIndexForScroll	port	crates/sunrise-client/src/creative.rs::Creative::first_row
 CreativeModeInventoryScreen.ItemPickerMenu.scrollTo	inline	crates/sunrise-client/src/creative.rs::Creative::first_row	display slots are read from the first visible row when drawn and clicked
 CyclingSlotBackground	home	crates/sunrise-client/src/game/blocks/stations.rs	CyclingSlot: an empty slot's icons advance every 30 ticks with a 4-tick fade

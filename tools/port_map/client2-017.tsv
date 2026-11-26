@@ -20,7 +20,7 @@ CodeOfConductScreen	home	crates/sunrise-client/src/game/interface/code_of_conduc
 JoinMultiplayerScreen.init	port	crates/sunrise-client/src/multiplayer.rs::Screen::buttons	footer buttons and their enabling; server load and LAN scan start are in Screen::list
 JoinMultiplayerScreen.repositionElements	skip:ui		layout only: the list area is computed from the window size each frame (list_area)
 JoinMultiplayerScreen.tick	inline	crates/sunrise-client/src/multiplayer.rs::Screen::draw	LAN games are read each frame (lan.games()); server pings run on their own threads
-JoinMultiplayerScreen.removed	port	crates/sunrise-client/src/lan/discovery.rs::ScanInner::drop	dropping the list screen drops its scanner, and the drop stops the LAN scan
+JoinMultiplayerScreen.removed	port	crates/sunrise-sim/src/lan/discovery.rs::ScanInner::drop	dropping the list screen drops its scanner, and the drop stops the LAN scan
 JoinMultiplayerScreen.deleteCallback	port	crates/sunrise-client/src/multiplayer.rs::Screen::click	delete answer (ids 58, 59) removes the server, clears the selection and saves
 JoinMultiplayerScreen.editServerCallback	port	crates/sunrise-client/src/multiplayer.rs::Screen::click	edit save (id 50); the list reloads and re-pings after it
 JoinMultiplayerScreen.addServerCallback	port	crates/sunrise-client/src/multiplayer.rs::Screen::click	gap: minor: no hidden-server unhide (ServerList.unhide); add save (id 50, no index)
@@ -135,6 +135,6 @@ TransferableSelectionList.PackEntry.keyboardSelection	missing		minor: no keyboar
 TransferableSelectionList.PackEntry.handlePackSelection	port	crates/sunrise-client-render/src/pack_screen.rs::PackScreen::entry_click	gap: minor: keyboard path missing (keyboardSelection); icon click selects; an incompatible pack opens the confirmation (open_confirm) first
 TransferableSelectionList.PackEntry.shouldTakeFocusAfterInteraction	skip:ui		focus after a click matters only for keyboard entry navigation, which Sunrise does not have
 CraftingRecipeBookComponent.isCraftingSlot	missing		minor: unsure: no crafting-slot check found in the recipe book code
-CraftingRecipeBookComponent.fillGhostRecipe	port	crates/sunrise-client/src/recipe_book.rs::Book::ghost	crafting branch: shaped recipes placed by place_cells, shapeless in order; result set first
-FurnaceRecipeBookComponent.fillGhostRecipe	port	crates/sunrise-client/src/recipe_book.rs::Book::ghost	furnace branch: ingredient, and the fuel only when the fuel slot is empty (fuel_empty)
+CraftingRecipeBookComponent.fillGhostRecipe	port	crates/sunrise-sim/src/recipe_book.rs::Book::ghost	crafting branch: shaped recipes placed by place_cells, shapeless in order; result set first
+FurnaceRecipeBookComponent.fillGhostRecipe	port	crates/sunrise-sim/src/recipe_book.rs::Book::ghost	furnace branch: ingredient, and the fuel only when the fuel slot is empty (fuel_empty)
 LanguageSelectScreen.LanguageSelectionList.Entry.getNarration	skip:other		narration text for screen readers

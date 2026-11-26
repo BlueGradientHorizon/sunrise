@@ -199,17 +199,17 @@ class Budgets(unittest.TestCase):
         # over 256 KB: its failure's location was withheld (#4028) while smaller sunrise-client files were shown.
         ci.tracked_rust_paths.cache_clear()
         ci.source_lines.cache_clear()
-        for location in ('crates/sunrise-client/src/motion.rs:6115:9',
+        for location in ('crates/sunrise-sim/src/motion.rs:6115:9',
                          'crates/sunrise-client-lib/../sunrise-client/src/motion.rs:6115:9'):
             log = self.render("test motion::tests::resident_fluid_heights_are_measured_from_the_feet ... FAILED\n"
                               "thread 'motion::tests::resident_fluid_heights_are_measured_from_the_feet' panicked at "
                               f"{location}:\nassertion `left == right` failed\n left: 1\n right: 2\n")
-            self.assertIn('  panicked at crates/sunrise-client/src/motion.rs:6115:9', log)
+            self.assertIn('  panicked at crates/sunrise-sim/src/motion.rs:6115:9', log)
             self.assertIn('0 locations withheld', log)
         # Past the read bound a tracked source still stays withheld.
         ci.tracked_rust_paths.cache_clear()
         with patch.object(ci, 'SOURCE_BYTES', 1000):
-            log = self.render("test t ... FAILED\nthread 't' panicked at crates/sunrise-client/src/motion.rs:1:1:\n"
+            log = self.render("test t ... FAILED\nthread 't' panicked at crates/sunrise-sim/src/motion.rs:1:1:\n"
                               "assertion failed: x\n")
         self.assertIn('panic location withheld', log)
         ci.tracked_rust_paths.cache_clear()

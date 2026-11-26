@@ -48,7 +48,7 @@ def main():
     parser.add_argument('--test-binary', type=Path, help='already built gameplay test executable')
     args = parser.parse_args()
     source_paths = [lab.ROOT / path for path in (
-        'crates/sunrise-client/src/entities.rs',
+        'crates/sunrise-sim/src/entities.rs',
         'crates/sunrise-client/src/game/entities/explosion.rs',
         'crates/sunrise-client/src/game.rs',
         'mods/sunrise/src/test/java/dev/sunriselab/parity/ParityData.java',

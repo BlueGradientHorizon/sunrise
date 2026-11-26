@@ -96,7 +96,7 @@ SkullBlockRenderer.submitSkull	port	crates/sunrise-client-render/src/block_entit
 SkullBlockRenderer.resolveSkullRenderType	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	player head skin via scene.skull, otherwise the type's texture
 SkullBlockRenderer.createWallTransformation	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	wall skull offset and turn in the skull branch
 SkullBlockRenderer.createGroundTransformation	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	ground skull turn by segment in the skull branch
-SpawnerRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/spawner.rs::display_pose	spin and scale of the display mob
+SpawnerRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs/spawner.rs::display_pose	spin and scale of the display mob
 SpawnerRenderer.submit	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::spawner_geometry	display mob at the spawner's centre with spin, tilt and scale
 StandingSignRenderer.extractRenderState	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	gap: minor: the text filtering option is not read
 StandingSignRenderer.createTransformations	inline	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	front and back text transforms per attachment
@@ -107,7 +107,7 @@ TestInstanceRenderer.shouldRenderOffScreen	port	crates/sunrise-client-render/src
 TestInstanceRenderer.shouldRender	port	crates/sunrise-client-render/src/block_entity_reach.rs::Reach::should_render	Reach::TestInstance: the beacon reach across the ground or the bounding box's 96, for the beam, outline and markers
 TheEndGatewayRenderer.submit	port	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	beam and visible cube faces in the end gateway branch
 TheEndPortalRenderer.submit	port	crates/sunrise-client-render/src/block_entity_render.rs::BlockEntityRenderer::render_one	portal slab in the end portal branch
-TrialSpawnerRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/spawner.rs::display_pose	same spin and scale rule as spawners
+TrialSpawnerRenderer.extractRenderState	port	crates/sunrise-sim/src/mobs/spawner.rs::display_pose	same spin and scale rule as spawners
 TrialSpawnerRenderer.submit	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::spawner_geometry	trial spawner display mob drawn in the same pass
 VaultRenderer.extractRenderState	inline	crates/sunrise-client/src/game/blocks/vault_client.rs::Game::vault_geometry	display item and spin read there
 VaultRenderer.submit	port	crates/sunrise-client/src/game/blocks/vault_client.rs::Game::vault_geometry	item cluster at the vault centre with spin

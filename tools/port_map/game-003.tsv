@@ -42,23 +42,23 @@ CompoundContainer.getItem	port	crates/sunrise-client/src/game/blocks/machines/mo
 CompoundContainer.removeItem	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::slot_mut_at	View::locate picks the half, the caller splits the stack
 CompoundContainer.removeItemNoUpdate	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::slot_mut_at	View::locate picks the half, the caller takes the slot
 CompoundContainer.setItem	inline	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::slot_mut_at	View::locate picks the half
-CompoundContainer.stillValid	port	crates/sunrise-client/src/lan/menu.rs::Slots::still_valid	both halves must still be there and in reach
+CompoundContainer.stillValid	port	crates/sunrise-sim/src/lan/menu.rs::Slots::still_valid	both halves must still be there and in reach
 CompoundContainer.canPlaceItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::can_place
-Container.countItem	port	crates/sunrise-client/src/mobs/villager.rs::Ext::count_item	villager inventory only, the one caller that needs it
-Container.hasAnyOf	inline	crates/sunrise-client/src/mobs/villager.rs::Ext::take_half_stack	TradeWithVillager's hasAnyOf gate: no wanted item in the inventory, nothing is thrown
-Container.hasAnyMatching	inline	crates/sunrise-client/src/mobs/villager_brain.rs::harvest_tick	Villager.hasFarmSeeds gate: a farmer sows only when a plantable seed is in the inventory; the hopper checks of chiseled bookshelf and jukebox canTakeItem are not ported as such
+Container.countItem	port	crates/sunrise-sim/src/mobs/villager.rs::Ext::count_item	villager inventory only, the one caller that needs it
+Container.hasAnyOf	inline	crates/sunrise-sim/src/mobs/villager.rs::Ext::take_half_stack	TradeWithVillager's hasAnyOf gate: no wanted item in the inventory, nothing is thrown
+Container.hasAnyMatching	inline	crates/sunrise-sim/src/mobs/villager_brain.rs::harvest_tick	Villager.hasFarmSeeds gate: a farmer sows only when a plantable seed is in the inventory; the hopper checks of chiseled bookshelf and jukebox canTakeItem are not ported as such
 Container.getSlot	port	crates/sunrise-client/src/game/administration/commands/items_server.rs::Game::slot_get	/item and execute if items read a container slot by number
 Container.ContainerIterator.next	skip:java		iterator over slots
 ContainerHelper.removeItem	skip:java		NonNullList helper: split a stack in a slot Vec; block entities take from their own slot vector
 ContainerHelper.takeItem	skip:java		NonNullList helper: Option::take on the slot
 ContainerHelper.clearOrCountMatchingItems	port	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::clear_matching	/clear over main, armor, offhand, crafting grid and carried stack, count only when max is 0
 DifficultyInstance.isHard	skip:other		no vanilla caller (isHarderThan is what Illusioner uses)
-DifficultyInstance.getSpecialMultiplier	port	crates/sunrise-client/src/mobs/spawning.rs::LocalDifficulty::special
-DifficultyInstance.calculateDifficulty	port	crates/sunrise-client/src/mobs/spawning.rs::LocalDifficulty::new
-InteractionHand.asArm	inline	crates/sunrise-client/src/mobs/ai.rs::Mob::swing_hand	off_hand != main arm left; the player's first person hand does the same in game/frame_geometry.rs hand_geometry
+DifficultyInstance.getSpecialMultiplier	port	crates/sunrise-sim/src/mobs/spawning.rs::LocalDifficulty::special
+DifficultyInstance.calculateDifficulty	port	crates/sunrise-sim/src/mobs/spawning.rs::LocalDifficulty::new
+InteractionHand.asArm	inline	crates/sunrise-sim/src/mobs/ai.rs::Mob::swing_hand	off_hand != main arm left; the player's first person hand does the same in game/frame_geometry.rs hand_geometry
 InteractionResult.Success.heldItemTransformedTo	skip:java		result builder; Sunrise replaces the held item in place where the item is used
 ItemStackWithSlot.isValidInContainer	port	crates/sunrise-client-core/src/block_entity_nbt.rs::items	slots outside 0..size are dropped when items load
-LockCode.canUnlock	port	crates/sunrise-client/src/advancements.rs::can_unlock	checked when a container opens (game/interface/advancements/mod.rs container_locked_for from lan_actions.rs): a spectator opens any container, otherwise the main hand must match the lock predicate
+LockCode.canUnlock	port	crates/sunrise-sim/src/advancements.rs::can_unlock	checked when a container opens (game/interface/advancements/mod.rs container_locked_for from lan_actions.rs): a spectator opens any container, otherwise the main hand must match the lock predicate
 RandomSequences.createSequence	port	crates/sunrise-items/src/random_sequences.rs::create
 RandomSequences.DirtyMarkingRandomSource.nextInt	skip:java		marks the saved data dirty on each draw; Sunrise saves every sequence
 RandomSequences.DirtyMarkingRandomSource.equals	skip:java		wrapper equality
@@ -73,14 +73,14 @@ SimpleContainer.toString	skip:debug
 SimpleContainer.moveItemToEmptySlots	inline	crates/sunrise-world/src/simple_container.rs::SimpleContainer::add	second pass of addItem; the villager's Ext::add_item does the same
 SimpleContainer.moveItemToOccupiedSlotsWithSameType	inline	crates/sunrise-world/src/simple_container.rs::SimpleContainer::add	first pass of addItem
 SimpleContainer.moveItemsBetweenStacks	inline	crates/sunrise-world/src/simple_container.rs::SimpleContainer::add	the grow and shrink with the per-stack limit
-SimpleContainer.fromItemList	inline	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	villager and piglin Inventory read; the piglin list is cut to 8 instead of re-added
-SimpleContainer.storeAsItemList	inline	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	villager and piglin Inventory written
-Stopwatches.unpack	port	crates/sunrise-client/src/stopwatches.rs::Stopwatches::load
-Stopwatches.pack	port	crates/sunrise-client/src/stopwatches.rs::Stopwatches::save
-Stopwatches.add	port	crates/sunrise-client/src/stopwatches.rs::Stopwatches::create
-Stopwatches.update	port	crates/sunrise-client/src/stopwatches.rs::Stopwatches::restart	only the restart update that /stopwatch uses
-Stopwatches.remove	port	crates/sunrise-client/src/stopwatches.rs::Stopwatches::remove
-Stopwatches.isDirty	inline	crates/sunrise-client/src/stopwatches.rs::Stopwatches::save	save skips the write when not dirty and empty
+SimpleContainer.fromItemList	inline	crates/sunrise-sim/src/entity_nbt/mob_load.rs::mob_from_nbt	villager and piglin Inventory read; the piglin list is cut to 8 instead of re-added
+SimpleContainer.storeAsItemList	inline	crates/sunrise-sim/src/entity_nbt.rs::mob_to_nbt	villager and piglin Inventory written
+Stopwatches.unpack	port	crates/sunrise-sim/src/stopwatches.rs::Stopwatches::load
+Stopwatches.pack	port	crates/sunrise-sim/src/stopwatches.rs::Stopwatches::save
+Stopwatches.add	port	crates/sunrise-sim/src/stopwatches.rs::Stopwatches::create
+Stopwatches.update	port	crates/sunrise-sim/src/stopwatches.rs::Stopwatches::restart	only the restart update that /stopwatch uses
+Stopwatches.remove	port	crates/sunrise-sim/src/stopwatches.rs::Stopwatches::remove
+Stopwatches.isDirty	inline	crates/sunrise-sim/src/stopwatches.rs::Stopwatches::save	save skips the write when not dirty and empty
 AttributeType.ofInterpolated	skip:data		attribute type definitions and codecs
 AttributeType.ofNotInterpolated	skip:data		attribute type definitions and codecs
 AttributeType.createModifierCodec	skip:data		attribute type definitions and codecs
@@ -121,7 +121,7 @@ EnvironmentAttributeSystem.ValueSampler.computeValueNotPositional	inline	crates/
 EnvironmentAttributes.register	skip:data		attribute registry
 WeatherAttributes.addBuiltinLayers	port	crates/sunrise-world/src/environment_system.rs::Builder::weather_layers	rain and thunder layers over sky, fog, cloud, sky light, stars and sunrise; bees staying in the hive is bees_stay_in_hive in bee.rs
 WeatherAttributes.addLayer	port	crates/sunrise-world/src/environment_system.rs::Builder::weather_layer	rain level minus thunder level, then thunder level, each lerped by the attribute's state-change function in `weather`
-BooleanModifier.apply	port	crates/sunrise-client/src/patrol.rs::BoolTrack::apply	and, or, xor, nand, nor, xnor over the timeline track value
+BooleanModifier.apply	port	crates/sunrise-sim/src/patrol.rs::BoolTrack::apply	and, or, xor, nand, nor, xnor over the timeline track value
 ColorModifier.BlendToGray.lerp	skip:other		only lerps blend_to_gray arguments between keyframes; no timeline uses that modifier
 ListModifier.Append.apply	inline	crates/sunrise-client/src/animate_tick.rs::AnimateTables::load	a biome's ambient_particles list is its argument over an empty dimension list
 MobSpawnSettingsModifier.Overlay.apply	inline	crates/sunrise-level/src/biome.rs::Biomes::load	no dimension sets natural_mob_spawns, so the overlay over the empty default is the biome's own spawns

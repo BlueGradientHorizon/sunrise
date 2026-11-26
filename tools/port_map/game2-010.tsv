@@ -72,10 +72,10 @@ VillagerTrade.Builder	skip:data		datagen builder for trade data
 BaseCommandBlock.createSource	inline	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::command_block_success	the track_output gate that decides whether the source exists
 BaseCommandBlock.CloseableCommandBlockSource.acceptsSuccess	port	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::command_block_success	track_output and send_command_feedback; a removed block gets no output
 BaseCommandBlock.CloseableCommandBlockSource.shouldInformAdmins	port	crates/sunrise-client/src/game/administration/command_blocks_server.rs::Game::command_block_success	command_block_output rule, with feedback on
-BaseSpawner.setEntityData	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::set_entity_id
+BaseSpawner.setEntityData	port	crates/sunrise-sim/src/mobs/spawner.rs::Spawner::set_entity_id
 BaseSpawner.getOrCreateDisplayEntity	port	crates/sunrise-client/src/game/mobs/spawner_client.rs::Game::update_spawner_display	display mob made per spawner from its next spawn data
-BaseSpawner.onEventTriggered	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::client_event	block event 1 resets the client's delay
-BaseSpawner.getOrCreateNextSpawnData	port	crates/sunrise-client/src/mobs/spawner.rs::Spawner::next_or_create	next spawn data picked once and kept
+BaseSpawner.onEventTriggered	port	crates/sunrise-sim/src/mobs/spawner.rs::Spawner::client_event	block event 1 resets the client's delay
+BaseSpawner.getOrCreateNextSpawnData	port	crates/sunrise-sim/src/mobs/spawner.rs::Spawner::next_or_create	next spawn data picked once and kept
 Level.isInWorldBounds	port	crates/sunrise-world/src/level/update.rs::Sim::is_in_valid_bounds	height and horizontal range
 Level.isInValidBounds	port	crates/sunrise-world/src/level/update.rs::Sim::is_in_valid_bounds	chunk-level bounds folded into the same range
 Level.isInWorldBoundsHorizontal	inline	crates/sunrise-world/src/level/update.rs::Sim::is_in_valid_bounds	the -30000000..30000000 test
@@ -89,7 +89,7 @@ Level.addBlockEntityTicker	port	crates/sunrise-client/src/game/blocks/level_acce
 Level.guardEntityTick	skip:debug		crash-report wrapper around an entity tick
 Level.getBlockEntity	skip:other		bare block_entities map lookup at each caller; no port of its own
 Level.setBlockEntity	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::load_block_entity
-Level.loadedAndEntityCanStandOnFace	inline	crates/sunrise-client/src/mobs/shulker.rs::can_stay_at	the supporting block's face toward the shell is tested for sturdiness (`BlockState.entityCanStandOnFace`) before the opened shell's box; the chunk is loaded by construction where the sim asks
+Level.loadedAndEntityCanStandOnFace	inline	crates/sunrise-sim/src/mobs/shulker.rs::can_stay_at	the supporting block's face toward the shell is tested for sturdiness (`BlockState.entityCanStandOnFace`) before the opened shell's box; the chunk is loaded by construction where the sim asks
 Level.getWorldBorderAdjustedRespawnData	port	crates/sunrise-client/src/game/network/remote/packets_world_client.rs::Game::apply_set_default_spawn_position_packet	client respawn-data adjustment; server respawn is separate
 Level.hasEntities	missing		unsure: no entity-in-box test found for this use
 Level.getClockTimeTicks	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::day_time	day time; no separate clock time
@@ -112,13 +112,13 @@ ChunkPos.getRegionZ	port	crates/sunrise-core/src/position.rs::ChunkPos::region
 ChunkPos.getBlockAt	skip:other		no caller in 26.3 code
 ChunkPos.contains	port	crates/sunrise-core/src/position.rs::BlockPos::chunk	a block is in a chunk when its chunk() is that chunk
 ChunkPos.getChessboardDistance	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	Chebyshev distance folded into the ticket level loop
-ChunkPos.distanceSquared	inline	crates/sunrise-client/src/lan/hub.rs::requeue	the pending chunk queue is sorted by the squared chunk distance, the only use vanilla makes of it (PlayerChunkSender.collectChunksToSend)
+ChunkPos.distanceSquared	inline	crates/sunrise-sim/src/lan/hub.rs::requeue	the pending chunk queue is sorted by the squared chunk distance, the only use vanilla makes of it (PlayerChunkSender.collectChunksToSend)
 CollisionGetter.isUnobstructed	port	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::is_unobstructed	the state-based overload
 CollisionGetter.noBorderCollision	port	crates/sunrise-level/src/collisions.rs::EntityCollisions::movement_border	border shape when inside close to the border
 CollisionGetter.getPreMoveCollisions	inline	crates/sunrise-level/src/collisions.rs::SceneCollisions::resolve_with_context	gap: minor: entity and block shapes are not returned as a list; the resolver takes them together
 CollisionGetter.getBlockAndLiquidCollisions	port	crates/sunrise-level/src/collisions.rs::no_collision_or_liquid	gap: minor: a yes or no test, not the shape list
 CollisionGetter.getBlockCollisionsFromContext	port	crates/sunrise-level/src/collisions.rs::SceneCollisions::collision_block	gap: minor: per-block shape; the box walk is not here
-CollisionGetter.clipIncludingBorder	port	crates/sunrise-client/src/projectiles.rs::clip_including_border	a ray that starts inside the world border and ends outside it stops on the border at WorldBorder.clampVec3ToBound of that point, facing the nearest direction of travel; the projectile clip in creatures.rs calls it around its block clip
+CollisionGetter.clipIncludingBorder	port	crates/sunrise-sim/src/projectiles.rs::clip_including_border	a ray that starts inside the world border and ends outside it stops on the border at WorldBorder.clampVec3ToBound of that point, facing the nearest direction of travel; the projectile clip in creatures.rs calls it around its block clip
 CollisionGetter.collidesWithSuffocatingBlock	port	crates/sunrise-level/src/collisions.rs::SceneCollisions::is_suffocating
 EntityGetter.getEntitiesOfClass	skip:other		class filter repeated at each caller over the entity lists; no shared lookup
 EntityGetter.getPlayerByUUID	skip:other		uuid find repeated at each caller (e.g. allays.rs)
@@ -132,9 +132,9 @@ LevelReader.getBlockStatesIfLoaded	port	crates/sunrise-level/src/world.rs::World
 LevelReader.getNoiseBiome	skip:other		no caller in 26.3 code
 LevelReader.getHeightmapPos	port	crates/sunrise-level/src/world.rs::World::world_surface	gap: minor: the height only; the BlockPos is built by the caller
 LevelReader.getChunk	missing		unsure: same as Level.getChunk
-LevelReader.findBlocksInBoxByManhattanDistance	inline	crates/sunrise-client/src/mobs/bee.rs::manhattan_box	the box in vanilla's order (`BlockPos.withinBoxByManhattanDistance`); the first-match search over it is inlined at each caller, e.g. Pollinate::find_flower for findNearbyFlower
+LevelReader.findBlocksInBoxByManhattanDistance	inline	crates/sunrise-sim/src/mobs/bee.rs::manhattan_box	the box in vanilla's order (`BlockPos.withinBoxByManhattanDistance`); the first-match search over it is inlined at each caller, e.g. Pollinate::find_flower for findNearbyFlower
 LevelWriter.destroyBlock	port	crates/sunrise-world/src/level/update.rs::Sim::destroy_block
-LocalMobCapCalculator.getPlayersNear	port	crates/sunrise-client/src/mobs/spawn_selection.rs::SpawnState::players_near
-LocalMobCapCalculator.addMob	port	crates/sunrise-client/src/mobs/spawn_selection.rs::SpawnState::add_local
-LocalMobCapCalculator.MobCounts.add	port	crates/sunrise-client/src/mobs/spawn_selection.rs::SpawnState::add_local	per-player count
-LocalMobCapCalculator.MobCounts.canSpawn	port	crates/sunrise-client/src/mobs/spawn_selection.rs::SpawnState::can_spawn_local
+LocalMobCapCalculator.getPlayersNear	port	crates/sunrise-sim/src/mobs/spawn_selection.rs::SpawnState::players_near
+LocalMobCapCalculator.addMob	port	crates/sunrise-sim/src/mobs/spawn_selection.rs::SpawnState::add_local
+LocalMobCapCalculator.MobCounts.add	port	crates/sunrise-sim/src/mobs/spawn_selection.rs::SpawnState::add_local	per-player count
+LocalMobCapCalculator.MobCounts.canSpawn	port	crates/sunrise-sim/src/mobs/spawn_selection.rs::SpawnState::can_spawn_local
