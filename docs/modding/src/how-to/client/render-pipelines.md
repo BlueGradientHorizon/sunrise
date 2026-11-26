@@ -520,6 +520,9 @@ anything is queued: a refused call returns a `PipelineDrawError` and queues noth
   Some((IndexFormat::Uint16, index_bytes)), draw, &DrawBindings::EMPTY)` uploads this frame's
   slices and draws them. There is one slice per binding, in binding order.
 
+A renderer rebuild retires both `MeshRef` and `UniformBufferRef` handles, even on the same
+GPU device. New allocations by the same mod never make those handles valid again.
+
 `MeshDraw::vertices(range)` draws a range of vertices, `MeshDraw::indexed(range, base_vertex)`
 draws a range of an index buffer, and `.with_instances(range)` sets the instance range. The
 ranges are checked against what the buffers hold: a vertex-step buffer must contain every record
