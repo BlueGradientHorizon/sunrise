@@ -342,6 +342,7 @@ fn a_custom_texture_over_a_buffer_ends_when_its_stage_flips_it() {
         mod_uniform_mismatches: &mismatches,
         mod_depth_target: std::cell::Cell::new(None),
         depth_compare: std::cell::Cell::new(wgpu::CompareFunction::LessEqual),
+        mod_vertex: Default::default(),
     };
     let reads = |group: Group| {
         let (_, samplers, ..) = bindings(
@@ -441,6 +442,7 @@ fn a_png_under_a_name_of_its_own_is_not_bound() {
         mod_uniform_mismatches: &mismatches,
         mod_depth_target: std::cell::Cell::new(None),
         depth_compare: std::cell::Cell::new(wgpu::CompareFunction::LessEqual),
+        mod_vertex: Default::default(),
     };
     let (_, samplers, ..) = bindings(
         device.features(),
@@ -527,6 +529,7 @@ fn an_image_without_an_entry_reads_zero() {
         mod_uniform_mismatches: &mismatches,
         mod_depth_target: std::cell::Cell::new(None),
         depth_compare: std::cell::Cell::new(wgpu::CompareFunction::LessEqual),
+        mod_vertex: Default::default(),
     };
     let mut notes = Vec::new();
     let (.., images) = bindings(
@@ -656,6 +659,7 @@ fn a_composite_program_blends_onto_its_buffer() {
         mod_uniform_mismatches: &mismatches,
         mod_depth_target: std::cell::Cell::new(None),
         depth_compare: std::cell::Cell::new(wgpu::CompareFunction::LessEqual),
+        mod_vertex: Default::default(),
     };
     let draws = crate::pack_draw::DrawUniforms::new(&device);
     let mut notes = Vec::new();

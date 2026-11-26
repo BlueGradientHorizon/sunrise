@@ -3,6 +3,11 @@ use crate::game::{Game, api_values::TryIntoEngine, native_console::Output};
 use core::ops::ControlFlow;
 use mod_api::{__private::game::CallbackOwner, *};
 use std::sync::{Arc, mpsc::Sender};
+use sunrise_client::{
+    lan::guest::Guest,
+    server::{user_cache::UserCache, user_lists::NameAndId},
+};
+use sunrise_client_render::mod_pipelines::BuiltinRenderType;
 
 impl ClientSession for Game<'_> {
     fn client_server(&self) -> Option<ClientServer<'_>> {
@@ -80,6 +85,28 @@ impl Players for Game<'_> {
     fn player_by_name(&self, name: &str) -> Option<PlayerRef> {
         CallbackOwner::call_host(|| self.native_player_by_name(name))
     }
+    fn profile_by_uuid(&self, uuid: u128) -> Option<GameProfile<'_>> {
+        self.lookup_profile(|player| player.uuid == uuid, |cache| cache.find_by_id(uuid))
+    }
+    fn profile_by_name(&self, name: &str) -> Option<GameProfile<'_>> {
+        self.lookup_profile(
+            |player| player.name.eq_ignore_ascii_case(name),
+            |cache| cache.find_by_name(name),
+        )
+    }
+    fn profile_permission_level(&self, uuid: u128, name: &str) -> PermissionLevel {
+        if let Some(lists) = &self.server_lists {
+            let lists = lists.lock().unwrap_or_else(|e| e.into_inner());
+            return lists
+                .ops
+                .permission_level(uuid)
+                .map_or(PermissionLevel::All, PermissionLevel::from_level);
+        }
+        let Some(host) = &self.lan else {
+            return PermissionLevel::All;
+        };
+        PermissionLevel::from_level(i32::from(host.hub.default_permission(uuid, name)))
+    }
     fn acting_player(&self) -> Option<PlayerRef> {
         CallbackOwner::call_host(|| self.native_acting_player())
     }
@@ -93,6 +120,33 @@ impl Profiles for Game<'_> {
     }
     fn resolve_id(&self, uuid: u128) -> ProfileResolution {
         self.native_resolve_profile(sunrise_client::skins::NameOrId::Id(uuid))
+    }
+}
+impl Game<'_> {
+    /// Borrow from the online records before consulting the offline cache.
+    fn lookup_profile(
+        &self,
+        matches: impl Fn(&Guest) -> bool,
+        cached: impl FnOnce(&UserCache) -> Option<&NameAndId>,
+    ) -> Option<GameProfile<'_>> {
+        if let Some(online) = self
+            .lan
+            .iter()
+            .flat_map(|host| host.hub.online_players())
+            .find(|player| matches(player))
+        {
+            return Some(mod_api::__private::game::game_profile(
+                online.uuid,
+                &online.name,
+                &online.properties,
+            ));
+        }
+        let cached = cached(self.user_cache.as_ref()?)?;
+        Some(mod_api::__private::game::game_profile(
+            cached.id,
+            &cached.name,
+            &[],
+        ))
     }
 }
 impl RuntimeLevels for Game<'_> {
@@ -130,10 +184,65 @@ impl RenderAssets for Game<'_> {
     fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView<'_>, ModelError> {
         CallbackOwner::call_host(|| self.pack.render.baked_model(key))
     }
+    fn atlas_sprite_pixels(
+        &self,
+        sprite: SpriteRef,
+    ) -> Result<AtlasSpritePixels, AtlasSpriteError> {
+        CallbackOwner::call_host(|| self.native_atlas_sprite_pixels(sprite))
+    }
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
         CallbackOwner::call_host(|| self.pack.render.render_pipeline(id))
     }
+    fn render_type(&self, id: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| self.pack.render.render_type(id))
+    }
+    fn entity_solid(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntitySolid, texture)
+        })
+    }
+    fn entity_cutout(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntityCutout, texture)
+        })
+    }
+    fn entity_translucent(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntityTranslucent, texture)
+        })
+    }
+    fn compute_pipeline(
+        &self,
+        id: &Identifier,
+    ) -> Result<ComputePipelineRef, ComputePipelineError> {
+        CallbackOwner::call_host(|| self.pack.render.compute_pipeline(id))
+    }
+    fn pipeline_modifier(
+        &self,
+        id: &Identifier,
+    ) -> Result<PipelineModifierRef, RenderPipelineError> {
+        CallbackOwner::call_host(|| self.pack.render.pipeline_modifier(id))
+    }
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         CallbackOwner::call_host(|| self.pack.render.animation(id))
+    }
+    fn shader_pack_block_id(&self, state: BlockState) -> Option<i32> {
+        let state = state.try_into_engine(&()).ok()?;
+        CallbackOwner::call_host(|| self.active_block_state_id(state.0 as usize))
+    }
+    fn pipeline_pack_bound(&self, pipeline: RenderPipelineRef) -> bool {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .mod_pipelines
+                .slot(pipeline)
+                .is_ok_and(|slot| self.pack_slot_bound(slot as usize))
+        })
     }
 }

@@ -10,6 +10,7 @@
 //! the entities made for `GuiEntity::Kind` are kept per thread and reused, so a
 //! screen drawing the same entity every frame makes it once and allocates
 //! nothing once the buffers have grown.
+use super::stock_layer_mask::StockLayerMask;
 use super::{Game, commands::Target};
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
@@ -245,7 +246,31 @@ impl Game<'_> {
     /// mods' layers. Full bright, seen from its own position.
     pub(in crate::game) fn gui_entity_geometry(&self, mob: &Mob, out: &mut Vec<Vertex>) {
         let p = mob.position;
-        self.gui_entity_geometry_at(mob, 1.0, DVec3::new(p.x, p.y, p.z), out);
+        let origin = DVec3::new(p.x, p.y, p.z);
+        let camera = mod_api::Camera {
+            position: origin.to_array(),
+            eye_height: 0.0,
+            partial_tick: 1.0,
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov_degrees: 0.0,
+            near: 0.0,
+            far: 0.0,
+            view: Mat4::IDENTITY.to_cols_array(),
+            projection: Mat4::IDENTITY.to_cols_array(),
+            dimension: String::new(),
+        };
+        let view = mod_api::WorldRenderView::new(
+            &camera,
+            None,
+            1.0,
+            self.world.game_time,
+            self.animation_time(),
+            false,
+            &[],
+        );
+        self.gui_entity_geometry_at(mob, 1.0, origin, Some(&view), out);
     }
 
     /// `gui_entity_geometry` at `partial` into the tick, around `camera`: what a screen
@@ -255,16 +280,35 @@ impl Game<'_> {
         mob: &Mob,
         partial: f32,
         camera: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
         out: &mut Vec<Vertex>,
     ) {
-        let added = self.mod_layers(mob);
+        let is_player = &*mob.kind.id == "minecraft:player";
+        let resolved = self.entity_layers(mob);
+        let added = resolved.layers;
         // A mod's renderer for the type draws in place of the model only: the mods' layers
         // still follow, as in the world.
-        let modded =
-            self.mod_living_renderer_geometry(mob, partial, camera, FULL_BRIGHT, false, out);
+        let modded = self.mod_living_renderer_geometry_with_view(
+            mob,
+            partial,
+            camera,
+            explicit_view,
+            FULL_BRIGHT,
+            false,
+            out,
+        );
+        let hidden = if modded {
+            StockLayerMask::EMPTY
+        } else {
+            resolved.hidden
+        };
         let mut frame_draw = FrameDraw::new(!modded && added.is_some());
         let atlas = &self.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
+        let data = super::humanoid_setup_anim::HiddenLayersData {
+            game: self,
+            hidden_layers: hidden,
+        };
         // A screen's entity: custom entity model animations see is_in_gui = 1.
         sunrise_client::mobs::cem_anim::in_gui(|| {
             if modded {
@@ -276,19 +320,37 @@ impl Game<'_> {
                 camera,
                 &lookup,
                 FULL_BRIGHT,
-                self,
+                &data,
                 &[],
                 &mut frame_draw,
                 out,
             );
         });
-        self.mod_layer_geometry(
+        let stock_ctx = super::native_entity_layers::StockLayerContext {
+            is_player,
+            local_player: false,
+            invisible: mob.is_invisible(),
+            in_world: false,
+            player_name: None,
+            alpha: f64::from(partial),
+            camera,
+            light: FULL_BRIGHT,
+            supported: if modded {
+                StockLayerMask::EMPTY
+            } else {
+                resolved.supported
+            },
+            hidden,
+        };
+        self.mod_layer_geometry_with_view(
             mob,
             None,
             frame_draw.model(),
             added,
+            &stock_ctx,
             partial,
             camera,
+            explicit_view,
             FULL_BRIGHT,
             out,
         );
@@ -304,6 +366,9 @@ impl Game<'_> {
 fn seen_quads(verts: &[Vertex], gui: Mat4, quads: &mut Vec<SeenQuad>) {
     quads.clear();
     for q in verts.as_chunks::<4>().0 {
+        if (q[0].layer & 0xffff) == sunrise_client_render::gfx::ARMOR_GLINT_ONLY_OVERLAY {
+            continue;
+        }
         let p: [Vec3; 4] =
             std::array::from_fn(|i| gui.transform_point3(Vec3::from_array(q[i].pos)));
         let n = (p[1] - p[0]).cross(p[2] - p[0]);

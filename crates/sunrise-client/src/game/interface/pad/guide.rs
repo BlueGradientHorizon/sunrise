@@ -389,7 +389,7 @@ impl Game<'_> {
             };
             let picked = attack
                 .flatten()
-                .and_then(|id| self.entity_pick_result(id))
+                .and_then(|id| self.pick_result_of(id))
                 .is_some_and(|stack| self.pad_guide_can_pick(&stack));
             let target = Target::Entity {
                 attackable: attack.is_some(),

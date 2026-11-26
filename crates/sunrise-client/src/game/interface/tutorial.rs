@@ -6,6 +6,7 @@ mod toast_tests;
 
 use super::toast_manager::Toast;
 use sunrise_client::hud::{HudAtlas, HudBatch};
+use sunrise_client::toasts::ToastClock;
 use sunrise_client_gameplay::tutorial::social_hint_progress;
 pub(super) use sunrise_client_gameplay::tutorial::{Hint, Previous, Step, Tutorial};
 
@@ -100,7 +101,8 @@ impl super::Game<'_> {
             && (!self.has_singleplayer_server() || self.is_published())
         {
             if let Some(toast) = self.tutorial_toast(Hint::SocialInteractions, Some(0.0)) {
-                self.toast_manager.queued.push_back(Toast::Tutorial(toast));
+                self.toast_manager
+                    .post(ToastClock::of(self.clock.still()), Toast::Tutorial(toast));
             }
             self.settings.file.set(
                 "joinedFirstServer",
@@ -300,6 +302,11 @@ impl super::Game<'_> {
     }
 
     pub(super) fn update_tutorial_toasts(&mut self) {
+        // Under `SUNRISE_STILL` no toast is ever up (`ToastManager::post`): no hint toast to keep, and
+        // none to build again every draw.
+        if self.clock.still() {
+            return;
+        }
         let wanted = self.tutorial.hint();
         if wanted.map(|(hint, _)| hint) != self.tutorial.cancelled_hint() {
             self.tutorial.set_cancelled_hint(None);
@@ -321,7 +328,8 @@ impl super::Game<'_> {
             && !has_current_hint
         {
             if let Some(toast) = self.tutorial_toast(hint, progress) {
-                self.toast_manager.queued.push_back(Toast::Tutorial(toast));
+                self.toast_manager
+                    .post(ToastClock::Real, Toast::Tutorial(toast));
             } else {
                 self.tutorial.set_cancelled_hint(Some(hint));
             }
@@ -337,8 +345,8 @@ impl HintToast {
         self.slots
     }
 
-    pub(super) fn update(&mut self) -> (Option<bool>, bool) {
-        let (sound, finished) = self.slide.update_now(|fully| {
+    pub(super) fn update(&mut self, clock: ToastClock) -> (Option<bool>, bool) {
+        let (sound, finished) = self.slide.update_on(clock, |fully| {
             self.wanted && (self.hint != Hint::SocialInteractions || social_hint_progress(fully).0)
         });
         if self.hint == Hint::SocialInteractions {

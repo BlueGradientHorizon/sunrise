@@ -393,7 +393,8 @@ pub enum StackResult {
 /// The inputs and vanilla result of `AnvilMenu.createResult`, borrowed for
 /// the `anvil_update` callback. Edits by earlier listeners do not change these values.
 #[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
+// exhaustive: the game builds it with a literal, and a mod's own anvil menu builds one for
+// `PlayerRef::anvil_update`
 // no wire: borrows the converted stacks and rename text for the hook call.
 pub struct AnvilUpdateInputs<'a> {
     /// The stack in the left input slot. The hook is not asked without one.

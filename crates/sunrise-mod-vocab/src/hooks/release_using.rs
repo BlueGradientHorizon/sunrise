@@ -17,7 +17,8 @@ pub trait Hooks {
         side = "both",
         contract = "listen",
         scope = "item",
-        key = "stack"
+        key = "stack",
+        version = 2
     )]
     fn release_using(stack: &ItemStack, entity: Option<i32>, time_left: i32, used: &mut bool);
 }

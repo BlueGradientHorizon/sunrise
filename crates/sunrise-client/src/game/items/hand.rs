@@ -286,8 +286,12 @@ impl Game<'_> {
         }
         true
     }
-    /// `swing(hand)` for the hand that acts, with the default animation.
+    /// `swing(hand)` for the hand that acts, with the default animation. None while a mod's
+    /// `PlayerRef::attack` runs `Player.attack`, which has no swing: the swing is its packet's.
     pub(super) fn swing_arm(&mut self) {
+        if self.fake_action.unswung() {
+            return;
+        }
         self.swing_hand(self.hand, SwingAnimation::DEFAULT);
     }
     /// `swing_arm` for a use whose result is `SwingSource.PREDICTED`: the
@@ -544,7 +548,7 @@ impl Game<'_> {
             while self.consume_mapping_click("key.pickItem") {
                 if !using {
                     if let Some(hit) = self.crosshair_entity_hit() {
-                        if let Some(stack) = self.entity_pick_result(hit.id) {
+                        if let Some(stack) = self.pick_result_of(hit.id) {
                             self.pick_into_inventory(&stack, self.creative);
                         }
                     } else if let Some(hit) = self.pick() {
@@ -1154,6 +1158,7 @@ impl GameHands<'_, '_> {
 }
 impl HandWorld for GameHands<'_, '_> {
     type Held = Option<ItemStack>;
+    #[inline]
     fn hit(&mut self) -> Hit {
         if self.game.entity_targeted() {
             return Hit::Entity;
@@ -1173,34 +1178,43 @@ impl HandWorld for GameHands<'_, '_> {
             None => Hit::Miss,
         }
     }
+    #[inline]
     fn is_air(&mut self, pos: [i32; 3]) -> bool {
         let state = self.game.world.block(pos[0], pos[1], pos[2]);
         self.game.res.facts().get(state).name.ends_with("air")
     }
+    #[inline]
     fn creative(&self) -> bool {
         !self.game.has_miss_time()
     }
+    #[inline]
     fn spectator(&self) -> bool {
         self.game.spectator()
     }
+    #[inline]
     fn instabuild(&self) -> bool {
         self.game.instabuild()
     }
+    #[inline]
     fn hands_busy(&self) -> bool {
         self.game.hands_busy()
     }
+    #[inline]
     fn using_item(&self) -> bool {
         self.game.using.is_some()
     }
+    #[inline]
     fn item_enabled(&mut self, _: Hand) -> bool {
         true
     }
+    #[inline]
     fn held_empty(&mut self, hand: Hand) -> bool {
         match hand {
             Hand::Main => self.game.held().is_none(),
             Hand::Off => self.game.offhand.is_none(),
         }
     }
+    #[inline]
     fn held_count(&mut self, hand: Hand) -> i32 {
         let stack = match hand {
             Hand::Main => self.game.held(),
@@ -1208,23 +1222,29 @@ impl HandWorld for GameHands<'_, '_> {
         };
         stack.map_or(0, |s| s.count as i32)
     }
+    #[inline]
     fn infinite_materials(&self) -> bool {
         self.game.creative
     }
+    #[inline]
     fn cannot_attack(&mut self) -> bool {
         let ticker = self.game.hand_strength.ticker;
         self.game.cannot_attack_with_item(ticker, 0)
     }
+    #[inline]
     fn piercing_weapon(&mut self) -> bool {
         self.attack_kinetic().is_some()
     }
+    #[inline]
     fn attack_animation(&mut self) -> SwingAnimation {
         self.attack_kinetic()
             .map_or(SwingAnimation::DEFAULT, |k| k.attack_animation())
     }
+    #[inline]
     fn interact_animation(&mut self, _: Hand) -> SwingAnimation {
         SwingAnimation::DEFAULT
     }
+    #[inline]
     fn piercing_attack(&mut self, _: SwingAnimation) {
         // The server's part (`PiercingWeapon.attack`), then the client's:
         // the sound `MultiPlayerGameMode.piercingAttack` plays.
@@ -1233,24 +1253,30 @@ impl HandWorld for GameHands<'_, '_> {
         }
         self.game.hand_strength.reset_attack();
     }
+    #[inline]
     fn attack_entity(&mut self) -> bool {
         self.game.attack()
     }
+    #[inline]
     fn block_action_restricted(&mut self, pos: [i32; 3]) -> bool {
         self.game.block_action_restricted(pos)
     }
+    #[inline]
     fn within_border(&mut self, _: [i32; 3]) -> bool {
         true
     }
+    #[inline]
     fn attack_block(&mut self, pos: [i32; 3]) {
         // RedStoneOreBlock.interact: the dust comes whether or not the ore was lit.
         self.game.redstone_ore_particles(pos);
         let result = self.game.attack_block(pos);
         self.keep(result);
     }
+    #[inline]
     fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
         self.game.destroy_progress(pos)
     }
+    #[inline]
     fn destroy_block(&mut self, pos: [i32; 3]) -> bool {
         if self.is_air(pos) {
             return false;
@@ -1271,34 +1297,45 @@ impl HandWorld for GameHands<'_, '_> {
         self.keep(r);
         true
     }
+    #[inline]
     fn main_hand_key(&mut self) -> Option<ItemStack> {
         self.game.main_hand_key()
     }
+    #[inline]
     fn same_destroying_item(&mut self, began: &Option<ItemStack>) -> bool {
         self.game.same_destroying_item(began)
     }
+    #[inline]
     fn destroy_stage(&mut self, _: [i32; 3], _: Option<i32>) {}
+    #[inline]
     fn swing(&mut self, hand: Hand, animation: SwingAnimation) {
         self.game.swing_hand(hand, animation);
     }
+    #[inline]
     fn reset_attack_strength(&mut self) {
         self.game.reset_attack_strength();
     }
+    #[inline]
     fn entity_within_border(&mut self) -> bool {
         true
     }
+    #[inline]
     fn use_on_entity(&mut self, _: Hand) -> Option<UseResult> {
         None
     }
+    #[inline]
     fn use_on_block(&mut self, _: Hand) -> UseResult {
         UseResult::Pass
     }
+    #[inline]
     fn use_item(&mut self, _: Hand) -> UseResult {
         UseResult::Pass
     }
+    #[inline]
     fn item_used(&mut self, hand: Hand) {
         self.game.heights.item_used(hand);
     }
+    #[inline]
     fn release_using(&mut self) {}
 }
 

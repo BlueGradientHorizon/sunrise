@@ -6,7 +6,9 @@
 //! running) and reports it once via an error log line and error toast naming the mod and hook;
 //! any other failure or refusal is reported each time and never latched.
 use super::*;
-use crate::catalog::{DispatchStyle, EFFECT_TICK_TARGET, Receiver, RegistrationAppend};
+use crate::catalog::{
+    DispatchStyle, EFFECT_TICK_TARGET, ListenerTransaction, Receiver, RegistrationAppend,
+};
 
 pub(super) struct HookSources {
     pub traits: String,
@@ -247,6 +249,16 @@ pub(super) fn emit<'a>(
                 param,
             )
         });
+        if hook.listener_transaction.is_some()
+            && (hook.dispatch != DispatchStyle::Flat
+                || !host
+                    .as_ref()
+                    .is_some_and(|(_, param)| param.ty == "&mut dyn ServerHost"))
+        {
+            return Err(format!(
+                "{name}: listener_transaction requires a flat hook with a mutable ServerHost"
+            ));
+        }
         let staged_host = hook.staged_surface.as_deref() == Some("host")
             && !args.iter().any(|(arg, _)| arg == "host");
         let mut staged_draw = false;
@@ -691,6 +703,8 @@ pub(super) fn emit<'a>(
                             | ("StepOnEvent", "writes")
                             | ("ExtractBlockScreenEffectEvent", "renderer")
                             | ("RegisterDebugRenderersEvent", "entries")
+                            | ("RegisterRenderPipelinesEvent", "render_types")
+                            | ("RegisterRenderPipelinesEvent", "compute_pipelines")
                     ) =>
                 {
                     "pub(super)"
@@ -1319,7 +1333,10 @@ pub(super) fn emit<'a>(
                 restores_in_place.push(restore);
                 continue;
             }
-            if registration_append.is_some() && Some(field.as_str()) == out {
+            if (registration_append.is_some() && Some(field.as_str()) == out)
+                || (event_type == "RegisterRenderPipelinesEvent" && field == "render_types")
+                || (event_type == "RegisterRenderPipelinesEvent" && field == "compute_pipelines")
+            {
                 // Only the tail is writable; never clone or restore earlier registrations.
                 snaps.push(format!("{event}.{field}.len()"));
                 let restore = format!("{event}.{field}.truncate({saved}.{index});");
@@ -1499,27 +1516,30 @@ pub(super) fn emit<'a>(
                 format!(
                     "{{ let answer = {expression}; super::client::tooltip_components::retain_gather_tooltip_payloads({mod_id_expr}, {event}.elements.as_slice()); answer }}"
                 )
-            } else if matches!(
-                name,
-                "contents_changed"
-                    | "farmland_trample"
-                    | "on_sheared"
-                    | "register_configuration_tasks"
-                    | "register_goals"
-                    | "register_behaviors"
-                    | "server_about_to_start"
-                    | "server_starting"
-                    | "server_started"
-                    | "server_stopping"
-                    | "server_stopped"
-                    | "config_unloading"
-                    | "level_load"
-                    | "level_save"
-                    | "level_unload"
-                    | "create_spawn_position"
-                    | "player_save_to_file"
-                    | "world_saved"
-            ) {
+            } else if let Some(transaction) = hook.listener_transaction.or_else(|| {
+                matches!(
+                    name,
+                    "contents_changed"
+                        | "farmland_trample"
+                        | "on_sheared"
+                        | "register_configuration_tasks"
+                        | "register_goals"
+                        | "register_behaviors"
+                        | "server_about_to_start"
+                        | "server_starting"
+                        | "server_started"
+                        | "server_stopping"
+                        | "server_stopped"
+                        | "config_unloading"
+                        | "level_load"
+                        | "level_save"
+                        | "level_unload"
+                        | "create_spawn_position"
+                        | "player_save_to_file"
+                        | "world_saved"
+                )
+                .then_some(ListenerTransaction::Always)
+            }) {
                 // Let the existing journal see the unwind before invoke catches it.
                 let (host, host_param) = host.as_ref().unwrap();
                 let sided = host_param.ty == "HostSide";
@@ -1550,19 +1570,25 @@ pub(super) fn emit<'a>(
                          }}"
                     )
                 } else {
-                    format!(
+                    let journalled = format!(
                         "{{\
-                         use super::item::transaction::{{HostTransaction, TransactionError}};\
-                         match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
-                             Ok(answer) => answer,\
-                             Err(TransactionError::Aborted(never)) => match never {{}},\
-                             Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
-                                 log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
-                                 {restore_in_place} {no_answer}\
+                             use super::item::transaction::{{HostTransaction, TransactionError}};\
+                             match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
+                                 Ok(answer) => answer,\
+                                 Err(TransactionError::Aborted(never)) => match never {{}},\
+                                 Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                     log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                     {restore_in_place} {no_answer}\
+                                 }}\
                              }}\
-                         }}\
-                     }}"
-                    )
+                         }}"
+                    );
+                    match transaction {
+                        ListenerTransaction::Always => journalled,
+                        ListenerTransaction::WhenOpen => format!(
+                            "if !{host}.transaction_matches(None) {{ {journalled} }} else {{ {expression} }}"
+                        ),
+                    }
                 }
             } else if matches!(name, "level_tick_pre" | "level_tick_post") {
                 // Only the server Host owns a journal. The client side still uses invoke

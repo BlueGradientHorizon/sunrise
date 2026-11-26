@@ -2062,7 +2062,9 @@ impl Audio {
     /// mixer is locked only when the volumes changed.
     fn sync_stream_gain(&mut self, mod_gain: f32) {
         let gain = std::array::from_fn(|source| {
-            self.engine.final_source_volume(source).clamp(0.0, 1.0) * mod_gain
+            self.engine.final_source_volume(source).clamp(0.0, 1.0)
+                * self.engine.source_scale(source)
+                * mod_gain
         });
         if gain != self.stream_gain_sent
             && let Ok(mut m) = self.backend.mixer.lock()
@@ -2120,6 +2122,15 @@ impl Audio {
             &[crate::sound_engine::MUSIC, crate::sound_engine::UI],
             &mut self.backend,
         );
+    }
+    /// Every playing sound paused, music and the interface's included (a client mod's pause).
+    pub fn pause_all(&mut self) {
+        self.engine.pause_all_except(&[], &mut self.backend);
+    }
+    /// A client mod's scale over `source`'s volume, applied to the sounds playing now.
+    pub fn set_source_scale(&mut self, source: usize, scale: f32) {
+        self.engine
+            .set_source_scale(source, scale, &mut self.backend);
     }
     /// `SoundManager.resume`.
     pub fn resume(&mut self) {

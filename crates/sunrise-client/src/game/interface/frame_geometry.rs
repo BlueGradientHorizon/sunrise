@@ -97,29 +97,33 @@ impl Game<'_> {
     ) {
         if mod_api::__private::listened(mod_api::HookId::RenderArm) {
             let eye = self.eye_position().unwrap_or_default();
-            let mut draw = BlockEntityDraw::posed(
-                partial,
-                self.world.game_time,
-                light,
-                eye.map(|c| c.floor() as i32),
-                m,
-                sunrise_client::block_entity_render::diffuse_lights(self.dim == Dim::Nether),
-                std::mem::take(out),
-            )
-            .with_quad_budget(
-                self.entity_quad_capacity(),
-                self.entity_batch_reserved_quads(),
-            )
-            .animated(self.animation_time());
-            let mut canceled = false;
-            self.native_render_arm(
-                self.own_uuid(),
-                self.own_entity_id(),
-                left,
-                &mut draw,
-                &mut canceled,
+            let camera = self.native_camera_frame.as_ref().map_or_else(
+                || glam::DVec3::from_array(eye),
+                |c| glam::DVec3::from(c.position),
             );
-            *out = draw.into_vertices();
+            let mut canceled = false;
+            self.with_world_view(camera, partial, None, |view| {
+                let mut draw = BlockEntityDraw::posed_with_view(
+                    view,
+                    light,
+                    eye.map(|c| c.floor() as i32),
+                    m,
+                    sunrise_client::block_entity_render::diffuse_lights(self.dim == Dim::Nether),
+                    std::mem::take(out),
+                )
+                .with_quad_budget(
+                    self.entity_quad_capacity(),
+                    self.entity_batch_reserved_quads(),
+                );
+                self.native_render_arm(
+                    self.own_uuid(),
+                    self.own_entity_id(),
+                    left,
+                    &mut draw,
+                    &mut canceled,
+                );
+                *out = draw.into_vertices();
+            });
             if canceled {
                 return;
             }

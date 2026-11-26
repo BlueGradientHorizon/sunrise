@@ -41,7 +41,6 @@ pub(super) struct Raiding {
     unseeded: Option<Vec<(i32, usize)>>,
     /// The last raider hurt each raid's bar has seen (`Raider.hurtServer`).
     bar_hurts: HashMap<i32, u64>,
-    attributes: Option<std::sync::Arc<GameplayAttributes>>,
     /// Beds near each raid's centre, rescanned now and then (`HOME` points
     /// of interest for `RaiderMoveThroughVillageGoal`).
     homes: HashMap<i32, (i64, std::sync::Arc<Vec<[i32; 3]>>)>,
@@ -135,59 +134,77 @@ struct PatrolCx<'a, 'g, 'h> {
     can_spawn: &'h dyn Fn(&Game, [i32; 3]) -> bool,
 }
 impl SpawnLevel for PatrolCx<'_, '_, '_> {
+    #[inline]
     fn within_world_border(&self, x: i32, z: i32) -> bool {
         self.level.within_world_border(x, z)
     }
+    #[inline]
     fn state(&self, x: i32, y: i32, z: i32) -> sunrise_world::registry::BlockStateId {
         self.level.state(x, y, z)
     }
+    #[inline]
     fn facts(&self) -> &sunrise_client::blocks::BlockFacts {
         self.level.facts()
     }
+    #[inline]
     fn mob_data(&self) -> &sunrise_client::mobs::data::MobData {
         self.level.mob_data()
     }
+    #[inline]
     fn block_tag(&self, tag: &str, block: &str) -> bool {
         self.level.block_tag(tag, block)
     }
+    #[inline]
     fn biome_tag(&self, tag: &str, x: i32, y: i32, z: i32) -> bool {
         self.level.biome_tag(tag, x, y, z)
     }
+    #[inline]
     fn sky_light(&self, x: i32, y: i32, z: i32) -> i32 {
         self.level.sky_light(x, y, z)
     }
+    #[inline]
     fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
         self.level.block_light(x, y, z)
     }
+    #[inline]
     fn sky_darken(&self) -> i32 {
         SpawnLevel::sky_darken(&self.level)
     }
+    #[inline]
     fn thundering(&self) -> bool {
         self.level.thundering()
     }
+    #[inline]
     fn sea_level(&self) -> i32 {
         self.level.sea_level()
     }
+    #[inline]
     fn world_surface(&self, x: i32, z: i32) -> i32 {
         self.level.world_surface(x, z)
     }
+    #[inline]
     fn peaceful(&self) -> bool {
         self.level.peaceful()
     }
+    #[inline]
     fn dimension_type(&self) -> &sunrise_world::dimension_type::DimensionFacts {
         self.level.dimension_type()
     }
+    #[inline]
     fn surface_slime_chance(&self, x: i32, y: i32, z: i32) -> f32 {
         self.level.surface_slime_chance(x, y, z)
     }
+    #[inline]
     fn world_seed(&self) -> i64 {
         self.level.world_seed()
     }
+    #[inline]
     fn player_near(&self, x: f64, y: f64, z: f64, distance: f64) -> bool {
         self.level.player_near(x, y, z, distance)
     }
 }
 impl PatrolLevel for PatrolCx<'_, '_, '_> {
+    #[inline]
     fn spawn_patrols(&self) -> bool {
         self.level
             .game
@@ -195,11 +212,13 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SPAWN_PATROLS)
     }
+    #[inline]
     fn bright_outside(&self) -> bool {
         !self.level.game.dimension_type().has_fixed_time && self.level.game.sky_darken() < 4
     }
     /// `PatrolSpawner.tick` picks from `level.players()`: the local player
     /// and every guest in the level.
+    #[inline]
     fn patrol_players(&self) -> Vec<([i32; 3], bool)> {
         self.level
             .players()
@@ -207,21 +226,26 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
             .map(|p| (block_of(p.position), p.spectator))
             .collect()
     }
+    #[inline]
     fn sections_to_village(&self, pos: [i32; 3]) -> i32 {
         sections_to_village(&self.centers, section(pos))
     }
+    #[inline]
     fn has_chunk(&self, cx: i32, cz: i32) -> bool {
         self.level.game.world.chunks.contains_key(&(cx, cz))
     }
+    #[inline]
     fn can_pillager_patrol_spawn(&self, pos: [i32; 3]) -> bool {
         (self.can_spawn)(self.level.game, pos)
     }
+    #[inline]
     fn effective_difficulty(&self, pos: [i32; 3]) -> f32 {
         self.level
             .game
             .local_difficulty([f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])])
             .effective
     }
+    #[inline]
     fn motion_blocking_no_leaves(&self, x: i32, z: i32) -> i32 {
         self.level
             .heightmap(Heightmap::MotionBlockingNoLeaves, x, z)
@@ -369,13 +393,12 @@ impl Game<'_> {
             }
         }
     }
-    fn gameplay_attributes(&mut self) -> std::sync::Arc<GameplayAttributes> {
-        if self.raiding.attributes.is_none() {
-            self.raiding.attributes = Some(std::sync::Arc::new(GameplayAttributes::load(
-                &self.options.resources,
-            )));
-        }
-        self.raiding.attributes.clone().unwrap_or_default()
+    /// The world's attributes (`WorldTables::gameplay`); a game with no world has none.
+    fn gameplay_attributes(&self) -> std::sync::Arc<GameplayAttributes> {
+        self.world_tables
+            .as_ref()
+            .map(|tables| tables.gameplay.clone())
+            .unwrap_or_default()
     }
     /// A boolean gameplay attribute at a position (dimension, biome, then
     /// the timelines at the overworld clock).
@@ -1404,6 +1427,19 @@ impl Game<'_> {
     /// `ServerLevel.isVillage`: within one section of a village.
     fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
         sunrise_gameplay::village_siege::is_village(centers, pos)
+    }
+    pub(super) fn level_is_village(
+        &self,
+        level: mod_api::LevelRef,
+        pos: [i32; 3],
+    ) -> Result<bool, mod_api::LevelReadError> {
+        let world = self.native_level_world_result(level)?;
+        let [x, y, z] = pos;
+        if level.dimension() != self.dim.key() || !world.loaded(x, z) || !world.shape.contains_y(y)
+        {
+            return Err(mod_api::LevelReadError::Unavailable);
+        }
+        Ok(Self::is_village(&self.village_centers(), pos))
     }
     /// A raider's ominous banner (drop chance 2.0: always dropped) and a
     /// patrol captain's ominous bottle (`entities/pillager`).

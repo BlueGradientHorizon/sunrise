@@ -144,4 +144,23 @@ pub trait PlayerMenusBackendMut {
         player: PlayerRef,
         title: Text,
     ) -> Result<bool, OpenMenuError>;
+    /// Side: both.
+    /// Runs every mod's `anvil_update` listeners for a mod's own anvil menu, as NeoForge's
+    /// `CommonHooks.onAnvilUpdate` does for a menu that is not vanilla's `AnvilMenu`: an
+    /// upgraded or portable anvil computes its own result, then asks this so the other mods'
+    /// anvil recipes, cost changes and repair rules work in it too. `pos` is the anvil's block
+    /// (any position for one with no block) and `inputs` lends the stacks, the rename text and
+    /// the menu's own result and costs, which the listeners see as vanilla's. The listeners run
+    /// in their usual order, on this side, for `player`, starting from `Keep` and those costs.
+    /// Returns the edits they left (apply the output, the level cost, clamped at 0 as
+    /// `AnvilMenu.setCost` does, and the material cost to your menu), or None when a listener
+    /// canceled, which clears your result and both costs as it does vanilla's. Also None, with
+    /// no listener asked, for a stale player, a client's player other than its local one, and a
+    /// call from inside an `anvil_update` listener, which would run them again without bound.
+    fn player_anvil_update(
+        &mut self,
+        player: PlayerRef,
+        pos: [i32; 3],
+        inputs: &mod_api::item::menu::AnvilUpdateInputs<'_>,
+    ) -> Option<mod_api::item::menu::AnvilUpdateEdits>;
 }

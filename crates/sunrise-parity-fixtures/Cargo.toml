@@ -38,11 +38,11 @@ sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"], option
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"], optional = true }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", features = ["testing"], optional = true }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros", optional = true }
-sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback"], optional = true }
+sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback", "test-still-clock"], optional = true }
 sunrise-gameplay = { path = "../sunrise-gameplay", optional = true }
 sunrise-client-gameplay = { path = "../sunrise-client-gameplay", optional = true }
 sunrise-assets = { path = "../sunrise-assets", optional = true }
-sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication"], optional = true }
+sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication", "test-effect-registry"], optional = true }
 sunrise-client-input = { path = "../sunrise-client-input", optional = true }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"], optional = true }
 sunrise-command = { path = "../sunrise-command", optional = true }
@@ -56,10 +56,9 @@ sunrise-protocol = { path = "../sunrise-protocol", optional = true }
 sunrise-server-files = { path = "../sunrise-server-files", optional = true }
 sunrise-java-properties = { path = "../sunrise-java-properties", optional = true }
 sunrise-shaders = { path = "../sunrise-shaders", optional = true }
-sunrise-shader-api = { path = "../sunrise-shader-api", optional = true }
 sunrise-friends = { path = "../sunrise-friends", optional = true }
 sunrise-narrator = { path = "../sunrise-narrator", optional = true }
-sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index", "runtime-process"], optional = true }
+sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index-read", "runtime-process", "folder"], optional = true }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "metal", "wgsl", "naga-ir"], optional = true }
 winit = { version = "0.30.13", optional = true }
 pollster = { version = "0.4", optional = true }
@@ -86,7 +85,7 @@ sunrise-theme = { path = "../sunrise-theme", optional = true }
 sunrise-system = { path = "../sunrise-system", optional = true }
 sunrise-telemetry = { path = "../sunrise-telemetry", default-features = false, optional = true }
 sunrise-bench = { path = "../sunrise-bench", optional = true }
-zip = { version = "9.1.3", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"], optional = true }
 gilrs = { version = "0.11", optional = true }
 sunrise-dualsense = { path = "../sunrise-dualsense", optional = true }
 ureq = { version = "2", default-features = false, features = ["tls"], optional = true }
@@ -120,4 +119,4 @@ alloc-count = ["sunrise-threads/alloc-count"]
 alloc-census = ["sunrise-threads/alloc-census"]
 windows-segment-heap = []
 client-defaults = ["audio", "controllers", "sunrise-extras"]
-fixtures = ["dep:cap-fs-ext", "dep:cap-std", "dep:sunrise-hooks", "dep:sunrise-mod-runtime", "dep:mod_api", "dep:sunrise-mod-api-macros", "dep:sunrise-client-lib", "dep:sunrise-gameplay", "dep:sunrise-client-gameplay", "dep:sunrise-assets", "dep:sunrise-client-core", "dep:sunrise-client-input", "dep:sunrise-client-render", "dep:sunrise-command", "dep:sunrise-items", "dep:sunrise-core", "dep:sunrise-optifine", "dep:sunrise-threads", "dep:sunrise-perf-format", "dep:sunrise-world", "dep:sunrise-protocol", "dep:sunrise-server-files", "dep:sunrise-java-properties", "dep:sunrise-shaders", "dep:sunrise-shader-api", "dep:sunrise-narrator", "dep:sunrise-mod-package", "dep:wgpu", "dep:winit", "dep:pollster", "dep:bytemuck", "dep:glam", "dep:png", "dep:sha2", "dep:cipher", "dep:crypto-common", "dep:digest", "dep:fnv", "dep:socket2", "dep:sha1", "dep:serde", "dep:serde_json", "dep:toml", "dep:naga", "dep:ab_glyph", "dep:indexmap", "dep:log", "dep:chrono", "dep:flate2", "dep:sunrise-theme", "dep:sunrise-system", "dep:sunrise-telemetry", "dep:sunrise-bench", "dep:zip", "dep:ureq", "dep:fs4", "dep:tempfile", "dep:mod_platform", "dep:sunrise-perf", "dep:rustix", "dep:libc"]
+fixtures = ["dep:cap-fs-ext", "dep:cap-std", "dep:sunrise-hooks", "dep:sunrise-mod-runtime", "dep:mod_api", "dep:sunrise-mod-api-macros", "dep:sunrise-client-lib", "dep:sunrise-gameplay", "dep:sunrise-client-gameplay", "dep:sunrise-assets", "dep:sunrise-client-core", "dep:sunrise-client-input", "dep:sunrise-client-render", "dep:sunrise-command", "dep:sunrise-items", "dep:sunrise-core", "dep:sunrise-optifine", "dep:sunrise-threads", "dep:sunrise-perf-format", "dep:sunrise-world", "dep:sunrise-protocol", "dep:sunrise-server-files", "dep:sunrise-java-properties", "dep:sunrise-shaders", "dep:sunrise-narrator", "dep:sunrise-mod-package", "dep:wgpu", "dep:winit", "dep:pollster", "dep:bytemuck", "dep:glam", "dep:png", "dep:sha2", "dep:cipher", "dep:crypto-common", "dep:digest", "dep:fnv", "dep:socket2", "dep:sha1", "dep:serde", "dep:serde_json", "dep:toml", "dep:naga", "dep:ab_glyph", "dep:indexmap", "dep:log", "dep:chrono", "dep:flate2", "dep:sunrise-theme", "dep:sunrise-system", "dep:sunrise-telemetry", "dep:sunrise-bench", "dep:zip", "dep:ureq", "dep:fs4", "dep:tempfile", "dep:mod_platform", "dep:sunrise-perf", "dep:rustix", "dep:libc"]

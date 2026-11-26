@@ -794,14 +794,15 @@ impl Guest {
             && self.viewed.in_level(dimension)
     }
     /// `ChunkMap.isChunkTracked`: whether the guest watches chunk `(x, z)` of
-    /// level `dimension`, inside its view (`ChunkTrackingView.contains`) and
-    /// sent rather than pending.
+    /// level `dimension`, inside its view (`ChunkTrackingView.contains`) or kept
+    /// past it for an area (`viewed_levels::own`), and sent rather than pending.
     pub fn tracks_chunk(&self, dimension: &str, (x, z): (i32, i32)) -> bool {
         self.watches_level(dimension)
             && self.sent_chunks.contains(&(x, z))
-            && self
+            && (self
                 .center
                 .is_some_and(|(cx, cz)| super::hub::tracked(cx, cz, self.view_distance, x, z))
+                || self.viewed.own.kept.contains(&(x, z)))
     }
 
     fn with_defaults(
@@ -2859,6 +2860,26 @@ mod tests {
         chestplate.data_mut().trim = Some(("minecraft:x".into(), "coast".into()));
         let stack = stack_to_network(|_| 7, synced_id, &Some(chestplate)).unwrap();
         assert_eq!(stack.component(component::TRIM), None);
+    }
+
+    /// A pack's pattern and material go to a client by the ids of the server's sync order.
+    #[test]
+    fn a_packs_trim_goes_by_its_synced_ids() {
+        let mut chestplate = ItemStack::new("minecraft:iron_chestplate", 1);
+        chestplate.data_mut().trim = Some(("test:jade".into(), "test:zigzag".into()));
+        let synced_id = |registry: &str, name: &str| match (registry, name) {
+            ("minecraft:trim_material", "test:jade") => Some(11),
+            ("minecraft:trim_pattern", "test:zigzag") => Some(20),
+            _ => None,
+        };
+        let stack = stack_to_network(|_| 7, synced_id, &Some(chestplate)).unwrap();
+        assert_eq!(
+            stack.component(component::TRIM),
+            Some(&Component::Trim {
+                material: 11,
+                pattern: 20
+            })
+        );
     }
 
     #[test]

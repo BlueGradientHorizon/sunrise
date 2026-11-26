@@ -58,6 +58,7 @@ fn fishing_loot(
     level_random: &mut LegacyRandom,
     world_seed: i64,
     biome: Option<&str>,
+    location: Option<sunrise_world::loot::LootLocation<'_>>,
     open_water: bool,
     params: &sunrise_world::loot::EntityLootParams,
 ) -> Vec<sunrise_world::loot::LootStack> {
@@ -66,10 +67,18 @@ fn fishing_loot(
             table,
             sequences.get(sequence, world_seed),
             biome,
+            location,
             Some(open_water),
             params,
         ),
-        None => loot.roll_as(table, level_random, biome, Some(open_water), params),
+        None => loot.roll_as(
+            table,
+            level_random,
+            biome,
+            location,
+            Some(open_water),
+            params,
+        ),
     }
 }
 
@@ -104,6 +113,11 @@ pub(super) struct Hook {
     pub(super) yaw: f32,
     /// `Entity.xRot` updated on `Projectile.updateRotation`.
     pub(super) pitch: f32,
+    /// `Entity.yRotO` and `xRotO`: the yaw and pitch when its tick began (`setOldPosAndRot`),
+    /// which `Projectile.updateRotation` eases from; `ProjectileDeflection.REVERSE` turns the
+    /// old yaw with the yaw.
+    pub(super) previous_yaw: f32,
+    pub(super) previous_pitch: f32,
     last_deflected_by: Option<u32>,
     needs_sync: bool,
     tick_count: i32,
@@ -624,6 +638,9 @@ impl Game<'_> {
                 left_owner: false,
                 yaw: hook_yaw,
                 pitch: hook_pitch,
+                // Projectile.shoot ends with yRotO = getYRot(), xRotO = getXRot().
+                previous_yaw: hook_yaw,
+                previous_pitch: hook_pitch,
                 last_deflected_by: None,
                 needs_sync: false,
                 tick_count: 0,
@@ -761,18 +778,30 @@ impl Game<'_> {
                 Some([hook.position.x, hook.position.y, hook.position.z]),
                 Some(super::creatures::to_loot(rod)),
             );
+            // ORIGIN is the hook's position; its location checks read the level, so
+            // the roll draws from copies of the randoms put back after it.
+            let origin = [hook.position.x, hook.position.y, hook.position.z];
+            let mut random = self.world.random.clone();
+            let mut sequences = std::mem::take(&mut self.rand_sequences);
             let items = caller.with(|| {
+                let level = crate::game::advancements::View(&*self);
+                let read = |predicate: &serde_json::Value, at: [f64; 3]| {
+                    sunrise_client::advancements::location(predicate, at, &level)
+                };
                 fishing_loot(
                     &loot,
                     table,
-                    &mut self.rand_sequences,
-                    &mut self.world.random,
+                    &mut sequences,
+                    &mut random,
                     self.level.seed,
                     biome.as_deref(),
+                    Some(sunrise_client::advancements::loot_location(origin, &read)),
                     hook.open_water,
                     &params,
                 )
             });
+            self.world.random = random;
+            self.rand_sequences = sequences;
             let mut caught: Vec<ItemStack> = items
                 .into_iter()
                 .map(|stack| {
@@ -1105,7 +1134,8 @@ impl Game<'_> {
             return None;
         }
         h.tick_count += 1;
-        let mut old_yaw = h.yaw;
+        h.previous_yaw = h.yaw;
+        h.previous_pitch = h.pitch;
         // Projectile.tick: update leftOwner using the caster's full root-vehicle tree.
         if !h.left_owner {
             let swept = h
@@ -1259,7 +1289,7 @@ impl Game<'_> {
                         match h.hit_entity(id, breeze.is_some()) {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
-                                    old_yaw += rot;
+                                    h.previous_yaw += rot;
                                     self.play_audio(
                                         "minecraft:entity.breeze.deflect",
                                         breeze,
@@ -1508,8 +1538,8 @@ impl Game<'_> {
             // FishingHook.tick turns before grounding or drag zeros/scales motion.
             let [yaw, pitch] = hook_rotation(h.velocity);
             let lerp = sunrise_client::arrows::lerp_rotation;
-            h.yaw = lerp(old_yaw, yaw);
-            h.pitch = lerp(h.pitch, pitch);
+            h.yaw = lerp(h.previous_yaw, yaw);
+            h.pitch = lerp(h.previous_pitch, pitch);
             if h.state == State::Flying && (h.ground.on_ground || h.ground.horizontal_collision) {
                 h.velocity = Vec3::ZERO;
             }
@@ -2086,6 +2116,8 @@ impl Hook {
             left_owner: false,
             yaw: 0.0,
             pitch: 0.0,
+            previous_yaw: 0.0,
+            previous_pitch: 0.0,
             last_deflected_by: None,
             needs_sync: false,
             tick_count: 0,
@@ -2680,6 +2712,7 @@ pub(in crate::game) mod tests {
                 &mut sequences,
                 &mut level_random,
                 seed,
+                None,
                 None,
                 true,
                 &super::hook_params(0.0, None),

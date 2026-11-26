@@ -227,6 +227,45 @@ impl Parked {
         ))
     }
 
+    /// Whether `obstructs` returns `true` for any live `blocksBuilding` entity in this parked
+    /// level (`EntityGetter.isUnobstructed`), without allocating.
+    pub(super) fn any_building_blocker(
+        &self,
+        mut obstructs: impl FnMut(sunrise_core::geometry::Aabb) -> bool,
+    ) -> bool {
+        if self
+            .mobs
+            .iter()
+            .any(|m| !m.removed && obstructs(m.bounds()))
+            || self
+                .dragon
+                .as_ref()
+                .is_some_and(|dragon| obstructs(dragon.body_bounds()))
+        {
+            return true;
+        }
+        let entities = crate::game::entity::EntityLists {
+            mobs: &self.mobs,
+            dropped: &self.dropped,
+            boats: &self.boats,
+            carts: &self.carts,
+            armor_stands: &self.armor_stands,
+            tnts: &self.tnts,
+            falling: &self.falling,
+            orbs: &self.orbs,
+            projectiles: &self.projectiles,
+            rockets: &self.rockets,
+            tridents: &self.tridents,
+            general: &self.general.rows,
+        };
+        entities
+            .non_mob_building_blocker_boxes(
+                self.carts.iter().map(minecarts::Minecart::bounds),
+                &self.crystals,
+            )
+            .any(obstructs)
+    }
+
     resident_owners!(
         define_resident_access,
         self,
@@ -648,6 +687,24 @@ impl Levels {
             .map(|(_, level)| &level.world)
     }
 
+    /// Block ticks belonging to an open level that is not currently in place.
+    pub(in crate::game) fn parked_block_ticks_of(&self, dimension: &str) -> Option<&Ticks> {
+        self.parked
+            .iter()
+            .find(|(dim, _)| dim.id() == dimension)
+            .map(|(_, level)| &level.block_ticks)
+    }
+
+    pub(in crate::game) fn parked_lid_openers_of(
+        &self,
+        dimension: &str,
+    ) -> Option<&HashMap<(i32, i32, i32), i32>> {
+        self.parked
+            .iter()
+            .find(|(dim, _)| dim.id() == dimension)
+            .map(|(_, level)| &level.lid_openers)
+    }
+
     /// The world of the level not in place whose dimension is `dimension`, to
     /// change.
     pub(super) fn parked_world_mut_of(&mut self, dimension: &str) -> Option<&mut World> {
@@ -655,11 +712,6 @@ impl Levels {
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
             .map(|(_, level)| &mut level.world)
-    }
-
-    /// The block ticks of the level not in place whose dimension is `dimension`.
-    pub(super) fn parked_block_ticks_of(&self, dimension: &str) -> Option<&Ticks> {
-        self.parked_of(dimension).map(|level| &level.block_ticks)
     }
 
     /// The streaming of the level not in place whose dimension is `dimension`.
@@ -812,7 +864,7 @@ impl Levels {
     }
 
     /// The mobs of a parked level.
-    pub(super) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
+    pub(in crate::game) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
         self.parked.get(&dim).map(|level| &*level.mobs)
     }
 
@@ -862,16 +914,7 @@ impl Game<'_> {
             .unwrap_or_else(|| self.res.biomes());
         let overrides = match &self.world_tables {
             Some(tables) => tables.biomes.overrides.clone(),
-            None => {
-                super::world_loading::worldgen_overrides_of(
-                    &self.world_root,
-                    &self.options.resources,
-                    biomes,
-                    &self.level.enabled_features,
-                    &self.pack.additional_data,
-                )
-                .0
-            }
+            None => super::world_loading::worldgen_overrides_of(&self.fns.data).0,
         };
         let (streaming, save, locator) = super::world_loading::make_streaming(
             &self.res,

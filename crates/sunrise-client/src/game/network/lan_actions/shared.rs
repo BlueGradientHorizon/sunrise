@@ -38,7 +38,7 @@ pub(super) struct GuestPlay {
     suggestion_budget: bool,
     /// The guest's `Player.getCooldowns()` (`Game::cooldowns` for its turn).
     pub(super) cooldowns: sunrise_client::cooldowns::Cooldowns,
-    attack_ticks: u32,
+    attack_ticks: i32,
     /// The main hand's item at the guest's last tick (`Game::attack_item`).
     attack_item: Option<std::sync::Arc<str>>,
     swing: sunrise_client::first_person::SwingState,
@@ -156,7 +156,7 @@ impl GuestPlay {
     }
 
     /// The guest's `Player.attackStrengthTicker` outside its turn.
-    pub(in crate::game) fn attack_ticks(&self) -> u32 {
+    pub(in crate::game) fn attack_ticks(&self) -> i32 {
         self.attack_ticks
     }
     /// The main-hand item of the guest's last tick (`Game.attack_item`).
@@ -387,7 +387,7 @@ fn stop_dig(play: &GuestPlay, pos: [i32; 3], air: bool, ticks: u64, per_tick: f3
 }
 
 /// ServerPlayer.swingAndResetAttackStrength resets only when a use starts a swing.
-fn reset_use_attack_strength(ticker: &mut u32, before: u32, after: u32) {
+fn reset_use_attack_strength(ticker: &mut i32, before: u32, after: u32) {
     if before != after {
         *ticker = 0;
     }

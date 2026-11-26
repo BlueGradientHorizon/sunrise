@@ -302,6 +302,7 @@ struct MeshSettings {
     cutout_leaves: bool,
     opaque_ice: bool,
     translucent_layers: Arc<[bool]>,
+    layer_overrides: Arc<[Option<sunrise_shaders::RenderLayer>]>,
     leaf_culling: LeafCullingMode,
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
     visibility: Option<Arc<section_visibility::FrozenPlan>>,
@@ -693,7 +694,7 @@ pub struct Streaming {
     /// Dirty sections of loaded columns past the render distance, meshed once
     /// the player comes closer, and the area they were set aside for.
     waiting: FxHashSet<(i32, i32, i32)>,
-    waiting_area: ((i32, i32), i32, usize),
+    waiting_area: ((i32, i32), i32, usize, (usize, u64)),
     /// Proto chunks decoration wrote to since they were generated or saved.
     written: FxHashSet<(i32, i32)>,
     saves: Arc<dyn Saves>,
@@ -754,6 +755,9 @@ pub struct Streaming {
     /// Sprite layers a shader pack draws in the translucent pass (`[[materials]]
     /// translucent`), by layer; empty without one.
     pub translucent_layers: Arc<[bool]>,
+    /// By state id, the terrain layer a `shaders/` pack's `layer.*` rules move the state to
+    /// (`Mesher::layer_overrides`); empty without a pack or a state it moves.
+    pub layer_overrides: Arc<[Option<sunrise_shaders::RenderLayer>]>,
     /// What the mesher does with leaf faces inside a canopy (`LeafCullingMode`).
     pub leaf_culling: LeafCullingMode,
     /// Incremental relighting of block edits on lit chunks (see `light::relight`).
@@ -1419,7 +1423,7 @@ impl Streaming {
             lit: Default::default(),
             meshed: Default::default(),
             waiting: Default::default(),
-            waiting_area: ((0, 0), 0, 0),
+            waiting_area: ((0, 0), 0, 0, (0, 0)),
             written: Default::default(),
             saves,
             deferred: Vec::new(),
@@ -1451,6 +1455,7 @@ impl Streaming {
             cutout_leaves: true,
             opaque_ice: false,
             translucent_layers: Arc::from([]),
+            layer_overrides: Arc::from([]),
             leaf_culling: LeafCullingMode::Off,
             light_tables,
             light_log: Vec::new(),
@@ -2766,8 +2771,14 @@ impl Streaming {
         // is within the render distance (`in_view_distance`, the columns
         // vanilla draws). Sections set aside past it come back
         // when the player moves: a column that loads with its light gets no
-        // other request (#228).
-        let area = (self.center, self.radius, self.forced.len());
+        // other request (#228). A server's far column (`ChunkMap::is_far`) is
+        // drawn wherever it is, as a forced one.
+        let area = (
+            self.center,
+            self.radius,
+            self.forced.len(),
+            world.chunks.far_state(),
+        );
         if self.waiting_area != area {
             self.waiting_area = area;
             let ranges = Ranges {
@@ -2787,7 +2798,7 @@ impl Streaming {
                 }),
             };
             self.waiting.retain(|&(x, sy, z)| {
-                let back = ranges.in_view(x, z);
+                let back = ranges.in_view(x, z) || world.chunks.is_far((x, z));
                 if back {
                     world.dirty_sections.insert_mesh((x, sy, z));
                 }
@@ -2803,7 +2814,7 @@ impl Streaming {
                 world.dirty_sections.take_column(x, z);
                 continue;
             }
-            if !self.ranges().in_view(x, z) {
+            if !self.ranges().in_view(x, z) && !world.chunks.is_far((x, z)) {
                 world.dirty_sections.take_column(x, z);
                 for sy in sections.iter().map(|sy| sy as i32) {
                     let key = (x, sy, z);
@@ -4815,6 +4826,32 @@ mod tests {
             removed: Vec::new(),
             paused: false,
         }
+    }
+
+    /// A server's far column (`ChunkMap::is_far`) 300 chunks past the render distance stays to
+    /// be meshed, as one inside it; another column as far is set aside until the player comes.
+    #[test]
+    #[ignore = "daily"]
+    fn a_far_column_past_the_render_distance_is_not_set_aside() {
+        let (mut world, mut streaming) = decoration_fixture();
+        streaming.center = (0, 0);
+        streaming.radius = 2;
+        for x in [300, 400] {
+            world.chunks.insert((x, 0), Arc::new(Chunk::empty(x, 0)));
+            world.dirty_sections.insert_mesh((x, 0, 0));
+        }
+        assert!(
+            world.chunks.keep_far(&[(300, 0)]).is_empty(),
+            "nothing was hidden"
+        );
+        streaming.update(&mut world);
+        assert!(
+            world.dirty_sections.contains(&(300, 0, 0)),
+            "waits for its light"
+        );
+        assert!(!world.dirty_sections.contains(&(400, 0, 0)));
+        assert!(streaming.waiting.contains(&(400, 0, 0)));
+        assert!(!streaming.waiting.contains(&(300, 0, 0)));
     }
 
     /// The save drain applies results outside `resume_plan_update`; a proto it

@@ -171,10 +171,13 @@ pub enum EffectAction {
     Exhaust(f32),
     /// FoodData.eat(nutrition, saturation modifier).
     Eat(i32, f32),
-    /// The active instance promoted its hidden effect, or updated in place.
-    Update(&'static str, i32),
-    /// The active instance expired or its tick returned false.
-    Remove(&'static str),
+    /// The active instance promoted its hidden effect, or updated in place:
+    /// its id, registry index ([`EffectInstance::registry_index`]) and
+    /// amplifier.
+    Update(&'static str, Option<usize>, i32),
+    /// The active instance expired or its tick returned false: its id and
+    /// registry index.
+    Remove(&'static str, Option<usize>),
 }
 /// `shouldApplyEffectTickThisTick` + `applyEffectTick` for the periodic effects.
 pub fn periodic(id: &str, tick: i32, amp: i32) -> Option<EffectAction> {
@@ -416,8 +419,8 @@ pub trait EffectTickHost {
     /// Add `effect` returned by [`OmenTick::Add`], returning `true` when a new
     /// entry was inserted into `effects().list` (vanilla's CME stop condition).
     fn add_effect(&mut self, effect: EffectInstance) -> bool;
-    fn on_promoted(&mut self, id: &'static str, amplifier: i32);
-    fn on_removed(&mut self, id: &'static str);
+    fn on_promoted(&mut self, id: &'static str, registry_index: Option<usize>, amplifier: i32);
+    fn on_removed(&mut self, id: &'static str, registry_index: Option<usize>);
     /// Ask `MobEffectEvent.Expired` when an effect has no remaining duration.
     /// Returning `true` keeps the effect at 0 ticks for the next pass.
     fn keep_expired(&self, effect: TickingEffect) -> bool;
@@ -505,7 +508,7 @@ impl PlayerEffects {
                     i += 1;
                 } else {
                     let removed = host.effects_mut().list.remove(i);
-                    host.on_removed(removed.id);
+                    host.on_removed(removed.id, removed.registry_index);
                 }
                 continue;
             }
@@ -528,7 +531,7 @@ impl PlayerEffects {
                 OmenTick::Remove => {
                     if let Some(pos) = locate_effect(&host.effects().list, i, eff.id) {
                         let removed = host.effects_mut().list.remove(pos);
-                        host.on_removed(removed.id);
+                        host.on_removed(removed.id, removed.registry_index);
                         if pos < i {
                             i -= 1;
                         }
@@ -547,7 +550,7 @@ impl PlayerEffects {
                     }
                     if let Some(pos) = locate_effect(&host.effects().list, i, eff.id) {
                         let removed = host.effects_mut().list.remove(pos);
-                        host.on_removed(removed.id);
+                        host.on_removed(removed.id, removed.registry_index);
                         if pos < i {
                             i -= 1;
                         }
@@ -561,19 +564,21 @@ impl PlayerEffects {
             let (promoted, expired) = {
                 let cur = &mut host.effects_mut().list[pos];
                 cur.tick_down();
-                let promoted = cur.downgrade().then_some((cur.id, cur.amplifier));
+                let promoted =
+                    cur.downgrade()
+                        .then_some((cur.id, cur.registry_index, cur.amplifier));
                 let expired = (!(cur.infinite() || cur.duration > 0))
                     .then(|| TickingEffect::from_instance(cur));
                 (promoted, expired)
             };
-            if let Some((id, amplifier)) = promoted {
-                host.on_promoted(id, amplifier);
+            if let Some((id, registry_index, amplifier)) = promoted {
+                host.on_promoted(id, registry_index, amplifier);
             }
             if let Some(expired_eff) = expired
                 && !host.keep_expired(expired_eff)
             {
                 let removed = host.effects_mut().list.remove(pos);
-                host.on_removed(removed.id);
+                host.on_removed(removed.id, removed.registry_index);
                 i = pos;
             } else {
                 i = pos + 1;
@@ -651,7 +656,11 @@ impl PlayerEffects {
     pub fn modifiers(&self) -> Vec<EffectModifier> {
         let mut out = Vec::new();
         for e in &self.list {
-            if let Some((a, id, amount, op)) = effect_modifier(e.id) {
+            let def = e
+                .registry_index
+                .and_then(potions::effect_by_index)
+                .or_else(|| potions::effect(e.id));
+            for (a, id, amount, op) in def.into_iter().flat_map(effect_modifiers) {
                 out.push((a, id, amount * f64::from(e.amplifier.wrapping_add(1)), op));
             }
         }
@@ -697,14 +706,22 @@ impl StatusFlags {
     }
 }
 
-pub type EffectModifier = (&'static str, &'static str, f64, Operation);
+pub use potions::EffectModifier;
 
-/// The attribute modifier an effect adds at amplifier 0
-/// (`MobEffect.addAttributeModifier`): (attribute, id, amount, operation).
-/// Each level multiplies the amount (`amplifier + 1`). Vanilla's amounts are
-/// `float` literals widened to the modifier's `double`, so `f64::from` the
-/// `f32` to keep the low digits.
-pub fn effect_modifier(effect: &str) -> Option<EffectModifier> {
+/// The attribute modifiers an effect adds at amplifier 0
+/// (`MobEffect.addAttributeModifier`): (attribute, id, amount, operation),
+/// vanilla's or those a content mod declared for its effect. Each level
+/// multiplies the amount (`amplifier + 1`).
+pub fn effect_modifiers(effect: &potions::EffectDef) -> impl Iterator<Item = EffectModifier> {
+    effect_modifier(effect.id)
+        .into_iter()
+        .chain(effect.modifiers.iter().copied())
+}
+
+/// The attribute modifier a vanilla effect adds at amplifier 0. Vanilla's
+/// amounts are `float` literals widened to the modifier's `double`, so
+/// `f64::from` the `f32` to keep the low digits.
+fn effect_modifier(effect: &str) -> Option<EffectModifier> {
     match effect {
         "speed" => Some((
             "minecraft:movement_speed",
@@ -893,8 +910,11 @@ mod tests {
         fn add_effect(&mut self, effect: EffectInstance) -> bool {
             if let Some(existing) = self.fx.list.iter_mut().find(|x| x.id == effect.id) {
                 if existing.update(&effect) {
-                    self.actions
-                        .push(EffectAction::Update(existing.id, existing.amplifier));
+                    self.actions.push(EffectAction::Update(
+                        existing.id,
+                        existing.registry_index,
+                        existing.amplifier,
+                    ));
                 }
                 return false;
             }
@@ -902,11 +922,12 @@ mod tests {
             self.added = true;
             true
         }
-        fn on_promoted(&mut self, id: &'static str, amplifier: i32) {
-            self.actions.push(EffectAction::Update(id, amplifier));
+        fn on_promoted(&mut self, id: &'static str, registry_index: Option<usize>, amplifier: i32) {
+            self.actions
+                .push(EffectAction::Update(id, registry_index, amplifier));
         }
-        fn on_removed(&mut self, id: &'static str) {
-            self.actions.push(EffectAction::Remove(id));
+        fn on_removed(&mut self, id: &'static str, registry_index: Option<usize>) {
+            self.actions.push(EffectAction::Remove(id, registry_index));
         }
         fn keep_expired(&self, _: TickingEffect) -> bool {
             false
@@ -965,16 +986,23 @@ mod tests {
         let poison = loaded.get("poison").expect("level I resumed");
         assert_eq!((poison.amplifier, poison.duration), (0, 480));
     }
-    /// The only test here that registers mod effects (once per process).
+    /// `ruby:glow`, registered in this thread's own scope until the guard drops.
+    fn register_ruby_glow() -> impl Drop {
+        let scope = potions::isolate_mod_effects();
+        assert!(potions::register_mod_effects([potions::ModEffect {
+            modifiers: vec![(
+                "minecraft:movement_speed".into(),
+                "ruby:effect/glow".into(),
+                -0.25,
+                Operation::AddMultipliedTotal,
+            )],
+            ..potions::ModEffect::new("ruby:glow", 0xFF0000, potions::Category::Neutral, "ruby")
+        }]));
+        scope
+    }
     #[test]
     fn a_mod_effect_saves_under_its_namespace() {
-        potions::register_mod_effects([(
-            "ruby:glow".to_owned(),
-            0xFF0000,
-            potions::Category::Neutral,
-            None,
-            "ruby".into(),
-        )]);
+        let _scope = register_ruby_glow();
         let mut fx = PlayerEffects::default();
         fx.add(EffectInstance::new(
             potions::effect("ruby:glow").unwrap().id,
@@ -1105,6 +1133,33 @@ mod tests {
         fx.add(EffectInstance::new("haste", 100, 1));
         assert!((fx.mining_speed_factor() - 1.4).abs() < 1e-6);
         assert_eq!(fx.modifiers().len(), 1);
+    }
+
+    /// #4473: a content mod's effect adds the modifiers its declaration
+    /// lists, each amount times the amplifier plus one, as vanilla's do.
+    #[test]
+    fn a_mod_effects_declared_modifier_scales_with_amplifier() {
+        let _scope = register_ruby_glow();
+        let mut fx = PlayerEffects::default();
+        fx.add(EffectInstance::new("ruby:glow", 2400, 0));
+        fx.add(EffectInstance::new("speed", 2400, 0));
+        let glow = |amount| {
+            (
+                "minecraft:movement_speed",
+                "ruby:effect/glow",
+                amount,
+                Operation::AddMultipliedTotal,
+            )
+        };
+        let speed = (
+            "minecraft:movement_speed",
+            "minecraft:effect.speed",
+            f64::from(0.2f32),
+            Operation::AddMultipliedTotal,
+        );
+        assert_eq!(fx.modifiers(), [glow(-0.25), speed]);
+        fx.add(EffectInstance::new("ruby:glow", 2400, 2));
+        assert_eq!(fx.modifiers(), [glow(-0.75), speed]);
     }
 
     #[test]

@@ -28,7 +28,7 @@ impl Game<'_> {
     pub(super) fn charge_attack_fully(&mut self) {
         let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
         // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
-        self.attack_ticks = (delay - 0.5).ceil() as u32;
+        self.attack_ticks = (delay - 0.5).ceil() as i32;
     }
 
     /// `Player.isSweepAttack`: a charged, grounded sword hit below the movement

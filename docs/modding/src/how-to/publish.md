@@ -67,6 +67,10 @@ workflow, commits the version bump signed off (`Signed-off-by`, from your Git `u
 at the repository root or `<id>/v<version>` for a subfolder package. GitHub Actions builds and attests both the
 `.smod` and its page bundle, with no signing key for you to manage.
 
+`release` reads your repository's ID from GitHub's API. Set `GH_TOKEN` or `GITHUB_TOKEN` when you release
+many packages in an hour: with a token GitHub allows far more than the 60 requests an hour it allows without one.
+The token is sent to `api.github.com` alone.
+
 If your default branch accepts changes only through pull requests, add `--pull-request`:
 
 ```sh
@@ -109,6 +113,9 @@ updates your caller in the release commit when it has moved, so you never edit t
 
 To check a released package and its attestation yourself, use
 [`check <file.smod>`](../reference/sdk/05-commands.md#check-a-released-package).
+
+Once several of your mods are listed, you can show them as one card in Discover: see
+[Group your mods into a collection](collections.md).
 
 ## Your mod's page
 

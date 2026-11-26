@@ -3,7 +3,8 @@ use super::{Game, perspective};
 use mod_api::BlockShapeKind;
 use std::ops::ControlFlow;
 use sunrise_client::{
-    block_entity_anim::BlockEntityAnims, collisions::SceneCollisions, world::World,
+    block_entity_anim::BlockEntityAnims, blocks::VisualShape, collisions::SceneCollisions,
+    world::World,
 };
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
 use sunrise_world::{
@@ -157,6 +158,16 @@ impl Game<'_> {
             )
             .boxes()
             .try_for_each(visit),
+            // `BlockStateBase.getVisualShape`, from the same table `ClipBlock::Visual` reads.
+            BlockShapeKind::Visual => {
+                let kind = match self.res.facts().get(state).visual_shape() {
+                    VisualShape::Collision => BlockShapeKind::Collision,
+                    VisualShape::Outline => BlockShapeKind::Outline,
+                    VisualShape::Empty => return ControlFlow::Continue(()),
+                    VisualShape::Block => return visit([0.0, 0.0, 0.0, 1.0, 1.0, 1.0]),
+                };
+                self.visit_state_shape(world, anims, state, pos, kind, visit)
+            }
             _ => unreachable!("BlockShapeKind: unhandled variant"),
         }
     }
@@ -184,6 +195,48 @@ fn outline_boxes(outline: Outline<'_>, base: [f64; 3]) -> impl Iterator<Item = [
 mod tests {
     use super::*;
     use crate::game::api_values::TryIntoApi;
+
+    /// `BlockState.getVisualShape`: nothing for glass, iron bars and powder snow, a full
+    /// block for soul sand and mud, the outline for a snow layer and a fence, the collision
+    /// shape for any other block.
+    #[test]
+    #[ignore = "daily"]
+    fn visual_shape_follows_vanilla_overrides() {
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            let level = game.level("minecraft:overworld").unwrap();
+            for (block, expected) in [
+                ("minecraft:glass", Vec::new()),
+                ("minecraft:iron_bars", Vec::new()),
+                ("minecraft:powder_snow", Vec::new()),
+                ("minecraft:soul_sand", vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]),
+                ("minecraft:mud", vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]),
+                ("minecraft:snow", vec![[0.0, 0.0, 0.0, 1.0, 0.125, 1.0]]),
+                (
+                    "minecraft:oak_fence",
+                    vec![[0.375, 0.0, 0.375, 0.625, 1.0, 0.625]],
+                ),
+                ("minecraft:stone_slab", vec![[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]]),
+            ] {
+                let state = game.pack.assets.registry.default_state(block).unwrap();
+                let mut boxes = Vec::new();
+                assert_eq!(
+                    level.visit_block_shape(
+                        game,
+                        state.try_into_api().unwrap(),
+                        [0, 64, 0],
+                        BlockShapeKind::Visual,
+                        &mut |bounds| {
+                            boxes.push(bounds);
+                            ControlFlow::Continue(())
+                        }
+                    ),
+                    Some(ControlFlow::Continue(())),
+                    "{block}"
+                );
+                assert_eq!(boxes, expected, "{block}");
+            }
+        });
+    }
 
     #[test]
     #[ignore = "daily"]

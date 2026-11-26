@@ -20,8 +20,6 @@ const OPT_LEVEL: &str = "opt-level=3";
 /// Why a build can't use the prebuilt game.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    /// A mod has a build script, which the prebuilt route doesn't run.
-    BuildScript { mod_id: String },
     /// A mod declares Cargo features, or asks the mod API for features of its own.
     Features { mod_id: String },
 }
@@ -29,10 +27,6 @@ pub enum Refusal {
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
-            Self::BuildScript { mod_id } => trf(
-                "E_NATIVE_BUILD_SCRIPT: {mod} has a build script; remove it and ship generated source in the mod",
-                &[("mod", mod_id)],
-            ),
             Self::Features { mod_id } => trf(
                 "E_NATIVE_FEATURES: {mod} requests Cargo features; use the pinned SDK feature set",
                 &[("mod", mod_id)],
@@ -47,10 +41,6 @@ impl Refusal {
     /// its remedy for the mod's author stay in the build log ([`Display`](std::fmt::Display)).
     pub fn plain(&self) -> String {
         let why = match self {
-            Self::BuildScript { mod_id } => trf(
-                "{mod} can't be built here: it brings build steps of its own, which Sunrise doesn't run.",
-                &[("mod", mod_id)],
-            ),
             Self::Features { mod_id } => trf(
                 "{mod} can't be built here: it asks for build options Sunrise's game doesn't offer.",
                 &[("mod", mod_id)],
@@ -73,20 +63,8 @@ pub fn refusal(projects: &[api::Project<'_>]) -> Option<Refusal> {
 /// Why `project` alone can't build against the prebuilt game, or `None` when it can.
 pub fn project_refusal(project: &api::Project<'_>) -> Option<Refusal> {
     let mod_id = || project.bundle.manifest.id.clone();
-    let cargo = &project.cargo;
-    let package = cargo.get("package");
-    let build = package.and_then(|p| p.get("build"));
-    let has_script = build.is_some_and(|value| value.as_bool() != Some(false))
-        || (build.and_then(toml::Value::as_bool) != Some(false)
-            && project.bundle.dir.join("build.rs").is_file())
-        || cargo
-            .get("build-dependencies")
-            .and_then(toml::Value::as_table)
-            .is_some_and(|t| !t.is_empty());
-    if has_script {
-        return Some(Refusal::BuildScript { mod_id: mod_id() });
-    }
-    if cargo
+    if project
+        .cargo
         .get("features")
         .and_then(toml::Value::as_table)
         .is_some_and(|t| !t.is_empty())
@@ -331,8 +309,7 @@ pub fn identity(dir: &Path) -> Result<Identity, String> {
     }
     let Format {
         package_format: found,
-    } = serde_json::from_str(&text)
-        .map_err(|e| format!("{}: {e}; fetch the SDK again", path.display()))?;
+    } = serde_json::from_str(&text).map_err(|e| unreadable_identity(&path, &e))?;
     let supported = sunrise_mod_package::sdk::PACKAGE_FORMAT;
     let (version, supported_text) = (found.to_string(), supported.to_string());
     let args = [
@@ -340,16 +317,34 @@ pub fn identity(dir: &Path) -> Result<Identity, String> {
         ("format", supported_text.as_str()),
     ];
     match found {
-        found if found == supported => serde_json::from_str(&text)
-            .map_err(|e| format!("{}: {e}; fetch the SDK again", path.display())),
+        found if found == supported => {
+            serde_json::from_str(&text).map_err(|e| unreadable_identity(&path, &e))
+        }
         found if found < supported => Err(trf(
-            "SDK format {version} is too old; install a newer SDK (format {format})",
+            "SDK format {version} is too old for this tool (format {format}); the SDK is older than this tool: use the tool in the SDK's own release, or pin a newer SDK with cargo sunrise-mod pin",
             &args,
         )),
         _ => Err(trf(
-            "SDK format {version} is newer than this launcher's supported format {format}; update the launcher",
+            "SDK format {version} is newer than this tool's supported format {format}; this tool is older than the SDK: update cargo sunrise-mod, or use the tool in the SDK's own release",
             &args,
         )),
+    }
+}
+
+/// The refusal for an identity file that does not parse. A field the file lacks or mistypes means
+/// the SDK was written by an older layout of this format than this tool reads; a file that is not
+/// JSON at all is a damaged download.
+fn unreadable_identity(path: &Path, error: &serde_json::Error) -> String {
+    let shown = path.display().to_string();
+    let why = error.to_string();
+    let args = [("path", shown.as_str()), ("why", why.as_str())];
+    if error.is_data() {
+        trf(
+            "{path}: {why}; the SDK is older than this tool: use the tool in the SDK's own release, or pin a newer SDK with cargo sunrise-mod pin",
+            &args,
+        )
+    } else {
+        trf("{path}: {why}; fetch the SDK again", &args)
     }
 }
 
@@ -368,19 +363,49 @@ pub fn check_identity(
         && found.side == target.name()
         && found.rustc.lines().any(|line| line == release);
     if matches {
-        Ok(found)
-    } else {
-        Err(trf(
-            "The prebuilt game for {revision} was made for another build ({commit}, {target}, {side}, {rustc}).",
-            &[
-                ("revision", revision),
-                ("commit", &found.commit),
-                ("target", &found.target),
-                ("side", &found.side),
-                ("rustc", found.rustc.lines().next().unwrap_or_default()),
-            ],
-        ))
+        return Ok(found);
     }
+    // Only the Rust release differs: say which side is older.
+    let numbers = |release: &str| {
+        release
+            .split('.')
+            .map(|part| part.parse::<u32>().ok())
+            .collect::<Option<Vec<_>>>()
+    };
+    let theirs = found
+        .rustc
+        .lines()
+        .find_map(|line| line.strip_prefix("release: "));
+    if found.commit == revision
+        && found.target == host
+        && found.side == target.name()
+        && let Some(theirs) = theirs
+        && let (Some(theirs_numbers), Some(ours_numbers)) =
+            (numbers(theirs), numbers(crate::rust::VERSION))
+    {
+        let args = [("rust", theirs), ("this", crate::rust::VERSION)];
+        return Err(if theirs_numbers > ours_numbers {
+            trf(
+                "The prebuilt game was made with Rust {rust}, newer than this tool's {this}; this tool is older than the SDK: update cargo sunrise-mod, or use the tool in the SDK's own release",
+                &args,
+            )
+        } else {
+            trf(
+                "The prebuilt game was made with Rust {rust}, older than this tool's {this}; the SDK is older than this tool: use the tool in the SDK's own release, or pin a newer SDK with cargo sunrise-mod pin",
+                &args,
+            )
+        });
+    }
+    Err(trf(
+        "The prebuilt game for {revision} was made for another build ({commit}, {target}, {side}, {rustc}).",
+        &[
+            ("revision", revision),
+            ("commit", &found.commit),
+            ("target", &found.target),
+            ("side", &found.side),
+            ("rustc", found.rustc.lines().next().unwrap_or_default()),
+        ],
+    ))
 }
 
 /// Does this plan need the SDK's own tool because it copies a lower-crate function from a
@@ -546,8 +571,9 @@ pub enum Route {
     /// A mod has a `[native]` table row (mixin, module, bridge, state, loop) or game internals:
     /// build its dylib against the whole package's metadata.
     Engine,
-    /// A mod depends on a crate outside the game's: its dylib is built with Cargo against
-    /// the whole package ([`super::registry_compile`]).
+    /// A mod depends on a crate outside the game's, or has a build script: its dylib is built
+    /// with Cargo against the whole package ([`super::registry_compile`]), which runs the build
+    /// scripts.
     Registry,
 }
 
@@ -557,10 +583,14 @@ impl Route {
         projects
             .iter()
             .map(|project| {
-                match native_route::requirement(&project.bundle.manifest, &project.cargo) {
+                match native_route::requirement(
+                    &project.bundle.manifest,
+                    &project.cargo,
+                    &project.bundle.dir,
+                ) {
                     Requirement::Api => Self::Api,
                     Requirement::Engine(_) => Self::Engine,
-                    Requirement::Registry(_) => Self::Registry,
+                    Requirement::Registry(_) | Requirement::BuildScript => Self::Registry,
                 }
             })
             .max()
@@ -1155,17 +1185,19 @@ pub fn compiling(id: &str) -> String {
     trf("Compiling {mod}", &[("mod", id)])
 }
 
-/// The launcher's settings for a kept registry build: bumped whenever the launcher changes the
-/// cargo arguments, the compiler plan or how it stages, so a build made the old way is not reused.
+/// The tool's settings for a kept registry build: bumped whenever the tool changes the cargo
+/// arguments, the compiler plan or how it stages, so a build made the old way is not reused.
 const KEPT_BUILD_FLAGS: u32 = 3;
 
 /// The folder a registry build's cargo output is kept in, under `native/prebuilt-build`: one per
-/// game build, Rust toolchain and launcher settings ([`KEPT_BUILD_FLAGS`]). Inside one, cargo's
-/// own fingerprints decide what to rebuild.
+/// game build, Rust toolchain, tool commit ([`crate::contract::TOOL_COMMIT`]) and tool settings
+/// ([`KEPT_BUILD_FLAGS`]), so two different tools never share one. Inside one, cargo's own
+/// fingerprints decide what to rebuild.
 fn kept_build(rust: &dyn Toolchain, package: &Package, revision: &str) -> Result<String, String> {
     let mut hasher = Sha256::new();
     hasher.update(KEPT_BUILD_FLAGS.to_le_bytes());
     hasher.update(crate::rust::VERSION.as_bytes());
+    hasher.update(crate::contract::TOOL_COMMIT.as_bytes());
     hasher.update(rust.target().as_bytes());
     // The package's files reach rustc and the linker through the compiler plan, which cargo
     // doesn't fingerprint: a package any of whose files differ is another key. Each file is known
@@ -1463,6 +1495,11 @@ mod tests {
             "registry",
             "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\nserde='1'",
         );
+        let scripted = write(
+            "scripted",
+            "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}",
+        );
+        fs::write(folder.join("scripted/build.rs"), "fn main() {}").unwrap();
         let with = |change: &dyn Fn(&mut sunrise_mod_package::manifest::Manifest)| {
             let mut bundle = api_only.clone();
             change(&mut bundle.manifest);
@@ -1531,6 +1568,20 @@ mod tests {
             assert_eq!(route(&[needs, &registry]), Route::Registry);
         }
         assert_eq!(route(&[&api_only, &registry]), Route::Registry);
+        // A build script runs only under Cargo: the mod's own `build.rs` sends the set there,
+        // and `build = false` does not.
+        assert_eq!(route(&[&api_only, &scripted]), Route::Registry);
+        let unscripted = write(
+            "unscripted",
+            "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}",
+        );
+        fs::write(folder.join("unscripted/build.rs"), "fn main() {}").unwrap();
+        fs::write(
+            folder.join("unscripted/Cargo.toml"),
+            "[package]\nname='unscripted'\nversion='0.1.0'\nbuild=false\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n",
+        )
+        .unwrap();
+        assert_eq!(route(&[&api_only, &unscripted]), Route::Api);
         // What ties a mod to its exact build is named by its table.
         let tie = |bundle: &super::super::Bundle| {
             let project = api::Project::read(bundle).unwrap();
@@ -1868,10 +1919,6 @@ mod tests {
                 "[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n[features]\nextra=[]",
                 Refusal::Features { mod_id: id() },
             ),
-            (
-                "build='make.rs'\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}",
-                Refusal::BuildScript { mod_id: id() },
-            ),
         ] {
             assert_eq!(refusal_of(cargo), Some(reason), "{cargo}");
         }
@@ -1898,8 +1945,10 @@ mod tests {
         };
         let error = refusal(5);
         assert!(error.contains("SDK format 5 is too old"), "{error}");
+        assert!(error.contains("the SDK is older"), "{error}");
         let error = refusal(7);
-        assert!(error.contains("update the launcher"), "{error}");
+        assert!(error.contains("this tool is older"), "{error}");
+        assert!(!error.contains("launcher"), "{error}");
     }
 
     #[test]
@@ -1927,6 +1976,7 @@ mod tests {
             // Even when the retired spelling advertises 6, the published name is required.
             incomplete["format_version"] = 6.into();
             let error = read(&incomplete).err().unwrap();
+            assert!(error.contains("the SDK is older than this tool"), "{error}");
             assert!(
                 error.contains(&format!("missing field `{field}`")),
                 "{error}"
