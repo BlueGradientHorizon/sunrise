@@ -49,7 +49,7 @@ impl Game<'_> {
             self.settings.sunrise.translucent_batching,
             self.effective_vsync(),
             &self.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.settings),
+            self.picked_pack_shape(),
             self.renderer
                 .as_ref()
                 .map(|r| r.display_reading())
@@ -84,7 +84,7 @@ impl Game<'_> {
         };
         // The renderer's offer can change while the game runs (Vulkan's formats follow desktop
         // HDR and the window's output), and the frame with it.
-        let request = shader_packs::picked_pack_shape(&self.settings).frame();
+        let request = self.picked_pack_shape().frame();
         let wanted = self
             .renderer
             .as_ref()

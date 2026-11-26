@@ -363,7 +363,7 @@ impl Loading {
                 self.settings.sunrise.translucent_batching,
                 self.settings.vsync,
                 &self.settings.sunrise,
-                shader_packs::picked_pack_shape(&self.settings),
+                shader_packs::first_pack_shape(&self.settings),
                 self.renderer
                     .as_ref()
                     .map(|r| r.display_reading())

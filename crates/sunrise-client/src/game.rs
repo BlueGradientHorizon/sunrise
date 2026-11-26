@@ -10813,7 +10813,7 @@ impl Game<'_> {
             self.settings.sunrise.translucent_batching,
             self.effective_vsync(),
             &self.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.settings),
+            self.picked_pack_shape(),
             display,
             self.settings.texture_atlas_settings(),
         )?;
