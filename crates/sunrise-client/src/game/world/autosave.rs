@@ -179,6 +179,8 @@ impl Game<'_> {
             return Ok(());
         }
         self.admit_level_save()?;
+        // Mods write their own state into this cycle before any of it (players first) goes to disk.
+        self.native_world_save_start(wait);
         let owner_saved = self.save_placed_players();
         self.write_world(wait, owner_saved)
     }
@@ -187,6 +189,7 @@ impl Game<'_> {
     /// finished its writes. Do not serialize the integrated server's shell.
     pub(super) fn save_world_after_players(&mut self, owner_saved: bool) -> Result<()> {
         self.admit_level_save()?;
+        self.native_world_save_start(true);
         self.write_world(true, owner_saved)
     }
 

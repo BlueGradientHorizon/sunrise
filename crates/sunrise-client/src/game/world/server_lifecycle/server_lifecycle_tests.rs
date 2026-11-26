@@ -51,6 +51,17 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
     struct SaveEvents(Arc<Mutex<Vec<&'static str>>>);
     #[mod_api::__subscriptions]
     impl Hooks for SaveEvents {
+        fn world_save_start(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::WorldSaveStartEvent,
+        ) {
+            self.0.lock().unwrap().push(if event.wait {
+                "save start, wait"
+            } else {
+                "save start"
+            });
+        }
         fn level_save(&self, _: &mut dyn ServerHost, _: &mut mod_api::LevelSaveEvent<'_>) {
             self.0.lock().unwrap().push("level saved");
         }
@@ -86,7 +97,10 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
                 .begin_open(Some(mod_api::Authority::IntegratedServer));
             game.native_lifecycle.world_open_ready().unwrap();
             game.save_game().unwrap();
-            assert_eq!(*events.lock().unwrap(), ["level saved", "world saved"]);
+            assert_eq!(
+                *events.lock().unwrap(),
+                ["save start, wait", "level saved", "world saved"]
+            );
             events.lock().unwrap().clear();
             game.level.name = "saved on exit after record failure".into();
 
@@ -126,7 +140,7 @@ fn integrated_stop_finishes_after_an_unencodable_record() {
             assert_eq!(game.save.record_save_failures(), 1);
             assert_eq!(
                 *events.lock().unwrap(),
-                ["level saved", "world saved", "stopped"]
+                ["save start, wait", "level saved", "world saved", "stopped"]
             );
         });
     });
