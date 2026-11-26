@@ -1449,6 +1449,9 @@ mod native_living_refs;
 #[path = "game/modding/native_living_renderers_tests.rs"]
 mod native_living_renderers_tests;
 #[cfg(test)]
+#[path = "game/modding/native_living_travel_moved_tests.rs"]
+mod native_living_travel_moved_tests;
+#[cfg(test)]
 #[path = "game/modding/native_living_travel_sweep_tests.rs"]
 mod native_living_travel_sweep_tests;
 #[cfg(test)]

@@ -618,22 +618,29 @@ pub(super) fn travel_in_water(
         _ => 0.01,
     };
     m.move_relative(speed, input);
-    m.travel_move(w, level, events, pause, |m, _, _, _| {
-        m.set_velocity(Vec3::new(
-            m.velocity.x * 0.9,
-            m.velocity.y * 0.9,
-            m.velocity.z * 0.9,
-        ));
-        // Axolotl.travelInWater has no fish sinking or generic water gravity.
-        if m.species() != Species::Axolotl && m.ai.target.is_none() {
-            // `Vec3.add(0.0, -0.005, 0.0)`: adding 0.0 turns a -0.0 into 0.0.
+    m.travel_move(
+        w,
+        level,
+        events,
+        pause,
+        sunrise_world::travel::TravelMode::Water,
+        |m, _, _, _| {
             m.set_velocity(Vec3::new(
-                m.velocity.x + 0.0,
-                m.velocity.y - 0.005,
-                m.velocity.z + 0.0,
+                m.velocity.x * 0.9,
+                m.velocity.y * 0.9,
+                m.velocity.z * 0.9,
             ));
-        }
-    })
+            // Axolotl.travelInWater has no fish sinking or generic water gravity.
+            if m.species() != Species::Axolotl && m.ai.target.is_none() {
+                // `Vec3.add(0.0, -0.005, 0.0)`: adding 0.0 turns a -0.0 into 0.0.
+                m.set_velocity(Vec3::new(
+                    m.velocity.x + 0.0,
+                    m.velocity.y - 0.005,
+                    m.velocity.z + 0.0,
+                ));
+            }
+        },
+    )
 }
 /// FishMoveControl.tick (fish use it instead of the default move control).
 pub(crate) fn fish_move_control(m: &mut Mob) {

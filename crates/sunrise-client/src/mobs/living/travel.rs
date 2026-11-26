@@ -90,7 +90,14 @@ impl Mob {
                 ControlFlow::Continue(())
             }
             // Squid.travel moves by its current velocity alone, even out of water.
-            TravelRoute::Squid => self.travel_move(w, level, events, pause, |_, _, _, _| {}),
+            TravelRoute::Squid => self.travel_move(
+                w,
+                level,
+                events,
+                pause,
+                sunrise_world::travel::TravelMode::VelocityOnly,
+                |_, _, _, _| {},
+            ),
             TravelRoute::Fish => aquatic::travel_in_water(self, w, level, input, events, pause),
             TravelRoute::Drowned => undead::drowned_travel(self, w, level, input, events, pause),
             TravelRoute::Frog => frog::travel(self, w, level, input, events, pause),
@@ -159,7 +166,10 @@ impl Mob {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext, TravelMode as Mode};
+    use mod_api::{
+        EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LivingTravelMovedEvent, LoopContext,
+        TravelMode as Mode,
+    };
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -216,5 +226,113 @@ mod tests {
                 (3, Mode::VelocityOnly)
             ]
         );
+    }
+    /// A `living_travel_moved` listener that records the displacement it hears, replaces the
+    /// velocity when it names one, and vetoes every zombie move when asked to.
+    struct Moved {
+        velocity: Option<[f64; 3]>,
+        veto: bool,
+        heard: Arc<Mutex<Vec<[f64; 3]>>>,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Moved {
+        fn living_travel_moved(&self, _: &dyn LoopContext, event: &mut LivingTravelMovedEvent<'_>) {
+            self.heard.lock().unwrap().push(event.moved);
+            if let Some(velocity) = self.velocity {
+                *event.velocity = velocity;
+            }
+        }
+        fn entity_move(&self, _: &dyn LoopContext, event: &mut EntityMoveEvent<'_>) -> Flow {
+            if self.veto && event.kind == "minecraft:zombie" {
+                Flow::Cancel
+            } else {
+                Flow::Continue
+            }
+        }
+    }
+
+    /// One travel of a zombie standing in lava (its lava height above the fluid jump threshold)
+    /// in open air at `(0.5, 80, 0.5)` with velocity `start`: the velocity and x position it
+    /// leaves, and every displacement the listener heard.
+    fn lava_travel(listener: Moved, start: Vec3) -> (Vec3, f64, Vec<[f64; 3]>) {
+        let heard = Arc::clone(&listener.heard);
+        let mods = vec![mod_api::ModEntry::new("moved", Box::new(listener))].into();
+        let mut left = None;
+        mod_platform::testing::with_mods(mods, || {
+            assert!(
+                crate::mobs::world::with_test_world(&[], |w, types| {
+                    let mut mob = Mob::new(
+                        1,
+                        Arc::new(types.types["minecraft:zombie"].clone()),
+                        Vec3::new(0.5, 80.0, 0.5),
+                        0.0,
+                    );
+                    mob.fluids.in_lava = true;
+                    mob.fluids.lava = 1.0;
+                    mob.velocity = start;
+                    let mut test_level = crate::health::TestLevel::new(0);
+                    mob.travel(w, &mut test_level.level(), Vec3::ZERO, &mut Vec::new());
+                    left = Some((mob.velocity, mob.position.x));
+                }),
+                "prepared resources are required"
+            );
+        });
+        let (velocity, x) = left.unwrap();
+        let heard = heard.lock().unwrap().clone();
+        (velocity, x, heard)
+    }
+
+    /// The velocity a listener sets after the lava branch's move is what the lava drag (half of
+    /// each component) and gravity (`0.08 / 4`) act on: vanilla's `travelInLava` arithmetic on the
+    /// edit.
+    #[test]
+    #[ignore = "daily"]
+    fn a_lava_moved_edit_is_what_the_lava_drag_acts_on() {
+        let (velocity, _, heard) = lava_travel(
+            Moved {
+                velocity: Some([0.8, 0.4, -0.2]),
+                veto: false,
+                heard: Arc::default(),
+            },
+            Vec3::new(0.1, 0.0, 0.0),
+        );
+        assert_eq!(heard.len(), 1);
+        assert_eq!(
+            velocity,
+            Vec3::new(0.8 * 0.5, 0.4 * 0.5 - 0.08 / 4.0, -0.2 * 0.5)
+        );
+    }
+
+    /// A move an `entity_move` listener vetoed still fires the hook, with a zero displacement.
+    #[test]
+    #[ignore = "daily"]
+    fn a_vetoed_move_still_fires_moved_with_zero_displacement() {
+        let (_, x, heard) = lava_travel(
+            Moved {
+                velocity: None,
+                veto: true,
+                heard: Arc::default(),
+            },
+            Vec3::new(1.0, 0.0, 0.0),
+        );
+        assert_eq!(x, 0.5, "the veto held the body");
+        assert_eq!(heard, vec![[0.0; 3]]);
+    }
+
+    /// A non-finite replacement is dropped: the game's own velocity goes through the lava drag.
+    #[test]
+    #[ignore = "daily"]
+    fn a_non_finite_lava_moved_edit_is_dropped() {
+        let (velocity, _, _) = lava_travel(
+            Moved {
+                velocity: Some([f64::NAN, 0.0, 0.0]),
+                veto: true,
+                heard: Arc::default(),
+            },
+            Vec3::new(0.6, 0.0, 0.0),
+        );
+        assert_eq!(velocity.x, 0.6 * 0.5);
+        assert_eq!(velocity.y, 0.0 * 0.5 - 0.08 / 4.0);
     }
 }

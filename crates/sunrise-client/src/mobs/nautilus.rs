@@ -177,13 +177,20 @@ pub(super) fn travel(
 ) -> ControlFlow<super::living::TravelPause> {
     let speed = m.ai.speed;
     m.move_relative(speed, input);
-    m.travel_move(w, level, events, pause, |m, _, _, _| {
-        m.set_velocity(Vec3::new(
-            m.velocity.x * 0.9,
-            m.velocity.y * 0.9,
-            m.velocity.z * 0.9,
-        ));
-    })
+    m.travel_move(
+        w,
+        level,
+        events,
+        pause,
+        sunrise_world::travel::TravelMode::Water,
+        |m, _, _, _| {
+            m.set_velocity(Vec3::new(
+                m.velocity.x * 0.9,
+                m.velocity.y * 0.9,
+                m.velocity.z * 0.9,
+            ));
+        },
+    )
 }
 /// `tickRidden` and `getRiddenInput`: turn half way to the rider, swim along
 /// their look, faster in water (`getRiddenSpeed`), and dash on the jump.
