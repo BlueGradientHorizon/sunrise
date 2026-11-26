@@ -32,12 +32,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / 'tools'))
 
-import lab  # noqa: E402
-import oracle_harness  # noqa: E402
-import test_model_baking_parity as baking  # noqa: E402
-import test_rust_parity as base  # noqa: E402
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness, test_model_baking_parity as baking, test_rust_parity as base  # noqa: E402
 
 
 def bits(value):

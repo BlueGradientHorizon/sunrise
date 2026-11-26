@@ -336,8 +336,8 @@ impl Game<'_> {
         pos: [f64; 3],
         source: Option<(&'static str, u32)>,
     ) -> Option<i32> {
-        use sunrise_client::mobs::{DamageKind, Who, drops};
-        use sunrise_world::loot::{LootDamage, LootEntity};
+        use sunrise_client::mobs::{Who, drops};
+        use sunrise_world::loot::LootEntity;
         let accepted = m
             .accepted_hit
             .take()
@@ -371,26 +371,7 @@ impl Game<'_> {
                     }),
                 None => None,
             };
-            let projectile = match d.kind {
-                DamageKind::Arrow => Some("minecraft:arrow"),
-                DamageKind::Fireball => Some("minecraft:fireball"),
-                DamageKind::WitherSkull => Some("minecraft:wither_skull"),
-                DamageKind::Fireworks => Some("minecraft:firework_rocket"),
-                _ => None,
-            };
-            let direct = match projectile {
-                Some(kind) => Some(LootEntity {
-                    kind: kind.into(),
-                    ..LootEntity::default()
-                }),
-                None => source.clone(),
-            };
-            LootDamage {
-                kind: source_damage_type(d).into(),
-                source,
-                direct,
-                is_direct: projectile.is_none(),
-            }
+            loot_damage(d, source)
         });
         let vehicle = m
             .extra
@@ -599,6 +580,51 @@ impl Game<'_> {
     }
 }
 
+/// The projectiles that name themselves as the causing entity when they have no owner; other
+/// ownerless projectiles (TNT, potions, snowballs, rockets...) name none, so their blow is not
+/// direct.
+const OWN_CAUSE: [&str; 5] = [
+    "minecraft:arrow",
+    "minecraft:spectral_arrow",
+    "minecraft:trident",
+    "minecraft:fireball",
+    "minecraft:small_fireball",
+];
+
+/// A dying mob's last damage as its loot sees it (`DamageSource`): the type,
+/// the attacker `source` (`getEntity`) and the entity that dealt the blow
+/// (`getDirectEntity`), the attacker itself unless the damage recorded
+/// another, such as a thrown trident or a splash potion.
+fn loot_damage(
+    d: Damage,
+    source: Option<sunrise_world::loot::LootEntity>,
+) -> sunrise_world::loot::LootDamage {
+    // The entity that landed the blow when it was not the attacker, as the hit recorded it. A
+    // blow with no recorded one (a `/damage` of an arrow's type) has none: the damage source's
+    // direct entity is its causing entity, or no entity at all.
+    let projectile = d.direct.map(|kind| sunrise_world::loot::LootEntity {
+        kind: kind.into(),
+        ..Default::default()
+    });
+    // An arrow, a thrown trident or a fireball with no owner is its own causing entity
+    // (`damageSources().arrow(this, owner == null ? this : owner)`, and the trident's and
+    // fireballs' alike): both `source` and `direct`, so the blow is direct.
+    let own_cause = d.attacker.is_none() && d.direct.is_some_and(|kind| OWN_CAUSE.contains(&kind));
+    let source = if own_cause {
+        projectile.clone()
+    } else {
+        source
+    };
+    let is_direct = projectile.is_none() || own_cause;
+    let direct = projectile.or_else(|| source.clone());
+    sunrise_world::loot::LootDamage {
+        kind: source_damage_type(d).into(),
+        source,
+        direct,
+        is_direct,
+    }
+}
+
 #[cfg(test)]
 #[path = "death_weapon_tests.rs"]
 mod tests;
@@ -606,3 +632,7 @@ mod tests;
 #[cfg(test)]
 #[path = "death_weapon_review_tests.rs"]
 mod review_tests;
+
+#[cfg(test)]
+#[path = "death_loot_direct_tests.rs"]
+mod direct_tests;

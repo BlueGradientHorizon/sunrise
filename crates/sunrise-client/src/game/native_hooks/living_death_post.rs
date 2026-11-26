@@ -131,6 +131,7 @@ mod tests {
                     kind: DamageKind::PlayerAttack,
                     attacker: Some(Who::Player),
                     from: Some([0.0; 3]),
+                    direct: None,
                     attacker_species: None,
                 };
                 let mut mob = sheep(game, player_blow);
@@ -167,6 +168,7 @@ mod tests {
                     kind: DamageKind::Fall,
                     attacker: None,
                     from: None,
+                    direct: None,
                     attacker_species: None,
                 };
                 let mob = sheep(game, fall);
@@ -185,6 +187,7 @@ mod tests {
                         kind: DamageKind::Generic,
                         attacker: None,
                         from: None,
+                        direct: None,
                         attacker_species: None,
                     },
                 );
@@ -207,6 +210,7 @@ mod tests {
                         kind: DamageKind::PlayerAttack,
                         attacker: Some(Who::Player),
                         from: Some([0.0; 3]),
+                        direct: None,
                         attacker_species: None,
                     },
                 );

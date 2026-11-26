@@ -659,7 +659,7 @@ mod tests {
     fn explicit_indirect_magic_is_not_assumed_to_be_a_thrown_potion() {
         let mut m = enderman();
         m.random = sunrise_core::random::LegacyRandom::new(1);
-        let positioned = Damage::indirect_magic(None, [0.0; 3]);
+        let positioned = Damage::indirect_magic("minecraft:splash_potion", None, [0.0; 3]);
         after_hurt(&mut m, &positioned, false);
         assert_eq!(m.extra.counter2, 0, "the built-in potion path handles this");
         after_hurt(&mut m, &positioned, true);

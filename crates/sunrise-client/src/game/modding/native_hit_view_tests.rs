@@ -388,6 +388,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                 kind: DamageKind::MobAttack,
                 attacker: Some(Who::Mob(zombie)),
                 from: Some([0.5, 70.0, 0.5]),
+                direct: None,
                 attacker_species: None,
             };
             assert!(game.mob_hits_mob(cow, 2.0, source));
@@ -415,6 +416,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
                 kind: DamageKind::MobAttack,
                 attacker: Some(Who::Mob(zombie)),
                 from: Some([0.5, 70.0, 0.5]),
+                direct: None,
                 attacker_species: None,
             };
             assert!(game.mob_hits_mob(cow, 1.0, source));

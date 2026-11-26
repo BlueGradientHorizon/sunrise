@@ -12,10 +12,11 @@ import os
 from pathlib import Path
 import tempfile
 
-try:
-    from . import lab, oracle_harness as h, test_model_baking_parity as baking, integration_env
-except ImportError:
-    import lab, oracle_harness as h, test_model_baking_parity as baking, integration_env
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness as h, test_model_baking_parity as baking, integration_env
 
 
 def main():

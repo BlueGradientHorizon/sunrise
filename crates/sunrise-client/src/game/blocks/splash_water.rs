@@ -132,8 +132,17 @@ impl Game<'_> {
             dx * dx + dy * dy + dz * dz < 16.0
         };
         if hurts || extinguishes {
-            let source =
-                Damage::indirect_magic(by_player.then_some(Who::Player), [at.x, at.y, at.z]);
+            // The thrown potion is the direct entity, a splash or a lingering one.
+            let potion = if &*stack.item == "minecraft:lingering_potion" {
+                "minecraft:lingering_potion"
+            } else {
+                "minecraft:splash_potion"
+            };
+            let source = Damage::indirect_magic(
+                potion,
+                by_player.then_some(Who::Player),
+                [at.x, at.y, at.z],
+            );
             let attacker = by_player.then_some(Who::Player);
             let attack = self.attack_of_who(attacker);
             for index in 0..self.mobs.len() {

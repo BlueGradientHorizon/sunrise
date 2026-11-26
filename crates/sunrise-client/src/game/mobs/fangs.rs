@@ -334,6 +334,8 @@ impl Game<'_> {
                     },
                     attacker,
                     from: Some(f.pos),
+                    // `indirectMagic(this, owner)`; `magic()` names no entity.
+                    direct: owner.is_some().then_some("minecraft:evoker_fangs"),
                     attacker_species: None,
                 },
             );

@@ -23,12 +23,10 @@ import threading
 import time
 from pathlib import Path
 
-if __package__:
-    from . import anvil_dump
-    from .lab import free_port, parse_varint, varint
-else:
-    import anvil_dump
-    from lab import free_port, parse_varint, varint
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import anvil_dump
+from tools.lab import free_port, parse_varint, varint
 
 BX, BZ, SIZE = 144, 144, 96          # south-west corner and size of the platforms (inside the spawn chunks)
 LAYERS = list(range(100, 245, 16))   # platform y levels: one chunk section each, the last one reaches y = 255

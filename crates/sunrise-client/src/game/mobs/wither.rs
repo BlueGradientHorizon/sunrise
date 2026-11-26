@@ -277,6 +277,8 @@ impl Game<'_> {
                     kind,
                     attacker: live_owner,
                     from: skull.from,
+                    // `magic()` for an ownerless skull names no entity.
+                    direct: live_owner.is_some().then(|| p.entity_type()),
                     attacker_species: owner_species,
                 };
                 let mut survived_hit = false;
@@ -370,7 +372,7 @@ impl Game<'_> {
         ) {
             self.combat.blast_resistance_cap = Some(0.8);
         }
-        self.combat.explosion_direct = Some(p.id);
+        self.combat.explosion_direct = Some((p.id, p.entity_type()));
         let result = self.with_impacting_projectile(p, |g| {
             g.with_hive_emptying_blast(|g| {
                 g.explode(

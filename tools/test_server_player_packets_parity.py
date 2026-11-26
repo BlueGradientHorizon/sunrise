@@ -12,12 +12,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-try:
-    from . import lab, oracle_harness, test_rust_parity as base
-except ImportError:
-    import lab
-    import oracle_harness
-    import test_rust_parity as base
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness, test_rust_parity as base
 
 
 NAME = 'server-player-packets-parity'

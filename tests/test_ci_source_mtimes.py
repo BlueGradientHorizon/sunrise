@@ -7,8 +7,11 @@ import tempfile
 import unittest
 
 from tools.ci.source_mtimes import restore_and_snapshot
-from tests.test_ci_concurrency import ROOT, yaml
+from tests.test_ci_concurrency import ROOT
 import re
+from tools.ci import vendored_yaml
+
+yaml = vendored_yaml.load()
 
 
 class SourceMtimesTests(unittest.TestCase):

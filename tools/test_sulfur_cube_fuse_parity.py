@@ -24,16 +24,17 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-try:
-    from . import (
-        lab,
-        oracle_harness as harness,
-        test_model_baking_parity as baking,
-        test_rust_parity as base,
-        integration_env,
-    )
-except ImportError:
-    import lab, oracle_harness as harness, test_model_baking_parity as baking, test_rust_parity as base, integration_env
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import (
+    lab,
+    oracle_harness as harness,
+    test_model_baking_parity as baking,
+    test_rust_parity as base,
+    integration_env,
+)
 
 SERVER_LINES = 1 + 14 * 3
 CLIENT_LINES = 1 + 24

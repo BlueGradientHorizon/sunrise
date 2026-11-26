@@ -9,8 +9,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-with patch.object(sys, "path", [*sys.path, str(Path(__file__).resolve().parents[1] / "tools/hotspots")]):
-    import check_guards as guards
+from tools.hotspots import check_guards as guards
 
 
 def summary(*lines):

@@ -1227,6 +1227,21 @@ fn worn_mob_visibility(
 }
 
 impl Items {
+    /// `ItemStack.has(DataComponents.TOOL)`: the stack's own patch first (a `tool` it sets, or
+    /// one it removes), then the item's default components (`AbstractPiglin.isHoldingMeleeWeapon`
+    /// asks it of the main hand).
+    pub fn has_tool(&self, stack: &ItemStack) -> bool {
+        if let Some(data) = stack.data() {
+            if data.other("!minecraft:tool").is_some() {
+                return false;
+            }
+            if data.other("minecraft:tool").is_some() {
+                return true;
+            }
+        }
+        self.get(&stack.item)
+            .is_some_and(|info| info.tool_damage_per_block.is_some())
+    }
     /// Load item data; bind the world's damage catalog before preparing recipes.
     pub fn load(
         root: &Path,

@@ -636,6 +636,7 @@ fn is_fire(kind: DamageKind) -> bool {
         kind,
         attacker: None,
         from: None,
+        direct: None,
         attacker_species: None,
     };
     source.is_fire()
@@ -1689,14 +1690,17 @@ impl Game<'_> {
                 Vec3::new(x - 1.0, y, z - 1.0),
                 Vec3::new(x + 1.0, y + 2.0, z + 1.0),
             ));
-            self.combat.explosion_direct = Some(c.id);
+            self.combat.explosion_direct = Some((c.id, "minecraft:end_crystal"));
             let _ = self.server_explode_from(
                 at,
                 6.0,
                 interaction,
                 false,
-                super::explosion::ExplosionSource::default()
-                    .with_damage_direct(c.id, sunrise_client::health::DirectEntity::Other),
+                super::explosion::ExplosionSource::default().with_damage_direct(
+                    c.id,
+                    Some("minecraft:end_crystal"),
+                    sunrise_client::health::DirectEntity::Other,
+                ),
             );
             self.combat.explosion_direct = None;
             self.combat.explosion_in_water = false;
@@ -2453,6 +2457,7 @@ impl Game<'_> {
                 kind,
                 attacker: by_player.then_some(Who::Player),
                 from: None,
+                direct: None,
                 attacker_species: None,
             });
             // `damageSources().explosion(crystal, player)`: the crystal is the direct entity.
@@ -4594,6 +4599,7 @@ impl Game<'_> {
                     direct: self
                         .combat
                         .explosion_direct
+                        .map(|(id, _)| id)
                         .or(self.combat.explosion_source)
                         .map_or(0, |id| id as i32),
                     position: Some(center),

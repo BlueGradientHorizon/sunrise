@@ -1486,6 +1486,7 @@ mod tests {
                 kind,
                 attacker: Some(Who::Mob(5)),
                 from: None,
+                direct: None,
                 attacker_species: None,
             };
             assert!(m.damage(&mut test_level.level().attacked_by(&same_mob), 1.0, source));
@@ -1523,6 +1524,7 @@ mod tests {
                 kind,
                 attacker: Some(target.who),
                 from: None,
+                direct: None,
                 attacker_species: None,
             };
             assert!(m.damage(&mut test_level.level().attacked_by(attack), 1.0, source));
@@ -1542,6 +1544,7 @@ mod tests {
             kind: mob_projectile,
             attacker: Some(Who::Mob(5)),
             from: None,
+            direct: None,
             attacker_species: None,
         };
         assert!(
