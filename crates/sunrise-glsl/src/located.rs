@@ -11,6 +11,9 @@ pub struct Error {
     pub file: String,
     pub line: u32,
     pub message: String,
+    /// The block or sampler a pipeline does not provide, for the error that says so (a program
+    /// reads a name its pipeline neither binds nor provides); `None` for every other error.
+    pub unprovided: Option<String>,
 }
 
 impl std::fmt::Display for Error {
@@ -25,6 +28,24 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+impl Error {
+    /// `message` at `line` of `file` (line 0: the file as a whole).
+    pub fn new(file: impl Into<String>, line: u32, message: impl Into<String>) -> Self {
+        Self {
+            file: file.into(),
+            line,
+            message: message.into(),
+            unprovided: None,
+        }
+    }
+
+    /// This error, saying `name` is the block or sampler the pipeline does not provide.
+    pub fn with_unprovided(mut self, name: impl Into<String>) -> Self {
+        self.unprovided = Some(name.into());
+        self
+    }
+}
+
 /// Where something is in the author's files: a file id and a line from 1, as [`Error`] has them
 /// (line 0: the file as a whole; no file: nowhere known, for a program made without its
 /// sources).
@@ -37,11 +58,7 @@ pub struct Location {
 impl Location {
     /// `message` here.
     pub fn error(&self, message: impl std::fmt::Display) -> Error {
-        Error {
-            file: self.file.clone(),
-            line: self.line,
-            message: message.to_string(),
-        }
+        Error::new(self.file.clone(), self.line, message.to_string())
     }
 }
 
@@ -407,6 +424,7 @@ mod tests {
             file: "minecraft:shaders/core/text.fsh".into(),
             line,
             message: "fragment shader: oops".into(),
+            unprovided: None,
         };
         assert_eq!(
             describe(&[error(3), error(0)]),

@@ -39,23 +39,21 @@ pub(super) fn rewrite(pp: &Preprocessed) -> (Option<Preprocessed>, Vec<Error>) {
     let tokens = lex(&pp.code);
     let next = |i: usize| (i + 1..tokens.len()).find(|&j| significant(tokens[j]));
     let prev = |i: usize| (0..i).rev().find(|&j| significant(tokens[j]));
-    let line_of = |at: usize| -> Error {
+    let error_at = |at: usize, message: String| -> Error {
         let line: usize = tokens[..at.min(tokens.len())]
             .iter()
             .map(|t| t.matches('\n').count())
             .sum();
         let o = pp.lines.get(line).copied().unwrap_or_default();
-        Error {
-            file: pp.files.get(o.file as usize).cloned().unwrap_or_default(),
-            line: o.line,
-            message: String::new(),
-        }
+        Error::new(
+            pp.files.get(o.file as usize).cloned().unwrap_or_default(),
+            o.line,
+            message,
+        )
     };
     let mut errors = Vec::new();
     let mut fail = |at: usize, message: String| {
-        let mut e = line_of(at);
-        e.message = message;
-        errors.push(e);
+        errors.push(error_at(at, message));
     };
     // The matching close of the bracket at `open`.
     let matching = |open: usize| -> Option<usize> {

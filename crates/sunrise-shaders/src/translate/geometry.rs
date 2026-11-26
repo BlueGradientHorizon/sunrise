@@ -265,11 +265,11 @@ fn combine(
     inputs: &GeometryInputs,
 ) -> Result<(Preprocessed, u32), Vec<Error>> {
     let error = |message: String| {
-        vec![Error {
-            file: geometry.files.first().cloned().unwrap_or_default(),
-            line: 0,
+        vec![Error::new(
+            geometry.files.first().cloned().unwrap_or_default(),
+            0,
             message,
-        }]
+        )]
     };
     // Interface blocks first become plain varyings (`interface_blocks`), the vertex stage's
     // `out` block and the geometry stage's `in` array alike: what follows reads declarations
