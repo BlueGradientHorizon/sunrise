@@ -103,13 +103,8 @@ impl crate::game::ClientGame<'_> {
     }
     /// The stack at a resolved display slot on the active item tab, accounting for scroll.
     pub fn creative_display_stack(&self, slot: usize) -> Option<ItemStack> {
-        let names = &self.common.pack.names;
-        let cell = slot - Creative::DISPLAY;
-        let first_row = self.client.creative_screen.0.first_row(names);
-        self.client
-            .creative_screen
-            .0
-            .shown(names, first_row * 9 + cell)
+        let shown = self.client.creative_screen.0.display_window(&self.common.pack.names);
+        shown.stack(slot).cloned()
     }
     pub fn creative_inventory_open(&self) -> bool {
         self.client.screen == Screen::Creative && self.client.creative_screen.0.tab().inventory
@@ -360,27 +355,20 @@ impl crate::game::ClientGame<'_> {
             }
             self.draw_hovered_slot_highlight(batch, true, ox, oy);
         } else {
-            let items = self.client.creative_screen.0.items(&self.common.pack.names);
-            let first = self
-                .client
-                .creative_screen
-                .0
-                .first_row(&self.common.pack.names);
-            for r in 0..5 {
-                for c in 0..9 {
-                    let Some(stack) = items.get((first + r) * 9 + c).filter(|s| s.count > 0) else {
-                        continue;
-                    };
-                    let (x, y) = (ox + 9.0 + c as f32 * 18.0, oy + 18.0 + r as f32 * 18.0);
-                    let over = hovered_slot == Some(Creative::DISPLAY + r * 9 + c);
-                    if over {
-                        self.draw_slot_highlight(batch, false, x, y);
-                    }
-                    self.draw_item(batch, stack, x, y);
-                    if over {
-                        self.draw_slot_highlight(batch, true, x, y);
-                        hovered = Some((stack.clone(), true));
-                    }
+            let shown = self.client.creative_screen.0.display_window(&self.common.pack.names);
+            for (slot, (x, y)) in Creative::display_slots() {
+                let Some(stack) = shown.stack(slot) else {
+                    continue;
+                };
+                let (x, y) = (ox + x, oy + y);
+                let over = hovered_slot == Some(slot);
+                if over {
+                    self.draw_slot_highlight(batch, false, x, y);
+                }
+                self.draw_item(batch, stack, x, y);
+                if over {
+                    self.draw_slot_highlight(batch, true, x, y);
+                    hovered = Some((stack.clone(), true));
                 }
             }
             let drag = self.drag_view();
@@ -396,8 +384,7 @@ impl crate::game::ClientGame<'_> {
                     hovered = self.common.inventory[c].clone().map(|s| (s, false));
                 }
             }
-            let scrollable = self.client.creative_screen.0.rows(&self.common.pack.names) > 5;
-            let scroller = if scrollable {
+            let scroller = if shown.can_scroll() {
                 "container/creative_inventory/scroller"
             } else {
                 "container/creative_inventory/scroller_disabled"

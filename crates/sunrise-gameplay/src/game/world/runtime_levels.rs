@@ -296,12 +296,10 @@ pub fn classify_biome_source_error(error: BiomeSourceError) -> RuntimeLevelError
     }
 }
 
-/// The JSON of the stem a runtime level is generated from, as a mod's registered level has one:
-/// the generator of the registered level `dimension_type` names, if any, with the generator
-/// `name` in place of its own.
+/// Build a runtime level stem with the registered generator ID and requested biome source.
 fn mod_stem(
     dimension_type: &str,
-    name: &str,
+    id: &Identifier,
     biome_source: Option<&RuntimeBiomeSource>,
     runs_stages: bool,
 ) -> Result<serde_json::Value, RuntimeLevelError> {
@@ -328,7 +326,7 @@ fn mod_stem(
     let generator = generator
         .as_object_mut()
         .ok_or(RuntimeLevelError::InvalidBiomeSource)?;
-    generator.insert("type".into(), name.into());
+    generator.insert("type".into(), id.as_str().into());
     if let Some(source) = biome_source {
         generator.insert("biome_source".into(), runtime_biome_source_json(source)?);
     }
@@ -639,8 +637,10 @@ impl crate::game::ServerGame<'_> {
                 })
             }
             RuntimeGenerator::Mod(name) => {
-                let generator = generators
-                    .get(name)
+                let requested = Identifier::parse_namespaced(name)
+                    .ok_or(RuntimeLevelError::UnknownGenerator)?;
+                let (id, generator) = generators
+                    .get_key_value(&requested)
                     .ok_or(RuntimeLevelError::UnknownGenerator)?;
                 if let Some(source) = &level.biome_source
                     && source.invalid_field().is_some()
@@ -650,7 +650,7 @@ impl crate::game::ServerGame<'_> {
                 let runs_stages = generator.vanilla_stages().any();
                 let json = mod_stem(
                     &level.dimension_type,
-                    name,
+                    id,
                     level.biome_source.as_ref(),
                     runs_stages,
                 )?;
@@ -667,8 +667,9 @@ impl crate::game::ServerGame<'_> {
                     log::warn!("runtime level biome registries are unavailable: {e}");
                     RuntimeLevelError::Unavailable
                 })?;
-                let mut stem = ModStem::bind(&biome_data, json, generator.clone(), level.seed)
-                    .map_err(classify_biome_source_error)?;
+                let mut stem =
+                    ModStem::bind(&biome_data, json, id.clone(), generator.clone(), level.seed)
+                        .map_err(classify_biome_source_error)?;
                 if matches!(level.biome_source, Some(RuntimeBiomeSource::Registered(_)))
                     && !matches!(stem.source.as_ref(), ResolvedBiomeSource::Registered(_))
                 {
@@ -718,7 +719,7 @@ impl crate::game::ServerGame<'_> {
         result
     }
 
-    fn runtime_level_queue_open(
+    pub(in crate::game) fn runtime_level_queue_open(
         &mut self,
         id: &str,
         level: RuntimeLevel,
@@ -753,6 +754,16 @@ impl crate::game::ServerGame<'_> {
             mod_api::__private::dimension_key(id),
             generation,
         ))
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_runtime_level_queue_open(
+        &mut self,
+        id: &str,
+        level: RuntimeLevel,
+        generators: &ModChunkGenerators,
+    ) -> Result<LevelRef, RuntimeLevelError> {
+        self.runtime_level_queue_open(id, level, generators)
     }
 
     /// `RuntimeLevels::unload`: check the request now, queue it for after the level loop.

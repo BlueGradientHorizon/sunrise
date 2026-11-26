@@ -263,6 +263,142 @@ fn runtime_table_has_no_artificial_level_cap() {
 }
 
 #[test]
+#[ignore = "daily"]
+fn a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes() {
+    use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
+    use sunrise_world::worldgen::mod_generators::{ChunkAccess, ModChunkGenerator, ModChunkGenerators};
+
+    if run_fresh_cases(
+        "game::runtime_levels_tests::a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes",
+        "SUNRISE_RUNTIME_CHECKERBOARD_CHILD",
+        &["admission"],
+    ) {
+        return;
+    }
+    struct Terrain;
+    impl ModChunkGenerator for Terrain {
+        fn build_terrain(&self, _: &mut dyn ChunkAccess) {}
+    }
+    let generators = ModChunkGenerators::from([(
+        mod_api::Identifier::parse("checker:test").unwrap(),
+        Arc::new(Terrain) as Arc<dyn ModChunkGenerator>,
+    )]);
+    with_opener("checker", "checker:level", flat(), |game, _| {
+        let level = |biomes| {
+            RuntimeLevel::new(
+                "minecraft:overworld",
+                RuntimeGenerator::Mod("checker:test".into()),
+                0,
+            )
+            .with_biome_source(RuntimeBiomeSource::Checkerboard { biomes, scale: 0 })
+        };
+        assert_eq!(
+            game.test_runtime_level_queue_open(
+                "checker:level",
+                level(vec!["#checker:absent".into()]),
+                &generators,
+            ),
+            Err(RuntimeLevelError::UnknownBiomeSource)
+        );
+        assert_eq!(
+            game.test_runtime_level_queue_open(
+                "checker:level",
+                level(vec!["plains".into(), "#checker:absent".into()]),
+                &generators,
+            ),
+            Err(RuntimeLevelError::InvalidBiomeSource)
+        );
+        assert_eq!(
+            game.test_runtime_level_queue_open(
+                "checker:level",
+                level(vec!["BAD!ID".into()]),
+                &generators,
+            ),
+            Err(RuntimeLevelError::InvalidBiomeSource)
+        );
+        assert_eq!(
+            game.test_runtime_level_queue_open(
+                "checker:level",
+                RuntimeLevel::new(
+                    "minecraft:overworld",
+                    RuntimeGenerator::Mod("checker:test".into()),
+                    0,
+                )
+                .with_biome_source(RuntimeBiomeSource::Fixed(
+                    "test:bad names the unknown biome test:missing".into(),
+                )),
+                &generators,
+            ),
+            Err(RuntimeLevelError::InvalidBiomeSource)
+        );
+        assert_eq!(
+            game.test_runtime_level_queue_open(
+                "checker:level",
+                RuntimeLevel::new(
+                    "minecraft:overworld",
+                    RuntimeGenerator::Mod("checker:test".into()),
+                    0,
+                )
+                .with_biome_source(RuntimeBiomeSource::Registered("minecraft:fixed".into())),
+                &generators,
+            ),
+            Err(RuntimeLevelError::UnknownBiomeSource)
+        );
+        assert_eq!(
+            game.runtime_level_open(
+                "checker:level",
+                flat().with_biome_source(RuntimeBiomeSource::End),
+            ),
+            Err(RuntimeLevelError::IncompatibleBiomeSource)
+        );
+        // A no-stage checkerboard needs only biome and tag data.
+        let minimal_resources = tempfile::tempdir().unwrap();
+        let minimal_worldgen = minimal_resources.path().join("worldgen");
+        std::fs::create_dir_all(&minimal_worldgen).unwrap();
+        std::fs::write(
+            minimal_worldgen.join("biomes.json"),
+            r#"{"minecraft:forest":"{}","minecraft:flower_forest":"{}"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            minimal_worldgen.join("biome_tags.json"),
+            r#"{"minecraft:is_forest":"{\"values\":[\"minecraft:forest\",\"minecraft:flower_forest\"]}"}"#,
+        )
+        .unwrap();
+        let original_resources = std::mem::replace(
+            &mut game.common.options.resources,
+            minimal_resources.path().to_owned(),
+        );
+        let queued = game.test_runtime_level_queue_open(
+            "checker:level",
+            level(vec!["#minecraft:is_forest".into()]),
+            &generators,
+        );
+        game.common.options.resources = original_resources;
+        queued.unwrap();
+        assert!(!game.runtime_level_is_open("checker:level"));
+        game.apply_runtime_levels();
+        assert!(game.runtime_level_is_open("checker:level"));
+        game.enter_level(Dim::extra("checker:level").unwrap())
+            .unwrap();
+        for (cx, name) in [(0, "minecraft:forest"), (1, "minecraft:flower_forest")] {
+            assert!(
+                game.server.streaming
+                    .set_forced_loaded(&mut game.common.world, cx, 0, true)
+            );
+            let chunk = &game.world.chunks[&(cx, 0)];
+            assert_eq!(
+                sunrise_gameplay_common::world_biomes!(game.common).name(chunk.biome(0, 0, 0)),
+                name
+            );
+        }
+        game.enter_level(Dim::Overworld).unwrap();
+        game.runtime_level_unload("checker:level").unwrap();
+        game.apply_runtime_levels();
+    });
+}
+
+#[test]
 fn an_id_is_open_once_and_each_open_has_its_own_generation() {
     let mut table = RuntimeTable::default();
     let first = table.queue_open("test", "gen:a", admitted_flat(1)).unwrap();
@@ -888,7 +1024,7 @@ fn load_chunk_fails_where_a_mods_generator_panics() {
     }
     let breaks: Arc<dyn ModChunkGenerator> = Arc::new(Breaks);
     install_mod_chunk_generators(ModChunkGenerators::from([(
-        "broken:terrain".to_owned(),
+        mod_api::Identifier::parse("broken:terrain").unwrap(),
         breaks,
     )]))
     .map_err(|_| "installed twice")

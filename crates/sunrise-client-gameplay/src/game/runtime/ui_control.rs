@@ -97,15 +97,7 @@ impl crate::game::ClientGame<'_> {
                         self.craft_result()
                     } else if slot >= Creative::DISPLAY {
                         // An item tab's display slot shows the tab's list.
-                        let first = self
-                            .client
-                            .creative_screen
-                            .0
-                            .first_row(&self.common.pack.names);
-                        self.client.creative_screen.0.shown(
-                            &self.common.pack.names,
-                            first * 9 + slot - Creative::DISPLAY,
-                        )
+                        self.creative_display_stack(slot)
                     } else {
                         self.slot_mut(slot).clone()
                     };

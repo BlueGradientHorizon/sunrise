@@ -1311,7 +1311,7 @@ impl crate::game::ClientGame<'_> {
     /// dialog or a prompt drawn over gameplay), and no connect or world load
     /// is in progress. The one gate they all ask before they fire.
     pub fn screen_hooks_open(&self) -> bool {
-        self.client.renderer.0.is_some()
+        self.has_renderer()
             && !self.screen_over_playing()
             && !self.remote_loading()
             && (self.client.screen != Screen::Playing || self.client.title.0.is_some())

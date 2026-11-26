@@ -996,7 +996,7 @@ impl crate::game::ServerGame<'_> {
             .0
             .as_ref()
             .map_or(&fallback_overrides, |tables| &tables.biomes.overrides);
-        let (streaming, save, locator) = super::world_loading::make_streaming(
+        let (streaming, save, locator, generator_type) = super::world_loading::make_streaming(
             &self.common.res,
             &self.common.pack,
             &self.common.options,
@@ -1035,6 +1035,7 @@ impl crate::game::ServerGame<'_> {
                 world.weather.thunder_level.1 = 1.0;
             }
         }
+        world.generator_type = Some(generator_type);
         world.fast_lava = self.common.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.common.dimension_type_of(dim)));
         world.golem_heads = Some(self.resolve_golem_heads());

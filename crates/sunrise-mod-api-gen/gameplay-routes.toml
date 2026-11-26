@@ -2813,3 +2813,18 @@ owner = "crate::game::ClientGame"
 borrow = "shared"
 kind = "local"
 owner = "crate::game::ClientGame"
+
+[host.client."MenusClientBackend::menu_creative_catalog"]
+borrow = "shared"
+kind = "local"
+owner = "crate::game::ClientGame"
+
+[host.client."MenusClientBackendMut::menu_destroy_carried"]
+borrow = "mutable"
+kind = "local"
+owner = "crate::game::ClientGame"
+
+[host.server."LevelWorldgenBackend::level_generator_type"]
+borrow = "shared"
+kind = "local"
+owner = "crate::game::ServerGame"

@@ -23,6 +23,12 @@ impl crate::game::ServerGame<'_> {
         self.native_level_world(level)?;
         Some(self.common.level.seed)
     }
+
+    /// The codec ID of the generator the server built for the named level.
+    pub(in crate::game) fn level_generator_type(&self, level: LevelRef) -> Option<mod_api::Identifier> {
+        self.native_level_world(level)?.generator_type.clone()
+    }
+
     /// The difficulty (`Level.getDifficulty`): `peaceful`, `easy`, `normal`
     /// or `hard`, as `/difficulty` names it.
     pub(in crate::game) fn level_difficulty(&self, level: LevelRef) -> Option<&'static str> {

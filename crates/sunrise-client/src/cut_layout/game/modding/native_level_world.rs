@@ -17,6 +17,28 @@ mod tests {
     use sunrise_gameplay_common::game_side;
     use sunrise_level::chunk::Chunk;
 
+    /// Read the recorded generator, including absence and stale-handle cases.
+    #[test]
+    #[ignore = "daily"]
+    fn a_level_names_the_chunk_generator_it_was_built_with() {
+        with_game(|game| {
+            let overworld = game.level("minecraft:overworld").unwrap();
+            // The harness skips terrain construction, so seed the value make_streaming records.
+            let debug = mod_api::Identifier::parse("minecraft:debug").unwrap();
+            game.world.generator_type = Some(debug.clone());
+            assert_eq!(overworld.generator_type(game), Some(debug));
+            game.world.generator_type = None;
+            assert_eq!(overworld.generator_type(game), None);
+            let stale = mod_api::LevelRef::new(
+                mod_api::WorldEpoch::new(overworld.epoch().get() + 1),
+                overworld.dimension(),
+            );
+            game.world.generator_type =
+                Some(mod_api::Identifier::parse("minecraft:noise").unwrap());
+            assert_eq!(stale.generator_type(game), None);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn dimension_shape_reads_current_parked_and_stale_levels() {
