@@ -578,7 +578,15 @@ impl Game<'_> {
     /// The optional device features of the active device; all off without one.
     pub(super) fn render_capabilities(&self) -> mod_api::RenderCapabilities {
         self.mod_gpu().map_or_else(
-            || mod_api::__private::built::render_capabilities(false, Vec::new(), false, false),
+            || {
+                mod_api::__private::built::render_capabilities(
+                    false,
+                    Vec::new(),
+                    false,
+                    false,
+                    false,
+                )
+            },
             |gpu| gpu.render_capabilities(),
         )
     }
@@ -1225,12 +1233,22 @@ impl Game<'_> {
         let buffer = gpu
             .resolve_mod_storage_buffer(owner, draw.indirect_buffer)
             .map_err(PipelineDrawError::Buffer)?;
+        let count = match draw.count_buffer {
+            Some((handle, offset)) => Some((
+                gpu.resolve_mod_storage_buffer(owner, handle)
+                    .map_err(PipelineDrawError::Buffer)?,
+                offset,
+            )),
+            None => None,
+        };
         sunrise_client::gfx::mod_pipelines::IndirectSource::new(
             topology,
             mesh,
             buffer,
             draw.indirect_offset,
             draw.max_count,
+            count,
+            gpu.multi_draw_indirect_count(),
         )
     }
     /// Record a GPU-driven [`mod_api::IndirectDraw`] for the world pass, after checking it.
