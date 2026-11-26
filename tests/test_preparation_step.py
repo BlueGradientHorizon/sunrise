@@ -33,6 +33,9 @@ class PreparationStepTests(unittest.TestCase):
                                    ("Could not resolve host", "network-dns"),
                                    ("Connection timed out", "network-timeout"),
                                    ("No such file or directory", "missing-file"),
+                                   ("is not a 26.3 version file Sunrise knows (sha1 0)", "pinned-version-differs"),
+                                   ("does not describe the pinned 26.3 release", "pinned-version-differs"),
+                                   ("is not the pinned file: expected sha1 0, got 1", "pinned-file-differs"),
                                    ("unknown failure", "unclassified")]:
                 with self.subTest(reason=reason):
                     payload = "token=SECRET .local/minecraft/26.3/file {NBT: excerpt} ::error::injected " + marker
@@ -46,6 +49,14 @@ class PreparationStepTests(unittest.TestCase):
                     self.assertEqual(json.loads(sidecar)["schema_version"], 1)
                     self.assertEqual(result.stderr, "")
                     self.assertIn(payload, (root / "private.log").read_text())
+
+    def test_a_refused_pin_wins_over_markers_earlier_in_the_log(self):
+        with tempfile.TemporaryDirectory() as folder:
+            code = ("import sys; print('No such file or directory'); "
+                    "print('x.json is not a 26.3 version file Sunrise knows (sha1 0)'); sys.exit(1)")
+            result = self.invoke(Path(folder), code)
+            self.assertEqual(result.stdout, self.diagnostic("resource-export", 1, "pinned-version-differs",
+                                                            "pinned-version-differs"))
 
     def test_safe_last_line_and_key_validation(self):
         with tempfile.TemporaryDirectory() as folder:
