@@ -308,6 +308,33 @@ target can be sampled with `SamplerFilter::Linear`. A device refusal of the allo
 A render target survives a resource reload and a world close, and is freed by
 `target.release(host)` or when its mod unloads.
 
+## Samplers and mipmapped textures
+
+A set-1 sampler entry takes one `Sampler` descriptor, the shape of vanilla's
+`GpuDevice.createSampler(addressU, addressV, minFilter, magFilter, maxAnisotropy, maxLod)`:
+`BindGroupLayout::builder().sampler("Atlas", Sampler::new(SamplerFilter::Nearest,
+SamplerAddress::ClampToEdge))` is one filter and one address mode for both axes, with no `max_lod`.
+For anything else set the public fields of the descriptor: `address_u`, `address_v`, `min`, `mag` and
+`max_lod: Option<f32>`. Like vanilla's, a sampler has no separate mipmap filter and no minimum level of
+detail: a `max_lod` above `0.25` blends linearly between the two nearest mip levels (vanilla's
+`NEAREST_MIPMAP_LINEAR` and `LINEAR_MIPMAP_LINEAR`, and Vulkan's linear mipmap mode for `maxLod > 0.25`), and
+`Some(0.0)` reads only the base level. `None` is what `Sampler::new` gives: no limit, the one nearest level.
+A negative or non-finite `max_lod` is `BindGroupLayoutError::BadMaxLod`. Anisotropy is not offered.
+
+A dynamic texture (see [Textures made at run time](dynamic-textures.md)) made with `mip_levels` above 1 is
+bound to such a sampler by its id, `TextureSource::DynamicTexture(id)`, and the shader's `texture`,
+`textureLod` and `textureGrad` read every level:
+
+```rust,ignore
+let mut atlas = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
+atlas.max_lod = Some(4.0);
+let layout = BindGroupLayout::builder().sampler("Atlas", atlas).build()?;
+```
+
+Fill the levels from the CPU with `update_dynamic_texture_region(id, mip_level, ...)`, as vanilla's
+`MipmapGenerator` builds the block atlas's levels and uploads each one; the game builds none on the GPU.
+`GuiCanvas::texture` always samples level 0 of a mipmapped texture.
+
 ## Participating in translated shader packs
 
 When an Iris/OptiFine shader pack is active and owns terrain rendering, a mod pipeline without a

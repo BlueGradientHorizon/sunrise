@@ -742,7 +742,7 @@ impl Game<'_> {
                     staged.push(StagedEntry::InlineUniform(bytes));
                 }
                 (
-                    mod_api::BindingKind::CombinedImageSampler { filter, .. },
+                    mod_api::BindingKind::CombinedImageSampler { sampler },
                     mod_api::BindingValue::Texture(source),
                 ) => match source {
                     mod_api::TextureSource::TransientTargetColor(target, attachment) => {
@@ -752,7 +752,8 @@ impl Game<'_> {
                         let Some(desc) = transients.get(target.raw() as usize) else {
                             return Err(PipelineDrawError::InvalidBinding);
                         };
-                        let filterable = filter == mod_api::SamplerFilter::Linear;
+                        let filterable =
+                            sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                         if !sunrise_client::gfx::mod_frame_graph::validate_transient_color_binding(
                             desc,
                             *attachment,
@@ -773,7 +774,8 @@ impl Game<'_> {
                         let Some(desc) = transients.get(target.raw() as usize) else {
                             return Err(PipelineDrawError::InvalidBinding);
                         };
-                        let filterable = filter == mod_api::SamplerFilter::Linear;
+                        let filterable =
+                            sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                         if !sunrise_client::gfx::mod_frame_graph::validate_transient_depth_binding(
                             desc, filterable,
                         ) {
@@ -818,7 +820,8 @@ impl Game<'_> {
                             }
                             mod_api::TextureSource::Lightmap => gpu.mod_lightmap_texture_view(),
                             mod_api::TextureSource::RenderTargetColor(target, attachment) => {
-                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let filterable =
+                                    sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                                 let (id, view, target_mips) = gpu.resolve_mod_render_target_color(
                                     owner,
                                     *target,
@@ -829,11 +832,13 @@ impl Game<'_> {
                                 (id, view)
                             }
                             mod_api::TextureSource::RenderTargetDepth(target) => {
-                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let filterable =
+                                    sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                                 gpu.resolve_mod_render_target_depth(owner, *target, filterable)?
                             }
                             mod_api::TextureSource::RenderTargetColorMip(view) => {
-                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let filterable =
+                                    sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                                 let (id, view, target_mips) = gpu
                                     .resolve_mod_render_target_color_mips(
                                         owner, *view, filterable,
@@ -4450,8 +4455,10 @@ mod tests {
                 )
                 .sampler(
                     "ColorTex",
-                    mod_api::SamplerFilter::Nearest,
-                    mod_api::SamplerAddress::ClampToEdge,
+                    mod_api::Sampler::new(
+                        mod_api::SamplerFilter::Nearest,
+                        mod_api::SamplerAddress::ClampToEdge,
+                    ),
                 ),
             );
         }
