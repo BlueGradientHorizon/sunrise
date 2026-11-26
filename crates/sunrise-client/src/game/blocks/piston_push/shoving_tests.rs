@@ -215,13 +215,10 @@ fn an_upward_shove_leaves_the_colliders_vertical_speed() {
                     .unwrap()
                     .set_collider(
                         game,
-                        Some(Collider {
-                            boxes: vec![ColliderBox {
-                                min: [-1.0, -3.0, -1.0],
-                                max: [1.0, -2.9, 1.0],
-                            }],
-                            ..Collider::default()
-                        }),
+                        Some(Collider::new(vec![ColliderBox {
+                            min: [-1.0, -3.0, -1.0],
+                            max: [1.0, -2.9, 1.0],
+                        }])),
                     )
                     .unwrap();
                 game.dropped
@@ -297,7 +294,7 @@ fn a_client_side_turning_shove_moves_the_local_player() {
                 let half = std::f32::consts::FRAC_1_SQRT_2;
                 let mut rotated =
                     sunrise_client::colliders::ColliderState::from_api(&shape()).unwrap();
-                rotated.set_rotation([0.0, half, 0.0, half]);
+                rotated.set_pose(rotated.pose().with_rotation([0.0, half, 0.0, half]));
                 game.remote
                     .as_mut()
                     .unwrap()
@@ -324,13 +321,10 @@ fn a_rider_on_a_turning_collider_is_carried_and_not_shoved_again() {
                     .unwrap()
                     .set_collider(
                         game,
-                        Some(Collider {
-                            boxes: vec![ColliderBox {
-                                min: [-1.0, -3.0, -1.0],
-                                max: [1.0, -2.75, 1.0],
-                            }],
-                            ..Collider::default()
-                        }),
+                        Some(Collider::new(vec![ColliderBox {
+                            min: [-1.0, -3.0, -1.0],
+                            max: [1.0, -2.75, 1.0],
+                        }])),
                     )
                     .unwrap();
                 let mut rider = item(80, 5.5, 4.5, Vec3::new(-0.3, 0.0, 0.2));
