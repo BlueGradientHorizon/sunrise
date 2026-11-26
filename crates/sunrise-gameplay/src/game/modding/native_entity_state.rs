@@ -861,8 +861,8 @@ pub mod tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.side.settings.simulation_distance = 4;
-            game.side.settings.render_distance = 12;
+            game.server.settings.simulation_distance = 4;
+            game.server.settings.render_distance = 12;
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let portal = registry.default_state("minecraft:nether_portal").unwrap();
@@ -958,8 +958,8 @@ pub mod tests {
                 .registry
                 .default_state("minecraft:sand")
                 .unwrap();
-            game.side.next_entity += 1;
-            let id = game.side.next_entity;
+            game.server.next_entity += 1;
+            let id = game.server.next_entity;
             game.falling.push(FallingBlock {
                 size_answer: None,
                 ground: Default::default(),

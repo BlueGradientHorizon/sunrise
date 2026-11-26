@@ -299,17 +299,17 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "SlotKindsTest").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
             let player = game.local_player().unwrap();
             let menu = game.player_container_menu(player).unwrap();
             assert_eq!(game.menu_slot_kinds(menu), None);
-            game.side.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             let inventory = game.menu_slot_kinds(menu).unwrap();
             assert_eq!(inventory.len(), game.menu_slot_count(menu).unwrap());
-            game.side.screen = Screen::Creative;
+            game.client.screen = Screen::Creative;
             assert_eq!(game.menu_slot_kinds(menu), Some(inventory));
             let fields = menu.fields();
             let stale =
@@ -325,7 +325,7 @@ mod tests {
                 ("sunrise:mount1", 41),
                 ("minecraft:anvil", 39),
             ] {
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()
@@ -339,17 +339,17 @@ mod tests {
                     assert_eq!(kinds, vec![Other; 39]);
                 }
             }
-            game.side
+            game.client
                 .remote
                 .as_mut()
                 .unwrap()
                 .menu
                 .set(Some((4, "test:missing".into())));
-            let remote = game.side.remote.as_ref().unwrap();
+            let remote = game.client.remote.as_ref().unwrap();
             let missing = mod_api::__private::game::menu_ref(player, 4, remote.menu.generation);
             assert_eq!(game.menu_slot_kinds(missing), None);
             assert_eq!(game.menu_slot_count(missing), None);
-            game.side.remote = None;
+            game.client.remote = None;
             assert_eq!(game.menu_slot_kinds(menu), None);
         });
     }

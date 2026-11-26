@@ -2237,7 +2237,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 .render_assets()
                 .model(&Identifier::parse("minecraft:block/grass_block").unwrap())
                 .unwrap();
-            let prepared = game.side.standalone_geometry.slots[model.fields().slot as usize]
+            let prepared = game.client.standalone_geometry.slots[model.fields().slot as usize]
                 .as_ref()
                 .unwrap();
             let face_index = prepared
@@ -2251,15 +2251,15 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 .unwrap();
             let vertices = &surface.vertices[face_index * 4..face_index * 4 + 4];
             assert!(vertices.iter().all(|v| v.light == 0x7030));
-            let atlas = &game.side.gui.atlas;
+            let atlas = &game.client.gui.atlas;
             let mut pixels = vec![255; (atlas.width * atlas.height * 4) as usize];
             // Prepared indices exclude baked faces without an atlas sprite.
-            let source = game.side.client_pack.render.resolve_model(model).unwrap();
+            let source = game.client.client_pack.render.resolve_model(model).unwrap();
             let sprite = source
                 .faces
                 .iter()
                 .filter_map(|face| {
-                    game.side
+                    game.client
                         .client_pack
                         .layer_names
                         .get(&face.layer)
@@ -2347,7 +2347,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             (0, 2.0, 0, 0),
         ];
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.side.standalone_geometry.slots = vec![Some(vec![face])];
+            game.client.standalone_geometry.slots = vec![Some(vec![face])];
             let play = |cap, steps: &[_]| {
                 cap_prepared_instance_slots(cap);
                 let mut draw = draw();
@@ -2361,7 +2361,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                         assert!(draw.defer_model(0, 1, *tint));
                     }
                 }
-                game.side.prepared_model_draws.borrow_mut().clear();
+                game.client.prepared_model_draws.borrow_mut().clear();
                 game.finish_prepared_draw(&mut draw, DVec3::ZERO, DVec3::ZERO);
                 assert!(draw.records.is_empty());
                 draw
@@ -2394,7 +2394,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             paint(&draw, 12, 0xFF09_0807, 0x3330);
             staged(game, &[4]);
             assert_eq!(
-                game.side.prepared_model_draws.borrow()[0]
+                game.client.prepared_model_draws.borrow()[0]
                     .instance
                     .matrix()
                     .w_axis
@@ -2447,17 +2447,17 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 .unwrap();
             let instance = super::prepared_instance(local, origin, camera, 0xFF80_C040, 0xF030);
             assert_eq!(instance.matrix(), pose);
-            let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
-            let atlas = &game.side.gui.atlas;
+            let (vertices, ranges) = game.client.standalone_geometry.prepared_upload();
+            let atlas = &game.client.gui.atlas;
             let mut pixels = atlas.pixels().to_vec();
-            let face_index = game.side.standalone_geometry.slots[slot as usize]
+            let face_index = game.client.standalone_geometry.slots[slot as usize]
                 .as_ref()
                 .unwrap()
                 .iter()
                 .position(|face| face.facing == Direction::South && face.tint_index >= 0)
                 .unwrap();
             let sprite = game
-                .side
+                .client
                 .client_pack
                 .render
                 .resolve_model(model)
@@ -2465,7 +2465,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 .faces
                 .iter()
                 .filter_map(|face| {
-                    game.side
+                    game.client
                         .client_pack
                         .layer_names
                         .get(&face.layer)
@@ -2496,7 +2496,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 true,
             )
             .expect("software Vulkan entity pixels");
-            let uploaded = game.side.standalone_geometry.generation();
+            let uploaded = game.client.standalone_geometry.generation();
             let instance_pixels = |ranges, requested| {
                 sunrise_client::gfx::entity_pixel_test::render_instance(
                     sunrise_client::gfx::entity_pixel_test::PreparedInstanceDraw {
@@ -2530,13 +2530,13 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             );
             fail_next_prepared_upload();
             assert!(
-                instance_pixels(game.side.standalone_geometry.prepared_upload().1, uploaded)
+                instance_pixels(game.client.standalone_geometry.prepared_upload().1, uploaded)
                     .is_err(),
                 "a forced upload failure must not draw"
             );
             assert!(
                 instance_pixels(
-                    game.side.standalone_geometry.prepared_upload().1,
+                    game.client.standalone_geometry.prepared_upload().1,
                     uploaded.wrapping_add(1),
                 )
                 .is_err(),
@@ -2575,7 +2575,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             let mut expected = Vec::new();
             game.baked_model_vertices(
                 [game
-                    .side
+                    .client
                     .client_pack
                     .render
                     .model_catalog
@@ -2598,14 +2598,14 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             assert!(surface.vertices.iter().all(|v| v.light == 0x7030));
             // An explicitly emissive tinted face and its untinted twin exercise both
             // branches independently of the vanilla grass model's current contents.
-            let source = game.side.client_pack.render.resolve_model(model).unwrap();
+            let source = game.client.client_pack.render.resolve_model(model).unwrap();
             let face = &source.faces[0];
             let sprite = game
-                .side
+                .client
                 .client_pack
                 .layer_names
                 .get(&face.layer)
-                .and_then(|name| game.side.gui.atlas.sprites.get(name))
+                .and_then(|name| game.client.gui.atlas.sprites.get(name))
                 .copied()
                 .unwrap();
             let mut tinted = face.quad.clone();
@@ -2669,7 +2669,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             );
             let before = bytes(&surface.vertices);
             let invalid = mod_api::__private::built::model_ref(
-                game.side.client_pack.render.generation,
+                game.client.client_pack.render.generation,
                 u32::MAX,
             );
             assert_eq!(
@@ -2692,7 +2692,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                     &game.pack.assets,
                     &game.res,
                     game.client_res(),
-                    &game.side.client_pack.context,
+                    &game.client.client_pack.context,
                     false,
                     false,
                     &super::super::Progress::new(),
@@ -2705,7 +2705,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             );
             let before = bytes(&surface.vertices);
             // Identical texture bytes still produce a new model generation.
-            let old_generation = game.side.client_pack.render.generation;
+            let old_generation = game.client.client_pack.render.generation;
             let listeners = game.register_client_reload_listeners();
             let staged = super::super::packs::stage_pack(
                 &game.options.resources,
@@ -2717,14 +2717,14 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 &game.pack.assets,
                 &game.res,
                 game.client_res(),
-                &game.side.client_pack.context,
+                &game.client.client_pack.context,
                 false,
                 false,
                 &super::super::Progress::new(),
             )
             .unwrap();
             game.apply_staged_pack(staged).unwrap();
-            assert_ne!(game.side.client_pack.render.generation, old_generation);
+            assert_ne!(game.client.client_pack.render.generation, old_generation);
             assert_eq!(
                 game.native_draw_model(&mut surface, model, 0xFF12_3456),
                 Err(ModelError::StaleModel)
@@ -2805,7 +2805,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 assert_eq!(spun.color, kept.color, "spin and keep tint alpha differ");
             }
             let slot = mod_api::__private::game::Fields::fields(&model).slot;
-            let faces = game.side.standalone_geometry.faces(slot).unwrap();
+            let faces = game.client.standalone_geometry.faces(slot).unwrap();
             let (quads, _) = kept.vertices.as_chunks::<4>();
             assert!(
                 quads
@@ -2836,10 +2836,10 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 };
                 ctx.model(model, tint).unwrap();
             }
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             game.finish_prepared_draw(&mut deferred, origin, camera);
-            let deferred_instance = game.side.prepared_model_draws.borrow()[0].instance;
-            game.side.prepared_model_draws.borrow_mut().clear();
+            let deferred_instance = game.client.prepared_model_draws.borrow()[0].instance;
+            game.client.prepared_model_draws.borrow_mut().clear();
             let mut batch = crate::world_geometry::WorldGeometry::default();
             batch.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
             let copy = ModelInstance::new(
@@ -2858,14 +2858,14 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             }
             let mut entities = Vec::new();
             game.commit_model_instances(&mut batch, camera, &mut entities);
-            let batch_instance = game.side.prepared_model_draws.borrow()[0].instance;
+            let batch_instance = game.client.prepared_model_draws.borrow()[0].instance;
             let alpha = 0x40 as f32 / 255.0;
             assert!((deferred_instance.tint[3] - alpha).abs() < 1e-6);
             assert!((batch_instance.tint[3] - alpha).abs() < 1e-6);
-            let atlas = &game.side.gui.atlas;
+            let atlas = &game.client.gui.atlas;
             let pixels = atlas.pixels();
-            let uploaded = game.side.standalone_geometry.generation();
-            let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
+            let uploaded = game.client.standalone_geometry.generation();
+            let (vertices, ranges) = game.client.standalone_geometry.prepared_upload();
             let view = Mat4::from_scale_rotation_translation(
                 Vec3::new(1.4, 1.4, 0.2),
                 Quat::IDENTITY,
@@ -2957,7 +2957,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 "no pack, no run"
             );
 
-            game.side.pack_ids = Some(Default::default());
+            game.client.pack_ids = Some(Default::default());
             // What `mod_block_entity_geometry` does around a mod's `model()` call.
             let mut per_copy = draw();
             per_copy.pose = local;
@@ -3013,7 +3013,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                     |s| s.id == 0 && s.stage == sunrise_shaders::render_stage("BLOCK_ENTITIES")
                 ));
             }
-            game.side.pack_ids = None;
+            game.client.pack_ids = None;
             let bytes = |v: &[Vertex]| bytemuck::cast_slice::<Vertex, u8>(v).to_vec();
             assert_eq!(bytes(&copies), bytes(&per_copy.vertices), "route vertices");
             assert_eq!(bytes(&copies), bytes(&plain), "the pack changed the bake");
@@ -3083,7 +3083,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
             // The server fixture only measures fonts; this test needs drawable glyphs.
-            game.side.gui.atlas = sunrise_client::hud::HudAtlas::build(
+            game.client.gui.atlas = sunrise_client::hud::HudAtlas::build(
                 &sunrise_assets::resource_source::ResourceSource::directory(
                     game.options.resources.to_path_buf(),
                 ),
@@ -3187,7 +3187,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                     br#"{"providers":[{"type":"space","advances":{"X":2.25}}]}"#.to_vec(),
                 ),
             )]));
-            game.side.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+            game.client.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
             let mut surface = draw();
             let mut drawn = GameBlockEntityDrawContext {
                 game,
@@ -3211,7 +3211,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
         use sunrise_protocol::packets::play;
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.clock = sunrise_sim::clock::FixedStep::client();
-            game.side.texture_ticks = 0;
+            game.client.texture_ticks = 0;
             // Run just the fixture's visual work, then the real frame's phase sampling.
             let frame = |game: &mut crate::game::ClientGame<'_>, ms, target, pause| {
                 let steps = game.clock.advance(Duration::from_millis(ms), target);
@@ -3246,7 +3246,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
 
             game.clock.set_frozen(false);
             frame(game, 50, 50.0, false);
-            assert_eq!(game.side.texture_ticks, 3);
+            assert_eq!(game.client.texture_ticks, 3);
             assert_eq!(game.animation_time(), 2.5);
             frame(game, 25, 100.0, false);
             assert_eq!(game.animation_time(), 2.75);
@@ -3260,7 +3260,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
     #[ignore = "daily"]
     fn atlas_reset_discards_queued_text_uploads() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.side
+            game.client
                 .text_patches
                 .borrow_mut()
                 .push(sunrise_client::font::Patch {
@@ -3271,7 +3271,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                     rgba: vec![255; 4],
                 });
             game.forget_atlas_slots();
-            assert!(game.side.text_patches.borrow().is_empty());
+            assert!(game.client.text_patches.borrow().is_empty());
         });
     }
 
@@ -3287,7 +3287,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
             // A server-side game holds only the font, so the sprite is given its place.
-            game.side
+            game.client
                 .gui
                 .atlas
                 .sprites
@@ -3562,7 +3562,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
     #[ignore = "daily"]
     fn an_unlit_item_draws_the_same_in_the_dark_as_at_full_light() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.side
+            game.client
                 .gui
                 .atlas
                 .sprites

@@ -2249,7 +2249,7 @@ pub(in crate::game) mod tests {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilDrag").unwrap();
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()
@@ -2305,7 +2305,7 @@ pub(in crate::game) mod tests {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilTake").unwrap();
-                game.side
+                game.client
                     .remote
                     .as_mut()
                     .unwrap()

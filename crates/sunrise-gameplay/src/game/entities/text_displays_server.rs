@@ -15,7 +15,7 @@ pub(in crate::game) mod tests {
         use sunrise_core::nbt::{Compound, Tag};
 
         with_game(|game| {
-            game.side.others.0.push(OtherEntity {
+            game.server.others.0.push(OtherEntity {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,

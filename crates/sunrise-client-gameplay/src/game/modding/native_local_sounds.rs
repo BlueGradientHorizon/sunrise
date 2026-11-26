@@ -320,11 +320,11 @@ mod tests {
                 };
                 assert_ne!(stopped, faded, "a handle per play");
                 game.tick_sound_engine();
-                assert!(game.side.mod_sounds.queued.borrow().is_empty());
+                assert!(game.client.mod_sounds.queued.borrow().is_empty());
                 assert_eq!(game.sound_state(stopped), Some(SoundState::Stopped));
                 assert!(
                     !game
-                        .side
+                        .client
                         .mod_sounds
                         .started
                         .contains_key(&stopped.fields().id),
@@ -335,7 +335,7 @@ mod tests {
                 assert_ne!(game.sound_state(faded), Some(SoundState::Waiting));
                 // Every event the engine has, none dropped (prepared test resources may have
                 // no sounds at all).
-                let names = game.side.audio.0.event_names();
+                let names = game.client.audio.0.event_names();
                 let events = game.sound_events();
                 assert_eq!(events.len(), names.len());
                 assert!(
@@ -366,14 +366,14 @@ mod tests {
     #[ignore = "daily"]
     fn stopped_and_level_cleared_plays_never_reach_the_engine() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.side.audio.0.heard.clear();
+            game.client.audio.0.heard.clear();
             let harp = "minecraft:block.note_block.harp";
             let bell = "minecraft:block.note_block.bell";
             let stopped = game.play_local_sound(&SoundPlay::ui(harp), 0).unwrap();
             assert!(game.sound_stop(stopped));
             game.tick_sound_engine();
             assert!(
-                !game.side.audio.0.heard.contains_key(harp),
+                !game.client.audio.0.heard.contains_key(harp),
                 "stopped before the update"
             );
             assert_eq!(game.sound_state(stopped), Some(SoundState::Stopped));
@@ -385,7 +385,7 @@ mod tests {
             assert!(!game.sound_stop(queued), "already over");
             game.tick_sound_engine();
             assert!(
-                !game.side.audio.0.heard.contains_key(bell),
+                !game.client.audio.0.heard.contains_key(bell),
                 "cleared with the level"
             );
 

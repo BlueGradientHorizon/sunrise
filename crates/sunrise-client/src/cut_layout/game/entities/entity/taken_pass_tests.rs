@@ -1,18 +1,8 @@
 //! Production-path storage lifecycle and lifted-pass test support.
-use mod_api::{EntityRef, WorldEpoch};
-use std::{
-    cell::Cell,
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
-use sunrise_mod_runtime::attachments::{
-    AttachmentRegistration, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
-    index::AttachmentIndex,
-};
-use sunrise_sim::join_seq::JoinList;
+use std::sync::Arc;
 
 pub use sunrise_gameplay::game::server_side::entity_server::taken_pass_tests::{
-    PassBalance, ScratchDirectory, after_take, assert_mob_spawn_survives,
+    PassBalance, ScratchDirectory, SlotIdentities, after_take, assert_mob_spawn_survives,
     assert_projectile_spawn_survives, in_both_dimensions, with_spawn,
 };
 
@@ -30,69 +20,6 @@ pub(in crate::game) struct RemoteLifecycle {
     pub apply: fn(&mut sunrise_client_gameplay::game::ClientGame<'_>, u32, u32),
 }
 
-static LIFECYCLE_VALUE: AttachmentType<i32> = AttachmentType {
-    namespace: "test",
-    name: "lifecycle_owner",
-    default: || 0,
-    codec: None,
-    copy_on_death: false,
-    sync: false,
-};
-
-/// Registration memory shared by slot-bearing adapters to the lifecycle walk.
-#[derive(Default)]
-pub(in crate::game) struct SlotIdentities {
-    values: Attachments,
-    index: Arc<Mutex<AttachmentIndex<EntityRef>>>,
-    registrations: HashMap<u32, AttachmentRegistration>,
-}
-
-impl SlotIdentities {
-    pub fn observe<T: HasAttachmentLifetime>(
-        &mut self,
-        owners: &mut JoinList<T, false>,
-        epoch: WorldEpoch,
-        id: fn(&T) -> u32,
-    ) {
-        owners.for_each_mut(|owner| {
-            let id = id(owner);
-            self.observe_one(owner, epoch, id);
-        });
-    }
-
-    pub(in sunrise_gameplay::game::server_side) fn observe_one<T: HasAttachmentLifetime>(
-        &mut self,
-        owner: &mut T,
-        epoch: WorldEpoch,
-        id: u32,
-    ) {
-        use std::collections::hash_map::Entry;
-        match self.registrations.entry(id) {
-            Entry::Occupied(original) => {
-                let current = owner
-                    .attachment_lifetime()
-                    .registration()
-                    .expect("known owner lost its registration");
-                assert!(
-                    original.get().same_registration(&current),
-                    "owner {id} changed registration"
-                );
-            }
-            Entry::Vacant(entry) => {
-                LIFECYCLE_VALUE
-                    .set(&mut self.values, Holder::Entity(id), id as i32)
-                    .unwrap();
-                owner.attachment_lifetime().bind(
-                    &mut self.values,
-                    &self.index,
-                    EntityRef::new(epoch, id),
-                );
-                entry.insert(owner.attachment_lifetime().registration().unwrap());
-            }
-        }
-    }
-}
-
 impl LifecycleFixture {
     /// Adapters seed owners and read ordered identities; all exchanges and
     /// removals run through production entry points, never a substitute model.
@@ -108,7 +35,7 @@ impl LifecycleFixture {
 
     /// A singleton tests selected and unselected chunks in separate passes.
     /// Remote singleton behavior is checked by its storage-specific fixture.
-    pub(in sunrise_gameplay::game::server_side) fn run_singleton(self) {
+    pub(in crate::game) fn run_singleton(self) {
         assert!(self.remote.is_none());
         self.walk(true, |_| {});
     }
@@ -217,7 +144,7 @@ pub(in crate::game) fn run_remote_lifecycle(
     ids: fn(&sunrise_client_gameplay::game::ClientGame<'_>) -> Vec<u32>,
     remote: RemoteLifecycle,
 ) {
-    sunrise_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
+    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         (remote.prepare)(game);
         seed(
             game,

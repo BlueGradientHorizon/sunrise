@@ -3176,7 +3176,7 @@ pub(in crate::game) mod tests {
                     &[],
                     Default::default(),
                 );
-                game.side.lan = Some(LanHost::for_test(Hub::new(
+                game.server.lan = Some(LanHost::for_test(Hub::new(
                     lan,
                     sync,
                     encoder,
@@ -3293,7 +3293,7 @@ pub(in crate::game) mod tests {
                 }
 
                 let mut c = Connection::local(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -3319,7 +3319,7 @@ pub(in crate::game) mod tests {
                 // A peer that leaves a whole Hello behind once its handshake was taken reaches
                 // no admission.
                 let mut c = Connection::local(
-                    game.side
+                    game.server
                         .lan
                         .as_ref()
                         .unwrap()
@@ -3331,7 +3331,7 @@ pub(in crate::game) mod tests {
                 intention(&mut c, "local.left", 0, PROTOCOL_VERSION, handshake::LOGIN);
                 let deadline = Instant::now() + WAIT;
                 let handoffs = loop {
-                    let handoffs = game.side.lan.as_ref().unwrap().hub.lan.take_handoffs();
+                    let handoffs = game.server.lan.as_ref().unwrap().hub.lan.take_handoffs();
                     if !handoffs.is_empty() {
                         break handoffs;
                     }
@@ -3396,7 +3396,7 @@ pub(in crate::game) mod tests {
                     assert!(reason.reason_json.contains(key));
                     assert_closed(&mut c);
                 }
-                game.side.level_pass = Default::default();
+                game.server.level_pass = Default::default();
                 game.tick_lan_packets();
                 assert!(seen.lock().unwrap().is_empty());
                 assert_eq!(gate_calls.try_recv(), Err(mpsc::TryRecvError::Empty));
@@ -4453,8 +4453,8 @@ pub(in crate::game) mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.side.level_shapes,
-                    level_seeds: game.side.levels.0.runtime.seeds(),
+                    levels: game.server.level_shapes,
+                    level_seeds: game.server.levels.0.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let mut join = |conn: u32| {
@@ -4477,7 +4477,7 @@ pub(in crate::game) mod tests {
                         2,
                     );
                     guest.placed = true;
-                    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+                    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
                     rx
                 };
                 let (sender, other) = (join(12), join(13));
@@ -4556,7 +4556,7 @@ pub(in crate::game) mod tests {
         use sunrise_sim::lan::hub::HostEvent;
         use sunrise_sim::menu::{Kind, Menu};
         super::super::native_guest_turn_tests::with_guests(|game| {
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             for conn in [12, 13] {
                 *host.menus.entry(conn).or_default().crafting.inventory =
                     Some(Box::new(Menu::new(Kind::Inventory)));
@@ -4566,9 +4566,9 @@ pub(in crate::game) mod tests {
             let guest = host.hub.guests.remove(0);
             assert_eq!(guest.conn, 12);
             let event = HostEvent::Left(Box::new(guest));
-            let host = game.side.lan.take().unwrap();
-            game.side.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
-            let host = game.side.lan.as_ref().unwrap();
+            let host = game.server.lan.take().unwrap();
+            game.server.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
+            let host = game.server.lan.as_ref().unwrap();
             assert!(!host.menus.contains_key(&12));
             assert!(!host.play.contains_key(&12));
             assert!(host.menus.contains_key(&13));
@@ -4725,8 +4725,8 @@ pub(in crate::game) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.side.level_shapes,
-                level_seeds: game.side.levels.0.runtime.seeds(),
+                levels: game.server.level_shapes,
+                level_seeds: game.server.levels.0.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
             let (tx, _rx) = std::sync::mpsc::channel();
@@ -4751,7 +4751,7 @@ pub(in crate::game) mod tests {
             let mut faint_speed = EffectInstance::new("speed", 600, 0);
             faint_speed.ambient = true;
             guest.effects.list = vec![faint_speed.clone(), EffectInstance::new("slowness", 600, 0)];
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let kind = game
                 .res
                 .mob_types()
@@ -4895,7 +4895,7 @@ pub(in crate::game) mod tests {
                 // answers still go out until the next pass, which asks about
                 // both effects. The weakness the mod shows is visible and not
                 // ambient, so the flag goes, where vanilla would have set it.
-                let hub = &mut game.side.lan.as_mut().unwrap().hub;
+                let hub = &mut game.server.lan.as_mut().unwrap().hub;
                 let mut weakness = EffectInstance::new("weakness", 600, 0);
                 weakness.visible = false;
                 hub.guests
@@ -4923,7 +4923,7 @@ pub(in crate::game) mod tests {
                 );
 
                 // The guest's effects run out: nothing is kept or sent.
-                let hub = &mut game.side.lan.as_mut().unwrap().hub;
+                let hub = &mut game.server.lan.as_mut().unwrap().hub;
                 hub.guests.update(0, |g| g.effects.list.clear());
                 assert_eq!(sent(game), (zombie_swirls, Vec::new()));
                 assert!(asked().is_empty());
@@ -5222,7 +5222,7 @@ pub(in crate::game) mod merchant_packet_tests {
             guest.sent_chunks.insert((0, 0));
             guest.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:emerald", 8));
             hub.guests.push(guest);
-            game.side.lan = Some(super::LanHost {
+            game.server.lan = Some(super::LanHost {
                 hub,
                 spawn_joins: Vec::new(),
                 players_told_left: false,
@@ -5348,7 +5348,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 carried: None,
             };
             assert!(game.lan_merchant_click(1, &click));
-            let state = &game.side.lan.as_ref().unwrap().menus[&1]
+            let state = &game.server.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap()
@@ -5376,7 +5376,7 @@ pub(in crate::game) mod merchant_packet_tests {
             assert!(content.items[0].is_none());
             assert!(content.items[2].is_none());
             assert_eq!(content.carried.as_ref().unwrap().count, 6);
-            let state = &game.side.lan.as_ref().unwrap().menus[&1]
+            let state = &game.server.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap()
@@ -5425,7 +5425,7 @@ pub(in crate::game) mod merchant_packet_tests {
                 let random = sunrise_sim::merchant::sequence_random(0, &id);
                 session.sequences.insert(id, random);
             }
-            game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[0] = Some(ItemStack::new("minecraft:emerald", 8));
                 g.carried = None;
             });
@@ -5466,7 +5466,7 @@ pub(in crate::game) mod merchant_packet_tests {
             // damage packet. Another player gets anger but no offer; mobs and lethal
             // blows show no anger. Keep the victim's same-tick cooldown throughout.
             let gm = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -5485,7 +5485,7 @@ pub(in crate::game) mod merchant_packet_tests {
             let merchant_window = gm.window;
             let mut states = super::States::default();
             game.lan_entities(&mut states, false, 0, None);
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             hub.note_joined(states.as_slice(), None);
             assert!(hub.guests[0].tracker.is_tracking(77));
             rx.try_iter().for_each(drop);
@@ -5584,7 +5584,7 @@ pub(in crate::game) mod merchant_packet_tests {
                     if case.starts_with("sound-replaces-suspended-menu") {
                         let mut inner = sunrise_gameplay_common::game::server_side::native_item_places::tests::guest(2);
                         inner.dimension = "minecraft:overworld".into();
-                        game.side.lan.as_mut().unwrap().hub.guests.push(inner);
+                        game.server.lan.as_mut().unwrap().hub.guests.push(inner);
                         game.as_guest(1, |game| {
                             game.as_guest(2, |game| {
                                 // A player-owned event (such as a cloud) can refresh prices
@@ -5609,7 +5609,7 @@ pub(in crate::game) mod merchant_packet_tests {
                         buyer_hit(game, 1.0);
                     }
                 });
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 let buyer = host.hub.guest(1).unwrap();
                 let emeralds = buyer
                     .inventory
@@ -5709,9 +5709,9 @@ pub(in crate::game) mod merchant_packet_tests {
             actual.extend(sync);
             game.lan_merchant_tick();
             assert!(record().is_empty(), "an unchanged result is not resent");
-            let hub = &game.side.lan.as_ref().unwrap().hub;
+            let hub = &game.server.lan.as_ref().unwrap().hub;
             assert_eq!(hub.guests[0].carried.as_ref().unwrap().count, 3);
-            let gm = game.side.lan.as_ref().unwrap().menus[&1]
+            let gm = game.server.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap();

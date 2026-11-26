@@ -11,14 +11,14 @@ fn death_loot_killer_is_not_the_acting_guest() {
     use crate::game::native_guest_turn_tests::with_guests;
     use sunrise_sim::mobs::Damage;
     with_guests(|game| {
-        game.side.next_entity = 1000;
+        game.server.next_entity = 1000;
         let loot = sunrise_world::loot::LootData::load(
             &game.options.resources,
             &Default::default(),
             game.res.item_defaults(),
         )
         .unwrap();
-        game.side.server_loot.0.set(Some(Arc::new(loot)));
+        game.server.server_loot.0.set(Some(Arc::new(loot)));
         game.build_registries();
         let mut hand = ItemStack::new("minecraft:diamond_sword", 1);
         hand.damage = 19;
@@ -47,13 +47,13 @@ fn death_loot_killer_is_not_the_acting_guest() {
                 let mut victim = Mob::new(id, ty.clone(), Vec3::ZERO, 0.0);
                 victim.ai.last_hurt_by_player = 100;
                 victim.last_damage = Some((Damage::player([0.0; 3]), 0));
-                game.side
+                game.server
                     .last_hurt_by_player
                     .insert(id, sunrise_gameplay_common::game::combat_common::PlayerCredit(12));
                 if let Some(conn) = acting {
                     game.as_guest(conn, |g| g.mob_die(&victim)).unwrap();
                 } else {
-                    assert!(game.side.lan_acting.is_none());
+                    assert!(game.server.lan_acting.is_none());
                     game.mob_die(&victim);
                 }
             }
@@ -80,7 +80,7 @@ fn death_loot_nested_death_keeps_outer_context() {
             game.res.item_defaults(),
         )
         .unwrap();
-        game.side.server_loot.0.set(Some(Arc::new(loot)));
+        game.server.server_loot.0.set(Some(Arc::new(loot)));
         let ty = game
             .res
             .mob_types()
@@ -139,7 +139,7 @@ fn death_loot_uses_call_scoped_source_and_hand() {
             game.res.item_defaults(),
         )
         .unwrap();
-        game.side.server_loot.0.set(Some(Arc::new(loot)));
+        game.server.server_loot.0.set(Some(Arc::new(loot)));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![mod_api::ModEntry::new(
             "death_loot_probe",
@@ -157,7 +157,7 @@ fn death_loot_uses_call_scoped_source_and_hand() {
                 Some(sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 11, 123);
             // Reserve the fixture's explicit IDs before spawning experience orbs.
-            game.side.next_entity = 1000;
+            game.server.next_entity = 1000;
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 2));
             for (id, environmental) in [(68, false), (69, true)] {
                 let mut victim = Mob::new(id, ty.clone(), Vec3::ZERO, 0.0);

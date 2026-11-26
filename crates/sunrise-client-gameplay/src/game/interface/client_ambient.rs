@@ -380,7 +380,7 @@ mod sprint_handle_tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "SprintParticleTest").unwrap();
-            let remote = game.side.remote.as_mut().unwrap();
+            let remote = game.client.remote.as_mut().unwrap();
             remote.logged_in = true;
             remote.entity_id = 7;
             remote.profile = 42;
@@ -400,18 +400,18 @@ mod sprint_handle_tests {
                 game.particle_sprite(stone, [0, 63, 0]).is_some(),
                 "stone sprite missing"
             );
-            game.side.particles.0.requested = Some(Vec::new());
+            game.client.particles.0.requested = Some(Vec::new());
             let entity = game.entity(7).unwrap();
             let host: &mut dyn ClientHost = game;
             assert!(entity.sprint_particles(host));
-            let requests = game.side.particles.0.requested.as_ref().unwrap();
+            let requests = game.client.particles.0.requested.as_ref().unwrap();
             assert_eq!(requests.len(), 1);
             assert_eq!(requests[0].1[1], 64.1);
             let stale = EntityRef::new(WorldEpoch::new(0), 7);
             assert!(!stale.sprint_particles(game));
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert!(!entity.sprint_particles(game));
-            assert_eq!(game.side.particles.0.requested.as_ref().unwrap().len(), 1);
+            assert_eq!(game.client.particles.0.requested.as_ref().unwrap().len(), 1);
         });
     }
 }

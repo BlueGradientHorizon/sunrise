@@ -155,7 +155,7 @@ pub mod tests {
                             BlockEntity::Chest(vec![None; 27])
                         },
                     );
-                    let host = game.side.lan.as_mut().unwrap();
+                    let host = game.server.lan.as_mut().unwrap();
                     host.hub.open_container(
                         12,
                         "minecraft:generic_9x3",
@@ -197,7 +197,7 @@ pub mod tests {
                         prediction
                             .click(&game.menu_env(), 0, 0, Input::Pickup)
                             .unwrap();
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()
@@ -227,7 +227,7 @@ pub mod tests {
                         );
                         assert_eq!(
                             prediction.carried.as_ref().map_or(0, |s| s.count),
-                            game.side.lan.as_ref().unwrap().hub.guests[0]
+                            game.server.lan.as_ref().unwrap().hub.guests[0]
                                 .carried
                                 .as_ref()
                                 .map_or(0, |s| s.count)
@@ -257,7 +257,7 @@ pub mod tests {
                         prediction.carried =
                             Some(sunrise_items::items::ItemStack::new(item, carried));
                         prediction.creative = creative;
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()
@@ -296,7 +296,7 @@ pub mod tests {
                         let result = (
                             slots[0].as_ref().map_or(0, |s| s.count),
                             slots[1].as_ref().map_or(0, |s| s.count),
-                            game.side.lan.as_ref().unwrap().hub.guests[0]
+                            game.server.lan.as_ref().unwrap().hub.guests[0]
                                 .carried
                                 .as_ref()
                                 .map_or(0, |s| s.count),
@@ -312,7 +312,7 @@ pub mod tests {
                             assert_eq!(result.0 + result.1 + result.2, existing + carried);
                         }
                     }
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -342,7 +342,7 @@ pub mod tests {
                     prediction
                         .click(&game.menu_env(), 27, 0, Input::QuickMove)
                         .unwrap();
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -372,7 +372,7 @@ pub mod tests {
                         2
                     );
                     assert_eq!(prediction.slot(0).unwrap().count, 2);
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -395,12 +395,12 @@ pub mod tests {
                             carried: None,
                         }),
                     );
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.inventory[0].as_ref().unwrap().count, 8);
                     assert_eq!(guest.inventory.iter().flatten().count(), 1);
                     game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
                         Some(sunrise_items::items::ItemStack::new("minecraft:dirt", 2));
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -430,7 +430,7 @@ pub mod tests {
                             .count,
                         3
                     );
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.inventory[0].as_ref().unwrap().count, 5);
                     assert_eq!(guest.inventory[1].as_ref().unwrap().count, 2);
                     // A component-limited displaced stack fills to 16, then leaves 7 elsewhere.
@@ -442,7 +442,7 @@ pub mod tests {
                     game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
                         Some(limited.clone());
                     limited.count = 15;
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -467,7 +467,7 @@ pub mod tests {
                             carried: None,
                         }),
                     );
-                    let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     assert_eq!(guest.inventory[1].as_ref().unwrap().count, 16);
                     assert_eq!(
                         guest
@@ -502,7 +502,7 @@ pub mod tests {
                 .default_state("minecraft:crafting_table")
                 .unwrap();
             game.world.set(1, 64, 1, table).unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -514,7 +514,7 @@ pub mod tests {
                 });
             game.lan_open_crafting(12, [1, 64, 1]);
             let window = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -538,7 +538,7 @@ pub mod tests {
                     carried: None,
                 }),
             );
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref().unwrap().count, 8);
             assert_eq!(
                 guest
@@ -633,7 +633,7 @@ pub mod tests {
                     .into(),
                     || {
                         use_menu(game);
-                        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                         assert!(guest.menu.is_none());
                         assert_eq!(guest.spectator(), switch.is_some());
                         assert_eq!(count(game), 0, "{block}");
@@ -660,7 +660,7 @@ pub mod tests {
                                 }),
                                 Some(true)
                             );
-                            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                             assert!(!guest.spectator());
                             assert!(guest.menu.is_none());
                             assert_eq!(count(game), 1);
@@ -677,7 +677,7 @@ pub mod tests {
                     } else {
                         use_menu(game);
                     }
-                    assert!(game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
+                    assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
                     assert_eq!(count(game), 1, "{block}");
                     assert_eq!(
                         take_signals(game),
@@ -700,7 +700,7 @@ pub mod tests {
                         "{block}"
                     );
                 }
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -713,7 +713,7 @@ pub mod tests {
                 assert_eq!(count(game), 0, "{block}");
                 game.guest_close_all(12);
                 assert_eq!(take_signals(game), (vec![], vec![], vec![]), "{block}");
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()

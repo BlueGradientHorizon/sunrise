@@ -2372,7 +2372,7 @@ pub(in crate::game) mod forced_respawn_tests {
                 game.build_registries();
                 for x in -2..=2 {
                     for z in -2..=2 {
-                        game.side
+                        game.server
                             .streaming
                             .insert_remote(&mut game.world, Chunk::empty(x, z));
                     }
@@ -2410,7 +2410,7 @@ pub(in crate::game) mod forced_respawn_tests {
                             .unwrap();
                         assert!(config.forced);
                         assert_eq!(config.pos, [5, 64, 5]);
-                        game.side.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                        game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
                             g.dead = true;
                             g.health = 0.0;
                         });

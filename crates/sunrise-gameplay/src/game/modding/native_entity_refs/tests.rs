@@ -1,11 +1,18 @@
 use mod_api::{EntityRef, LevelReadError, LevelRef};
 use std::ops::ControlFlow;
 use sunrise_gameplay_common::game::{
+    GameGameExt1 as _,
+    PackResources, Resources,
     execution_role::ExecutionRole,
     native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
     player_identity::PlayerIdentityGameExt1 as _,
+    resource_load::Progress,
+    test_fixtures::{acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, resolve_parts, tempfile},
 };
-pub use sunrise_gameplay_common::game::test_fixtures::*;
+pub use sunrise_gameplay_common::game::test_fixtures::{
+    FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
+    run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+};
 
 pub fn collect_all_entities(
     host: &dyn mod_api::Host,
@@ -175,12 +182,7 @@ pub fn with_game_at(
 }
 
 pub fn with_uncached_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
-    with_game_role_and_facts_with(
-        fixture_root(),
-        ExecutionRole::IntegratedServer,
-        None,
-        test,
-    );
+    with_game(test);
 }
 
 pub fn with_game_role(
@@ -200,18 +202,7 @@ pub fn with_game_role_and_facts(
     >,
     test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
-    with_game_role_and_facts_with(root, role, configure, test);
-}
-
-fn with_game_role_and_facts_with(
-    root: std::path::PathBuf,
-    role: ExecutionRole,
-    configure: Option<
-        fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
-    >,
-    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
-) {
-    use sunrise_gameplay_common::game::{Options, resource_load::Progress};
+    use sunrise_gameplay_common::game::Options;
     use sunrise_level::sim_settings::SimSettings;
     use mod_api::Authority;
 
@@ -221,21 +212,7 @@ fn with_game_role_and_facts_with(
     .unwrap();
     let saves = tempfile::tempdir().unwrap();
     let settings = SimSettings::default();
-    let (mut resources, pack) = {
-        let _permit = acquire_in_process_load_permit();
-        crate::game::server_side::resource_load_server::load_resources_server(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            &root,
-            &settings,
-            1,
-            std::time::Instant::now(),
-            &Default::default(),
-            &Progress::new(),
-            true,
-        )
-        .unwrap()
-    };
+    let (mut resources, pack) = load_fixture_server_resources(&root, role);
     if let Some(configure) = configure {
         configure(
             pack.assets.registry,
@@ -270,4 +247,102 @@ fn with_game_role_and_facts_with(
         Some(Default::default()),
     ));
     test(&mut game);
+}
+
+pub(in crate::game) fn load_fixture_server_resources(
+    root: &std::path::Path,
+    role: ExecutionRole,
+) -> (std::sync::Arc<Resources>, PackResources) {
+    let _permit = acquire_in_process_load_permit();
+    crate::game::server_side::resource_load_server::load_resources_for_role(
+        sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+        Vec::new(),
+        root,
+        role.into(),
+        1,
+        std::time::Instant::now(),
+        &Default::default(),
+        &Progress::new(),
+        true,
+    )
+    .unwrap()
+}
+
+/// A world with block `support` at (5, 64, 5) and a powered lever on its east face.
+pub fn lever_on(
+    game: &mut crate::game::ServerGame<'_>,
+    support: &str,
+) {
+    use std::sync::Arc;
+    use sunrise_level::chunk::Chunk;
+
+    game.options.dedicated = Some(Vec::new());
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+    let registry = game.pack.assets.registry;
+    let support = registry.default_state(support).unwrap();
+    let lever = registry
+        .resolve(&sunrise_world::chunk::BlockState {
+            name: "minecraft:lever".into(),
+            properties: [("face", "wall"), ("facing", "east"), ("powered", "true")]
+                .into_iter()
+                .map(|(key, value)| (key.into(), value.into()))
+                .collect(),
+        })
+        .unwrap();
+    game.world.set(5, 64, 5, support).unwrap();
+    game.world.set(6, 64, 5, lever).unwrap();
+}
+
+/// A plain piston pushing east at (5, `y`, 5) with `block` at (6, `y`, 5) and `above` on top
+/// of it, powered from (4, `y`, 5): whether the block above moved with the one below. Moved,
+/// its old cell is air once the push started. Each scenario has its own `y`, so none meets
+/// the moving blocks of another.
+pub fn piston_pulls_above(
+    game: &mut crate::game::ServerGame<'_>,
+    y: i32,
+    block: &str,
+    above: &str,
+) -> bool {
+    use sunrise_core::position::BlockPos;
+    let registry = game.pack.assets.registry;
+    let state = |name: &str| registry.default_state(name).unwrap();
+    let air = state("minecraft:air");
+    game.with_level(|b, level, ticks| {
+        let piston = |extended: &str| {
+            registry
+                .resolve(&sunrise_world::chunk::BlockState {
+                    name: "minecraft:piston".into(),
+                    properties: [
+                        ("facing".into(), "east".into()),
+                        ("extended".into(), extended.into()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                })
+                .unwrap()
+        };
+        let mut place = |pos: [i32; 3], s| {
+            let flags = sunrise_world::level::flags::UPDATE_ALL;
+            b.set_block(
+                level,
+                ticks,
+                BlockPos::new(pos[0], pos[1], pos[2]),
+                s,
+                flags,
+            );
+        };
+        place([5, y, 5], piston("false"));
+        place([6, y, 5], state(block));
+        place([6, y + 1, 5], state(above));
+        place([4, y, 5], state("minecraft:redstone_block"));
+        b.run_block_events(level, ticks);
+        assert_eq!(
+            sunrise_world::level::LevelAccess::block_state(level, BlockPos::new(5, y, 5)),
+            piston("true"),
+            "{block}: the piston extended"
+        );
+        sunrise_world::level::LevelAccess::block_state(level, BlockPos::new(6, y + 1, 5)) == air
+    })
 }

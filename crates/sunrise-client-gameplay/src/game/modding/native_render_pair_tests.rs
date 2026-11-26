@@ -324,7 +324,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
     super::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Steve").unwrap();
-        let builtin = game.side.remote.as_ref().unwrap().builtin.clone();
+        let builtin = game.client.remote.as_ref().unwrap().builtin.clone();
         let types = builtin.get("minecraft:entity_type").unwrap();
         let stone = builtin
             .get("minecraft:item")
@@ -343,7 +343,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.side.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([
+        game.client.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([
             ("minecraft:ender_dragon", 101),
             ("minecraft:end_crystal", 102),
         ]));
@@ -422,7 +422,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
                         passengers: passengers.clone(),
                     }))
                     .unwrap();
-                    let remote = game.side.remote.as_ref().unwrap();
+                    let remote = game.client.remote.as_ref().unwrap();
                     assert_eq!(
                         remote.passenger_seats(vehicle as u32).count(),
                         passengers.len()
@@ -444,7 +444,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
                     relatives: 0,
                 }),
                 ["frame"] => {
-                    game.side.camera_type = CameraType::ThirdPersonBack;
+                    game.client.camera_type = CameraType::ThirdPersonBack;
                     game.tick_player_model();
                     let ((vertices, ..), ids) = submitted_bodies(game, |game| {
                         game.entity_geometry(
@@ -456,7 +456,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
                         )
                     });
                     if std::mem::take(&mut check_beams) {
-                        let spans = game.side.entity_spans.borrow();
+                        let spans = game.client.entity_spans.borrow();
                         let entities = sunrise_shaders::render_stage("ENTITIES");
                         let none = sunrise_shaders::render_stage("NONE");
                         let beams: Vec<_> = spans

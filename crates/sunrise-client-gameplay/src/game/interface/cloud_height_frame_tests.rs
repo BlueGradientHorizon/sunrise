@@ -126,12 +126,12 @@ fn the_cloud_layer_follows_the_dimensions_height() {
     }
     let raised = std::env::var(CASE).unwrap() == "raised";
     with_client_game(|game| {
-        game.side.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
-        assert!(game.side.gui.atlas.clouds_shader.is_some());
+        game.client.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
+        assert!(game.client.gui.atlas.clouds_shader.is_some());
         join_overworld(game, if raised { 250.0 } else { 192.33 });
         let _event_loop = frame_scene(game);
-        game.side.screen = super::Screen::Playing;
-        game.side.screen_fx.vignette_brightness = 0.0;
+        game.client.screen = super::Screen::Playing;
+        game.client.screen_fx.vignette_brightness = 0.0;
         let expected = if raised { 255 } else { 0 };
         assert_eq!(drawn_pixel(game), [expected, expected, expected, 255]);
     });

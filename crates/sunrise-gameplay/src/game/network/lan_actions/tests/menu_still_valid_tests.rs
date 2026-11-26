@@ -77,7 +77,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let eye = game.side.lan.as_ref().unwrap().hub.guests[0].position;
+            let eye = game.server.lan.as_ref().unwrap().hub.guests[0].position;
             // 20 blocks from the guest: past reach + 4, so vanilla closes it.
             let far = (eye[0] as i32, eye[1] as i32, eye[2] as i32 + 20);
             let beside = (far.0 + 1, far.1, far.2);
@@ -172,7 +172,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             // Only a button click for the open window asks: a stale window's click leaves the
             // menu be, and the open window's closes it.
             open(game, Slots::Block(far), true);
-            let window = game.side.lan.as_ref().unwrap().hub.guests[0]
+            let window = game.server.lan.as_ref().unwrap().hub.guests[0]
                 .menu
                 .as_ref()
                 .unwrap()
@@ -197,7 +197,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             assert!(asked() > before);
 
             // An always-true part doesn't hold it past death and respawn, or a disconnect.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -238,7 +238,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             };
             assert!(menu.asks_still_valid);
             let before = asked();
-            let host = game.side.lan.as_ref().unwrap();
+            let host = game.server.lan.as_ref().unwrap();
             assert!(menu.still_valid(&host.hub.loop_context, &game.world, &host.hub.guests[0]));
             assert_eq!(asked(), before);
         });

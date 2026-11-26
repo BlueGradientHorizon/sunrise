@@ -323,9 +323,9 @@ pub(in crate::game) mod tests {
                             last_changed: 0,
                         };
                         game.add_advancement_toast(advancement("cancel"));
-                        assert!(game.side.toast_manager.queued.is_empty());
+                        assert!(game.client.toast_manager.queued.is_empty());
                         game.add_advancement_toast(advancement("untouched"));
-                        let QueuedToast::Advancement(original) = &game.side.toast_manager.queued[0]
+                        let QueuedToast::Advancement(original) = &game.client.toast_manager.queued[0]
                         else {
                             panic!("expected advancement toast")
                         };
@@ -340,7 +340,7 @@ pub(in crate::game) mod tests {
                             "not animated before admission"
                         );
                         game.add_advancement_toast(advancement("edit"));
-                        let QueuedToast::Advancement(edited) = &game.side.toast_manager.queued[1]
+                        let QueuedToast::Advancement(edited) = &game.client.toast_manager.queued[1]
                         else {
                             panic!("expected advancement toast")
                         };
@@ -363,7 +363,7 @@ pub(in crate::game) mod tests {
                         system.message = Some(Text::literal("edit"));
                         assert!(game.add_system_toast(None, system));
                         let Some(QueuedToast::System(_, system)) =
-                            game.side.toast_manager.queued.back()
+                            game.client.toast_manager.queued.back()
                         else {
                             panic!("expected system toast")
                         };
@@ -376,12 +376,12 @@ pub(in crate::game) mod tests {
                             ));
                         }
                         assert_eq!(
-                            game.side.toast_manager.update(1.0),
+                            game.client.toast_manager.update(1.0),
                             (None, true),
                             "both challenges share a promotion sound"
                         );
-                        assert_eq!(game.side.toast_manager.visible.len(), 5);
-                        assert_eq!(game.side.toast_manager.update(1.0), (Some(true), false));
+                        assert_eq!(game.client.toast_manager.visible.len(), 5);
+                        assert_eq!(game.client.toast_manager.update(1.0), (Some(true), false));
 
                         game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
                             "Older mod toast",
@@ -390,27 +390,27 @@ pub(in crate::game) mod tests {
                         game.admit_mod_toasts();
                         game.add_advancement_toast(advancement("newer advancement"));
                         let fading = game
-                            .side
+                            .client
                             .toast_manager
                             .system_mut(SystemToastId::PackLoadFailure)
                             .unwrap();
                         fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         fading.force_hide();
-                        assert_eq!(game.side.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(game.client.toast_manager.update(1.0), (Some(false), false));
                         assert_eq!(
-                            game.side.toast_manager.queued.len(),
+                            game.client.toast_manager.queued.len(),
                             2,
                             "a sliding-out toast still owns its slot"
                         );
-                        game.side
+                        game.client
                             .toast_manager
                             .system_mut(SystemToastId::PackLoadFailure)
                             .unwrap()
                             .slide
                             .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.side.toast_manager.update(1.0), (None, false));
+                        assert_eq!(game.client.toast_manager.update(1.0), (None, false));
                         assert!(matches!(
-                            game.side
+                            game.client
                                 .toast_manager
                                 .visible
                                 .last()
@@ -418,19 +418,19 @@ pub(in crate::game) mod tests {
                             Some(QueuedToast::Mod(_))
                         ));
                         assert!(matches!(
-                            game.side.toast_manager.queued.front(),
+                            game.client.toast_manager.queued.front(),
                             Some(QueuedToast::Advancement(_))
                         ));
 
                         let narrator = game
-                            .side
+                            .client
                             .toast_manager
                             .system_mut(SystemToastId::Narrator)
                             .unwrap();
                         narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         narrator.force_hide();
                         assert_eq!(
-                            game.side.toast_manager.update(1.0),
+                            game.client.toast_manager.update(1.0),
                             (Some(false), false),
                             "the first visibility change wins, even while another family slides in"
                         );

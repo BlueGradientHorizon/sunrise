@@ -4689,6 +4689,7 @@ dependencies = [
  "sunrise-theme",
  "sunrise-threads",
  "sunrise-world",
+ "tempfile",
  "wgpu",
  "winit",
  "zip",
@@ -4989,6 +4990,7 @@ dependencies = [
  "sunrise-sim",
  "sunrise-threads",
  "sunrise-world",
+ "tempfile",
  "toml",
 ]
 

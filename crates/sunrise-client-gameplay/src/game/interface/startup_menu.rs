@@ -1653,7 +1653,7 @@ mod tests {
                 let Some(PendingWorldEntry::Local {
                     create: Some(options),
                     ..
-                }) = &game.side.pending_entry.0
+                }) = &game.client.pending_entry.0
                 else {
                     panic!("pending")
                 };

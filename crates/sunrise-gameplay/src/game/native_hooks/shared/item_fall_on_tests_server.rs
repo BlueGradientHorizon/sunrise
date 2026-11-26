@@ -43,7 +43,7 @@ fn a_dropped_item_lands_on_a_fall_on_part() {
             // so the item rests on it again and must not be heard landing twice.
             let mut destructions = 0;
             for _ in 0..80 {
-                game.side.ticked_entities_through = u32::MAX;
+                game.server.ticked_entities_through = u32::MAX;
                 sunrise_sim::block_contact::in_level(
                     sunrise_sim::parallel::TickThread::mint(),
                     Some(game.dim.id()),
@@ -91,7 +91,7 @@ fn item_fall_on_returns_progressed_level_loan_after_part_panic() {
             std::env::temp_dir().join(format!("item-loan-{}-{dimension:?}", std::process::id()));
         with_mods(mods.clone(), || {
             super::super::native_entity_refs::tests::with_game(|game| {
-                game.side.world_root = scratch.clone();
+                game.server.world_root = scratch.clone();
                 game.enter_level(dimension).unwrap();
                 loaded += 1;
                 let stone = game

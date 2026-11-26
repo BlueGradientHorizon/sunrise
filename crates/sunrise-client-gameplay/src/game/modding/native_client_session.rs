@@ -337,7 +337,7 @@ pub mod tests {
                 ("127.0.0.1:25565", "127.0.0.1:25565"),
                 ("friend:private-invite", "Friend's world"),
             ] {
-                let remote = game.side.remote.as_mut().unwrap();
+                let remote = game.client.remote.as_mut().unwrap();
                 remote.session.address = address.into();
                 remote.display_address = Remote::display_address_for(&remote.session.address);
                 let external = game.client_session().client_server().unwrap();
@@ -352,7 +352,7 @@ pub mod tests {
                 );
             }
 
-            game.side.settings.language = "fr_fr".into();
+            game.client.settings.language = "fr_fr".into();
             let _publication = lang::isolate_publication(Language::of("es_es", []));
             let outer = game.client_session().client_language().unwrap();
             assert_eq!(outer.as_ref(), "es_es");
@@ -384,7 +384,7 @@ pub mod tests {
                 "es_es",
                 "publication does not mutate earlier snapshots"
             );
-            game.side.debug_charts.frame_times.reset();
+            game.client.debug_charts.frame_times.reset();
             assert_eq!(
                 game.client_session()
                     .client_frame_stats()
@@ -392,9 +392,9 @@ pub mod tests {
                     .frame_time_ns,
                 None
             );
-            game.side.fps = 63.5;
-            game.side.frames = 99;
-            game.side.debug_charts.frame_times.log(15_432_123);
+            game.client.fps = 63.5;
+            game.client.frames = 99;
+            game.client.debug_charts.frame_times.log(15_432_123);
             assert_eq!(
                 game.client_session().client_frame_stats(),
                 Some(ClientFrameStats {
@@ -403,9 +403,9 @@ pub mod tests {
                     frame_time_ns: Some(15_432_123),
                 })
             );
-            game.side.fps = 59.0;
-            game.side.frames = 100;
-            game.side.debug_charts.frame_times.log(17_123_456);
+            game.client.fps = 59.0;
+            game.client.frames = 100;
+            game.client.debug_charts.frame_times.log(17_123_456);
             assert_eq!(
                 game.client_session().client_frame_stats(),
                 Some(ClientFrameStats {
@@ -419,11 +419,11 @@ pub mod tests {
                 game.is_paused(),
                 "the existing applied pause read remains canonical"
             );
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(game.client_session().client_server(), None);
             assert_eq!(game.client_session().client_language(), None);
             assert_eq!(game.client_session().client_frame_stats(), None);
-            game.side.remote = None;
+            game.client.remote = None;
             // A reconnect target must not be mistaken for the current session.
             game.connection_starts("stale.example:25565", "OldPlayer", false);
             assert_eq!(game.client_session().client_server(), None);
@@ -443,9 +443,9 @@ pub mod tests {
                 None,
                 "not listed yet"
             );
-            game.side.remote.as_mut().unwrap().list_self(0);
+            game.client.remote.as_mut().unwrap().list_self(0);
             assert_eq!(game.client_session().client_latency(), Some(0));
-            game.side.remote.as_mut().unwrap().list_self(87);
+            game.client.remote.as_mut().unwrap().list_self(87);
             assert_eq!(game.client_session().client_latency(), Some(87));
 
             // A bow (use duration 72000) drawn in the main hand for 7 ticks.
@@ -463,7 +463,7 @@ pub mod tests {
             game.using = None;
             assert_eq!(game.local_item_use(), None, "released");
 
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(game.client_session().client_latency(), None);
             game.using = Some((game.selected, 7));
             assert_eq!(game.local_item_use(), None, "no world");

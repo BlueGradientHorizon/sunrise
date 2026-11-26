@@ -288,11 +288,11 @@ fn a_see_through_label_is_lit_at_least_2_in_the_world_and_unlit_over_it() {
 fn the_text_background_opacity_sets_the_backdrop_and_the_faded_text() {
     with_client_game(|game| {
         use sunrise_client::options_file::V;
-        game.side
+        game.client
             .settings
             .file
             .set("backgroundForChatOnly", V::Bool(false));
-        game.side.settings.text_background_opacity = 0.5;
+        game.client.settings.text_background_opacity = 0.5;
         let text = Text::literal("Label");
         let at = [0.5, 70.0, 0.5];
         let (ok, [world, _]) = labels(game, at, &text, NameTagOptions::new(false, true, 0xF0));
@@ -303,7 +303,7 @@ fn the_text_background_opacity_sets_the_backdrop_and_the_faded_text() {
         assert_eq!(alphas(&world), (vec![0xFF], vec![]));
         assert_eq!(alphas(&through), (vec![159], vec![127]));
         // Chat only again: the default 0.25 whatever the slider says.
-        game.side
+        game.client
             .settings
             .file
             .set("backgroundForChatOnly", V::Bool(true));

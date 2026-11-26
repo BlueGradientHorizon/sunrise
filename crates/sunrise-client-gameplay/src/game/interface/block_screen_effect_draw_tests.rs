@@ -627,17 +627,17 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
     with_client_game(|game| {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "water-overlay").unwrap();
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.loaded_sent = true;
         remote.joined = true;
         remote.entity_id = 42;
         remote.level_load.finish();
-        game.side.screen = Screen::Playing;
-        game.side.camera_type = CameraType::FirstPerson;
+        game.client.screen = Screen::Playing;
+        game.client.camera_type = CameraType::FirstPerson;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
         let chunk = Chunk::with_layout(0, 0, game.world.layout());
-        game.side.streaming.insert_remote(&mut game.world, chunk);
+        game.client.streaming.insert_remote(&mut game.world, chunk);
         let water = game
             .pack
             .assets
@@ -648,7 +648,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         game.world.set(8, 65, 8, water).unwrap();
         game.tick_remote().unwrap();
 
-        game.side.screen = Screen::Dead;
+        game.client.screen = Screen::Dead;
         use sunrise_protocol::packets::play::{Clientbound, SetHealth};
         game.apply_packet(Clientbound::SetHealth(SetHealth {
             health: 0.0,
@@ -674,16 +674,16 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
             assert!(!overlays.contains(&"water") && !overlays.contains(&"mod water"));
         });
         assert_eq!(dry, None);
-        assert_eq!(game.side.chat_ui.death_time, 1);
+        assert_eq!(game.client.chat_ui.death_time, 1);
 
         // Tick 20 still samples before the local player is removed from the level.
         for _ in 1..19 {
             game.tick_remote().unwrap();
         }
-        assert_eq!(game.side.chat_ui.death_time, 19);
+        assert_eq!(game.client.chat_ui.death_time, 19);
         game.world.set(8, 65, 8, water).unwrap();
         game.tick_remote().unwrap();
-        assert_eq!(game.side.chat_ui.death_time, 20);
+        assert_eq!(game.client.chat_ui.death_time, 20);
         assert!(names(&quads(game)).contains(&"water"));
 
         // Extraction still reads that last sample after removal, even as the world ticks.
@@ -697,7 +697,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
             );
         });
         assert_eq!(still_wet.unwrap().pos, BlockPos::new(8, 65, 8));
-        assert_eq!(game.side.chat_ui.death_time, 20);
+        assert_eq!(game.client.chat_ui.death_time, 20);
         server.shutdown();
     });
 }
@@ -746,7 +746,7 @@ fn camera_submersion_can_force_or_clear_the_first_person_water_overlay() {
 fn pack_assembly_reports_a_missing_water_default() {
     with_client_game(|game| {
         let root = sunrise_assets::resource_source::ResourceRoot::directory(fixture_root());
-        let client_pack = &game.side.client_pack;
+        let client_pack = &game.client.client_pack;
         let registry = sunrise_world::registry::BlockRegistry::from_facts_json(
             br#"{"states":[["minecraft:air",true,false,"","minecraft:air"]],"defaults":{"minecraft:air":0}}"#
                 .as_slice(),
@@ -1018,12 +1018,12 @@ fn screen_effect_quads_draw_over_the_level_and_under_the_gui() {
                     .unwrap(),
             );
             game.options.offscreen = true;
-            game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
-            game.side.title.0 = None;
+            game.client.renderer.0 = Some(game.new_renderer(window).unwrap());
+            game.client.title.0 = None;
             burning_player(game);
             game.previous_position = game.player.as_ref().unwrap().position;
             // A black vignette is no quad: the HUD's camera overlays would darken the colours.
-            game.side.screen_fx.vignette_brightness = 0.0;
+            game.client.screen_fx.vignette_brightness = 0.0;
             game.player.as_mut().unwrap().fire_ticks = 0;
             let (level, width) = drawn_frame(game);
             game.player.as_mut().unwrap().fire_ticks = 100;

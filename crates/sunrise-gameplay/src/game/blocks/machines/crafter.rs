@@ -347,7 +347,7 @@ pub(in crate::game) mod tests {
             opening_item: None,
             slot_changed_seen: None,
         });
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
         game.world.modified.clear();
 
         game.lan_crafter_slot_state(1, 1, 3, true);

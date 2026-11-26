@@ -1461,7 +1461,7 @@ fn projectile_body_uses_its_own_shader_entity_id() {
     use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
     super::native_entity_refs::tests::with_client_game(|game| {
-        game.side.pack_ids = Some(PackIds::with_entity_ids([
+        game.client.pack_ids = Some(PackIds::with_entity_ids([
             ("minecraft:snowball", 41),
             ("minecraft:ominous_item_spawner", 42),
             ("minecraft:arrow", 43),
@@ -1491,7 +1491,7 @@ fn projectile_body_uses_its_own_shader_entity_id() {
             &mut Vec::new(),
         );
         let ids: Vec<_> = game
-            .side
+            .client
             .entity_spans
             .borrow()
             .windows(2)

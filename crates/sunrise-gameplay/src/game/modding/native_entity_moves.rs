@@ -491,7 +491,7 @@ pub(in crate::game) mod tests {
                 .push(sunrise_sim::entities::ArmorStand::new(13, Vec3::ZERO, 0.0));
             let stand = game.entity(13).unwrap();
             assert!(!stand.set_rotation(game, 30.0, 10.0));
-            game.side
+            game.server
                 .others
                 .0
                 .push(super::super::commands::OtherEntity {

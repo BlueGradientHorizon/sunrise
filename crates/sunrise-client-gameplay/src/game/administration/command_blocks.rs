@@ -485,12 +485,12 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn the_edit_screen_is_laid_out_by_the_build() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            game.side.title.0 = None;
+            game.client.title.0 = None;
             // 1280x720 at GUI scale 3 is 427x240.
-            game.side.settings.gui_scale = 3;
+            game.client.settings.gui_scale = 3;
             let block = CommandBlock::default;
             game.open_edit_screen((0, 0, 0), None, block(), Mode::Redstone, false);
-            assert_eq!(game.side.screen, Screen::CommandBlock);
+            assert_eq!(game.client.screen, Screen::CommandBlock);
             game.build_screen();
             let boxes = |game: &crate::game::ClientGame<'_>| {
                 let s = game.client.command_block_screen.0.as_ref().unwrap();
@@ -526,7 +526,7 @@ pub(in crate::game) mod tests {
                 ])
             );
             // GUI scale 1 (1280x720): the build moves both boxes and the buttons.
-            game.side.settings.gui_scale = 1;
+            game.client.settings.gui_scale = 1;
             game.build_screen();
             assert_eq!(
                 boxes(game),

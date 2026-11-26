@@ -1404,7 +1404,7 @@ use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME
             request.save_root = root.clone();
             game.load_world(request).unwrap();
             assert!(world_biomes!(game).contains("test:present"));
-            game.side
+            game.server
                 .streaming
                 .set_forced_loaded(&mut game.world, 8, 8, true);
             let chunk = &game.world.chunks[&(8, 8)];
@@ -1413,7 +1413,7 @@ use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME
             game.world.modified.insert((8, 8));
             game.save_level(true).unwrap();
             let reloaded = game
-                .side
+                .server
                 .save
                 .0
                 .load(8, 8, game.pack.assets.registry, world_biomes!(game))

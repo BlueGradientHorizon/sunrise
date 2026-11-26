@@ -113,7 +113,8 @@ pub(in crate::game) mod tests {
     };
     pub use sunrise_gameplay::game::native_entity_refs::tests::{
         bind_acting_guest, bind_local_player, collect_all_entities, collect_entities_in,
-        collect_game_all_entities, collect_game_entities_in, prepare_entity_ticking_neighborhood,
+        collect_game_all_entities, collect_game_entities_in, lever_on, piston_pulls_above,
+        prepare_entity_ticking_neighborhood,
     };
     #[cfg(feature = "client")]
     pub use sunrise_client_gameplay::game::native_entity_refs::tests::test_window;
@@ -674,33 +675,6 @@ pub(in crate::game) mod tests {
         });
     }
 
-    /// A world with block `support` at (5, 64, 5) and a powered lever on its east face.
-    pub(in sunrise_gameplay::game::server_side) fn lever_on(
-        game: &mut sunrise_gameplay::game::ServerGame<'_>,
-        support: &str,
-    ) {
-        use std::sync::Arc;
-        use sunrise_level::chunk::Chunk;
-
-        game.options.dedicated = Some(Vec::new());
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        let registry = game.pack.assets.registry;
-        let support = registry.default_state(support).unwrap();
-        let lever = registry
-            .resolve(&sunrise_world::chunk::BlockState {
-                name: "minecraft:lever".into(),
-                properties: [("face", "wall"), ("facing", "east"), ("powered", "true")]
-                    .into_iter()
-                    .map(|(key, value)| (key.into(), value.into()))
-                    .collect(),
-            })
-            .unwrap();
-        game.world.set(5, 64, 5, support).unwrap();
-        game.world.set(6, 64, 5, lever).unwrap();
-    }
-
     #[test]
     #[ignore = "daily"]
     fn a_level_handle_reads_redstone_as_signal_getter_does() {
@@ -1212,58 +1186,6 @@ pub(in crate::game) mod tests {
         });
     }
 
-    /// A plain piston pushing east at (5, `y`, 5) with `block` at (6, `y`, 5) and `above` on top
-    /// of it, powered from (4, `y`, 5): whether the block above moved with the one below. Moved,
-    /// its old cell is air once the push started. Each scenario has its own `y`, so none meets
-    /// the moving blocks of another.
-    pub(in sunrise_gameplay::game::server_side) fn piston_pulls_above(
-        game: &mut sunrise_gameplay::game::ServerGame<'_>,
-        y: i32,
-        block: &str,
-        above: &str,
-    ) -> bool {
-        use sunrise_core::position::BlockPos;
-        let registry = game.pack.assets.registry;
-        let state = |name: &str| registry.default_state(name).unwrap();
-        let air = state("minecraft:air");
-        game.with_level(|b, level, ticks| {
-            let piston = |extended: &str| {
-                registry
-                    .resolve(&sunrise_world::chunk::BlockState {
-                        name: "minecraft:piston".into(),
-                        properties: [
-                            ("facing".into(), "east".into()),
-                            ("extended".into(), extended.into()),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    })
-                    .unwrap()
-            };
-            let mut place = |pos: [i32; 3], s| {
-                let flags = sunrise_world::level::flags::UPDATE_ALL;
-                b.set_block(
-                    level,
-                    ticks,
-                    BlockPos::new(pos[0], pos[1], pos[2]),
-                    s,
-                    flags,
-                );
-            };
-            place([5, y, 5], piston("false"));
-            place([6, y, 5], state(block));
-            place([6, y + 1, 5], state(above));
-            place([4, y, 5], state("minecraft:redstone_block"));
-            b.run_block_events(level, ticks);
-            assert_eq!(
-                sunrise_world::level::LevelAccess::block_state(level, BlockPos::new(5, y, 5)),
-                piston("true"),
-                "{block}: the piston extended"
-            );
-            sunrise_world::level::LevelAccess::block_state(level, BlockPos::new(6, y + 1, 5)) == air
-        })
-    }
-
     #[test]
     #[ignore = "daily"]
     fn block_parts_decide_what_a_piston_pulls_along() {
@@ -1320,7 +1242,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn block_part_bounce_restitution_in_own_process() {
+    pub(in crate::game) fn block_part_bounce_restitution_in_own_process() {
         use sunrise_core::position::BlockPos;
         use sunrise_sim::block_contact::{Contact, bounce_restitution};
 

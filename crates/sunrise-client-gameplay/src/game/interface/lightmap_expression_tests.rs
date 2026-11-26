@@ -134,7 +134,7 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         // An outline-only modifier is enough to enable expression evaluation.
         return with_client_game(|game| {
             let pack = sky_pack(&["rendertype_lines"]);
-            game.side.gui =
+            game.client.gui =
                 crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
             let _event_loop = frame_scene(game);
             assert!(game.reads_pack_expressions());
@@ -144,14 +144,14 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     with_client_game(|game| {
         // The pack's resources as the game loads them: the atlas resolves the uniform, and the
         // renderer the game builds over them takes the shader with it.
-        game.side.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
-        assert!(game.side.gui.atlas.lightmap_shader.is_some());
-        assert_eq!(game.side.gui.atlas.lightmap_expressions.len(), 1);
+        game.client.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
+        assert!(game.client.gui.atlas.lightmap_shader.is_some());
+        assert_eq!(game.client.gui.atlas.lightmap_expressions.len(), 1);
         let _event_loop = frame_scene(game);
-        game.side.renderer.0.as_mut().unwrap().fullbright = fullbright;
+        game.client.renderer.0.as_mut().unwrap().fullbright = fullbright;
         // The expression context's strings, given room up front: every frame rewrites them in
         // place, so their buffers (address and capacity) are the same after the frames.
-        let context = &mut game.side.expression_frame;
+        let context = &mut game.client.expression_frame;
         context.dimension = String::with_capacity(64);
         context.biome = String::with_capacity(64);
         let buffers = |game: &crate::game::ClientGame<'_>| {
@@ -165,8 +165,8 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
             // written.
             assert!(!game.reads_pack_expressions());
             assert!(texture.iter().all(|&b| b == 255));
-            assert_eq!(game.side.expression_frame.dimension, "");
-            assert_eq!(game.side.expression_frame.biome, "");
+            assert_eq!(game.client.expression_frame.dimension, "");
+            assert_eq!(game.client.expression_frame.biome, "");
         } else {
             assert!(game.reads_pack_expressions());
             for texel in texture.chunks(4) {
@@ -177,7 +177,7 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
                     .unwrap();
             }
             assert_eq!(buffers(game), before);
-            let context = &game.side.expression_frame;
+            let context = &game.client.expression_frame;
             assert_eq!(context.dimension, "minecraft:overworld");
             assert_eq!(context.biome, BIOME);
         }
@@ -199,9 +199,9 @@ fn the_particles_frame_keeps_its_strings() {
             held.biome = String::with_capacity(64);
         }
         let registry = std::sync::Arc::new(registry);
-        game.side.client_pack.polytone_particles = Some(registry.clone());
+        game.client.client_pack.polytone_particles = Some(registry.clone());
         let _event_loop = frame_scene(game);
-        game.side.screen = super::Screen::Playing;
+        game.client.screen = super::Screen::Playing;
         let buffers = || {
             let held = registry.frame.read().unwrap();
             [&held.dimension, &held.biome].map(|s| (s.as_ptr(), s.capacity()))
@@ -223,12 +223,12 @@ fn the_particles_frame_keeps_its_strings() {
 /// edges) draws its value.
 fn the_sky_draws_its_expression_uniform() {
     with_client_game(|game| {
-        game.side.gui = crate::game::UiResources::load(
+        game.client.gui = crate::game::UiResources::load(
             &sky_pack(&["sky", "stars", "rendertype_lines"]),
             std::path::Path::new(""),
         )
         .unwrap();
-        let atlas = &game.side.gui.atlas;
+        let atlas = &game.client.gui.atlas;
         let values = |expressions: &[sunrise_client::polytone_post::ExpressionUniform]| {
             let frame = sunrise_level::environment::Frame::default();
             expressions
@@ -248,7 +248,7 @@ fn the_sky_draws_its_expression_uniform() {
         assert_eq!(game.requested_post_effects(), ["minecraft:end_of_frame"]);
         assert!(
             !game
-                .side
+                .client
                 .renderer
                 .0
                 .as_ref()
@@ -335,9 +335,9 @@ fn the_sky_draws_poly_globals() {
                 .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
                 .collect(),
         );
-        game.side.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
-        assert!(game.side.gui.atlas.sky_shader.is_some());
-        assert!(game.side.gui.atlas.lightmap_shader.is_some());
+        game.client.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+        assert!(game.client.gui.atlas.sky_shader.is_some());
+        assert!(game.client.gui.atlas.lightmap_shader.is_some());
         let _event_loop = frame_scene(game);
         assert!(game.reads_poly_globals());
         assert_eq!(corner(game), [64, 51, 0]);
@@ -373,7 +373,7 @@ fn a_post_effect_reads_poly_globals() {
                 .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
                 .collect(),
         );
-        game.side.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+        game.client.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
         game.pack.source = pack;
         let _event_loop = frame_scene(game);
         assert!(!game.reads_poly_globals());
@@ -381,17 +381,17 @@ fn a_post_effect_reads_poly_globals() {
         corner(game);
         assert!(
             !game
-                .side
+                .client
                 .renderer
                 .0
                 .as_ref()
                 .unwrap()
                 .post_effects_read_poly_globals()
         );
-        game.side.post_effects = vec!["minecraft:globals".to_owned()];
+        game.client.post_effects = vec!["minecraft:globals".to_owned()];
         assert_eq!(corner(game), [64, 51, 0]);
         assert!(
-            game.side
+            game.client
                 .renderer
                 .0
                 .as_ref()

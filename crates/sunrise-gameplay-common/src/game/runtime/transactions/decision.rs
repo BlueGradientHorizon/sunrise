@@ -75,7 +75,7 @@ pub enum Residence {
 /// includes components. Recipe/rule answers are stored values, never callbacks
 /// invoked during validation. RNG is a reserved state, not a shared draw.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) struct MenuState {
+pub struct MenuState {
     pub instance: u64,
     pub container: u64,
     pub cursor: Option<ItemStack>,
@@ -148,7 +148,7 @@ pub enum Step {
     Effect(Effect),
 }
 
-pub(in crate::game) struct Plan {
+pub struct Plan {
     steps: Vec<Step>,
 }
 
@@ -160,7 +160,7 @@ impl Plan {
 
 /// Typed whole-menu read set, conservative until all real route writes can
 /// supply complete per-slot epochs. Snapshots supplement, never replace, epoch.
-pub(in crate::game) struct Reads {
+pub struct Reads {
     epoch: Generation,
     menu: MenuState,
 }
@@ -319,7 +319,7 @@ impl<T, R, P> Proposed<T, R, P> {
 
 /// Only a structurally validated plan can enter an opaque decision. Listener
 /// output cannot mutate it, so apply need only recheck the live preconditions.
-pub(in crate::game) struct FrozenPlan {
+pub struct FrozenPlan {
     steps: Vec<Step>,
 }
 

@@ -380,18 +380,18 @@ pub mod tests {
                 game.using = Some((game.selected, 0));
                 game.tick_player_model();
                 assert_eq!(
-                    game.side.player_model.as_ref().unwrap().extra.use_animation,
+                    game.client.player_model.as_ref().unwrap().extra.use_animation,
                     UseAnimation::Drink
                 );
                 assert_eq!(calls.load(Ordering::Relaxed), 10);
-                game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
+                game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
                 game.use_duration = 72_000;
                 let (overridden, _) = game.hand_geometry(0.0);
                 assert_eq!(calls.load(Ordering::Relaxed), 11);
                 // A scoped spear override on a component-patched ordinary item
                 // must reach hand geometry without the old whitelist panic.
                 game.inventory[game.selected] = Some(kinetic_stick);
-                game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
+                game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
                 let (kinetic_geometry, _) = game.hand_geometry(0.0);
                 assert!(!kinetic_geometry.is_empty());
                 overridden_geometry = Some(overridden);
@@ -411,7 +411,7 @@ pub mod tests {
                 Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1));
             game.using = Some((game.selected, 0));
             game.tick_player_model();
-            game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
+            game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
             game.use_duration = 72_000;
             let (vanilla, _) = game.hand_geometry(0.0);
             let overridden = overridden_geometry.unwrap();

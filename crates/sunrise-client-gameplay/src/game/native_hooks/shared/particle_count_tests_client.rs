@@ -46,14 +46,14 @@ fn a_client_mod_counts_and_clears_particles() {
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         fill(game);
-        assert_eq!(game.side.pickups.0.live.len(), 1, "the pickup is live");
-        let engine = game.side.particles.0.group_count();
+        assert_eq!(game.client.pickups.0.live.len(), 1, "the pickup is live");
+        let engine = game.client.particles.0.group_count();
         assert_eq!(engine, 5, "three flames, one starter and one guardian");
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count() as usize, engine + 1);
         // A clear asked between frames: it reads 0 at once, and the next frame clears
         // every group without a particle tick.
-        game.side.particles.0.tracking_emitter(
+        game.client.particles.0.tracking_emitter(
             ParticleOptions::simple(ParticleType::Crit),
             sunrise_client::particles::TrackingTarget::Entity(0),
             sunrise_client::particles::TrackingBody {
@@ -66,9 +66,9 @@ fn a_client_mod_counts_and_clears_particles() {
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
         game.extras_frame(Duration::ZERO);
-        assert_eq!(game.side.particles.0.group_count(), 0);
-        assert!(game.side.pickups.0.live.is_empty());
-        assert!(game.side.particles.0.elder_guardians().is_empty());
+        assert_eq!(game.client.particles.0.group_count(), 0);
+        assert!(game.client.pickups.0.live.is_empty());
+        assert!(game.client.particles.0.elder_guardians().is_empty());
         // The emitter and the queue went too: a tick brings nothing back.
         game.tick_particles();
         assert_eq!(game.client_particle_count(), 0);
@@ -76,8 +76,8 @@ fn a_client_mod_counts_and_clears_particles() {
         fill(game);
         assert!(host_clear(game));
         game.tick_particles();
-        assert_eq!(game.side.particles.0.group_count(), 0);
-        assert!(game.side.pickups.0.live.is_empty());
+        assert_eq!(game.client.particles.0.group_count(), 0);
+        assert!(game.client.pickups.0.live.is_empty());
         let host: &dyn ClientHost = game;
         assert_eq!(host.particle_count(), 0);
     });
@@ -96,17 +96,17 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.options.execution_role = super::ExecutionRole::Client;
             fill(game);
-            let camera = glam::DVec3::from_array(game.side.particles.0.camera);
+            let camera = glam::DVec3::from_array(game.client.particles.0.camera);
             let mut out = Vec::new();
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut out);
             let previous = out.len();
             assert!(previous > 0);
             let positions: Vec<_> = out.iter().map(|v| v.pos).collect();
-            let motion = game.side.entity_motion.borrow().clone();
+            let motion = game.client.entity_motion.borrow().clone();
             // An actual picked-up item resolves a conditional model while the
             // preceding ordinary-particle pass has already produced geometry.
             let renderer =
-                std::sync::Arc::get_mut(&mut game.side.client_pack.item_renderer).unwrap();
+                std::sync::Arc::get_mut(&mut game.client.client_pack.item_renderer).unwrap();
             std::sync::Arc::make_mut(&mut renderer.models)
                 .definitions
                 .insert(
@@ -121,7 +121,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
                     .unwrap(),
                 );
             game.pack.item_models = std::sync::Arc::clone(&renderer.models);
-            let at = game.side.particles.0.camera;
+            let at = game.client.particles.0.camera;
             let item = sunrise_sim::entities::ItemEntity::new(
                 1,
                 sunrise_items::items::ItemStack::new("minecraft:stick", 1),
@@ -134,7 +134,7 @@ fn a_model_callback_clear_discards_particle_geometry_already_extracted() {
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut out);
             assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
             assert_eq!(out.iter().map(|v| v.pos).collect::<Vec<_>>(), positions);
-            assert_eq!(&game.side.entity_motion.borrow()[..motion.len()], &motion);
+            assert_eq!(&game.client.entity_motion.borrow()[..motion.len()], &motion);
             assert_eq!(game.client_particle_count(), 0);
             game.tick_particles();
             assert_eq!(game.client_particle_count(), 0);
@@ -369,7 +369,7 @@ fn late_gui_clear_prevents_same_frame_particle_geometry_without_a_tick() {
             game.options.execution_role = super::ExecutionRole::Client;
             fill(game);
             game.extras_frame(Duration::ZERO);
-            let camera = glam::DVec3::from_array(game.side.particles.0.camera);
+            let camera = glam::DVec3::from_array(game.client.particles.0.camera);
             let mut before = Vec::new();
             game.client_particle_geometry(camera, 0.0, 70.0, None, &mut before);
             assert!(

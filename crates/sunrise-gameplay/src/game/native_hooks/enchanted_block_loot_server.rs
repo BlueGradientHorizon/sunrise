@@ -34,8 +34,8 @@ pub(in crate::game) mod tests {
                 .registry
                 .default_state("minecraft:gravel")
                 .unwrap();
-            game.side.lan_acting_entity = Some(42);
-            game.side.lan_acting = Some(1);
+            game.server.lan_acting_entity = Some(42);
+            game.server.lan_acting = Some(1);
             let mut pick = ItemStack::new("minecraft:iron_pickaxe", 1);
             pick.enchant("minecraft:fortune", 3);
             let reads = Arc::new(Mutex::new(Vec::new()));
@@ -69,8 +69,8 @@ pub(in crate::game) mod tests {
             );
             reads.lock().unwrap().clear();
 
-            game.side.lan_acting_entity = None;
-            game.side.lan_acting = None;
+            game.server.lan_acting_entity = None;
+            game.server.lan_acting = None;
             let origin = sunrise_core::geometry::Vec3::ZERO;
             let mut host = sunrise_sim::motion::PlayerMotion::new(game.motion, origin).unwrap();
             host.entity_id = 7;
@@ -103,12 +103,12 @@ pub(in crate::game) mod tests {
                 assert_eq!(level_side.entity, None);
                 reads.lock().unwrap().clear();
 
-                game.side.combat.0.explosion_direct = Some(9);
+                game.server.combat.0.explosion_direct = Some(9);
                 game.world.set(POS[0], POS[1], POS[2], gravel).unwrap();
                 let center = POS.map(|c| f64::from(c) + 0.5);
                 let blast = crate::game::explosion::BlockInteraction::Destroy;
                 game.server_explode(center, 4.0, blast, false).unwrap();
-                game.side.combat.0.explosion_direct = None;
+                game.server.combat.0.explosion_direct = None;
                 let blast = reads.lock().unwrap().swap_remove(0);
                 assert_eq!((blast.tool, blast.entity), (None, Some(9)));
             });

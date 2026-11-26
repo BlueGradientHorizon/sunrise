@@ -202,7 +202,7 @@ fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
                 pos,
                 sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
             );
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.open_container(
                 12,
                 "minecraft:generic_9x3",
@@ -231,7 +231,7 @@ fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
             );
             assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .carried
                     .as_ref()
                     .map(|s| s.count),
@@ -347,7 +347,7 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
                 pos,
                 sunrise_level::containers::BlockEntity::Chest(vec![None; 27]),
             );
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             host.hub.open_container(
                 12,
                 "minecraft:generic_9x3",
@@ -377,7 +377,7 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
             let lan = asked();
             // The hub's click ran with the LAN host lifted out of the game, and is back. The
             // `Host` read meanwhile answered as if no LAN were open: the guest is not found.
-            assert!(game.side.lan.is_some());
+            assert!(game.server.lan.is_some());
             assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [false, false]);
             assert!(game.player(12).is_some());
             // The local click of the same state asks the same, in the same order.
@@ -460,7 +460,7 @@ fn nested_menu_reads_use_base_slot_rules() {
                     game.world
                         .block_entities
                         .insert(pos, BlockEntity::Chest(vec![None; 27]));
-                    let host = game.side.lan.as_mut().unwrap();
+                    let host = game.server.lan.as_mut().unwrap();
                     host.hub.open_container(
                         12,
                         "minecraft:generic_9x3",

@@ -13,14 +13,14 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let icon = "minecraft:container/slot/shield";
             let Some(sunrise_client::hud::GuiSprite::Present { rect, .. }) =
-                game.side.gui.atlas.gui_lookup(icon)
+                game.client.gui.atlas.gui_lookup(icon)
             else {
                 panic!("the shield icon must resolve to a real GUI sprite");
             };
             let generation = seed_native_menu(game, 1, "test:menu");
-            game.side.screen = Screen::Inventory;
+            game.client.screen = Screen::Inventory;
             game.container = Some((1, 2, 3));
-            game.side.mod_screen.0 = Some(OpenNativeScreen {
+            game.client.mod_screen.0 = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (1, 2, 3),
                     window: 1,
@@ -70,7 +70,7 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
             });
             let mut with_icon = HudBatch::scratch([128, 128]);
             game.draw_slot_item(&mut with_icon, None, 300, &filled, 8.0, 18.0);
-            game.side.mod_screen.0.as_mut().unwrap().layout_mut().slots[0]
+            game.client.mod_screen.0.as_mut().unwrap().layout_mut().slots[0]
                 .as_mut()
                 .unwrap()
                 .no_item_icon = None;

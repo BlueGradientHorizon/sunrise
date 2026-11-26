@@ -1869,12 +1869,12 @@ pub(in crate::game) mod tests {
                     root,
                     super::super::execution_role::ExecutionRole::Client,
                     |game| {
-                        game.side
+                        game.client
                             .client_pack
                             .item_renderer
                             .prepare_glint_atlas(16384, (0, 2))
                             .unwrap();
-                        game.side.glint_frame = item_render::GlintFrame {
+                        game.client.glint_frame = item_render::GlintFrame {
                             millis: 123_456,
                             speed: 0.5,
                             alpha: 0.75,
@@ -1909,8 +1909,8 @@ pub(in crate::game) mod tests {
                         assert!(world_out.iter().all(|v| (v.layer & 0xFFFF) == 7));
                         let mut world_quads = Vec::new();
                         state_gui.submit(
-                            &game.side.client_pack.item_renderer,
-                            &game.side.gui.atlas.sprites,
+                            &game.client.client_pack.item_renderer,
+                            &game.client.gui.atlas.sprites,
                             &game.item_host(),
                             eid_pose,
                             &mut world_quads,
@@ -1935,8 +1935,8 @@ pub(in crate::game) mod tests {
                         );
                         let mut unlit_quads = Vec::new();
                         state_ground.submit(
-                            &game.side.client_pack.item_renderer,
-                            &game.side.gui.atlas.sprites,
+                            &game.client.client_pack.item_renderer,
+                            &game.client.gui.atlas.sprites,
                             &game.item_host(),
                             glam::Mat4::IDENTITY,
                             &mut unlit_quads,

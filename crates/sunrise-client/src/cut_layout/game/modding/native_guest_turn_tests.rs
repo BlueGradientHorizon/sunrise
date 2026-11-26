@@ -18,7 +18,10 @@ use sunrise_sim::{
     mobs::Mob,
 };
 
-pub use sunrise_gameplay::game::native_guest_turn_tests::{register_test_menu, with_guests, with_guests_at};
+pub use sunrise_gameplay::game::native_guest_turn_tests::{
+    expire_guest_damage_cooldown, level_uuids, place_host, register_test_menu, summon_stand,
+    told_since, with_command_guests, with_guests, with_guests_at,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -1252,23 +1255,6 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
     });
 }
 
-/// The UUIDs of the players in the level, checked against the full reader.
-pub(in sunrise_gameplay::game::server_side) fn level_uuids(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<u128> {
-    let uuids: Vec<u128> = game.level_player_uuids(game.dim.id()).collect();
-    let players: Vec<u128> = game.level_players().iter().map(|p| p.uuid).collect();
-    assert_eq!(uuids, players, "both enumerations select the same players");
-    uuids
-}
-
-/// The host in place, with a body and UUID 99.
-pub(in sunrise_gameplay::game::server_side) fn place_host(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    let mut body =
-        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
-    body.entity_id = 99;
-    game.player = Some(body);
-    game.level.player_uuid = Some([0, 0, 0, 99]);
-}
-
 /// A turn lists the acting player once, under their own UUID and with their
 /// live body. The host's body is displaced for the turn, so it is not listed.
 #[test]
@@ -1511,20 +1497,6 @@ impl mod_api::Hooks for PanicOnDamage {
         self.0.fetch_add(1, Ordering::SeqCst);
         panic!("damage listener panic");
     }
-}
-
-/// Put the follow-up blow outside the victim's damage cooldown.
-pub(in sunrise_gameplay::game::server_side) fn expire_guest_damage_cooldown(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    conn: u32,
-) {
-    game.as_guest(conn, |game| {
-        let health = &mut game.player.as_mut().unwrap().health;
-        while health.hurt.cooldown > 0 {
-            health.advance_damage_cooldown();
-        }
-    })
-    .unwrap();
 }
 
 #[test]
@@ -1783,54 +1755,6 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
             assert_eq!(game.side.lan_acting, outer);
         });
     });
-}
-
-/// An armor stand summoned at (1.5, 70, 1.5) in the level in place, which `with_guests` puts
-/// its two players beside, at (3, 64, 5).
-pub(in sunrise_gameplay::game::server_side) fn summon_stand(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-) -> mod_api::EntityRef {
-    game.options.dedicated = Some(Vec::new());
-    game.world
-        .chunks
-        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-    let (sunrise_core::nbt::Tag::Compound(tag), _) =
-        sunrise_core::nbt::parse_snbt("{NoGravity:1b}").unwrap()
-    else {
-        unreachable!()
-    };
-    let id = game
-        .summon(
-            game.dim.id(),
-            "minecraft:armor_stand",
-            [1.5, 70.0, 1.5],
-            tag,
-        )
-        .unwrap();
-    game.entity(id).unwrap()
-}
-
-/// Whether anything the server sent the acting player since `before` is a chat line.
-pub(in sunrise_gameplay::game::server_side) fn told_since(
-    game: &sunrise_gameplay::game::ServerGame<'_>,
-    before: usize,
-) -> bool {
-    use sunrise_protocol::packets::play::Clientbound as C;
-    game.side.guest_packets[before..]
-        .iter()
-        .any(|p| matches!(p, C::SystemChat(_)))
-}
-
-pub(in sunrise_gameplay::game::server_side) fn with_command_guests(
-    name: &str,
-    body: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
-) {
-    sunrise_gameplay_common::game::in_own_process(
-        &format!("game::server_side::native_guest_turn_tests::{name}"),
-        || {
-            with_guests(body);
-        },
-    );
 }
 
 /// `withPermission(level)`: the line is checked at the level the mod gives, whatever the

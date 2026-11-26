@@ -1,5 +1,11 @@
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-pub use sunrise_gameplay_common::game::test_fixtures::*;
+use sunrise_gameplay_common::game::test_fixtures::{
+    acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, resolve_parts, tempfile,
+};
+pub use sunrise_gameplay_common::game::test_fixtures::{
+    FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
+    run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+};
 
 /// Create a hidden desktop window during winit's initial `Resumed` callback.
 /// Keep the returned event loop alive while the fixture uses the window.
@@ -69,12 +75,7 @@ pub fn with_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
 pub fn with_uncached_client_game(
     test: impl FnOnce(&mut crate::game::ClientGame<'_>),
 ) {
-    with_game_role_and_facts_with_client(
-        fixture_root(),
-        ExecutionRole::Client,
-        None,
-        test,
-    );
+    with_client_game(test);
 }
 
 pub fn with_game_role_client(
@@ -86,17 +87,6 @@ pub fn with_game_role_client(
 }
 
 pub fn with_game_role_and_facts_client(
-    root: std::path::PathBuf,
-    role: ExecutionRole,
-    configure: Option<
-        fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
-    >,
-    test: impl FnOnce(&mut crate::game::ClientGame<'_>),
-) {
-    with_game_role_and_facts_with_client(root, role, configure, test);
-}
-
-fn with_game_role_and_facts_with_client(
     root: std::path::PathBuf,
     role: ExecutionRole,
     configure: Option<
@@ -163,8 +153,5 @@ fn with_game_role_and_facts_with_client(
     // A game that opened its world resolves its parts; the harness stops
     // short of the open, so do it here for the by-state part table.
     resolve_parts(&game).unwrap();
-    // The title's save folder is under the working directory: give each test its own, so a
-    // test that saves leaves the checkout clean and parallel tests don't share files.
-
     test(&mut game);
 }

@@ -103,9 +103,9 @@ fn with_debug_renderers(test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mut
                     &mut entries,
                 );
             }
-            game.side.registered_debug_entries.0 = debug_entries::collect_registrations(entries);
+            game.client.registered_debug_entries.0 = debug_entries::collect_registrations(entries);
             // Status changes stay out of debug-profile.json.
-            game.side.debug_entries.0 = DebugEntries::default();
+            game.client.debug_entries.0 = DebugEntries::default();
             test(game, &fixture);
         });
     });

@@ -1,3 +1,14 @@
+use mod_api::{EntityRef, WorldEpoch};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+use sunrise_mod_runtime::attachments::{
+    AttachmentRegistration, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
+    index::AttachmentIndex,
+};
+use sunrise_sim::join_seq::JoinList;
+
 use std::cell::Cell;
 
 type Spawn = fn(&mut crate::game::ServerGame<'_>);
@@ -218,4 +229,67 @@ pub fn assert_projectile_spawn_survives(
         original,
         sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
     );
+}
+
+static LIFECYCLE_VALUE: AttachmentType<i32> = AttachmentType {
+    namespace: "test",
+    name: "lifecycle_owner",
+    default: || 0,
+    codec: None,
+    copy_on_death: false,
+    sync: false,
+};
+
+/// Registration memory shared by slot-bearing adapters to the lifecycle walk.
+#[derive(Default)]
+pub struct SlotIdentities {
+    values: Attachments,
+    index: Arc<Mutex<AttachmentIndex<EntityRef>>>,
+    registrations: HashMap<u32, AttachmentRegistration>,
+}
+
+impl SlotIdentities {
+    pub fn observe<T: HasAttachmentLifetime>(
+        &mut self,
+        owners: &mut JoinList<T, false>,
+        epoch: WorldEpoch,
+        id: fn(&T) -> u32,
+    ) {
+        owners.for_each_mut(|owner| {
+            let id = id(owner);
+            self.observe_one(owner, epoch, id);
+        });
+    }
+
+    pub fn observe_one<T: HasAttachmentLifetime>(
+        &mut self,
+        owner: &mut T,
+        epoch: WorldEpoch,
+        id: u32,
+    ) {
+        use std::collections::hash_map::Entry;
+        match self.registrations.entry(id) {
+            Entry::Occupied(original) => {
+                let current = owner
+                    .attachment_lifetime()
+                    .registration()
+                    .expect("known owner lost its registration");
+                assert!(
+                    original.get().same_registration(&current),
+                    "owner {id} changed registration"
+                );
+            }
+            Entry::Vacant(entry) => {
+                LIFECYCLE_VALUE
+                    .set(&mut self.values, Holder::Entity(id), id as i32)
+                    .unwrap();
+                owner.attachment_lifetime().bind(
+                    &mut self.values,
+                    &self.index,
+                    EntityRef::new(epoch, id),
+                );
+                entry.insert(owner.attachment_lifetime().registration().unwrap());
+            }
+        }
+    }
 }

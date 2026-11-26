@@ -1660,8 +1660,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
-            game.side.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
-            let pack = game.side.world_root.join("datapacks/h155_causal");
+            game.server.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
+            let pack = game.server.world_root.join("datapacks/h155_causal");
             let dir = pack.join("data/h155c/function");
             std::fs::create_dir_all(&dir).unwrap();
             let f = sunrise_core::version::DATA_PACK_FORMAT;
@@ -1710,9 +1710,9 @@ mod tests {
                 .unwrap();
             game.build_registries();
             game.set_allow_commands(true);
-            assert_eq!(game.side.fns.0.store.tag_functions("h155c:pair").len(), 2);
+            assert_eq!(game.server.fns.0.store.tag_functions("h155c:pair").len(), 2);
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store
@@ -1969,8 +1969,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
             );
-            game.side.world_root = std::env::current_dir().unwrap().join("h155-world");
-            let pack = game.side.world_root.join("datapacks/h155_unit");
+            game.server.world_root = std::env::current_dir().unwrap().join("h155-world");
+            let pack = game.server.world_root.join("datapacks/h155_unit");
             let dir = pack.join("data/h155/function");
             std::fs::create_dir_all(&dir).unwrap();
             let format = sunrise_core::version::DATA_PACK_FORMAT;
@@ -2007,7 +2007,7 @@ mod tests {
             game.set_allow_commands(true);
             for name in ["zero", "five", "fail", "fallthrough", "admit"] {
                 assert!(
-                    game.side
+                    game.server
                         .fns
                         .0
                         .store
@@ -2070,11 +2070,11 @@ mod tests {
                         "nonfork" => "positioned 4.5 202 4.5 ",
                         _ => "",
                     };
-                    game.side.chat_capture = Some(Vec::new());
-                    game.side.cmds.0.results = Some(Vec::new());
+                    game.server.chat_capture = Some(Vec::new());
+                    game.server.cmds.0.results = Some(Vec::new());
                     let accepted = game.run_command(&format!("execute store result score #r h155 store success score #s h155 {middle}run function h155:{name}"));
-                    let messages = game.side.chat_capture.take().unwrap();
-                    let callbacks = game.side.cmds.0.results.take().unwrap();
+                    let messages = game.server.chat_capture.take().unwrap();
+                    let callbacks = game.server.cmds.0.results.take().unwrap();
                     assert!(accepted, "actual registered function command");
                     let count = if route == "two" { 2 } else { 1 };
                     assert_eq!(
@@ -2121,10 +2121,10 @@ mod tests {
                 }
             }
             assert!(game.run_command("scoreboard players set #plain h155 0"));
-            game.side.cmds.0.results = Some(Vec::new());
+            game.server.cmds.0.results = Some(Vec::new());
             assert!(game.run_command("execute as @e[type=pig,tag=h155u,sort=nearest,limit=2] run scoreboard players add #plain h155 1"));
             assert_eq!(
-                game.side.cmds.0.results.take().unwrap(),
+                game.server.cmds.0.results.take().unwrap(),
                 vec![(true, 1), (true, 2)]
             );
             assert_eq!(game.score.board.score("#plain", "h155").unwrap().value, 2);
@@ -2151,13 +2151,13 @@ mod tests {
                 lines: vec![FunctionLine::Command("return 1".into())],
                 parameters: vec![],
             };
-            game.side.exec.0.functions.push("test:outer".into());
+            game.server.exec.0.functions.push("test:outer".into());
             let source = game.server_source();
             game.run_function(&inner, None, source).unwrap();
-            assert_eq!(game.side.exec.0.functions, ["test:outer"]);
-            game.side.exec.0.functions.clear();
+            assert_eq!(game.server.exec.0.functions, ["test:outer"]);
+            game.server.exec.0.functions.clear();
             game.run_function(&inner, None, source).unwrap();
-            assert!(game.side.exec.0.functions.is_empty());
+            assert!(game.server.exec.0.functions.is_empty());
         });
         assert!(ran, "the prepared-resource fixture must run this case");
     }
@@ -2230,9 +2230,9 @@ mod tests {
             .unwrap();
             request.save_root = root.clone();
             game.load_world(request).unwrap();
-            assert!(game.side.fns.0.store.functions.contains_key("test:start"));
+            assert!(game.server.fns.0.store.functions.contains_key("test:start"));
             assert_eq!(
-                game.side.fns.0.store.tag_functions("minecraft:load"),
+                game.server.fns.0.store.tag_functions("minecraft:load"),
                 ["test:start"]
             );
             assert!(game.items().item_tags["test:sample"].contains("minecraft:stone"));
@@ -2254,17 +2254,17 @@ mod tests {
             assert!(game.stations().recipe_index.contains("test:sample"));
 
             // Changing packs must not reload an old timer from disk.
-            game.side.fns.0.schedule.push(Scheduled {
+            game.server.fns.0.schedule.push(Scheduled {
                 id: "test:start".into(),
                 time: 1000,
                 seq: 1,
             });
             game.save_schedule();
-            game.side.fns.0.schedule.clear();
+            game.server.fns.0.schedule.clear();
             assert!(game.run_command("datapack disable \"file/test\""));
-            assert!(game.side.fns.0.schedule.is_empty());
+            assert!(game.server.fns.0.schedule.is_empty());
             assert!(game.run_command("datapack enable \"file/test\""));
-            assert!(game.side.fns.0.schedule.is_empty());
+            assert!(game.server.fns.0.schedule.is_empty());
 
             // World-open selection and completions must both use the incoming
             // level's flags, even while `self.level` is still the old level.
@@ -2286,7 +2286,7 @@ mod tests {
             let staged = game
                 .stage_world_tables(&stack, false, &game.options.resources.clone())
                 .unwrap();
-            game.side.world_tables.0 = staged.tables;
+            game.server.world_tables.0 = staged.tables;
             game.health_resources = staged.health;
             assert!(game.items().item_tags["test:sample"].contains("minecraft:diamond"));
         });

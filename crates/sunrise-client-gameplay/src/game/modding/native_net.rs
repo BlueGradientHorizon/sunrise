@@ -111,7 +111,7 @@ mod tests {
             assert_eq!(game.send_packet(packet()), Err(SendPacketError::NotInPlay));
             // Deliberately inconsistent actor state: no handshake has installed
             // a writer. Acceptance must still require the physical provider.
-            game.side.remote.as_mut().unwrap().joined = true;
+            game.client.remote.as_mut().unwrap().joined = true;
             assert_eq!(
                 game.send_packet(packet()),
                 Err(SendPacketError::NotConnected)

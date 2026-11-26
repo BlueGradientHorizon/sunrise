@@ -21,12 +21,35 @@ pub fn load_resources_server(
     progress: &Progress,
     validate_entity_part_state: bool,
 ) -> Result<(Arc<Resources>, PackResources)> {
+    load_resources_for_role(
+        root,
+        additional_data,
+        vanilla_root,
+        mods::LoadRole::startup(execution_role::ExecutionRole::DedicatedServer),
+        threads,
+        started,
+        mods,
+        progress,
+        validate_entity_part_state,
+    )
+}
+
+pub(in crate::game) fn load_resources_for_role(
+    root: ResourceRoot,
+    additional_data: Vec<Arc<sunrise_level::datapack::DataPack>>,
+    vanilla_root: &Path,
+    role: mods::LoadRole,
+    threads: usize,
+    started: Instant,
+    mods: &mods::ModsState,
+    progress: &Progress,
+    validate_entity_part_state: bool,
+) -> Result<(Arc<Resources>, PackResources)> {
     sunrise_threads::jobs::configure(threads);
     let prepared = root.prepared();
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(prepared)?;
     let conditions =
         sunrise_gameplay_common::game::load_conditions::conditions_for_mods(mods, &inventory)?;
-    let role = mods::LoadRole::startup(execution_role::ExecutionRole::DedicatedServer);
     let (core, ()) = startup::time("core", || {
         load_core::<ServerCorePresentation>(
             &root,

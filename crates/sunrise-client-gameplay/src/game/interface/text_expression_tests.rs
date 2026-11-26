@@ -62,9 +62,9 @@ fn a_packs_text_draws_its_expression_uniforms() {
     let case = std::env::var(CASE).unwrap();
     let (loading, fullbright) = (case == "loading", case == "fullbright");
     with_client_game(|game| {
-        game.side.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
+        game.client.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
         let frame_context = sunrise_level::environment::Frame::default();
-        let text = &game.side.gui.atlas.text_shaders;
+        let text = &game.client.gui.atlas.text_shaders;
         for (expressions, value) in [
             (&text.expressions.gui, 0.2),
             (&text.expressions.world, 0.6),
@@ -83,8 +83,8 @@ fn a_packs_text_draws_its_expression_uniforms() {
         }
         // A text display in front of the camera, as a server's would arrive.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
-        game.side.settings.chunk_fade = 0.0;
-        game.side
+        game.client.settings.chunk_fade = 0.0;
+        game.client
             .renderer
             .0
             .as_mut()
@@ -100,23 +100,23 @@ fn a_packs_text_draws_its_expression_uniforms() {
             0,
             sunrise_protocol::entity_data::Value::Text(sunrise_core::nbt::Tag::String("W".into())),
         )]);
-        game.side.text_displays.0.insert(1, display);
+        game.client.text_displays.0.insert(1, display);
         game.tick_text_displays(game.clock.runs_normally());
         // Fullbright, in its own process, is on from the first frame: it changes nothing.
-        game.side.renderer.0.as_mut().unwrap().fullbright = fullbright;
+        game.client.renderer.0.as_mut().unwrap().fullbright = fullbright;
         // The world text over the frame with the GUI hidden (F1), then the GUI's (F3's text)
         // over it.
-        game.side.chat_ui.hide_gui = true;
+        game.client.chat_ui.hide_gui = true;
         assert_eq!(
             corner(game, frame),
             [153, 192, 255],
             "fullbright {fullbright}"
         );
-        game.side.chat_ui.hide_gui = false;
-        game.side.debug = true;
+        game.client.chat_ui.hide_gui = false;
+        game.client.debug = true;
         assert_eq!(corner(game, frame), [51, 192, 0], "fullbright {fullbright}");
         // The title screen: no world runs, the GUI text's value and `PolyGlobals` are 0.
-        game.side.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
+        game.client.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
         assert!(!game.reads_pack_expressions(), "none to evaluate");
         assert!(!game.reads_poly_globals(), "none to give");
         assert_eq!(corner(game, frame), [0, 128, 0]);

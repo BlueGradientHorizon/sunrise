@@ -1,5 +1,7 @@
 use crate::game::server_side::lan::LanSettings;
 use std::sync::{Arc, atomic::{AtomicI32, AtomicUsize}};
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
@@ -95,3 +97,82 @@ pub fn register_test_menu(
         .unwrap()
 }
 
+
+/// The UUIDs of the players in the level, checked against the full reader.
+pub fn level_uuids(game: &crate::game::ServerGame<'_>) -> Vec<u128> {
+    let uuids: Vec<u128> = game.level_player_uuids(game.dim.id()).collect();
+    let players: Vec<u128> = game.level_players().iter().map(|p| p.uuid).collect();
+    assert_eq!(uuids, players, "both enumerations select the same players");
+    uuids
+}
+
+/// The host in place, with a body and UUID 99.
+pub fn place_host(game: &mut crate::game::ServerGame<'_>) {
+    let mut body =
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
+    body.entity_id = 99;
+    game.player = Some(body);
+    game.level.player_uuid = Some([0, 0, 0, 99]);
+}
+
+/// Put the follow-up blow outside the victim's damage cooldown.
+pub fn expire_guest_damage_cooldown(
+    game: &mut crate::game::ServerGame<'_>,
+    conn: u32,
+) {
+    game.as_guest(conn, |game| {
+        let health = &mut game.player.as_mut().unwrap().health;
+        while health.hurt.cooldown > 0 {
+            health.advance_damage_cooldown();
+        }
+    })
+    .unwrap();
+}
+
+/// An armor stand summoned at (1.5, 70, 1.5) in the level in place, which `with_guests` puts
+/// its two players beside, at (3, 64, 5).
+pub fn summon_stand(
+    game: &mut crate::game::ServerGame<'_>,
+) -> mod_api::EntityRef {
+    game.options.dedicated = Some(Vec::new());
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+    let (sunrise_core::nbt::Tag::Compound(tag), _) =
+        sunrise_core::nbt::parse_snbt("{NoGravity:1b}").unwrap()
+    else {
+        unreachable!()
+    };
+    let id = game
+        .summon(
+            game.dim.id(),
+            "minecraft:armor_stand",
+            [1.5, 70.0, 1.5],
+            tag,
+        )
+        .unwrap();
+    game.entity(id).unwrap()
+}
+
+/// Whether anything the server sent the acting player since `before` is a chat line.
+pub fn told_since(
+    game: &crate::game::ServerGame<'_>,
+    before: usize,
+) -> bool {
+    use sunrise_protocol::packets::play::Clientbound as C;
+    game.server.guest_packets[before..]
+        .iter()
+        .any(|p| matches!(p, C::SystemChat(_)))
+}
+
+pub fn with_command_guests(
+    name: &str,
+    body: impl FnOnce(&mut crate::game::ServerGame<'_>),
+) {
+    sunrise_gameplay_common::game::in_own_process(
+        &format!("game::server_side::native_guest_turn_tests::{name}"),
+        || {
+            with_guests(body);
+        },
+    );
+}

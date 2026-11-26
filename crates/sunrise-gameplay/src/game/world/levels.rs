@@ -2346,9 +2346,9 @@ use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_game(|game| {
                 let root = tempfile::tempdir().unwrap();
-                game.side.world_root = root.path().to_path_buf();
-                game.side.save.0 = Arc::new(SaveDir::new(
-                    game.side.world_root.clone(),
+                game.server.world_root = root.path().to_path_buf();
+                game.server.save.0 = Arc::new(SaveDir::new(
+                    game.server.world_root.clone(),
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
@@ -2357,16 +2357,16 @@ use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable
                 for dim in [Dim::Nether, Dim::End, Dim::Overworld] {
                     game.enter_level(dim).unwrap();
                     dirty_test_chunk(game);
-                    folders.push((dim, game.side.save.0.root.clone(), game.side.save.0.shape));
+                    folders.push((dim, game.server.save.0.root.clone(), game.server.save.0.shape));
                     if dim != Dim::End {
-                        queue_unencodable_entity_record(&game.side.save.0);
+                        queue_unencodable_entity_record(&game.server.save.0);
                     }
                 }
                 assert_eq!(
                     game.save_all_reply().translation_key(),
                     Some("commands.save.success")
                 );
-                assert_eq!(game.side.save.0.record_save_failures(), 2);
+                assert_eq!(game.server.save.0.record_save_failures(), 2);
                 assert_eq!(game.dim, Dim::Overworld);
                 assert_eq!(
                     Level::read(root.path()).unwrap().name,
@@ -2397,9 +2397,9 @@ use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable
                 mod_platform::testing::with_mods(Vec::new().into(), || {
                     with_game(|game| {
                         let root = tempfile::tempdir().unwrap();
-                        game.side.world_root = root.path().to_path_buf();
-                        game.side.save.0 = Arc::new(SaveDir::new(
-                            game.side.world_root.clone(),
+                        game.server.world_root = root.path().to_path_buf();
+                        game.server.save.0 = Arc::new(SaveDir::new(
+                            game.server.world_root.clone(),
                             LevelShape::OVERWORLD,
                             Some(Default::default()),
                         ));
@@ -2409,7 +2409,7 @@ use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable
                         let custom = Dim::Extra(mod_api::__private::dimension_key(id));
                         let flat =
                             RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1);
-                        game.side
+                        game.server
                             .levels
                             .0
                             .runtime
@@ -2417,18 +2417,18 @@ use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable
                             .unwrap();
                         game.enter_level(custom).unwrap();
                         dirty_test_chunk(game);
-                        queue_unencodable_entity_record(&game.side.save.0);
+                        queue_unencodable_entity_record(&game.server.save.0);
                         let disk = SaveDir::new(
-                            game.side.save.0.root.clone(),
-                            game.side.save.0.shape,
+                            game.server.save.0.root.clone(),
+                            game.server.save.0.shape,
                             None,
                         );
                         game.enter_level(Dim::Overworld).unwrap();
-                        game.side.levels.0.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
+                        game.server.levels.0.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
                         game.close_idle_levels().unwrap();
                         assert_eq!(game.dim, Dim::Overworld);
-                        assert!(!game.side.levels.0.parked.contains_key(&custom));
-                        assert_eq!(game.side.save.0.record_save_failures(), 1);
+                        assert!(!game.server.levels.0.parked.contains_key(&custom));
+                        assert_eq!(game.server.save.0.record_save_failures(), 1);
                         assert!(disk.raw_chunk(0, 0).is_some());
                     });
                 });

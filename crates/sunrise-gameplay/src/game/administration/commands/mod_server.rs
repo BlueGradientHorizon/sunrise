@@ -1944,7 +1944,7 @@ pub(in crate::game) mod forced_respawn_tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.side.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
 
             assert!(game.run_command("setworldspawn 5 64 5 270 120"));
             assert_eq!(game.level.world_spawn_angle, [-90.0, 90.0]);
@@ -1952,7 +1952,7 @@ pub(in crate::game) mod forced_respawn_tests {
                 "commands.setworldspawn.success",
                 &["5", "64", "5", "-90.0", "90.0", "minecraft:overworld"].map(Text::literal),
             );
-            let lines = game.side.chat_capture.take().unwrap();
+            let lines = game.server.chat_capture.take().unwrap();
             assert_eq!(lines.len(), 1);
             assert_eq!(lines[0].plain(), expected.plain());
         });

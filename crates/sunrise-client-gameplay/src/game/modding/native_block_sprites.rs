@@ -401,7 +401,7 @@ mod texture_atlas_stitched_tests {
                     game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                         .unwrap();
                     let started = std::time::Instant::now();
-                    while game.side.pack_reload.0.is_some() {
+                    while game.client.pack_reload.0.is_some() {
                         assert!(
                             started.elapsed().as_secs() < 300,
                             "the reload never finished"
@@ -460,7 +460,7 @@ mod texture_atlas_stitched_tests {
                 game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                     .unwrap();
                 let started = std::time::Instant::now();
-                while game.side.pack_reload.0.is_some() {
+                while game.client.pack_reload.0.is_some() {
                     assert!(
                         started.elapsed().as_secs() < 300,
                         "the reload never finished"
@@ -590,7 +590,7 @@ mod block_tint_color_tests {
     #[ignore = "daily"]
     fn a_tinted_face_takes_its_colour_where_it_stands() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            let registry = game.side.client_pack.context.chunk.assets.registry;
+            let registry = game.client.client_pack.context.chunk.assets.registry;
             let grass = registry.default_state("minecraft:grass_block").unwrap();
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
@@ -656,7 +656,7 @@ mod block_tint_color_tests {
                 sunrise_level::biome::Biomes::load(&ResourceRoot::directory(root.clone())).unwrap(),
             );
             let source = ResourceSource::directory(root.clone());
-            let old = &game.side.client_pack.context;
+            let old = &game.client.client_pack.context;
             let tables = sunrise_client::mesher::MeshTables::new(
                 &old.chunk.assets,
                 &old.mesh.render,
@@ -666,7 +666,7 @@ mod block_tint_color_tests {
             )
             .unwrap()
             .with_polytone_colormaps(&source, registry);
-            game.side.client_pack.context =
+            game.client.client_pack.context =
                 Arc::new(sunrise_client_render::streaming::WorkerContext {
                     chunk: sunrise_level::chunk_streamer::ChunkWorkerContext {
                         assets: old.chunk.assets.clone(),
@@ -681,7 +681,7 @@ mod block_tint_color_tests {
                     },
                 });
             game.world_biomes = Some(biomes.clone());
-            game.side.streaming.biome_blend = 0;
+            game.client.streaming.biome_blend = 0;
             game.world.chunks.clear();
             for (cx, name) in [(0, "minecraft:plains"), (4, "minecraft:cool")] {
                 for dz in -1..=1 {
