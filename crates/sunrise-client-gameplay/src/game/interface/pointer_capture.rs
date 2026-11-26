@@ -1,6 +1,6 @@
 //! The mouse in play: the look it turns, the pointer grab (`MouseHandler.grabMouse` /
 //! `releaseMouse`), the cursor icon, and pausing a world whose window loses focus.
-use crate::game::client_side::screens::ClientScreenExt as _;
+use crate::game::client_side::screens::ScreenClientExt as _;
 use super::*;
 
 fn studio_suppresses_focus_pause(replay_active: bool, freecam_active: bool) -> bool {

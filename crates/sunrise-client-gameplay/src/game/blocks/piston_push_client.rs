@@ -1,7 +1,7 @@
 //! Client-side local player movement, piston prediction (local player + driven boats),
 //! shulker/shulker-box lid prediction (local player + all intersecting boats), and
 //! moving-collider carry/shove prediction for the local player.
-use super::{Game, move_gate::MoveWho};
+use super::move_gate::MoveWho;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::entity::{Entity, EntityHandle};
 use sunrise_gameplay_common::game::piston_push::{

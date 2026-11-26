@@ -2,7 +2,7 @@
 //! gateway travel, the obsidian arrival platform, the exit portal and the End
 //! sky. The dragon fight itself lives in game/mobs/dragon.rs: the podium is
 //! inactive until the dragon dies.
-use super::{Dim, Game};
+use super::Dim;
 use sunrise_gameplay_common::game::end_state::{Arriving, END_SPAWN, EyeOfEnder, GatewayArrival, GatewayJob};
 use sunrise_core::{
     geometry::Vec3,

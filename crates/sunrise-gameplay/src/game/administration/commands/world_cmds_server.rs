@@ -1,4 +1,4 @@
-use super::{Arg, Context, Game, R, Target, err};
+use super::{Arg, Context, R, Target, err};
 use crate::game::commands::world_cmds::holder;
 pub(in crate::game::server_side) use crate::game::commands::world_cmds::look_at;
 use crate::game::commands::world_cmds::num;
@@ -23,7 +23,7 @@ impl crate::game::ServerGame<'_> {
         if give {
             return custom_count + self.award_recipes(&recipes) as i32;
         }
-        let index = &world_stations!(self).recipe_index;
+        let index = &server_world_stations!(self).recipe_index;
         let removed = self.common.level.recipe_book.remove_recipes(index, &recipes);
         let count = custom_count + removed.len() as i32;
         if count != 0 {

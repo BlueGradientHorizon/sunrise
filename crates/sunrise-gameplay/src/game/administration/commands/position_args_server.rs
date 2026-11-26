@@ -1,4 +1,4 @@
-use super::{Context, Game, R, err};
+use super::{Context, R, err};
 
 impl crate::game::ServerGame<'_> {
     /// BlockPosArgument.getLoadedBlockPos.

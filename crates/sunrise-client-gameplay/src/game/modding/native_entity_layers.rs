@@ -6,7 +6,6 @@
 //! layers, each through the guard renderers draw through ([`Game::guarded_entity_draw`]). With no
 //! layer at all, a frame checks one flag per entity and builds nothing.
 use super::{
-    Game,
     entity_type_rows::EntityTypeRows,
     native_entity_renderers::Resolved,
     native_mob_draw::{entity_render_state, mob_pose},

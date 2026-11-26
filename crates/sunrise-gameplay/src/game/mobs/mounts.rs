@@ -886,7 +886,7 @@ impl ServerGame<'_> {
         let Some(player) = self.common.player.as_mut() else {
             return;
         };
-        let side = game_side!(self);
+        let side = server_game_side!(self);
         let _ = MotionWorld {
             side: &side,
             entities: &[],
@@ -898,7 +898,7 @@ impl ServerGame<'_> {
             health: &self.common.health_resources,
             loop_context: &self.common.loop_context,
             damage_hooks: &self.common.damage_hooks,
-            tag_items: Some(world_items!(self)),
+            tag_items: Some(server_world_items!(self)),
             block_registries: Some(&self.common.pack.block_registries),
         }
         .cause_mount_fall(distance, modifier);

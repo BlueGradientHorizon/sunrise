@@ -46,8 +46,6 @@ pub(in crate::game) struct WindowKeyInput<'a> {
 }
 
 impl crate::game::ClientGame<'_> {
-    const MOTION_OWN_PLAYER_FIRE: u64 = sunrise_gameplay_common::game::MOTION_OWN_PLAYER | 1;
-
     /// Client-side water splash particles for a dropped item (`side_apply_item_splash`).
     pub(in crate::game) fn client_apply_item_splash(
         &mut self,

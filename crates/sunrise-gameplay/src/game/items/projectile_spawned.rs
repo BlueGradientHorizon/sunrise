@@ -163,7 +163,7 @@ impl crate::game::ServerGame<'_> {
         for (enchantment, level) in stack.all_enchantments().iter() {
             // Copied out only when the enchantment has the component: an
             // effect may change what the next requirement reads.
-            let Some(effects) = world_stations!(self)
+            let Some(effects) = server_world_stations!(self)
                 .enchantments
                 .get(enchantment)
                 .and_then(|def| def.effects[COMPONENT].as_array())
@@ -188,11 +188,11 @@ impl crate::game::ServerGame<'_> {
                 };
                 let ctx = EffectContext {
                     this: Some(kind),
-                    items: Some(world_items!(self)),
+                    items: Some(server_world_items!(self)),
                     ..Default::default()
                 };
                 let matches = conditional.get("requirements").is_none_or(|r| {
-                    world_stations!(self).enchantments.condition(
+                    server_world_stations!(self).enchantments.condition(
                         r,
                         *level,
                         &ctx,

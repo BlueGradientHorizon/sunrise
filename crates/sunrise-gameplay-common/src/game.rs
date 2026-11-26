@@ -1804,7 +1804,7 @@ impl Dim {
             ),
         }
     }
-    fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             Self::Overworld => "minecraft:overworld",
             Self::Nether => "minecraft:the_nether",

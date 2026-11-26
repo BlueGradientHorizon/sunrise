@@ -1,4 +1,4 @@
-use super::{Game, Target};
+use super::Target;
 use crate::game::commands::give::GiveItem;
 use sunrise_items::items::ItemStack;
 

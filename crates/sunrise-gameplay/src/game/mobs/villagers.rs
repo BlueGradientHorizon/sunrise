@@ -696,7 +696,7 @@ impl ServerGame<'_> {
             registry: self.common.pack.assets.registry,
             facts: self.common.res.facts(),
             collision: self.common.collision,
-            block_tags: &world_items!(self).block_tags,
+            block_tags: &server_world_items!(self).block_tags,
             border: Some(self.common.border.geometry()),
         };
         let woke = villager::wake(&mut self.common.mobs[i], self.common.world.game_time, Some(&level), None);

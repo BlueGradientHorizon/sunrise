@@ -1,5 +1,5 @@
 //! Owner-created rotational throws, distinct from generic entity summoning.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{Identifier, LivingRef, ProjectileRef};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;

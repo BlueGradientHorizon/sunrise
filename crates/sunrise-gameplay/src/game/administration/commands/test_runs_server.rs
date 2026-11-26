@@ -1,4 +1,4 @@
-use super::{Arg, Context, Game, R, err};
+use super::{Arg, Context, R, err};
 use crate::game::commands::test_runs::Finder;
 use crate::game::commands::test_runs::Pos;
 use crate::game::commands::test_runs::rotation_for_steps;

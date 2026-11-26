@@ -250,7 +250,7 @@ impl crate::game::ServerGame<'_> {
                         "minecraft:silverfish",
                         at,
                         false,
-                        creatures::SpawnSite::Plain,
+                        sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
                     ) {
                         self.mob_poof(id);
                     }
@@ -507,7 +507,7 @@ impl crate::game::ServerGame<'_> {
                 .register(self.server.save.0.save_failure_reporter());
         }
         // ServerRecipeBook.loadUntrusted: recipes the manager does not have are dropped.
-        let index = &world_stations!(self).recipe_index;
+        let index = &server_world_stations!(self).recipe_index;
         let book = &mut self.common.level.recipe_book;
         book.recipes.retain(|r| index.contains(r));
         book.to_be_displayed.retain(|r| index.contains(r));
@@ -1069,7 +1069,7 @@ impl crate::game::ServerGame<'_> {
                             "minecraft:tadpole",
                             spawn,
                             true,
-                            creatures::SpawnSite::Plain,
+                            sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
                         );
                     }
                 }

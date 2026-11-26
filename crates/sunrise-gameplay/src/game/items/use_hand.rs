@@ -935,10 +935,10 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn bow_volley(&mut self, weapon: &ItemStack) -> (usize, f32) {
         let ctx = sunrise_items::enchant::EffectContext {
             this: Some("minecraft:player"),
-            items: Some(world_items!(self)),
+            items: Some(server_world_items!(self)),
             ..Default::default()
         };
-        let enchantments = &world_stations!(self).enchantments;
+        let enchantments = &server_world_stations!(self).enchantments;
         let count = enchantments.modify_value(
             Some(weapon),
             "minecraft:projectile_count",
@@ -964,10 +964,10 @@ impl crate::game::ServerGame<'_> {
     ) -> u8 {
         let ctx = sunrise_items::enchant::EffectContext {
             tool: Some(&ammo.item),
-            items: Some(world_items!(self)),
+            items: Some(server_world_items!(self)),
             ..Default::default()
         };
-        let pierce = world_stations!(self).enchantments.modify_value(
+        let pierce = server_world_stations!(self).enchantments.modify_value(
             Some(weapon),
             "minecraft:projectile_piercing",
             &ctx,

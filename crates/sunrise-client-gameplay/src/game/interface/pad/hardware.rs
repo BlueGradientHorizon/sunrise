@@ -447,7 +447,7 @@ impl crate::game::ClientGame<'_> {
                     TriggerFeel::Draw(ticks as f32 / 10.0)
                 }
                 Some(s) if &*s.item == "minecraft:crossbow" => {
-                    TriggerFeel::Draw(ticks as f32 / Self::charge_ticks(s).max(1) as f32)
+                    TriggerFeel::Draw(ticks as f32 / sunrise_gameplay_common::game::CommonGame::charge_ticks(s).max(1) as f32)
                 }
                 Some(s) if self.blocks_attacks(s).is_some() => TriggerFeel::Brace,
                 _ => TriggerFeel::Free,

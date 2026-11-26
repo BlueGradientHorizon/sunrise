@@ -1,7 +1,8 @@
 //! Mounting for native mods (`native_entity_mount`: NeoForge's `EntityMountEvent`). Each place
 //! the acting player or a mob gets on or off a vehicle asks `native_may_board` or
 //! `native_may_leave` first, and does nothing when a mod says no.
-use super::{commands::Target, native_hooks::mob_kind};
+use super::commands::Target;
+use crate::game::native_hooks::mob_kind;
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn retire_vehicle_registration(&self, target: Target) {

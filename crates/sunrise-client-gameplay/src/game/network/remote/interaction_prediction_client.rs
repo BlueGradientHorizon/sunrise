@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game::powder_snow::FilledResultGameExt as _;
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt;
 

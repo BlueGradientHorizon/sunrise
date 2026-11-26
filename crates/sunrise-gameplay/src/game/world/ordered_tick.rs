@@ -9,7 +9,7 @@
 //! LOGS: none. READS-BY: `Game::tick_world`, `tick_mobs`.
 //! ENDS-WHEN: every kind ticks from the join-order walk.
 
-use super::{Game, Result};
+use super::Result;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource as _;

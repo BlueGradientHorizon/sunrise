@@ -1,4 +1,4 @@
-use super::{Game, R, Target, err};
+use super::{R, Target, err};
 pub(in crate::game::server_side) use crate::game::commands::data::DataRef;
 use crate::game::commands::data::set_key;
 use crate::game::commands::data::strip_finalize_tree;

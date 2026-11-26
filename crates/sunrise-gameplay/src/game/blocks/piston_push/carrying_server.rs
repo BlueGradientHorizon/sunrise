@@ -1,7 +1,6 @@
 //! Server-side moving-collider carrying pass (`MoveWho::Entity(_)` only, preserving
 //! stacked collider forest depth ordering and `position_riders` synchronization).
 use super::{
-    Game,
     entity::{Entity, with_entity, with_entity_mut},
     move_gate::MoveWho,
 };

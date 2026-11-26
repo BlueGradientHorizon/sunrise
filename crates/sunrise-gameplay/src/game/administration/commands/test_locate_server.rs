@@ -1,4 +1,4 @@
-use super::{Arg, Context, Game, R, err};
+use super::{Arg, Context, R, err};
 use crate::game::commands::test_locate::Pos;
 use crate::game::commands::test_locate::horizontal_distance;
 use crate::game::commands::test_locate::link;

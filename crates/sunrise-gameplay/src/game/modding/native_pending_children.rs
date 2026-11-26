@@ -1,7 +1,6 @@
 //! The pending-child collection adapter. The existing unspawned editor resolves the same
 //! arena objects. No resident entity ID, attachment holder or join is published here.
 
-use super::Game;
 use mod_api::{
     PendingChildrenEdits, PendingChildrenRef, PendingMobSpec, UnattachedMob, UnspawnedMobError,
     UnspawnedMobRef, WorldEpoch,

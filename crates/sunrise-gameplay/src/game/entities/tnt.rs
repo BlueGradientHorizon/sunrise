@@ -117,7 +117,7 @@ impl ServerGame<'_> {
         let (id, footprint, ground, mut velocity) =
             (t.id, (t.position, t.bounds()), t.ground, t.velocity);
         let writes = self.body_step_on((id, "minecraft:tnt"), footprint, &ground, &mut velocity);
-        let side = game_side!(self);
+        let side = server_game_side!(self);
         let t = &mut self.common.tnts[i];
         let known = t.velocity;
         t.velocity = velocity;
@@ -194,7 +194,7 @@ impl ServerGame<'_> {
             &ground,
             &mut velocity,
         );
-        let side = game_side!(self);
+        let side = server_game_side!(self);
         let t = &mut self.common.tnts[i];
         t.velocity = velocity;
         super::entity::apply_contact_writes(

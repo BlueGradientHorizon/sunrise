@@ -1,7 +1,5 @@
 //! `TestBlockEditScreen`: the test block's mode and message.
-use super::{
-    block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action},{Editor, Item, Outcome, Pos, cycle, footer_action},
-};
+use crate::game::block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action};
 use sunrise_client::ui::EditBox;
 use sunrise_game_data::text::Text;
 use sunrise_level::{

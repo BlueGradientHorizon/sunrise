@@ -1,5 +1,5 @@
 //! Server-side piston, shulker lid, block-push-up, and forced entity move passes.
-use super::{Game, move_gate::MoveWho};
+use super::move_gate::MoveWho;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::entity::{Entity, EntityHandle, with_entity, with_entity_mut};
 use sunrise_gameplay_common::game::piston_push::{

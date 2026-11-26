@@ -250,7 +250,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         count: i32,
     ) -> bool {
         let (Ok(options), Ok(state)) = (
-            options.try_into_engine(self.game.items()),
+            options.try_into_engine(GameItems::items(&*self.game)),
             state.try_into_engine(&()),
         ) else {
             return false;
@@ -534,7 +534,7 @@ impl ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
+use sunrise_gameplay_common::game::tables::GameItems;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

@@ -155,13 +155,13 @@ impl ServerGame<'_> {
         stack: &ItemStack,
         amount: u32,
     ) -> u32 {
-        let e = &world_stations!(self).enchantments;
+        let e = &server_world_stations!(self).enchantments;
         if !e.has_component(stack, "minecraft:item_damage") {
             return amount;
         }
         let ctx = EffectContext {
             tool: Some(&stack.item),
-            items: Some(world_items!(self)),
+            items: Some(server_world_items!(self)),
             ..Default::default()
         };
         e.modify_value(
@@ -339,10 +339,10 @@ impl ServerGame<'_> {
                     attacker: Some("minecraft:player"),
                     direct_attacker: Some("minecraft:player"),
                     is_direct: true,
-                    items: Some(world_items!(self)),
+                    items: Some(server_world_items!(self)),
                     ..Default::default()
                 };
-                world_stations!(self).enchantments.modify_value(
+                server_world_stations!(self).enchantments.modify_value(
                     Some(&held),
                     "minecraft:knockback",
                     &ctx,
@@ -546,13 +546,13 @@ impl ServerGame<'_> {
             attacker: Some("minecraft:player"),
             direct_attacker: Some("minecraft:player"),
             is_direct: true,
-            items: Some(world_items!(self)),
+            items: Some(server_world_items!(self)),
             direct_motion: Some(motion),
             ..Default::default()
         };
         let mut bursts = Vec::new();
         for (id, level) in held.all_enchantments().iter() {
-            let Some(def) = world_stations!(self).enchantments.get(id) else {
+            let Some(def) = server_world_stations!(self).enchantments.get(id) else {
                 continue;
             };
             for effect in def.effects["minecraft:post_attack"]
@@ -569,7 +569,7 @@ impl ServerGame<'_> {
                     continue;
                 }
                 let ok = effect.get("requirements").is_none_or(|r| {
-                    world_stations!(self).enchantments.condition(
+                    server_world_stations!(self).enchantments.condition(
                         r,
                         *level,
                         &ctx,
@@ -661,7 +661,7 @@ impl ServerGame<'_> {
             };
             let mut effects = Vec::new();
             for (enchantment, level) in stack.enchantments() {
-                let Some(def) = world_stations!(self).enchantments.get(enchantment) else {
+                let Some(def) = server_world_stations!(self).enchantments.get(enchantment) else {
                     continue;
                 };
                 // Enchantment.matchingSlot
@@ -687,11 +687,11 @@ impl ServerGame<'_> {
             for (effect, level) in effects {
                 let ctx = EffectContext {
                     this: Some("minecraft:player"),
-                    items: Some(world_items!(self)),
+                    items: Some(server_world_items!(self)),
                     ..Default::default()
                 };
                 let ok = effect.get("requirements").is_none_or(|r| {
-                    world_stations!(self).enchantments.condition(
+                    server_world_stations!(self).enchantments.condition(
                         r,
                         level,
                         &ctx,
@@ -801,7 +801,7 @@ impl ServerGame<'_> {
             let hand = slot == f::MAINHAND || slot == f::OFFHAND;
             let mut effects = Vec::new();
             for (enchantment, level) in stack.enchantments() {
-                let Some(def) = world_stations!(self).enchantments.get(enchantment) else {
+                let Some(def) = server_world_stations!(self).enchantments.get(enchantment) else {
                     continue;
                 };
                 // Enchantment.matchingSlot
@@ -828,11 +828,11 @@ impl ServerGame<'_> {
                     direct_attacker: direct,
                     is_direct: direct.is_some() && direct == attacker_kind.as_deref(),
                     damage_type,
-                    items: Some(world_items!(self)),
+                    items: Some(server_world_items!(self)),
                     ..Default::default()
                 };
                 let ok = effect.get("requirements").is_none_or(|r| {
-                    world_stations!(self).enchantments.condition(
+                    server_world_stations!(self).enchantments.condition(
                         r,
                         level,
                         &ctx,
@@ -997,7 +997,7 @@ impl ServerGame<'_> {
             let slots = PLAYER_SLOTS.map(|slot| (slot, self.player_slot(slot)));
             let Some(slot) = pick_mending_slot(
                 slots,
-                &world_stations!(self).enchantments,
+                &server_world_stations!(self).enchantments,
                 &mut random_source::entity(),
             ) else {
                 return amount;
@@ -1006,8 +1006,8 @@ impl ServerGame<'_> {
                 return amount;
             };
             let vanilla_repair = repair_from_xp(
-                &world_stations!(self).enchantments,
-                Some(world_items!(self)),
+                &server_world_stations!(self).enchantments,
+                Some(server_world_items!(self)),
                 &stack,
                 amount,
                 &mut self.common.world.random,
@@ -1112,12 +1112,12 @@ impl ServerGame<'_> {
         let Some(bow) = self.common.held().cloned() else {
             return (0.0, false);
         };
-        let e = &world_stations!(self).enchantments;
+        let e = &server_world_stations!(self).enchantments;
         // Damage is evaluated at impact, with the real victim (AbstractArrow.onHitEntity).
         let power = 0.0;
         let ammo_ctx = EffectContext {
             tool: Some(ammo),
-            items: Some(world_items!(self)),
+            items: Some(server_world_items!(self)),
             ..Default::default()
         };
         let infinity = e.has_component(&bow, "minecraft:ammo_use")

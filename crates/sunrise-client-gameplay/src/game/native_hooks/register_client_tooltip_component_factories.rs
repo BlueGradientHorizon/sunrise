@@ -4,7 +4,7 @@ pub fn native_register_client_tooltip_component_factories(
     context: &mod_api::RegistrationContext,
     factories: &mut sunrise_client::tooltip_components::TooltipComponentFactories,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_register_client_tooltip_component_factories(
+    crate::game::native_hooks::fire::fire_register_client_tooltip_component_factories(
         context,
         |listen| {
             factories.register_listener(listen);

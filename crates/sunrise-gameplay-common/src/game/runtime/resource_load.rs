@@ -200,7 +200,7 @@ impl Progress {
     pub fn fraction(&self) -> f32 {
         self.value.load(Ordering::Relaxed) as f32 / (self.lines.len() - 1) as f32
     }
-    pub(in crate::game) fn line(&self) -> &'static str {
+    pub fn line(&self) -> &'static str {
         self.lines[(self.value.load(Ordering::Relaxed) as usize).min(self.lines.len() - 1)]
     }
     pub fn new() -> Self {

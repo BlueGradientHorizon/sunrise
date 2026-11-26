@@ -99,7 +99,7 @@ impl Rocket {
     }
 
     /// A rocket a server sent (`handleAddEntity`): placed and moved by it.
-    pub(in crate::game) fn remote(id: u32, position: Vec3, velocity: Vec3) -> Self {
+    pub fn remote(id: u32, position: Vec3, velocity: Vec3) -> Self {
         let item = ItemStack::new("minecraft:firework_rocket", 1);
         let (_, explosions) = fireworks_of(&item);
         Self {

@@ -1,6 +1,7 @@
 //! The pause menu (PauseScreen) and death screen (DeathScreen) layouts.
 use super::screen_build::{PauseInputs, PauseLayout};
-use super::{Game, Screen, api_values::TryIntoApi};
+use super::Screen;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_client::{
     confirm_screen::Confirm,
     hud::{HudBatch, rgba},
@@ -1096,7 +1097,7 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ADDED_PAGES, ClientScreenExt as _, Screen, death_buttons, pause_buttons, pause_icon_focus_ids, pause_icons,
+        ADDED_PAGES, ScreenClientExt as _, Screen, death_buttons, pause_buttons, pause_icon_focus_ids, pause_icons,
     };
 
     #[test]

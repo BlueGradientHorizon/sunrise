@@ -18,7 +18,7 @@ impl crate::game::ServerGame<'_> {
             let rules = ItemRules(
                 game.items(),
                 &game.stations().enchantments,
-                Some(&game.common),
+                Some(&*game),
                 answer,
                 click.container_insert_rules().to_vec(),
             );
@@ -85,7 +85,7 @@ impl crate::game::ServerGame<'_> {
                         let rules = ItemRules(
                             game.items(),
                             &game.stations().enchantments,
-                            Some(&game.common),
+                            Some(&*game),
                             None,
                             prepared.container_insert_rules().to_vec(),
                         );

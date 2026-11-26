@@ -363,7 +363,7 @@ impl ServerGame<'_> {
         }
         // tryMoveInItem's setItem on an empty slot: AbstractFurnaceBlockEntity.setItem restarts
         // the cooking for a new input (a merge only grows the stack, and keeps it).
-        let recipes = world_recipes!(self);
+        let recipes = server_world_recipes!(self);
         if filled_empty
             && let Some((pos, 0)) = view.locate(slot)
             && let Some(BlockEntity::Furnace(furnace)) = self.common.world.block_entities.get_mut(&pos)

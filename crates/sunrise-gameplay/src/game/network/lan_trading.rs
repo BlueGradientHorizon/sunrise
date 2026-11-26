@@ -2,8 +2,9 @@
 //! merchant menu as the host's (`sunrise_client::menu`, `Kind::Merchant`),
 //! with vanilla's packets: OpenScreen (`minecraft:merchant`), MerchantOffers,
 //! the select trade packet, container clicks and the content sync after each.
-use super::{lan_actions::guest_within_entity_range, stacked_on_other::Pickup};
+use super::stacked_on_other::Pickup;
 use sunrise_gameplay_common::game::{
+    lan_actions::guest_within_entity_range,
     lan_menu_data::GuestMerchant,
     stations_common::{Kind as StationKind, Station},
     trading_common::MerchantState,

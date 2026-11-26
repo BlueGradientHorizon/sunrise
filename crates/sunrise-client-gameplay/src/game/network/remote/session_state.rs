@@ -1,5 +1,3 @@
-#[cfg(feature = "client")]
-use super::Game;
 use super::{break_prediction::Prediction, general, level_format};
 use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Hit, crate::game::client_side::raw_backlog::Received, crate::game::client_side::remote_chunks::ChunkDecoder, crate::game::client_side::remote_chunks::ChunkFormat, crate::game::client_side::remote_chunks::RemoteLight, sunrise_gameplay_common::game::remote::Lerp, sunrise_gameplay_common::game::remote::chat_received::QueuedChat, sunrise_gameplay_common::game::remote::minecarts::CartLerp, sunrise_gameplay_common::game::remote::passengers::PassengerSeat};
 use std::{

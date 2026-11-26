@@ -263,7 +263,7 @@ impl<'a> BlockDropEntity<'a> {
 /// Prepared engine item entity; API snapshots exist only while a listener runs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockItemDrop {
-    pub(in crate::game) random: Option<ItemRandom>,
+    pub random: Option<ItemRandom>,
     pub stack: ItemStack,
     pub position: [f64; 3],
     pub velocity: [f64; 3],

@@ -1,4 +1,4 @@
-use super::{Dim, Game};
+use super::Dim;
 use mod_api::{AttachmentHolder, EntityRef};
 
 impl crate::game::ServerGame<'_> {

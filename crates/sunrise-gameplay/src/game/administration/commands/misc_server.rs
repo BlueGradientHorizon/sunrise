@@ -1,4 +1,4 @@
-use super::{Arg, Context, Game, R, Target, err};
+use super::{Arg, Context, R, Target, err};
 use sunrise_gameplay_common::game::chat_common::PLAYER_NAME;
 use sunrise_core::random::RandomSource;
 use sunrise_game_data::text::{self, Text};

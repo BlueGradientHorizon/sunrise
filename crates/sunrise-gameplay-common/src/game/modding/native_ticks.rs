@@ -26,7 +26,7 @@ pub enum TickKind {
 }
 
 impl TickKind {
-    pub(in crate::game) fn id(&self) -> &str {
+    pub fn id(&self) -> &str {
         match self {
             Self::Fixed(id) => id,
             Self::Mob(kind) => &kind.id,
@@ -133,7 +133,7 @@ impl Told {
         self.listening
     }
     /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
-    pub(in crate::game) fn alone_mob(&self, kind: &MobType) -> bool {
+    pub fn alone_mob(&self, kind: &MobType) -> bool {
         self.listening
             && match self.alone {
                 Alone::None => false,
@@ -197,7 +197,7 @@ impl TickRound {
         self.told.listening || self.sections
     }
     /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
-    pub(in crate::game) fn alone_mob(&self, kind: &MobType) -> bool {
+    pub fn alone_mob(&self, kind: &MobType) -> bool {
         self.told.alone_mob(kind)
     }
     /// Whether the entities of type `kind` are told alone ([`Told::alone_kind`]).

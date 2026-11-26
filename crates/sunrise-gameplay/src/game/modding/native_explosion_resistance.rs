@@ -1,7 +1,7 @@
 //! Explosion resistance reads for server mods: what a blast a mod could set off would meet in one
 //! cell or many, by the rule its rays use (`Game::cell_explosion_resistance`), without exploding
 //! anything.
-use super::{Game, explosion::PartAnswers};
+use super::explosion::PartAnswers;
 use mod_api::{
     EntityRef, ExplosionInteraction, ExplosionResistance, LevelRef, ResistanceCells,
     ResistanceCellsError,

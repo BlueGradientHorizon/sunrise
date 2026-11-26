@@ -2673,7 +2673,7 @@ impl crate::game::ClientGame<'_> {
         let backspace = key == Some(KeyCode::Backspace);
         if self.mounted_widget_captures_input() {
             // These are edits from the controller keyboard, not physical keys or chars.
-            let modifiers = super::glfw_modifiers(self.client.modifiers);
+            let modifiers = glfw_modifiers(self.client.modifiers);
             if let Some(text) = text {
                 let receiver = self.client.screen_state.0.widgets.generation();
                 for c in text.chars() {

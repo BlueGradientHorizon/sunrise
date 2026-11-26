@@ -288,10 +288,10 @@ impl ServerGame<'_> {
         // uses left, which `out.fuel_taken` reports.
         let fuel_item = b.items[4].as_ref().map(|s| s.item.clone());
         let (mut out, due) = b.tick_to_brew(
-            &world_stations!(self).brewing,
-            world_items!(self),
+            &server_world_stations!(self).brewing,
+            server_world_items!(self),
             self.common.res.providers(),
-            &|s| fuel.resolve(world_items!(self), s),
+            &|s| fuel.resolve(server_world_items!(self), s),
         );
         let started = was_idle && b.brew_time > 0;
         let ingredient = started.then(|| b.ingredient.clone()).flatten();
@@ -312,7 +312,7 @@ impl ServerGame<'_> {
             let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos) else {
                 return Ok(());
             };
-            let brewing = &world_stations!(self).brewing;
+            let brewing = &server_world_stations!(self).brewing;
             b.brew_after_pre(asked, brewing, &|_| rest.clone(), &mut out);
             self.common.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
             post = hooked && (out.brewed || cancelled);

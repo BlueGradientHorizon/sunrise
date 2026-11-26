@@ -3,7 +3,7 @@ use mod_api::ModBlockEntity;
 
 #[inline(always)]
 pub(in crate::game) fn native_client_resources_reloaded(context: &dyn mod_api::ClientReloadHost) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_client_resources_reloaded(context);
+    crate::game::native_hooks::fire::fire_client_resources_reloaded(context);
 }
 
 /// The hook points. Each does nothing in Sunrise.

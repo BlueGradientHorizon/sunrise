@@ -56,7 +56,7 @@ pub(in crate::game) struct Pickups {
     made: std::collections::BTreeMap<&'static str, u64>,
 }
 impl Pickups {
-    pub(in crate::game::client_side) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.live.clear();
         self.added.clear();
     }

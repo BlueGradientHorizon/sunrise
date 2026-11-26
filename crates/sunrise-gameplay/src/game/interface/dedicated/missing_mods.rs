@@ -3,7 +3,7 @@
 //! refuses, one log line per mod and a last one naming the switch, unless `--allowMissingMods` or
 //! `server.toml`'s `[missing_mods] allow = true` says to open it anyway (off by default).
 
-use super::{Game, Result, log};
+use super::{Result, log};
 use sunrise_server_files::missing_mods::MissingMods as Settings;
 use sunrise_sim::save::level_mods;
 

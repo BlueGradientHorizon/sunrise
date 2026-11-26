@@ -961,7 +961,7 @@ impl crate::game::CommonGame<'_> {
     /// time and time of day as the server last sent them
     /// (`ClientboundSetTimePacket`), advanced each tick between packets; none
     /// on the title screen.
-    pub(in crate::game) fn clock(&self) -> Option<mod_api::Clock> {
+    pub fn clock(&self) -> Option<mod_api::Clock> {
         self.player.is_some().then_some(mod_api::Clock {
             game_time: self.world.game_time,
             day_time: self.world.day_time,

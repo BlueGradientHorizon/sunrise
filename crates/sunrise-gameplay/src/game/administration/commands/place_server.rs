@@ -1,4 +1,4 @@
-use super::{Game, R, err};
+use super::{R, err};
 use crate::game::commands::place::read_template_data;
 use sunrise_core::nbt::Tag;
 

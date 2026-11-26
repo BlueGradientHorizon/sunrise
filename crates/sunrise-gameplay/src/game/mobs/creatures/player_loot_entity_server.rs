@@ -1,4 +1,4 @@
-use super::{Game, to_loot};
+use super::to_loot;
 
 impl crate::game::ServerGame<'_> {
     /// The acting player as `INTERACTING_ENTITY`: [`Self::killer_loot_entity`]

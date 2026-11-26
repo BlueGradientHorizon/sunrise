@@ -11,7 +11,7 @@
 //! entity and its shadow are queued by the frame after the entity's drawing and stay (#1285).
 pub use mod_api::game::{MobRender, PlayerRender};
 
-use super::{Game, native_block_entity_draw::BlockEntityDraw};
+use super::native_block_entity_draw::BlockEntityDraw;
 use glam::{DVec3, Mat4};
 use mod_api::{EntityRenderState, FrameModel, HookId};
 use std::cell::RefCell;

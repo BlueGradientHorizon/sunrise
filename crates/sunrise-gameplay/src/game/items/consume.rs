@@ -184,7 +184,7 @@ impl crate::game::ServerGame<'_> {
             if mod_api::runtime::isolated_failures() != failures {
                 return Err(());
             }
-            let Some(m) = game.mobs.iter_mut().find(|m| m.id == decision.mob) else {
+            let Some(m) = game.common.mobs.iter_mut().find(|m| m.id == decision.mob) else {
                 return Ok(false);
             };
             let position = m.position;
@@ -340,7 +340,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let bounds = player.dimensions.bounds(at);
-        let side = game_side!(self);
+        let side = server_game_side!(self);
         let free = sunrise_sim::motion::MotionWorld {
             side: &side,
             entities: &entities,
@@ -352,7 +352,7 @@ impl crate::game::ServerGame<'_> {
             health: &self.common.health_resources,
             loop_context: &self.common.loop_context,
             damage_hooks: &self.common.damage_hooks,
-            tag_items: Some(world_items!(self)),
+            tag_items: Some(server_world_items!(self)),
             block_registries: Some(&self.common.pack.block_registries),
         }
         .no_player_collision(bounds)

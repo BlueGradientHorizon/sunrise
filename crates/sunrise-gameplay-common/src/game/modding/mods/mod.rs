@@ -136,9 +136,9 @@ pub struct ModsState {
     pub(in crate::game) content_base: Arc<std::sync::OnceLock<PathBuf>>,
     pub(in crate::game) content_materializer: Option<ContentMaterializer>,
     /// `--dev-mod PATH`: content mods always on.
-    pub(in crate::game) dev: Vec<PathBuf>,
-    pub(in crate::game) native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
-    pub(in crate::game) installation_side: sunrise_mod_package::manifest::Side,
+    pub dev: Vec<PathBuf>,
+    pub native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
+    pub installation_side: sunrise_mod_package::manifest::Side,
     pub(in crate::game) overrides_dir: PathBuf,
     pub(in crate::game) load_notices: Arc<Mutex<Vec<sunrise_mod_package::dependencies::Notice>>>,
     pub selected: std::sync::Arc<[sunrise_mod_package::selection::SelectedPackage]>,
@@ -149,11 +149,11 @@ pub struct ModsState {
     pub applied: Option<std::collections::BTreeSet<String>>,
     /// A live switch's resource reload is running: when it applied, the server
     /// reloads its data from the new root. Its start, for the log.
-    pub(in crate::game) live: Option<std::time::Instant>,
+    pub live: Option<std::time::Instant>,
     /// The content mods installed, and those of them with only assets and
     /// data (`mod_content::live_switch`): they switch with a world open.
-    pub(in crate::game) content_ids: std::collections::BTreeSet<String>,
-    pub(in crate::game) live_ids: std::collections::BTreeSet<String>,
+    pub content_ids: std::collections::BTreeSet<String>,
+    pub live_ids: std::collections::BTreeSet<String>,
     /// The server's data comes from a root a live switch built, not the one
     /// `res` was loaded from: the world tables are built from it even with no
     /// data pack (`stage_world_tables`).
@@ -171,7 +171,7 @@ pub struct ModsState {
 }
 
 impl ModsState {
-    pub(in crate::game) fn capture_code_switches(
+    pub fn capture_code_switches(
         &mut self,
         disabled: &std::collections::BTreeSet<String>,
     ) {
@@ -189,7 +189,7 @@ impl ModsState {
 
     /// Compute the effective disabled native set for the live session and any restart-bound
     /// serving hosts whose saved toggle differs from their applied startup state.
-    pub(in crate::game) fn reconcile_code_switches(
+    pub fn reconcile_code_switches(
         &self,
         wanted_disabled: &std::collections::BTreeSet<String>,
     ) -> (std::collections::BTreeSet<String>, Vec<String>) {
@@ -212,7 +212,7 @@ impl ModsState {
 
     /// Whether native mod `id` is effectively disabled in this running session (respecting
     /// restart-bound serving hosts).
-    pub(in crate::game) fn code_disabled(
+    pub fn code_disabled(
         &self,
         wanted_disabled: &std::collections::BTreeSet<String>,
         id: &str,

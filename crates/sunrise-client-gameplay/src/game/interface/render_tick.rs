@@ -1,6 +1,7 @@
 //! Per-tick client visuals: the particle engine, `ClientLevel.animateTick`,
 //! campfire smoke and rain splashes (`ClientLevel.tickWeatherEffects`).
-use super::{Dim, api_values::TryIntoApi, weather::precipitation_at};
+use super::{Dim, weather::precipitation_at};
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 #[cfg(feature = "client")]
 use crate::game::host::draw::GameCameraDrawContext;
 use mod_api::{
@@ -853,7 +854,7 @@ impl crate::game::ClientGame<'_> {
             };
             let world = &self.common.world;
             let facts = self.common.res.facts();
-            let biomes = world_biomes!(self);
+            let biomes = world_biomes!(self.common);
             let environment = Self::level_environment(
                 self.client
                     .remote

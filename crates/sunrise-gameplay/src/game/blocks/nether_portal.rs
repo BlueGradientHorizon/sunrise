@@ -1195,7 +1195,7 @@ impl crate::game::ServerGame<'_> {
             }
             let from = entity
                 .portal_from()
-                .unwrap_or_else(|| self.side.portals.before.get(&id).copied().unwrap_or(to));
+                .unwrap_or_else(|| self.server.portals.before.get(&id).copied().unwrap_or(to));
             let Some((width, height)) = entity.portal_size() else {
                 continue;
             };

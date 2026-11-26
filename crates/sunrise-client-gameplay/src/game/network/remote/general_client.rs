@@ -6,7 +6,7 @@
 //! `ClientPacketListener.handleBundlePacket`, matching NeoForge `AttachmentSync`). Render
 //! extraction retains the published generation, not the live synced holder. The row's behaviour
 //! is the server's.
-use super::{Game, Lerp, Remote};
+use super::{Lerp, Remote};
 use sunrise_gameplay_common::game::general::general_type_catalog;
 use indexmap::IndexMap;
 use std::collections::HashMap;

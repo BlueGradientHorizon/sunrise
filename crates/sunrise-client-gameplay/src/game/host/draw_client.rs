@@ -80,7 +80,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         let Ok(stack) = sunrise_gameplay_common::game::api_values::stack_value(stack) else {
             return false;
         };
-        let Ok(display) = display.try_into_engine(self.game.items()) else {
+        let Ok(display) = display.try_into_engine(GameItems::items(self.game)) else {
             return false;
         };
         self.game
@@ -314,4 +314,4 @@ impl<'a> EngineTooltipFont<'a> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
+use sunrise_gameplay_common::game::tables::GameItems;

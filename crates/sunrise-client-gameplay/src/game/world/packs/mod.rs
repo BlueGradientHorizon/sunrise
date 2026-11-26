@@ -1,7 +1,7 @@
 //! Resource pack selection bound to the game: the pack screen lists, and a
 //! full resource reload after a change, while playing.
 #[cfg(feature = "client")]
-use super::{Game, PackResources, Resources, build_renderer, prepare_renderer_textures};
+use super::{PackResources, Resources, build_renderer, prepare_renderer_textures};
 #[cfg(feature = "client")]
 use crate::game::client_side::pack_discovery_client::{data_packs_with_icons, into_resource_pack};
 #[cfg(feature = "client")]

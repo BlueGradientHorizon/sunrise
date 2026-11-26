@@ -16,7 +16,6 @@
 //! Each load also asks for the layers of the living renderers (`native_entity_layers`), which draw
 //! through the same guard ([`Game::guarded_entity_draw`]).
 use super::{
-    Game,
     native_block_entity_draw::{BlockEntityDraw, LevelLight},
 };
 use crate::game::host::draw::GameBlockEntityDrawContext;

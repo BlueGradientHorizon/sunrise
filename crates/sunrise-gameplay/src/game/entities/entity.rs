@@ -5,7 +5,7 @@ use sunrise_gameplay_common::game::entity::{
     for_each_entity,
 };
 use sunrise_gameplay_common::game::{
-    FallingBlock, Game, boats_common::Boat, fireworks::Rocket, minecarts::Minecart,
+    FallingBlock, boats_common::Boat, fireworks::Rocket, minecarts::Minecart,
     tnt_common::PrimedTnt,
 };
 use std::collections::{HashMap, HashSet};

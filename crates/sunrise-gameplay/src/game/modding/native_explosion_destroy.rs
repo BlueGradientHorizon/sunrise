@@ -67,7 +67,7 @@ impl ServerGame<'_> {
         interaction: super::explosion::BlockInteraction,
     ) -> u32 {
         let damage_type =
-            super::creatures::damage_type(DamageKind::Explosion, self.blast_attacker().is_some());
+            sunrise_gameplay_common::game::creatures::damage_type(DamageKind::Explosion, self.blast_attacker().is_some());
         let start = self.explosion_start(center, radius, interaction, fire, damage_type);
         if self.explosion_start_cancelled(&start) {
             return 0;

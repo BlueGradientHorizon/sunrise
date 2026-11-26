@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 #[derive(Default)]
-pub(in crate::game) struct NativeNet {
+pub struct NativeNet {
     pub placement: super::native_book_placement::State,
     pub book_connections: HashMap<u32, sunrise_sim::recipe_book::settings_connection::Connection>,
     pub book_view: sunrise_sim::recipe_book::settings_sync::ClientView,

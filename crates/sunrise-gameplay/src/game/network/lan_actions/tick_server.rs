@@ -50,7 +50,7 @@ impl crate::game::ServerGame<'_> {
                 .map(|g| (g.uuid, g.name.clone()))
         };
         self.as_guest(conn, |game| {
-            let Some(player) = game.player.as_mut() else {
+            let Some(player) = game.common.player.as_mut() else {
                 return;
             };
             let (position, yaw_after, ground) =
@@ -58,20 +58,20 @@ impl crate::game::ServerGame<'_> {
             player.position = Vec3::new(from[0], from[1], from[2]);
             player.yaw = yaw;
             player.ground.on_ground = true;
-            let side = game_side!(game);
+            let side = server_game_side!(game);
             let mut w = MotionWorld {
                 side: &side,
                 entities: &[],
                 player,
-                scene: &mut game.world,
-                assets: &game.pack.assets,
-                collision_binding: game.collision,
-                resources: game.motion,
-                health: &game.health_resources,
-                tag_items: Some(world_items!(game)),
-                loop_context: &game.loop_context,
-                damage_hooks: &game.damage_hooks,
-                block_registries: Some(&game.pack.block_registries),
+                scene: &mut game.common.world,
+                assets: &game.common.pack.assets,
+                collision_binding: game.common.collision,
+                resources: game.common.motion,
+                health: &game.common.health_resources,
+                tag_items: Some(server_world_items!(game)),
+                loop_context: &game.common.loop_context,
+                damage_hooks: &game.common.damage_hooks,
+                block_registries: Some(&game.common.pack.block_registries),
             };
             let _ = w.jump_from_ground();
             (w.player.position, w.player.yaw, w.player.ground.on_ground) =

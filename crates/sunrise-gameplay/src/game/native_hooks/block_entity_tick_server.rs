@@ -271,8 +271,8 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
             .mod_container(live_state.0)
             .map_or(0, |c| c.slots);
         let pos = (x, y, z);
-        let Some(loan) = self
-            .game
+        let common = &mut self.game.common;
+        let Some(loan) = common
             .world
             .block_entities
             .loan_mod_entity(pos, target.generation)
@@ -282,23 +282,23 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
         if let Loan::Tick(checked) = &mut self.loan
             && *checked != Some(live_state)
         {
-            if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
+            if !valid_tick_subject(&common.res.facts().get(live_state).name, loan.entity) {
                 return;
             }
             *checked = Some(live_state);
         }
         let mut data = ServerBlockEntityData {
-            dim: self.game.dim,
+            dim: common.dim,
             pos,
             loan,
             slot_count,
-            items: self.game.res.items(),
-            journal: &mut self.game.transactions,
-            chunks: &self.game.world.chunks,
-            names: &self.game.world.block_names,
+            items: common.res.items(),
+            journal: &mut common.transactions,
+            chunks: &common.world.chunks,
+            names: &common.world.block_names,
             hoppers: &self.game.server.hoppers,
             menu: matches!(self.loan, Loan::Menu(_))
-                .then_some((&mut self.game.world.modified, &mut self.items_changed)),
+                .then_some((&mut common.world.modified, &mut self.items_changed)),
             dirty: false,
         };
         call(BlockEntityView::new(subject, state, &mut data));

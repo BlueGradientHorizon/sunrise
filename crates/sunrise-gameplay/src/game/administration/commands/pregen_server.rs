@@ -1,4 +1,4 @@
-use super::{Context, Dim, Game, R};
+use super::{Context, Dim, R};
 use crate::game::commands::pregen::PregenTask;
 use crate::game::commands::pregen::REPORT_EVERY;
 use crate::game::commands::pregen::STALL;

@@ -12,15 +12,15 @@ macro_rules! motion_world {
             side: &$side,
             entities: &[],
             player: $player,
-            scene: &mut $game.world,
-            assets: &$game.pack.assets,
-            collision_binding: $game.collision,
-            resources: $game.motion,
-            health: &$game.health_resources,
-            tag_items: Some(world_items!($game)),
-            loop_context: &$game.loop_context,
-            damage_hooks: &$game.damage_hooks,
-            block_registries: Some(&$game.pack.block_registries),
+            scene: &mut $game.common.world,
+            assets: &$game.common.pack.assets,
+            collision_binding: $game.common.collision,
+            resources: $game.common.motion,
+            health: &$game.common.health_resources,
+            tag_items: Some(server_world_items!($game)),
+            loop_context: &$game.common.loop_context,
+            damage_hooks: &$game.common.damage_hooks,
+            block_registries: Some(&$game.common.pack.block_registries),
         }
     };
 }
@@ -33,10 +33,10 @@ macro_rules! settle_guest_hit {
             if let Err(collected) = $game.finish_guest_damage_before_resume() {
                 return (collected, None, ServerTravel::Continue);
             }
-            let Some(player) = $game.player.as_mut().filter(|p| p.entity_id as u32 == $id) else {
+            let Some(player) = $game.common.player.as_mut().filter(|p| p.entity_id as u32 == $id) else {
                 return (Vec::new(), None, ServerTravel::Continue);
             };
-            $side = game_side!($game);
+            $side = server_game_side!($game);
             $world = motion_world!($game, $side, player);
         }
     };
@@ -71,14 +71,14 @@ impl crate::game::ServerGame<'_> {
         let Some(events) = self.as_guest(conn, |game| {
             let leather_boots = super::super::worn_boots::leather_boots(&game.armor);
             let boat = game.riding_boat_fluid_box();
-            let Some(player) = game.player.as_mut() else {
+            let Some(player) = game.common.player.as_mut() else {
                 return Vec::new();
             };
             player.fluids.boat = boat;
             player.leather_boots = leather_boots;
             player.shift_key_down = accepted.sneaking;
-            player.record_fall_reset = game.adv.marks.fall.is_some();
-            let mut side = game_side!(game);
+            player.record_fall_reset = game.common.adv.marks.fall.is_some();
+            let mut side = server_game_side!(game);
             let mut w = motion_world!(game, side, player);
             let [x, y, z] = accepted.delta;
             let movement = Vec3::new(x, y, z);
@@ -100,13 +100,13 @@ impl crate::game::ServerGame<'_> {
                         let mut collected = std::mem::take(&mut w.player.events);
                         game.trample_farmland(id, true, trample);
                         let Some(player) =
-                            game.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                            game.common.player.as_mut().filter(|p| p.entity_id as u32 == id)
                         else {
                             return collected;
                         };
                         collected.append(&mut player.events);
                         player.events = collected;
-                        side = game_side!(game);
+                        side = server_game_side!(game);
                         w = motion_world!(game, side, player);
                         w.finish_trample_fall(trample).ok().flatten()
                     }
@@ -117,11 +117,11 @@ impl crate::game::ServerGame<'_> {
                     if let Err(collected) = game.finish_guest_damage_before_resume() {
                         return collected;
                     }
-                    let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                    let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id)
                     else {
                         return Vec::new();
                     };
-                    side = game_side!(game);
+                    side = server_game_side!(game);
                     w = motion_world!(game, side, player);
                     let _ = w.finish_guest_landing(tail);
                 }
@@ -134,10 +134,10 @@ impl crate::game::ServerGame<'_> {
             let moved = player
                 .position
                 .subtract(Vec3::new(from[0], from[1], from[2]));
-            let side = game_side!(game);
+            let side = server_game_side!(game);
             let _ = motion_world!(game, side, player).check_movement_statistics(moved);
             game.movement_stats(moved);
-            let Some(player) = game.player.as_mut() else {
+            let Some(player) = game.common.player.as_mut() else {
                 return Vec::new();
             };
             let events = std::mem::take(&mut player.events);
@@ -174,7 +174,7 @@ impl crate::game::ServerGame<'_> {
                 .is_some_and(|play| play.marks.fall.is_some())
         {
             self.as_guest(conn, |game| {
-                if let Some(start) = game.adv.marks.fall.take()
+                if let Some(start) = game.common.adv.marks.fall.take()
                     && game
                         .player
                         .as_ref()
@@ -383,25 +383,25 @@ impl crate::game::ServerGame<'_> {
             self.as_guest(conn, |game| {
                 game.handle_shoulder_entities();
                 let rules = game.world.health_rules;
-                let Some(player) = game.player.as_mut() else {
+                let Some(player) = game.common.player.as_mut() else {
                     return;
                 };
                 player.health.advance_body_clock();
-                let _ = player.peaceful_regeneration(&game.loop_context, rules);
+                let _ = player.peaceful_regeneration(&game.common.loop_context, rules);
                 let _ = player.food_tick(
-                    &game.loop_context,
+                    &game.common.loop_context,
                     crate::game::entity_server::damage_level_of!(
                         game,
                         &sunrise_sim::health::NO_ATTACK,
                         no_push,
                         None,
-                        acting_equipment!(game)
+                        acting_equipment!(game.common)
                     ),
-                    &game.health_resources,
+                    &game.common.health_resources,
                     rules,
                 );
                 game.finish_guest_damage();
-                let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+                let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
                     return;
                 };
                 let events = std::mem::take(&mut player.events);
@@ -429,21 +429,21 @@ impl crate::game::ServerGame<'_> {
             let freeze_immune = game.wears_freeze_immune();
             let boat = game.riding_boat_fluid_box();
             let swim_listener = game.has_swim_eligibility_listener();
-            let Some(player) = game.player.as_mut() else {
+            let Some(player) = game.common.player.as_mut() else {
                 return (Vec::new(), None, ServerTravel::Continue);
             };
             player.fluids.boat = boat;
             player.leather_boots = leather_boots;
-            let mut side = game_side!(game);
+            let mut side = server_game_side!(game);
             let mut w = motion_world!(game, side, player);
             w.player.health.advance_body_clock();
             if w.begin_fluid_tick().is_ok() {
                 let decision = if swim_listener { w.swim_entry() } else { None };
                 let answer = game.ask_swim_entry(decision);
-                let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+                let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
                     return (Vec::new(), None, ServerTravel::Continue);
                 };
-                side = game_side!(game);
+                side = server_game_side!(game);
                 w = motion_world!(game, side, player);
                 if w.swim_and_burn_tick(answer).is_ok() {
                     settle_guest_hit!(game, side, w, id);
@@ -521,12 +521,12 @@ impl crate::game::ServerGame<'_> {
                     }
                     step => step.map(|step| (step, step.vanilla)),
                 };
-                let Some(player) = game.player.as_mut() else {
+                let Some(player) = game.common.player.as_mut() else {
                     return (collected, None, ServerTravel::Continue);
                 };
                 collected.append(&mut player.events);
                 player.events = collected;
-                side = game_side!(game);
+                side = server_game_side!(game);
                 w = motion_world!(game, side, player);
                 if let Some((step, breath)) = answer {
                     let _ = w.apply_air(step, breath);
@@ -573,10 +573,10 @@ impl crate::game::ServerGame<'_> {
             // `LivingEntity.baseTick` ran effects before the remaining dirty
             // attributes refresh in `LivingEntity.tick`. `Player.tick` then
             // chooses its pose, including for a passenger (#4509 / #3308).
-            let Some(player) = game.player.as_mut() else {
+            let Some(player) = game.common.player.as_mut() else {
                 return (events, None, ServerTravel::Continue);
             };
-            let side = game_side!(game);
+            let side = server_game_side!(game);
             let mut w = motion_world!(game, side, player);
             if riding {
                 let _ = w.player.refresh_attributes();
@@ -589,29 +589,29 @@ impl crate::game::ServerGame<'_> {
             // and tick effects); its particle goes to the players around.
             soul = game.tick_soul_speed();
             game.handle_shoulder_entities();
-            let Some(player) = game.player.as_mut() else {
+            let Some(player) = game.common.player.as_mut() else {
                 return (Vec::new(), None, ServerTravel::Continue);
             };
-            let _ = player.peaceful_regeneration(&game.loop_context, rules);
+            let _ = player.peaceful_regeneration(&game.common.loop_context, rules);
             let _ = player.food_tick(
-                &game.loop_context,
+                &game.common.loop_context,
                 crate::game::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,
                     None,
-                    acting_equipment!(game)
+                    acting_equipment!(game.common)
                 ),
                 health,
                 rules,
             );
             game.finish_guest_damage();
-            let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+            let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
                 return (events, None, ServerTravel::Continue);
             };
             events.append(&mut player.events);
             player.carry_client_movement(tick_movement);
-            let side = game_side!(game);
+            let side = server_game_side!(game);
             let travel = motion_world!(game, side, player)
                 .server_travel()
                 .unwrap_or(ServerTravel::Continue);
@@ -620,7 +620,7 @@ impl crate::game::ServerGame<'_> {
             // even when the level and its mobs are frozen. Flush their damage
             // events and marked velocity through the existing guest path.
             game.touch_pufferfish();
-            let Some(player) = game.player.as_mut() else {
+            let Some(player) = game.common.player.as_mut() else {
                 return (events, None, ServerTravel::Continue);
             };
             // Landing damage from this travel reaches the tracker too.

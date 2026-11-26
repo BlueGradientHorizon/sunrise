@@ -15,7 +15,6 @@ pub(in crate::game) mod save_lending;
 #[path = "dragon/walls.rs"]
 pub(in crate::game) mod walls;
 use super::commands::Target;
-use super::Game;
 use sunrise_gameplay_common::game::creatures::{Finalized, SpawnSite};
 use sunrise_gameplay_common::game::dragon_common::{
     BREATH_WAIT, Breath, Crystal, Dragon, FightWho, MAX_HEALTH, Path, PathBox, Phase, SPECIAL,

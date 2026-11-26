@@ -1,4 +1,3 @@
-use super::Game;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::projectiles::Projectile;
 
@@ -44,10 +43,10 @@ pub(in crate::game) fn finish(
 ) {
     if steps.enabled {
         {
-            let live = &mut game.native_lifecycle.entity_sections.projectile_live;
+            let live = &mut game.common.native_lifecycle.entity_sections.projectile_live;
             live.clear();
             live.extend(
-                game.creatures
+                game.common.creatures
                     .projectiles
                     .iter()
                     .map(|projectile| projectile.id),

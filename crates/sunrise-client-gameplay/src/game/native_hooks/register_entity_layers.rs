@@ -12,7 +12,7 @@ pub(in crate::game) fn native_register_entity_layers(
     context: &mod_api::RegistrationContext,
     layers: &mut LayerRegistration<'_>,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_register_entity_layers(context, |listen| {
+    crate::game::native_hooks::fire::fire_register_entity_layers(context, |listen| {
         layers.register_listener(listen)
     });
 }

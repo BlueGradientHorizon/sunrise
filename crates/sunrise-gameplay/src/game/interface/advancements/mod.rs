@@ -1,7 +1,7 @@
 //! The player's advancements in the game: criteria triggered from game
 //! events (`CriteriaTriggers`), awarding with rewards, the toast and the
 //! chat announcement, and `players/advancements/<uuid>.json`.
-use super::{Dim, Game, chat_common::PLAYER_NAME, stats::Stats};
+use super::{Dim, chat_common::PLAYER_NAME, stats::Stats};
 use crate::game::server_side::lan_actions_server::DisplacedPlayer;
 pub mod icons;
 use sunrise_gameplay_common::game::advancements_common::{TagSources, text_of};
@@ -1022,7 +1022,7 @@ impl crate::game::ServerGame<'_> {
                 let removed = self
                     .common.level
                     .recipe_book
-                    .remove_recipes(&world_stations!(self).recipe_index, &refused);
+                    .remove_recipes(&server_world_stations!(self).recipe_index, &refused);
                 taken_back = removed.len();
                 if self.server.lan_acting.is_some() && !removed.is_empty() {
                     self.server.guest_packets.push(C::RecipeBookRemove(
@@ -1058,7 +1058,7 @@ impl crate::game::ServerGame<'_> {
         if self.server.lan_acting_fake {
             return 0;
         }
-        let index = &world_stations!(self).recipe_index;
+        let index = &server_world_stations!(self).recipe_index;
         let (count, unlocked) = self.common.level.recipe_book.add_recipes(index, recipes);
         count.saturating_sub(self.recipe_unlocked(&unlocked))
     }
@@ -1190,7 +1190,7 @@ impl crate::game::ServerGame<'_> {
         let (_, unlocked) = self
             .common.level
             .recipe_book
-            .add_recipes(&world_stations!(self).recipe_index, &rewards);
+            .add_recipes(&server_world_stations!(self).recipe_index, &rewards);
         for table in &a.rewards.loot {
             // `LootContextParamSets.ADVANCEMENT_REWARD`: the rewarded player is
             // THIS_ENTITY and their position the ORIGIN.

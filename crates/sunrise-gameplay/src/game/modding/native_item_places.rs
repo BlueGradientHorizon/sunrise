@@ -385,7 +385,7 @@ impl ServerGame<'_> {
         }
         match *place {
             ItemPlace::Equipment { entity, slot } => {
-                let items = world_items!(self);
+                let items = server_world_items!(self);
                 let prepare = |read: Option<EquipmentRead<'_>>| {
                     let read = read
                         .filter(|read| read.base().count > 0)

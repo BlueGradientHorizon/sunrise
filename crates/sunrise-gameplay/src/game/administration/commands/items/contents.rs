@@ -1,5 +1,5 @@
 //! ContentsSlotSource's live component collections; mutable until written back.
-use super::{Game, ItemStack, Slot, SlotCandidate};
+use super::{ItemStack, Slot, SlotCandidate};
 use sunrise_gameplay_common::game::commands_common::Component;
 
 pub(in crate::game) struct Provider<'a> {

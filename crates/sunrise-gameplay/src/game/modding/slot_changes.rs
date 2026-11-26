@@ -15,7 +15,7 @@
 //! Within a batch the changes are in ascending menu slot order. Viewers see listener outputs from a
 //! click in the click's reply, and from any other write at the next `broadcastChanges`, as for any
 //! container write. Outputs never report again.
-use super::transactions::After;
+use sunrise_gameplay_common::game::transactions::After;
 use mod_api::{MenuContainer, MenuSlotChange, MenuSlotContext, MenuSlotWrite};
 use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
 use sunrise_items::items::{ItemStack, Items};

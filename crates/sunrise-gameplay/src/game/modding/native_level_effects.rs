@@ -3,7 +3,7 @@
 //! Every player in range hears or sees them, as `ServerLevel.playSound` and
 //! `sendParticles` send them. They return false on a client, for a handle of
 //! an earlier open, or for arguments the network can't carry.
-use super::creatures::NativeSound;
+use sunrise_gameplay_common::game::creatures::NativeSound;
 use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
 use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use sunrise_gameplay_common::game::journal_level_effects::PendingWrite;

@@ -441,7 +441,7 @@ pub(in crate::game) struct ScreenBuildState {
 
 impl ScreenBuildState {
     /// A fresh overlay instance must build even when its kind is unchanged.
-    pub(in crate::game::client_side) fn reopened(&mut self) {
+    pub fn reopened(&mut self) {
         self.current = None;
     }
 

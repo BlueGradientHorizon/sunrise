@@ -2,7 +2,8 @@
 //! (`native_menu_quick_move`, `AbstractContainerMenu.quickMoveStack`) before
 //! the game's own routing.
 use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
-use super::{BlockStateId, transactions::After};
+use super::BlockStateId;
+use sunrise_gameplay_common::game::transactions::After;
 use crate::game::server_side::native_hooks_server::block_entity_tick::ResidentBlockEntityAccess;
 use mod_api::{BlockEntityRef, BlockEntityScope, BlockEntityTypeKey};
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};

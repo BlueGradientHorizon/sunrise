@@ -103,7 +103,7 @@ impl crate::game::ClientGame<'_> {
         false
     }
     /// The stack at a resolved display slot on the active item tab, accounting for scroll.
-    pub(in crate::game::client_side) fn creative_display_stack(
+    pub fn creative_display_stack(
         &self,
         slot: usize,
     ) -> Option<ItemStack> {

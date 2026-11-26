@@ -1,4 +1,4 @@
-use super::{Game, QueuedChat, QueuedChatKind, Remote, Signature};
+use super::{QueuedChat, QueuedChatKind, Remote, Signature};
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "client")]

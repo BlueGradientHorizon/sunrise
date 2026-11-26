@@ -1235,7 +1235,7 @@ impl crate::game::ServerGame<'_> {
                         guest.uuid,
                     );
                     let name = guest.name.clone();
-                    self.native_player_pong(crate::game::native_hooks::PlayerPongCall {
+                    self.native_player_pong(crate::game::native_hooks::fire::PlayerPongCall {
                         player,
                         name: &name,
                         id,

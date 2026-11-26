@@ -1,5 +1,5 @@
 //! Mob handles for native server mods.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, LivingRef, MobRef};
 use sunrise_core::geometry::{Aabb, Axis};
 use sunrise_game_data::scoreboard::Team;

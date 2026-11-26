@@ -1,4 +1,4 @@
-use super::lan_actions::guest_within_entity_range;
+use sunrise_gameplay_common::game::lan_actions::guest_within_entity_range;
 
 impl crate::game::ServerGame<'_> {
     /// `AbstractMountInventoryMenu.stillValid`: the mount is alive and the

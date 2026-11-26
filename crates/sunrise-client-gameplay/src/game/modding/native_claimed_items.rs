@@ -1,5 +1,6 @@
 //! Main-hand input captured by an item behavior, and the client host's view raycast.
-use super::{Screen, api_values::TryIntoApi};
+use super::Screen;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use mod_api::{
     __private::{client_item_use, mod_index_on},
     ClientHost, ClientItemUseBehavior, ItemStack,

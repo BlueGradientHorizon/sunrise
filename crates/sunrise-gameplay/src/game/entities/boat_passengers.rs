@@ -5,7 +5,7 @@
 //! (`positionRider`, `clampRotation`) and how they get out.
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
 #[allow(unused_imports)]
-use super::{Game, lan_mobs::guest_bounds};
+use super::lan_mobs::guest_bounds;
 use sunrise_gameplay_common::game::{
     boats_common::{Boat, PLAYER_RIDING_OFFSET, boat_pushes, push_impulse},
     commands_common::Target,

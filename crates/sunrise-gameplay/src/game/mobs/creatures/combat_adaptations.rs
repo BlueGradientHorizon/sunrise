@@ -1,5 +1,5 @@
 //! Typed adaptations for upstream mob knockback and breeding draws.
-use super::{Damage, Game, HurtSource, Who, source_damage_type};
+use super::{Damage, HurtSource, Who, source_damage_type};
 use sunrise_core::random::RandomSource;
 use sunrise_sim::mobs::Species;
 

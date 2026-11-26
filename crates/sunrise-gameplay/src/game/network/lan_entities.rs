@@ -842,26 +842,26 @@ impl ServerGame<'_> {
         self.forget_untied_knots();
         let next = &mut self.server.next_entity;
         use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(self.tnts, t, next, None);
-        assign_resident_ids!(self.falling, f, next, Some(&f.attachment_lifetime));
+        assign_resident_ids!(self.common.tnts, t, next, None);
+        assign_resident_ids!(self.common.falling, f, next, Some(&f.attachment_lifetime));
         assign_resident_ids!(
-            self.creatures.projectiles,
+            self.common.creatures.projectiles,
             p,
             next,
             Some(&p.attachment_lifetime)
         );
-        assign_resident_ids!(self.tridents, t, next, None);
-        assign_resident_ids!(self.rockets, r, next, None);
-        assign_resident_ids!(self.crystals, c, next, None);
-        assign_resident_ids!(self.bolts, b, next, Some(&b.attachment_lifetime));
-        assign_resident_ids!(self.ominous_spawners, o, next, None);
+        assign_resident_ids!(self.common.tridents, t, next, None);
+        assign_resident_ids!(self.common.rockets, r, next, None);
+        assign_resident_ids!(self.common.crystals, c, next, None);
+        assign_resident_ids!(self.common.bolts, b, next, Some(&b.attachment_lifetime));
+        assign_resident_ids!(self.common.ominous_spawners, o, next, None);
         crate::game::server_side::potions_server::thrown_ids(&mut self.common.potions).for_each(|id| {
             assign_entity_id(next, id);
         });
         self.common.end.eye_ids().for_each(|id| {
             assign_entity_id(next, id);
         });
-        assign_resident_ids!(self.breath_clouds, b, next, None);
+        assign_resident_ids!(self.common.breath_clouds, b, next, None);
     }
 
     /// A mod's general entity rows (#792), as the tracker reads them. Their type key is no

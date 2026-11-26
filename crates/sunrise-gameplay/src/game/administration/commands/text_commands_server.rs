@@ -1,4 +1,4 @@
-use super::{Game, Target};
+use super::Target;
 use sunrise_protocol::packets::play::Clientbound as C;
 
 impl crate::game::ServerGame<'_> {

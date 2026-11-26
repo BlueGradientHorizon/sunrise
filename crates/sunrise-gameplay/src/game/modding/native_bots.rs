@@ -2,7 +2,7 @@
 //! bots"): a mod that drives a server player itself (a fake client sending its own moves) asks
 //! where the player's movement code would take them in one tick, and which block shapes are in
 //! a box. Nothing runs unless a mod calls it, and neither changes the player or the level.
-use super::{Game, glide_wear, shield, worn_boots};
+use super::{glide_wear, shield, worn_boots};
 use mod_api::{PlayerInput, SimulatedMove};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
@@ -83,7 +83,7 @@ impl crate::game::ServerGame<'_> {
             self.level_suffocation(),
         );
         let sprinting = sprints(&input) && !body.item_use_slows_sprint;
-        let mut side = game_side!(self);
+        let mut side = server_game_side!(self);
         if let Some(conn) = unswapped {
             let guest = self.server.lan.as_ref()?.hub.guest(conn)?;
             side.player_equipment = acting_equipment!(guest);
@@ -97,7 +97,7 @@ impl crate::game::ServerGame<'_> {
             collision_binding: self.common.collision,
             resources: self.common.motion,
             health: &self.common.health_resources,
-            tag_items: Some(world_items!(self)),
+            tag_items: Some(server_world_items!(self)),
             loop_context: &self.common.loop_context,
             damage_hooks: &self.common.damage_hooks,
             block_registries: Some(&self.common.pack.block_registries),
@@ -407,8 +407,6 @@ mod tests {
         assert!(aabb_of([0.0, f64::NAN, 0.0, 1.0, 1.0, 1.0]).is_none());
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 

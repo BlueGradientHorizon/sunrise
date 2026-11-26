@@ -1,4 +1,4 @@
-use super::{Game, Selector, Target};
+use super::{Selector, Target};
 use sunrise_command::args::Sort;
 use sunrise_core::random::RandomSource;
 

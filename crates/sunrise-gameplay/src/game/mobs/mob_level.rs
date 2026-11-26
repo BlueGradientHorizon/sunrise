@@ -1,6 +1,5 @@
 //! `Game` as the `MobLevel` mob families run on: each service forwards to the game's own method.
 
-use super::Game;
 use sunrise_gameplay::mob_level::{MobLevel, MobParts};
 use sunrise_sim::entities::ItemEntity;
 

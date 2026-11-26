@@ -4,7 +4,7 @@ use sunrise_sim::recipe_book::{ModBookIndex, placement_sync as sync};
 
 // no wire: live connection authority and validated engine presentation caches.
 #[derive(Default)]
-pub(in crate::game) struct State {
+pub struct State {
     pub client: sync::Client,
     pub servers: HashMap<u32, Server>,
     pub view: Option<View>,
@@ -30,6 +30,6 @@ impl Server {
 }
 // no wire: an installed, validated catalogue, not an untrusted transport body.
 pub struct View {
-    pub(in crate::game) identity: sync::CatalogIdentity,
-    pub(in crate::game) index: ModBookIndex,
+    pub identity: sync::CatalogIdentity,
+    pub index: ModBookIndex,
 }

@@ -1,5 +1,7 @@
 //! Placement-state reads, placement writes and the `Block.setPlacedBy` step.
-use super::{api_values::block_state::block_listens, native_server::PlayerRead};
+use sunrise_gameplay_common::game::{
+    api_values::block_state::block_listens, native_server::PlayerRead,
+};
 use mod_api::{
     BlockKey, BlockUpdateFlags, HookId, LevelRef, LevelWriteError, PlacementStateError, PlayerRef,
     PlayerWorldRefusal as Refusal,

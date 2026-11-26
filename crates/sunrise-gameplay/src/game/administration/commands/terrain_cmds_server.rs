@@ -1,4 +1,4 @@
-use super::{Arg, Context, Game, R, Target, err, items::Owner};
+use super::{Arg, Context, R, Target, err, items::Owner};
 use crate::game::commands::terrain_cmds::holder;
 use crate::game::commands::terrain_cmds::loot_location_block;
 use crate::game::commands::terrain_cmds::num;

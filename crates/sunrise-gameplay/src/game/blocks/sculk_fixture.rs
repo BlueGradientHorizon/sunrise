@@ -4,7 +4,7 @@
 //! game events and block changes) through its own sculk code on a fresh
 //! headless world, ticking in `ServerLevel.tick`'s order, and prints what
 //! changed after every tick in the format of `VanillaSculkOracle`.
-use super::{Game, dispense_fixture};
+use super::dispense_fixture;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Write as _,

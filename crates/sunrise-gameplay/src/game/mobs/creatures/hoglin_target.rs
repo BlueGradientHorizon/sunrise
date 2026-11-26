@@ -1,5 +1,5 @@
 //! Apply a hoglin broadcast after its vanilla target selection and mod approval.
-use super::{Game, Vec3, Who};
+use super::{Vec3, Who};
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn hoglin_attack_target(

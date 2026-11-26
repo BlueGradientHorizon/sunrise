@@ -465,7 +465,7 @@ impl crate::game::ClientGame<'_> {
     /// Open the chat box on `initial`; `is_draft` when that text is the saved
     /// draft (`ChatComponent.createScreen`), which draws grey italic until it
     /// is edited.
-    pub(in crate::game::client_side) fn begin_chat_screen(
+    pub fn begin_chat_screen(
         &mut self,
         initial: &str,
         is_draft: bool,
@@ -559,7 +559,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// `ChatScreen.removed` after another screen interrupted chat.
-    pub(in crate::game::client_side) fn remove_chat_screen(&mut self) {
+    pub fn remove_chat_screen(&mut self) {
         if let Some(chat) = self.client.chat_ui.chat_screen.take() {
             self.keep_chat_draft(chat.value(), ChatExit::Interrupted);
             self.client.chat_ui.chat_draft_shown = false;

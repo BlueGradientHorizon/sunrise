@@ -455,7 +455,7 @@ impl MountedWidgetEntry {
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Run `ScreenEvent.Init.Post` to mount widgets on the initialized screen and apply focus.
-    pub(in crate::game::client_side) fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
+    pub fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
         if !mod_api::__private::listened(mod_api::HookId::ScreenInitPost) {
             return;
         }
@@ -544,7 +544,7 @@ impl crate::game::ClientGame<'_> {
     /// Clear and dispose all mounted widgets for the current screen without
     /// discarding `last_click` (same-instance resize rebuilds widgets while
     /// preserving `MouseHandler.LastClick`).
-    pub(in crate::game::client_side) fn clear_screen_widgets(&mut self) {
+    pub fn clear_screen_widgets(&mut self) {
         self.client.screen_state.0.widgets.clear();
         sunrise_client::preedit::reset();
         self.client.ime_area = None;

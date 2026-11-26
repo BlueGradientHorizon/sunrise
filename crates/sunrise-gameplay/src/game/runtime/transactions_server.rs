@@ -1,5 +1,5 @@
 //! Server-side transaction commit, rollback, and journal handlers.
-use super::{BlockEntity, Game, lan_menu_data::MountClickWindow};
+use super::{BlockEntity, lan_menu_data::MountClickWindow};
 use sunrise_gameplay_common::game::transactions::{
     After, AttachmentKey, BlockReplay, ClosingPhase, DeferredEffect, JournaledPlayer, Kept,
     KeptAttachments, KeptClick, KeptEquipment, KeptMenus, KeptMobEffects, KeptMobHealth,

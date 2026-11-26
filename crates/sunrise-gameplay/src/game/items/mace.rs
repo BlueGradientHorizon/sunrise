@@ -196,11 +196,11 @@ impl ServerGame<'_> {
                 .common.player
                 .as_ref()
                 .map(|p| (p.fall_distance, p.fall_flying)),
-            items: Some(world_items!(self)),
+            items: Some(server_world_items!(self)),
             ..Default::default()
         };
         stack_smash_damage(
-            &world_stations!(self).enchantments,
+            &server_world_stations!(self).enchantments,
             &held,
             fall,
             &ctx,

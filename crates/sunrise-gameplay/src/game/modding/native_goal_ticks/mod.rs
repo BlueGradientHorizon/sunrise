@@ -711,7 +711,7 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
 
     fn mob_in_other_level(&self, entity: EntityRef) -> bool {
         self.common.native_lifecycle.epoch() == Some(entity.epoch())
-            && crate::game::ServerGame::mob_in_other_level(self, entity.id()).is_some()
+            && NativeEntityRefsCommonGameExt5::mob_in_other_level(self, entity.id()).is_some()
     }
 
     fn living_last_hurt_record(&self, living: LivingRef) -> Option<(u32, i32)> {
@@ -1037,7 +1037,7 @@ use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityRe
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
 

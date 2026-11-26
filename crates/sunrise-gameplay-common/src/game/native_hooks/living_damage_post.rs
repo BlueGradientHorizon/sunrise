@@ -7,7 +7,7 @@ impl HitLevel<'_> {
     /// `hurtServer`'s fresh-hit decision). It only listens, and fires once per hit at the end of
     /// `hurtServer`, after Pre and any death or totem protection. It can't write the
     /// entity or the world's blocks: the level host gives the hit's random and level attachments.
-    pub(in crate::game) fn native_living_damage_post(
+    pub fn native_living_damage_post(
         &mut self,
         entity: i32,
         kind: &str,

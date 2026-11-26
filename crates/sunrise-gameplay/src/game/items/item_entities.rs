@@ -266,7 +266,7 @@ impl crate::game::ServerGame<'_> {
                 let item_id = item.id;
                 let saved = native_components::ITEM_ENVIRONMENT_DAMAGE
                     .map(|damage| self.saved_refuses_damage(item_id, damage, false));
-                let tags = world_items!(self);
+                let tags = server_world_items!(self);
                 let registry = self.common.pack.assets.registry;
                 let block_registries = &self.common.pack.block_registries;
                 let hooks = &self.common.damage_hooks;

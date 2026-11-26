@@ -2,7 +2,7 @@
 //! first FRAMES frames on a set clock, and the last is written as `screenshot PATH` writes it
 //! (docs/agent-control.md, Repeatable screenshots). The reply comes once the PNG is written.
 
-use super::{Game, Screen};
+use super::Screen;
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::mpsc::Sender};
 use sunrise_client::gfx::{ScreenshotRequest, pack_uniforms::FrameTiming};

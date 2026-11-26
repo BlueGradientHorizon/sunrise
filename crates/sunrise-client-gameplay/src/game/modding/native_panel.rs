@@ -8,15 +8,13 @@
 //! underneath doesn't hear that notch. An item dragged off the list and let
 //! go over the screen comes to the mod as `Dropped` (`Held`). With no mod
 //! showing a panel, each hook here returns after one check.
-use super::{
-    crate::game::native_hooks::PanelEvent as BrowserEvent, Screen,
-    native_panel_recipes::RecipePage,
-};
+use super::{Screen, native_panel_recipes::RecipePage};
 use mod_api::{PanelStyle, Stack as BrowserStack};
 use sunrise_client::{
     hud::{HudBatch, rgba},
     ui::{EditBox, utf16_prefix},
 };
+use sunrise_gameplay_common::game::native_hooks::PanelEvent as BrowserEvent;
 use sunrise_items::items::ItemStack;
 
 /// One slot of the panel, in GUI pixels.

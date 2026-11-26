@@ -1,7 +1,6 @@
 //! The creaking heart block entity in the game: `mobs::creaking_heart`
 //! ticks each heart (spawning, letting go of and bleeding for its creaking)
 //! and this applies what it reports to the world, the mobs and the speakers.
-use super::creatures::seen;
 use std::sync::Arc;
 use sunrise_core::{
     geometry::Vec3,
@@ -9,6 +8,7 @@ use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_gameplay_common::entity_uuids::EntityUuids;
+use sunrise_gameplay_common::game::creatures::seen;
 use sunrise_world::registry::BlockStateId;
 use {
     sunrise_game_data::Result, sunrise_level::chunk_map::ChunkMap,

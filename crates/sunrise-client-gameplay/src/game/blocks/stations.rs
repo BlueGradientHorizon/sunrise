@@ -114,7 +114,7 @@ pub(in crate::game::client_side) fn tooltip_position(
     (pos[0] as f32, pos[1] as f32)
 }
 
-use super::{Game, Screen};
+use super::Screen;
 use mod_api::TooltipElement;
 use std::cell::Cell;
 #[allow(unused_imports)]

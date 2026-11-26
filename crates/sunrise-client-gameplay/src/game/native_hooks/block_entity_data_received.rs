@@ -1,5 +1,5 @@
 //! Client synchronization notices for mod block entities.
-use super::{BlockEntity, Game};
+use super::BlockEntity;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::native_hooks::block_entity_read::ResidentReadBlockEntity;
 use mod_api::{

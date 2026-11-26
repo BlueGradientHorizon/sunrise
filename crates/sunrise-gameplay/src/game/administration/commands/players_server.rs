@@ -1,4 +1,4 @@
-use super::{Game, Target};
+use super::Target;
 use sunrise_command::args::Selector;
 use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
