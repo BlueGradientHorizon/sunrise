@@ -1,8 +1,8 @@
 //! Complete residency journals on both logical-server and remote-client ticks.
-use crate::game::CommonGame;
+use crate::game::SideGame;
 
-impl crate::game::CommonGame<'_> {
-    pub fn with_residency_tick(
+pub trait ResidencyTickGameExt<'g>: SideGame<'g> {
+    fn with_residency_tick(
         &mut self,
         tick: impl FnOnce(&mut Self) -> super::Result<()>,
     ) -> super::Result<()> {
@@ -27,3 +27,5 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+
+impl<'g, G: SideGame<'g>> ResidencyTickGameExt<'g> for G {}

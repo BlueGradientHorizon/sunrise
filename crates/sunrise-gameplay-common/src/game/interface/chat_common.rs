@@ -497,8 +497,9 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         .iter()
         .map(|a| format!("minecraft:{a}"))
         .collect();
-        let reg = &mut self.ui.registries;
-        let mut items: Vec<String> = self
+        let common = self.common_mut();
+        let reg = &mut common.ui.registries;
+        let mut items: Vec<String> = common
             .res
             .items()
             .order
@@ -507,7 +508,7 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .collect();
         items.sort();
         reg.items = items;
-        reg.item_tags = self
+        reg.item_tags = common
             .res
             .items()
             .item_tags
@@ -515,7 +516,7 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .map(|k| sunrise_command::args::normalize(k))
             .collect();
         reg.item_tags.sort();
-        reg.block_tags = self
+        reg.block_tags = common
             .res
             .items()
             .block_tags
@@ -523,8 +524,8 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .map(|k| sunrise_command::args::normalize(k))
             .collect();
         reg.block_tags.sort();
-        reg.blocks = BlockProperties::clone(&block_properties(self.pack.assets.registry));
-        reg.summonable = summonable_entities(&ids.entity_types, self.res.mob_types().keys());
+        reg.blocks = BlockProperties::clone(&block_properties(common.pack.assets.registry));
+        reg.summonable = summonable_entities(&ids.entity_types, common.res.mob_types().keys());
         reg.entity_types.clone_from(&ids.entity_types);
         // The mob effect registry for `/effect` and `mob_effect` resource arguments.
         reg.effects = sunrise_level::brewing::all_effects()
@@ -546,16 +547,16 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         ];
         reg.players = vec![PLAYER_NAME.into()];
         // Timelines of the overworld clock and their time markers.
-        self.ui.timelines = ids.timelines.iter().cloned().collect();
-        self.ui.markers = ids.markers.iter().cloned().collect();
+        common.ui.timelines = ids.timelines.iter().cloned().collect();
+        common.ui.markers = ids.markers.iter().cloned().collect();
         // Vanilla's built-in registries (mob effects, components, dialogs...).
-        for dir in [&self.options.resources, &self.ui.vanilla_root] {
-            if let Some(export) = command_export(dir, self.options.dedicated.is_none()) {
-                self.ui.registries.fill_from_exported(&export);
+        for dir in [&common.options.resources, &common.ui.vanilla_root] {
+            if let Some(export) = command_export(dir, common.options.dedicated.is_none()) {
+                common.ui.registries.fill_from_exported(&export);
                 break;
             }
         }
-        let reg = &mut self.ui.registries;
+        let reg = &mut common.ui.registries;
         let particles: Vec<_> = mod_api::__private::particle_ids()
             .map(str::to_owned)
             .collect();
@@ -595,8 +596,8 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 reg.persistent_components.push(name.to_owned());
             }
         }
-        reg.timelines = self.ui.timelines.keys().cloned().collect();
-        reg.time_markers = self
+        reg.timelines = common.ui.timelines.keys().cloned().collect();
+        reg.time_markers = common
             .ui
             .markers
             .iter()

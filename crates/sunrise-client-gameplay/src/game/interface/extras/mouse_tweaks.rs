@@ -18,7 +18,8 @@
 //!   output to the inventory; nothing ever goes into a result slot.
 //!
 //! Sorting, which clicks through `slot_click` too, is in `sorting.rs`.
-use sunrise_gameplay_common::game::{Creative, Game, Screen};
+use sunrise_client::creative::Creative;
+use sunrise_gameplay_common::game::Screen;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::menu::Input;

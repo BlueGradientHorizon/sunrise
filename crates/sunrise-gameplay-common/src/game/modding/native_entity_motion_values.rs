@@ -44,10 +44,13 @@ impl crate::game::CommonGame<'_> {
 pub trait NativeEntityMotionValuesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The server's copy of the player a target names.
-     fn native_target_guest(
-        &self,
+     fn native_target_guest<'a>(
+        &'a self,
         t: Target,
-    ) -> Option<&sunrise_sim::lan::guest::Guest> {
+    ) -> Option<&'a sunrise_sim::lan::guest::Guest>
+    where
+        '__sg: 'a,
+    {
         match t {
             Target::Player => self.command_guest(crate::game::Side::lan_acting(self.side_state())?),
             Target::Guest(conn) => self.command_guest(conn),

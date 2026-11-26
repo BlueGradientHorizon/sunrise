@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use {crate::game::host::draw::*, sunrise_gameplay_common::game::host::draw::{EngineTooltipFont, label_layout, label_layout_with}};
+    use {crate::game::host::draw::*, sunrise_client_gameplay::game::host::draw::{EngineTooltipFont, label_layout, label_layout_with}};
     use std::collections::BTreeMap;
 
     /// A font whose printable characters are all `advance` GUI pixels wide: the vanilla provider

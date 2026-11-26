@@ -1,7 +1,8 @@
 //! Read-only world content tables shared by server and client games.
 use super::*;
 use crate::game::{
-    native_data_maps_common, native_world_read_common, side_ops::tables::SideOps as _,
+    native_data_maps_common, native_hooks::supports_enchantment::GameHooks as _,
+    native_world_read_common, side_ops::tables::SideOps as _,
 };
 use std::sync::LazyLock;
 use sunrise_core::nbt::Tag;

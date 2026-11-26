@@ -1,7 +1,7 @@
 //! The `friction` Part method (`IBlockExtension.getFriction`). The client library asks through
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted.
 pub use super::api_values::{TryIntoApi, TryIntoEngine, block_state};
-use super::{Dim, Game, boats_common::Boat};
+use super::{Dim, boats_common::Boat};
 use mod_api::{
     __private::game::Fields, BlockEntityRef, BlockKey, BlockState, Compound, FeatureFlags,
     FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
@@ -112,46 +112,6 @@ impl sunrise_sim::motion::SideLevel for GameSide<'_> {
         crate::game::native_block_entity_read::world_block_entity_data(
             world, registry, self.items, entity,
         )
-    }
-}
-
-/// The game's own side, for a tick that only reads it: each query builds the borrowed tables.
-impl<__Side: crate::game::Side> sunrise_sim::motion::SideLevel for Game<'_, __Side> {
-    fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
-        game_side!(self, self.side_game_side_meta()).is_raining_at(world, pos)
-    }
-
-    fn enabled_features(&self) -> &std::sync::Arc<[String]> {
-        game_side!(self, self.side_game_side_meta()).features
-    }
-
-    fn tag_items(&self) -> Option<&Items> {
-        game_side!(self, self.side_game_side_meta()).tag_items
-    }
-
-    fn player_equipment(&self) -> sunrise_sim::health::PlayerEquipment<'_> {
-        acting_equipment!(self)
-    }
-
-    fn living_target_alive(&self, id: u32) -> bool {
-        self.side_living_target_alive(id)
-    }
-
-    fn damage_types(&self) -> &sunrise_world::damage_source::Catalog {
-        &self.health_resources.damage
-    }
-
-    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
-        game_side!(self, self.side_game_side_meta()).block_entity(world, pos)
-    }
-
-    fn block_entity_data(
-        &self,
-        world: &World,
-        registry: &BlockRegistry,
-        entity: BlockEntityRef,
-    ) -> Option<Compound> {
-        game_side!(self, self.side_game_side_meta()).block_entity_data(world, registry, entity)
     }
 }
 

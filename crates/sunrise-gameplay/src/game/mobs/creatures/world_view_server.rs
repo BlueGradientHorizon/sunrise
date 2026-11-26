@@ -1,5 +1,56 @@
 use super::*;
+use mod_api::{BlockEntityRef, Compound};
 use {sunrise_gameplay_common::game::creatures::world_view::*};
+use sunrise_gameplay_common::game::side_ops::{
+    modapi_modding::ModapiModdingSideGameExt as _, world::WorldSideGameExt as _,
+};
+use sunrise_items::items::Items;
+use sunrise_level::world::World;
+use sunrise_sim::motion::SideLevel;
+use sunrise_world::registry::{BlockRegistry, BlockStateId};
+
+/// The game's own side, for a tick that only reads it: each query builds the borrowed tables.
+impl SideLevel for crate::game::ServerGame<'_> {
+    fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
+        sunrise_gameplay_common::game_side!(self, self.side_game_side_meta())
+            .is_raining_at(world, pos)
+    }
+
+    fn enabled_features(&self) -> &std::sync::Arc<[String]> {
+        sunrise_gameplay_common::game_side!(self, self.side_game_side_meta()).features
+    }
+
+    fn tag_items(&self) -> Option<&Items> {
+        sunrise_gameplay_common::game_side!(self, self.side_game_side_meta()).tag_items
+    }
+
+    fn player_equipment(&self) -> sunrise_sim::health::PlayerEquipment<'_> {
+        sunrise_gameplay_common::acting_equipment!(self)
+    }
+
+    fn living_target_alive(&self, id: u32) -> bool {
+        self.side_living_target_alive(id)
+    }
+
+    fn damage_types(&self) -> &sunrise_world::damage_source::Catalog {
+        &self.common.health_resources.damage
+    }
+
+    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
+        sunrise_gameplay_common::game_side!(self, self.side_game_side_meta())
+            .block_entity(world, pos)
+    }
+
+    fn block_entity_data(
+        &self,
+        world: &World,
+        registry: &BlockRegistry,
+        entity: BlockEntityRef,
+    ) -> Option<Compound> {
+        sunrise_gameplay_common::game_side!(self, self.side_game_side_meta())
+            .block_entity_data(world, registry, entity)
+    }
+}
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn mob_world_base<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {

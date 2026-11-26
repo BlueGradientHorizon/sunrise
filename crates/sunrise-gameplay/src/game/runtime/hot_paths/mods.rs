@@ -2,6 +2,7 @@
 //! listener `sunrise-hot-paths-game` installs, and an attachment read and written.
 use super::{super::Game, Recorder};
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
 
 /// The attachment the attachment workloads read and write: plain data, not saved or synced.
 static COUNTER: mod_api::AttachmentType<u32> = mod_api::AttachmentType {
@@ -56,7 +57,7 @@ impl crate::game::ServerGame<'_> {
                 .map(|mob| mod_api::Holder::Entity(mob.id))
                 .collect();
             // A mod reads and writes attachments from a hook, inside the server's tick.
-            self.common.with_residency_tick(|game| {
+            self.with_residency_tick(|game| {
                 let mut failed: std::result::Result<(), String> = Ok(());
                 for holder in &holders {
                     COUNTER

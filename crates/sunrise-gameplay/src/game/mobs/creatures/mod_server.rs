@@ -5615,6 +5615,26 @@ impl crate::game::ServerGame<'_> {
         self.dismount_underwater_mob_riders();
         ticked
     }
+
+    /// Hands the tick's lifted projectiles back for a hook told about one of them, so its handles
+    /// read the live rows, and takes them again. Whether they came back as they went: the same
+    /// rows in the same order, unwritten (the list's write stamp), with no spawn of the tick put
+    /// before them.
+    fn projectiles_told(
+        &mut self,
+        projectiles: sunrise_sim::join_seq::JoinList<Projectile, false>,
+        tell: impl FnOnce(&mut Self),
+    ) -> (sunrise_sim::join_seq::JoinList<Projectile, false>, bool) {
+        let no_spawns = self.common.creatures.projectiles.is_empty();
+        self.common.creatures.projectiles.restore(
+            projectiles,
+            sunrise_sim::join_seq::RestoreOrder::SpawnsFirst,
+        );
+        let restored = self.common.creatures.projectiles.stamp();
+        tell(self);
+        let same = no_spawns && self.common.creatures.projectiles.stamp() == restored;
+        (self.common.creatures.projectiles.lift(), same)
+    }
     pub(in crate::game) fn tick_projectiles_now(&mut self) -> Result<()> {
         if self.common.creatures.projectiles.is_empty() {
             self.flush_lan_explosions();
@@ -5704,7 +5724,7 @@ impl crate::game::ServerGame<'_> {
                     } else {
                         let mut ticks = true;
                         let same;
-                        (projectiles, same) = self.common.projectiles_told(projectiles, |game| {
+                        (projectiles, same) = self.projectiles_told(projectiles, |game| {
                             ticks = game.native_tick_pre_one(&mut round, id, kind);
                         });
                         if !same {
@@ -5927,7 +5947,7 @@ impl crate::game::ServerGame<'_> {
                 && let Some((id, kind)) = back.told.take()
             {
                 let same;
-                (projectiles, same) = self.common.projectiles_told(projectiles, |game| {
+                (projectiles, same) = self.projectiles_told(projectiles, |game| {
                     game.native_tick_post_one(&round, id, kind);
                 });
                 if !same {

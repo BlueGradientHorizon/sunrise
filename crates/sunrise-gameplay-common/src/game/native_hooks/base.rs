@@ -1,5 +1,14 @@
 use super::*;
 use mod_api::ModBlockEntity;
+
+fn qualified(id: &str) -> String {
+    match id.split_once(':') {
+        Some(("", path)) => format!("minecraft:{path}"),
+        Some(_) => id.to_owned(),
+        None => format!("minecraft:{id}"),
+    }
+}
+
 impl GameLevel<'_> {
     /// Initial saved data for a declared block entity (`EntityBlock.newBlockEntity`),
     /// fired inside the write that creates it (`LevelChunk.setBlockState`), on

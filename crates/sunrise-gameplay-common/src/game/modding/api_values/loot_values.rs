@@ -7,7 +7,7 @@ use sunrise_world::loot as engine;
 thread_local! { static CONVERSIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LootValueError {
+pub enum LootValueError {
     UnknownItem,
     InvalidName,
     InvalidPatch,

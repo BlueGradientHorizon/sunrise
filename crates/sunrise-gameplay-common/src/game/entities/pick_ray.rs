@@ -1,5 +1,5 @@
 //! Shared raycast pick core and role-dispatched crosshair targeting wrappers.
-use super::{Game, Hit};
+use super::{Hit, SideGame};
 use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]
@@ -36,9 +36,9 @@ impl PickAccumulator {
         }
     }
 
-    pub fn consider_candidate<__Side: crate::game::Side>(
+    pub fn consider_candidate<'g, G: SideGame<'g>>(
         &mut self,
-        game: &Game<'_, __Side>,
+        game: &G,
         candidate: PickCandidate,
     ) -> bool {
         if let Some(candidates) = &mut self.candidates {
@@ -52,9 +52,9 @@ impl PickAccumulator {
         )
     }
 
-    pub fn consider_box<__Side: crate::game::Side>(
+    pub fn consider_box<'g, G: SideGame<'g>>(
         &mut self,
-        game: &Game<'_, __Side>,
+        game: &G,
         id: u32,
         from: Vec3,
         to: Vec3,

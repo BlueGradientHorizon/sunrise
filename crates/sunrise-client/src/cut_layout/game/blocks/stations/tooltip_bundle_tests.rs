@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_client_gameplay::game::host::draw::EngineTooltipFont;
 use mod_api::{ClientHost, Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent};
 
 struct Edit(bool);

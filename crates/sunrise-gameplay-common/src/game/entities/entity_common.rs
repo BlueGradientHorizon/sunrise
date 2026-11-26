@@ -1,6 +1,6 @@
 //! Common entity helpers shared by client and server (`PlacementWorld`, spawn/placement checks,
 //! body motion/restitution/item contacts, suffocation, dismount, critical check, and sound wrapper).
-use super::{Game, Hit, entity::Entity as _};
+use super::{Hit, entity::Entity as _};
 use crate::game::{
     armor_stands_common::overlaps as stand_overlaps, cushions_common::aabb as cushion_aabb,
 };

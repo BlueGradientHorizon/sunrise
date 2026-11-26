@@ -24,10 +24,13 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(block_entity.items.get(slot as usize).cloned().flatten())
     }
 
-     fn native_block_entity_target(
-        &self,
+     fn native_block_entity_target<'a>(
+        &'a self,
         entity: BlockEntityRef,
-    ) -> Option<(&World, &BlockEntity)> {
+    ) -> Option<(&'a World, &'a BlockEntity)>
+    where
+        '__sg: 'a,
+    {
         let world = self.native_level_read_world(entity.fields().level)?;
         Some((world, resident_block_entity(world, entity)?))
     }
@@ -94,7 +97,10 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The resident lock, independent of the block entity's synthesized save payload.
-     fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
+     fn block_entity_lock<'a>(&'a self, entity: BlockEntityRef) -> Option<&'a Compound>
+    where
+        '__sg: 'a,
+    {
         let (world, _) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         match world.block_lock((x, y, z))? {

@@ -62,7 +62,8 @@ impl ClientGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::{Audio, Options, Progress, Settings, load_resources};
+    use sunrise_client::{audio::Audio, settings::Settings};
+    use sunrise_gameplay_common::game::{Options, Progress, load_resources};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;

@@ -97,7 +97,7 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// [`mob_team`](Self::mob_team) of a mob at hand, without looking it up.
-     fn mob_team_of(&self, m: &sunrise_sim::mobs::Mob) -> Option<&sb::Team> {
+     fn mob_team_of<'__loan>(&'__loan self, m: &sunrise_sim::mobs::Mob) -> Option<&'__loan sb::Team> where '__sg: '__loan {
         if self.score.board.teams.is_empty() {
             return None;
         }

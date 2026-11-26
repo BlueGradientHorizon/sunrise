@@ -7,7 +7,7 @@ use {
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ParticleValueError {
+pub enum ParticleValueError {
     UnknownProvider,
     NonFinite,
     /// An item crumb's colour has a component outside `0.0..=1.0`.

@@ -33,4 +33,4 @@ pub(crate) mod services;
 
 pub(in crate::game) mod phase_contexts;
 
-pub(crate) mod draw;
+pub mod draw;

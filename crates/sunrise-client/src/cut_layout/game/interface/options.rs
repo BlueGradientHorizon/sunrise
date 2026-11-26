@@ -3,7 +3,7 @@
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod resize_state_tests {
-    use sunrise_client_gameplay::game::client_side::options::ResizeState;
+    use sunrise_client_gameplay::game::ResizeState;
     use winit::dpi::PhysicalSize;
 
     fn state(width: u32, unicode: bool) -> ResizeState {

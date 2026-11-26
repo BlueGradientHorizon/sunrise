@@ -15,13 +15,26 @@ use motion_ids::{motion_at, motion_block_entity};
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
-use sunrise_client::assets::RenderAssets;
-use sunrise_client::audio::Audio;
-use sunrise_client::creative::Creative;
-use sunrise_client::gfx::Renderer;
-use sunrise_client::hud::HudBatch;
-use sunrise_client::title::Title;
-use sunrise_gameplay_common::game::OrbFrame;
+use sunrise_client::{
+    assets::RenderAssets,
+    audio::Audio,
+    block_entity_render::{
+        self, BlockEntityRenderer, CacheOptions, Scene as BlockEntityScene, StaticCacheFrameStats,
+        StaticSectionSnapshot,
+    },
+    creative::Creative,
+    gfx::{Frame, Renderer},
+    graphics::EntityCullingMode,
+    hud::{HudAtlas, HudBatch, rgba},
+    hud_layout, hud_overlays,
+    keymapping::{KeyAction, SNEAK, SPRINT},
+    mesher::{MeshTables, Vertex},
+    models,
+    mouse::{LookOptions, MouseLook},
+    particles::Particle,
+    settings::Settings,
+    title::{Action, Title},
+};
 use sunrise_gameplay_common::game::integrated_link;
 use sunrise_gameplay_common::game::saving;
 #[cfg(feature = "client")]
@@ -1021,6 +1034,45 @@ use winit::{
 #[cfg(feature = "client")]
 pub use client_side::resource_tables_client::UiResources;
 
+pub fn select_creative_tab(
+    creative: &mut Creative,
+    clicks: &mut sunrise_client::container_screen::Clicks,
+    tab: usize,
+) {
+    creative.select(tab);
+    *clicks = Default::default();
+    // Tabs are outside the panel; their release must not drop a carried stack.
+    clicks.skip_release();
+}
+
+/// Physical and scaled GUI dimensions last reported by `window_resize`.
+#[derive(Clone, Copy, PartialEq)]
+pub struct ResizeState {
+    pub size: winit::dpi::PhysicalSize<u32>,
+    pub gui_size: [u32; 2],
+}
+
+impl ResizeState {
+    /// Records `self` as the last report and says whether it differs from the previous one.
+    pub fn differs_from(self, last: &mut Option<Self>) -> bool {
+        last.replace(self) != Some(self)
+    }
+}
+
+/// The depth-only view and camera axis used for falling blocks in one frame.
+pub struct FallingSetup<'a> {
+    pub(in crate::game) view: Option<&'a sunrise_client::gfx::JoinedFrusta>,
+    pub(in crate::game) forward: glam::Vec3,
+}
+
+/// What the experience orbs of one frame share: their sprite and the camera's axes.
+pub struct OrbFrame {
+    sprite: Option<sunrise_client_render::hud::Rect>,
+    forward: glam::Vec3,
+    right: glam::Vec3,
+    up: glam::Vec3,
+}
+
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     fn draw_reload_overlay(
@@ -1405,7 +1457,7 @@ pub(in crate::game) mod toast_manager;
 #[path = "game/interface/screen_backgrounds.rs"]
 pub(in crate::game) mod screen_backgrounds;
 
-mod host;
+pub mod host;
 
 impl ClientGame<'_> {
     /// An item frame's held item, apart from the frame (one id may mark one run).

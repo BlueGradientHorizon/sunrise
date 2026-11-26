@@ -1,7 +1,5 @@
 //! Phase-scoped context trait implementations for [`Game`].
 
-use mod_api::*;
-use std::sync::Arc;
 
 #[doc(hidden)]
 #[macro_export]

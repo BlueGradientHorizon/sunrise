@@ -1,6 +1,6 @@
 //! Saved-data loads on the owning server thread, distinct from attachment and client sync.
 use super::block_entity_read::ResidentReadBlockEntity;
-use super::{BlockEntity, Game, GameLevel, Pos};
+use super::{BlockEntity, GameLevel, Pos};
 use crate::game::{api_values::TryIntoApi, native_level_signals::ReadLevel};
 use mod_api::{
     BlockEntityLevelReadAccess, BlockEntityLevelReadScope, BlockEntityReadView, BlockEntityRef,

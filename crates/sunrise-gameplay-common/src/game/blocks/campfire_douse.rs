@@ -1,6 +1,7 @@
 //! `CampfireBlock.useItemOn`: an item in `#minecraft:douses_campfires` (the
 //! shovels) put on a lit campfire puts it out.
 use super::Hit;
+use crate::game::tool_modification::ToolModificationGameExt1 as _;
 use sunrise_items::items::ItemStack;
 use sunrise_world::chunk::BlockState;
 

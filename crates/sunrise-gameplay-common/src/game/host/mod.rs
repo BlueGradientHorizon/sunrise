@@ -8,7 +8,6 @@ use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
 use mod_api::__private::game::*;
 use mod_api::*;
 
-pub mod draw;
 pub(in crate::game) mod phase_contexts;
 pub(crate) mod services;
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));

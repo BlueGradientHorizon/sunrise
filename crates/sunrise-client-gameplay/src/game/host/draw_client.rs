@@ -3,8 +3,7 @@ use crate::game::host::draw::GameCameraDrawContext;
 use crate::game::host::draw::GameDrawContext;
 use crate::game::host::draw::GameWorldDrawContext;
 use mod_api::{prelude::*, *};
-use sunrise_gameplay_common::game::host::draw::EngineTooltipFont;
-use sunrise_gameplay_common::game::host::draw::font_id_str;
+use crate::game::host::draw::{EngineTooltipFont, font_id_str};
 use sunrise_gameplay_common::game::{
     Game,
     api_values::{TryIntoApi, TryIntoEngine},
@@ -307,7 +306,7 @@ impl<'a> EngineTooltipFont<'a> {
     pub(in crate::game) fn name(&self) -> &str {
         &self.name
     }
-    pub(in crate::game) fn new(font: &'a sunrise_client::font::Font, id: &'a Identifier) -> Self {
+    pub fn new(font: &'a sunrise_client::font::Font, id: &'a Identifier) -> Self {
         Self {
             font,
             id,

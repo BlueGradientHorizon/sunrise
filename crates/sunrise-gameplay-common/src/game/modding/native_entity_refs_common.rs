@@ -346,11 +346,14 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt2<'__s
 
 
 pub trait NativeEntityRefsCommonGameExt3<'__sg>: crate::game::SideGame<'__sg> {
-    fn native_kind_for_physical_read(
-        &self,
+    fn native_kind_for_physical_read<'a>(
+        &'a self,
         entity: EntityRef,
         target: Option<Target>,
-    ) -> Option<&str> {
+    ) -> Option<&'a str>
+    where
+        '__sg: 'a,
+    {
         match target {
             Some(target) => self.native_entity_kind_name(target),
             None => self

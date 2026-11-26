@@ -188,6 +188,7 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeRainReadGameExt1<'__sg> for G
 
 
 use crate::game::weather::WeatherGameExt as _;
+use crate::game::GameGameExt1 as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

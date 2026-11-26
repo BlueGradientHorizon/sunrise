@@ -120,10 +120,11 @@ pub trait MountsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
         let rear = turned(equine::rear_offset(m), m.yaw);
         at = Vec3::new(at.x + rear.x, at.y + rear.y, at.z + rear.z);
-        let first = self.posed_rider != self.riding;
-        self.posed_rider = self.riding;
-        if let Some(p) = self.player.as_mut() {
-            self.previous_position = if first { at } else { p.position };
+        let common = self.common_mut();
+        let first = common.posed_rider != common.riding;
+        common.posed_rider = common.riding;
+        if let Some(p) = common.player.as_mut() {
+            common.previous_position = if first { at } else { p.position };
             p.position = at;
             p.velocity = Vec3::ZERO;
             p.fall_distance = 0.0;

@@ -1,5 +1,5 @@
 use super::*;
-use sunrise_gameplay_common::game::Audio;
+use sunrise_client::audio::Audio;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 
 impl crate::game::ClientGame<'_> {

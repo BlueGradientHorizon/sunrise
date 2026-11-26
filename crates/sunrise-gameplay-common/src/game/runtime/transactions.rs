@@ -32,6 +32,7 @@
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
 use super::{BlockEntity, BlockStateId, Dim, lan_menu_data::MountClickWindow, maps::MapData};
+use crate::game::{GameGameExt1 as _, resident_state::ResidentStateGameExt1 as _};
 use mod_api::{
     __private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle,
     TransactionScopeError,
@@ -1532,23 +1533,24 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
         flags: i32,
         level_host: bool,
     ) -> bool {
-        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
+        let common = self.common_mut();
+        let Some(level) = entities::open_in(&mut common.transactions, common.dim) else {
             return self.level_set_with_flags(pos, state, flags).is_ok();
         };
         let key = (pos[0], pos[1], pos[2]);
-        let old = self.world.block(pos[0], pos[1], pos[2]);
-        let clears_group = !self.res.behaviours().keeps_block_entity(old, state);
-        if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
+        let old = common.world.block(pos[0], pos[1], pos[2]);
+        let clears_group = !common.res.behaviours().keeps_block_entity(old, state);
+        if !common.world.set_stored(pos[0], pos[1], pos[2], state) {
             return false;
         }
         // Mirror live `chunk_set_block_state`: replacing the block with one that does not keep
         // connection groups clears any tentative group at `pos`, while compatible state changes
         // preserve it.
         let old_group = clears_group
-            .then(|| self.world.connection_group(pos[0], pos[1], pos[2]))
+            .then(|| common.world.connection_group(pos[0], pos[1], pos[2]))
             .flatten();
         if old_group.is_some() {
-            let _ = self
+            let _ = common
                 .world
                 .set_connection_group_stored(pos[0], pos[1], pos[2], None);
         }

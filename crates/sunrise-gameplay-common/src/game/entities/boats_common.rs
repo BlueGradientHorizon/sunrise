@@ -1,5 +1,5 @@
 //! Common boat physics, fluid/status queries, placement clip, and collision helpers shared by server and client.
-use super::{Game, collision_source::Mover, entity::Entity};
+use super::{collision_source::Mover, entity::Entity};
 use std::{f32::consts::PI, io, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_core::{

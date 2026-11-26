@@ -3,6 +3,7 @@
 //! `render_tooltip_pre` font replacement & cancellation, `render_tooltip_texture` & line-only
 //! `ItemResource::tooltip`, `show_tooltip_with_item_in_hand`, audit [88], and panic containment.
 use super::*;
+use sunrise_client_gameplay::game::host::draw::EngineTooltipFont;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_client_game};
 use mod_api::{
     __private::game::RegistrationContextNew, ClientHost, ClientTooltipComponent, DrawContext, Flow,

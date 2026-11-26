@@ -1,5 +1,5 @@
 use super::*;
-use {crate::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID, sunrise_gameplay_common::game::host::draw::EngineTooltipFont};
+use {crate::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID, crate::game::host::draw::{EngineTooltipFont, font_id_str}};
 use mod_api::{ClientTooltipPositioner, DefaultTooltipPositioner};
 use std::borrow::Cow;
 use sunrise_client::tooltip_components::TooltipComponentPrepareError;
@@ -388,7 +388,7 @@ impl crate::game::ClientGame<'_> {
             && let Some((api_stack, mut elements, vanilla_bundle_snapshot)) = gather_input()
         {
             let item_font = self.item_tooltip_font(stack);
-            let item_font_str = sunrise_gameplay_common::game::host::draw::font_id_str(&item_font);
+            let item_font_str = font_id_str(&item_font);
             let font = &self.client.gui.atlas.font;
             let (mut max_width, mut cancel) = (-1, false);
             self.native_render_tooltip_gather_components(

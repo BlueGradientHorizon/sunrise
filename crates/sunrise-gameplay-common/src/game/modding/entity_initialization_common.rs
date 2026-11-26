@@ -1,5 +1,6 @@
 //! Shared `entity_constructing` tracking used on both server and client roles.
 use crate::game::CommonGame as Game;
+use crate::game::native_hooks::entity_constructing::GameHooks as _;
 use mod_api::Holder;
 use std::collections::{HashMap, HashSet};
 

@@ -29,6 +29,7 @@ use super::{
     tnt_common::PrimedTnt,
 };
 use sunrise_gameplay_common::game::commands_common::{OtherEntity, Target};
+use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
 use mod_api::DimensionKey;
 use std::{
     collections::HashMap,
@@ -1511,7 +1512,7 @@ impl crate::game::ServerGame<'_> {
     /// levels. While `paused`, the network runs but player bodies do not.
     /// `ServerTickStart` and `ServerTickEnd` bracket the whole tick.
     pub(in crate::game) fn tick_server(&mut self, paused: bool) -> Result<()> {
-        self.common.with_residency_tick(|game| game.tick_server_body(paused))
+        self.with_residency_tick(|game| game.tick_server_body(paused))
     }
 
     fn tick_server_body(&mut self, paused: bool) -> Result<()> {

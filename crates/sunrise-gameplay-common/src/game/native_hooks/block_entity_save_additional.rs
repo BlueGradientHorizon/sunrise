@@ -1,5 +1,5 @@
 //! Server-side serialization; `data()` still reads storage without re-entering the hook.
-use super::{BlockEntity, Game, GameLevel, Pos};
+use super::{BlockEntity, GameLevel, Pos};
 use crate::game::native_level_signals::ReadLevel;
 use mod_api::{BlockEntityRef, BlockEntityTypeKey, HookId, LevelRef};
 use std::borrow::Cow;

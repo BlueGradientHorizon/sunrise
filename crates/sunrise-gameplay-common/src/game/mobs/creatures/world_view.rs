@@ -1,24 +1,25 @@
 //! The immutable world view used by mob simulation.
 use super::*;
+use crate::game::GameGameExt1 as _;
 
 /// Side-specific inputs supplied to [`Game::mob_world_base_with`] by server or client.
 pub struct MobWorldSideParams<'s> {
-    pub(in crate::game) side: &'s dyn sunrise_sim::motion::SideLevel,
-    pub(in crate::game) trading_players:
+    pub side: &'s dyn sunrise_sim::motion::SideLevel,
+    pub trading_players:
         Option<&'s dyn sunrise_sim::mobs::villager_brain::TradingPlayers>,
-    pub(in crate::game) player: Option<PlayerView>,
-    pub(in crate::game) player_identity: Option<([i32; 4], u32)>,
-    pub(in crate::game) leash_boats: &'s [(u32, sunrise_sim::mobs::leash::HolderState)],
-    pub(in crate::game) teams: std::sync::Arc<sunrise_sim::mobs::Teams<'s>>,
-    pub(in crate::game) lid_openers: &'s std::collections::HashMap<(i32, i32, i32), i32>,
-    pub(in crate::game) mod_effects: Option<&'s dyn sunrise_sim::mobs::ModEffectTicks>,
-    pub(in crate::game) mob_hooks: Option<&'s dyn sunrise_sim::mobs::MobHooks>,
-    pub(in crate::game) goal_host: Option<&'s dyn sunrise_sim::mobs::part_goals::GoalHost>,
-    pub(in crate::game) asks_animal_tame: bool,
-    pub(in crate::game) asks_living_destroy_block: bool,
-    pub(in crate::game) asks_baby_spawn: bool,
-    pub(in crate::game) who_lookup: Option<&'s dyn sunrise_sim::mobs::WhoLookup>,
-    pub(in crate::game) difficulty: sunrise_sim::mobs::spawning::LocalDifficulty,
+    pub player: Option<PlayerView>,
+    pub player_identity: Option<([i32; 4], u32)>,
+    pub leash_boats: &'s [(u32, sunrise_sim::mobs::leash::HolderState)],
+    pub teams: std::sync::Arc<sunrise_sim::mobs::Teams<'s>>,
+    pub lid_openers: &'s std::collections::HashMap<(i32, i32, i32), i32>,
+    pub mod_effects: Option<&'s dyn sunrise_sim::mobs::ModEffectTicks>,
+    pub mob_hooks: Option<&'s dyn sunrise_sim::mobs::MobHooks>,
+    pub goal_host: Option<&'s dyn sunrise_sim::mobs::part_goals::GoalHost>,
+    pub asks_animal_tame: bool,
+    pub asks_living_destroy_block: bool,
+    pub asks_baby_spawn: bool,
+    pub who_lookup: Option<&'s dyn sunrise_sim::mobs::WhoLookup>,
+    pub difficulty: sunrise_sim::mobs::spawning::LocalDifficulty,
 }
 
 pub trait WorldViewExt<'__sg>: crate::game::SideGame<'__sg> {

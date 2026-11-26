@@ -81,7 +81,10 @@ pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         shulkers: &FxHashMap<[i32; 3], Shulker>,
         pos: [i32; 3],
         player_context: bool,
-    ) -> (Outline<'a>, [f64; 3]) {
+    ) -> (Outline<'a>, [f64; 3])
+    where
+        '__sg: 'a,
+    {
         let facts = self.res.facts().get(state);
         let default_offset = || {
             outline_offset(
@@ -125,7 +128,10 @@ pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         shulkers: &FxHashMap<[i32; 3], Shulker>,
         pos: [i32; 3],
         player_context: bool,
-    ) -> impl Iterator<Item = [f64; 6]> + 'a {
+    ) -> impl Iterator<Item = [f64; 6]> + 'a
+    where
+        '__sg: 'a,
+    {
         let (outline, offset) = self.selected_outline(world, state, shulkers, pos, player_context);
         let base = std::array::from_fn(|i| f64::from(pos[i]) + offset[i]);
         outline_boxes(outline, base)

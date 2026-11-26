@@ -3,6 +3,7 @@
 use super::{super::Game, Recorder, world::FLOOR};
 use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
 
 /// Ticks run before the measured ones, so one-time work (first paths, grown buffers) is done.
 const WARMUP: u64 = 20;
@@ -122,7 +123,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     fn hot_tick(&mut self) -> Result<()> {
-        self.common.with_residency_tick(|game| game.tick_world(true))
+        self.with_residency_tick(|game| game.tick_world(true))
     }
 
     /// What the ticks left: where every mob stands and what every container holds.

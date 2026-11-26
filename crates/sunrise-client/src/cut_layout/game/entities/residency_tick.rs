@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_client_game;
+    use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::Mob;
 

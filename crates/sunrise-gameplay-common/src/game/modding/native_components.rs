@@ -1,6 +1,7 @@
 //! Native item data component helpers.
 #[allow(unused_imports)]
 use crate::game::CommonGame as Game;
+use crate::game::native_hooks::creator_mod_id::GameHooks as _;
 #[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
@@ -369,7 +370,10 @@ pub trait NativeComponentsGameExt2<'__sg>: crate::game::SideGame<'__sg> {
         &'a self,
         stack: &'a ItemStack,
         id: &str,
-    ) -> Result<Option<&'a Tag>, NativeComponentError> {
+    ) -> Result<Option<&'a Tag>, NativeComponentError>
+    where
+        '__sg: 'a,
+    {
         if sunrise_protocol::item::custom::id(id).is_none() {
             return Err(NativeComponentError::UnknownType);
         }

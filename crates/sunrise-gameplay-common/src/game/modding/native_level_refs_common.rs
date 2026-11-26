@@ -123,7 +123,10 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The world a handle names now, or None for a stale or foreign one.
-     fn native_level_world(&self, level: LevelRef) -> Option<&World> {
+     fn native_level_world<'a>(&'a self, level: LevelRef) -> Option<&'a World>
+    where
+        '__sg: 'a,
+    {
         self.native_level_world_result(level).ok()
     }
 

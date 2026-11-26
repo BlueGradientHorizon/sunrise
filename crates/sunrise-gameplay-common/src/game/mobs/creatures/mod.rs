@@ -537,25 +537,6 @@ impl crate::game::CommonGame<'_> {
         }
     }
 
-    /// Hands the tick's lifted projectiles back for a hook told about one of them, so its handles
-    /// read the live rows, and takes them again. Whether they came back as they went: the same
-    /// rows in the same order, unwritten (the list's write stamp), with no spawn of the tick put
-    /// before them.
-    pub fn projectiles_told(
-        &mut self,
-        projectiles: sunrise_sim::join_seq::JoinList<Projectile, false>,
-        tell: impl FnOnce(&mut Self),
-    ) -> (sunrise_sim::join_seq::JoinList<Projectile, false>, bool) {
-        let no_spawns = self.creatures.projectiles.is_empty();
-        self.creatures.projectiles.restore(
-            projectiles,
-            sunrise_sim::join_seq::RestoreOrder::SpawnsFirst,
-        );
-        let restored = self.creatures.projectiles.stamp();
-        tell(self);
-        let same = no_spawns && self.creatures.projectiles.stamp() == restored;
-        (self.creatures.projectiles.lift(), same)
-    }
     /// The level as arrows see it, parameterized by side-owned hooks and owner table.
     pub fn arrow_scene_with<'s>(
         &'s self,

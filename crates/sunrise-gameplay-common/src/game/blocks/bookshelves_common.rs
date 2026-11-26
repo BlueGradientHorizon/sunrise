@@ -1,5 +1,6 @@
 //! Common enchanting-table bookshelf power queries (`EnchantmentMenu.slotsChanged`).
 use super::tables::BlockProviderQuery;
+use crate::game::native_hooks::enchant_power_bonus::GameHooks as _;
 use mod_api::LevelRef;
 use sunrise_core::position::BlockPos;
 use sunrise_sim::stations::bookshelf_offsets;

@@ -8,12 +8,12 @@
 
 /// Generated dispatch entry points, not hand-written hook implementations.
 pub mod fire;
+use self::bonemeal::GameHooks as _;
 #[allow(unused_imports)]
 pub use build_creative_mode_tab_contents::CreativeCache;
 #[allow(unused_imports)]
 pub use fire::{
-    ConnectsToCall, EntityChangeBlockPreCall, HotbarAttackIndicatorProgressCall,
-    ItemAfterVerticalCollisionCall, PlayerPongCall, PreRemoveSideEffectsCall, UpdateShapeCall,
+    ConnectsToCall, ItemAfterVerticalCollisionCall, PreRemoveSideEffectsCall, UpdateShapeCall,
 };
 pub use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
@@ -409,7 +409,6 @@ pub mod gui_render_post;
 pub mod gui_ticks;
 pub mod held_item_tint;
 pub mod highlight_tip;
-pub mod hotbar_attack_indicator_progress;
 pub mod humanoid_setup_anim;
 pub mod ignited_by_lava;
 pub mod incoming_tests;
@@ -540,7 +539,6 @@ pub mod register_block_tint_sources;
 pub mod register_cauldron_fluid_content;
 pub mod register_cauldron_interaction;
 pub mod register_color_resolvers;
-pub mod register_configuration_tasks;
 pub mod register_debug_entries;
 pub mod register_debug_renderers;
 pub mod register_dimension_transition_screen;
@@ -619,7 +617,6 @@ pub mod spread_players_teleport;
 pub mod state_at_viewpoint;
 pub mod stateful_block_entity;
 pub mod submit_custom_geometry;
-pub mod substitute_inline_images;
 pub mod supports_enchantment;
 pub mod sweep_attack;
 pub mod tags_updated;

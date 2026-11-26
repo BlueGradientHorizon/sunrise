@@ -28,7 +28,7 @@ pub struct NativeCommands {
 
 /// The session's state of the mods' commands.
 #[derive(Default)]
-pub(in crate::game) struct NativeCommandState {
+pub struct NativeCommandState {
     /// A mod asked for its commands again (`refresh_commands`): done at the next server tick.
     pub refresh: bool,
     pub registered: Option<NativeCommands>,

@@ -1924,8 +1924,10 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             self.mods.applied = Some(crate::game::Side::mods_list(self.side_state()).enabled.clone());
         }
         if self.mods.code_switches.is_none() {
-            self.mods
-                .capture_code_switches(&crate::game::Side::mods_list(self.side_state()).disabled);
+            let (common, state) = self.common_and_state_mut();
+            common
+                .mods
+                .capture_code_switches(&crate::game::Side::mods_list(state).disabled);
         }
         // A mod with a native version built in says so instead, and isn't news.
         self.side_list_native_mods();
@@ -1945,10 +1947,12 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         crate::game::Side::mods_list_mut(self.side_state_mut())
             .installed
             .extend(unbuilt);
-        self.mods
-            .report_refusals(&mut crate::game::Side::mods_list_mut(self.side_state_mut()).installed);
-        crate::game::Side::mods_list_mut(self.side_state_mut())
-            .apply_dependency_notices(&self.mods.load_notices.lock().unwrap());
+        let (common, state) = self.common_and_state_mut();
+        common
+            .mods
+            .report_refusals(&mut crate::game::Side::mods_list_mut(state).installed);
+        crate::game::Side::mods_list_mut(state)
+            .apply_dependency_notices(&common.mods.load_notices.lock().unwrap());
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ModGameExt1<'__sg> for G {}

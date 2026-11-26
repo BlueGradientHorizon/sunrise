@@ -286,8 +286,6 @@ pub mod condition_reload_state;
 pub mod consume_effect_dispatch;
 #[path = "game/mobs/copper_golems.rs"]
 pub mod copper_golems;
-#[path = "game/interface/creative_screen.rs"]
-pub mod creative_screen;
 #[path = "game/mobs/creatures/mod.rs"]
 pub mod creatures;
 #[path = "game/modding/data_map_files.rs"]
@@ -674,7 +672,6 @@ pub use held_items::interact_location;
 pub use hit::Hit;
 #[allow(unused_imports)]
 pub use sunrise_level::random_source;
-// `Action` here is the title screen's buttons (`title::Action`).
 #[allow(unused_imports)]
 pub use self::api_values::TryIntoApi;
 pub use api_values::{block_jump_factor, block_speed_factor, is_ladder};
@@ -711,21 +708,7 @@ pub use sunrise_mod_package::selection::{Argument, LaunchArguments};
 pub use sunrise_sim::item_names::Names;
 #[allow(unused_imports)]
 pub use {
-    sunrise_client::assets::RenderAssets, sunrise_client::audio::Audio,
-    sunrise_client::block_entity_render, sunrise_client::block_entity_render::BlockEntityRenderer,
-    sunrise_client::block_entity_render::CacheOptions,
-    sunrise_client::block_entity_render::Scene as BlockEntityScene,
-    sunrise_client::block_entity_render::StaticCacheFrameStats,
-    sunrise_client::block_entity_render::StaticSectionSnapshot, sunrise_client::creative::Creative,
-    sunrise_client::gfx::Frame, sunrise_client::gfx::Renderer,
-    sunrise_client::graphics::EntityCullingMode, sunrise_client::hud::HudAtlas,
-    sunrise_client::hud::HudBatch, sunrise_client::hud::rgba, sunrise_client::hud_layout,
-    sunrise_client::hud_overlays, sunrise_client::keymapping::KeyAction,
-    sunrise_client::keymapping::SNEAK, sunrise_client::keymapping::SPRINT,
-    sunrise_client::mesher::MeshTables, sunrise_client::mesher::Vertex, sunrise_client::models,
-    sunrise_client::mouse::LookOptions, sunrise_client::mouse::MouseLook,
-    sunrise_client::particles::Particle, sunrise_client::settings::Settings,
-    sunrise_client::title::Action, sunrise_client::title::Title, sunrise_game_data::Result,
+    sunrise_game_data::Result,
     sunrise_items::blocks::BlockFacts, sunrise_items::blocks::Fluid,
     sunrise_items::items::ItemStack, sunrise_items::items::Items, sunrise_level::assets::Assets,
     sunrise_level::biome::Biomes, sunrise_level::collisions,
@@ -1169,7 +1152,7 @@ pub struct FallingBlock {
     pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
-    /// When it joined its list (`sunrise_client::join_seq`); set by the list.
+    /// When it joined its list (`sunrise_sim::join_seq`); set by the list.
     pub join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on a client.
     pub id: u32,
@@ -1433,17 +1416,6 @@ pub fn portal_ticket_can_expire(
     world.chunks.get(&(x, z)).is_some_and(|c| c.lit)
         && (-r..=r).all(|dz| (-r..=r).all(|dx| world.chunks.contains_key(&(x + dx, z + dz))))
 }
-pub fn select_creative_tab(
-    creative: &mut Creative,
-    clicks: &mut sunrise_client::container_screen::Clicks,
-    tab: usize,
-) {
-    creative.select(tab);
-    *clicks = Default::default();
-    // Tabs are outside the panel; their release must not drop a carried stack.
-    clicks.skip_release();
-}
-
 /// The icon the Select World list shows for the world in play
 /// (`GameRenderer.tryTakeScreenshotIfNeeded`): its path in the save, and when
 /// the last frame grab was asked for.
@@ -1458,20 +1430,6 @@ pub struct QueuedLevelEvent {
     pub pos: [i32; 3],
     data: i32,
     source: Option<sunrise_world::level::LevelEventPlayer>,
-}
-
-/// Physical and scaled GUI dimensions last reported by `window_resize`.
-#[derive(Clone, Copy, PartialEq)]
-pub struct ResizeState {
-    pub size: winit::dpi::PhysicalSize<u32>,
-    pub gui_size: [u32; 2],
-}
-
-impl ResizeState {
-    /// Records `self` as the last report and says whether it differs from the previous one.
-    pub fn differs_from(self, last: &mut Option<Self>) -> bool {
-        last.replace(self) != Some(self)
-    }
 }
 
 /// Temporary block-contact collections rebuilt on every server tick. Keeping
@@ -2140,21 +2098,6 @@ pub mod billboard_axes_tests {
         }
     }
 }
-/// What the falling blocks of one frame share: the depth-only view (none under a pack) and the
-/// camera's forward axis.
-pub struct FallingSetup<'a> {
-    pub(in crate::game) view: Option<&'a sunrise_client::gfx::JoinedFrusta>,
-    pub(in crate::game) forward: glam::Vec3,
-}
-
-/// What the experience orbs of one frame share: their sprite and the camera's axes.
-pub struct OrbFrame {
-    sprite: Option<sunrise_client_render::hud::Rect>,
-    forward: glam::Vec3,
-    right: glam::Vec3,
-    up: glam::Vec3,
-}
-
 impl crate::game::CommonGame<'_> {
     /// `Level.canHaveWeather`, from the level's dimension type (sky light, no
     /// ceiling) and the End, which vanilla names by id. Every rain, thunder
@@ -2615,14 +2558,15 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let fast_lava = self.dimension_type().fast_lava;
         let blind = self.potions.effects.get("blindness").is_some();
         let server_owns_glide = !side_ops::world::SideOps::side_client_has_integrated(self.side_state());
-        let Some(player) = self.player.as_mut() else {
+        let (common, state) = self.common_and_state_mut();
+        let Some(player) = common.player.as_mut() else {
             return;
         };
         player.nudge = nudge;
         player.mobility_restricted = blind;
-        player.yaw = self.yaw;
-        player.pitch = self.pitch;
-        player.auto_jump_enabled = self.side_state().auto_jump();
+        player.yaw = common.yaw;
+        player.pitch = common.pitch;
+        player.auto_jump_enabled = state.auto_jump();
         player.item_use_speed = item_use_speed;
         player.item_use_slows_sprint = item_use_slows_sprint;
         player.respiration = respiration;

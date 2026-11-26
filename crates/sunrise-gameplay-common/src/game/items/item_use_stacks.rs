@@ -1,5 +1,6 @@
 //! Report destruction only where an item action actually consumes or breaks a stack.
 use super::*;
+use crate::game::native_hooks::player_destroy_item::GameHooks as _;
 
 impl crate::game::CommonGame<'_> {
     /// A slot's hand, or no hand for armour and inventory ammunition.

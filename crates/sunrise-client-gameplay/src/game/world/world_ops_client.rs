@@ -1,6 +1,7 @@
 //! Client-side implementations of `side_ops::world` and client-only world/harness helpers.
 use super::*;
 use sunrise_gameplay_common::game::piston_carry_common::PositionChange;
+use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
 use sunrise_sim::join_seq::{
     Joined as _,
     residency::{Kind, Owner, Source},
@@ -353,7 +354,7 @@ impl crate::game::ClientGame<'_> {
         self.common.update_interaction_ranges();
         self.tick_client_lead()?;
         if client_level {
-            self.common.with_residency_tick(Self::tick_remote)
+            self.with_residency_tick(Self::tick_remote)
         } else {
             Ok(())
         }
