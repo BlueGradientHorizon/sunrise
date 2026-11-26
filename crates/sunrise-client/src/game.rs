@@ -2492,6 +2492,9 @@ mod world_session;
 #[cfg(test)]
 #[path = "game/blocks/world_test_def_tests.rs"]
 mod world_test_def_tests;
+#[cfg(test)]
+#[path = "game/interface/world_text_frame_tests.rs"]
+mod world_text_frame_tests;
 #[path = "game/world/world_update.rs"]
 mod world_update;
 #[path = "game/items/worn_boots.rs"]
