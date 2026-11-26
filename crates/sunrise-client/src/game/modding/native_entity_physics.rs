@@ -14,7 +14,8 @@ use sunrise_client::projectiles::{Projectile, ProjectileKind};
 
 impl Game<'_> {
     /// `Entity.noPhysics`: a player's is whether it spectates (`Player.tick`
-    /// sets it from `isSpectator`); a mob's is the flag a mod wrote, false
+    /// sets it from `isSpectator`); a general row's is the flag a mod wrote, false until
+    /// then (nothing rewrites it); a mob's is the flag a mod wrote, false
     /// until then (a vex sets it only for the length of its own tick); an
     /// arrow's or a trident's is its `AbstractArrow.noPhysics`, set once a
     /// loyal trident turns back. The ender dragon, an area-effect cloud, an
@@ -28,6 +29,7 @@ impl Game<'_> {
             Target::Player => Some(self.player.as_ref()?.spectator),
             Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_deref()?.spectator),
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.no_physics),
+            Target::General(id) => Some(self.resident_entities.general.row(id)?.no_physics),
             Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) | Target::Bolt(id) => {
                 Some(self.stored_no_physics(id))
             }
@@ -84,6 +86,15 @@ impl Game<'_> {
                 }
                 mob.no_physics = no_physics;
                 true
+            }
+            Some(Target::General(id)) => {
+                self.resident_entities
+                    .general
+                    .row_mut(id)
+                    .is_some_and(|row| {
+                        row.no_physics = no_physics;
+                        true
+                    })
             }
             Some(
                 Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) | Target::Bolt(id),

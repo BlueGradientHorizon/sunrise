@@ -153,6 +153,12 @@ pub const PACK_ICON_SIZE: u32 = 128;
 /// size of the largest trim texture.
 pub const TRIM_SLOTS: usize = 32;
 
+/// A texture name without vanilla's default namespace (`ResourceLocation`'s `minecraft:`), as the
+/// atlas keeps its packed sprites and registered atlases' sprites.
+fn default_namespace(name: &str) -> &str {
+    name.strip_prefix("minecraft:").unwrap_or(name)
+}
+
 /// The prefix of the name a GUI atlas sprite is packed under when a model's sprite has its name.
 pub(super) const GUI_KEY: &str = "#gui:";
 /// The prefix of the name a registered atlas's sprite is packed under.
@@ -358,7 +364,7 @@ impl HudAtlas {
     /// packed sprite no model or GUI entry owns, in that order; [`GuiSprite::Missing`] for an id the list removed or failed; none for an id the GUI
     /// atlas does not own. The sprite carries the scaling of the entry itself.
     pub fn gui_lookup(&self, id: &str) -> Option<GuiSprite> {
-        let id = id.strip_prefix("minecraft:").unwrap_or(id);
+        let id = default_namespace(id);
         match self.gui_present(id) {
             Some((rect, scaling)) => Some(GuiSprite::Present {
                 rect: *rect,
@@ -370,7 +376,7 @@ impl HudAtlas {
     /// The rect a GUI draw uses for GUI sprite `id`: [`HudAtlas::gui_lookup`]'s, the missing
     /// sprite for an id the list removed or failed, none for an id the atlas does not own.
     pub fn gui_rect(&self, id: &str) -> Option<&Rect> {
-        let id = id.strip_prefix("minecraft:").unwrap_or(id);
+        let id = default_namespace(id);
         match self.gui_present(id) {
             Some((rect, _)) => Some(rect),
             None => self
@@ -381,24 +387,24 @@ impl HudAtlas {
         }
     }
     pub(crate) fn gui_atlas_page(&self, name: &str) -> Option<usize> {
-        let name = name.strip_prefix("minecraft:").unwrap_or(name);
+        let name = default_namespace(name);
         if self.gui.contains_key(name) {
             return None;
         }
         self.registered_owners.get(name).copied()
     }
-    /// A raw texture uses its own page only if the base atlas has no sprite of that name.
+    /// Texture sampling flags for `name`, following [`HudAtlas::texture_rect`]'s `minecraft:` rule.
+    pub fn texture_flags(&self, name: &str) -> Option<TextureFlags> {
+        self.flags.get(default_namespace(name)).copied()
+    }
+    /// A raw texture uses its own page only if the base atlas has no sprite of that name. The
+    /// name follows [`HudAtlas::texture_rect`]'s `minecraft:` rule.
     pub fn texture_atlas_page(&self, name: &str) -> Option<usize> {
+        let name = default_namespace(name);
         if self.sprites.contains_key(name) {
             return None;
         }
-        // Registered names drop the `minecraft:` namespace, as GUI lookups do.
-        self.registered_owners
-            .get(name.strip_prefix("minecraft:").unwrap_or(name))
-            .copied()
-    }
-    pub fn blit_atlas_page(&self, name: &str) -> Option<usize> {
-        self.texture_atlas_page(name)
+        self.registered_owners.get(name).copied()
     }
 
     /// [`HudAtlas::gui_rect`] for a draw: an id the atlas lacks draws the missing texture, as vanilla's atlas does.
@@ -413,18 +419,13 @@ impl HudAtlas {
         missing_gui_sprite(id);
         self.sprites.get(MISSING_SPRITE)
     }
-    /// The rect of a texture by its exact name: the packed sprite, else a registered atlas's
-    /// sprite, whose name may carry the `minecraft:` namespace. The raw lookup of the camera draw; a GUI id goes through [`HudAtlas::gui_lookup`].
+    /// The rect of a texture by its name: the packed sprite, else a registered atlas's sprite.
+    /// One rule for both, vanilla's `ResourceLocation` default namespace: `minecraft:name` and
+    /// `name` are the same texture. The raw lookup of the camera draw and a `Blit`, for the
+    /// refusal and the draw alike; a GUI id goes through [`HudAtlas::gui_lookup`].
     pub fn texture_rect(&self, name: &str) -> Option<&Rect> {
-        self.sprites.get(name).or_else(|| {
-            self.registered
-                .get(name.strip_prefix("minecraft:").unwrap_or(name))
-        })
-    }
-    /// The rect of a `Blit` texture by its name ([`HudAtlas::texture_rect`]). One lookup for the
-    /// refusal and the draw.
-    pub fn blit_rect(&self, texture: &str) -> Option<&Rect> {
-        self.texture_rect(texture)
+        let name = default_namespace(name);
+        self.sprites.get(name).or_else(|| self.registered.get(name))
     }
     /// [`HudAtlas::gui_rect`], or the missing sprite where the atlas has no such GUI sprite (an
     /// effect without its icon).

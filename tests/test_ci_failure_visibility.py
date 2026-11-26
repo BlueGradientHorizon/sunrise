@@ -9,9 +9,12 @@ import unittest
 from unittest.mock import patch
 
 from tests.os_support import needs_runner_shell, needs_symlinks
-from tests.test_ci_concurrency import yaml, ROOT
+from tests.test_ci_concurrency import ROOT
 from tests.test_ignored_test_completion import IgnoredTests, target, summary
 from tools.ci import ignored_tests
+from tools.ci import vendored_yaml
+
+yaml = vendored_yaml.load()
 
 
 class Visibility(unittest.TestCase):

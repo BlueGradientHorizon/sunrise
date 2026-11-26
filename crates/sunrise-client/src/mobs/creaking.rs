@@ -716,6 +716,7 @@ mod tests {
                     kind,
                     attacker: Some(Who::Mob(5)),
                     from: None,
+                    direct: None,
                     attacker_species: None,
                 };
                 assert!(
@@ -764,6 +765,7 @@ mod tests {
                     kind,
                     attacker,
                     from: None,
+                    direct: None,
                     attacker_species: None,
                 };
                 assert!(
@@ -791,6 +793,7 @@ mod tests {
             kind: DamageKind::Generic,
             attacker: Some(Who::Player),
             from: None,
+            direct: None,
             attacker_species: None,
         };
         assert!(m.damage(

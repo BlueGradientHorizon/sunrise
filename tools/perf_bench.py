@@ -70,16 +70,11 @@ import uuid
 import zipfile
 from pathlib import Path
 
-try:
-    from . import lab, runtime, stress_scenes
-except ImportError:
-    import lab
-    import runtime
-    import stress_scenes
-
-ROOT = lab.ROOT
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from tools import lab, runtime, stress_scenes
 from tools.ci import cargo_jobs
+
 WORK = ROOT / ".local/perf-bench"
 VANILLA = lab.GAME
 SEED = 1234
@@ -1024,7 +1019,7 @@ def driven(args, distance, command, game_dir, env, log, events, options, loaded_
 def run_neoforge(args, distance):
     """A NeoForge 1.21.1 client (dev-only, tools/neoforge_oracle.py) with the driver mod and --mod-jars:
     the mods a ported pack replaces, on the loader the pack runs on."""
-    import neoforge_oracle
+    from tools import neoforge_oracle
     home = neoforge_oracle.client()[0]
     mod = neoforge_oracle.build_bench(home)
     game_dir = WORK / args.game
@@ -1536,7 +1531,7 @@ def app(args):
             version, commit = args.release, None
         return {"name": "sunrise-client", "version": version, "commit": commit, **({"mods": mods} if mods else {})}
     if args.game == "neoforge":
-        import neoforge_oracle
+        from tools import neoforge_oracle
         jars = [j.name for f in filter(None, (args.mod_jars, args.deps)) for j in sorted(Path(f).glob("*.jar"))]
         return {"name": "minecraft", "version": "1.21.1",
                 "mods": [{"name": "neoforge", "version": neoforge_oracle.NEOFORGE}] + [{"name": j} for j in jars]}

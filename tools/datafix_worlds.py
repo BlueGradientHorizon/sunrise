@@ -15,6 +15,7 @@ import hashlib
 import json
 import math
 import os
+import platform as host
 import queue
 import re
 import shutil
@@ -30,24 +31,19 @@ import zipfile
 import zlib
 from pathlib import Path
 
-if __package__:
-    from . import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12
-    from .lab import free_port, offline_uuid, parse_varint, varint
-else:
-    import datafix_paths
-    import datafix_scene as scene
-    import datafix_scene_12 as scene12
-    from lab import free_port, offline_uuid, parse_varint, varint
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from tools import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12
+from tools.lab import free_port, offline_uuid, parse_varint, varint
+
 LOCAL = datafix_paths.writable_root()
-LEGACY = {'1.8.9', '1.9.4', '1.10.2', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.1', '1.16.5'}
 
 
 def worlds_dir(name):
     return LOCAL / 'worlds-pre-1.17' if name.split('-')[0] in LEGACY else LOCAL / 'worlds'
 
 
+# The versions the harness covers, oldest first: a choice, not something any file states.
 VERSIONS = ['1.8.9', '1.9.4', '1.10.2', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.1', '1.16.5', '1.17.1', '1.18.1', '1.18.2', '1.19', '1.19.2', '1.19.3', '1.19.4', '1.20.1', '1.20.2', '1.20.4', '1.20.5', '1.20.6', '1.21.1',
             '1.21.3', '1.21.4', '1.21.5', '1.21.6', '1.21.8', '1.21.9', '1.21.10', '1.21.11', '26.1', '26.1.2', '26.2']
 # Extra worlds of one version with another world type, for the level.dat generator settings:
@@ -65,12 +61,19 @@ VARIANTS = {
                                  '{"chunk_generator":{"type":"minecraft:surface"},"biome_source":{"type":"minecraft:fixed","options":'
                                  '{"biomes":["minecraft:desert"]}}}'}),
 }
+# Worlds saved before 1.17 go in worlds-pre-1.17: every version of VERSIONS before this one.
+FIRST_MODERN = '1.17.1'
+LEGACY = set(VERSIONS[:VERSIONS.index(FIRST_MODERN)])
 MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
 LOCK = json.loads((ROOT / 'research-lock.json').read_text())['java_runtimes']
 BOT = 'Upgrader'
 # Versions whose default world also gets every block state the server can save, on a grid beside the scene.
 STATE_GRID = {'1.13.2'}
 UUID_BASE = 0x6000
+# The clientbound configuration packet id of select_known_packs, by protocol: 14 from 1.20.5 (766) to 26.2 (776); 26.3 (777)
+# puts post_effects before it, which makes it 15 (crates/sunrise-protocol/src/ids.rs). The older ids are those of the
+# per-version packet tables removed in 9dd33d4e1b2 (crates/sunrise-protocol/src/adapter/v*.rs, from the packets reports).
+SELECT_KNOWN_PACKS_ID = {**dict.fromkeys(range(766, 777), 14), 777: 15}
 
 
 def fetch(path, url, sha1, what):
@@ -91,15 +94,12 @@ def fetch(path, url, sha1, what):
 
 def version_meta(version):
     path = LOCAL / 'servers' / version / 'version.json'
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        # Missing, or unreadable from an older run's cut-short write: fetched again.
+    if not path.exists():   # fetch() renames a whole file into place, so a file that exists is never cut short
         manifest_path = os.environ.get('SUNRISE_DATAFIX_MANIFEST')
         manifest = json.loads(Path(manifest_path).read_text()) if manifest_path else json.load(urllib.request.urlopen(MANIFEST))
         entry = next(v for v in manifest['versions'] if v['id'] == version)
         fetch(path, entry['url'], entry['sha1'], f'{version}: version metadata')
-        return json.loads(path.read_text())
+    return json.loads(path.read_text())
 
 
 def server_jar(version):
@@ -123,10 +123,18 @@ OLD_VERSIONS = {
 }
 
 
+# Mojang's runtime platform names (the keys of its java runtime manifest), by Windows machine.
+WINDOWS_PLATFORMS = {'AMD64': 'windows-x64', 'ARM64': 'windows-arm64', 'x86': 'windows-x86'}
+
+
 def platform():
-    import platform as p
+    """Mojang's name for this machine in its Java runtime manifest."""
     if sys.platform == 'darwin':
-        return 'mac-os-arm64' if p.machine() == 'arm64' else 'mac-os'
+        return 'mac-os-arm64' if host.machine() == 'arm64' else 'mac-os'
+    if sys.platform == 'win32':
+        if host.machine() not in WINDOWS_PLATFORMS:
+            raise ValueError(f'no Mojang Java runtime platform for Windows machine {host.machine()}')
+        return WINDOWS_PLATFORMS[host.machine()]
     return 'linux'
 
 
@@ -137,11 +145,17 @@ def java(version):
     component = meta.get('javaVersion', {}).get('component', 'jre-legacy')
     if component in ('java-runtime-delta', 'java-runtime-epsilon'):
         return 'java'  # 1.20.5 on: the JDK that runs 26.3 runs them
-    runtimes = LOCK[platform()]
+    plat = platform()
+    if plat not in LOCK:
+        raise ValueError(f'{version}: research-lock.json java_runtimes pins no runtime for platform {plat}; pin its components '
+                         f'(manifest_url and manifest_sha1, from Mojang\'s runtime manifest for {plat}) under java_runtimes.{plat}')
+    runtimes = LOCK[plat]
+    if component not in {name for other, names in LOCK.items() if other != 'note' for name in names}:
+        raise ValueError(f'{version}: javaVersion component {component} is in no platform of research-lock.json java_runtimes')
     if component not in runtimes:
-        component = 'java-runtime-gamma'
+        component = 'java-runtime-gamma'  # research-lock.json java_runtimes note: a component this platform lacks falls back to gamma
     pin = runtimes[component]
-    home = LOCAL / 'java' / f'{component}-{platform()}'
+    home = LOCAL / 'java' / f'{component}-{plat}'
     stamp = home / '.complete'
     if not stamp.exists() or stamp.read_text() != pin['manifest_sha1']:
         install_runtime(pin, home)
@@ -230,8 +244,8 @@ class Server:
             self.process.stdin.write('stop\n')
             self.process.stdin.flush()
             self.process.wait(120)
-        except Exception:
-            self.process.kill()
+        finally:
+            self.process.kill()   # a no-op once it has exited; after a failed stop the error still reaches the caller
             self.process.wait()   # the world folder and port are reused only once the process is gone
 
 
@@ -283,6 +297,9 @@ class Bot:
     def configure(self):
         old = self.protocol < 766  # 1.20.2 - 1.20.4 packet ids
         finish, keep_alive, ping, disconnect = (2, 3, 4, 1) if old else (3, 4, 5, 2)
+        known_packs = SELECT_KNOWN_PACKS_ID.get(self.protocol)   # None before 1.20.5: no known packs
+        if not old and known_packs is None:
+            raise ValueError(f'protocol {self.protocol}: the id of select_known_packs is not in SELECT_KNOWN_PACKS_ID')
         while True:
             pid, data = self.receive()
             if pid == finish:
@@ -294,19 +311,8 @@ class Bot:
                 self.send(4 if old else 5, data)
             elif pid == disconnect:
                 raise RuntimeError(f'disconnected during configuration: {data!r}')
-            elif not old and self.known_packs(data):
+            elif pid == known_packs:
                 self.send(7, varint(0))  # claim no packs: the server sends full registries
-
-    @staticmethod
-    def known_packs(data):
-        try:
-            pos, count = parse_varint(data, 0)
-            if count < 1:
-                return False
-            pos, n = parse_varint(data, pos)
-            return data[pos:pos + n] == b'minecraft'
-        except IndexError:
-            return False
 
     def idle(self):
         self.sock.settimeout(1.0)
@@ -452,8 +458,9 @@ def build(name, force=False):
     work = LOCAL / 'gen' / name
     shutil.rmtree(work, ignore_errors=True)
     port = free_port()
-    states = block_states(jar, java(version)) if version in STATE_GRID and not props else ()
-    server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
+    java_exe = java(version)
+    states = block_states(jar, java_exe) if version in STATE_GRID and not props else ()
+    server = Server(work, jar, port, scene.experiments(data_version), java_exe, props)
     if props and props.get('level-type') == 'debug_all_block_states':
         # The debug world's grid (DebugLevelSource.getBlockStateFor: every block state at odd x and z from 1 to
         # 2 * GRID_WIDTH + 1, 187 for 1.13.2's 8,599 states) holds the twelve moving_piston states. Their block has a
@@ -468,8 +475,14 @@ def build(name, force=False):
             raise RuntimeError(f'{name}: setworldspawn was refused, so the grid would be saved: {out}')
         server.stop()
         shutil.rmtree(work / 'world' / 'region')
-        server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
+        server = Server(work, jar, port, scene.experiments(data_version), java_exe, props)
     problems = []
+    bots = []   # every bot that joined, so that the finally below closes it whatever fails
+
+    class JoinedBot(Bot):
+        def __init__(self, *args):
+            super().__init__(*args)
+            bots.append(self)
 
     def run(command):
         out = server.run(command)
@@ -478,13 +491,18 @@ def build(name, force=False):
             problems.append((command[:160], bad[:2]))
         return out
 
-    if data_version < 1631 and not props:   # 1.12 and older: tools/datafix_scene_12.py builds the scene and saves the world itself
-        bot = scene12.populate(server, Bot, port, protocol, BOT, problems)
-    else:
-        bot = build_scene(server, run, Bot, port, protocol, props, era, data_version, states)
-    bot.leave()
-    time.sleep(2)
-    server.stop()
+    try:
+        try:
+            if data_version < 1631 and not props:   # 1.12 and older: tools/datafix_scene_12.py builds the scene and saves the world itself
+                scene12.populate(server, JoinedBot, port, protocol, BOT, problems)
+            else:
+                build_scene(server, run, JoinedBot, port, protocol, props, era, data_version, states)
+        finally:
+            for bot in bots:
+                bot.leave()
+        time.sleep(2)
+    finally:
+        server.stop()   # a failed stop still raises, after the bots are closed
     if data_version < 1631 and not props:
         scene12.fixtures(work / 'world')   # the few statistics a passive bot cannot cause, written by hand
     # Copy aside, then rename: an interrupted copy must not look like a finished world.

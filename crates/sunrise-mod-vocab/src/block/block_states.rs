@@ -107,6 +107,12 @@ pub enum BlockClass {
     /// `BonemealableBlock`: the blocks that take bone meal (crops, saplings, grass, stems,
     /// rooted dirt), whether or not they are a valid target at a given place and moment.
     Bonemealable,
+    /// `SlabBlock`, the copper slabs included.
+    Slab,
+    /// `WallBlock`.
+    Wall,
+    /// `FenceBlock`, which includes the nether brick fence; not `FenceGateBlock`.
+    Fence,
 }
 
 /// An invalid constraint, identifying its index in the supplied list.
@@ -167,6 +173,16 @@ impl<'a> BlockStates<'a> {
     /// empty view.
     pub fn definition(&self, block: crate::BlockKey) -> Option<StateProperties<'a>> {
         self.backend.block_state_definition(block)
+    }
+
+    /// The block registry's metadata as an owned, shared value: names, keys, default states,
+    /// state definitions and property edits, readable on any thread for as long as it is held,
+    /// such as a thread a mod spawns to render a region. Take it on a host's thread and move it.
+    /// The tables are immutable once the registry is loaded, as vanilla's `BuiltInRegistries`
+    /// are frozen after bootstrap (NeoForge freezes them after `RegisterEvent`). None for a host
+    /// with no game behind it, or before the block registry is complete.
+    pub fn metadata(&self) -> Option<std::sync::Arc<dyn BlockMetadata + Send + Sync>> {
+        self.backend.block_metadata_snapshot()
     }
 }
 
@@ -234,6 +250,20 @@ macro_rules! impl_block_states_without_tables {
                 ) -> Result<BlockState, BlockStateError> {
                     Err(BlockStateError::Unavailable)
                 }
+                fn block_metadata_key(&self, _: &str) -> Option<BlockKey> {
+                    None
+                }
+                fn block_metadata_state_definition(
+                    &self,
+                    _: BlockKey,
+                ) -> Result<StateProperties<'_>, BlockStateError> {
+                    Err(BlockStateError::Unavailable)
+                }
+                fn block_metadata_snapshot(
+                    &self,
+                ) -> Option<std::sync::Arc<dyn $crate::BlockMetadata + Send + Sync>> {
+                    None
+                }
                 fn block_state_replaceable(&self, _: BlockState) -> Option<bool> {
                     None
                 }
@@ -289,6 +319,12 @@ macro_rules! impl_block_states_without_tables {
                 fn block_state_is_solid_render(&self, _: BlockState) -> Option<bool> {
                     None
                 }
+                fn block_state_is_solid(&self, _: BlockState) -> Option<bool> {
+                    None
+                }
+                fn block_state_collision_is_full_block(&self, _: BlockState) -> Option<bool> {
+                    None
+                }
                 fn block_state_poi_type(&self, _: BlockState) -> Option<crate::Identifier> {
                     None
                 }
@@ -307,6 +343,12 @@ macro_rules! impl_block_states_without_tables {
                     _: BlockClass,
                 ) -> Result<Option<bool>, LevelReadError> {
                     Err(LevelReadError::Unavailable)
+                }
+                fn block_state_is_liquid_block_container(&self, _: BlockState) -> Option<bool> {
+                    None
+                }
+                fn block_state_is_simple_waterlogged(&self, _: BlockState) -> Option<bool> {
+                    None
                 }
                 fn block_state_piston_push_reaction(
                     &self,
@@ -407,6 +449,15 @@ impl_block_states_without_tables!(NoBlockTables {
 impl BlockMetadata for BlockStates<'_> {
     fn name(&self, block: BlockKey) -> Result<&str, BlockStateError> {
         self.backend.block_metadata_name(block)
+    }
+    fn key(&self, id: &str) -> Option<BlockKey> {
+        self.backend.block_metadata_key(id)
+    }
+    fn default_state(&self, block: BlockKey) -> Result<BlockState, BlockStateError> {
+        self.backend.block_metadata_of(block, &[])
+    }
+    fn state_definition(&self, block: BlockKey) -> Result<StateProperties<'_>, BlockStateError> {
+        self.backend.block_metadata_state_definition(block)
     }
     fn property(&self, state: BlockState, name: &str) -> Result<Option<&str>, BlockStateError> {
         self.backend.block_metadata_property(state, name)
@@ -582,6 +633,28 @@ impl BlockStates<'_> {
     pub fn is_solid_render(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_solid_render(state)
     }
+    /// `BlockState.isSolid()`: vanilla's cached `legacySolid`, decided once per state by
+    /// `BlockStateBase.calculateSolid`: `true` for a block with
+    /// `BlockBehaviour.Properties.forceSolidOn` (cobweb, signs, shulker boxes), `false` for one
+    /// with `forceSolidOff` (ladder); otherwise `false` for a block whose shape depends on its
+    /// position (`dynamicShape`: scaffolding, powder snow) or whose collision shape is empty
+    /// (torches, buttons), and `true` for a collision shape whose bounds measure at least
+    /// 0.7291666 on average (`AABB.getSize`) or 1 high (leaves, stone). NeoForge and Fabric mods
+    /// call the same method. None as for `replaceable`.
+    pub fn is_solid(&self, state: BlockState) -> Option<bool> {
+        self.backend.block_state_is_solid(state)
+    }
+    /// Whether `state`'s collision shape is the full cube, as vanilla caches it per state:
+    /// `Block.isShapeFullBlock(getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO))`,
+    /// which `BlockState.isCollisionShapeFullBlock` answers (stone and leaves yes; slabs, stairs
+    /// and fences no, though they are solid). The state's own shape, with no position or entity
+    /// context.
+    /// None for a state whose shape depends on its position
+    /// (`BlockBehaviour.Properties.dynamicShape`: shulker boxes, moving pistons), where vanilla
+    /// keeps no cached answer, and as for `replaceable`.
+    pub fn collision_is_full_block(&self, state: BlockState) -> Option<bool> {
+        self.backend.block_state_collision_is_full_block(state)
+    }
     /// `PoiTypes.forState`: the point of interest type `state` belongs to (`minecraft:home`,
     /// `minecraft:librarian`, `minecraft:meeting`...), the states mods add with
     /// `extend_poi_types` included; it says whether a placed block becomes a job site or a
@@ -611,6 +684,20 @@ impl BlockStates<'_> {
         class: BlockClass,
     ) -> Result<Option<bool>, LevelReadError> {
         self.backend.block_state_class(state, class)
+    }
+    /// Whether `state`'s block is a `LiquidBlockContainer` (Java's `instanceof`), a block a fluid
+    /// can be placed into: the waterloggable blocks (`SimpleWaterloggedBlock` extends it) and the
+    /// ones that hold water without a `waterlogged` property (kelp, seagrass). A container that is
+    /// not [`is_simple_waterlogged`](Self::is_simple_waterlogged) is one of the latter. The
+    /// engine's classification of the block, never a tag. None as for `replaceable`.
+    pub fn is_liquid_block_container(&self, state: BlockState) -> Option<bool> {
+        self.backend.block_state_is_liquid_block_container(state)
+    }
+    /// Whether `state`'s block is a `SimpleWaterloggedBlock` (Java's `instanceof`): a block with a
+    /// `waterlogged` property that water fills and a bucket empties (slabs, stairs, fences,
+    /// chests). The engine's classification of the block, never a tag. None as for `replaceable`.
+    pub fn is_simple_waterlogged(&self, state: BlockState) -> Option<bool> {
+        self.backend.block_state_is_simple_waterlogged(state)
     }
     /// `BlockState.getPistonPushReaction()`: the resolved reaction used for piston simulation
     /// and client replay. Includes the active [`crate::BlockPart::piston_push_reaction`] answer

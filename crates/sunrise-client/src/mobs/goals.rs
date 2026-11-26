@@ -3316,8 +3316,15 @@ impl BreathAir {
             f64::from(m.ai.zza),
         );
         m.move_relative(0.02, input);
-        m.travel_move(cx.w, cx.level, cx.events, pause, |_, _, _, _| {})
-            .break_value()
+        m.travel_move(
+            cx.w,
+            cx.level,
+            cx.events,
+            pause,
+            sunrise_world::travel::TravelMode::Water,
+            |_, _, _, _| {},
+        )
+        .break_value()
     }
 }
 impl Goal for BreathAir {

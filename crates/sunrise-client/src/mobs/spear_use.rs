@@ -191,8 +191,10 @@ fn damage_entities(
     );
     let now = w.game_time;
     let action_factor = f64::from(0.2_f32);
-    // The attack damage attribute's base value.
-    let base = m.attrs.attack_damage;
+    // `getAttributeBaseValue(ATTACK_DAMAGE)`: the base alone, without the
+    // modifiers (Strength, Weakness, the weapon's, a command's) that
+    // `m.attrs.attack_damage` holds.
+    let base = super::finalize::base_value(m, super::finalize::Attr::AttackDamage) as f32;
     let mut affected = false;
     for (contact, (i, _)) in hits.into_iter().enumerate() {
         let target = &targets[i];
@@ -277,6 +279,7 @@ fn stab_attack(
             kind: DamageKind::Spear,
             attacker: Some(Who::Mob(m.id)),
             from: Some(from),
+            direct: None,
             attacker_species: Some(m.species()),
         },
         weapon: weapon.clone(),
@@ -920,8 +923,8 @@ impl<G: Goal + Clone + 'static> Goal for NoMeleeWithSpear<G> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Mob, MobEvent, MobWorld, WeaponAttack, WeaponHit, Who, count_use_tick, is_using_item,
-        stab_attack, start_using_item,
+        Mob, MobEvent, MobWorld, WeaponAttack, WeaponHit, Who, count_use_tick, damage_entities,
+        is_using_item, main_hand_kinetic, stab_attack, start_using_item,
     };
     use sunrise_core::geometry::Vec3;
 
@@ -932,6 +935,63 @@ mod tests {
             Some("minecraft:iron_spear".into()),
         );
         m
+    }
+
+    /// `KineticWeapon.damageEntities`: a mob's charge deals the attack damage
+    /// attribute's base value (`getAttributeBaseValue`) plus the speed bonus,
+    /// whatever modifiers (Strength, Weakness, a command's) the attribute has.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mob_spear_charge_deals_the_base_attack_damage_without_its_modifiers() {
+        use crate::mobs::finalize::{self, Attr, Op};
+        let target = Mob::new(
+            2,
+            crate::mobs::sensor_scan_tests::kind(),
+            Vec3::new(0.0, 80.0, 1.6),
+            0.0,
+        );
+        let others = [target.seen(None, &crate::items::Items::empty())];
+        let charge = |modifier: Option<f64>| {
+            let mut m = spear_zombie();
+            m.position = Vec3::new(0.0, 80.0, 0.0);
+            finalize::set_base(&mut m, Attr::AttackDamage, 3.0);
+            if let Some(amount) = modifier {
+                finalize::add_modifier(
+                    &mut m,
+                    Attr::AttackDamage,
+                    "test:strength",
+                    amount,
+                    Op::AddValue,
+                );
+            }
+            let kinetic = main_hand_kinetic(&m).expect("an iron spear");
+            let mut amounts = Vec::new();
+            assert!(crate::mobs::world::with_test_world(&others, |w, _| {
+                let mut events = Vec::new();
+                // Running 0.1 blocks a tick (2 a second) toward the still target.
+                damage_entities(
+                    &mut m,
+                    &kinetic,
+                    kinetic.delay_ticks,
+                    w,
+                    Vec3::new(0.0, 0.0, 0.1),
+                    &mut events,
+                );
+                amounts.extend(events.iter().filter_map(|event| match event {
+                    MobEvent::WeaponAttack(WeaponHit {
+                        target: Who::Mob(2),
+                        amount,
+                        ..
+                    }) => Some(*amount),
+                    _ => None,
+                }));
+            }));
+            (m.attrs.attack_damage, amounts)
+        };
+        // 3 + floor(2 * 0.95), the iron spear's damage multiplier.
+        assert_eq!(charge(None), (3.0, vec![4.0]));
+        assert_eq!(charge(Some(10.0)), (13.0, vec![4.0]));
+        assert_eq!(charge(Some(-2.0)), (1.0, vec![4.0]));
     }
 
     /// The counters a mod's `living_set_item_use_remaining` leaves a 72000

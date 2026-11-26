@@ -28,10 +28,14 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    from . import lab, test_rust_parity as base, test_model_baking_parity as baking, test_item_model_parity as item_model
-except ImportError:
-    import lab, test_rust_parity as base, test_model_baking_parity as baking, test_item_model_parity as item_model
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import (
+    lab,
+    test_rust_parity as base,
+    test_model_baking_parity as baking,
+    test_item_model_parity as item_model,
+)
 
 PARITY = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity'
 TEST = 'game::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases'

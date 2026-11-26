@@ -7,17 +7,16 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
 
 from tests.os_support import POSIX_BASH, needs_runner_shell
 from tests.test_ci_concurrency import expression_value
+from tools.ci import vendored_yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"))
-import yaml
+yaml = vendored_yaml.load()
 
 WORKFLOWS = ROOT / ".github/workflows"
 
@@ -463,8 +462,10 @@ class DynaRoutingTests(unittest.TestCase):
 
     @unittest.skipUnless(POSIX_BASH and os.name != "nt", "needs the runner's bash and POSIX paths")
     def test_stage_artifact_handoff_selects_normal_binary_and_rejects_unsafe_paths(self):
+        import json
         runtime = workflow("dyna-ci.yml")["jobs"]["verify"]
         script = step_named(runtime, "Build the source stage generator (test profile)")["run"]
+        self.assertEqual(script, "python3 tools/ci/surface_report.py --build-tool")
         for case in ("normal-and-harness", "harness-only", "newline-path"):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)

@@ -364,8 +364,12 @@ fn surface_diff(args: &[PathBuf]) -> ! {
             }
             filter_ids(&mut file);
             for id in diff.attach(&file.note, &file.ids) {
+                let hint = diff
+                    .nearest(&id)
+                    .map(|known| format!("; did you mean {known}?"))
+                    .unwrap_or_default();
                 stale.push(format!(
-                    "change note {} names {id}, which did not change",
+                    "change note {} names {id}, which did not change{hint}",
                     file.note.file
                 ));
             }

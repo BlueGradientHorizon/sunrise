@@ -178,7 +178,7 @@ impl Game<'_> {
         let Some(r) = self.gui.atlas.texture_rect(name) else {
             return false;
         };
-        let flags = self.gui.atlas.flags.get(name).copied();
+        let flags = self.gui.atlas.texture_flags(name);
         let sampling = flags.map_or(0, sampling);
         draw.push_on_atlas(
             corners,

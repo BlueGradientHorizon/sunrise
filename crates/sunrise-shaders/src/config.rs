@@ -280,11 +280,7 @@ impl Config {
         }
         for (origin, comment) in &pp.comments {
             for (at, ty, name, value) in constants(comment, true) {
-                let file = pp
-                    .files
-                    .get(origin.file as usize)
-                    .map_or("?", String::as_str);
-                let place = format!("{file}:{}", origin.line);
+                let place = format!("{}:{}", pp.file_of(*origin), origin.line);
                 // Our probes' Iris 1.11.7 values fit this (a fit, not a rule Iris states): a
                 // `colortexNFormat` in a block comment counts only when `const` starts its line.
                 // Iris ignored one on the line of the `/*` (`/* const int colortex2Format =

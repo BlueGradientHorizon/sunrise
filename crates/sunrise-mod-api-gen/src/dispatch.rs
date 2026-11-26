@@ -1092,7 +1092,10 @@ pub(super) fn emit<'a>(
                 .as_ref()
                 .is_some_and(|(_, param)| param.ty == "LevelRandomSide");
         let filtered_subscribers = name == "add_pack_finders";
-        let movement_side_filter = matches!(name, "entity_move" | "living_travel");
+        let movement_side_filter = matches!(
+            name,
+            "entity_move" | "living_travel" | "living_travel_moved"
+        );
         let allow_subscriber = fresh_name("allow", &mut used);
         let client_controlled = fresh_name("client_controlled", &mut used);
         let invoke_part = fresh_name("invoke_part", &mut used);
@@ -1704,11 +1707,10 @@ pub(super) fn emit<'a>(
                 Contract::Collect if attributed_append => {
                     format!("{event}.mod_id = {mod_id_expr}; {plain_call};")
                 }
-                Contract::Listen => match &validate_proposal {
+                Contract::Listen | Contract::Collect => match &validate_proposal {
                     Some(validate) => format!("{plain_call}; {}", validate(mod_id_expr)),
                     None => format!("{plain_call};"),
                 },
-                _ => format!("{plain_call};"),
             };
             format!("{local_event} {snapshot_statement}{invocation} {local_write_back}")
         };
@@ -1852,6 +1854,19 @@ pub(super) fn emit<'a>(
                     String::new(),
                     format!(
                         "{{ let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in {each} {{ {side_guard}if {accepted} && !{receives} {{ continue; }} {active} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {local_event} {cancel_step} {publish_each} }} }} {publish_end}"
+                    ),
+                )
+            }
+            None if movement_side_filter => {
+                let side_guard = format!(
+                    "if {client_controlled} && {mod_entry}.side == super::Side::Server {{ continue; }}"
+                );
+                let active = enter_active(&format!("{mod_entry}.id"));
+                (
+                    String::new(),
+                    format!(
+                        "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ {side_guard} {active} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {} }} }}",
+                        call(&mod_item, &format!("{mod_entry}.id"), "continue;", "break"),
                     ),
                 )
             }

@@ -490,7 +490,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         check_blit_region(dst, uv, tex)?;
         let rect = *self
             .atlas
-            .blit_rect(texture)
+            .texture_rect(texture)
             .ok_or(GuiDrawError::UnknownTexture)?;
         let quad = ResolvedGuiQuad {
             rect,
@@ -498,7 +498,14 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             color: argb,
         };
         self.paint(|batch, atlas| {
-            quad.paint_blit(batch, atlas.blit_atlas_page(texture), uv, src, tex, blend)
+            quad.paint_blit(
+                batch,
+                atlas.texture_atlas_page(texture),
+                uv,
+                src,
+                tex,
+                blend,
+            )
         })
     }
 

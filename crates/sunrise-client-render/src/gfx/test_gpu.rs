@@ -45,8 +45,10 @@ pub(crate) fn request_adapter(
     }
 }
 
+/// Whether the daily GPU lane asks every GPU test to run (`SUNRISE_GPU_TESTS_REQUIRE_ADAPTER=1`),
+/// so a test that cannot run there fails instead of skipping.
 #[cfg(test)]
-fn require_adapter() -> bool {
+pub(crate) fn require_adapter() -> bool {
     std::env::var_os("SUNRISE_GPU_TESTS_REQUIRE_ADAPTER").is_some_and(|value| value == "1")
 }
 

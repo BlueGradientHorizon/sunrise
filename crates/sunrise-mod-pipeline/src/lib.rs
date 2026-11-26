@@ -20,9 +20,9 @@ pub mod check;
 pub mod guard;
 pub mod stubs;
 
-use crate::check::{Problem, located, problem, translate_backends};
+use crate::check::{Problem, line_column, problem, translate_backends};
 use naga::front::glsl::InterfaceLimits;
-use sunrise_glsl::{Glue, Includes, Inputs, ResourceKind, Stages, Translated};
+use sunrise_glsl::{Expanded, Glue, Includes, Inputs, ResourceKind, Stages, Translated};
 
 /// The folder under `assets/<namespace>/` holding core shader programs (`.vsh` and `.fsh`).
 pub const CORE_FOLDER: &str = "shaders/core";
@@ -507,61 +507,99 @@ fn is_supported_vertex_glsl_type(ty: &str) -> bool {
     )
 }
 
-/// Extract declared vertex `in` attributes `(name, glsl_type)` from vertex GLSL for standalone
-/// tooling (`cargo sunrise-mod check`) that validates `.vsh` files without running the mod's Rust
-/// registration code. The declarations are the ones the translator reads
-/// ([`sunrise_glsl::stage_inputs`]) in the text with its comments removed; its `#include`s are
-/// not followed, so an included file's inputs are not listed. Refuses an unsupported type, a name
-/// declared twice and more than 16 inputs.
-pub fn extract_vertex_inputs(vertex: &str) -> Result<Vec<(String, String)>, String> {
-    let paste_nothing = |_: &str| Ok(Some(String::new()));
-    let includes = Includes {
-        read: &paste_nothing,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
-    // With defines, the expansion removes comments as the translator's does: a commented-out
-    // `in` is no input.
-    let defines = effective_defines(&[]);
-    let expanded = sunrise_glsl::expand_includes(vertex, "", "", &includes, Some(&defines))
-        .map_err(|e| e.to_string())?;
-    let decls = sunrise_glsl::stage_inputs(expanded.text());
+/// The asset path of a file a located error names: an `#include`d file's id `ns:path` becomes
+/// `assets/ns/path`, the spelling of a stage file, which is already an asset path. A [`Problem`]
+/// names every file by its asset path, the path the mod's pack holds it at.
+fn asset_path(file: &str) -> String {
+    match file.split_once(':') {
+        Some((namespace, path)) => format!("assets/{namespace}/{path}"),
+        None => file.to_owned(),
+    }
+}
+
+/// A refusal at byte `at` of `stage`'s text (none when it has no place: the stage file, no line),
+/// in the file and at the line that byte came from ([`Expanded::error_at`]: an `#include`d
+/// declaration is located in its own file), and at its column in the expanded text.
+fn refusal_at(stage: &Expanded, at: Option<usize>, message: String) -> Problem {
+    let error = stage.error_at(at, message);
+    Problem {
+        file: asset_path(&error.file),
+        line: error.line as usize,
+        column: at.map_or(0, |at| line_column(stage.text(), at).1),
+        message: error.message,
+    }
+}
+
+/// The vertex inputs `(name, glsl_type)` a vertex stage declares, from its expanded text
+/// ([`sunrise_glsl::stage_inputs`]: includes inlined, comments gone). Refuses an unsupported
+/// type, a name declared twice and more than 16 inputs, locating the refusal in the file and at
+/// the line the declaration came from ([`refusal_at`]).
+fn declared_vertex_inputs(vertex: &Expanded) -> Result<Vec<(String, String)>, Problem> {
+    let decls = sunrise_glsl::stage_inputs(vertex.text());
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(decls.len());
-    for (name, ty) in decls {
+    for (offset, name, ty) in decls {
+        let refuse = |message: String| refusal_at(vertex, Some(offset), message);
         if !is_supported_vertex_glsl_type(ty) {
-            return Err(format!(
+            return Err(refuse(format!(
                 "unsupported vertex input type `{ty}` for `{name}`: expected float/vecN/int/ivecN/uint/uvecN"
-            ));
+            )));
         }
         if !seen.insert(name) {
-            return Err(format!("duplicate vertex input `{name}`"));
+            return Err(refuse(format!("duplicate vertex input `{name}`")));
         }
         out.push((name.to_owned(), ty.to_owned()));
         if out.len() > 16 {
-            return Err("vertex shader declares more than 16 vertex inputs".to_owned());
+            return Err(refuse(
+                "vertex shader declares more than 16 vertex inputs".to_owned(),
+            ));
         }
     }
     Ok(out)
 }
 
+/// Reads an include for a program: the sprite helpers ([`SPRITE_INCLUDE`]) are pasted when
+/// `sprite` (the pipeline is textured, or the reader is finding out whether it is) and refused
+/// otherwise, every other file comes from `include`.
+fn read_include(
+    id: &str,
+    sprite: bool,
+    include: &dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    if id != SPRITE_INCLUDE {
+        return include(id);
+    }
+    if sprite {
+        return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
+    }
+    Err(format!(
+        "{SPRITE_INCLUDE} requires a sprite texture (RenderPipeline::textured)"
+    ))
+}
+
+/// The [`Includes`] of a program's stages, reading files through `read` ([`read_include`]).
+fn program_includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>) -> Includes<'a> {
+    Includes {
+        read,
+        namespace: "minecraft",
+        folder: INCLUDE_FOLDER,
+        once: &["moj_import"],
+    }
+}
+
 /// Refuse any top-level vertex `in` declaration ([`sunrise_glsl::stage_inputs`] of the expanded
 /// stage, comments gone) that is not listed in `vertex_inputs` or whose GLSL type disagrees with
 /// the pipeline's [`VertexFormat`]. A declaration is located by where its name stands in
-/// `vertex_expanded`.
+/// `vertex`, in the file and at the line it came from ([`refusal_at`]).
 fn validate_vertex_inputs(
-    vertex_file: &str,
-    vertex_expanded: &str,
+    vertex: &Expanded,
     vertex_inputs: &[(&str, &str)],
 ) -> Result<(), Problem> {
-    for (name, ty) in sunrise_glsl::stage_inputs(vertex_expanded) {
-        let offset = name.as_ptr() as usize - vertex_expanded.as_ptr() as usize;
+    for (offset, name, ty) in sunrise_glsl::stage_inputs(vertex.text()) {
         match vertex_inputs.iter().find(|(n, _)| *n == name) {
             None => {
-                return Err(located(
-                    vertex_file,
-                    vertex_expanded,
+                return Err(refusal_at(
+                    vertex,
                     Some(offset),
                     format!(
                         "undeclared vertex input `{name}`: declare it in RenderPipeline::vertex_binding"
@@ -569,9 +607,8 @@ fn validate_vertex_inputs(
                 ));
             }
             Some((_, expected)) if *expected != ty => {
-                return Err(located(
-                    vertex_file,
-                    vertex_expanded,
+                return Err(refusal_at(
+                    vertex,
                     Some(offset),
                     format!(
                         "vertex input `{name}` declared as `{ty}` in shader, expected `{expected}` from VertexFormat"
@@ -593,37 +630,35 @@ pub struct ProgramBindings {
     pub textured: bool,
     /// The mod's own bindings ([`extract_mod_bindings`]).
     pub bindings: Vec<(String, ModBindingKind)>,
+    /// The vertex stage's `in`s `(name, glsl_type)` in declaration order, the ones an included
+    /// file declares too, checked as the translator checks them: a supported type, each name
+    /// once, at most 16.
+    pub vertex_inputs: Vec<(String, String)>,
     /// What its `layout(push_constant)` block asks for, `0` without one.
     pub push_constant_size: u32,
+    /// The id (`ns:path`) of every file either stage's expansion pasted, each once, the vertex
+    /// stage's first.
+    pub includes: Vec<String>,
 }
 
 /// What a program's two stages declare, read as [`translate`] reads them: `#include`s inlined
 /// under `defines` and comments removed. A uniform block, sampler or buffer an included file
 /// declares is the program's too (#5905), and one named only in a comment is not, nor does a
 /// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
-/// refuses the program, as [`translate`] does, with the include's error.
+/// refuses the program, as [`translate`] does, with the include's error, and so does a vertex
+/// input of an unsupported type, a duplicate one or a 17th, in the file and at the line that
+/// declares it, an included file's among them.
+/// [`SPRITE_INCLUDE`] is always pasted: including it is itself asking for the sprite texture.
 pub fn extract_program_bindings(
     sources: &ProgramSources<'_>,
     defines: &[&str],
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<ProgramBindings, Problem> {
-    // Including the sprite helpers is itself asking for the sprite texture.
-    let read = |id: &str| -> Result<Option<String>, String> {
-        if id == SPRITE_INCLUDE {
-            return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
-        }
-        include(id)
-    };
-    let includes = Includes {
-        read: &read,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let read = |id: &str| read_include(id, true, include);
+    let includes = program_includes(&read);
     let defines = effective_defines(defines);
     let expand = |text: &str, file: &str, dir: &str| {
         sunrise_glsl::expand_includes(text, file, dir, &includes, Some(&defines))
-            .map(|expanded| expanded.text().to_owned())
             .map_err(|e| problem(file, e.to_string()))
     };
     let vertex = expand(sources.vertex, sources.vertex_file, sources.vertex_dir)?;
@@ -632,15 +667,26 @@ pub fn extract_program_bindings(
         sources.fragment_file,
         sources.fragment_dir,
     )?;
-    let textured = [&vertex, &fragment].iter().any(|text| {
-        text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+    let textured = [&vertex, &fragment].iter().any(|stage| {
+        stage
+            .text()
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
             .any(|word| matches!(word, "Sampler0" | "SpriteRect" | "sampleSprite"))
     });
-    let (bindings, push_constant_size) = extract_mod_bindings(&vertex, &fragment, textured);
+    let (bindings, push_constant_size) =
+        extract_mod_bindings(vertex.text(), fragment.text(), textured);
+    let mut includes = vertex.includes().to_vec();
+    for id in fragment.includes() {
+        if !includes.contains(id) {
+            includes.push(id.clone());
+        }
+    }
     Ok(ProgramBindings {
         textured,
         bindings,
+        vertex_inputs: declared_vertex_inputs(&vertex)?,
         push_constant_size,
+        includes,
     })
 }
 
@@ -709,12 +755,7 @@ fn translate_compute_inner(
     options: &ComputeOptions<'_>,
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<sunrise_glsl::ComputeTranslated, Vec<Problem>> {
-    let includes = Includes {
-        read: &include,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let includes = program_includes(include);
     let expanded = sunrise_glsl::expand_includes(
         sources.source,
         sources.file,
@@ -722,11 +763,9 @@ fn translate_compute_inner(
         &includes,
         Some(options.defines),
     )
-    .map_err(|e| vec![problem(sources.file, e.to_string())])?
-    .text()
-    .to_owned();
-    if let Some((at, msg)) = guard::refusal(&expanded) {
-        return Err(vec![located(sources.file, &expanded, at, msg)]);
+    .map_err(|e| vec![problem(sources.file, e.to_string())])?;
+    if let Some((at, msg)) = guard::refusal(expanded.text()) {
+        return Err(vec![refusal_at(&expanded, at, msg)]);
     }
     let set = assign_set1_bindings(options.mod_bindings, 0);
     let inputs = Inputs {
@@ -811,65 +850,34 @@ fn translate_inner(
     extra_samplers: &[&str],
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<BuiltProgram, Vec<Problem>> {
-    let read = |id: &str| -> Result<Option<String>, String> {
-        if id == SPRITE_INCLUDE {
-            if options.textured {
-                return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
-            }
-            return Err(format!(
-                "{SPRITE_INCLUDE} requires a sprite texture (RenderPipeline::textured)"
-            ));
-        }
-        include(id)
-    };
-    let includes = Includes {
-        read: &read,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let read = |id: &str| read_include(id, options.textured, include);
+    let includes = program_includes(&read);
 
-    let vertex_expanded = sunrise_glsl::expand_includes(
+    let vertex = sunrise_glsl::expand_includes(
         sources.vertex,
         sources.vertex_file,
         sources.vertex_dir,
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?
-    .text()
-    .to_owned();
+    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
+    let vertex_expanded = vertex.text().to_owned();
     if let Some((at, msg)) = guard::refusal(&vertex_expanded) {
-        return Err(vec![located(
-            sources.vertex_file,
-            &vertex_expanded,
-            at,
-            msg,
-        )]);
+        return Err(vec![refusal_at(&vertex, at, msg)]);
     }
-    if let Err(prob) =
-        validate_vertex_inputs(sources.vertex_file, &vertex_expanded, options.vertex_inputs)
-    {
-        return Err(vec![prob]);
-    }
+    validate_vertex_inputs(&vertex, options.vertex_inputs).map_err(|prob| vec![prob])?;
 
-    let fragment_expanded = sunrise_glsl::expand_includes(
+    let fragment = sunrise_glsl::expand_includes(
         sources.fragment,
         sources.fragment_file,
         sources.fragment_dir,
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?
-    .text()
-    .to_owned();
+    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?;
+    let fragment_expanded = fragment.text().to_owned();
     if let Some((at, msg)) = guard::refusal(&fragment_expanded) {
-        return Err(vec![located(
-            sources.fragment_file,
-            &fragment_expanded,
-            at,
-            msg,
-        )]);
+        return Err(vec![refusal_at(&fragment, at, msg)]);
     }
 
     // When both stages live in the same folder, pass original sources so `__LINE__` stays exact.
@@ -907,26 +915,11 @@ fn translate_inner(
     let inputs = setup.inputs(options, defines, &includes);
     let glue = setup.glue(options, None);
 
-    // The translator asks about a block or sampler the pipeline doesn't declare only to refuse
-    // it when the answer is no, so the last name refused is the one its error is about.
-    let refused = std::cell::RefCell::new(None);
-    let provided = |name: &str| {
-        let provided = extra_samplers.contains(&name);
-        if !provided {
-            *refused.borrow_mut() = Some(name.to_owned());
-        }
-        provided
-    };
-    let unbound = |errs: Vec<sunrise_glsl::Error>| {
-        map_glsl_errors(
-            sources,
-            &errs,
-            options.textured,
-            refused.borrow().as_deref(),
-        )
-    };
+    let provided = |name: &str| extra_samplers.contains(&name);
+    let to_problems =
+        |errs: Vec<sunrise_glsl::Error>| map_glsl_errors(sources, &errs, options.textured);
     let mut translated =
-        sunrise_glsl::translate(&stages, &inputs, &glue, &provided).map_err(unbound)?;
+        sunrise_glsl::translate(&stages, &inputs, &glue, &provided).map_err(to_problems)?;
     if let Some(pc_binding) = set1.push_constant_binding
         && let Some(actual_size) = translated.uniform_block_size(MOD_BIND_GROUP_SET, pc_binding)
         && actual_size > options.push_constant_size
@@ -945,8 +938,8 @@ fn translate_inner(
     {
         let finish = linear_fragment_finish(out_name);
         let linear_glue = setup.glue(options, Some(&finish));
-        translated =
-            sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided).map_err(unbound)?;
+        translated = sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided)
+            .map_err(to_problems)?;
     }
 
     if options.check_backends {
@@ -979,15 +972,14 @@ pub fn translate_linear_fragment(
 ) -> Result<naga::Module, String> {
     guard::guarded(|| {
         let defines = effective_defines(options.defines);
+        // The text is expanded already: nothing is left to include.
         let noop = |_: &str| Ok(None);
-        let includes = Includes {
-            read: &noop,
-            namespace: "minecraft",
-            folder: INCLUDE_FOLDER,
-            once: &["moj_import"],
-        };
+        let read = |id: &str| read_include(id, options.textured, &noop);
+        let includes = program_includes(&read);
         let setup = Setup::new(options);
         let inputs = setup.inputs(options, &defines, &includes);
+        // The program is one `translate` built, which provides no extra samplers: only
+        // `translate_oit` does, and the renderer never re-translates an OIT program.
         let provided = |_: &str| false;
         let stages = Stages {
             dir: "",
@@ -1011,32 +1003,31 @@ pub fn translate_linear_fragment(
     .unwrap_or_else(Err)
 }
 
-/// The translator's `errors` as problems in the program's files. `unbound` is the block or sampler
-/// the program reads that the pipeline doesn't provide, when that is what the translator refused:
-/// `Sampler0` or `SpriteRect` on an untextured pipeline adds the hint to declare it textured.
+/// The translator's `errors` as problems in the program's files. An error refusing `Sampler0` or
+/// `SpriteRect` as a block or sampler the pipeline doesn't provide
+/// ([`sunrise_glsl::Error::unprovided`]) adds, on an untextured pipeline, the hint to declare it
+/// textured.
 fn map_glsl_errors(
     sources: &ProgramSources<'_>,
     errors: &[sunrise_glsl::Error],
     textured: bool,
-    unbound: Option<&str>,
 ) -> Vec<Problem> {
-    let hint = !textured && matches!(unbound, Some("Sampler0" | "SpriteRect"));
     errors
         .iter()
         .map(|err| {
             let mut message = err.message.clone();
-            if hint {
+            if !textured && matches!(err.unprovided.as_deref(), Some("Sampler0" | "SpriteRect")) {
                 message += " (requires RenderPipeline::textured)";
             }
             let file = if !err.file.is_empty() {
-                err.file.as_str()
+                asset_path(&err.file)
             } else if message.starts_with("vertex shader: ") {
-                sources.vertex_file
+                sources.vertex_file.to_owned()
             } else {
-                sources.fragment_file
+                sources.fragment_file.to_owned()
             };
             Problem {
-                file: file.to_owned(),
+                file,
                 line: err.line as usize,
                 column: 0,
                 message,
@@ -1321,6 +1312,42 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
         assert_eq!(err[0].file, "assets/example/shaders/core/glow.fsh");
         assert!(err[0].line > 0, "{err:?}");
         assert!(err[0].message.contains("chains more than 200"), "{err:?}");
+    }
+
+    /// The guard refuses an expression chained too long in an included file, and the refusal
+    /// names that file and the line in it, not the stage file and a line of the expanded text.
+    #[test]
+    fn a_guard_refusal_in_an_include_is_located_in_the_include() {
+        let chain = format!("float a = 1.0;\nfloat x = a{};\n", "+a".repeat(250));
+        let include = |id: &str| match id {
+            "example:shaders/include/chain.glsl" => Ok(Some(chain.clone())),
+            other => stub_include(other),
+        };
+        let fsh = "#version 330\nin vec2 texCoord0;\nout vec4 fragColor;\n\
+            #include <example:chain.glsl>\nvoid main() { fragColor = vec4(1.0); }\n";
+        let err = translate(&sources(VSH, fsh), &Options::default(), &include).unwrap_err();
+        assert_eq!(err.len(), 1, "{err:?}");
+        assert_eq!(err[0].file, "assets/example/shaders/include/chain.glsl");
+        assert_eq!(err[0].line, 2);
+        assert!(err[0].message.contains("chains more than 200"), "{err:?}");
+
+        let csh = "#version 450\nlayout(local_size_x = 1) in;\n\
+            #include <example:chain.glsl>\nvoid main() {}\n";
+        let compute = ComputeSources {
+            file: "assets/example/shaders/compute/a.csh",
+            dir: "example:shaders/compute/",
+            source: csh,
+        };
+        let options = ComputeOptions {
+            defines: &[],
+            mod_bindings: &[],
+            check_backends: false,
+            interface: DEVICELESS_INTERFACE_LIMITS,
+        };
+        let err = translate_compute(&compute, &options, &include).unwrap_err();
+        assert_eq!(err.len(), 1, "{err:?}");
+        assert_eq!(err[0].file, "assets/example/shaders/include/chain.glsl");
+        assert_eq!(err[0].line, 2);
     }
 
     /// `sampleSprite`'s texel arithmetic: `uv` 0 to 1 spans the sprite's rect once, the far edge
@@ -1837,13 +1864,69 @@ void main() {{
         let vsh = "#version 330\n// in vec3 Commented;\nin vec3 Position; // in vec2 Trailing;\n\
             /* in vec4 Block;\nin vec4 Spanning; */\nin vec2 UV0;\n\
             void main() { gl_Position = vec4(Position, UV0.x); }\n";
+        let fsh = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let program = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include).unwrap();
         assert_eq!(
-            extract_vertex_inputs(vsh).unwrap(),
+            program.vertex_inputs,
             [
                 ("Position".to_owned(), "vec3".to_owned()),
                 ("UV0".to_owned(), "vec2".to_owned())
             ]
         );
+    }
+
+    /// A vertex stage's `in`s are read from the text the translator reads, so those an included
+    /// file declares are the program's too, and a refused one is located in the file and at the line
+    /// it came from.
+    #[test]
+    fn vertex_inputs_come_from_the_expanded_vertex_stage() {
+        let vsh = "#version 330\n#include <example:attributes.glsl>\nin vec2 UV0;\n\
+            void main() { gl_Position = vec4(Position, 1.0); }\n";
+        let fsh = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => Ok(Some(
+                "in vec3 Position;\nlayout(location = 3) in uvec4 Packed;\n".to_owned(),
+            )),
+            other => stub_include(other),
+        };
+        let program = extract_program_bindings(&sources(vsh, fsh), &[], &include).unwrap();
+        let expected = [("Position", "vec3"), ("Packed", "uvec4"), ("UV0", "vec2")]
+            .map(|(name, ty)| (name.to_owned(), ty.to_owned()));
+        assert_eq!(program.vertex_inputs, expected);
+
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => Ok(Some("in mat4 Matrix;\n".to_owned())),
+            other => stub_include(other),
+        };
+        let refused = extract_program_bindings(&sources(vsh, fsh), &[], &include)
+            .expect_err("an unsupported vertex input type is refused");
+        assert_eq!(
+            refused.file,
+            "assets/example/shaders/include/attributes.glsl"
+        );
+        assert_eq!(refused.line, 1);
+        assert!(
+            refused.message.contains("`mat4` for `Matrix`"),
+            "{refused:?}"
+        );
+
+        // The translator refuses an undeclared `in` of an include the same way, on a line
+        // that is no line of the expanded text.
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => {
+                Ok(Some("in vec3 Position;\nin vec4 Stray;\n".to_owned()))
+            }
+            other => stub_include(other),
+        };
+        let refused = translate(&sources(vsh, fsh), &Options::default(), &include)
+            .expect_err("an undeclared vertex input is refused");
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(
+            refused[0].file,
+            "assets/example/shaders/include/attributes.glsl"
+        );
+        assert_eq!(refused[0].line, 2);
+        assert!(refused[0].message.contains("`Stray`"), "{refused:?}");
     }
 
     /// A program whose include cannot be expanded is refused with the include's error, not read
@@ -1861,6 +1944,26 @@ void main() {{
             refused.message.contains("nothing_here.glsl not found"),
             "{refused:?}"
         );
+    }
+
+    /// A translator error in an included file names it by its asset path, as a stage file is.
+    #[test]
+    fn a_translator_error_in_an_include_names_its_asset_path() {
+        let include = |id: &str| {
+            match id {
+            "example:shaders/include/pick.glsl" => Ok(Some(
+                "uniform sampler2D MySampler0;\nvec4 pick() { return texture(MySampler0, vec2(0.0)); }\n"
+                    .to_owned(),
+            )),
+            other => stub_include(other),
+        }
+        };
+        let fsh = "#version 330\n#include <example:pick.glsl>\nout vec4 fragColor;\n\
+            void main() { fragColor = pick(); }\n";
+        let problems = translate(&sources(VSH, fsh), &Options::default(), &include)
+            .expect_err("a sampler the pipeline doesn't provide is refused");
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert_eq!(problems[0].file, "assets/example/shaders/include/pick.glsl");
     }
 
     /// The hint to declare `.textured` follows the name the pipeline refused: `Sampler0`

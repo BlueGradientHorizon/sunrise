@@ -2070,3 +2070,48 @@ fn animation_upload_region_preserves_unpadded_and_blurred_borders() {
     assert_eq!(px(&cbuf, 0, 1), &[255, 0, 0, 255]);
     assert_eq!(px(&cbuf, 3, 1), &[0, 0, 255, 255]);
 }
+
+/// One `minecraft:` rule for both raw texture lookups (#6012): a packed sprite and a registered
+/// atlas's sprite answer to their bare name and to `minecraft:` before it, and a sprite of
+/// another namespace keeps its own.
+#[test]
+fn a_raw_texture_answers_to_its_name_with_or_without_minecraft() {
+    let mut atlas = HudAtlas::build(&ResourceSource::directory(
+        "/nonexistent/sunrise-test-assets".into(),
+    ))
+    .unwrap();
+    let rect = |w| Rect {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 1.0,
+        w,
+        h: 1,
+    };
+    atlas.sprites.insert("textures/gui/packed".into(), rect(1));
+    atlas
+        .registered
+        .insert("gui/atlases/icons/heart".into(), rect(2));
+    atlas
+        .registered_owners
+        .insert("gui/atlases/icons/heart".into(), 3);
+    atlas
+        .sprites
+        .insert("mymod:textures/gui/own".into(), rect(4));
+    for name in ["textures/gui/packed", "minecraft:textures/gui/packed"] {
+        assert_eq!(atlas.texture_rect(name).map(|r| r.w), Some(1), "{name}");
+        assert_eq!(atlas.texture_atlas_page(name), None, "{name}");
+    }
+    for name in [
+        "gui/atlases/icons/heart",
+        "minecraft:gui/atlases/icons/heart",
+    ] {
+        assert_eq!(atlas.texture_rect(name).map(|r| r.w), Some(2), "{name}");
+        assert_eq!(atlas.texture_atlas_page(name), Some(3), "{name}");
+    }
+    assert_eq!(
+        atlas.texture_rect("mymod:textures/gui/own").map(|r| r.w),
+        Some(4)
+    );
+    assert_eq!(atlas.texture_rect("textures/gui/own"), None);
+}

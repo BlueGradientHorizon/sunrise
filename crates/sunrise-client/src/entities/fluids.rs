@@ -1,5 +1,6 @@
 //! Dropped-item, experience-orb and armor-stand immersion and currents through the shared vanilla fluid helpers.
 use super::{ArmorStand, ExperienceOrb, ItemEntity};
+use crate::mobs::living::Fluids;
 use crate::{
     motion::{FluidResources, FluidTags, LAVA, WATER},
     world::World,
@@ -125,6 +126,22 @@ pub fn update_entity_fluids(
     fluids: &FluidResources,
     context: &LoopContext,
 ) -> (f64, f64, bool) {
+    let scan = scan_entity_fluids(bounds, position, eye_y, velocity, world, fluids, context);
+    (scan.water, scan.lava, scan.eye_in_water)
+}
+
+/// [`update_entity_fluids`] with everything the scan found: the water and lava heights, whether
+/// the body touches each, and whether its eye is in each. `in_lava` is the raw contact, before a
+/// kind's own `firstTick` rule.
+pub fn scan_entity_fluids(
+    bounds: Aabb,
+    position: Vec3,
+    eye_y: f64,
+    velocity: &mut Vec3,
+    world: &World,
+    fluids: &FluidResources,
+    context: &LoopContext,
+) -> Fluids {
     let mut interaction = EntityFluidInteraction::new([WATER, LAVA]);
     let mut scene = EntityFluidWorld {
         bounds,
@@ -139,13 +156,14 @@ pub fn update_entity_fluids(
         .update(&mut scene, false, fluid_query_budget(bounds))
         .is_err()
     {
-        return (0.0, 0.0, false);
+        return Fluids::default();
     }
     let water_height = interaction.fluid_height(&scene, WATER);
     let lava_height = interaction.fluid_height(&scene, LAVA);
     // `updateFluidOnEyes`'s answer, kept by the interaction's trackers:
     // whether the entity's eye is inside the water it scanned.
     let eye_in_water = interaction.is_eye_in_fluid(&FluidTags, WATER);
+    let eye_in_lava = interaction.is_eye_in_fluid(&FluidTags, LAVA);
     let _ = interaction.apply_current(&mut scene, WATER, 0.014);
     let _ = interaction.apply_current(
         &mut scene,
@@ -156,7 +174,15 @@ pub fn update_entity_fluids(
             0.0023333333333333335
         },
     );
-    (water_height, lava_height, eye_in_water)
+    Fluids {
+        water: water_height,
+        lava: lava_height,
+        in_water: water_height > 0.0,
+        in_lava: lava_height > 0.0,
+        eye_in_water,
+        eye_in_lava,
+        ..Fluids::default()
+    }
 }
 impl ItemEntity {
     /// `Entity.getEyeY` of an item, sampled by `EntityFluidInteraction.update`.
