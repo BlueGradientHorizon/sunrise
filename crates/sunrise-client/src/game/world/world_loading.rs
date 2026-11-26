@@ -3,6 +3,7 @@ use super::*;
 use sunrise_client::vanillagen::{
     TerrainResources, shared_biome_source_data, shared_resource_data,
 };
+use sunrise_core::identifier::Identifier;
 use sunrise_world::worldgen::{
     biome_source::{BiomeSourceError, ResolvedBiomeSource},
     generator::{BiomeSourceData, GeneratorData},
@@ -1078,18 +1079,16 @@ pub(in crate::game) struct ModStem {
     /// Full terrain-stage worldgen resources, loaded only when `generator.vanilla_stages().any()`.
     data: Option<Arc<GeneratorData>>,
     json: serde_json::Value,
+    generator_id: Identifier,
     generator: Arc<dyn ModChunkGenerator>,
     pub(super) source: Arc<ResolvedBiomeSource>,
 }
 
 impl ModStem {
-    /// The generator its stem names (`generator.type`): the mod's registered name.
-    fn generator_type(&self) -> Option<&str> {
-        self.json["generator"]["type"].as_str()
-    }
     pub(super) fn bind(
         biomes: &BiomeSourceData,
         json: serde_json::Value,
+        generator_id: Identifier,
         generator: Arc<dyn ModChunkGenerator>,
         seed: i64,
     ) -> std::result::Result<Self, BiomeSourceError> {
@@ -1098,6 +1097,7 @@ impl ModStem {
         Ok(Self {
             data: None,
             json,
+            generator_id,
             generator,
             source: Arc::new(source),
         })
@@ -1118,7 +1118,7 @@ enum ModLevel {
 }
 
 /// Resolve the world's pack or saved custom stem, or reuse the runtime stem bound at admission,
-/// with the name of the registered generator that builds it.
+/// with the id of the registered generator that builds it.
 fn mod_terrain(
     overrides: &sunrise_world::worldgen::overrides::WorldgenOverrides,
     terrain_resources: TerrainResources<'_>,
@@ -1129,7 +1129,7 @@ fn mod_terrain(
     structures: bool,
     runtime_stem: Option<&ModStem>,
     saved_stem: Option<&sunrise_core::nbt::Tag>,
-) -> Option<std::result::Result<(ModLevel, String), String>> {
+) -> Option<std::result::Result<(ModLevel, Identifier), String>> {
     let bound;
     let stem = if let Some(stem) = runtime_stem {
         stem
@@ -1142,11 +1142,12 @@ fn mod_terrain(
             .find(|(level, _)| *level == dim.id())
             .and_then(|(_, stem)| serde_json::from_str(stem).ok())
             .or_else(|| saved_stem.map(sunrise_client::scoreboard::tag_to_json))?;
-        let generator = generators.get(json["generator"]["type"].as_str()?)?;
+        let requested = Identifier::parse_namespaced(json["generator"]["type"].as_str()?)?;
+        let (id, generator) = generators.get_key_value(&requested)?;
         let result = shared_biome_source_data(terrain_resources.dir, overrides)
             .map_err(|e| e.to_string())
             .and_then(|biomes| {
-                ModStem::bind(&biomes, json, generator.clone(), seed)
+                ModStem::bind(&biomes, json, id.clone(), generator.clone(), seed)
                     .map_err(|e| format!("biome source: {e}"))
             })
             .and_then(|stem| {
@@ -1164,7 +1165,6 @@ fn mod_terrain(
         };
         &bound
     };
-    let name = stem.generator_type().unwrap_or_default().to_owned();
     let level = if stem.generator.vanilla_stages().any() {
         let Some(data) = stem.data.clone() else {
             return Some(Err(format!(
@@ -1201,7 +1201,7 @@ fn mod_terrain(
             .map(ModLevel::Terrain),
         )
     };
-    level.map(|level| level.map(|level| (level, name)))
+    level.map(|level| level.map(|level| (level, stem.generator_id.clone())))
 }
 
 /// The file beside the world that keeps the structure references of the level `id`. An id with a
@@ -1246,7 +1246,12 @@ pub(super) fn make_streaming(
     runtime: Option<&super::runtime_levels::Generate>,
     chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
     save_reporter: Arc<sunrise_client::chunk_io::SaveFailureReporter>,
-) -> Result<(Streaming, Arc<SaveDir>, Option<Arc<VanillaTerrain>>, String)> {
+) -> Result<(
+    Streaming,
+    Arc<SaveDir>,
+    Option<Arc<VanillaTerrain>>,
+    Identifier,
+)> {
     use sunrise_client::save::WorldGen;
     let generator = level.generator.as_ref().map(|g| g.settings());
     let saved_stem = generator.and_then(|s| s.get("dimensions")?.get(dim.id()));
@@ -1281,7 +1286,7 @@ pub(super) fn make_streaming(
     let mut locator = None;
     // The generator the branch below builds the level with, as `BuiltInRegistries.CHUNK_GENERATOR`
     // names its codec: what `LevelRef::generator_type` reads.
-    let mut generator_type = "minecraft:noise".to_owned();
+    let generator_type;
     let overworld_settings = generator.filter(|_| dim == Dim::Overworld);
     use sunrise_client::flatgen::FlatTerrain;
     let flat = if runtime.is_none() {
@@ -1338,7 +1343,7 @@ pub(super) fn make_streaming(
         )
         .ok_or("a runtime level's layers use a block the game lacks")?;
         register_sea_level(-63);
-        generator_type = "minecraft:flat".to_owned();
+        generator_type = Identifier::parse("minecraft:flat").unwrap();
         Streaming::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
@@ -1370,7 +1375,7 @@ pub(super) fn make_streaming(
             .transpose()
             .map_err(|e| format!("{}: cannot build flat dimension: {e}", dim.id()))?;
         register_sea_level(-63);
-        generator_type = "minecraft:flat".to_owned();
+        generator_type = Identifier::parse("minecraft:flat").unwrap();
         locator = staged.clone();
         if let Some(inner) = staged.filter(|_| automatic_structures || flat.features || flat.lakes)
         {
@@ -1403,7 +1408,7 @@ pub(super) fn make_streaming(
             )
         }
     } else if let Some(inner) = debug {
-        generator_type = "minecraft:debug".to_owned();
+        generator_type = Identifier::parse("minecraft:debug").unwrap();
         Streaming::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
@@ -1416,6 +1421,7 @@ pub(super) fn make_streaming(
         )
     } else if options.test_terrain && dim == Dim::Overworld {
         // The test terrain stands in for the noise generator its stem names.
+        generator_type = Identifier::parse("minecraft:noise").unwrap();
         let inner = Arc::new(TestTerrain::new(pack.assets.registry, &biomes)?);
         Streaming::new(
             Arc::new(Persistent {
@@ -1427,7 +1433,7 @@ pub(super) fn make_streaming(
             pack.context_with(biomes.clone()),
             res.threads(),
         )
-    } else if let Some(level) = mod_terrain(
+    } else if let Some((level, id)) = mod_terrain(
         overrides,
         terrain_resources,
         mod_chunk_generators(),
@@ -1443,8 +1449,7 @@ pub(super) fn make_streaming(
     )
     .transpose()?
     {
-        let (level, name) = level;
-        generator_type = name;
+        generator_type = id;
         match level {
             ModLevel::Terrain(inner) => Streaming::new(
                 Arc::new(Persistent {
@@ -1479,6 +1484,7 @@ pub(super) fn make_streaming(
         if runtime.is_some() {
             return Err(format!("{}: no generator builds this runtime level", dim.id()).into());
         }
+        generator_type = Identifier::parse("minecraft:noise").unwrap();
         // WorldOptions.generateStructures, from the world's settings.
         let structures = automatic_structures;
         let preset = WorldGen::noise_preset(generator);
@@ -1840,7 +1846,7 @@ mod tests {
                 return;
             }
             let (mut streaming, _, locator, generator_type) = built.unwrap();
-            assert_eq!(generator_type, "minecraft:flat");
+            assert_eq!(generator_type.as_str(), "minecraft:flat");
             assert_eq!(
                 locator.unwrap().noise_biomes(&[[0, 0, 0]]),
                 [Some("test:glade".into())]
@@ -1867,10 +1873,8 @@ mod tests {
         });
     }
 
-    /// `LevelRef::generator_type` (#6032) reads the generator `make_streaming` built the level
-    /// with: a saved Debug overworld under a pack's noise stem builds and reports the debug
-    /// generator, and a stem naming a generator no mod registered builds no level, so no level
-    /// ever reports that name.
+    /// Report the generator actually built: saved Debug beats a pack's noise stem, an unknown
+    /// generator cannot build a custom level, and a runtime level reports its bound mod generator.
     #[test]
     #[ignore = "daily"]
     fn a_level_reports_the_generator_it_was_built_with() {
@@ -1883,13 +1887,72 @@ mod tests {
         if run_fresh_cases(
             "game::world_loading::tests::a_level_reports_the_generator_it_was_built_with",
             CASE,
-            &["debug", "unregistered"],
+            &["debug", "unregistered", "runtime"],
         ) {
             return;
         }
-        let debug = std::env::var(CASE).unwrap() == "debug";
+        let case = std::env::var(CASE).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
+        if case == "runtime" {
+            use mod_api::{RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
+            use sunrise_world::worldgen::mod_generators::ChunkAccess;
+
+            struct Floor;
+            impl ModChunkGenerator for Floor {
+                fn build_terrain(&self, chunk: &mut dyn ChunkAccess) {
+                    let pos = chunk.pos();
+                    let gold = chunk.state("minecraft:gold_block");
+                    assert!(chunk.set_block([pos.x * 16, chunk.min_y(), pos.z * 16], gold));
+                }
+            }
+
+            let id = Identifier::parse("minecraft:fixture_floor").unwrap();
+            let generators = ModChunkGenerators::from([(
+                id.clone(),
+                Arc::new(Floor) as Arc<dyn ModChunkGenerator>,
+            )]);
+            with_game(|game| {
+                game.world_root = root.to_owned();
+                let open = |game: &mut Game<'_>, name: &str| {
+                    game.runtime_level_queue_open(
+                        "test:runtime_floor",
+                        RuntimeLevel::new(
+                            "minecraft:overworld",
+                            RuntimeGenerator::Mod(name.into()),
+                            29,
+                        ),
+                        &generators,
+                    )
+                };
+                for name in [
+                    "fixture_floor",
+                    ":fixture_floor",
+                    "minecraft:BAD",
+                    "test:unregistered",
+                ] {
+                    assert_eq!(
+                        open(game, name),
+                        Err(RuntimeLevelError::UnknownGenerator),
+                        "{name}"
+                    );
+                }
+                let level = open(game, id.as_str()).unwrap();
+                game.apply_runtime_levels();
+                assert_eq!(level.generator_type(game), Some(id));
+                level.load_chunk(game, [0, 0]).unwrap();
+                let world = game.native_level_world(level).unwrap();
+                let gold = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:gold_block")
+                    .unwrap();
+                assert_eq!(world.block(0, world.shape.min_y, 0), gold);
+            });
+            return;
+        }
+        let debug = case == "debug";
         let pack = root.join("datapacks/stems");
         let write = |path: &str, text: &str| {
             let path = pack.join(path);
@@ -1973,7 +2036,7 @@ mod tests {
             );
             if debug {
                 let (_, _, _, generator_type) = built.unwrap();
-                assert_eq!(generator_type, "minecraft:debug");
+                assert_eq!(generator_type.as_str(), "minecraft:debug");
             } else {
                 let Err(error) = built else {
                     panic!("no registered generator builds test:missing");
@@ -2914,7 +2977,7 @@ mod tests {
             }
         }
         let generators = ModChunkGenerators::from([(
-            "test:floor".to_owned(),
+            Identifier::parse("test:floor").unwrap(),
             Arc::new(Floor) as Arc<dyn ModChunkGenerator>,
         )]);
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -2967,9 +3030,9 @@ mod tests {
         let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
         let (overrides, _) =
             worldgen_overrides_in_world(world, &root, &[], &[], &base_conditions).unwrap();
-        let open = |dim| {
+        let open = |dim, overrides: &_, saved: Option<&_>| {
             mod_terrain(
-                &overrides,
+                overrides,
                 resources,
                 &generators,
                 dim,
@@ -2977,15 +3040,17 @@ mod tests {
                 0,
                 true,
                 None,
-                None,
+                saved,
             )
         };
         let pocket = Dim::Extra(mod_api::__private::dimension_key("test:pocket"));
-        let Some(Ok((ModLevel::Terrain(terrain), generator))) = open(pocket) else {
+        let Some(Ok((ModLevel::Terrain(terrain), generator))) = open(pocket, &overrides, None)
+        else {
             panic!("the pack's checkerboard needs no noise settings");
         };
         assert_eq!(
-            generator, "test:floor",
+            generator.as_str(),
+            "test:floor",
             "the read names the generator that built it"
         );
         let chunk = terrain.finish(terrain.proto(&mut (), 0, 0).unwrap());
@@ -2994,7 +3059,38 @@ mod tests {
             registry.default_state("minecraft:stone").unwrap()
         );
         assert_eq!(biomes.name(chunk.biome(0, 0, 0)), "minecraft:forest");
-        assert!(open(Dim::Overworld).is_none());
+        assert!(open(Dim::Overworld, &overrides, None).is_none());
+
+        let empty = Default::default();
+        let mut stem = serde_json::json!({
+            "type": "minecraft:overworld",
+            "generator": {
+                "type": "test:floor",
+                "biome_source": {"type": "minecraft:fixed", "biome": "minecraft:plains"},
+            },
+        });
+        let saved = sunrise_client::scoreboard::json_to_tag(&stem);
+        let Some(Ok((_, generator))) = open(pocket, &empty, Some(&saved)) else {
+            panic!("the registered generator should also bind from a saved stem");
+        };
+        assert_eq!(generator.as_str(), "test:floor");
+
+        for name in ["test:BAD", "test:unregistered"] {
+            stem["generator"]["type"] = name.into();
+            let invalid = sunrise_client::scoreboard::json_to_tag(&stem);
+            let mut packed = empty.clone();
+            packed.set(
+                sunrise_world::worldgen::overrides::DIMENSIONS,
+                pocket.id(),
+                stem.to_string(),
+            );
+            assert!(
+                open(pocket, &empty, Some(&invalid)).is_none(),
+                "saved {name}"
+            );
+            // A valid pack stem wins before lookup even when its name does not bind.
+            assert!(open(pocket, &packed, Some(&saved)).is_none(), "pack {name}");
+        }
     }
 
     /// A no-stage checkerboard stem opens when only biome and biome-tag data exist, without
@@ -3018,7 +3114,7 @@ mod tests {
             }
         }
         let generators = ModChunkGenerators::from([(
-            "test:floor".to_owned(),
+            Identifier::parse("test:floor").unwrap(),
             Arc::new(Floor) as Arc<dyn ModChunkGenerator>,
         )]);
         let scratch = tempfile::tempdir().unwrap();
@@ -3117,7 +3213,7 @@ mod tests {
         ) else {
             panic!("no-stage checkerboard must open without noise-settings bundle");
         };
-        assert_eq!(generator, "test:floor");
+        assert_eq!(generator.as_str(), "test:floor");
         let chunk0 = terrain.finish(terrain.proto(&mut (), 0, 0).unwrap());
         assert_eq!(
             chunk0.block(0, -64, 0),

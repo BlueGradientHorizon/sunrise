@@ -97,9 +97,9 @@ pub trait LevelWorldgenBackend {
     /// names its codec (`level.getChunkSource().getGenerator()`): `minecraft:noise`,
     /// `minecraft:flat` (a superflat world, and a level a mod opened with layers or air),
     /// `minecraft:debug`, or the name a mod registered its generator under
-    /// (`register_chunk_generator`). It is the generator the server built the level with, so a
-    /// saved Debug world reads `minecraft:debug` whatever its stem names. None for a stale level
-    /// and on a client.
+    /// (`register_chunk_generator`). Reports the generator the server actually built, not
+    /// necessarily the one named in a pack or saved stem: a flat stem takes precedence over
+    /// the saved Debug preset. None for a stale level and on a client.
     fn level_generator_type(&self, level: LevelRef) -> Option<Identifier>;
 }
 /// The handles' writes of the `level_worldgen` area, implemented by the game and reached through [`BackendMut`].

@@ -251,8 +251,7 @@ impl Game<'_> {
     /// `level.getChunkSource().getGenerator()`'s codec id: the generator `make_streaming`
     /// built the level with, recorded when it did.
     pub(super) fn level_generator_type(&self, level: LevelRef) -> Option<mod_api::Identifier> {
-        let id = self.native_level_world(level)?.generator_type.as_deref()?;
-        mod_api::Identifier::parse(id).ok()
+        self.native_level_world(level)?.generator_type.clone()
     }
     /// The difficulty (`Level.getDifficulty`): `peaceful`, `easy`, `normal`
     /// or `hard`, as `/difficulty` names it.
@@ -492,20 +491,19 @@ mod tests {
     fn a_level_names_the_chunk_generator_it_was_built_with() {
         with_game(|game| {
             let overworld = game.level("minecraft:overworld").unwrap();
-            let generator = |game: &super::super::Game<'_>| {
-                overworld.generator_type(game).map(|id| id.to_string())
-            };
             // The harness stops short of building terrain, so it sets what `make_streaming`
             // records (a_level_reports_the_generator_it_was_built_with covers the recording).
-            game.world.generator_type = Some("minecraft:debug".to_owned());
-            assert_eq!(generator(game).as_deref(), Some("minecraft:debug"));
+            let debug = mod_api::Identifier::parse("minecraft:debug").unwrap();
+            game.world.generator_type = Some(debug.clone());
+            assert_eq!(overworld.generator_type(game), Some(debug));
             game.world.generator_type = None;
-            assert_eq!(generator(game), None);
+            assert_eq!(overworld.generator_type(game), None);
             let stale = mod_api::LevelRef::new(
                 mod_api::WorldEpoch::new(overworld.epoch().get() + 1),
                 overworld.dimension(),
             );
-            game.world.generator_type = Some("minecraft:noise".to_owned());
+            game.world.generator_type =
+                Some(mod_api::Identifier::parse("minecraft:noise").unwrap());
             assert_eq!(stale.generator_type(game), None);
         });
     }

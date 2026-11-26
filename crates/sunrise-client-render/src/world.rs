@@ -6,7 +6,10 @@ use crate::{
     section_mask::SectionMask,
 };
 use std::sync::{Arc, OnceLock};
-use sunrise_core::random::{LegacyRandom, LevelRandom};
+use sunrise_core::{
+    identifier::Identifier,
+    random::{LegacyRandom, LevelRandom},
+};
 use sunrise_world::registry::BlockStateId;
 
 mod extra_models;
@@ -124,7 +127,7 @@ pub struct World {
     pub fast_lava: bool,
     /// The id of the chunk generator the server built this level with, as
     /// `BuiltInRegistries.CHUNK_GENERATOR` names its codec; None on a client.
-    pub generator_type: Option<String>,
+    pub generator_type: Option<Identifier>,
     pub chunks: crate::chunk_map::ChunkMap,
     /// The light the columns that left the level keep (`light_border.rs`).
     pub border: crate::fast_hash::FxHashMap<(i32, i32), crate::light_border::Border>,
