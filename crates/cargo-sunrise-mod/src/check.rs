@@ -1015,6 +1015,11 @@ void main() { fragColor = Tint * texture(SsaoTex, texCoord0); }
         );
         let (_, refused) = check(broken);
         assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(
+            refused[0].starts_with("assets/example/shaders/core/ssao.fsh:")
+                && !refused[0].contains("is not a block or sampler"),
+            "{refused:?}"
+        );
     }
 
     #[test]
