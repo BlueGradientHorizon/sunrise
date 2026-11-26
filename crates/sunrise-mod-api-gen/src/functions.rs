@@ -6,7 +6,7 @@
 //! modules its targets are in. Before a function is copied, its text is checked against the
 //! index's hash: a source that is not the build's is refused by name, never walked.
 use crate::patch::{Found, Source, TargetPath, plain, replaceable_with_binding, target_path};
-use crate::source::{LEGACY_LAYOUT, SourceLayout};
+use crate::source::SourceLayout;
 use mod_surface::build_data::FunctionDigests;
 use quote::{ToTokens, quote};
 use serde::{Deserialize, Serialize};
@@ -143,7 +143,11 @@ impl FunctionIndex {
     /// Only the span is checked here; every other file the copy reads is checked against its
     /// [`ModuleFile::sha256`] as it is read.
     pub fn check(&self, root: &Path, target: &str) -> Result<(), (&'static str, String)> {
-        self.check_with_layout(root, target, LEGACY_LAYOUT)
+        self.check_with_layout(
+            root,
+            target,
+            SourceLayout::read(root).map_err(|error| ("E_MIXIN_SOURCE", error))?,
+        )
     }
 
     pub(crate) fn check_with_layout(
@@ -329,7 +333,15 @@ fn refusal_reason(why: &str) -> &str {
 /// The index of the pristine source at `root`, whose published loops' generic functions are
 /// before the index; [`FunctionIndex::retain_slotted`] then drops what staging gave no slot.
 pub fn index(root: &Path, generic: &BTreeSet<String>) -> Result<FunctionIndex, String> {
-    index_of(root, generic, None)
+    index_of_with_context(root, SourceLayout::read(root)?, generic, None).map(|(index, _, _)| index)
+}
+
+pub fn index_with_layout(root: &Path, layout: SourceLayout) -> Result<FunctionIndex, String> {
+    let generic = crate::loops::collect_with_layout(root, layout)?
+        .into_iter()
+        .map(|entry| key(&entry.generic_target()))
+        .collect();
+    index_with_context(root, layout, &generic).map(|(index, _, _)| index)
 }
 
 pub(crate) fn index_with_context(
@@ -348,12 +360,13 @@ pub(crate) fn index_with_context(
 }
 
 /// [`index`], listing only the functions whose keys are in `only`, when given.
+#[cfg(test)]
 pub(crate) fn index_of(
     root: &Path,
     generic: &BTreeSet<String>,
     only: Option<&BTreeSet<String>>,
 ) -> Result<FunctionIndex, String> {
-    index_of_with_context(root, LEGACY_LAYOUT, generic, only).map(|(index, _, _)| index)
+    index_of_with_context(root, crate::LEGACY_LAYOUT, generic, only).map(|(index, _, _)| index)
 }
 
 fn index_of_with_context(

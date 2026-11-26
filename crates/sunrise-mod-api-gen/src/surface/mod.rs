@@ -5,7 +5,8 @@
 //! same loop and internal collectors as SDK source staging.
 pub mod behaviours;
 mod engine;
-pub use engine::collect as engine_catalogs;
+use crate::SourceLayout;
+pub use engine::{collect as engine_catalogs, collect_with_layout as engine_catalogs_with_layout};
 mod expand;
 pub mod extension_tags;
 pub mod notes;
@@ -298,27 +299,35 @@ pub fn export(root: &Path) -> Result<Export, String> {
 
 /// Exports the source tree at `root` with the requested options.
 pub fn export_with(root: &Path, options: ExportOptions) -> Result<Export, String> {
-    export_layout(root, options, false)
+    export_with_layout(root, SourceLayout::read(root)?, options)
 }
 
 pub fn export_gameplay(root: &Path, options: ExportOptions) -> Result<Export, String> {
-    export_layout(root, options, true)
+    export_with_layout(root, crate::GAMEPLAY_LAYOUT, options)
 }
 
-fn export_layout(root: &Path, options: ExportOptions, gameplay: bool) -> Result<Export, String> {
+pub fn export_with_layout(
+    root: &Path,
+    layout: SourceLayout,
+    options: ExportOptions,
+) -> Result<Export, String> {
     // The wire index's resolver recurses through the API's types: give it a deep stack.
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(64 << 20)
-            .spawn_scoped(scope, || export_here(root, options, gameplay))
+            .spawn_scoped(scope, || export_here(root, options, layout))
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|_| "the surface export panicked".to_string())?
     })
 }
 
-fn export_here(root: &Path, options: ExportOptions, gameplay: bool) -> Result<Export, String> {
-    let catalog = if gameplay {
+fn export_here(
+    root: &Path,
+    options: ExportOptions,
+    layout: SourceLayout,
+) -> Result<Export, String> {
+    let catalog = if layout.is_split() {
         crate::gameplay::Routing::load(root)?.catalog(root)?
     } else {
         Catalog::load(root).map_err(|e| e.to_string())?
@@ -335,15 +344,11 @@ fn export_here(root: &Path, options: ExportOptions, gameplay: bool) -> Result<Ex
     let mut index = crate::index::game(root, &with_providers);
     let boundary = Boundary::read(root, &mut index)?;
     let engine = if options.with_loops || options.with_internals {
-        Some(if gameplay {
-            engine::collect_with_layout(
-                root,
-                crate::gameplay::GAMEPLAY_LAYOUT,
-                options.with_internals,
-            )?
-        } else {
-            engine_catalogs(root, options.with_internals)?
-        })
+        Some(engine_catalogs_with_layout(
+            root,
+            layout,
+            options.with_internals,
+        )?)
     } else {
         None
     };

@@ -145,9 +145,12 @@ def tree_tool(tree: Path, work: Path) -> str:
 
 def source_layout(tree: Path) -> str:
     try:
-        return (tree / SOURCE_LAYOUT).read_text().strip()
+        layout = (tree / SOURCE_LAYOUT).read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         return "legacy"
+    if layout not in ("legacy", "split"):
+        raise ValueError(f"{tree / SOURCE_LAYOUT}: unknown source layout {layout!r}")
+    return layout
 
 
 def last_line(text: str) -> str:

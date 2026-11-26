@@ -1,5 +1,5 @@
 //! The staged internals view (#589). Source copies only: the working tree keeps its visibility.
-use crate::source::{LEGACY_DOMAIN, LEGACY_LAYOUT, SourceLayout};
+use crate::source::{LEGACY_DOMAIN, SourceLayout};
 use proc_macro2::Span;
 use quote::{ToTokens, quote};
 use sha2::{Digest, Sha256};
@@ -955,7 +955,7 @@ impl Pass {
         }
         let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         // The host forwarders are widened as written into the copy: spans address the expanded text.
-        let text = crate::game_modules::expand(&self.source_root, &text)?;
+        let text = crate::game_modules::expand(&self.source_root, path, &text)?;
         let parsed = syn::parse_file(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         let lines = std::iter::once(0)
             .chain(text.match_indices('\n').map(|(i, _)| i + 1))
@@ -1837,21 +1837,21 @@ pub(crate) fn widen_generated(path: &Path, text: String) -> Result<String, Strin
 /// A marked replaceable lower-crate function is an internal too: its copy names declarations in
 /// the same module, including those from literal source fragments.
 pub fn widen(root: &Path) -> Result<Widened, String> {
-    stage(root, LEGACY_LAYOUT, false)
+    stage(root, SourceLayout::read(root)?, false)
 }
 
 /// Instrument a discovery-only source copy. Its catalog is identical to [`widen`]'s, but
 /// compiler deprecation diagnostics identify each use by kind and catalog path.
 /// Never use this copy for a normal build or a published prebuilt.
 pub fn discover(root: &Path) -> Result<Widened, String> {
-    stage(root, LEGACY_LAYOUT, true)
+    stage(root, SourceLayout::read(root)?, true)
 }
 
 /// Read the same original signatures and reachable layouts as staging, without changing files.
 /// Visibility edits are collected but never emitted, so build-time consumers can safely build
 /// a crossing rule over the catalog in a normal source checkout.
 pub fn catalog(root: &Path) -> Result<Vec<Internal>, String> {
-    catalog_with_layout(root, LEGACY_LAYOUT)
+    catalog_with_layout(root, SourceLayout::read(root)?)
 }
 
 fn catalog_with_layout(root: &Path, layout: SourceLayout) -> Result<Vec<Internal>, String> {
@@ -1866,7 +1866,7 @@ fn catalog_with_layout(root: &Path, layout: SourceLayout) -> Result<Vec<Internal
 /// [`catalog`] with the listed foreign layouts (`winit::event_loop::ControlFlow`...), as
 /// `internals.json` has them: what a crossing rule over the game reads.
 pub fn rule_catalog(root: &Path) -> Result<Vec<Internal>, String> {
-    rule_catalog_with_layout(root, LEGACY_LAYOUT)
+    rule_catalog_with_layout(root, SourceLayout::read(root)?)
 }
 
 pub(crate) fn rule_catalog_with_layout(
@@ -1887,7 +1887,7 @@ pub(crate) fn stage(root: &Path, layout: SourceLayout, discovery: bool) -> Resul
 /// [`widen`] with each list's file name and text, so an error names the file and line it came from.
 #[cfg(test)]
 fn widen_with(root: &Path, lists: &[(&str, String)]) -> Result<Widened, String> {
-    collect(root, LEGACY_LAYOUT, lists, false)?.finish()
+    collect(root, crate::LEGACY_LAYOUT, lists, false)?.finish()
 }
 
 fn collect(
@@ -2238,11 +2238,11 @@ pub(crate) struct ItemStack { #[allow(dead_code)] kind: StackKind }
         }
         let lists = [("internals.txt", "lower::direct".into())];
         let expected = widen_with(&normal.0, &lists).unwrap();
-        let ordinary = collect(&repeat.0, LEGACY_LAYOUT, &lists, false)
+        let ordinary = collect(&repeat.0, crate::LEGACY_LAYOUT, &lists, false)
             .unwrap()
             .finish()
             .unwrap();
-        let marked = collect(&discovery.0, LEGACY_LAYOUT, &lists, true)
+        let marked = collect(&discovery.0, crate::LEGACY_LAYOUT, &lists, true)
             .unwrap()
             .finish()
             .unwrap();

@@ -34,7 +34,7 @@ impl PublishedLoop {
 
 /// The game's published loops, from the source at `root`, by name.
 pub fn collect(root: &Path) -> Result<Vec<PublishedLoop>, String> {
-    collect_with_layout(root, crate::source::LEGACY_LAYOUT)
+    collect_with_layout(root, crate::SourceLayout::read(root)?)
 }
 
 pub(crate) fn collect_with_layout(

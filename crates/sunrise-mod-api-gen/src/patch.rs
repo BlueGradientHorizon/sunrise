@@ -1009,7 +1009,14 @@ pub fn generate(
     extras: &Extras,
     index: &crate::functions::FunctionIndex,
 ) -> Result<PatchCrate, Vec<Refusal>> {
-    generate_with_layout(root, LEGACY_LAYOUT, krate, targets, extras, index)
+    let layout = SourceLayout::read(root).map_err(|why| {
+        vec![Refusal {
+            target: root.display().to_string(),
+            code: "E_MIXIN_SOURCE",
+            why,
+        }]
+    })?;
+    generate_with_layout(root, layout, krate, targets, extras, index)
 }
 
 pub(crate) fn generate_with_layout(

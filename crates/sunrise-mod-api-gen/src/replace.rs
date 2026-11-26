@@ -744,7 +744,7 @@ struct Crate {
 /// head check, reader and installer, and each crate that has one its slot array. Run on a copy,
 /// never on a working tree.
 pub fn stage(root: &Path) -> Result<Staged, String> {
-    stage_with_context(root, source::LEGACY_LAYOUT, None, None)
+    stage_with_context(root, source::SourceLayout::read(root)?, None, None)
 }
 
 pub(crate) fn stage_with_context(

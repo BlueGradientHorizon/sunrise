@@ -23,10 +23,10 @@ const CLIENT: GameDomain = GameDomain {
     package: "sunrise-client-gameplay",
     key: "sunrise_client_gameplay",
 };
-pub(crate) const GAMEPLAY_LAYOUT: SourceLayout = SourceLayout {
+pub const GAMEPLAY_LAYOUT: SourceLayout = SourceLayout {
     runtime: crate::source::LEGACY_DOMAIN,
     domains: &[COMMON, SERVER, CLIENT],
-    entry: None,
+    entry: crate::source::LEGACY_LAYOUT.entry,
 };
 
 impl GameplayPackage {
@@ -299,6 +299,17 @@ pub(crate) fn generate(
             .join("\n"));
     }
     Ok(files)
+}
+
+pub(crate) fn host_source(root: &Path, package: GameplayPackage) -> Result<String, String> {
+    let routing = Routing::load(root)?;
+    let areas = crate::host::load(root)?;
+    let mut audit = GameplayAudit::default();
+    let host = crate::host::gameplay_forwarders(&areas, package, &routing, &mut audit)?;
+    if let Some(issue) = audit.issues.first() {
+        return Err(format!("{}: {}", issue.entry, issue.reason));
+    }
+    Ok(format!("mod generated {{\n{host}\n}}\n"))
 }
 
 fn plan(

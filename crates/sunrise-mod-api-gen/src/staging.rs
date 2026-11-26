@@ -1,5 +1,5 @@
 //! One source staging pass for the launcher and `sunrise-stage`.
-use crate::source::{LEGACY_LAYOUT, SourceLayout};
+use crate::source::SourceLayout;
 use crate::{internals, replace};
 /// The build a staged copy is of, named in each build-data file's header.
 pub use mod_surface::build_data::Build;
@@ -35,10 +35,10 @@ pub fn stage(
     mode: Mode,
     build: &Build,
 ) -> Result<Staged, String> {
-    stage_with_layout(root, LEGACY_LAYOUT, internals_json, mode, build)
+    stage_with_layout(root, SourceLayout::read(root)?, internals_json, mode, build)
 }
 
-pub(crate) fn stage_with_layout(
+pub fn stage_with_layout(
     root: &Path,
     layout: SourceLayout,
     internals_json: &Path,

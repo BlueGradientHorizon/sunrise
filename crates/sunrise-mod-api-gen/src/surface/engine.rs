@@ -1,14 +1,14 @@
 //! Project SDK staging's source catalogs into the surface without rewriting the tree.
-use crate::source::{LEGACY_LAYOUT, SourceLayout};
+use crate::SourceLayout;
 use mod_surface::{EngineContract, EngineItem};
 use std::path::Path;
 
 /// Reads the published loops and, for a full audit, the advisory internals of a source tree.
 pub fn collect(root: &Path, with_internals: bool) -> Result<Vec<EngineItem>, String> {
-    collect_with_layout(root, LEGACY_LAYOUT, with_internals)
+    collect_with_layout(root, SourceLayout::read(root)?, with_internals)
 }
 
-pub(super) fn collect_with_layout(
+pub fn collect_with_layout(
     root: &Path,
     layout: SourceLayout,
     with_internals: bool,

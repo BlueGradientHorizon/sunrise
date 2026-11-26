@@ -10,7 +10,7 @@ use std::{
 };
 use syn::{Attribute, Expr, Item, Type};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct GameDomain {
     pub package: &'static str,
     pub key: &'static str,
@@ -30,9 +30,20 @@ impl GameDomain {
         }
     }
 
-    pub fn files(self, root: &Path, every_build: bool) -> Result<Vec<ModuleFile>, String> {
-        let src = self.library(root)?;
-        let src = src.parent().expect("a source file has a folder");
+    pub(crate) fn files(self, root: &Path, every_build: bool) -> Result<Vec<ModuleFile>, String> {
+        let lib = self.library(root)?;
+        let src = lib.parent().expect("a source file has a folder");
+        if crate::GameplayPackage::from_library(self.key).is_some() {
+            let game = format!("{}::game", self.key);
+            let prefix = format!("{game}::");
+            let dir = src.to_owned();
+            let mut files = module_files(root, self.key.into(), lib, dir, every_build)?;
+            files.retain(|file| file.module == game || file.module.starts_with(&prefix));
+            if files.is_empty() {
+                return Err(format!("{game}: no mounted gameplay source files"));
+            }
+            return Ok(files);
+        }
         module_files(
             root,
             format!("{}::game", self.key),
@@ -43,19 +54,21 @@ impl GameDomain {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct SourceLayout {
-    pub runtime: GameDomain,
-    pub domains: &'static [GameDomain],
-    pub entry: Option<&'static str>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SourceLayout {
+    pub(crate) runtime: GameDomain,
+    pub(crate) domains: &'static [GameDomain],
+    pub(crate) entry: Option<&'static str>,
 }
+
+pub(crate) const MARKER: &str = "crates/sunrise-mod-api-gen/source-layout";
 
 pub(crate) const LEGACY_DOMAIN: GameDomain = GameDomain {
     package: "sunrise-client",
     key: "sunrise_client",
 };
 
-pub(crate) const LEGACY_LAYOUT: SourceLayout = SourceLayout {
+pub const LEGACY_LAYOUT: SourceLayout = SourceLayout {
     runtime: LEGACY_DOMAIN,
     domains: &[LEGACY_DOMAIN],
     entry: Some("src/entry.rs"),
@@ -68,19 +81,40 @@ impl Default for SourceLayout {
 }
 
 impl SourceLayout {
-    pub fn domain(self, key: &str) -> Option<GameDomain> {
+    /// Select the layout declared by a source tree; historical trees without a marker are legacy.
+    pub fn read(root: &Path) -> Result<Self, String> {
+        let path = root.join(MARKER);
+        match fs::read_to_string(&path) {
+            Ok(text) => match text.trim() {
+                "legacy" => Ok(LEGACY_LAYOUT),
+                "split" => Ok(crate::gameplay::GAMEPLAY_LAYOUT),
+                other => Err(format!(
+                    "{}: unknown source layout {other:?}",
+                    path.display()
+                )),
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(LEGACY_LAYOUT),
+            Err(error) => Err(format!("{}: {error}", path.display())),
+        }
+    }
+
+    pub(crate) fn is_split(self) -> bool {
+        self == crate::gameplay::GAMEPLAY_LAYOUT
+    }
+
+    pub(crate) fn domain(self, key: &str) -> Option<GameDomain> {
         self.domains
             .iter()
             .copied()
             .find(|domain| domain.key == key)
     }
 
-    pub fn owns(self, path: &str) -> bool {
+    pub(crate) fn owns(self, path: &str) -> bool {
         self.domain(path.split("::").next().unwrap_or_default())
             .is_some()
     }
 
-    pub fn files(self, root: &Path, every_build: bool) -> Result<Vec<ModuleFile>, String> {
+    pub(crate) fn files(self, root: &Path, every_build: bool) -> Result<Vec<ModuleFile>, String> {
         let mut files = Vec::new();
         for domain in self.domains {
             files.extend(domain.files(root, every_build)?);
@@ -231,6 +265,25 @@ pub(crate) fn marker<'a>(attrs: &'a [syn::Attribute], name: &str) -> Option<&'a 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_layout_marker_selects_the_layout_and_rejects_typos() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let path = root.join(MARKER);
+        assert_eq!(SourceLayout::read(root).unwrap(), LEGACY_LAYOUT);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "legacy\r\n").unwrap();
+        assert_eq!(SourceLayout::read(root).unwrap(), LEGACY_LAYOUT);
+        fs::write(&path, "split\n").unwrap();
+        assert_eq!(SourceLayout::read(root).unwrap(), crate::GAMEPLAY_LAYOUT);
+        fs::write(&path, "splti\n").unwrap();
+        assert!(
+            SourceLayout::read(root)
+                .unwrap_err()
+                .contains("unknown source layout")
+        );
+    }
 
     /// A module whose file each target names with `cfg_attr(…, path = …)` is read from each
     /// target's file under its condition; it has no default file, and none is needed.

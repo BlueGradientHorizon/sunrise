@@ -4,7 +4,8 @@ mod dispatch_fixtures;
 mod exports;
 mod game_modules;
 mod gameplay;
-pub use gameplay::{GameplayAudit, GameplayPackage, RoutingIssue, audit_gameplay};
+pub use gameplay::{GAMEPLAY_LAYOUT, GameplayAudit, GameplayPackage, RoutingIssue, audit_gameplay};
+pub use source::{LEGACY_LAYOUT, SourceLayout};
 mod hook_wiring;
 #[doc(hidden)]
 pub use dispatch_fixtures::layout as dispatch_fixture_layout;
@@ -606,8 +607,14 @@ pub use notes::generate as generate_hook_notes;
 #[doc(hidden)]
 pub fn generate_test_hooks(root: &Path, out_dir: &Path) -> Result<(), String> {
     build::track(root)?;
-    dispatch_fixtures::generate(root, out_dir)?;
-    let code = sources(root)?.hooks;
+    rerun_if_changed(&root.join(source::MARKER).display());
+    let catalog = if SourceLayout::read(root)?.is_split() {
+        gameplay::Routing::load(root)?.catalog(root)?
+    } else {
+        Catalog::load(root)?
+    };
+    dispatch_fixtures::generate(root, out_dir, &catalog)?;
+    let code = sources_from_catalog(root, &catalog)?.hooks;
     fs::write(out_dir.join("mod_api_generated.rs"), code).map_err(|e| e.to_string())
 }
 
