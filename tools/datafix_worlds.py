@@ -138,6 +138,14 @@ def platform():
     return 'linux'
 
 
+def pinned_runtimes(plat):
+    """The components research-lock.json pins for a platform; a platform it does not pin is refused by name."""
+    if plat not in LOCK:
+        raise ValueError(f'research-lock.json java_runtimes pins no runtime for platform {plat}; pin its components '
+                         f'(manifest_url and manifest_sha1, from Mojang\'s runtime manifest for {plat}) under java_runtimes.{plat}')
+    return LOCK[plat]
+
+
 def java(version):
     """The java executable for a server version: Mojang's runtime of the version's
     component (pinned in research-lock.json), installed in the private writable root."""
@@ -146,10 +154,7 @@ def java(version):
     if component in ('java-runtime-delta', 'java-runtime-epsilon'):
         return 'java'  # 1.20.5 on: the JDK that runs 26.3 runs them
     plat = platform()
-    if plat not in LOCK:
-        raise ValueError(f'{version}: research-lock.json java_runtimes pins no runtime for platform {plat}; pin its components '
-                         f'(manifest_url and manifest_sha1, from Mojang\'s runtime manifest for {plat}) under java_runtimes.{plat}')
-    runtimes = LOCK[plat]
+    runtimes = pinned_runtimes(plat)
     if component not in {name for other, names in LOCK.items() if other != 'note' for name in names}:
         raise ValueError(f'{version}: javaVersion component {component} is in no platform of research-lock.json java_runtimes')
     if component not in runtimes:
