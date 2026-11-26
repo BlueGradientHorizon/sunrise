@@ -598,10 +598,9 @@ fn program_includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>
     }
 }
 
-/// Refuse any top-level vertex `in` declaration ([`sunrise_glsl::stage_inputs`] of the expanded
-/// stage, comments gone) that is not listed in `vertex_inputs` or whose GLSL type disagrees with
-/// the pipeline's [`VertexFormat`]. A declaration is located by where its name stands in
-/// `vertex`, in the file and at the line it came from ([`refusal_at`]).
+/// Refuse a top-level vertex `in` ([`sunrise_glsl::stage_inputs`]) whose name or GLSL type
+/// doesn't match the supplied `vertex_inputs`. Both registration and the CLI check use this
+/// check; the refusal names the declaration's file and line ([`refusal_at`]).
 fn validate_vertex_inputs(
     vertex: &Expanded,
     vertex_inputs: &[(&str, &str)],
@@ -612,9 +611,7 @@ fn validate_vertex_inputs(
                 return Err(refusal_at(
                     vertex,
                     Some(offset),
-                    format!(
-                        "undeclared vertex input `{name}`: declare it in RenderPipeline::vertex_binding"
-                    ),
+                    format!("vertex input `{name}` has no matching vertex attribute"),
                 ));
             }
             Some((_, expected)) if *expected != ty => {
@@ -1969,7 +1966,10 @@ void main() {{
             "assets/example/shaders/include/attributes.glsl"
         );
         assert_eq!(refused[0].line, 2);
-        assert!(refused[0].message.contains("`Stray`"), "{refused:?}");
+        assert_eq!(
+            refused[0].message,
+            "vertex input `Stray` has no matching vertex attribute"
+        );
     }
 
     /// A program whose include cannot be expanded is refused with the include's error, not read
