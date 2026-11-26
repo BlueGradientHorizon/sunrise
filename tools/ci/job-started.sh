@@ -23,9 +23,10 @@ fi
 # is removed: the checkout then clones again (and replaces the rest of the folder).
 # A git-slim.sh failure does not fail the job: it is disk housekeeping (f9d90fcb534), and the size check below is what
 # bounds the folder when it did not shrink (it removes .git over MAX_GIT_GB), so a failed collect costs a reclone, not a job.
+# The same holds for the size check itself: a du that fails leaves the folder as it is (size 0), not a failed job.
 if [ -n "${GITHUB_WORKSPACE:-}" ] && [ -d "$GITHUB_WORKSPACE/.git" ]; then
   MAX_GIT_MB=${MAX_GIT_MB:-1536} bash "$(dirname "$0")/git-slim.sh" "$GITHUB_WORKSPACE" || true
-  size=$(du -s --block-size=1G "$GITHUB_WORKSPACE/.git" | cut -f1)
+  size=$(du -s --block-size=1G "$GITHUB_WORKSPACE/.git" | cut -f1) || size=0
   if [ "$size" -gt "${MAX_GIT_GB:-4}" ]; then
     echo "Checkout's .git at ${size} GB (over ${MAX_GIT_GB:-4}): removed, this job clones again"
     rm -rf "${GITHUB_WORKSPACE:?}/.git"

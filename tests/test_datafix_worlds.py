@@ -1,7 +1,9 @@
 """Unit tests for tools/datafix_worlds.py: the Java runtime choice, the bot's configuration phase, the server stop."""
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,12 +43,27 @@ class UnpinnedPlatformTests(unittest.TestCase):
                     self.assertRaisesRegex(ValueError, f'platform {plat};'):
                 worlds.java('x')
 
+    def test_an_unpinned_platform_is_refused_before_version_metadata_is_read(self):
+        with mock.patch.object(worlds, 'platform', return_value='windows-x64'), \
+                mock.patch.object(worlds, 'version_meta', side_effect=AssertionError('no metadata download')), \
+                self.assertRaisesRegex(ValueError, 'platform windows-x64;'):
+            worlds.java('x')
+
     def test_platform_names_what_mojang_calls_the_machine(self):
         for system, machine, expected in (('win32', 'AMD64', 'windows-x64'), ('win32', 'ARM64', 'windows-arm64'),
-                                          ('darwin', 'x86_64', 'mac-os'), ('darwin', 'arm64', 'mac-os-arm64'), ('linux', 'x86_64', 'linux')):
+                                          ('darwin', 'x86_64', 'mac-os'), ('darwin', 'arm64', 'mac-os-arm64'), ('linux', 'x86_64', 'linux'), ('linux', 'i686', 'linux-i386')):
             with self.subTest(system, machine=machine), mock.patch.object(worlds, 'sys', SimpleNamespace(platform=system)), \
                     mock.patch.object(worlds, 'host', SimpleNamespace(machine=lambda: machine)):
                 self.assertEqual(worlds.platform(), expected)
+
+
+class UnsupportedMachineTests(unittest.TestCase):
+    def test_a_machine_mojang_has_no_runtime_for_is_refused_by_name(self):
+        for system, machine in (('linux', 'aarch64'), ('win32', 'ia64')):
+            with self.subTest(system, machine=machine), mock.patch.object(worlds, 'sys', SimpleNamespace(platform=system)), \
+                    mock.patch.object(worlds, 'host', SimpleNamespace(machine=lambda: machine)), \
+                    self.assertRaisesRegex(ValueError, f'machine {machine}'):
+                worlds.platform()
 
 
 class ServerStopTests(unittest.TestCase):
@@ -67,6 +84,17 @@ class ServerStopTests(unittest.TestCase):
             server.stop()
         self.assertIsNotNone(server.process.poll())
         self.assertEqual(calls, [120, None])
+
+    def test_a_server_already_killed_with_its_stdin_closed_stops_without_an_error(self):
+        # What datafix_scene_12.populate leaves for build() and build_flat() to stop.
+        server = worlds.Server.__new__(worlds.Server)
+        server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE, text=True)
+        self.addCleanup(server.process.kill)
+        server.process.kill()
+        server.process.wait()
+        server.process.stdin.close()
+        server.stop()
+        self.assertIsNotNone(server.process.poll())
 
 
 class KnownPacksTests(unittest.TestCase):
@@ -96,6 +124,47 @@ class KnownPacksTests(unittest.TestCase):
             self.configure(999, [])
 
 
+class BotFailedJoinTests(unittest.TestCase):
+    def join_against(self, packets, protocol):
+        """Run Bot against a local server that sends `packets` (id, payload) once connected; returns the error and the bot's socket."""
+        listener = socket.socket()
+        self.addCleanup(listener.close)
+        listener.bind(('127.0.0.1', 0))
+        listener.listen(1)
+
+        def serve():
+            peer, _ = listener.accept()
+            with peer:
+                for packet_id, payload in packets:
+                    body = bytes([packet_id]) + payload
+                    peer.sendall(bytes([len(body)]) + body)
+                peer.settimeout(5)
+                try:
+                    while peer.recv(4096):
+                        pass
+                except OSError:
+                    pass
+        threading.Thread(target=serve, daemon=True).start()
+        made = []
+        create = socket.create_connection
+        with mock.patch.object(worlds.socket, 'create_connection', lambda *a, **k: made.append(create(*a, **k)) or made[-1]):
+            with self.assertRaises((RuntimeError, ValueError)) as caught:
+                worlds.Bot(listener.getsockname()[1], protocol, 'x')
+        self.addCleanup(made[0].close)
+        return caught.exception, made[0]
+
+    def test_a_refused_login_closes_the_socket(self):
+        error, sock = self.join_against([(0, b'no')], 770)
+        self.assertIsInstance(error, RuntimeError)
+        self.assertEqual(sock.fileno(), -1)
+
+    def test_a_failed_configuration_closes_the_socket(self):
+        # Login succeeds, then the bot has no select_known_packs id for protocol 999 and refuses.
+        error, sock = self.join_against([(2, b'')], 999)
+        self.assertIsInstance(error, ValueError)
+        self.assertEqual(sock.fileno(), -1)
+
+
 class BuildCleanupTests(unittest.TestCase):
     """build() with the server, the bot and the scene replaced: what is closed when something fails."""
 
@@ -119,10 +188,9 @@ class BuildCleanupTests(unittest.TestCase):
                     raise stop_error
 
         def scene(server, run, Bot, *args):
-            bot = Bot(1, 2, 'x')
+            Bot(1, 2, 'x')
             if scene_error:
                 raise scene_error
-            return bot
 
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
                 mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 3700, 770)), \
@@ -142,6 +210,55 @@ class BuildCleanupTests(unittest.TestCase):
     def test_a_stop_that_raises_reaches_the_caller_and_the_bot_is_closed(self):
         events, error = self.build(None, RuntimeError('stop failed'))
         self.assertEqual((events, str(error)), (['joined', 'left', 'stopped'], 'stop failed'))
+
+
+class BuildFlatCleanupTests(unittest.TestCase):
+    """build_flat() with the server, the bots and the scene replaced: what is closed when something fails."""
+
+    def build_flat(self, fail_in):
+        events = []
+
+        class FakeBot:
+            def __init__(self, port, protocol, name):
+                events.append('joined')
+
+            def leave(self):
+                events.append('left')
+
+        class FakeServer:
+            def _pump(self):
+                pass
+
+            def wait(self, *args):
+                pass
+
+            def stop(self):
+                events.append('stopped')
+
+        def populate(server, Bot, *args):
+            Bot(1, 340, 'x')
+            raise ValueError('populate failed')
+
+        def batch(server, commands, problems, **kwargs):
+            if fail_in == 'visit' and commands[0].startswith('tp '):
+                raise ValueError('visit failed')
+
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
+                mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 1343, 340)), \
+                mock.patch.object(worlds, 'java', return_value='java'), mock.patch.object(worlds, 'Server', FakeServer), \
+                mock.patch.object(worlds, 'Bot', FakeBot), mock.patch.object(worlds, 'subprocess', mock.MagicMock()), \
+                mock.patch.object(worlds.scene12, 'populate', populate), mock.patch.object(worlds.scene12, 'batch', batch), \
+                mock.patch.object(worlds.scene12, 'time', SimpleNamespace(sleep=lambda seconds: None)):
+            with self.assertRaises(ValueError) as caught:
+                worlds.scene12.build_flat(worlds)
+        return events, str(caught.exception)
+
+    def test_a_visit_that_fails_closes_the_visitor_and_stops_the_server(self):
+        self.assertEqual(self.build_flat('visit'), (['joined', 'left', 'stopped'], 'visit failed'))
+
+    def test_a_scene_that_fails_closes_every_bot_and_stops_the_server(self):
+        events, error = self.build_flat('populate')
+        self.assertEqual((events, error), (['joined', 'left', 'joined', 'left', 'left', 'stopped'], 'populate failed'))
 
 
 if __name__ == '__main__':

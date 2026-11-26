@@ -500,26 +500,14 @@ impl Assets<'_> {
     }
 }
 
-/// The vertex inputs a program is checked against: the program's own when one is not among
-/// [`sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS`] (`PipelineVertexFormat::PositionTexColor`, the
-/// whole format), the default format otherwise.
-fn vertex_inputs_to_check(declared: &[(String, String)]) -> Vec<(&str, &str)> {
-    let defaults = &sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS;
-    if declared
-        .iter()
-        .all(|(n, t)| defaults.iter().any(|(dn, dt)| dn == n && dt == t))
-    {
-        defaults.to_vec()
-    } else {
-        declared
-            .iter()
-            .map(|(n, t)| (n.as_str(), t.as_str()))
-            .collect()
-    }
-}
-
 /// Reads, translates and validates one program, as [`pipeline_shaders`] documents: every refusal
 /// as `<file>[:<line>:<column>]: <message>`.
+///
+/// The check has no `RenderPipeline`, so it cannot know which vertex format the mod registers:
+/// the game's registration decides that. It takes the vertex `in`s the program declares, each on
+/// its own, and refuses only one of a type no vertex attribute format supplies; which of them the
+/// game binds, and from which vertex bindings, the pipeline's registered format decides at
+/// registration.
 fn check_program(program: &Program, assets: &Assets<'_>) -> Result<(), Vec<String>> {
     let fragment = if program.stand_in {
         STAND_IN_FRAGMENT.to_owned()
@@ -548,7 +536,9 @@ fn check_program(program: &Program, assets: &Assets<'_>) -> Result<(), Vec<Strin
             kind: *kind,
         })
         .collect();
-    let vertex_inputs = vertex_inputs_to_check(&bindings.vertex_inputs);
+    let vertex_inputs: Vec<(&str, &str)> = (bindings.vertex_inputs.iter())
+        .map(|(name, ty)| (name.as_str(), ty.as_str()))
+        .collect();
     let options = sunrise_mod_pipeline::Options {
         textured: bindings.textured,
         vertex_inputs: &vertex_inputs,
@@ -820,6 +810,82 @@ mod tests {
         .into();
         let (count, refused) = pipeline_shaders(&files, None);
         assert_eq!((count, refused), (1, Vec::<String>::new()));
+    }
+
+    /// A vertex shader with `vsh_in` as its inputs and `main_body` as its body, with
+    /// `blur.fsh` of the default format's outputs.
+    fn vertex_program(vsh_in: &str, main_body: &str) -> BTreeMap<String, Vec<u8>> {
+        let vsh = format!(
+            "#version 330\n#include <minecraft:dynamictransforms.glsl>\n\
+            #include <minecraft:projection.glsl>\n{vsh_in}\
+            out vec2 texCoord0;\nout vec4 vertexColor;\n\
+            void main() {{ {main_body} }}\n"
+        );
+        let fsh = "#version 330\nin vec2 texCoord0;\nin vec4 vertexColor;\nout vec4 fragColor;\n\
+            void main() { fragColor = vertexColor; }\n";
+        [
+            ("assets/m/shaders/core/blur.vsh", vsh.as_str()),
+            ("assets/m/shaders/core/blur.fsh", fsh),
+        ]
+        .map(|(name, text)| (name.to_owned(), text.as_bytes().to_vec()))
+        .into()
+    }
+
+    /// A program that declares only `Position` is checked against that input alone: it passes,
+    /// and reading `UV0` it never declared is refused, as the game (which builds the inputs from
+    /// the format's declared ones) would; checked as if it declared all three defaults, the
+    /// undeclared read compiled.
+    #[test]
+    fn a_program_declaring_one_default_input_is_checked_against_that_input() {
+        let body = "gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);";
+        let (count, refused) = pipeline_shaders(&vertex_program("in vec3 Position;\n", body), None);
+        assert_eq!((count, refused), (1, Vec::<String>::new()));
+
+        let reads_uv0 = format!("{body} texCoord0 = UV0;");
+        let (count, refused) =
+            pipeline_shaders(&vertex_program("in vec3 Position;\n", &reads_uv0), None);
+        assert_eq!(count, 1);
+        assert!(
+            refused
+                .iter()
+                .any(|r| r.starts_with("assets/m/shaders/core/blur.vsh")),
+            "{refused:?}"
+        );
+    }
+
+    /// The check cannot see the format a pipeline registers, so an `in` of any type a vertex
+    /// attribute can have passes, whatever its name: `Normal`, which vanilla formats have, and a
+    /// custom `Tangent` a mod's own binding would supply.
+    #[test]
+    fn a_vertex_input_of_any_attribute_type_passes_whatever_its_name() {
+        for (inputs, body) in [
+            (
+                "in vec3 Position;\nin vec3 Normal;\n",
+                "gl_Position = ProjMat * ModelViewMat * vec4(Position + Normal, 1.0);",
+            ),
+            (
+                "in vec3 Position;\nin vec4 Tangent;\n",
+                "gl_Position = ProjMat * ModelViewMat * vec4(Position + Tangent.xyz, 1.0);",
+            ),
+        ] {
+            let (count, refused) = pipeline_shaders(&vertex_program(inputs, body), None);
+            assert_eq!((count, refused), (1, Vec::<String>::new()), "{inputs}");
+        }
+    }
+
+    /// An `in` of a type no vertex attribute format supplies is refused, naming it, at its line.
+    #[test]
+    fn a_vertex_input_no_attribute_format_supplies_is_refused() {
+        let body = "gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0) * Bones;";
+        let inputs = "in vec3 Position;\nin mat4 Bones;\n";
+        let (count, refused) = pipeline_shaders(&vertex_program(inputs, body), None);
+        assert_eq!(count, 1);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert!(
+            refused[0].starts_with("assets/m/shaders/core/blur.vsh:5:")
+                && refused[0].contains("`mat4` for `Bones`"),
+            "{refused:?}"
+        );
     }
 
     /// A fragment shader that includes `oit.glsl` only through an include of its own is checked

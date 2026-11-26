@@ -273,8 +273,8 @@ impl Config {
     /// `formats`: whether colortex formats count; `shadow`: whether the shadow settings do (those
     /// of [`VERTEX_IGNORED`] only with it); `others`: whether every other setting does.
     fn read_stage(&mut self, pp: &Preprocessed, formats: bool, shadow: bool, others: bool) {
-        let line = |at: usize| pp.locate(code_line(&pp.code, at));
-        for (at, ty, name, value) in constants(&pp.code, false) {
+        let line = |at: usize| pp.locate(code_line(pp.code(), at));
+        for (at, ty, name, value) in constants(pp.code(), false) {
             let place = line(at);
             self.constant(&place, ty, name, value, [formats, shadow, others]);
         }

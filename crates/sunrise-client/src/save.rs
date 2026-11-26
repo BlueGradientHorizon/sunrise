@@ -19,6 +19,7 @@ use compression_pool::{CompressedWrite, compress_records};
 pub mod biome_regions;
 pub mod block_entity_encode;
 mod block_entity_order;
+pub mod carrier;
 mod far_regions;
 mod horizon_names;
 pub(crate) use horizon_names::adopt_in_player as adopt_horizon_player;

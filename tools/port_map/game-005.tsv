@@ -41,7 +41,7 @@ Entity.getPosition	port	crates/sunrise-core/src/geometry/mod.rs::Vec3::lerp	prev
 Entity.awardKillScore	inline	crates/sunrise-client/src/game.rs::Game::tick	the player's death branch fires entity_killed_player with the killer's type
 Entity.shouldRender	port	crates/sunrise-client/src/game/interface/entity_culling/mod.rs::Game::entity_in_view	range from default_range (64 times the mean box edge times the view scale), then the frustum
 Entity.saveAsPassenger	port	crates/sunrise-client/src/game/world/persist.rs::Game::mob_tree_nbt	a mob with its riders nested under Passengers; players and unsaved types are skipped
-Entity.getEncodeId	inline	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	the id written is the mob type's id
+Entity.getEncodeId	inline	crates/sunrise-client/src/entity_nbt/mob_write.rs::mob_to_nbt	the id written is the mob type's id
 Entity.dropAllLeashConnections	port	crates/sunrise-client/src/game/entities/leads.rs::Game::drop_all_leash_connections	FireworkRocketItem.use while gliding; dispenser shears still drop through Game::shear_off_leashes
 Entity.canCollideWith	inline	crates/sunrise-client/src/game/mobs/ghasts.rs::Game::player_entity_collisions	gap: player: the entities a player cannot walk through are boats and happy ghasts only; a live shulker (canBeCollidedWith) is not solid, so the player walks through it
 Entity.getDefaultPassengerAttachmentPoint	inline	crates/sunrise-client/src/mobs/riders.rs::passenger_attachment	one point per vehicle, so the passenger index is always 0; default is the top of the box
@@ -117,7 +117,7 @@ EntityFluidInteraction.Tracker.reset	inline	crates/sunrise-world/src/entity_flui
 EntityReference.of	skip:java		references are plain UUID arrays (extra.owner), looked up when used
 EntityReference.getEntity	port	crates/sunrise-client/src/game/world/persist.rs::Game::mob_by_uuid	gap: minor: mobs only; the player is matched by its own UUID where it is needed
 EntityReference.resolve	skip:java		class cast check
-EntityReference.store	inline	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	Owner is written as an int array UUID
+EntityReference.store	inline	crates/sunrise-client/src/entity_nbt/mob_write.rs::mob_to_nbt	Owner is written as an int array UUID
 EntityReference.readWithOldOwnerConversion	inline	crates/sunrise-client/src/entity_nbt/mob_load.rs::mob_from_nbt	gap: minor: Owner is read as an int array UUID; an owner saved as a player name (worlds from before 1.7.6) is not converted
 EntityReference.equals	skip:java		UUIDs are compared directly
 world/entity/EntitySelector.withinDistance	port	crates/sunrise-client/src/game/mobs/dragon.rs::Game::fight_has_players	the 192 block range around (0, 128, 0) for the dragon fight's valid players
@@ -143,4 +143,4 @@ ExperienceOrb.hurtServer	port	crates/sunrise-client/src/entities.rs::ExperienceO
 ExperienceOrb.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::orb_to_nbt	gap: minor: Health is always written as 5
 ExperienceOrb.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::orbs_from_nbt	gap: minor: Health is ignored
 HumanoidArm.getOpposite	inline	crates/sunrise-client/src/game.rs::Game::hand_geometry	the main hand's side is main_hand_left; the off hand is the other side
-InsideBlockEffectApplier.StepBasedCollector.flushStep	port	crates/sunrise-client/src/arrows.rs::Collector::flush	gap: minor: the arrow collector has four effects (clear freeze, fire, lava, extinguish); the player's collector sits in motion.rs check_inside_blocks
+InsideBlockEffectApplier.StepBasedCollector.flushStep	port	crates/sunrise-client/src/entities/arrows/flight.rs::Collector::flush	gap: minor: the arrow collector has four effects (clear freeze, fire, lava, extinguish); the player's collector sits in motion.rs check_inside_blocks
