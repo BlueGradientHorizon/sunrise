@@ -233,8 +233,7 @@ impl Game<'_> {
                     hovered = self.inventory[c].clone().map(|s| (s, false));
                 }
             }
-            let scrollable = self.creative_screen.rows(&self.pack.names) > 5;
-            let scroller = if scrollable {
+            let scroller = if shown.can_scroll() {
                 "container/creative_inventory/scroller"
             } else {
                 "container/creative_inventory/scroller_disabled"

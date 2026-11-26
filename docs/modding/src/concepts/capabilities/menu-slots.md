@@ -729,3 +729,5 @@ On the Creative screen, `menu.slot_boxes(host)` keeps the player's inventory men
 Creative's visible order: crafting `0..=4`, armor `5..=8`, main inventory `9..=35`, hotbar `36..=44`,
 and offhand `45`. A hidden index is `None`. The inventory tab hides crafting; item and Search
 tabs show only the hotbar. Creative catalog slots and the trash slot have no entries.
+
+Use `MenuRef::creative_catalog` to read the catalog cells shown on an item or Search tab.
