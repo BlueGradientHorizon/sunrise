@@ -304,8 +304,7 @@ mod tests {
         ] {
             definitions.apply_json(name, source, json).unwrap();
         }
-        let built = definitions
-            .bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
+        let built = definitions.bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
         assert_eq!(built.tags["minecraft:things"], vec!["minecraft:stone"]);
         assert!(built.missing.is_empty());
     }
@@ -313,8 +312,7 @@ mod tests {
     fn ordered_removal_objects_survive_the_worldgen_codec() {
         let mut definitions = TagDefinitions::default();
         definitions.apply_json("things", "fixture", r##"{"values":["stone", {"id":"stone","remove":true}, "stone", {"id":"stone","remove":true}, {"id":"absent","remove":true}]}"##).unwrap();
-        let built = definitions
-            .bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
+        let built = definitions.bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
         assert!(built.tags["minecraft:things"].is_empty());
         assert!(built.missing.is_empty());
     }
@@ -333,8 +331,7 @@ mod tests {
         ] {
             definitions.apply_json(name, "fixture", json).unwrap();
         }
-        let built = definitions
-            .bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
+        let built = definitions.bind(|id, _| (!id.ends_with("absent")).then(|| id.to_owned()));
         assert_eq!(built.tags["minecraft:a"], vec!["minecraft:one"]);
         assert_eq!(
             built.tags["minecraft:b"],

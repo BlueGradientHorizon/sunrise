@@ -203,8 +203,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (name, text) in fluid_resources {
         fluid_tags.apply_json(&name, "vanilla", &text)?;
     }
-    let fluid_tags =
-        fluid_tags.bind(|name, _| FluidKind::from_name(name).map(|_| name.to_owned()));
+    let fluid_tags = fluid_tags.bind(|name, _| FluidKind::from_name(name).map(|_| name.to_owned()));
     assert!(fluid_tags.missing.is_empty());
     let fluids = FluidStateTable::new(&registry)?;
     let collision = Arc::new(BlockCollisionRegistry::new(Arc::new(collisions))?);

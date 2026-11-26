@@ -543,8 +543,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (name, text) in fluid_resources {
         fluid_defs.apply_json(&name, "vanilla", &text)?;
     }
-    let fluid_tags =
-        fluid_defs.bind(|name, _| FluidKind::from_name(name).map(|_| name.to_owned()));
+    let fluid_tags = fluid_defs.bind(|name, _| FluidKind::from_name(name).map(|_| name.to_owned()));
     assert!(fluid_tags.missing.is_empty());
     let bindings = FeatureBlockBindings::with_tags(&registry, BTreeSet::new(), &built.tags)?
         .with_fluid_tags(&fluid_tags.tags)?;

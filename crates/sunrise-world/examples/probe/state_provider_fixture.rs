@@ -316,8 +316,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (name, text) in resources.as_object().unwrap() {
         definitions.apply_json(name, "vanilla", text.as_str().unwrap())?;
     }
-    let built =
-        definitions.bind(|name, _| registry.default_state(name).map(|_| name.to_owned()));
+    let built = definitions.bind(|name, _| registry.default_state(name).map(|_| name.to_owned()));
     assert!(built.missing.is_empty());
     let tag_states: BTreeMap<String, BTreeSet<BlockStateId>> = built
         .tags
@@ -336,8 +335,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (name, text) in fluid_resources {
         fluid_tags.apply_json(&name, "vanilla", &text)?;
     }
-    let fluid_tags =
-        fluid_tags.bind(|name, _| FluidKind::from_name(name).map(|_| name.to_owned()));
+    let fluid_tags = fluid_tags.bind(|name, _| FluidKind::from_name(name).map(|_| name.to_owned()));
     assert!(fluid_tags.missing.is_empty());
     let biome_resources: BTreeMap<String, String> =
         serde_json::from_str(&fs::read_to_string(dir.join("biomes.json"))?)?;
