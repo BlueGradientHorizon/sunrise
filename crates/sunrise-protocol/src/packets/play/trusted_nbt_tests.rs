@@ -57,6 +57,57 @@ fn assert_trusted_limits_for<P: Codec<P> + std::fmt::Debug + PartialEq>(
     assert!(err.to_string().contains("depth limit exceeded"), "{err}");
 }
 
+/// A chat line whose `show_item` hover carries a registered mod data component decodes (#6083:
+/// it disconnected the client with "unknown component type"); an unregistered one is refused.
+#[test]
+fn a_chat_hover_item_with_a_registered_mod_component_decodes() {
+    // This test binary installs no other custom types; ids far past the built-in ones.
+    crate::item::custom::install(1_000_000, vec!["sunrise_test:hover_marker".into()]).unwrap();
+    let hover = |component: &str| {
+        Tag::compound([
+            ("text", Tag::String("[Data Model]".into())),
+            (
+                "hover_event",
+                Tag::compound([
+                    ("action", Tag::String("show_item".into())),
+                    ("id", Tag::String("minecraft:stone".into())),
+                    (
+                        "components",
+                        Tag::compound([(component, Tag::String("example:zombie".into()))]),
+                    ),
+                ]),
+            ),
+        ])
+    };
+    // The connection's synchronized names: the hovered item is a known one.
+    let mut names = crate::registry::Dynamic::default();
+    names.registries.insert(
+        "minecraft:item".into(),
+        vec![("minecraft:stone".into(), None)],
+    );
+    let decode = |content: Tag| {
+        let packet = SystemChat {
+            content,
+            overlay: false,
+        };
+        let mut w = Writer::new();
+        SystemChat::write(&packet, &mut w);
+        SystemChat::read(&mut Reader::new(&w.data).with_names(&names))
+    };
+    let registered = hover("sunrise_test:hover_marker");
+    assert_eq!(
+        decode(registered.clone()).map(|packet| packet.content),
+        Ok(registered),
+        "a registered mod component in a hover item decodes"
+    );
+    let err = decode(hover("sunrise_test:unregistered")).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("unknown component type sunrise_test:unregistered"),
+        "{err}"
+    );
+}
+
 #[test]
 fn chat_uses_trusted_nbt() {
     assert_trusted_limits(|content| SystemChat {
