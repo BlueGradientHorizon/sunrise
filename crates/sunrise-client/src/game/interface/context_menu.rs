@@ -214,7 +214,7 @@ fn truncate_label(label: &str, max_width: f32, width: &dyn Fn(&str) -> f32) -> S
     let mut hi = boundaries.len() - 1;
     let mut buf = String::with_capacity(label.len().min(64) + ellipsis.len());
     while lo < hi {
-        let mid = (lo + hi + 1) / 2;
+        let mid = (lo + hi).div_ceil(2);
         buf.clear();
         buf.push_str(&label[..boundaries[mid]]);
         buf.push_str(ellipsis);
@@ -522,12 +522,10 @@ impl ContextMenu {
         let Some((k, row)) = now else {
             return;
         };
-        if self.selected.get(k) != Some(&Some(row)) {
-            self.select(k, Some(row), true);
-        } else if entered
+        let reenters_closed_submenu = entered
             && self.selected.len() == k + 1
-            && self.level(k).get(row).is_some_and(opens_submenu)
-        {
+            && self.level(k).get(row).is_some_and(opens_submenu);
+        if self.selected.get(k) != Some(&Some(row)) || reenters_closed_submenu {
             self.select(k, Some(row), true);
         }
     }
