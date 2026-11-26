@@ -664,7 +664,6 @@ fn an_expansion_past_the_budget_is_refused_where_it_is() {
         file: tests::VSH_FILE.into(),
         line: 42,
         message: directives::stopped(crate::macros::Stop::Work),
-        unbound: None,
     };
     assert_eq!(errors, [in_stage(naga::ShaderStage::Vertex, refused)]);
 }

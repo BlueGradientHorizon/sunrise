@@ -513,7 +513,6 @@ pub fn translate(
             file: vertex_file.to_owned(),
             line: 0,
             message,
-            unbound: None,
         }]
     })?;
     let mut names = Names::new(base);
@@ -915,7 +914,6 @@ pub fn translate_compute(
             file: file.to_owned(),
             line: 0,
             message,
-            unbound: None,
         }]
     })?);
     let code =
@@ -929,7 +927,6 @@ pub fn translate_compute(
             file: file.to_owned(),
             line: 0,
             message: "the compute shader has no `main`".to_owned(),
-            unbound: None,
         }]);
     };
     let workgroup_size = entry.workgroup_size;
@@ -1057,7 +1054,6 @@ impl From<ImportError> for Error {
             file: e.file,
             line: e.line,
             message: e.refusal.to_string(),
-            unbound: None,
         }
     }
 }
@@ -2282,12 +2278,10 @@ fn compile(
             if provided(name) {
                 continue;
             }
-            let mut error = code.error_in(
+            return Err(vec![code.error_in(
                 module.global_variables.get_span(handle),
                 format!("{name} is not a block or sampler of this pipeline"),
-            );
-            error.unbound = Some(name.to_owned());
-            return Err(vec![error]);
+            )]);
         }
     }
     Ok((module, info))
@@ -3013,7 +3007,6 @@ mod tests {
                 file: VSH_FILE.into(),
                 line: 2,
                 message: "vertex shader: Day is not a block or sampler of this pipeline".into(),
-                unbound: None,
             }]
         );
         let only_day = |name: &str| name == "Day";
@@ -3025,7 +3018,6 @@ mod tests {
                 line: 2,
                 message: "fragment shader: Bounds is not a block or sampler of this pipeline"
                     .into(),
-                    unbound: None,
             }]
         );
     }
@@ -3296,7 +3288,6 @@ void main() { }
                 line: 2,
                 message: "vertex shader: Lightmap is not a block or sampler of this pipeline"
                     .into(),
-                    unbound: None,
             }]
         );
         // Behind a define the pipeline doesn't have, it is no error.
@@ -3313,7 +3304,6 @@ void main() { }
                 file: VSH_FILE.into(),
                 line: 2,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
-                unbound: None,
             }]
         );
         // An include the defines drop is never read, as shaderc preprocesses: missing, it is no
@@ -3328,7 +3318,6 @@ void main() { }
                 file: VSH_FILE.into(),
                 line: 3,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
-                unbound: None,
             }]
         );
         let active_after_skipped =
@@ -3340,7 +3329,6 @@ void main() { }
                 file: VSH_FILE.into(),
                 line: 5,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
-                unbound: None,
             }]
         );
         let unreadable = |id: &str| -> Result<Option<String>, String> {
@@ -3366,7 +3354,6 @@ void main() { }
                 file: VSH_FILE.into(),
                 line: 3,
                 message: "minecraft:shaders/include/nothing.glsl: not text".into(),
-                unbound: None,
             }]
         );
     }
@@ -3578,7 +3565,6 @@ void main() { }
                 file: "demo:custom/core/test.vsh".into(),
                 line: 4,
                 message: "vertex shader: Extra is not a block or sampler of this pipeline".into(),
-                unbound: None,
             }]
         );
 

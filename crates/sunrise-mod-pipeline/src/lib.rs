@@ -488,12 +488,6 @@ impl<'a> Setup<'a> {
     }
 }
 
-/// Whether a block or sampler the pipeline doesn't declare is provided anyway: the names in
-/// `extra_samplers` are.
-fn provided_by<'s>(extra_samplers: &'s [&'s str]) -> impl Fn(&str) -> bool + 's {
-    move |name| extra_samplers.contains(&name)
-}
-
 /// Whether `ty` is a GLSL scalar/vector type producible by `VertexAttributeFormat::glsl_type`.
 fn is_supported_vertex_glsl_type(ty: &str) -> bool {
     matches!(
@@ -587,24 +581,33 @@ fn validate_vertex_inputs(
     Ok(())
 }
 
-/// [`extract_mod_bindings`] over a program's two stages with their `#include`s inlined and
-/// comments removed under `defines`, as [`translate`] reads them: a uniform block, sampler or
-/// buffer an included file declares is the program's too (#5905), and one named only in a comment
-/// is not. A stage whose includes cannot be expanded refuses the program, as [`translate`] does,
-/// with the include's error and no bindings.
+/// What a program's text says of its pipeline, for deviceless static checking (`cargo sunrise-mod
+/// check`), which has no `RenderPipeline` to ask: [`extract_program_bindings`].
+#[derive(Debug, PartialEq, Eq)]
+pub struct ProgramBindings {
+    /// Whether the program samples the pipeline's sprite texture: it names `Sampler0`,
+    /// `SpriteRect` or `sampleSprite`, or includes [`SPRITE_INCLUDE`].
+    pub textured: bool,
+    /// The mod's own bindings ([`extract_mod_bindings`]).
+    pub bindings: Vec<(String, ModBindingKind)>,
+    /// What its `layout(push_constant)` block asks for, `0` without one.
+    pub push_constant_size: u32,
+}
+
+/// What a program's two stages declare, read as [`translate`] reads them: `#include`s inlined
+/// under `defines` and comments removed. A uniform block, sampler or buffer an included file
+/// declares is the program's too (#5905), and one named only in a comment is not, nor does a
+/// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
+/// refuses the program, as [`translate`] does, with the include's error.
 pub fn extract_program_bindings(
     sources: &ProgramSources<'_>,
-    textured: bool,
     defines: &[&str],
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
-) -> Result<(Vec<(String, ModBindingKind)>, u32), Problem> {
+) -> Result<ProgramBindings, Problem> {
+    // Including the sprite helpers is itself asking for the sprite texture.
     let read = |id: &str| -> Result<Option<String>, String> {
         if id == SPRITE_INCLUDE {
-            return if textured {
-                Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()))
-            } else {
-                Err(format!("{SPRITE_INCLUDE} requires a sprite texture"))
-            };
+            return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
         }
         include(id)
     };
@@ -626,7 +629,16 @@ pub fn extract_program_bindings(
         sources.fragment_file,
         sources.fragment_dir,
     )?;
-    Ok(extract_mod_bindings(&vertex, &fragment, textured))
+    let textured = [&vertex, &fragment].iter().any(|text| {
+        text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .any(|word| matches!(word, "Sampler0" | "SpriteRect" | "sampleSprite"))
+    });
+    let (bindings, push_constant_size) = extract_mod_bindings(&vertex, &fragment, textured);
+    Ok(ProgramBindings {
+        textured,
+        bindings,
+        push_constant_size,
+    })
 }
 
 /// Prepend [`DEPTH_ZERO_TO_ONE`] to caller-supplied defines.
@@ -892,9 +904,26 @@ fn translate_inner(
     let inputs = setup.inputs(options, defines, &includes);
     let glue = setup.glue(options, None);
 
-    let provided = provided_by(extra_samplers);
-    let mut translated = sunrise_glsl::translate(&stages, &inputs, &glue, &provided)
-        .map_err(|errs| map_glsl_errors(sources, &errs, options.textured))?;
+    // The translator asks about a block or sampler the pipeline doesn't declare only to refuse
+    // it when the answer is no, so the last name refused is the one its error is about.
+    let refused = std::cell::RefCell::new(None);
+    let provided = |name: &str| {
+        let provided = extra_samplers.contains(&name);
+        if !provided {
+            *refused.borrow_mut() = Some(name.to_owned());
+        }
+        provided
+    };
+    let unbound = |errs: Vec<sunrise_glsl::Error>| {
+        map_glsl_errors(
+            sources,
+            &errs,
+            options.textured,
+            refused.borrow().as_deref(),
+        )
+    };
+    let mut translated =
+        sunrise_glsl::translate(&stages, &inputs, &glue, &provided).map_err(unbound)?;
     if let Some(pc_binding) = set1.push_constant_binding
         && let Some(actual_size) = translated.uniform_block_size(MOD_BIND_GROUP_SET, pc_binding)
         && actual_size > options.push_constant_size
@@ -913,8 +942,8 @@ fn translate_inner(
     {
         let finish = linear_fragment_finish(out_name);
         let linear_glue = setup.glue(options, Some(&finish));
-        translated = sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided)
-            .map_err(|errs| map_glsl_errors(sources, &errs, options.textured))?;
+        translated =
+            sunrise_glsl::translate(&stages, &inputs, &linear_glue, &provided).map_err(unbound)?;
     }
 
     if options.check_backends {
@@ -956,7 +985,7 @@ pub fn translate_linear_fragment(
         };
         let setup = Setup::new(options);
         let inputs = setup.inputs(options, &defines, &includes);
-        let provided = provided_by(&[]);
+        let provided = |_: &str| false;
         let stages = Stages {
             dir: "",
             vertex: vertex_expanded,
@@ -979,16 +1008,21 @@ pub fn translate_linear_fragment(
     .unwrap_or_else(Err)
 }
 
+/// The translator's `errors` as problems in the program's files. `unbound` is the block or sampler
+/// the program reads that the pipeline doesn't provide, when that is what the translator refused:
+/// `Sampler0` or `SpriteRect` on an untextured pipeline adds the hint to declare it textured.
 fn map_glsl_errors(
     sources: &ProgramSources<'_>,
     errors: &[sunrise_glsl::Error],
     textured: bool,
+    unbound: Option<&str>,
 ) -> Vec<Problem> {
+    let hint = !textured && matches!(unbound, Some("Sampler0" | "SpriteRect"));
     errors
         .iter()
         .map(|err| {
             let mut message = err.message.clone();
-            if !textured && matches!(err.unbound.as_deref(), Some("Sampler0" | "SpriteRect")) {
+            if hint {
                 message += " (requires RenderPipeline::textured)";
             }
             let file = if !err.file.is_empty() {
@@ -1781,8 +1815,11 @@ void main() {{
             layout(std140) uniform Hidden { vec4 h; };\n*/\n\
             uniform sampler2D Real; /* uniform sampler2D Trailing; */\n\
             out vec4 fragColor;\nvoid main() { fragColor = texture(Real, vec2(0.0)); }\n";
-        let (bindings, push_constant_size) =
-            extract_program_bindings(&sources(vsh, fsh), false, &[], &stub_include).unwrap();
+        let ProgramBindings {
+            bindings,
+            push_constant_size,
+            ..
+        } = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include).unwrap();
         assert_eq!(
             bindings,
             vec![("Real".to_owned(), ModBindingKind::CombinedImageSampler)]
@@ -1798,7 +1835,7 @@ void main() {{
             void main() { gl_Position = vec4(Position, 1.0); }\n";
         let fsh = "#version 330\nuniform sampler2D Real;\nout vec4 fragColor;\n\
             void main() { fragColor = texture(Real, vec2(0.0)); }\n";
-        let refused = extract_program_bindings(&sources(vsh, fsh), false, &[], &stub_include)
+        let refused = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include)
             .expect_err("a missing include refuses the program");
         assert_eq!(refused.file, "assets/example/shaders/core/glow.vsh");
         assert!(
@@ -1807,7 +1844,7 @@ void main() {{
         );
     }
 
-    /// The hint to declare `.textured` follows the unbound name the error carries: `Sampler0`
+    /// The hint to declare `.textured` follows the name the pipeline refused: `Sampler0`
     /// and `SpriteRect` get it on an untextured pipeline, a name merely ending in one does not.
     #[test]
     fn the_textured_hint_follows_the_unbound_name() {
@@ -1822,11 +1859,20 @@ void main() {{
             assert_eq!(problems.len(), 1, "{problems:?}");
             problems[0].message.clone()
         };
-        let sampler = refused("uniform sampler2D Sampler0;", "texture(Sampler0, vec2(0.0))");
+        let sampler = refused(
+            "uniform sampler2D Sampler0;",
+            "texture(Sampler0, vec2(0.0))",
+        );
         assert!(sampler.ends_with(hint), "{sampler}");
-        let rect = refused("layout(std140) uniform SpriteRect { vec4 r; };", "vec4(r.x)");
+        let rect = refused(
+            "layout(std140) uniform SpriteRect { vec4 r; };",
+            "vec4(r.x)",
+        );
         assert!(rect.ends_with(hint), "{rect}");
-        let other = refused("uniform sampler2D MySampler0;", "texture(MySampler0, vec2(0.0))");
+        let other = refused(
+            "uniform sampler2D MySampler0;",
+            "texture(MySampler0, vec2(0.0))",
+        );
         assert!(other.contains("MySampler0 is not"), "{other}");
         assert!(!other.contains(hint), "{other}");
     }

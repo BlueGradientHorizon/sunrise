@@ -434,7 +434,6 @@ pub fn pipeline_shaders(
     // with a trivial fragment shader so the vertex stage is still validated.
     const STAND_IN_FRAGMENT: &str =
         "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
-    let defines = [sunrise_mod_pipeline::DEPTH_ZERO_TO_ONE];
     let mut count = 0;
     let mut refused = Vec::new();
     for ((ns, stem), (vsh_file, fsh_file)) in stems {
@@ -474,43 +473,16 @@ pub fn pipeline_shaders(
             fragment_dir: &dir,
             fragment: &fsh_text,
         };
-        // Whether a pipeline is textured is in the mod's Rust code; the program says so by using
-        // a sprite name in the text the translator reads: includes inlined, comments gone. The
-        // sprite include itself is expanded, as it is for a textured pipeline.
-        let read_include = |id: &str| {
-            if id == sunrise_mod_pipeline::SPRITE_INCLUDE {
-                Ok(Some(sunrise_mod_pipeline::PIPELINE_SPRITE_GLSL.to_owned()))
-            } else {
-                include(id)
+        // Whether a pipeline is textured is in the mod's Rust code; the program says so in the
+        // text the translator reads.
+        let program = match sunrise_mod_pipeline::extract_program_bindings(&sources, &[], &include)
+        {
+            Ok(program) => program,
+            Err(e) => {
+                refused.push(e.to_string());
+                continue;
             }
         };
-        let includes = sunrise_glsl::Includes {
-            read: &read_include,
-            namespace: "minecraft",
-            folder: sunrise_mod_pipeline::INCLUDE_FOLDER,
-            once: &["moj_import"],
-        };
-        let mut textured = false;
-        let mut unreadable = false;
-        for (file, file_dir, text) in [
-            (&vertex_file, &vertex_dir, &vsh_text),
-            (&fragment_file, &dir, &fsh_text),
-        ] {
-            match sunrise_glsl::expand_includes(text, file, file_dir, &includes, Some(&defines)) {
-                Ok(expanded) => {
-                    textured |= ["Sampler0", "SpriteRect", "sampleSprite"]
-                        .iter()
-                        .any(|name| expanded.text().contains(name));
-                }
-                Err(e) => {
-                    refused.push(format!("{file}: {e}"));
-                    unreadable = true;
-                }
-            }
-        }
-        if unreadable {
-            continue;
-        }
         let vertex_inputs = match sunrise_mod_pipeline::extract_vertex_inputs(&vsh_text) {
             Ok(v) => v,
             Err(e) => {
@@ -527,16 +499,8 @@ pub fn pipeline_shaders(
             .iter()
             .map(|(n, t)| (n.as_str(), t.as_str()))
             .collect();
-        let (extracted_bindings, pc_size) =
-            match sunrise_mod_pipeline::extract_program_bindings(&sources, textured, &[], &include)
-            {
-                Ok(found) => found,
-                Err(e) => {
-                    refused.push(e.to_string());
-                    continue;
-                }
-            };
-        let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = extracted_bindings
+        let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = program
+            .bindings
             .iter()
             .map(|(name, kind)| sunrise_mod_pipeline::ModBinding {
                 name: name.as_str(),
@@ -544,14 +508,14 @@ pub fn pipeline_shaders(
             })
             .collect();
         let options = sunrise_mod_pipeline::Options {
-            textured,
+            textured: program.textured,
             vertex_inputs: if is_default {
                 &sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
             } else {
                 &custom_refs
             },
             mod_bindings: &mod_bindings,
-            push_constant_size: pc_size,
+            push_constant_size: program.push_constant_size,
             check_backends: true,
             ..Default::default()
         };

@@ -49,7 +49,6 @@ pub(super) fn rewrite(pp: &Preprocessed) -> (Option<Preprocessed>, Vec<Error>) {
             file: pp.files.get(o.file as usize).cloned().unwrap_or_default(),
             line: o.line,
             message: String::new(),
-            unbound: None,
         }
     };
     let mut errors = Vec::new();
