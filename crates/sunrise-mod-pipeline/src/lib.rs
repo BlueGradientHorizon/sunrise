@@ -507,13 +507,23 @@ fn is_supported_vertex_glsl_type(ty: &str) -> bool {
     )
 }
 
+/// The asset path of a file a located error names: an `#include`d file's id `ns:path` becomes
+/// `assets/ns/path`, the spelling of a stage file, which is already an asset path. A [`Problem`]
+/// names every file by its asset path, the path the mod's pack holds it at.
+fn asset_path(file: &str) -> String {
+    match file.split_once(':') {
+        Some((namespace, path)) => format!("assets/{namespace}/{path}"),
+        None => file.to_owned(),
+    }
+}
+
 /// A refusal at byte `at` of `stage`'s text (none when it has no place: the stage file, no line),
 /// in the file and at the line that byte came from ([`Expanded::error_at`]: an `#include`d
 /// declaration is located in its own file), and at its column in the expanded text.
 fn refusal_at(stage: &Expanded, at: Option<usize>, message: String) -> Problem {
     let error = stage.error_at(at, message);
     Problem {
-        file: error.file,
+        file: asset_path(&error.file),
         line: error.line as usize,
         column: at.map_or(0, |at| line_column(stage.text(), at).1),
         message: error.message,
@@ -1010,14 +1020,14 @@ fn map_glsl_errors(
                 message += " (requires RenderPipeline::textured)";
             }
             let file = if !err.file.is_empty() {
-                err.file.as_str()
+                asset_path(&err.file)
             } else if message.starts_with("vertex shader: ") {
-                sources.vertex_file
+                sources.vertex_file.to_owned()
             } else {
-                sources.fragment_file
+                sources.fragment_file.to_owned()
             };
             Problem {
-                file: file.to_owned(),
+                file,
                 line: err.line as usize,
                 column: 0,
                 message,
@@ -1317,7 +1327,7 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
             #include <example:chain.glsl>\nvoid main() { fragColor = vec4(1.0); }\n";
         let err = translate(&sources(VSH, fsh), &Options::default(), &include).unwrap_err();
         assert_eq!(err.len(), 1, "{err:?}");
-        assert_eq!(err[0].file, "example:shaders/include/chain.glsl");
+        assert_eq!(err[0].file, "assets/example/shaders/include/chain.glsl");
         assert_eq!(err[0].line, 2);
         assert!(err[0].message.contains("chains more than 200"), "{err:?}");
 
@@ -1336,7 +1346,7 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
         };
         let err = translate_compute(&compute, &options, &include).unwrap_err();
         assert_eq!(err.len(), 1, "{err:?}");
-        assert_eq!(err[0].file, "example:shaders/include/chain.glsl");
+        assert_eq!(err[0].file, "assets/example/shaders/include/chain.glsl");
         assert_eq!(err[0].line, 2);
     }
 
@@ -1890,7 +1900,7 @@ void main() {{
         };
         let refused = extract_program_bindings(&sources(vsh, fsh), &[], &include)
             .expect_err("an unsupported vertex input type is refused");
-        assert_eq!(refused.file, "example:shaders/include/attributes.glsl");
+        assert_eq!(refused.file, "assets/example/shaders/include/attributes.glsl");
         assert_eq!(refused.line, 1);
         assert!(
             refused.message.contains("`mat4` for `Matrix`"),
@@ -1908,7 +1918,10 @@ void main() {{
         let refused = translate(&sources(vsh, fsh), &Options::default(), &include)
             .expect_err("an undeclared vertex input is refused");
         assert_eq!(refused.len(), 1, "{refused:?}");
-        assert_eq!(refused[0].file, "example:shaders/include/attributes.glsl");
+        assert_eq!(
+            refused[0].file,
+            "assets/example/shaders/include/attributes.glsl"
+        );
         assert_eq!(refused[0].line, 2);
         assert!(refused[0].message.contains("`Stray`"), "{refused:?}");
     }
@@ -1928,6 +1941,24 @@ void main() {{
             refused.message.contains("nothing_here.glsl not found"),
             "{refused:?}"
         );
+    }
+
+    /// A translator error in an included file names it by its asset path, as a stage file is.
+    #[test]
+    fn a_translator_error_in_an_include_names_its_asset_path() {
+        let include = |id: &str| match id {
+            "example:shaders/include/pick.glsl" => Ok(Some(
+                "uniform sampler2D MySampler0;\nvec4 pick() { return texture(MySampler0, vec2(0.0)); }\n"
+                    .to_owned(),
+            )),
+            other => stub_include(other),
+        };
+        let fsh = "#version 330\n#include <example:pick.glsl>\nout vec4 fragColor;\n\
+            void main() { fragColor = pick(); }\n";
+        let problems = translate(&sources(VSH, fsh), &Options::default(), &include)
+            .expect_err("a sampler the pipeline doesn't provide is refused");
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert_eq!(problems[0].file, "assets/example/shaders/include/pick.glsl");
     }
 
     /// The hint to declare `.textured` follows the name the pipeline refused: `Sampler0`

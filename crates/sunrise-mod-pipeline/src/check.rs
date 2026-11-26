@@ -2,7 +2,8 @@
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use std::fmt;
 
-/// What is wrong, and where: a file, with the 1-based line and column when known (0 when not).
+/// What is wrong, and where: a file by its asset path (`assets/<namespace>/<path>`, an `#include`d
+/// file's too), with the 1-based line and column when known (0 when not).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Problem {
     pub file: String,
