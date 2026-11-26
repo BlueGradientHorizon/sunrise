@@ -90,7 +90,7 @@ class StructKindFixtures(unittest.TestCase):
             'impl Restricted { pub(crate) const fn new() -> Self { todo!() } }\n'
             'impl Method { pub const fn copy(&self) -> Self { todo!() } }\n'
             'impl NestedConst { pub fn get(&self) -> u8 { pub const fn make() -> NestedConst { todo!() } 0 } }\n'
-            'impl NestedPlain { fn helper() { pub fn make() -> Self { todo!() } } }')
+            'impl NestedPlain { fn helper() { pub fn make() -> NestedPlain { todo!() } } }')
         self.assertEqual(defaults, {('', ('A',))})
         self.assertEqual(constructors, {('', (name,)) for name in (
             'B', 'D', 'Const', 'Async', 'Unsafe', 'ConstUnsafe')})
