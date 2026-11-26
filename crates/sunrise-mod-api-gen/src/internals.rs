@@ -2751,7 +2751,15 @@ fn on_unix() {}
             "crates/lower/src/child.rs",
             "#[path = \"link.rs\"] pub(super) mod linked;\n",
         );
-        std::os::unix::fs::symlink(&target, fixture.0.join("crates/lower/src/link.rs")).unwrap();
+        let link = fixture.0.join("crates/lower/src/link.rs");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        // Windows makes file links only with Developer Mode on (or as an administrator).
+        #[cfg(windows)]
+        if let Err(error) = std::os::windows::fs::symlink_file(&target, &link) {
+            eprintln!("skipping the link-out-of-the-root check: no symlink here ({error})");
+            return;
+        }
         fixture.put(
             "crates/lower/src/hidden.rs",
             "mod child { include!(\"child.rs\"); }\nfn selected() {}\n",
