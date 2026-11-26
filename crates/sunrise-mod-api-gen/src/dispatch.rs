@@ -1971,6 +1971,12 @@ pub(super) fn emit<'a>(
                         format!(
                             "let mut {refused} = (false, false); for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ let {before} = ({event}.may_place, {event}.may_pickup); {part_call} {refused}.0 |= {before}.0 && !{event}.may_place; {refused}.1 |= {before}.1 && !{event}.may_pickup; }} {event}.may_place &= !{refused}.0; {event}.may_pickup &= !{refused}.1;"
                         )
+                    } else if name == "menu_pick_all" {
+                        // As for slot rules: a Part's refusal stands.
+                        let refused = fresh_name("refused", &mut used);
+                        format!(
+                            "let mut {refused} = false; for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_call} {refused} |= !{event}.allowed; }} {event}.allowed &= !{refused};"
+                        )
                     } else {
                         format!(
                             "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_call} }}",

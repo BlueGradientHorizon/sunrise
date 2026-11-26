@@ -781,7 +781,7 @@ def machine_slot():
     slots = SHARED / "slots"
     slots.mkdir(parents=True, exist_ok=True)
     for index in range(MACHINE_JOBS):
-        handle = open(slots / f"{index}.lock", "w")
+        handle = open(slots / f"{index}.lock", "a")
         if file_lock.lock(handle, wait=False):
             return handle
         handle.close()
@@ -1150,7 +1150,7 @@ def remember_fresh_only(keep, results):
              if record.get("fresh_rerun") == "pass"}
     if not added:
         return
-    with open(keep / "fresh-only.lock", "w") as handle:
+    with open(keep / "fresh-only.lock", "a") as handle:
         file_lock.lock(handle)
         temporary = keep / f".fresh-only.{os.getpid()}.json"
         temporary.write_text(json.dumps(dict(fresh_only(keep), **added), indent=1, sort_keys=True) + "\n",

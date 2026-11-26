@@ -1232,7 +1232,7 @@ fn interact_loot_exposes_block_origin_block_entity_level_interacting_entity_and_
         }
     }
     let table = json!({"pools":[{"rolls":1,
-        "conditions":[{"type":"neoforge:can_item_perform_ability","ability":"shears_harvest"}],
+        "condition":{"type":"neoforge:can_item_perform_ability","ability":"shears_harvest"},
         "entries":[{"type":"minecraft:item","name":"minecraft:honeycomb"}]}]});
     let mut items = data(vec![("minecraft:harvest/beehive", table)]);
     let seen = Arc::new(Mutex::new(None));

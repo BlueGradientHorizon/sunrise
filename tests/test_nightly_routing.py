@@ -12,7 +12,6 @@ import textwrap
 import unittest
 
 from tests.os_support import needs_runner_shell
-from tests.test_ci_runners import jobs
 from tests.test_ci_concurrency import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -142,9 +141,7 @@ console.log(JSON.stringify(eval(state.expression)));
 
     @needs_runner_shell
     def test_any_missing_leg_holds_the_build(self):
-        workflow_jobs = dict(jobs(GAME.read_text()))
-        decide = workflow_jobs["legs"].split("        run: |\n", 1)[1].split("\n      # ", 1)[0].split("\n      - ", 1)[0]
-        decide = textwrap.dedent(decide)
+        decide = next(step["run"] for step in yaml.safe_load(GAME.read_text())["jobs"]["legs"]["steps"] if "run" in step)
         legs = ("linux", "windows", "macos")
         for absent in [None, *legs]:
             with self.subTest(absent=absent), tempfile.TemporaryDirectory() as folder:
@@ -211,9 +208,10 @@ console.log(JSON.stringify(eval(state.expression)));
     def test_hosted_runners_never_use_machine_specific_tool_setup(self):
         # Only the exporters can run on a self-hosted (Dyna) runner; the build legs are fresh machines and take none.
         self.assertNotIn("runner-env.sh", GAME.read_text())
-        steps = [block for block in dict(jobs(EXPORTERS.read_text()))["exporters"].split("\n      - ") if "bash tools/ci/runner-env.sh" in block]
+        steps = [step for step in yaml.safe_load(EXPORTERS.read_text())["jobs"]["exporters"]["steps"]
+                 if "bash tools/ci/runner-env.sh" in step.get("run", "")]
         self.assertEqual(len(steps), 1)
-        condition = re.search(r"^\s*if:\s*(.*)$", steps[0], re.M).group(1)
+        condition = steps[0]["if"]
         for environment in ["github-hosted", "self-hosted"]:
             expression = condition.replace("runner.environment", repr(environment))
             self.assertEqual(eval(expression, {"__builtins__": {}}), environment == "self-hosted")

@@ -49,7 +49,7 @@ impl Game<'_> {
         let Some(item) = mob.extra.body_id() else {
             return;
         };
-        if super::armor_stands::skull_kind(item).is_some() {
+        if super::armor_stands::skull_kind(&self.pack.item_renderer.models, item).is_some() {
             return;
         }
         // shortcut: the body slot retains only an item id; preserve the stack

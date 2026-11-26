@@ -82,6 +82,14 @@ fn strict_block_predicates_refuse_unknown_properties_even_if_custom_metadata_acc
         fn of(&self, _: BlockKey, _: &[StateConstraint]) -> Result<BlockState, BlockStateError> {
             Ok(self.0)
         }
+
+        fn visit_properties(
+            &self,
+            _: BlockState,
+            _: &mut dyn FnMut(&str, &str),
+        ) -> Result<(), BlockStateError> {
+            Ok(())
+        }
     }
 
     let key = register_block();

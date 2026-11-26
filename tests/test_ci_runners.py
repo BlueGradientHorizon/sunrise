@@ -5,9 +5,11 @@
 - Neither takes a job that holds a secret or whose token can push, publish or start workflows: playsunrise is a
   partner's server, and a checks runner keeps what a fork's job left behind.
 """
-import re
+import json
 import unittest
 from pathlib import Path
+
+from tests.test_ci_concurrency import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github/workflows"
@@ -16,54 +18,46 @@ CHECKS = ("sunrise-checks",)
 FORK_GUARD = "github.event.pull_request.head.repo.full_name == github.repository"
 # dyna-ci.yml decides trust once, in its changes job (a fork's pull request, dispatched with `pr` or not).
 TRUSTED = "needs.changes.outputs.trusted == 'true'"
-TRUSTED_WRITES = re.compile(r"^\s*(contents|actions|packages|id-token|deployments|attestations): write", re.M)
+TOKEN_WRITE_SCOPES = {"contents", "actions", "packages", "id-token", "deployments", "attestations"}
 # actions: write can start workflows too; cancel-on-close needs it to cancel runs and runs no checkout at all.
 CANCELS_RUNS = {"cancel-on-close.yml cancel"}
 
 
-def jobs(text):
-    """(name, block) for each job of a workflow, by indentation (two spaces under `jobs:`)."""
-    body = text.split("\njobs:\n", 1)[1]
-    parts = re.split(r"^  ([A-Za-z0-9_-]+):\n", body, flags=re.M)
-    return list(zip(parts[1::2], parts[2::2]))
+def workflow(path):
+    """The parsed workflow, every scalar a string (BaseLoader keeps `on` a key, not True)."""
+    return yaml.load(path.read_text(), Loader=yaml.BaseLoader)
 
 
-def triggers(text):
-    head = text.split("\njobs:\n", 1)[0]
-    on = re.search(r"^on:\n((?:[ #].*\n|\n)*)", head, re.M)
-    return set(re.findall(r"^  ([a-z_]+):", on.group(1), re.M)) if on else set()
+def jobs(document):
+    """(name, job) for each job of a parsed workflow."""
+    return list(document["jobs"].items())
 
 
-def runs_on(block):
-    """The job's runs-on value, a folded (`>-`) one included."""
-    lines = block.splitlines()
-    for i, line in enumerate(lines):
-        if line.strip().startswith("runs-on:"):
-            value = line.split("runs-on:", 1)[1].strip()
-            if value in (">-", ">", "|"):
-                indent = len(line) - len(line.lstrip()) + 2
-                # The folded lines right under it.
-                folded = []
-                for l in lines[i + 1:]:
-                    if not l.startswith(" " * indent):
-                        break
-                    folded.append(l.strip())
-                value = " ".join(folded)
-            return value
-    return ""
+def triggers(document):
+    on = document["on"]
+    return set(on) if isinstance(on, (dict, list)) else {on}
+
+
+def permissions(*owners):
+    """Every scope a permissions mapping of these workflow or job mappings grants, with its level."""
+    return {scope: level for owner in owners for scope, level in owner.get("permissions", {}).items()}
+
+
+def checkouts(job):
+    return [step for step in job.get("steps", []) if step.get("uses", "").startswith("actions/checkout")]
 
 
 def routed():
-    """(where, triggers, workflow text, job block, runs-on, pools) for every job that can run on our runners."""
+    """(where, triggers, workflow, job, runs-on, pools) for every job that can run on our runners."""
     for path in sorted(WORKFLOWS.glob("*.yml")):
-        text = path.read_text()
-        on = triggers(text)
-        for name, block in jobs(text):
-            value = runs_on(block)
+        document = workflow(path)
+        on = triggers(document)
+        for name, job in jobs(document):
+            value = job.get("runs-on", "")
             pools = {pool for pool, labels in (("light", LIGHT), ("checks", CHECKS))
                      if any(f'"{label}"' in value for label in labels)}
             if pools:
-                yield f"{path.name} {name}", on, text, block, value, pools
+                yield f"{path.name} {name}", on, document, job, value, pools
 
 
 class OwnRunnerTests(unittest.TestCase):
@@ -94,33 +88,31 @@ class OwnRunnerTests(unittest.TestCase):
         self.assertGreaterEqual(count, 10)
 
     def test_light_runners_take_main_code_only(self):
-        for where, on, _, block, value, pools in routed():
+        for where, on, _, job, value, pools in routed():
             if "light" not in pools:
                 continue
             if "pull_request" in on:
                 # The guard lives in the job's `if` upstream; dyna-ci.yml (ours)
                 # puts it in `runs-on`, before the self-hosted labels.
-                condition = next((l for l in block.splitlines() if l.strip().startswith("if:")), "")
+                condition = job.get("if", "")
                 guarded = any(guard in condition or guard in value for guard in (FORK_GUARD, TRUSTED))
                 self.assertTrue(guarded, f"{where}: a fork's pull request")
             if "pull_request_target" in on:
                 # main's code only: every checkout is main's.
-                self.assertEqual(block.count("uses: actions/checkout"), block.count("ref: main"), where)
+                self.assertEqual(len(checkouts(job)), sum(c.get("with", {}).get("ref") == "main" for c in checkouts(job)), where)
 
     def test_no_secret_or_writing_token_on_our_runners(self):
-        for where, _, text, block, _, pools in routed():
-            self.assertNotIn("secrets.", block, where)
-            head = text.split("\njobs:\n", 1)[0]
-            for part in (block, head):
-                writes = {m.group(1) for m in TRUSTED_WRITES.finditer(part)}
-                if where in CANCELS_RUNS:
-                    writes -= {"actions"}
-                    self.assertNotIn("actions/checkout", block, where)
-                self.assertEqual(writes, set(), where)
+        for where, _, document, job, _, pools in routed():
+            self.assertNotIn("secrets.", json.dumps(job), where)
+            granted = permissions(document, job)
+            writes = {scope for scope, level in granted.items() if level == "write" and scope in TOKEN_WRITE_SCOPES}
+            if where in CANCELS_RUNS:
+                writes -= {"actions"}
+                self.assertEqual(checkouts(job), [], where)
+            self.assertEqual(writes, set(), where)
             if "checks" in pools:
                 # A checks runner keeps what a fork's job left: its jobs' tokens write nothing at all.
-                self.assertNotRegex(block, r":\s*write", where)
-                self.assertNotRegex(head, r":\s*write", where)
+                self.assertNotIn("write", granted.values(), where)
 
     def test_no_deployment_environment_on_our_runners(self):
         import hashlib
@@ -170,21 +162,21 @@ class OwnRunnerTests(unittest.TestCase):
                         self.test_no_deployment_environment_on_our_runners()
 
     def test_checks_verify_runs_on_main_not_on_pull_requests(self):
-        text = (WORKFLOWS / "ci.yml").read_text()
+        document = workflow(WORKFLOWS / "ci.yml")
         # A push gets dyna-checks; a fork's push held GitHub's runners ahead of the release jobs (2026-11-18). A pull
         # request runs verify only when a maintainer labels it, and never with a token that writes.
-        self.assertEqual(triggers(text), {"pull_request", "schedule", "workflow_dispatch"})
-        self.assertIn("  pull_request:\n    types: [labeled]\n", text)
-        self.assertNotRegex(text, r":\s*write")
-        ci = dict(jobs(text))
+        self.assertEqual(triggers(document), {"pull_request", "schedule", "workflow_dispatch"})
+        self.assertEqual(document["on"]["pull_request"], {"types": ["labeled"]})
+        self.assertNotIn("write", permissions(document, *document["jobs"].values()).values())
+        ci = dict(jobs(document))
         for part in ("verify-tree", "verify-lint", "verify-test"):
             with self.subTest(part=part):
-                self.assertIn("needs: changes", ci[part])
-                self.assertIn("github.event_name == 'schedule' || inputs.verify ||", ci[part])
-                self.assertIn("github.event.label.name == 'ci:verify' &&", ci[part])
-        self.assertIn("needs: [verify-tree, verify-lint, verify-test]", ci["verify"])
+                self.assertEqual(ci[part]["needs"], "changes")
+                self.assertIn("github.event_name == 'schedule' || inputs.verify ||", ci[part]["if"])
+                self.assertIn("github.event.label.name == 'ci:verify' &&", ci[part]["if"])
+        self.assertEqual(ci["verify"]["needs"], ["verify-tree", "verify-lint", "verify-test"])
         # Never skipped where its parts ran: GitHub counts a skipped required check as passed.
-        self.assertIn("if: always()", ci["verify"])
+        self.assertTrue(ci["verify"]["if"].startswith("always()"))
 
     def test_the_light_runners_refuse_forks_themselves(self):
         script = (ROOT / "tools/ci/checks-runners.sh").read_text()
