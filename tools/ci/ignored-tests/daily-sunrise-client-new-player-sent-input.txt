@@ -1,0 +1,1 @@
+sunrise-client cut_layout::game::client_side::remote_client::movement_input_tests::local_rotation_tests::a_new_player_sends_its_held_keys_again_and_no_stale_sprint lib daily child-process

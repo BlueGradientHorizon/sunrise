@@ -40,3 +40,23 @@ pub(crate) fn sent_packets(
         count += 1;
     }
 }
+
+/// The keys (`PlayerInput` flags) and sprint changes (true for START_SPRINTING) the client sent
+/// before a fence.
+#[cfg(feature = "client")]
+pub(crate) fn sent_input(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    server: &mut Connection,
+) -> (Vec<u8>, Vec<bool>) {
+    game.send(S::Punch(sunrise_protocol::packets::Empty));
+    let (mut keys, mut sprints) = (Vec::new(), Vec::new());
+    loop {
+        let (id, payload) = server.recv().unwrap();
+        match S::decode(id, &payload).unwrap() {
+            S::PlayerInput(p) => keys.push(p.flags),
+            S::PlayerCommand(c) if c.action == 1 || c.action == 2 => sprints.push(c.action == 1),
+            S::Punch(_) => return (keys, sprints),
+            _ => {}
+        }
+    }
+}
