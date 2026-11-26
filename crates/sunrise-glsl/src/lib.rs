@@ -1614,13 +1614,18 @@ fn layout_prefix(line: &str) -> Option<(&str, &str, usize)> {
     let after = after.trim_start().strip_prefix('(')?;
     let close = after.find(')')?;
     let rest = after[close + 1..].trim_start();
-    Some((after[..close].trim(), rest, lead + trimmed.len() - rest.len()))
+    Some((
+        after[..close].trim(),
+        rest,
+        lead + trimmed.len() - rest.len(),
+    ))
 }
 
 /// The declaration `line` is, if it is one: a statement of `layout(...)`, then only real
 /// qualifiers (`LEADING_QUALIFIERS`, `PRECISION_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`,
-/// `out` or `uniform`, then precision and memory qualifiers, the type and the name. Any other word before the storage word makes it some other statement
-/// (`x = in vec2 y;`, `return out vec4 c;`).
+/// `out` or `uniform`, then precision and memory qualifiers, the type and the name. Any other
+/// word before the storage word makes it some other statement (`x = in vec2 y;`,
+/// `return out vec4 c;`).
 fn declaration(line: &str) -> Option<Decl<'_>> {
     let (layout, rest, rest_at) = layout_prefix(line)?;
     let location = layout.split(',').find_map(|q| {
@@ -1778,9 +1783,8 @@ fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
 
 /// Whether the `layout(...)` qualifier of `line` names `push_constant`.
 fn is_push_constant_block(line: &str) -> bool {
-    layout_prefix(line).is_some_and(|(layout, _, _)| {
-        layout.split(',').any(|item| item.trim() == "push_constant")
-    })
+    layout_prefix(line)
+        .is_some_and(|(layout, _, _)| layout.split(',').any(|item| item.trim() == "push_constant"))
 }
 
 /// First set-0 binding strictly above every caller-declared block (`b`) and sampler (`b`, `b + 1`).
