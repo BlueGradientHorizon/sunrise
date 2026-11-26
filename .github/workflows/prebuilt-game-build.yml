@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       dev:
-        description: A Dev release's build (nightly-build.yml kind dev), whose macOS leg BLACKSMITH_DEV_MACOS may move
+        description: A Dev release's build (nightly-build.yml kind dev), whose legs BLACKSMITH_DEV and BLACKSMITH_DEV_MACOS may move
         type: boolean
         default: false
     outputs:
@@ -77,11 +77,11 @@ jobs:
       matrix: ${{ fromJSON(needs.fresh.outputs.matrix) }}
     # Blacksmith's machines (owner, 2026-11-18): 16 vCPUs for Linux and Windows, the M4 Mac, the same images as
     # GitHub's with the Rust cache beside them. The repository variable BLACKSMITH=off puts every leg back on `os`.
-    # BLACKSMITH_DEV_MACOS=on (the owner's switch; unset or anything else is off) puts a Dev release's macOS leg alone
-    # back on Blacksmith while BLACKSMITH stays off: the leg the whole Dev release waits for (88m36 on GitHub's
-    # macos-15 on 2026-11-25).
+    # BLACKSMITH_DEV=on (the owner's switch; unset or anything else is off) puts every leg of a Dev release back on
+    # Blacksmith while BLACKSMITH stays off (the Windows leg took 68m on GitHub's windows-latest on 2026-11-25);
+    # BLACKSMITH_DEV_MACOS=on does so for its macOS leg alone (88m36 on GitHub's macos-15 the same day).
     runs-on: >-
-      ${{ (vars.BLACKSMITH != 'off' || (inputs.dev && matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))
+      ${{ (vars.BLACKSMITH != 'off' || (inputs.dev && (vars.BLACKSMITH_DEV == 'on' || (matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))))
       && matrix.blacksmith || matrix.os }}
     # Hosted macOS runner speed varies: 41 to 90+ minutes observed. Windows without its build cache (the first run after
     # a lock or toolchain change saves it) takes over 85 minutes in "Build and collect" alone.

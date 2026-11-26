@@ -152,8 +152,9 @@ A failed Dev build is retried with **Re-run failed jobs** on its `nightly build`
 after them run again, every SDK or game leg that built is kept, and a public `sdk-<sha>` is never rebuilt (a new
 dispatch of the same commit reuses it too; an SDK that is still a draft is built again and its draft replaced). A
 commit already published or drafted that day is skipped. Only a new commit, a fix,
-builds everything again. `BLACKSMITH_DEV_MACOS=on` (a repository variable the owner sets; unset is off) moves the
-macOS legs of a Dev build, the SDK's and the game's, to Blacksmith while `BLACKSMITH` stays `off` for everything else.
+builds everything again. `BLACKSMITH_DEV=on` (a repository variable the owner sets; unset is off) moves every leg
+of a Dev build, the SDK's and the game's, to Blacksmith while `BLACKSMITH` stays `off` for everything else;
+`BLACKSMITH_DEV_MACOS=on` moves its macOS legs alone.
 
 It never touches the `nightly` tag or channel, its rotation, its `nightly-source/` tags or `daily-green`. A dry run
 (the default for a dispatch, and any run off main) starts a `nightly build` dry run, which builds, indexes and
