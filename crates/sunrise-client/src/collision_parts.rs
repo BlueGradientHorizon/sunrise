@@ -276,9 +276,8 @@ mod tests {
         let record = Rc::clone(&seen);
         COLLISION_ANSWER.with_borrow_mut(|answer| {
             *answer = Some(Box::new(move |query| {
-                record
-                    .borrow_mut()
-                    .push(query.dimension().map(|id| (id.to_owned(), id.as_ptr())));
+                // Keep the original dimension storage alive across level switches.
+                record.borrow_mut().push(query.clone());
                 None
             }));
         });
@@ -293,10 +292,7 @@ mod tests {
             ask(&parts, 7, [1, 64, 1]);
         }
         let seen = seen.borrow();
-        let names: Vec<_> = seen
-            .iter()
-            .map(|named| named.as_ref().map(|(id, _)| id.as_str()))
-            .collect();
+        let names: Vec<_> = seen.iter().map(CollisionQuery::dimension).collect();
         assert_eq!(
             names,
             [
@@ -306,8 +302,11 @@ mod tests {
                 Some("minecraft:overworld"),
             ]
         );
-        let pointer = |at: usize| seen[at].as_ref().map(|(_, pointer)| *pointer);
-        assert_eq!(pointer(1), pointer(3), "the overworld's id is shared");
+        assert_eq!(
+            names[1].map(str::as_ptr),
+            names[3].map(str::as_ptr),
+            "the overworld's id is shared"
+        );
     }
 
     #[test]
