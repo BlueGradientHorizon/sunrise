@@ -74,11 +74,10 @@ impl ColliderPose {
 /// not shoved again, and a body caught between the collider and a wall stays where the move
 /// leaves it.
 ///
-/// Following Create's `ContraptionCollider.collideEntities`, a shove that actually moves a body
-/// removes only the component of its velocity that points into the shove; tangential velocity
-/// stays. An upward shove never lowers vertical velocity below the collider's own vertical speed:
-/// a body already rising faster keeps its speed. Vanilla pistons and shulkers keep their velocity
-/// behaviour.
+/// A shove that actually moves a body removes only the component of its velocity that points
+/// into the shove; tangential velocity stays. An upward shove never lowers vertical velocity
+/// below the collider's own vertical speed: a body already rising faster keeps its speed.
+/// Vanilla pistons and shulkers keep their velocity behaviour.
 ///
 /// The server shoves non-player entities and never a player; each Sunrise client predicts the
 /// shove of its own player through the ordinary movement checks. A living body still takes `in_wall`

@@ -357,7 +357,7 @@ ticks and data-send requests already issued still survive that abort.
 ## Climbing and scaffolding
 
 `BlockPart::is_ladder` is asked for the block a living entity stands in, and `BlockPart::is_scaffolding` for the block a
-player on a climbable stands in. Both fire on both sides, are `collect`, and must be pure functions of the event: set the
+player on a climbable stands in. Both fire on both sides, are `listen`, and must be pure functions of the event: set the
 field to decide, and a block with no part keeps vanilla's answer.
 
 | Part | Starts as | Effect of the answer |

@@ -483,7 +483,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `ScreensClientHost::reload_overlay_visible`: a pack reload's `LoadingOverlay` is up,
-    /// from the reload's start until it has faded out (`Minecraft.getOverlay() != null`).
+    /// from the reload's start until it has faded out (`Gui.overlay()`).
     pub(in crate::game) fn reload_overlay_visible(&self) -> bool {
         self.pack_reload.is_some() || self.reload_overlay.is_some()
     }

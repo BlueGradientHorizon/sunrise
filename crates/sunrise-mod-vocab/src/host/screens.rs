@@ -208,7 +208,7 @@ pub trait ScreensClientHost {
     /// Side: client.
     /// Whether the resource reload overlay (vanilla's `LoadingOverlay`) is up: from a resource
     /// pack reload's start, whether the player's own selection or a server's packs, until the
-    /// overlay has faded out after the reload (`Minecraft.getOverlay() != null`). While it
+    /// overlay has faded out after the reload (`Gui.overlay()`). While it
     /// covers the whole window, between its fade-in and its fade-out, the game draws the
     /// overlay alone and renders no world or screen behind it.
     fn reload_overlay_visible(&self) -> bool;

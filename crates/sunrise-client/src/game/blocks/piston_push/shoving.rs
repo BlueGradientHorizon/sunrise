@@ -127,48 +127,49 @@ impl Game<'_> {
                         );
                     }
                     shoved = true;
-                    let Some(target) = self.resolve_push_target(selected) else {
-                        continue;
-                    };
-                    let moved = match target {
-                        MoveWho::Player => self
-                            .player
-                            .as_ref()
-                            .map_or(Vec3::ZERO, |player| player.position),
-                        MoveWho::Entity(handle) => {
-                            with_entity!(self, handle, entity => entity.position())
-                        }
-                        MoveWho::Guest(_) => Vec3::ZERO,
-                    }
-                    .subtract(body.position);
-                    if moved != Vec3::ZERO {
-                        let (SweepKind::Translation { before, .. } | SweepKind::General { before }) =
-                            kind;
-                        let rise = after.collider.frame.origin.y - before.frame.origin.y;
-                        let normal = movement.normalize();
-                        match target {
-                            MoveWho::Player => {
-                                if let Some(player) = self.player.as_mut() {
-                                    player.velocity = cancel_shove_velocity(
-                                        player.velocity,
-                                        normal,
-                                        movement.y,
-                                        rise,
-                                    );
+                    if let Some(target) = self.resolve_push_target(selected) {
+                        if !matches!(target, MoveWho::Guest(_)) {
+                            let moved = match target {
+                                MoveWho::Player => self
+                                    .player
+                                    .as_ref()
+                                    .map_or(Vec3::ZERO, |player| player.position),
+                                MoveWho::Entity(handle) => {
+                                    with_entity!(self, handle, entity => entity.position())
+                                }
+                                MoveWho::Guest(_) => unreachable!(),
+                            }
+                            .subtract(body.position);
+                            if moved != Vec3::ZERO {
+                                let (SweepKind::Translation { before, .. }
+                                | SweepKind::General { before }) = kind;
+                                let rise = after.collider.frame.origin.y - before.frame.origin.y;
+                                let normal = movement.normalize();
+                                match target {
+                                    MoveWho::Player => {
+                                        if let Some(player) = self.player.as_mut() {
+                                            player.velocity = cancel_shove_velocity(
+                                                player.velocity,
+                                                normal,
+                                                movement.y,
+                                                rise,
+                                            );
+                                        }
+                                    }
+                                    MoveWho::Entity(handle) => {
+                                        with_entity_mut!(self, handle, entity => {
+                                            let velocity = cancel_shove_velocity(
+                                                *entity.velocity_mut(),
+                                                normal,
+                                                movement.y,
+                                                rise,
+                                            );
+                                            *entity.velocity_mut() = velocity;
+                                        });
+                                    }
+                                    MoveWho::Guest(_) => {}
                                 }
                             }
-                            MoveWho::Entity(handle) => {
-                                with_entity_mut!(self, handle, entity => {
-                                    let velocity = cancel_shove_velocity(
-                                        *entity.velocity_mut(),
-                                        normal,
-                                        movement.y,
-                                        rise,
-                                    );
-                                    *entity.velocity_mut() = velocity;
-                                });
-                            }
-                            MoveWho::Guest(_) => {}
                         }
                     }
                     if current.placed().any(|p| p.exempt.contains(&selected.id)) {
@@ -188,7 +189,7 @@ impl Game<'_> {
 
 /// Removes the part of `velocity` that points into a shove along `normal`. An upward shove
 /// raises vertical velocity to the collider's own vertical speed `collider_rise` but never
-/// lowers it, so a body already rising faster keeps its speed, as Create's moving colliders do.
+/// lowers it, so a body already rising faster keeps its speed.
 fn cancel_shove_velocity(velocity: Vec3, normal: Vec3, upward: f64, collider_rise: f64) -> Vec3 {
     let inward = velocity.dot(normal);
     if inward >= 0.0 {

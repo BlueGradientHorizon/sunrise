@@ -340,9 +340,9 @@ pub trait LevelBlocksBackendMut {
     /// event: a mod that breaks many blocks at once sends the effect once, drops each block's
     /// resources, then removes the blocks and posts the game events itself. With `collect`,
     /// return the stacks without spawning their item entities; otherwise an empty list after
-    /// spawning them. `Ok(None)` for air and where `destroy_block` refuses: a refused write, a
-    /// stale or foreign `breaker`, a stale handle, a client, an unloaded or out-of-height
-    /// position, or a parked level. In a transaction in the block's level, the loot is rolled
+    /// spawning them. `Ok(None)` for air, a stale or foreign `breaker`, a stale handle, a
+    /// client, an unloaded or out-of-height position, or a parked level. In a transaction in
+    /// the block's level, the loot is rolled
     /// now and the spawns wait for commit, as `destroy_block`'s do.
     fn level_drop_resources(
         &mut self,
