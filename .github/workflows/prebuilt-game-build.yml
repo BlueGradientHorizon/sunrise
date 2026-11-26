@@ -183,6 +183,16 @@ jobs:
         run: python3 tools/ci/cargo_jobs.py --job-mib 3072 --cap
       - name: Build and collect
         run: python tools/prebuilt_game.py build prebuilt ${{ matrix.server && '--server' || '' }}
+      # zig links its own static libunwind for Rust's -lgcc_s unless tools/ci/cross/zld-linux maps it to the system's
+      # libgcc_s.so.1. A library with its own unwinder aborts a panic from libstd that unwinds through it, so the mod
+      # host could not catch a mod's panic.
+      - name: The cross-built libraries share libgcc_s's unwinder
+        if: env.CROSS == 'on' && (matrix.name == 'linux' || matrix.name == 'linux-server')
+        run: |
+          host=$(find prebuilt -name libsunrise_mod_host.so)
+          readelf -d "$host" | grep -q 'NEEDED.*\[libgcc_s\.so\.1\]' || { echo "::error::$host does not link libgcc_s.so.1"; exit 1; }
+          own=$(find prebuilt -type f \( -name '*.so' -o -path '*/bin/*' \) -exec grep -l 'libunwind: ' {} + || true)
+          [ -z "$own" ] || { echo "::error::these carry their own libunwind: $own"; exit 1; }
       # The staging pass on a clean checkout, with the sunrise-stage `build` compiled from this commit: HEAD's build
       # data, each file headed with its commit, listed internals, and the tracked source
       # untouched. A failure is its own daily issue (tools/ci/daily_summary.py SDK_CHECKS), and the leg's assets
