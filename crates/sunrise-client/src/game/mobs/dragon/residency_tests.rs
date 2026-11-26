@@ -254,58 +254,125 @@ fn singleton_live_owner_is_not_reported_as_departed() {
 
 /// Issue #5479: the dragon's killing blow reaches `LivingEntity.die` as any living entity's does
 /// (`EnderDragon.handleKillingBlow` only starts the dying flight), so `living_death` hears it with
-/// the blow, and `living_death_post` after it; a cancelled death hears no post.
+/// the complete source and saved weapon before the dying transition, `living_death_post` follows on
+/// acceptance, and `living_damage_post` runs after death handling.
 #[test]
 #[ignore = "daily"]
 fn the_dragons_killing_blow_fires_the_living_death_hooks() {
-    use mod_api::{Flow, Hooks, LivingDeathEvent, LivingDeathPostEvent, ModEntry, ServerHost};
+    use crate::game::api_values::TryIntoApi;
+    use mod_api::{
+        Flow, HitHost, Hooks, LivingDamagePostEvent, LivingDeathEvent, LivingDeathPostEvent,
+        ModEntry, ServerHost,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
+    use sunrise_client::{
+        items::ItemStack,
+        mobs::Mob,
+        projectiles::{Projectile, ProjectileKind},
+    };
 
-    struct Deaths {
-        heard: Arc<Mutex<Vec<String>>>,
-        cancel: Arc<AtomicBool>,
+    #[derive(Clone, Debug, PartialEq)]
+    struct SeenDeath {
+        kind: String,
+        damage_type: String,
+        causing: i32,
+        direct: i32,
+        weapon: Option<mod_api::ItemStack>,
+        health: Option<f32>,
     }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct SeenPost {
+        damage_type: String,
+        attacker: u32,
+        credited_player: Option<u128>,
+    }
+
+    #[derive(Default)]
+    struct Probe {
+        order: Mutex<Vec<&'static str>>,
+        deaths: Mutex<Vec<SeenDeath>>,
+        posts: Mutex<Vec<SeenPost>>,
+        cancel: AtomicBool,
+        discard: AtomicBool,
+    }
+
+    struct Deaths(Arc<Probe>);
     #[mod_api::__subscriptions]
     impl Hooks for Deaths {
-        fn living_death(&self, _: &mut dyn ServerHost, event: &mut LivingDeathEvent<'_>) -> Flow {
-            self.heard
-                .lock()
-                .unwrap()
-                .push(format!("death {} {}", event.kind, event.source.damage_type));
-            if self.cancel.load(Ordering::SeqCst) {
+        fn living_death(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut LivingDeathEvent<'_>,
+        ) -> Flow {
+            self.0.order.lock().unwrap().push("death");
+            let entity = host.entity(event.entity).expect("dying dragon resolves");
+            let health = host.living(entity).and_then(|living| living.health(host));
+            self.0.deaths.lock().unwrap().push(SeenDeath {
+                kind: event.kind.to_owned(),
+                damage_type: event.source.damage_type.to_owned(),
+                causing: event.source.causing,
+                direct: event.source.direct,
+                weapon: event.weapon.cloned(),
+                health,
+            });
+            if self.0.discard.load(Ordering::SeqCst) {
+                assert!(entity.discard(host), "listener discards the dragon");
+                return Flow::Continue;
+            }
+            if self.0.cancel.load(Ordering::SeqCst) {
                 Flow::Cancel
             } else {
                 Flow::Continue
             }
         }
         fn living_death_post(&self, _: &mut dyn ServerHost, event: &mut LivingDeathPostEvent<'_>) {
-            self.heard
-                .lock()
-                .unwrap()
-                .push(format!("post {} {}", event.damage_type, event.attacker));
+            self.0.order.lock().unwrap().push("post");
+            self.0.posts.lock().unwrap().push(SeenPost {
+                damage_type: event.damage_type.to_owned(),
+                attacker: event.attacker,
+                credited_player: event.credited_player,
+            });
+        }
+        fn living_damage_post(&self, _: &mut dyn HitHost, _: &mut LivingDamagePostEvent<'_>) {
+            self.0.order.lock().unwrap().push("damage_post");
         }
     }
 
-    let heard = Arc::new(Mutex::new(Vec::new()));
-    let cancel = Arc::new(AtomicBool::new(false));
+    let probe = Arc::new(Probe::default());
     let mods = vec![ModEntry::new(
         "dragon_deaths",
-        Box::new(Deaths {
-            heard: heard.clone(),
-            cancel: cancel.clone(),
-        }),
+        Box::new(Deaths(probe.clone())),
     )]
     .into();
+    let clear = |probe: &Probe| {
+        probe.order.lock().unwrap().clear();
+        probe.deaths.lock().unwrap().clear();
+        probe.posts.lock().unwrap().clear();
+    };
+    let spawn_one_hp = |game: &mut Game<'_>| -> u32 {
+        game.dragon.discard();
+        let id = game
+            .spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
+            .unwrap();
+        game.dragon.as_mut().unwrap().health = 1.0;
+        id
+    };
+
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
+            game.build_registries();
+            let host_uuid = 77u128;
+            game.player.as_mut().unwrap().entity_id = 55;
+            game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(host_uuid));
+
+            // 1. Acceptance vs cancellation: health/phase transition and order against damage_post.
             for cancelled in [false, true] {
-                cancel.store(cancelled, Ordering::SeqCst);
-                heard.lock().unwrap().clear();
-                game.dragon.discard();
-                game.spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
-                    .unwrap();
-                game.dragon.as_mut().unwrap().health = 1.0;
+                probe.cancel.store(cancelled, Ordering::SeqCst);
+                probe.discard.store(false, Ordering::SeqCst);
+                clear(&probe);
+                spawn_one_hp(game);
                 game.hurt_dragon(
                     0,
                     50.0,
@@ -313,16 +380,199 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                     Some(FightWho::Host),
                     DamageKind::PlayerAttack,
                 );
-                assert!(game.dragon.as_ref().unwrap().down(), "the blow kills");
-                let death = "death minecraft:ender_dragon minecraft:player_attack".to_owned();
-                let expected = if cancelled {
-                    vec![death]
+                let d = game.dragon.as_ref().unwrap();
+                let deaths = probe.deaths.lock().unwrap();
+                assert_eq!(deaths.len(), 1);
+                assert_eq!(deaths[0].kind, "minecraft:ender_dragon");
+                assert_eq!(deaths[0].damage_type, "minecraft:player_attack");
+                assert_eq!(
+                    deaths[0].health,
+                    Some(0.0),
+                    "living_death observes 0 health before handleKillingBlow"
+                );
+                drop(deaths);
+                if cancelled {
+                    assert_eq!(d.health, 0.0, "cancelled death preserves zero-health body");
+                    assert!(
+                        !matches!(d.phase, Phase::Dying { .. }),
+                        "cancelled death skips handleKillingBlow"
+                    );
+                    assert_eq!(*probe.order.lock().unwrap(), ["death", "damage_post"]);
+                    assert!(probe.posts.lock().unwrap().is_empty());
                 } else {
-                    // A player's blow names no attacking mob.
-                    vec![death, "post minecraft:player_attack 0".to_owned()]
-                };
-                assert_eq!(*heard.lock().unwrap(), expected, "cancelled: {cancelled}");
+                    assert_eq!(
+                        d.health, 1.0,
+                        "accepted death resets flying dragon to 1 health"
+                    );
+                    assert!(
+                        matches!(d.phase, Phase::Dying { .. }),
+                        "accepted death enters dying flight"
+                    );
+                    assert_eq!(
+                        *probe.order.lock().unwrap(),
+                        ["death", "post", "damage_post"]
+                    );
+                    assert_eq!(
+                        *probe.posts.lock().unwrap(),
+                        [SeenPost {
+                            damage_type: "minecraft:player_attack".to_owned(),
+                            attacker: 0,
+                            credited_player: Some(host_uuid),
+                        }]
+                    );
+                }
             }
+
+            // 2. Lethal projectile shot after the shooter switched items keeps projectile ID and saved weapon.
+            probe.cancel.store(false, Ordering::SeqCst);
+            clear(&probe);
+            spawn_one_hp(game);
+            let mut bow = ItemStack::new("minecraft:bow", 1);
+            bow.enchant("minecraft:power", 2);
+            let expected_bow = bow.try_into_api().unwrap();
+            let mut shot = Projectile::new(
+                ProjectileKind::Arrow {
+                    base_damage: 2.0,
+                    critical: false,
+                    effect: None,
+                },
+                Vec3::new(0.0, 80.0, 0.0),
+                Some(Who::Player),
+            );
+            shot.id = 912;
+            shot.arrow.as_mut().unwrap().fired_from_weapon = Some(bow);
+            game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.hit_special(SPECIAL, 50.0, true, DamageKind::Arrow, Some(&shot));
+            {
+                let deaths = probe.deaths.lock().unwrap();
+                assert_eq!(deaths.len(), 1);
+                assert_eq!(deaths[0].damage_type, "minecraft:arrow");
+                assert_eq!(deaths[0].causing, 55);
+                assert_eq!(deaths[0].direct, 912);
+                assert_eq!(deaths[0].weapon.as_ref(), Some(&expected_bow));
+            }
+
+            // 3. Lethal explicit-source hit carries its type, cause, and direct entity ID.
+            clear(&probe);
+            let dragon_id = spawn_one_hp(game);
+            let zombie = game
+                .res
+                .mob_types()
+                .get("minecraft:zombie")
+                .unwrap()
+                .clone();
+            game.mobs.push(Mob::new(
+                920,
+                zombie.clone(),
+                Vec3::new(0.0, 80.0, 0.0),
+                0.0,
+            ));
+            game.mobs
+                .push(Mob::new(921, zombie, Vec3::new(1.0, 80.0, 0.0), 0.0));
+            assert!(game.hurt_target(
+                Target::Dragon(dragon_id),
+                50.0,
+                "minecraft:explosion",
+                Some(Target::Mob(921)),
+                Some(Target::Mob(920)),
+                None,
+            ));
+            {
+                let deaths = probe.deaths.lock().unwrap();
+                assert_eq!(deaths.len(), 1);
+                assert_eq!(deaths[0].damage_type, "minecraft:explosion");
+                assert_eq!(deaths[0].causing, 920);
+                assert_eq!(deaths[0].direct, 921);
+            }
+            assert_eq!(
+                *probe.posts.lock().unwrap(),
+                [SeenPost {
+                    damage_type: "minecraft:explosion".to_owned(),
+                    attacker: 920,
+                    credited_player: None,
+                }]
+            );
+
+            // 4. Discard-and-continue skips kill credit and living_death_post.
+            probe.discard.store(true, Ordering::SeqCst);
+            clear(&probe);
+            let kills_before = game.stats.get("killed", "minecraft:ender_dragon");
+            spawn_one_hp(game);
+            game.hurt_dragon(
+                0,
+                50.0,
+                true,
+                Some(FightWho::Host),
+                DamageKind::PlayerAttack,
+            );
+            assert!(
+                probe.posts.lock().unwrap().is_empty(),
+                "discarded dragon emits no living_death_post"
+            );
+            assert_eq!(
+                game.stats.get("killed", "minecraft:ender_dragon"),
+                kills_before,
+                "discarded dragon awards no kill credit"
+            );
+            game.native_removals_flush();
+            assert!(game.dragon.is_none());
+            probe.discard.store(false, Ordering::SeqCst);
+
+            // 5. Guest-turn and missing-guest kill credit match posted UUID and awarded kill.
+            crate::game::native_player_death::tests::add_guest(game);
+            clear(&probe);
+            let host_kills_before = game.stats.get("killed", "minecraft:ender_dragon");
+            game.as_guest(1, |g| {
+                spawn_one_hp(g);
+                g.hurt_dragon(
+                    0,
+                    50.0,
+                    true,
+                    Some(g.acting_player()),
+                    DamageKind::PlayerAttack,
+                );
+            })
+            .unwrap();
+            assert_eq!(
+                probe
+                    .posts
+                    .lock()
+                    .unwrap()
+                    .last()
+                    .and_then(|p| p.credited_player),
+                Some(123)
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().play[&1]
+                    .stats
+                    .get("killed", "minecraft:ender_dragon"),
+                1
+            );
+            assert_eq!(
+                game.stats.get("killed", "minecraft:ender_dragon"),
+                host_kills_before
+            );
+
+            clear(&probe);
+            spawn_one_hp(game);
+            {
+                let d = game.dragon.as_mut().unwrap();
+                d.hurt_by_player = Some((FightWho::Guest(99), d.ticks));
+            }
+            game.hurt_dragon(0, 50.0, true, None, DamageKind::Explosion);
+            assert_eq!(
+                probe
+                    .posts
+                    .lock()
+                    .unwrap()
+                    .last()
+                    .and_then(|p| p.credited_player),
+                Some(host_uuid)
+            );
+            assert_eq!(
+                game.stats.get("killed", "minecraft:ender_dragon"),
+                host_kills_before + 1
+            );
         });
     });
 }

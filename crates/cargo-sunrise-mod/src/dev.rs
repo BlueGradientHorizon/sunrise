@@ -8,6 +8,7 @@ use std::fs;
 use sunrise_mod_package::Package;
 
 mod libraries;
+mod work_dir;
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -19,6 +20,7 @@ use sunrise_native_build::{
     prebuilt::{self, Route},
     rust::Unpacked,
 };
+use work_dir::work_dir;
 
 /// Names the cache's folder instead of the platform's.
 const CACHE_ENV: &str = "SUNRISE_MOD_CACHE";
@@ -188,10 +190,15 @@ pub(crate) struct NativeSdk {
     pub rust: Unpacked,
     base: Base,
     dir: PathBuf,
+    metadata: PathBuf,
     stamp: CacheStamp,
 }
 
 impl NativeSdk {
+    pub(super) fn surface(&self) -> PathBuf {
+        self.metadata.join(sdk_fetch::SURFACE)
+    }
+
     fn slices(&self, side: sdk::Side, route: Route) -> Result<prebuilt::Package, String> {
         sdk_fetch::fetch_slices(
             &self.base,
@@ -227,26 +234,38 @@ impl NativeSdk {
     }
 }
 
-pub(crate) fn native_sdk(cache: &Path, build: &str) -> Result<NativeSdk, String> {
-    let target = computer()?;
-    let base = Base::from_env();
-    let dir = cache.join("sdk").join(build);
-    let keys = sdk_fetch::keys();
-    sdk_fetch::fetch(&base, &keys, build, &dir, false)?;
-    let index = Index::read(
-        &std::fs::read(dir.join(sunrise_mod_package::sdk::INDEX))
-            .map_err(|e| format!("{}: {e}", dir.display()))?,
-        build,
-    )
-    .map_err(|e| format!("sdk-{build}: {e}"))?;
-    let rust = toolchain(&index.toolchain.rust, target, cache.join("cargo-home"))?;
+fn native_sdk_from(
+    cache: &Path,
+    base: Base,
+    keys: &[sunrise_release_sign::PublicKey],
+    target: &str,
+    build: &str,
+    rust: impl FnOnce(&str, &str, PathBuf) -> Result<Unpacked, String>,
+) -> Result<NativeSdk, String> {
+    let stamp = CacheStamp::new(build, keys);
+    let dir = sdk_fetch::cache_root(cache, build, &stamp);
+    let (index, metadata) = {
+        let _lock = sdk_fetch::cache_lock(&dir, &["metadata", stamp.as_str()])?;
+        let metadata = dir.join(sdk_fetch::METADATA_DIR);
+        let index = sdk_fetch::fetch_index(&base, keys, build, &metadata, false)?;
+        (index, metadata)
+    };
+    let rust = rust(&index.toolchain.rust, target, cache.join("cargo-home"))?;
     Ok(NativeSdk {
         index,
         rust,
         base,
         dir,
-        stamp: CacheStamp::new(build, &keys),
+        metadata,
+        stamp,
     })
+}
+
+pub(crate) fn native_sdk(cache: &Path, build: &str) -> Result<NativeSdk, String> {
+    let target = computer()?;
+    let base = Base::from_env();
+    let keys = sdk_fetch::keys();
+    native_sdk_from(cache, base, &keys, target, build, toolchain)
 }
 
 /// Refuses a `Cargo.lock` that Cargo would change for the mod's manifests and the SDK of `build` in
@@ -389,17 +408,6 @@ fn build_error(error: String) -> String {
         "{error}{hint}Build log: {}",
         sunrise_native_build::log_path().display()
     )
-}
-
-/// The project's work folder in the cache, by mod id and the project's own (canonical) folder: two
-/// checkouts of one mod (Git worktrees, a fork beside the original) never share a staged copy, its
-/// lock or the cargo build folder kept by its path, so one's check neither waits for the other's
-/// nor recompiles the mod after it.
-fn work_dir(cache: &Path, id: &str, project: &Path) -> PathBuf {
-    use sha2::{Digest, Sha256};
-    let hash = Sha256::digest(project.to_string_lossy().as_bytes());
-    let short: String = hash[..6].iter().map(|b| format!("{b:02x}")).collect();
-    cache.join("work").join(format!("{id}-{short}"))
 }
 
 /// Avoid names reserved by package discovery at the input root (such as `native` and `rust`).

@@ -882,6 +882,7 @@ impl Game<'_> {
             "release" => {
                 self.clear_device_keys();
                 self.physical_keys.clear();
+                self.screen_state.context_menu_input.clear();
                 self.mod_keys.set_all_up();
                 self.modifiers = winit::keyboard::ModifiersState::empty();
                 let options = self.toggle_options();
@@ -1154,6 +1155,9 @@ impl Game<'_> {
                     self.require_world()?;
                 }
                 self.narration.keyboard_action();
+                if self.context_menu_open() {
+                    return ok();
+                }
                 if text == "\\b" {
                     if self.preset_editor_title().is_some() {
                         self.dispatch_screen_key(

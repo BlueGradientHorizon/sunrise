@@ -954,6 +954,11 @@ impl Reason {
     /// `translate` key when the component named one (servers' literal
     /// kicks have none; their text is the server's own language).
     fn component(reason_json: &str, lang: &Language) -> Self {
+        let current = crate::lang::current();
+        let lang = current
+            .as_deref()
+            .map(crate::lang::Language::map)
+            .unwrap_or(lang);
         match serde_json::from_str::<serde_json::Value>(reason_json) {
             Ok(v) => Self {
                 text: json_text(&v, lang),
@@ -980,6 +985,11 @@ impl Reason {
     /// The play/configuration phases' disconnect: the reason arrives as
     /// an NBT component.
     fn tag(tag: &Tag, lang: &Language) -> Self {
+        let current = crate::lang::current();
+        let lang = current
+            .as_deref()
+            .map(crate::lang::Language::map)
+            .unwrap_or(lang);
         let key = match tag {
             Tag::Compound(map) => map
                 .get(&JavaString::from("translate"))

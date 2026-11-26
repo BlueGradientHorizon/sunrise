@@ -591,6 +591,20 @@ struct DragonHitOrigin<'a> {
     entity_id: Option<i32>,
     from: Option<Vec3>,
     invulnerability_checked: bool,
+    source: Option<HurtSource<'a>>,
+}
+struct DragonLethalHit {
+    before_health: f32,
+    post: Option<std::sync::Arc<sunrise_client::health::DamagePost>>,
+}
+struct DragonHurt {
+    hurt: Hurt,
+    lethal: Option<DragonLethalHit>,
+}
+impl DragonHurt {
+    const fn plain(hurt: Hurt) -> Self {
+        Self { hurt, lethal: None }
+    }
 }
 /// A direct `AbstractArrow` or `WindCharge`, which a perched dragon shrugs off
 /// (`AbstractDragonSittingPhase.onHurt`); a breeze's `BreezeWindCharge` is neither.
@@ -783,10 +797,6 @@ impl Dragon {
     pub fn alive(&self) -> bool {
         self.health > 0.0
     }
-    /// `isDeadOrDying` for the killing blow: the dying flight, or no health.
-    fn down(&self) -> bool {
-        matches!(self.phase, Phase::Dying { .. }) || !self.alive()
-    }
     /// The entity's own box, not any of the separate `EnderDragonPart` boxes.
     pub(super) fn body_bounds(&self) -> Aabb {
         // EntityTypes.ENDER_DRAGON dimensions: 16 wide, 8 high.
@@ -829,6 +839,7 @@ impl Dragon {
     /// `hurt_part` with where a full hit's default knockback comes from: the melee attacker's
     /// position (`DamageSource.getSourcePosition`, the direct entity's feet) and the dragon's
     /// knockback resistance at the hit. `None` for a hit that is not a player's melee.
+    #[cfg(test)]
     fn hurt_part_from(
         &mut self,
         level: &mut DamageLevel<'_>,
@@ -840,12 +851,39 @@ impl Dragon {
         push: Option<Push>,
         invulnerability_checked: bool,
     ) -> Hurt {
+        let DragonHurt { hurt, lethal } = self.hurt_part_from_outcome(
+            level,
+            part,
+            damage,
+            counts,
+            kind,
+            direct,
+            push,
+            invulnerability_checked,
+        );
+        if let Some(lethal) = lethal {
+            self.apply_killing_blow();
+            self.finish_sitting_damage(lethal.before_health);
+        }
+        hurt
+    }
+    fn hurt_part_from_outcome(
+        &mut self,
+        level: &mut DamageLevel<'_>,
+        part: usize,
+        damage: f32,
+        counts: Option<HurtSource<'_>>,
+        kind: DamageKind,
+        direct: Option<&ProjectileKind>,
+        push: Option<Push>,
+        invulnerability_checked: bool,
+    ) -> DragonHurt {
         // The game-level invulnerability hook includes the part's fire immunity in
         // vanilla's answer. Only the standalone test adapter still needs this guard.
         if is_fire(kind) && !invulnerability_checked {
-            return Hurt::Refused;
+            return DragonHurt::plain(Hurt::Refused);
         }
-        self.hurt_from(
+        self.hurt_from_outcome(
             level,
             part,
             damage,
@@ -872,6 +910,31 @@ impl Dragon {
     ) -> Hurt {
         self.hurt_from(level, part, damage, counts, arrow, None, false)
     }
+    /// `EnderDragon.handleKillingBlow`: a flying dragon resets to 1 health and
+    /// starts its dying flight; a perched dragon stays at 0 health.
+    fn apply_killing_blow(&mut self) {
+        if !self.phase.sitting() {
+            self.health = 1.0;
+            self.set_phase(Phase::Dying {
+                target: None,
+                time: 0,
+            });
+        }
+    }
+    /// `EnderDragon.hurt` after `reallyHurt`: perched damage counts toward takeoff.
+    fn finish_sitting_damage(&mut self, before: f32) {
+        if self.phase.sitting() {
+            self.sitting_damage += before - self.health.max(0.0);
+            if self.sitting_damage > 0.25 * MAX_HEALTH {
+                self.sitting_damage = 0.0;
+                self.set_phase(Phase::Takeoff {
+                    first: true,
+                    path: None,
+                    target: None,
+                });
+            }
+        }
+    }
     /// Whether the phase, part scaling and source guards reach LivingEntity.
     fn reaches_base_check(&self, part: usize, damage: f32, counts: bool, arrow: bool) -> bool {
         let damage = if part != 0 && part != 1 {
@@ -890,26 +953,51 @@ impl Dragon {
         level: &mut DamageLevel<'_>,
         part: usize,
         damage: f32,
-        counts: Option<HurtSource>,
+        counts: Option<HurtSource<'_>>,
         arrow: bool,
         push: Option<Push>,
         invulnerability_checked: bool,
     ) -> Hurt {
+        let DragonHurt { hurt, lethal } = self.hurt_from_outcome(
+            level,
+            part,
+            damage,
+            counts,
+            arrow,
+            push,
+            invulnerability_checked,
+        );
+        if let Some(lethal) = lethal {
+            self.apply_killing_blow();
+            self.finish_sitting_damage(lethal.before_health);
+        }
+        hurt
+    }
+    fn hurt_from_outcome(
+        &mut self,
+        level: &mut DamageLevel<'_>,
+        part: usize,
+        damage: f32,
+        counts: Option<HurtSource<'_>>,
+        arrow: bool,
+        push: Option<Push>,
+        invulnerability_checked: bool,
+    ) -> DragonHurt {
         if matches!(self.phase, Phase::Dying { .. }) || !self.alive() {
-            return Hurt::Refused;
+            return DragonHurt::plain(Hurt::Refused);
         }
         if arrow && self.phase.sitting() {
-            return Hurt::Shrugged;
+            return DragonHurt::plain(Hurt::Shrugged);
         }
         let mut damage = damage;
         if part != 0 && part != 1 {
             damage = damage / 4.0 + damage.min(1.0);
         }
         if damage < 0.01 {
-            return Hurt::Refused;
+            return DragonHurt::plain(Hurt::Refused);
         }
         let Some(source) = counts else {
-            return Hurt::Landed { full: false };
+            return DragonHurt::plain(Hurt::Landed { full: false });
         };
         if !invulnerability_checked
             && level.invulnerability_check(
@@ -917,7 +1005,7 @@ impl Dragon {
                 false,
             )
         {
-            return Hurt::Landed { full: false };
+            return DragonHurt::plain(Hurt::Landed { full: false });
         }
         let before = self.health;
         // reallyHurt: LivingEntity.hurtServer, past its guards: the hit's damage sequence
@@ -937,7 +1025,7 @@ impl Dragon {
             .with_victim(body)
             .incoming_canceled(hurting, victim, &mut container)
         {
-            return Hurt::Landed { full: false };
+            return DragonHurt::plain(Hurt::Landed { full: false });
         }
         damage = container.new_damage();
         if damage < 0.0 {
@@ -964,7 +1052,7 @@ impl Dragon {
         container.record_should_cause_side_effects(!window);
         let mut dealt = if window {
             if damage <= self.last_hurt {
-                return Hurt::Landed { full: false };
+                return DragonHurt::plain(Hurt::Landed { full: false });
             }
             container.record_post_attack_invulnerability_ticks(self.invulnerable);
             container.reduce(
@@ -1000,22 +1088,10 @@ impl Dragon {
             self.hurt_time = 10;
         }
         let full = !window;
-        if self.health <= 0.0 {
-            if self.phase.sitting() {
-                self.health = 0.0;
-            } else {
-                // handleKillingBlow: dying flight first.
-                self.health = 1.0;
-                self.set_phase(Phase::Dying {
-                    target: None,
-                    time: 0,
-                });
-            }
-        }
         // `LivingEntity.hurtServer` calls `dealDefaultKnockback` (strength
-        // `0.4F`) on a full hit, before `EnderDragon.hurt` adds sitting damage
-        // and maybe takes off. `from` is the attacker's feet for a player's
-        // melee hit. Explosions are `#no_knockback`; their push is
+        // `0.4F`) on a full hit, before `die` and before `EnderDragon.hurt` adds
+        // sitting damage and maybe takes off. `from` is the attacker's feet for a
+        // player's melee hit. Explosions are `#no_knockback`; their push is
         // `explosion_knockback`.
         if full && let Some(Push { from, resistance }) = push {
             self.knockback(
@@ -1029,26 +1105,30 @@ impl Dragon {
                 resistance,
             );
         }
+        let lethal = self.health <= 0.0;
+        if lethal {
+            self.health = 0.0;
+        }
         // The last of `LivingEntity.hurtServer` (`reallyHurt`'s `super.hurtServer`):
-        // `LivingDamageEvent.Post`, health taken or not.
+        // `LivingDamageEvent.Post`, health taken or not. A lethal hit hands completion
+        // back to `hurt_dragon_part_at` so death hooks run before Post.
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
         let body = super::native_living_body::dragon_body(self);
-        level
+        let completion = level
             .reborrow()
             .with_victim(body)
-            .damage_post(hurting, &container);
-        if self.phase.sitting() {
-            self.sitting_damage += before - self.health.max(0.0);
-            if self.sitting_damage > 0.25 * MAX_HEALTH {
-                self.sitting_damage = 0.0;
-                self.set_phase(Phase::Takeoff {
-                    first: true,
-                    path: None,
-                    target: None,
-                });
-            }
+            .finish_damage(hurting, container, lethal);
+        if lethal {
+            return DragonHurt {
+                hurt: Hurt::Landed { full },
+                lethal: Some(DragonLethalHit {
+                    before_health: before,
+                    post: completion.and_then(|c| c.post),
+                }),
+            };
         }
-        Hurt::Landed { full }
+        self.finish_sitting_damage(before);
+        DragonHurt::plain(Hurt::Landed { full })
     }
     /// `EnderDragon.knockback`: `LivingEntity.knockback` only when the phase
     /// is not sitting. `noPhysics` never sets `onGround`, so the vertical component stays.
@@ -1735,15 +1815,25 @@ impl Game<'_> {
     ) -> Hurt {
         let owner = by_player.then_some(Who::Player);
         let guest = self.lan_acting.filter(|_| by_player);
-        self.hit_special_full(
-            id,
-            amount,
-            owner,
-            guest,
-            kind,
-            None,
-            direct.map(DirectHit::from_projectile),
-        )
+        let hit = |game: &mut Self| {
+            game.hit_special_full(
+                id,
+                amount,
+                owner,
+                guest,
+                kind,
+                None,
+                direct.map(DirectHit::from_projectile),
+            )
+        };
+        if let Some(shot) = direct
+            && self.combat.attack().projectile != Some(shot.id as i32)
+        {
+            let attack = self.projectile_attack(shot);
+            self.with_attack(attack, hit)
+        } else {
+            hit(self)
+        }
     }
     /// Full-source damage dispatch for a crystal (real entity id) or dragon part.
     pub(super) fn hit_special_full(
@@ -1809,6 +1899,31 @@ impl Game<'_> {
         } else if id >= SPECIAL {
             let by_player = owner == Some(Who::Player);
             let by = by_player.then(|| guest.map_or_else(|| self.acting_player(), FightWho::Guest));
+            let causing = match owner {
+                Some(Who::Player) => by.map_or(0, |who| self.fight_entity(who)),
+                Some(Who::Mob(oid)) => oid as i32,
+                None => 0,
+            };
+            let damage_type = damage_type_override
+                .unwrap_or_else(|| super::creatures::damage_type(kind, by_player));
+            let direct_id = direct
+                .as_ref()
+                .filter(|_| sunrise_client::health::names_its_projectile(damage_type))
+                .map(|d| d.id as i32)
+                .unwrap_or(if super::creatures::melee(kind) {
+                    causing
+                } else {
+                    0
+                });
+            let source = HurtSource {
+                damage_type,
+                causing,
+                direct: direct_id,
+                position: direct
+                    .as_ref()
+                    .map(|d| [d.position.x, d.position.y, d.position.z]),
+                direct_type: None,
+            };
             let part = (id - SPECIAL) as usize;
             let from = (matches!(kind, DamageKind::PlayerAttack | DamageKind::Thorns))
                 .then(|| self.player.as_ref().map(|p| p.position))
@@ -1824,6 +1939,7 @@ impl Game<'_> {
                     entity_id: direct.as_ref().map(|d| d.id as i32),
                     from,
                     invulnerability_checked: false,
+                    source: Some(source),
                 },
             )
         } else {
@@ -1874,17 +1990,15 @@ impl Game<'_> {
         if self.dragon.as_ref().is_none_or(|d| d.id != id) {
             return false;
         }
-        let causing = player.map_or(0, |p| self.fight_entity(p));
-        let direct_entity = match by {
-            Some(Target::Projectile(id) | Target::Trident(id)) => id as i32,
-            _ => causing,
-        };
+        let causing = cause.and_then(|t| self.network_entity_id(t)).unwrap_or(0);
+        let direct_entity = by.and_then(|t| self.network_entity_id(t)).unwrap_or(0);
+        let direct_type = by.map(|t| self.target_type(t));
         let source = HurtSource {
             damage_type: ty,
             causing,
             direct: direct_entity,
             position: from.map(|p| [p.x, p.y, p.z]),
-            direct_type: None,
+            direct_type: direct_type.as_deref(),
         };
         // The world's tags, so a datapack type is classed as vanilla's are.
         let explosion = self.damage_in_tag(ty, "minecraft:is_explosion");
@@ -1948,6 +2062,7 @@ impl Game<'_> {
                 entity_id,
                 from: knock,
                 invulnerability_checked: true,
+                source: Some(source),
             },
         );
         // A shrugged-off arrow is `onHurt`'s 0: under 0.01, refused.
@@ -2033,19 +2148,30 @@ impl Game<'_> {
         let from = (matches!(kind, DamageKind::PlayerAttack | DamageKind::Thorns))
             .then(|| self.player.as_ref().map(|p| p.position))
             .flatten();
-        self.hurt_dragon_part_at(
-            part,
-            damage,
-            counts,
-            by,
-            kind,
-            DragonHitOrigin {
-                direct: direct.map(|p| &p.kind),
-                entity_id: direct.map(|p| p.id as i32),
-                from,
-                invulnerability_checked: false,
-            },
-        )
+        let hit = |game: &mut Self| {
+            game.hurt_dragon_part_at(
+                part,
+                damage,
+                counts,
+                by,
+                kind,
+                DragonHitOrigin {
+                    direct: direct.map(|p| &p.kind),
+                    entity_id: direct.map(|p| p.id as i32),
+                    from,
+                    invulnerability_checked: false,
+                    source: None,
+                },
+            )
+        };
+        if let Some(shot) = direct
+            && self.combat.attack().projectile != Some(shot.id as i32)
+        {
+            let attack = self.projectile_attack(shot);
+            self.with_attack(attack, hit)
+        } else {
+            hit(self)
+        }
     }
     /// The dragon's `getAttributeValue(KNOCKBACK_RESISTANCE)` now, which both knockback entries
     /// read: its saved attributes over the type's default. 0 without a dragon.
@@ -2074,13 +2200,28 @@ impl Game<'_> {
         origin: DragonHitOrigin<'_>,
     ) -> Hurt {
         let by_id = by.map(|who| self.fight_entity(who));
-        let hit_source = hurt_source(kind, by_id, origin.entity_id);
+        let hit_source = origin
+            .source
+            .unwrap_or_else(|| hurt_source(kind, by_id, origin.entity_id));
         let source = counts.then_some(hit_source);
         // Part fire immunity is independent of LivingEntity's base check.
         // Commands call the dragon itself and have already checked that base.
         if is_fire(kind) && !origin.invulnerability_checked {
             return Hurt::Refused;
         }
+        let has_attack = self.combat.attack().direct.is_some()
+            || (hit_source.direct != 0
+                && self.combat.attack().projectile == Some(hit_source.direct))
+            || (hit_source.causing != 0 && self.combat.attack().attacker == hit_source.causing);
+        let death_listened = mod_api::__private::listened(mod_api::HookId::LivingDeath);
+        let hit_attack = (!has_attack
+            && counts
+            && hit_source.causing != 0
+            && hit_source.direct == hit_source.causing
+            && (death_listened
+                || mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage)
+                || mod_api::__private::listened(mod_api::HookId::LivingKnockback)))
+        .then(|| self.attack_of(hit_source.causing));
         if !origin.invulnerability_checked
             && self
                 .dragon
@@ -2097,7 +2238,8 @@ impl Game<'_> {
             let creative = self.creative_source_of(attacker);
             let vanilla =
                 self.saved_refuses_damage(id, hit_source.damage_type, creative) || is_fire(kind);
-            let level = super::entity::damage_level_of!(self, self.combat.attack(), no_push, None);
+            let attack = hit_attack.as_ref().unwrap_or_else(|| self.combat.attack());
+            let level = super::entity::damage_level_of!(self, attack, no_push, None);
             if level.invulnerability_check(
                 sunrise_client::health::Hurting::Dragon(id as i32, hit_source),
                 vanilla,
@@ -2105,82 +2247,153 @@ impl Game<'_> {
                 return Hurt::Refused;
             }
         }
-        let plan = self.prepare_knockback_credit(
-            self.dragon.as_ref().map_or(0, |d| d.id) as i32,
-            None,
-            self.combat.attack(),
-        );
+        let weapon = death_listened
+            .then(|| {
+                hit_attack
+                    .as_ref()
+                    .unwrap_or_else(|| self.combat.attack())
+                    .weapon_of(hit_source.direct)
+                    .cloned()
+            })
+            .flatten();
+        let plan = {
+            let attack = hit_attack.as_ref().unwrap_or_else(|| self.combat.attack());
+            self.prepare_knockback_credit(
+                self.dragon.as_ref().map_or(0, |d| d.id) as i32,
+                None,
+                attack,
+            )
+        };
         // `getAttributeValue(KNOCKBACK_RESISTANCE)` as the push reads it, before the hit.
         let push = origin.from.map(|from| Push {
             from,
             resistance: self.dragon_knockback_resistance(),
         });
-        let mut credit = plan.lend(&mut self.last_hurt_by_player);
-        let Some(d) = self.dragon.as_mut() else {
-            return Hurt::Refused;
+        let dim = self.dim;
+        let (id, join, DragonHurt { hurt, lethal }) = {
+            let mut credit = plan.lend(&mut self.last_hurt_by_player);
+            let Some(d) = self.dragon.as_mut() else {
+                return Hurt::Refused;
+            };
+            let (id, join) = (d.id, d.join);
+            let (cooldown, last_hurt) = (d.invulnerable, d.last_hurt);
+            let attack = hit_attack.as_ref().unwrap_or_else(|| self.combat.attack());
+            let level = super::entity::damage_level_of!(self, attack, &mut credit, None);
+            let outcome = d.hurt_part_from_outcome(
+                level,
+                part,
+                damage,
+                source,
+                kind,
+                origin.direct,
+                push,
+                true,
+            );
+            // LivingEntity.hurtServer: damage that is applied sets lastHurtByPlayer
+            // (100 ticks); a hit the damage cooldown absorbs returns before that.
+            if counts
+                && matches!(outcome.hurt, Hurt::Landed { .. })
+                && (d.invulnerable != cooldown || d.last_hurt != last_hurt)
+                && let Some(who) = by
+            {
+                d.hurt_by_player = Some((who, d.ticks));
+            }
+            (id, join, outcome)
         };
-        let was_down = d.down();
-        let (cooldown, last_hurt) = (d.invulnerable, d.last_hurt);
-        let level = super::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None);
-        let hurt = d.hurt_part_from(level, part, damage, source, kind, origin.direct, push, true);
-        // LivingEntity.hurtServer: damage that is applied sets lastHurtByPlayer
-        // (100 ticks); a hit the damage cooldown absorbs returns before that.
-        if counts
-            && matches!(hurt, Hurt::Landed { .. })
-            && (d.invulnerable != cooldown || d.last_hurt != last_hurt)
-            && let Some(who) = by
-        {
-            d.hurt_by_player = Some((who, d.ticks));
-        }
-        if !was_down && d.down() {
-            let id = d.id;
-            // LivingEntity.die: NeoForge's LivingDeathEvent first, then the kill credit, and
-            // the death's end at its broadcastEntityEvent (living_death_post).
-            if !self.dragon_death_canceled(id, &hit_source) {
-                // The player the kill is credited to: lastHurtByPlayer within its 100 ticks.
-                let credited_player = self
+        let same_dragon = |game: &Self| {
+            game.dim == dim
+                && !game.target_removed(&Target::Dragon(id))
+                && game
                     .dragon
                     .as_ref()
-                    .and_then(|d| d.hurt_by_player.filter(|(_, hit)| d.ticks - hit <= 100))
-                    .and_then(|(who, _)| match who {
-                        FightWho::Host => Some(self.own_uuid()),
-                        FightWho::Guest(conn) => self
-                            .lan
-                            .as_ref()
-                            .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
-                            .map(|g| g.uuid),
-                    });
-                self.fight.last_blow = Some((kind, by.is_some()));
-                self.credit_dragon_kill();
-                if mod_api::__private::listened(mod_api::HookId::LivingDeathPost) {
-                    // The attacker is the mob that dealt it, 0 for none or a player.
-                    let attacker = if by.is_some() {
-                        0
-                    } else {
-                        u32::try_from(hit_source.causing).unwrap_or(0)
-                    };
-                    self.native_living_death_post(mod_api::__private::LivingDeathPostCall {
-                        entity: id,
-                        kind: "minecraft:ender_dragon",
-                        damage_type: hit_source.damage_type,
-                        attacker,
-                        player: None,
-                        credited_player,
-                        message_key: None,
-                    });
+                    .is_some_and(|d| d.id == id && d.join == join)
+        };
+        if let Some(lethal) = lethal {
+            // LivingEntity.die: NeoForge's LivingDeathEvent first, then handleKillingBlow,
+            // kill credit, and living_death_post; LivingDamageEvent.Post finishes after die.
+            let post_listened = mod_api::__private::listened(mod_api::HookId::LivingDeathPost);
+            let apply_death = |game: &mut Self| -> Option<Option<u128>> {
+                if !same_dragon(game)
+                    || game
+                        .dragon
+                        .as_ref()
+                        .is_none_or(|d| d.alive() || matches!(d.phase, Phase::Dying { .. }))
+                {
+                    return None;
                 }
+                if let Some(d) = game.dragon.as_mut() {
+                    d.apply_killing_blow();
+                }
+                game.fight.last_blow = Some((kind, by.is_some()));
+                Some(game.credit_dragon_kill(post_listened))
+            };
+            let credited = if death_listened {
+                self.storage_scope(|game, _| {
+                    let credited = if game.dragon_death_canceled(id, &hit_source, weapon.as_ref()) {
+                        None
+                    } else {
+                        apply_death(game)
+                    };
+                    (credited, true)
+                })
+            } else {
+                apply_death(self)
+            };
+            if let Some(credited_player) = credited
+                && post_listened
+            {
+                // The attacker is the mob that dealt it, 0 for none or a player.
+                let attacker = if by.is_some() {
+                    0
+                } else {
+                    u32::try_from(hit_source.causing).unwrap_or(0)
+                };
+                self.native_living_death_post(mod_api::__private::LivingDeathPostCall {
+                    entity: id,
+                    kind: "minecraft:ender_dragon",
+                    damage_type: hit_source.damage_type,
+                    attacker,
+                    player: None,
+                    credited_player,
+                    message_key: None,
+                });
+            }
+            if let Some(post) = lethal.post {
+                self.finish_damage_post(id as i32, "minecraft:ender_dragon", post);
+            }
+            if same_dragon(self)
+                && let Some(d) = self.dragon.as_mut()
+            {
+                d.finish_sitting_damage(lethal.before_health);
             }
         }
-        let Some(d) = self.dragon.as_mut() else {
+        if !same_dragon(self) {
+            return hurt;
+        }
+        let last_damage_type = source.map(|s| {
+            sunrise_client::mobs::NamedDamage::registered(
+                &self.health_resources.damage,
+                s.damage_type,
+            )
+            .map_or_else(
+                || super::creatures::damage_type(kind, s.causing != 0),
+                |named| named.name,
+            )
+        });
+        let Some(d) = self
+            .dragon
+            .as_mut()
+            .filter(|d| d.id == id && d.join == join)
+        else {
             return hurt;
         };
         if hurt == (Hurt::Landed { full: true }) {
             // Mob.playHurtSound: the ambient sound clock starts again.
             d.ambient_time = -AMBIENT_INTERVAL;
             let at = [d.position.x, d.position.y, d.position.z];
-            if let Some(s) = source {
+            if let (Some(s), Some(damage_type)) = (source, last_damage_type) {
                 d.last_source = Some((
-                    s.damage_type,
+                    damage_type,
                     (s.causing != 0).then_some(s.causing),
                     (s.direct != 0).then_some(s.direct),
                 ));
@@ -2198,12 +2411,12 @@ impl Game<'_> {
     /// `LivingEntity.die`: `getKillCredit().awardKillScore`, for the player
     /// who hurt the dragon within the last 100 ticks. A guest's kill is
     /// theirs: their statistics, scores and advancements.
-    fn credit_dragon_kill(&mut self) {
+    fn credit_dragon_kill(&mut self, resolve_uuid: bool) -> Option<u128> {
         let Some(d) = self.dragon.as_ref() else {
-            return;
+            return None;
         };
         let Some((who, _)) = d.hurt_by_player.filter(|(_, hit)| d.ticks - hit <= 100) else {
-            return;
+            return None;
         };
         let view = sunrise_client::advancements::EntityView {
             kind: "minecraft:ender_dragon".to_owned(),
@@ -2217,13 +2430,16 @@ impl Game<'_> {
             FightWho::Guest(conn) if self.lan_acting != Some(conn) => Some(conn),
             _ => None,
         };
-        let credited = guest.is_some_and(|conn| {
-            self.as_guest(conn, |g| g.award_dragon_kill(id, &view, blow))
-                .is_some()
-        });
-        if !credited {
-            self.award_dragon_kill(id, &view, blow);
+        if let Some(conn) = guest
+            && let Some(uuid) = self.as_guest(conn, |g| {
+                g.award_dragon_kill(id, &view, blow);
+                resolve_uuid.then(|| g.lan_acting_uuid.unwrap_or_else(|| g.own_uuid()))
+            })
+        {
+            return uuid;
         }
+        self.award_dragon_kill(id, &view, blow);
+        resolve_uuid.then(|| self.lan_acting_uuid.unwrap_or_else(|| self.own_uuid()))
     }
     /// `ServerPlayer.awardKillScore` for the dragon, on the killer's state.
     fn award_dragon_kill(
@@ -3717,6 +3933,51 @@ impl Dragon {
     }
 }
 
+/// Detached render-only state for GUI dragon previews (`DrawContext::entity`),
+/// holding only the fields the renderer reads so by-type draws never allocate
+/// `DragonPart`s or entity seeds.
+#[derive(Clone, Copy, Debug)]
+pub(in crate::game) struct DragonPreview {
+    flap: f32,
+    sitting: bool,
+    hurt_time: i32,
+}
+
+impl DragonPreview {
+    pub(in crate::game) fn from_dragon(d: &Dragon) -> Self {
+        Self {
+            flap: d.flap,
+            sitting: d.phase.sitting(),
+            hurt_time: d.hurt_time,
+        }
+    }
+
+    /// Build a detached preview from saved dragon NBT, discarding position and orientation.
+    pub(in crate::game) fn from_nbt(data: &sunrise_core::nbt::Compound) -> Self {
+        let phase =
+            saved_dragon_phase(data.get(&sunrise_core::nbt::JavaString::from("DragonPhase")))
+                .unwrap_or(Phase::Hover { target: None });
+        Self {
+            flap: 0.0,
+            sitting: phase.sitting(),
+            hurt_time: 0,
+        }
+    }
+}
+
+/// Screen orientation for `gui_dragon_geometry`: body yaw in `EnderDragonRenderer`'s
+/// frame, head yaw relative to the body, and head pitch (degrees).
+#[derive(Clone, Copy, Debug, Default)]
+pub(in crate::game) struct GuiDragonLook {
+    pub body_yaw: f32,
+    pub head_yaw: f32,
+    pub head_pitch: f32,
+}
+
+fn saved_dragon_phase(tag: Option<&Tag>) -> Option<Phase> {
+    nbt_value::number(tag).map(|p| Phase::from_id(p as i32))
+}
+
 impl Game<'_> {
     /// `EnderDragonRenderer.submit` and `EnderDragonModel.setupAnim`, from the real dragon's slot.
     pub(super) fn dragon_geometry(
@@ -3727,34 +3988,41 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         additive: &mut Vec<Vertex>,
     ) {
-        self.dragon_geometry_as(d, camera, alpha, None, out, additive);
-    }
-
-    /// The dragon as a screen draws it (`DrawContext::entity`): posed still, facing `yaw`
-    /// (its whole flight history at its own height and that yaw, so the neck and tail lie
-    /// straight), full bright, its eyes in `out` after the body, and none of the world's
-    /// marks, death rays or crystal beam.
-    pub(in crate::game) fn gui_dragon_geometry(&self, d: &Dragon, yaw: f32, out: &mut Vec<Vertex>) {
-        let p = d.position;
-        let mut eyes = Vec::new();
-        self.dragon_geometry_as(
-            d,
-            glam::DVec3::new(p.x, p.y, p.z),
-            1.0,
-            Some(yaw),
+        self.dragon_geometry_as::<false>(
+            Some(d),
+            DragonPreview::from_dragon(d),
+            camera,
+            alpha,
+            GuiDragonLook::default(),
             out,
-            &mut eyes,
+            additive,
         );
-        out.append(&mut eyes);
     }
 
-    /// `dragon_geometry`, or with `gui` (a yaw) the still, full-bright screen form.
-    fn dragon_geometry_as(
+    /// The dragon as a screen draws it (`DrawContext::entity`): posed still with `look`,
+    /// full bright, its body in `out` and additive eyes in `eyes`, and none of the world's
+    /// marks, death rays or crystal beam.
+    #[inline(always)]
+    pub(in crate::game) fn gui_dragon_geometry(
         &self,
-        d: &Dragon,
+        preview: DragonPreview,
+        look: GuiDragonLook,
+        out: &mut Vec<Vertex>,
+        eyes: &mut Vec<Vertex>,
+    ) {
+        self.dragon_geometry_as::<true>(None, preview, glam::DVec3::ZERO, 1.0, look, out, eyes);
+    }
+
+    /// `dragon_geometry` specialised by `GUI` so world draws drop GUI branches and add no slot.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    fn dragon_geometry_as<const GUI: bool>(
+        &self,
+        world: Option<&Dragon>,
+        preview: DragonPreview,
         camera: glam::DVec3,
         alpha: f64,
-        gui: Option<f32>,
+        gui: GuiDragonLook,
         out: &mut Vec<Vertex>,
         additive: &mut Vec<Vertex>,
     ) {
@@ -3775,11 +4043,16 @@ impl Game<'_> {
         ) else {
             return;
         };
-        let p = d.previous.lerp(d.position, alpha);
-        let pos = glam::DVec3::new(p.x, p.y, p.z);
-        let h = |delay: usize| match gui {
-            Some(yaw) => (d.position.y, yaw),
-            None => d.sample_lerp(delay, a),
+        let pos = match world {
+            Some(d) if !GUI => {
+                let p = d.previous.lerp(d.position, alpha);
+                glam::DVec3::new(p.x, p.y, p.z)
+            }
+            _ => glam::DVec3::ZERO,
+        };
+        let h = |delay: usize| match world {
+            Some(d) if !GUI => d.sample_lerp(delay, a),
+            _ => (0.0, gui.body_yaw),
         };
         let yr = h(7).1;
         let rot2 = (h(5).0 - h(10).0) as f32;
@@ -3791,7 +4064,10 @@ impl Game<'_> {
             * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.501, 0.0));
         let rays_base = base * glam::Mat4::from_translation(glam::Vec3::new(0.0, -1.0, -2.0));
         // setupAnim.
-        let flap = (d.old_flap + (d.flap - d.old_flap) * a) * std::f32::consts::TAU;
+        let flap = match world {
+            Some(d) if !GUI => (d.old_flap + (d.flap - d.old_flap) * a) * std::f32::consts::TAU,
+            _ => preview.flap * std::f32::consts::TAU,
+        };
         let mut bounce = (flap - 1.0).sin() + 1.0;
         bounce = (bounce * bounce + bounce * 2.0) * 0.05;
         base *=
@@ -3799,17 +4075,20 @@ impl Game<'_> {
                 * glam::Mat4::from_rotation_x((bounce * 2.0).to_radians());
         let mut poses = sunrise_client::mobs::anim::Poses::new(model);
         poses.get("jaw")[3] = (flap.sin() + 1.0) * 0.2;
-        let sitting = gui.is_none() && d.phase.sitting();
-        let landing =
-            gui.is_none() && matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. });
-        let egg_dist = if gui.is_some() {
-            0.0
-        } else {
-            let p = self.podium_top();
-            ((p.x - d.position.x).powi(2)
-                + (p.y - d.position.y).powi(2)
-                + (p.z - d.position.z).powi(2))
-            .sqrt()
+        let sitting = preview.sitting;
+        let landing = match world {
+            Some(d) if !GUI => matches!(d.phase, Phase::Landing { .. } | Phase::Takeoff { .. }),
+            _ => false,
+        };
+        let egg_dist = match world {
+            Some(d) if !GUI => {
+                let p = self.podium_top();
+                ((p.x - d.position.x).powi(2)
+                    + (p.y - d.position.y).powi(2)
+                    + (p.z - d.position.z).powi(2))
+                .sqrt()
+            }
+            _ => 0.0,
         };
         let head_offset = |part: usize, start: (f64, f32), point: (f64, f32)| -> f32 {
             if landing {
@@ -3842,14 +4121,20 @@ impl Game<'_> {
             yy += xr.sin() * 10.0;
             zz -= yrr.cos() * xr.cos() * 10.0;
         }
-        let current = h(0);
         let head = poses.get("head");
         head[0] = xx;
         head[1] = yy;
         head[2] = zz;
-        head[4] = wrap(current.1 - start.1) * deg;
-        head[3] = wrap(head_offset(6, start, current)) * deg * 1.5 * 5.0;
-        head[5] = -wrap(current.1 - rot) * deg;
+        if GUI {
+            head[4] = wrap(gui.head_yaw) * deg;
+            head[3] = gui.head_pitch * deg;
+            head[5] = 0.0;
+        } else {
+            let current = h(0);
+            head[4] = wrap(current.1 - start.1) * deg;
+            head[3] = wrap(head_offset(6, start, current)) * deg * 1.5 * 5.0;
+            head[5] = -wrap(current.1 - rot) * deg;
+        }
         poses.get("body")[5] = -rot2y * 1.5 * deg;
         let lw = [0.125 - flap.cos() * 0.2, -0.25, -(flap.sin() + 0.125) * 0.8];
         let lt = ((flap + 2.0).sin() + 0.5) * 0.75;
@@ -3889,21 +4174,21 @@ impl Game<'_> {
             zz -= yrr.cos() * xr.cos() * 10.0;
             xx -= yrr.sin() * xr.cos() * 10.0;
         }
-        let light = if gui.is_some() {
+        let light = match world {
+            Some(d) if !GUI => {
+                let l = self.world.light(
+                    d.position.x.floor() as i32,
+                    d.position.y.floor() as i32,
+                    d.position.z.floor() as i32,
+                );
+                (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8)
+            }
             // `renderEntityInInventory`: LightTexture.FULL_BRIGHT.
-            sunrise_client::mobs::render::FULL_BRIGHT
-        } else {
-            let l = self.world.light(
-                d.position.x.floor() as i32,
-                d.position.y.floor() as i32,
-                d.position.z.floor() as i32,
-            );
-            (u32::from(l >> 4) * 16) | ((u32::from(l & 15) * 16) << 8)
+            _ => sunrise_client::mobs::render::FULL_BRIGHT,
         };
-        let death = if d.death_time > 0 && gui.is_none() {
-            d.death_time as f32 + a
-        } else {
-            0.0
+        let death = match world {
+            Some(d) if !GUI && d.death_time > 0 => d.death_time as f32 + a,
+            _ => 0.0,
         };
         // Dying: DYING_RENDER_TYPE, `entityCutoutDissolve` of the skin with dragon_exploding as
         // the mask, white at `ARGB.white(1 - deathTime / 200)` and no overlay.
@@ -3911,10 +4196,10 @@ impl Game<'_> {
         let (color, overlay) = if mask.is_some() {
             (dissolve_color(death), sunrise_client::gfx::DISSOLVE_OVERLAY)
         } else {
-            (0xFFFF_FFFF, u32::from(d.hurt_time > 0))
+            (0xFFFF_FFFF, u32::from(preview.hurt_time > 0))
         };
         let first = out.len();
-        if gui.is_none() {
+        if !GUI {
             self.mark_entity(first, "minecraft:ender_dragon");
             self.mark_motion(first, 0);
         }
@@ -3936,7 +4221,9 @@ impl Game<'_> {
             sunrise_client::mobs::render::draw(model, base, &poses, glow, color, full, 0, out);
         }
         #[cfg(test)]
-        if gui.is_none() {
+        if let Some(d) = world
+            && !GUI
+        {
             super::native_render_pair_tests::witness_body(d.id, first, out.len());
         }
         // RenderTypes.eyes: the glowing eyes, added on top.
@@ -3954,7 +4241,7 @@ impl Game<'_> {
         // `RenderTypes.eyes` has an `OitPipelineSet`: improved transparency
         // moves the tagged quads into its stages (the HDR tier is the eyes'
         // shine, `mobs::render::EYES_TIER`).
-        if gui.is_some() {
+        if GUI {
             return;
         }
         for v in &mut additive[first_eye..] {
@@ -3970,7 +4257,9 @@ impl Game<'_> {
             }
         }
         // The healing beam to the nearest crystal.
-        if let Some(c) = d.nearest_crystal.and_then(|i| self.crystals.get(i)) {
+        if let Some(d) = world
+            && let Some(c) = d.nearest_crystal.and_then(|i| self.crystals.get(i))
+        {
             let bob = f64::from(sunrise_client::end_crystal::y(c.time as f32 + a));
             let to = glam::DVec3::new(c.position.x, c.position.y + bob, c.position.z);
             self.crystal_beam(pos, to - pos, self.visual_ticks() as f32 + a, camera, out);
@@ -4166,23 +4455,26 @@ impl Dragon {
         let mut d = Self::new(position, yaw, seed);
         d.pitch = pitch;
         d.velocity = velocity;
+        d.apply_saved_fields(tag);
+        Some(d)
+    }
+    fn apply_saved_fields(&mut self, tag: &Tag) {
         // Vanilla getFloatOr/getIntOr accept any numeric tag type.
-        d.health = nbt_value::float(tag.get("Health")).map_or(d.health, |h| h as f32);
-        d.sitting_damage =
+        self.health = nbt_value::float(tag.get("Health")).map_or(self.health, |h| h as f32);
+        self.sitting_damage =
             nbt_value::float(tag.get("sitting_damage_received")).unwrap_or(0.0) as f32;
-        if let Some(p) = nbt_value::number(tag.get("DragonPhase")) {
-            d.phase = Phase::from_id(p as i32);
+        if let Some(p) = saved_dragon_phase(tag.get("DragonPhase")) {
+            self.phase = p;
         }
         if let Some(t) = nbt_value::number(tag.get("DragonDeathTime")) {
-            d.death_time = t as i32;
+            self.death_time = t as i32;
         }
-        d.persistent = sunrise_client::entity_nbt::flag(tag, "PersistenceRequired");
+        self.persistent = sunrise_client::entity_nbt::flag(tag, "PersistenceRequired");
         if let Some(equipment) = tag.get("equipment") {
-            d.equipment = sunrise_items::equipment::Equipment::read(equipment);
+            self.equipment = sunrise_items::equipment::Equipment::read(equipment);
         }
-        d.live.load(tag.get("attributes"), |_| true);
-        d.no_ai = matches!(tag.get("NoAI"), Some(Tag::Byte(b)) if *b != 0);
-        Some(d)
+        self.live.load(tag.get("attributes"), |_| true);
+        self.no_ai = matches!(tag.get("NoAI"), Some(Tag::Byte(b)) if *b != 0);
     }
 }
 impl Crystal {
@@ -4329,8 +4621,32 @@ impl Game<'_> {
         let whole = d.whole_box();
         let (lo, hi) = (whole.min_position(), whole.max_position());
         let exposure = self.seen_percent(center, [lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
+        let blast_source = HurtSource {
+            damage_type,
+            causing: self.blast_attacker().map_or(0, |(id, _)| id as i32),
+            direct: self
+                .combat
+                .explosion_direct
+                .or(self.combat.explosion_source)
+                .map_or(0, |id| id as i32),
+            position: Some(center),
+            direct_type: None,
+        };
         for (part, amount) in hits {
-            self.hurt_dragon(part, amount, true, by, DamageKind::Explosion);
+            self.hurt_dragon_part_at(
+                part,
+                amount,
+                true,
+                by,
+                DamageKind::Explosion,
+                DragonHitOrigin {
+                    direct: None,
+                    entity_id: None,
+                    from: None,
+                    invulnerability_checked: false,
+                    source: Some(blast_source),
+                },
+            );
         }
         let Some((id, mut push)) = self
             .dragon
@@ -6525,6 +6841,7 @@ pub(in crate::game) mod tests {
                             entity_id: None,
                             from: None,
                             invulnerability_checked: false,
+                            source: None,
                         },
                     )
                 };
@@ -6580,6 +6897,7 @@ pub(in crate::game) mod tests {
                     entity_id: None,
                     from: Some(from),
                     invulnerability_checked: false,
+                    source: None,
                 },
             );
             assert_eq!(hurt, Hurt::Landed { full: true });

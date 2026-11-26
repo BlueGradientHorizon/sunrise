@@ -347,9 +347,12 @@ impl fmt::Debug for TextField {
 }
 
 /// What a context menu entry runs when the player picks it (`ClientHost::open_context_menu`).
+// no wire: in-process callback invoked by the client when a context menu action is picked.
 pub type ContextMenuAction = dyn FnOnce(&mut dyn ClientHost) + Send + 'static;
 
 /// One row of a context menu: an action, a nested menu, or a separator line.
+// no wire: process-local tree of context menu entries carrying native callbacks.
+#[non_exhaustive]
 pub enum ContextMenuEntry {
     /// A row the player can pick: the menu closes, then `on_select` runs.
     Action {

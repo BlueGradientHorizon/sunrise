@@ -30,10 +30,6 @@ impl Game<'_> {
     /// physical key as pressed (the same where the caller had no window key).
     /// The input dispatcher runs a receiving screen's key actions separately.
     pub(super) fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
-        // An open context menu takes every key until it closes, before any mapping.
-        if self.context_menu_key(key) {
-            return Ok(());
-        }
         // Scripted presses and controller presses are delivered to the same mappings
         // as window input; direct screen keys remain immediate.
         if !self.mod_mappings_screen_open() && !self.replay.playing() {

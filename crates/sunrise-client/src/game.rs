@@ -4586,6 +4586,8 @@ struct Game<'a> {
     /// A guest's `/save-all`: saved once their turn ends (`run_guest_command`),
     /// when their own state is back in their record.
     save_after_guest_turn: bool,
+    /// Guards `begin_world_save` against re-entry while `world_save_start` runs.
+    world_save_starting: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     lan_guest_swaps: Vec<u32>,
     /// Bodies and their statistics displaced by guest turns, outer first.
@@ -7841,6 +7843,7 @@ impl Game<'_> {
         self.draw_code_of_conduct(&mut batch);
         self.draw_link_prompt(&mut batch);
         self.draw_command_prompt(&mut batch);
+        self.draw_context_menu(&mut batch);
         if let Some((bar, fade)) = reload_overlay {
             self.draw_reload_overlay(&mut batch, bar, fade);
         }
@@ -12642,16 +12645,6 @@ impl Game<'_> {
                 self.held_key_text.released(key);
             }
         }
-        // An open context menu takes every key, and the text it types, until it closes.
-        if let PhysicalKey::Code(key) = input.physical
-            && if pressed {
-                self.context_menu_key(key)
-            } else {
-                self.context_menu_open()
-            }
-        {
-            return true;
-        }
         // The OS consumes composing keys before they can reach a screen or a shortcut.
         if (pressed && self.ime_suppresses_key()) || before_screen(self) {
             return true;
@@ -12704,6 +12697,7 @@ impl Game<'_> {
             self.physical_buttons.clear();
             self.drag_button = None;
             self.container_buttons.clear();
+            self.screen_state.context_menu_input.clear();
             self.mod_browser_focus_lost();
         }
         if let WindowEvent::ModifiersChanged(m) = event {
@@ -13233,8 +13227,10 @@ impl Game<'_> {
                             .window_cursor
                             .map_or([0.0; 2], |previous| projection.drag_delta(previous, sample));
                         self.set_window_cursor(sample, projection);
-                        self.context_menu_hover();
                         let [w, h] = projection.gui.size.map(|v| v as f32);
+                        if self.context_menu_hover([w, h]) {
+                            return Ok(());
+                        }
                         let overlay = self.observed_overlay_now();
                         if self.observed_screen_view().is_none() && self.studio_mouse_dragged(w) {
                             return Ok(());
@@ -13304,6 +13300,9 @@ impl Game<'_> {
                         }) * wheel_sensitivity
                     };
                     let d = scaled(raw_y) as f32;
+                    if self.context_menu_wheel(d) {
+                        return Ok(());
+                    }
                     // ScreenEvent.MouseScrolled.Pre: the open screen hears of
                     // the wheel before anything scrolls, and a cancelled turn
                     // scrolls nothing — no bundle, no list, slider or
@@ -13475,8 +13474,8 @@ impl Game<'_> {
                     let code = glfw_button(button);
                     let modifiers = glfw_modifiers(self.modifiers);
                     let synthetic = self.pad_synthetic_input();
-                    // An open context menu takes every button until it closes.
-                    if self.context_menu_mouse(pressed, button == MouseButton::Left) {
+                    // An open context menu takes every press (and its matching release) until it closes.
+                    if self.context_menu_mouse(button, pressed) {
                         return Ok(());
                     }
                     let owned_release = std::mem::take(&mut self.container_owned_up);
@@ -14001,6 +14000,8 @@ impl Game<'_> {
         text: Option<&str>,
     ) -> Result<()> {
         let has_screen = self.observed_screen_view().is_some();
+        let menu_blocking =
+            self.context_menu_open() || key.is_some_and(|k| self.context_menu_owns_key(k));
         if let Some(key) = key
             && !self.dispatch_screen_key(
                 event_loop,
@@ -14016,7 +14017,7 @@ impl Game<'_> {
             self.mapped_key_event(key, pressed, repeat)?;
         }
         // GLFW's character event follows the key, even if KeyPressed.Pre canceled.
-        if pressed && has_screen {
+        if pressed && has_screen && !menu_blocking && !self.context_menu_open() {
             self.settle_title_mode();
             self.screen_chars_typed(text);
         }
@@ -14034,6 +14035,9 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         source: Source,
     ) -> Result<bool> {
+        if self.context_menu_key_event(key, pressed, repeat) {
+            return Ok(true);
+        }
         let instance = self.screen_state.screen_instance;
         let receiver = self.observed_input_screen();
         let canceled = if pressed {
@@ -14058,7 +14062,8 @@ impl Game<'_> {
         Ok(post_canceled
             || self.screen_state.screen_instance != instance
             || (pressed
-                && (self.mounted_widget_captures_input()
+                && (self.context_menu_open()
+                    || self.mounted_widget_captures_input()
                     || self.observed_overlay_now().is_some()
                     || self.title_input_active()
                     || matches!(
@@ -15058,6 +15063,7 @@ impl<'a> Game<'a> {
             native_client_commands: Default::default(),
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
+            world_save_starting: false,
             lan_guest_swaps: Vec::new(),
             lan_displaced_players: Vec::new(),
             interrupted_turns: Vec::new(),

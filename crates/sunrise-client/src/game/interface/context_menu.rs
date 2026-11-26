@@ -9,8 +9,9 @@
 use super::Game;
 use crate::game::{api_values::TryIntoEngine, host::draw::GameDrawContext};
 use mod_api::{__private::game::CallbackOwner, DrawContext, client::widgets::ContextMenuEntry};
-use sunrise_client::hud::HudBatch;
-use winit::keyboard::KeyCode;
+use std::collections::HashSet;
+use sunrise_client::{gamepad::Button as PadButton, hud::HudBatch};
+use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// Height of a row without an icon, in GUI pixels.
 const ROW: f32 = 12.0;
@@ -30,6 +31,77 @@ const TEXT: u32 = 0xFFFF_FFFF;
 const DISABLED: u32 = 0xFF80_8080;
 const LINE: u32 = 0xFF50_5050;
 
+/// Press-to-release ownership for input consumed by a context menu, kept across menu close or
+/// screen replacement so releases and repeats never leak to the screen underneath.
+#[derive(Default)]
+pub(super) struct ContextMenuInput {
+    owned_buttons: HashSet<MouseButton>,
+    owned_keys: HashSet<KeyCode>,
+    owned_pad: HashSet<PadButton>,
+}
+
+impl ContextMenuInput {
+    pub(super) fn clear(&mut self) {
+        self.owned_buttons.clear();
+        self.owned_keys.clear();
+        self.owned_pad.clear();
+    }
+
+    pub(super) fn own_pad(&mut self, button: PadButton) {
+        self.owned_pad.insert(button);
+    }
+
+    pub(super) fn take_pad(&mut self, button: PadButton) -> bool {
+        !self.owned_pad.is_empty() && self.owned_pad.remove(&button)
+    }
+}
+
+/// Invalidates cached resolved labels and widths when fonts or language change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TextKey {
+    atlas_revision: u64,
+    font_epoch: u64,
+    lang_generation: u64,
+}
+
+struct CachedRowText {
+    label: Option<String>,
+    width: f32,
+    fitted: Option<String>,
+}
+
+impl CachedRowText {
+    fn display_label(&self) -> Option<&str> {
+        self.fitted.as_deref().or(self.label.as_deref())
+    }
+}
+
+struct CachedLevelText {
+    /// Parent row index in level `k - 1` that opened this level (`None` for root).
+    opener: Option<usize>,
+    icons: bool,
+    nested: bool,
+    row_height: f32,
+    max_label_width: f32,
+    content_tops: Vec<f32>,
+    content_height: f32,
+    rows: Vec<CachedRowText>,
+    /// Available text width `rows[*].fitted` was computed for (`f32::INFINITY` when untruncated).
+    fitted_width: f32,
+}
+
+#[derive(Default)]
+struct LayoutCache {
+    text_key: Option<TextKey>,
+    levels: Vec<CachedLevelText>,
+    viewport: [f32; 2],
+    at: [f32; 2],
+    scrolls: Vec<f32>,
+    openers: Vec<Option<usize>>,
+    boxes: Vec<LevelBox>,
+    dirty: bool,
+}
+
 /// An open context menu.
 pub(super) struct ContextMenu {
     owner: CallbackOwner,
@@ -40,6 +112,13 @@ pub(super) struct ContextMenu {
     /// One entry per open level: the row selected in it (by hover or the arrow keys). Level
     /// `k + 1` is the nested menu of level `k`'s selected row.
     selected: Vec<Option<usize>>,
+    /// Per-level vertical scroll offset in GUI pixels.
+    scroll: Vec<f32>,
+    /// Level whose selected row should be scrolled into view on the next layout pass.
+    scroll_to_selected: Option<usize>,
+    /// Last hovered `(level, row)` for pointer entry detection.
+    last_hovered: Option<(usize, usize)>,
+    cache: LayoutCache,
 }
 
 impl Drop for ContextMenu {
@@ -50,11 +129,23 @@ impl Drop for ContextMenu {
     }
 }
 
-/// Where one open level and its rows are, in GUI pixels (`[x, y, w, h]`).
+/// One visible row inside a level box: its entry index, full unclipped rect for text/icon
+/// layout, and clipped hit rect inside the level's visible content area.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct VisibleRow {
+    pub(super) index: usize,
+    pub(super) rect: [f32; 4],
+    pub(super) hit_rect: [f32; 4],
+}
+
+/// Where one open level and its visible rows are, in GUI pixels (`[x, y, w, h]`).
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct LevelBox {
     pub(super) rect: [f32; 4],
-    pub(super) rows: Vec<[f32; 4]>,
+    pub(super) content_rect: [f32; 4],
+    pub(super) rows: Vec<VisibleRow>,
+    pub(super) scroll: f32,
+    pub(super) max_scroll: f32,
 }
 
 fn label_of(entry: &ContextMenuEntry) -> Option<String> {
@@ -64,6 +155,7 @@ fn label_of(entry: &ContextMenuEntry) -> Option<String> {
             Some(text.plain())
         }
         ContextMenuEntry::Separator => None,
+        _ => None,
     }
 }
 
@@ -73,6 +165,7 @@ fn icon_of(entry: &ContextMenuEntry) -> Option<&mod_api::ItemStack> {
             icon.as_ref()
         }
         ContextMenuEntry::Separator => None,
+        _ => None,
     }
 }
 
@@ -82,14 +175,122 @@ fn enabled(entry: &ContextMenuEntry) -> bool {
             *enabled
         }
         ContextMenuEntry::Separator => false,
+        _ => false,
     }
+}
+
+fn opens_submenu(entry: &ContextMenuEntry) -> bool {
+    enabled(entry)
+        && matches!(entry, ContextMenuEntry::Submenu { entries, .. } if !entries.is_empty())
 }
 
 fn inside([mx, my]: [f32; 2], [x, y, w, h]: [f32; 4]) -> bool {
     mx >= x && my >= y && mx < x + w && my < y + h
 }
 
+fn truncate_label(label: &str, max_width: f32, width: &dyn Fn(&str) -> f32) -> String {
+    if max_width <= 0.0 {
+        return String::new();
+    }
+    if width(label) <= max_width {
+        return label.to_owned();
+    }
+    let ellipsis = "...";
+    if width(ellipsis) > max_width {
+        let mut out = String::new();
+        for ch in label.chars() {
+            let prev = out.len();
+            out.push(ch);
+            if width(&out) > max_width {
+                out.truncate(prev);
+                break;
+            }
+        }
+        return out;
+    }
+    let mut boundaries: Vec<usize> = label.char_indices().map(|(i, _)| i).collect();
+    boundaries.push(label.len());
+    let mut lo = 0usize;
+    let mut hi = boundaries.len() - 1;
+    let mut buf = String::with_capacity(label.len().min(64) + ellipsis.len());
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2;
+        buf.clear();
+        buf.push_str(&label[..boundaries[mid]]);
+        buf.push_str(ellipsis);
+        if width(&buf) <= max_width {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    buf.clear();
+    buf.push_str(&label[..boundaries[lo]]);
+    buf.push_str(ellipsis);
+    buf
+}
+
+fn build_level_text(
+    opener: Option<usize>,
+    entries: &[ContextMenuEntry],
+    width: &dyn Fn(&str) -> f32,
+) -> CachedLevelText {
+    let icons = entries.iter().any(|entry| icon_of(entry).is_some());
+    let nested = entries
+        .iter()
+        .any(|entry| matches!(entry, ContextMenuEntry::Submenu { .. }));
+    let row_height = if icons { ICON_ROW } else { ROW };
+    let mut max_label_width = 0.0f32;
+    let mut content_tops = Vec::with_capacity(entries.len());
+    let mut rows = Vec::with_capacity(entries.len());
+    let mut top = 0.0f32;
+    for entry in entries {
+        content_tops.push(top);
+        let h = match entry {
+            ContextMenuEntry::Separator => SEPARATOR,
+            _ => row_height,
+        };
+        top += h;
+        let label = label_of(entry);
+        let w = label.as_deref().map_or(0.0, width);
+        max_label_width = max_label_width.max(w);
+        rows.push(CachedRowText {
+            label,
+            width: w,
+            fitted: None,
+        });
+    }
+    CachedLevelText {
+        opener,
+        icons,
+        nested,
+        row_height,
+        max_label_width,
+        content_tops,
+        content_height: top,
+        rows,
+        fitted_width: f32::INFINITY,
+    }
+}
+
 impl ContextMenu {
+    fn new(owner: CallbackOwner, instance: u64, at: [f32; 2], root: Vec<ContextMenuEntry>) -> Self {
+        Self {
+            owner,
+            instance,
+            at,
+            root,
+            selected: vec![None],
+            scroll: vec![0.0],
+            scroll_to_selected: None,
+            last_hovered: None,
+            cache: LayoutCache {
+                dirty: true,
+                ..LayoutCache::default()
+            },
+        }
+    }
+
     /// The rows of open level `k`.
     fn level(&self, k: usize) -> &[ContextMenuEntry] {
         let mut entries = self.root.as_slice();
@@ -117,41 +318,124 @@ impl ContextMenu {
         Some(entries)
     }
 
-    /// Each open level's box, kept inside a `size` window: a level that would cross the right
-    /// or bottom edge moves left or up, and a nested level opens on its parent's left when
-    /// its right has no room.
-    pub(super) fn layout(&self, size: [f32; 2], width: &dyn Fn(&str) -> f32) -> Vec<LevelBox> {
-        let mut boxes: Vec<LevelBox> = Vec::new();
-        for k in 0..self.selected.len() {
-            let entries = self.level(k);
-            let icons = entries.iter().any(|entry| icon_of(entry).is_some());
-            let nested = entries
-                .iter()
-                .any(|entry| matches!(entry, ContextMenuEntry::Submenu { .. }));
-            let row = if icons { ICON_ROW } else { ROW };
-            let label = entries
-                .iter()
-                .filter_map(label_of)
-                .map(|label| width(&label))
-                .fold(0.0, f32::max);
-            let w = PAD * 2.0
-                + label
-                + if icons { ICON_ROW } else { 0.0 }
-                + if nested { ARROW } else { 0.0 };
-            let h = PAD * 2.0
-                + entries
-                    .iter()
-                    .map(|entry| match entry {
-                        ContextMenuEntry::Separator => SEPARATOR,
-                        _ => row,
-                    })
-                    .sum::<f32>();
-            let [mut x, mut y] = match boxes.last() {
+    /// Ensure cached text metrics and viewport-fitted geometry are current, reusing cached data
+    /// when font/language, viewport, scroll offsets and open levels are unchanged.
+    fn ensure_layout(
+        &mut self,
+        size: [f32; 2],
+        text_key: TextKey,
+        width: &dyn Fn(&str) -> f32,
+    ) -> &[LevelBox] {
+        let size = [size[0].max(0.0), size[1].max(0.0)];
+        let depth = self.selected.len();
+        self.scroll.resize(depth, 0.0);
+
+        if self.cache.text_key != Some(text_key) {
+            self.cache.levels.clear();
+            self.cache.text_key = Some(text_key);
+            self.cache.dirty = true;
+        }
+        self.cache.levels.truncate(depth);
+        for k in 0..depth {
+            let opener = (k > 0).then(|| self.selected[k - 1]).flatten();
+            let valid = self
+                .cache
+                .levels
+                .get(k)
+                .is_some_and(|cached| cached.opener == opener);
+            if !valid {
+                self.cache.levels.truncate(k);
+                let entries = self.level(k);
+                let built = build_level_text(opener, entries, width);
+                self.cache.levels.push(built);
+                self.cache.dirty = true;
+            }
+        }
+
+        let viewport_changed = self.cache.viewport != size;
+        let height_shrank = size[1] < self.cache.viewport[1];
+        let scroll_target = self.scroll_to_selected.take();
+        for k in 0..depth {
+            let level = &self.cache.levels[k];
+            let natural_h = PAD * 2.0 + level.content_height;
+            let h = natural_h.min(size[1]);
+            let visible_h = (h - PAD * 2.0).max(0.0);
+            let max_scroll = (level.content_height - visible_h).max(0.0);
+            let mut s = self.scroll[k].clamp(0.0, max_scroll);
+            if (scroll_target == Some(k) || height_shrank)
+                && let Some(row) = self.selected[k]
+                && let Some(&row_top) = level.content_tops.get(row)
+            {
+                let row_bottom = level
+                    .content_tops
+                    .get(row + 1)
+                    .copied()
+                    .unwrap_or(level.content_height);
+                if row_top < s {
+                    s = row_top;
+                } else if row_bottom > s + visible_h {
+                    s = (row_bottom - visible_h).max(0.0);
+                }
+                s = s.clamp(0.0, max_scroll);
+            }
+            if s != self.scroll[k] {
+                self.scroll[k] = s;
+                self.cache.dirty = true;
+            }
+        }
+
+        let openers = &self.selected[..depth.saturating_sub(1)];
+        if !self.cache.dirty
+            && !viewport_changed
+            && self.cache.at == self.at
+            && self.cache.scrolls == self.scroll
+            && self.cache.openers.as_slice() == openers
+            && self.cache.boxes.len() == depth
+        {
+            return &self.cache.boxes;
+        }
+
+        self.cache.boxes.clear();
+        for k in 0..depth {
+            let (icons, nested, max_label_width, content_height) = {
+                let level = &self.cache.levels[k];
+                (
+                    level.icons,
+                    level.nested,
+                    level.max_label_width,
+                    level.content_height,
+                )
+            };
+            let chrome_w =
+                PAD * 2.0 + if icons { ICON_ROW } else { 0.0 } + if nested { ARROW } else { 0.0 };
+            let w = (chrome_w + max_label_width).min(size[0]);
+            let available_text = (w - chrome_w).max(0.0);
+            {
+                let level = &mut self.cache.levels[k];
+                if level.fitted_width != available_text {
+                    for row in &mut level.rows {
+                        if let Some(label) = &row.label {
+                            row.fitted = (row.width > available_text)
+                                .then(|| truncate_label(label, available_text, width));
+                        } else {
+                            row.fitted = None;
+                        }
+                    }
+                    level.fitted_width = available_text;
+                }
+            }
+            let h = (PAD * 2.0 + content_height).min(size[1]);
+            let visible_h = (h - PAD * 2.0).max(0.0);
+            let max_scroll = (content_height - visible_h).max(0.0);
+            let scroll = self.scroll[k].clamp(0.0, max_scroll);
+            self.scroll[k] = scroll;
+
+            let [mut x, mut y] = match self.cache.boxes.last() {
                 None => self.at,
                 Some(parent) => {
                     let opener = self.selected[k - 1]
-                        .and_then(|row| parent.rows.get(row))
-                        .copied()
+                        .and_then(|row| parent.rows.iter().find(|r| r.index == row))
+                        .map(|r| r.hit_rect)
                         .unwrap_or(parent.rect);
                     let right = parent.rect[0] + parent.rect[2];
                     let x = if right + w <= size[0] {
@@ -162,52 +446,138 @@ impl ContextMenu {
                     [x, opener[1] - PAD]
                 }
             };
-            x = x.min(size[0] - w).max(0.0);
-            y = y.min(size[1] - h).max(0.0);
-            let mut rows = Vec::with_capacity(entries.len());
-            let mut top = y + PAD;
-            for entry in entries {
-                let height = match entry {
-                    ContextMenuEntry::Separator => SEPARATOR,
-                    _ => row,
-                };
-                rows.push([x + 1.0, top, w - 2.0, height]);
-                top += height;
+            x = x.min((size[0] - w).max(0.0)).max(0.0);
+            y = y.min((size[1] - h).max(0.0)).max(0.0);
+
+            let content_top = y + PAD;
+            let content_bottom = content_top + visible_h;
+            let content_rect = [x + 1.0, content_top, (w - 2.0).max(0.0), visible_h];
+            let level = &self.cache.levels[k];
+            let mut rows = Vec::new();
+            for index in 0..level.rows.len() {
+                let row_top = level.content_tops[index];
+                let row_bottom = level
+                    .content_tops
+                    .get(index + 1)
+                    .copied()
+                    .unwrap_or(level.content_height);
+                let screen_top = content_top + row_top - scroll;
+                let screen_bottom = content_top + row_bottom - scroll;
+                let vis_top = screen_top.max(content_top);
+                let vis_bottom = screen_bottom.min(content_bottom);
+                if vis_bottom <= vis_top {
+                    continue;
+                }
+                rows.push(VisibleRow {
+                    index,
+                    rect: [
+                        x + 1.0,
+                        screen_top,
+                        (w - 2.0).max(0.0),
+                        row_bottom - row_top,
+                    ],
+                    hit_rect: [x + 1.0, vis_top, (w - 2.0).max(0.0), vis_bottom - vis_top],
+                });
             }
-            boxes.push(LevelBox {
+            self.cache.boxes.push(LevelBox {
                 rect: [x, y, w, h],
+                content_rect,
                 rows,
+                scroll,
+                max_scroll,
             });
         }
-        boxes
+        self.cache.viewport = size;
+        self.cache.at = self.at;
+        self.cache.scrolls.clone_from(&self.scroll);
+        self.cache.openers.clear();
+        self.cache.openers.extend_from_slice(openers);
+        self.cache.dirty = false;
+        &self.cache.boxes
     }
 
-    /// The deepest level and row under `mouse`.
+    /// The deepest level and entry index under `mouse`.
     fn hit(boxes: &[LevelBox], mouse: [f32; 2]) -> Option<(usize, Option<usize>)> {
         boxes.iter().enumerate().rev().find_map(|(k, level)| {
-            inside(mouse, level.rect)
-                .then(|| (k, level.rows.iter().position(|row| inside(mouse, *row))))
+            inside(mouse, level.rect).then(|| {
+                (
+                    k,
+                    level
+                        .rows
+                        .iter()
+                        .find(|row| inside(mouse, row.hit_rect))
+                        .map(|row| row.index),
+                )
+            })
         })
     }
 
+    /// Update selection and submenu state for pointer motion over `hit`: opens an enabled
+    /// nonempty submenu on pointer entry even if that row was already selected without an open
+    /// child, while preserving a live child selection when hovering its parent.
+    fn hover_at(&mut self, hit: Option<(usize, Option<usize>)>) {
+        let now = hit.and_then(|(k, row)| row.map(|r| (k, r)));
+        let entered = now != self.last_hovered;
+        self.last_hovered = now;
+        let Some((k, row)) = now else {
+            return;
+        };
+        if self.selected.get(k) != Some(&Some(row)) {
+            self.select(k, Some(row), true);
+        } else if entered
+            && self.selected.len() == k + 1
+            && self.level(k).get(row).is_some_and(opens_submenu)
+        {
+            self.select(k, Some(row), true);
+        }
+    }
+
+    /// Scroll level `k` by `delta_lines` (positive scrolls up toward earlier rows).
+    fn scroll_by(&mut self, k: usize, delta_lines: f32) {
+        let Some(level_text) = self.cache.levels.get(k) else {
+            return;
+        };
+        let Some(level_box) = self.cache.boxes.get(k) else {
+            return;
+        };
+        if level_box.max_scroll <= 0.0 || k >= self.scroll.len() {
+            return;
+        }
+        let next =
+            (self.scroll[k] - delta_lines * level_text.row_height).clamp(0.0, level_box.max_scroll);
+        if next != self.scroll[k] {
+            self.scroll[k] = next;
+            self.cache.dirty = true;
+        }
+    }
+
     /// Selects `row` of level `k`, closing deeper levels, and opens its nested menu when it
-    /// is an enabled one.
+    /// is an enabled, non-empty submenu.
     fn select(&mut self, k: usize, row: Option<usize>, open_nested: bool) {
         self.selected.truncate(k + 1);
+        self.scroll.truncate(k + 1);
         self.selected[k] = row;
         let opens = row
             .and_then(|row| self.level(k).get(row))
-            .is_some_and(|entry| {
-                enabled(entry)
-                    && matches!(entry, ContextMenuEntry::Submenu { entries, .. } if !entries.is_empty())
-            });
+            .is_some_and(opens_submenu);
         if opens && open_nested {
             self.selected.push(None);
+            self.scroll.push(0.0);
+        }
+        self.cache.dirty = true;
+    }
+
+    fn close_deepest_level(&mut self) {
+        if self.selected.len() > 1 {
+            let keep = self.selected.len() - 1;
+            self.selected.truncate(keep);
+            self.scroll.truncate(keep);
+            self.cache.dirty = true;
         }
     }
 
     /// The next selectable row of the deepest level after (or before, `step < 0`) the
-    /// selected one, wrapping around.
+    /// selected one, wrapping around, and marking it to scroll into view.
     fn step(&mut self, step: isize) {
         let k = self.selected.len() - 1;
         let entries = self.level(k);
@@ -221,6 +591,8 @@ impl ContextMenu {
             if !matches!(entries[at as usize], ContextMenuEntry::Separator) {
                 self.selected[k] = Some(at as usize);
                 self.selected.truncate(k + 1);
+                self.scroll.truncate(k + 1);
+                self.scroll_to_selected = Some(k);
                 return;
             }
         }
@@ -236,7 +608,7 @@ enum Outcome {
 
 impl Game<'_> {
     /// `ClientHost::open_context_menu`: false (nothing opened) with no screen open, an empty
-    /// list, or outside a mod's call.
+    /// list, while a pointer grab is active or pending, or outside a mod's call.
     pub(in crate::game) fn open_context_menu(
         &mut self,
         at: [f32; 2],
@@ -246,73 +618,137 @@ impl Game<'_> {
             return false;
         };
         let owner = CallbackOwner::for_mod(id);
+        if self.pointer_grab_request.get() == Some(false) {
+            self.apply_pointer_grab_request();
+        }
+        let pointer_grabbed = self.pointer_grab_request.get() == Some(true)
+            || self.mod_screen_grabs_pointer()
+            || self.captured;
         if entries.is_empty()
+            || !owner.is_enabled()
             || self.observed_screen_view().is_none()
             || !at.iter().all(|v| v.is_finite())
+            || pointer_grabbed
         {
             owner.dispose("context menu", "context_menu_drop", entries);
             return false;
         }
-        self.screen_state.context_menu = Some(ContextMenu {
+        self.screen_state.context_menu = Some(ContextMenu::new(
             owner,
-            instance: self.screen_state.screen_instance,
+            self.screen_state.screen_instance,
             at,
-            root: entries,
-            selected: vec![None],
-        });
+            entries,
+        ));
+        sunrise_client::preedit::reset();
+        self.sync_ime();
+        self.settle_pad_for_context_menu();
         true
     }
 
     /// `ClientHost::close_context_menu`: false when none is open.
     pub(in crate::game) fn close_context_menu(&mut self) -> bool {
         self.live_context_menu();
-        self.screen_state.context_menu.take().is_some()
+        let closed = self.screen_state.context_menu.take().is_some();
+        if closed {
+            self.sync_ime();
+        }
+        closed
     }
 
-    /// Whether a menu is open over the current screen (dropping one whose screen closed).
+    /// Read-only live check for `&self` callers (such as `set_pointer_grab`).
+    #[inline(always)]
+    pub(super) fn has_live_context_menu(&self) -> bool {
+        self.screen_state.context_menu.as_ref().is_some_and(|menu| {
+            menu.instance == self.screen_state.screen_instance
+                && menu.owner.is_enabled()
+                && self.observed_screen_view().is_some()
+        })
+    }
+
+    /// Whether a menu is open over the current screen (dropping one whose screen closed or
+    /// whose owner was disabled).
+    #[inline(always)]
     pub(super) fn context_menu_open(&mut self) -> bool {
         self.live_context_menu()
     }
 
-    /// Drops a menu whose screen closed or was replaced; whether one is still open.
-    fn live_context_menu(&mut self) -> bool {
-        let instance = self.screen_state.screen_instance;
-        if self
-            .screen_state
-            .context_menu
-            .as_ref()
-            .is_some_and(|menu| menu.instance != instance || self.observed_screen_view().is_none())
+    /// Drops a menu whose screen closed, was replaced, or whose owner was disabled; whether
+    /// one is still open. Closed path is a single `Option::is_none` check.
+    #[inline(always)]
+    pub(super) fn live_context_menu(&mut self) -> bool {
+        let Some(menu) = self.screen_state.context_menu.as_ref() else {
+            return false;
+        };
+        if menu.instance != self.screen_state.screen_instance
+            || !menu.owner.is_enabled()
+            || self.observed_screen_view().is_none()
         {
             self.screen_state.context_menu = None;
-        }
-        self.screen_state.context_menu.is_some()
-    }
-
-    fn context_menu_layout(&self) -> Vec<LevelBox> {
-        let Some(menu) = &self.screen_state.context_menu else {
-            return Vec::new();
-        };
-        let (w, h) = self.gui_size();
-        let atlas = &self.gui.atlas;
-        menu.layout([w, h], &|text| HudBatch::text_width(atlas, text))
-    }
-
-    /// A mouse button while a menu is open: a left press on a row picks it (or opens its
-    /// nested menu), a press outside every level closes the menu, and every press and release
-    /// is the menu's. False when no menu is open.
-    pub(super) fn context_menu_mouse(&mut self, pressed: bool, left: bool) -> bool {
-        if !self.live_context_menu() {
             return false;
         }
-        if !pressed {
-            return true;
+        true
+    }
+
+    #[inline(always)]
+    fn context_menu_text_key(&self) -> TextKey {
+        TextKey {
+            atlas_revision: self.gui.atlas.revision,
+            font_epoch: self.gui.atlas.font.epoch(),
+            lang_generation: sunrise_client::lang::generation(),
         }
-        let boxes = self.context_menu_layout();
+    }
+
+    #[inline(always)]
+    fn ensure_context_menu_layout(&mut self, size: [f32; 2]) {
+        let key = self.context_menu_text_key();
+        let atlas = &self.gui.atlas;
+        if let Some(menu) = self.screen_state.context_menu.as_mut() {
+            menu.ensure_layout(size, key, &|text| HudBatch::text_width(atlas, text));
+        }
+    }
+
+    /// A mouse button while a menu is open: presses are owned by the menu through their
+    /// matching release (even if the press closes the menu or replaces the screen), while
+    /// releases for presses the screen already owned pass through for drag/widget cleanup.
+    pub(super) fn context_menu_mouse(&mut self, button: MouseButton, pressed: bool) -> bool {
+        if !pressed {
+            return !self
+                .screen_state
+                .context_menu_input
+                .owned_buttons
+                .is_empty()
+                && self
+                    .screen_state
+                    .context_menu_input
+                    .owned_buttons
+                    .remove(&button);
+        }
+        if !self.live_context_menu() {
+            if !self
+                .screen_state
+                .context_menu_input
+                .owned_buttons
+                .is_empty()
+            {
+                self.screen_state
+                    .context_menu_input
+                    .owned_buttons
+                    .remove(&button);
+            }
+            return false;
+        }
+        self.screen_state
+            .context_menu_input
+            .owned_buttons
+            .insert(button);
+        let (w, h) = self.gui_size();
+        self.ensure_context_menu_layout([w, h]);
         let mouse = self.cursor();
+        let left = button == MouseButton::Left;
         let Some(menu) = self.screen_state.context_menu.as_mut() else {
             return true;
         };
-        let outcome = match ContextMenu::hit(&boxes, mouse) {
+        let outcome = match ContextMenu::hit(&menu.cache.boxes, mouse) {
             None => Outcome::Close,
             Some((_, None)) => Outcome::Stay,
             Some((k, Some(row))) => {
@@ -331,20 +767,93 @@ impl Game<'_> {
         true
     }
 
-    /// The pointer moved while a menu is open: the row under it is selected, and an enabled
-    /// nested menu under it opens.
-    pub(super) fn context_menu_hover(&mut self) {
+    /// Pointer motion while a menu is open: updates menu hover and stops delivery below the
+    /// menu. Returns `false` when no menu is open.
+    pub(super) fn context_menu_hover(&mut self, size: [f32; 2]) -> bool {
         if !self.live_context_menu() {
-            return;
+            return false;
         }
-        let boxes = self.context_menu_layout();
+        self.ensure_context_menu_layout(size);
         let mouse = self.cursor();
-        if let Some(menu) = self.screen_state.context_menu.as_mut()
-            && let Some((k, Some(row))) = ContextMenu::hit(&boxes, mouse)
-            && menu.selected.get(k) != Some(&Some(row))
-        {
-            menu.select(k, Some(row), true);
+        if let Some(menu) = self.screen_state.context_menu.as_mut() {
+            let hit = ContextMenu::hit(&menu.cache.boxes, mouse);
+            menu.hover_at(hit);
         }
+        true
+    }
+
+    /// Mouse wheel while a menu is open: scrolls the hovered (or deepest) level and consumes
+    /// the wheel so screens and widgets underneath never see it.
+    #[inline(always)]
+    pub(super) fn context_menu_wheel(&mut self, delta: f32) -> bool {
+        if !self.live_context_menu() {
+            return false;
+        }
+        if delta == 0.0 || !delta.is_finite() {
+            return true;
+        }
+        let (w, h) = self.gui_size();
+        self.ensure_context_menu_layout([w, h]);
+        let mouse = self.cursor();
+        if let Some(menu) = self.screen_state.context_menu.as_mut() {
+            let target = ContextMenu::hit(&menu.cache.boxes, mouse)
+                .map(|(k, _)| k)
+                .unwrap_or_else(|| menu.selected.len().saturating_sub(1));
+            menu.scroll_by(target, delta);
+        }
+        self.ensure_context_menu_layout([w, h]);
+        true
+    }
+
+    /// Whether `key`'s current press is owned by the context menu (so its repeats/text/release
+    /// stay out of the screen underneath even after the menu closes).
+    #[inline(always)]
+    pub(super) fn context_menu_owns_key(&self, key: KeyCode) -> bool {
+        !self.screen_state.context_menu_input.owned_keys.is_empty()
+            && self
+                .screen_state
+                .context_menu_input
+                .owned_keys
+                .contains(&key)
+    }
+
+    /// Shared window/socket key press, repeat and release routing for the context menu.
+    #[inline(always)]
+    pub(super) fn context_menu_key_event(
+        &mut self,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+    ) -> bool {
+        if self.screen_state.context_menu.is_none()
+            && self.screen_state.context_menu_input.owned_keys.is_empty()
+        {
+            return false;
+        }
+        if !pressed {
+            return self.screen_state.context_menu_input.owned_keys.remove(&key);
+        }
+        if repeat {
+            if self
+                .screen_state
+                .context_menu_input
+                .owned_keys
+                .contains(&key)
+            {
+                if self.live_context_menu() && matches!(key, KeyCode::ArrowUp | KeyCode::ArrowDown)
+                {
+                    let _ = self.context_menu_key(key);
+                }
+                return true;
+            }
+            return self.live_context_menu();
+        }
+        if !self.live_context_menu() {
+            self.screen_state.context_menu_input.owned_keys.remove(&key);
+            return false;
+        }
+        self.screen_state.context_menu_input.owned_keys.insert(key);
+        self.context_menu_key(key)
     }
 
     /// A key while a menu is open: Escape closes it, Up and Down move between rows, Right or
@@ -369,9 +878,7 @@ impl Game<'_> {
                 Outcome::Stay
             }
             KeyCode::ArrowLeft => {
-                if k > 0 {
-                    menu.selected.truncate(k);
-                }
+                menu.close_deepest_level();
                 Outcome::Stay
             }
             KeyCode::ArrowRight | KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
@@ -398,11 +905,13 @@ impl Game<'_> {
         true
     }
 
+    #[inline(always)]
     fn finish_context_menu(&mut self, outcome: Outcome) {
         let (k, row) = match outcome {
             Outcome::Stay => return,
             Outcome::Close => {
                 self.screen_state.context_menu = None;
+                self.sync_ime();
                 return;
             }
             Outcome::Pick(k, row) => (k, row),
@@ -417,6 +926,7 @@ impl Game<'_> {
             .map(|entry| std::mem::replace(entry, ContextMenuEntry::Separator));
         let owner = menu.owner.clone();
         drop(menu);
+        self.sync_ime();
         let Some(ContextMenuEntry::Action { on_select, .. }) = picked else {
             return;
         };
@@ -425,54 +935,82 @@ impl Game<'_> {
         } else {
             owner.dispose("context menu", "context_menu_drop", on_select);
         }
+        self.sync_ime();
     }
 
-    /// Draws the open menu above everything else on the screen (after its tooltips and the
-    /// screen's post-render hook).
-    pub(super) fn draw_context_menu(&self, batch: &mut HudBatch) {
-        let Some(menu) = &self.screen_state.context_menu else {
-            return;
-        };
-        if menu.instance != self.screen_state.screen_instance {
+    /// Draws the open menu above the active screen and all overlays using the batch's GUI size.
+    pub(super) fn draw_context_menu(&mut self, batch: &mut HudBatch) {
+        if !self.live_context_menu() {
             return;
         }
-        let boxes = self.context_menu_layout();
+        self.ensure_context_menu_layout([batch.width, batch.height]);
+        let Some(menu) = self.screen_state.context_menu.as_ref() else {
+            return;
+        };
         let mouse = self.cursor();
-        let hovered = ContextMenu::hit(&boxes, mouse);
+        let hovered = ContextMenu::hit(&menu.cache.boxes, mouse);
         let mut draw = GameDrawContext::new(self, batch);
-        for (k, level) in boxes.iter().enumerate() {
+        for (k, level) in menu.cache.boxes.iter().enumerate() {
             let [x, y, w, h] = level.rect;
+            if w <= 0.0 || h <= 0.0 {
+                continue;
+            }
             draw.fill([x, y, w, h], BORDER);
-            draw.fill([x + 1.0, y + 1.0, w - 2.0, h - 2.0], BACKGROUND);
+            if w > 2.0 && h > 2.0 {
+                draw.fill([x + 1.0, y + 1.0, w - 2.0, h - 2.0], BACKGROUND);
+            }
             let entries = menu.level(k);
-            let icons = entries.iter().any(|entry| icon_of(entry).is_some());
-            for (row, (entry, rect)) in entries.iter().zip(&level.rows).enumerate() {
-                let [rx, ry, rw, rh] = *rect;
-                if matches!(entry, ContextMenuEntry::Separator) {
-                    draw.fill([rx + PAD, ry + rh / 2.0 - 0.5, rw - PAD * 2.0, 1.0], LINE);
-                    continue;
-                }
-                let on = enabled(entry);
-                let lit =
-                    hovered == Some((k, Some(row))) || menu.selected.get(k) == Some(&Some(row));
-                if on && lit {
-                    draw.fill(*rect, HOVER);
-                }
-                let mut text_x = rx + PAD - 1.0;
-                if icons {
-                    if let Some(icon) = icon_of(entry) {
-                        draw.item_stack(icon, [text_x, ry + 1.0], 16.0);
+            let cached_level = &menu.cache.levels[k];
+            let icons = cached_level.icons;
+            let draw_rows = |draw: &mut dyn DrawContext| {
+                for row in &level.rows {
+                    let Some(entry) = entries.get(row.index) else {
+                        continue;
+                    };
+                    let [rx, ry, rw, rh] = row.rect;
+                    if matches!(entry, ContextMenuEntry::Separator) {
+                        draw.fill([rx + PAD, ry + rh / 2.0 - 0.5, rw - PAD * 2.0, 1.0], LINE);
+                        continue;
                     }
-                    text_x += ICON_ROW;
+                    let on = enabled(entry);
+                    let lit = hovered == Some((k, Some(row.index)))
+                        || menu.selected.get(k) == Some(&Some(row.index));
+                    if on && lit {
+                        draw.fill(row.hit_rect, HOVER);
+                    }
+                    let mut text_x = rx + PAD - 1.0;
+                    if icons {
+                        if let Some(icon) = icon_of(entry) {
+                            draw.item_stack(icon, [text_x, ry + 1.0], 16.0);
+                        }
+                        text_x += ICON_ROW;
+                    }
+                    let color = if on { TEXT } else { DISABLED };
+                    let text_y = ry + (rh - 8.0) / 2.0;
+                    if let Some(label) = cached_level
+                        .rows
+                        .get(row.index)
+                        .and_then(CachedRowText::display_label)
+                    {
+                        draw.text(label, [text_x, text_y], color, true);
+                    }
+                    if matches!(entry, ContextMenuEntry::Submenu { .. }) {
+                        draw.text(">", [rx + rw - ARROW + 2.0, text_y], color, true);
+                    }
                 }
-                let color = if on { TEXT } else { DISABLED };
-                let text_y = ry + (rh - 8.0) / 2.0;
-                if let Some(label) = label_of(entry) {
-                    draw.text(&label, [text_x, text_y], color, true);
+            };
+            if level.max_scroll > 0.0 && level.content_rect[2] > 0.0 && level.content_rect[3] > 0.0
+            {
+                let _ = draw.with_scissor(level.content_rect, &mut |draw| draw_rows(draw));
+                let [cx, cy, cw, ch] = level.content_rect;
+                if cached_level.content_height > 0.0 {
+                    let thumb_h = (ch * ch / cached_level.content_height).clamp(6.0, ch);
+                    let frac = level.scroll / level.max_scroll;
+                    let thumb_y = cy + frac * (ch - thumb_h);
+                    draw.fill([cx + cw - 2.0, thumb_y, 2.0, thumb_h], LINE);
                 }
-                if matches!(entry, ContextMenuEntry::Submenu { .. }) {
-                    draw.text(">", [rx + rw - ARROW + 2.0, text_y], color, true);
-                }
+            } else {
+                draw_rows(&mut draw);
             }
         }
     }
@@ -481,23 +1019,26 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     fn noop() -> impl FnOnce(&mut dyn mod_api::ClientHost) + Send + 'static {
         |_| {}
     }
 
     fn menu(root: Vec<ContextMenuEntry>) -> ContextMenu {
-        ContextMenu {
-            owner: CallbackOwner::for_mod("test_mod"),
-            instance: 1,
-            at: [10.0, 10.0],
-            root,
-            selected: vec![None],
-        }
+        ContextMenu::new(CallbackOwner::for_mod("test_mod"), 1, [10.0, 10.0], root)
     }
 
     fn width(text: &str) -> f32 {
-        text.len() as f32 * 6.0
+        text.chars().count() as f32 * 6.0
+    }
+
+    fn key(atlas_revision: u64, font_epoch: u64, lang_generation: u64) -> TextKey {
+        TextKey {
+            atlas_revision,
+            font_epoch,
+            lang_generation,
+        }
     }
 
     #[test]
@@ -513,22 +1054,23 @@ mod tests {
                 )],
             ),
         ]);
-        let boxes = m.layout([200.0, 100.0], &width);
+        let k = key(1, 1, 1);
+        let boxes = m.ensure_layout([200.0, 100.0], k, &width);
         assert_eq!(boxes.len(), 1);
         // "Copy" and "More" are 24 wide, plus padding and the nested arrow.
         assert_eq!(boxes[0].rect, [10.0, 10.0, 40.0, 35.0]);
-        assert_eq!(boxes[0].rows[1][3], SEPARATOR);
+        assert_eq!(boxes[0].rows[1].rect[3], SEPARATOR);
 
         m.select(0, Some(2), true);
-        let boxes = m.layout([200.0, 100.0], &width);
+        let boxes = m.ensure_layout([200.0, 100.0], k, &width);
         assert_eq!(boxes.len(), 2);
         assert_eq!(boxes[1].rect[0], 50.0, "opens at its parent's right edge");
-        assert_eq!(boxes[1].rect[1], boxes[0].rows[2][1] - PAD);
+        assert_eq!(boxes[1].rect[1], boxes[0].rows[2].hit_rect[1] - PAD);
 
         // Near the bottom right corner both levels move back inside.
         m.at = [190.0, 95.0];
-        let boxes = m.layout([200.0, 100.0], &width);
-        for level in &boxes {
+        let boxes = m.ensure_layout([200.0, 100.0], k, &width);
+        for level in boxes {
             let [x, y, w, h] = level.rect;
             assert!(
                 x >= 0.0 && y >= 0.0 && x + w <= 200.0 && y + h <= 100.0,
@@ -592,19 +1134,193 @@ mod tests {
 
     #[test]
     fn hits_find_the_deepest_level_first() {
+        let row = |index, rect| VisibleRow {
+            index,
+            rect,
+            hit_rect: rect,
+        };
         let boxes = vec![
             LevelBox {
                 rect: [0.0, 0.0, 50.0, 50.0],
-                rows: vec![[1.0, 3.0, 48.0, 12.0]],
+                content_rect: [1.0, 3.0, 48.0, 44.0],
+                rows: vec![row(0, [1.0, 3.0, 48.0, 12.0])],
+                scroll: 0.0,
+                max_scroll: 0.0,
             },
             LevelBox {
                 rect: [40.0, 0.0, 50.0, 50.0],
-                rows: vec![[41.0, 3.0, 48.0, 12.0]],
+                content_rect: [41.0, 3.0, 48.0, 44.0],
+                rows: vec![row(0, [41.0, 3.0, 48.0, 12.0])],
+                scroll: 0.0,
+                max_scroll: 0.0,
             },
         ];
         assert_eq!(ContextMenu::hit(&boxes, [45.0, 5.0]), Some((1, Some(0))));
         assert_eq!(ContextMenu::hit(&boxes, [5.0, 5.0]), Some((0, Some(0))));
         assert_eq!(ContextMenu::hit(&boxes, [5.0, 40.0]), Some((0, None)));
         assert_eq!(ContextMenu::hit(&boxes, [95.0, 5.0]), None);
+    }
+
+    #[test]
+    fn oversized_menu_clamps_truncates_scrolls_and_tracks_resize() {
+        // 12 rows without icons have natural height 150 > 100px viewport, and wide labels > 80px.
+        let entries: Vec<_> = (0..12)
+            .map(|i| {
+                ContextMenuEntry::action(
+                    mod_api::Text::literal(format!("VeryLongActionLabelNumber_{i:02}")),
+                    noop(),
+                )
+            })
+            .collect();
+        let mut m = menu(entries);
+        let k = key(1, 1, 1);
+
+        let boxes = m.ensure_layout([80.0, 100.0], k, &width);
+        let [x, y, w, h] = boxes[0].rect;
+        assert_eq!([x, y, w, h], [0.0, 0.0, 80.0, 100.0]);
+        assert!(boxes[0].max_scroll > 0.0);
+        // Bottom row (index 11) is scrolled out of view initially.
+        assert!(!boxes[0].rows.iter().any(|r| r.index == 11));
+        // Wide labels are truncated to fit inside the available text width (80 - 2*PAD = 74).
+        let fitted = m.cache.levels[0].rows[0].display_label().unwrap();
+        assert!(fitted.ends_with("..."), "truncated label: {fitted}");
+        assert!(width(fitted) <= 80.0 - PAD * 2.0);
+
+        // Scrolling down brings row 11 into view and makes it hit-testable at its visible rect.
+        m.scroll_by(0, -10.0);
+        let boxes = m.ensure_layout([80.0, 100.0], k, &width);
+        let row11 = boxes[0]
+            .rows
+            .iter()
+            .find(|r| r.index == 11)
+            .expect("row 11 visible after scrolling down");
+        assert!(row11.hit_rect[1] >= boxes[0].content_rect[1]);
+        assert!(row11.hit_rect[1] + row11.hit_rect[3] <= 100.0);
+        let center = [
+            row11.hit_rect[0] + row11.hit_rect[2] / 2.0,
+            row11.hit_rect[1] + row11.hit_rect[3] / 2.0,
+        ];
+        assert_eq!(ContextMenu::hit(boxes, center), Some((0, Some(11))));
+
+        // Keyboard stepping wraps to row 0 and scrolls it back into view.
+        m.selected[0] = Some(11);
+        m.step(1);
+        assert_eq!(m.selected[0], Some(0));
+        let boxes = m.ensure_layout([80.0, 100.0], k, &width);
+        assert_eq!(boxes[0].scroll, 0.0);
+        assert_eq!(boxes[0].rows[0].index, 0);
+
+        // Stepping up wraps to row 11 and scrolls row 11 into view.
+        m.step(-1);
+        assert_eq!(m.selected[0], Some(11));
+        let boxes = m.ensure_layout([80.0, 100.0], k, &width);
+        assert!(boxes[0].rows.iter().any(|r| r.index == 11));
+
+        // Resize larger: full label fits untruncated and scroll resets to 0.
+        let boxes = m.ensure_layout([300.0, 200.0], k, &width);
+        assert_eq!(boxes[0].max_scroll, 0.0);
+        assert_eq!(boxes[0].scroll, 0.0);
+        assert_eq!(boxes[0].rows.len(), 12);
+        assert_eq!(
+            m.cache.levels[0].rows[0].display_label(),
+            Some("VeryLongActionLabelNumber_00")
+        );
+
+        // Resize back smaller with row 11 selected: box clamps and keeps row 11 scrolled in view.
+        let boxes = m.ensure_layout([60.0, 80.0], k, &width);
+        assert!(boxes[0].rect[2] <= 60.0 && boxes[0].rect[3] <= 80.0);
+        assert!(boxes[0].rows.iter().any(|r| r.index == 11));
+        let fitted = m.cache.levels[0].rows[11].display_label().unwrap();
+        assert!(width(fitted) <= 60.0 - PAD * 2.0);
+    }
+
+    #[test]
+    fn submenu_reopens_on_pointer_entry_and_preserves_live_child_selection() {
+        let mut m = menu(vec![
+            ContextMenuEntry::action(mod_api::Text::literal("Top"), noop()),
+            ContextMenuEntry::submenu(
+                mod_api::Text::literal("More"),
+                vec![
+                    ContextMenuEntry::action(mod_api::Text::literal("SubA"), noop()),
+                    ContextMenuEntry::action(mod_api::Text::literal("SubB"), noop()),
+                ],
+            ),
+        ]);
+        // Keyboard Down selects submenu row 1 without opening its child.
+        m.step(1);
+        m.step(1);
+        assert_eq!(m.selected, vec![Some(1)]);
+
+        // Moving the pointer onto already-selected submenu row 1 opens its child.
+        m.hover_at(Some((0, Some(1))));
+        assert_eq!(m.selected, vec![Some(1), None]);
+
+        // Selecting a child row and then hovering its parent preserves the live child selection.
+        m.hover_at(Some((1, Some(1))));
+        assert_eq!(m.selected, vec![Some(1), Some(1)]);
+        m.hover_at(Some((0, Some(1))));
+        assert_eq!(m.selected, vec![Some(1), Some(1)]);
+
+        // Left closes the child; staying on the row does not immediately snap it back open,
+        // while leaving and re-entering that row reopens it.
+        m.close_deepest_level();
+        assert_eq!(m.selected, vec![Some(1)]);
+        m.hover_at(Some((0, Some(1))));
+        assert_eq!(m.selected, vec![Some(1)]);
+        m.hover_at(None);
+        m.hover_at(Some((0, Some(1))));
+        assert_eq!(m.selected, vec![Some(1), None]);
+    }
+
+    #[test]
+    fn layout_cache_reuses_metrics_and_invalidates_on_font_lang_or_level_change() {
+        let entries: Vec<_> = (0..120)
+            .map(|i| {
+                if i == 0 {
+                    ContextMenuEntry::submenu(
+                        mod_api::Text::literal("Sub"),
+                        vec![ContextMenuEntry::action(
+                            mod_api::Text::literal("Child"),
+                            noop(),
+                        )],
+                    )
+                } else {
+                    ContextMenuEntry::action(mod_api::Text::literal(format!("Row {i}")), noop())
+                }
+            })
+            .collect();
+        let mut m = menu(entries);
+        let calls = Cell::new(0usize);
+        let measure = |text: &str| {
+            calls.set(calls.get() + 1);
+            width(text)
+        };
+
+        let k1 = key(1, 1, 1);
+        let _ = m.ensure_layout([200.0, 120.0], k1, &measure);
+        assert_eq!(calls.get(), 120, "initial build measures each row once");
+
+        // Repeated steady-state frame/hover layout calls do zero measurement work.
+        calls.set(0);
+        for _ in 0..10 {
+            let _ = m.ensure_layout([200.0, 120.0], k1, &measure);
+        }
+        assert_eq!(calls.get(), 0, "steady-state frames reuse cached metrics");
+
+        // Scrolling reuses cached text widths with zero re-measurement.
+        m.scroll_by(0, -3.0);
+        let _ = m.ensure_layout([200.0, 120.0], k1, &measure);
+        assert_eq!(calls.get(), 0, "scrolling reuses cached label widths");
+
+        // Opening a submenu measures only the newly opened child level.
+        m.select(0, Some(0), true);
+        let _ = m.ensure_layout([200.0, 120.0], k1, &measure);
+        assert_eq!(calls.get(), 1, "only new submenu level is measured");
+
+        // Font/language change invalidates and re-measures open levels.
+        calls.set(0);
+        let k2 = key(1, 1, 2);
+        let _ = m.ensure_layout([200.0, 120.0], k2, &measure);
+        assert_eq!(calls.get(), 121, "language bump invalidates cached levels");
     }
 }

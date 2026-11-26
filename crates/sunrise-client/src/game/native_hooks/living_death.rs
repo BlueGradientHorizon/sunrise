@@ -63,20 +63,18 @@ impl Game<'_> {
     /// `LivingEntity.die` for the ender dragon: its killing blow reaches `die` as any living
     /// entity's does (`EnderDragon.reallyHurt` → `LivingEntity.hurtServer`), and only its
     /// `handleKillingBlow` differs (the dying flight). Fires `living_death` with the blow and
-    /// its weapon; true when a listener cancelled, which skips the kill credit and the
-    /// post hook, as a cancelled `LivingDeathEvent` returns from `die`.
+    /// its saved weapon; true when a listener cancelled, which skips the dying transition, the
+    /// kill credit and the post hook, as a cancelled `LivingDeathEvent` returns from `die`.
     pub(in crate::game) fn dragon_death_canceled(
         &mut self,
         dragon: u32,
         source: &HurtSource<'_>,
+        weapon: Option<&sunrise_client::items::ItemStack>,
     ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::LivingDeath) {
             return false;
         }
-        let attack = self.attack_of(source.causing);
-        let weapon = attack
-            .weapon_of(source.direct)
-            .and_then(|stack| stack.try_into_api().ok());
+        let weapon = weapon.and_then(|stack| stack.try_into_api().ok());
         let mut cancel = false;
         self.native_living_death(
             dragon,

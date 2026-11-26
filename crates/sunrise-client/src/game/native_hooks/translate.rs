@@ -45,3 +45,58 @@ impl Game<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use sunrise_client::lang::{self, Language};
+
+    #[test]
+    #[ignore = "daily"]
+    fn disabling_native_mod_hides_runtime_translations_across_reload_and_restores_on_reenable() {
+        with_client_game(|game| {
+            let _publication = lang::isolate_publication(Language::of(
+                "en_us",
+                [("test.switch.k".into(), "pack v1".into())],
+            ));
+            {
+                let _guard = mod_platform::content::crash::enter_native_mod(
+                    mod_api::content::crash::ModCall {
+                        id: "switch-owner",
+                        hook: "test",
+                        part: None,
+                    },
+                );
+                assert_eq!(
+                    game.set_translations(
+                        "en_us",
+                        vec![("test.switch.k".into(), "mod value".into())],
+                    ),
+                    Some(1)
+                );
+            }
+            assert_eq!(
+                game.translate("test.switch.k").as_deref(),
+                Some("mod value")
+            );
+
+            game.settings.mods.disabled.insert("switch-owner".into());
+            game.sync_native_switches();
+            assert_eq!(game.translate("test.switch.k").as_deref(), Some("pack v1"));
+
+            lang::set(Language::of(
+                "en_us",
+                [("test.switch.k".into(), "pack v2".into())],
+            ));
+            assert_eq!(game.translate("test.switch.k").as_deref(), Some("pack v2"));
+
+            game.settings.mods.disabled.remove("switch-owner");
+            game.sync_native_switches();
+            assert_eq!(
+                game.translate("test.switch.k").as_deref(),
+                Some("mod value")
+            );
+        });
+    }
+}

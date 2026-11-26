@@ -6812,15 +6812,23 @@ impl Game<'_> {
             let index = bounced_place(projectiles, followers);
             projectiles.put_back(index, contact);
         }
-        let hurt = self.hit_special_full(
-            id,
-            amount,
-            owner,
-            arrow.guest,
-            kind,
-            Some(damage_type),
-            Some(super::dragon::DirectHit::from_projectile(arrow)),
-        );
+        let hit = |game: &mut Self| {
+            game.hit_special_full(
+                id,
+                amount,
+                owner,
+                arrow.guest,
+                kind,
+                Some(damage_type),
+                Some(super::dragon::DirectHit::from_projectile(arrow)),
+            )
+        };
+        let hurt = if self.combat.attack().projectile != Some(arrow.id as i32) {
+            let attack = self.projectile_attack(arrow);
+            self.with_attack(attack, hit)
+        } else {
+            hit(self)
+        };
         if crystal {
             if !self.projectile_removal_pending(arrow.id)
                 && let Some(live) = self.creatures.projectiles.extract(join)
@@ -7593,15 +7601,23 @@ impl Game<'_> {
                 }
                 _ => sunrise_client::mobs::DamageKind::Thrown,
             };
-            self.hit_special_full(
-                id,
-                amount,
-                resolved_owner,
-                p.guest,
-                kind,
-                Some(damage_type),
-                Some(super::dragon::DirectHit::from_projectile(p)),
-            );
+            let hit = |game: &mut Self| {
+                game.hit_special_full(
+                    id,
+                    amount,
+                    resolved_owner,
+                    p.guest,
+                    kind,
+                    Some(damage_type),
+                    Some(super::dragon::DirectHit::from_projectile(p)),
+                );
+            };
+            if self.combat.attack().projectile != Some(p.id as i32) {
+                let attack = self.projectile_attack(p);
+                self.with_attack(attack, hit);
+            } else {
+                hit(self);
+            }
             if !matches!(
                 p.kind,
                 ProjectileKind::EnderPearl

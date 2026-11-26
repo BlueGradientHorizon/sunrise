@@ -393,15 +393,23 @@ impl Game<'_> {
             Who::Mob(id) if id >= super::dragon::SPECIAL => {
                 if id < super::dragon::SPECIAL + 8 {
                     let owner = self.resolved_projectile_owner(p.owner, p.guest);
-                    self.hit_special_full(
-                        id,
-                        1.0,
-                        owner,
-                        p.guest,
-                        sunrise_client::mobs::DamageKind::WindCharge,
-                        Some("minecraft:wind_charge"),
-                        Some(super::dragon::DirectHit::from_projectile(p)),
-                    );
+                    let hit = |game: &mut Self| {
+                        game.hit_special_full(
+                            id,
+                            1.0,
+                            owner,
+                            p.guest,
+                            sunrise_client::mobs::DamageKind::WindCharge,
+                            Some("minecraft:wind_charge"),
+                            Some(super::dragon::DirectHit::from_projectile(p)),
+                        );
+                    };
+                    if self.combat.attack().projectile != Some(p.id as i32) {
+                        let attack = self.projectile_attack(p);
+                        self.with_attack(attack, hit);
+                    } else {
+                        hit(self);
+                    }
                 }
             }
             // Non-mob pickable target (stand, painting, frame, knot, cushion, vehicle, falling block).

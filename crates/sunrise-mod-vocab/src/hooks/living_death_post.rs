@@ -4,7 +4,8 @@ pub trait Hooks {
     /// A mob or server player's death has finished (Fabric's
     /// `ServerLivingEntityEvents.AFTER_DEATH`, vanilla's `LivingEntity.die`
     /// at its `broadcastEntityEvent`): the loot, equipment and experience
-    /// dropped and the death message went out. `entity` and `kind` identify the
+    /// dropped (the ender dragon emits its experience orbs later during its
+    /// death tick) and the death message went out. `entity` and `kind` identify the
     /// victim. `player` is the victim's UUID for a player death, and `message_key`
     /// is present when the player death recorded a known translation key.
     /// `damage_type` names the killing blow and `attacker` is the recorded

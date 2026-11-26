@@ -304,7 +304,9 @@ impl Game<'_> {
             }
             return true;
         }
-        if !(self.focused || self.unclaimed_window || self.scripted_run()) {
+        if !(self.focused || self.unclaimed_window || self.scripted_run())
+            || self.has_live_context_menu()
+        {
             return false;
         }
         self.pointer_grab_request.set(Some(true));
@@ -332,7 +334,11 @@ impl Game<'_> {
         });
         if self.screen_grab && (owner_off || request == Some(false)) {
             self.capture(false);
-        } else if request == Some(true) && !owner_off && self.screen == Screen::Mod {
+        } else if request == Some(true)
+            && !owner_off
+            && self.screen == Screen::Mod
+            && !self.live_context_menu()
+        {
             self.screen_grab = true;
             self.screen_state.answered.set(false);
             self.capture(true);

@@ -220,6 +220,18 @@ impl Game<'_> {
         // `free_player_beds` can enter another level and trigger callbacks before
         // players are written.
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
+        // The session lock is not that marker: it is installed before the prepared
+        // level, so tag reads work, and a save in that gap would write the placeholder.
+        let save_world = self.world_adopted && self.session_lock.is_some();
+        let save_started = if save_world {
+            match catch_unwind(AssertUnwindSafe(|| self.begin_world_save(true))) {
+                Ok(started) => started,
+                Err(payload) => Err(shutdown_panic(payload.as_ref()).into()),
+            }
+        } else {
+            Ok(())
+        };
+        self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         let owner_saved = match catch_unwind(AssertUnwindSafe(|| self.save_leaving_guests())) {
             Ok(saved) => saved,
             Err(payload) => {
@@ -237,22 +249,22 @@ impl Game<'_> {
         }
 
         // 3. World save (`saveAllChunks`), only when a world was adopted.
-        // The session lock is not that marker: it is installed before the prepared
-        // level, so tag reads work, and a save in that gap would write the placeholder.
-        let save_world = self.world_adopted && self.session_lock.is_some();
-        if dedicated && save_world {
+        if dedicated && save_world && save_started.is_ok() {
             super::dedicated::log("INFO", "Saving worlds");
         }
-        let saved = match catch_unwind(AssertUnwindSafe(|| {
-            if save_world {
-                // PlayerList already saved the live owner; the shell is not a player.
-                self.save_world_after_players(owner_saved)
-            } else {
-                Ok(())
-            }
-        })) {
-            Ok(result) => result,
-            Err(payload) => Err(shutdown_panic(payload.as_ref()).into()),
+        let saved = match save_started {
+            Err(error) => Err(error),
+            Ok(()) => match catch_unwind(AssertUnwindSafe(|| {
+                if save_world {
+                    // PlayerList already saved the live owner; the shell is not a player.
+                    self.save_world_after_players(owner_saved)
+                } else {
+                    Ok(())
+                }
+            })) {
+                Ok(result) => result,
+                Err(payload) => Err(shutdown_panic(payload.as_ref()).into()),
+            },
         };
         let save_ok = saved.is_ok();
         let failed = self.save.record_save_failures() - before;
