@@ -1,1 +1,1 @@
-pub use entity::entity_type_defaults::EntityTypeDimensions;
+pub use crate::entity::entity_type_dimensions::EntityTypeDimensions;

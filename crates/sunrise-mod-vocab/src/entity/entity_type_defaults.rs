@@ -2,30 +2,6 @@
 //! attribute catalog is built: every host reads the same table, a world open or not, so the read
 //! never needs a game behind the host (`ItemsHost::entity_type_default_attribute`).
 use std::borrow::Cow;
-
-/// An entity type's registered size (`EntityType.getDimensions()`), what
-/// `ItemsHost::entity_type_dimensions` answers before any entity of the type exists.
-// no wire: a local read of the game's entity type table
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[non_exhaustive]
-pub struct EntityTypeDimensions {
-    /// `EntityDimensions.width()`: the box's side on x and z.
-    pub width: f32,
-    /// `EntityDimensions.height()`.
-    pub height: f32,
-    /// `EntityDimensions.eyeHeight()`.
-    pub eye_height: f32,
-}
-impl EntityTypeDimensions {
-    /// `EntityDimensions.scalable(width, height).withEyeHeight(eye_height)`.
-    pub fn new(width: f32, height: f32, eye_height: f32) -> Self {
-        Self {
-            width,
-            height,
-            eye_height,
-        }
-    }
-}
 use std::collections::HashMap;
 use std::sync::Arc;
 

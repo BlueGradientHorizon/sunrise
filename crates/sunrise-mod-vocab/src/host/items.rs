@@ -91,9 +91,13 @@ pub trait ItemsHost {
     /// `EntityDimensions.width()`, `height()` and `eyeHeight()`), for vanilla's types and mods'
     /// (a mod type has its template's row). The type's default before any `entity_size` answer
     /// for a live entity, a baby's or a `minecraft:scale` attribute's change, a pose's size.
-    /// The box a spawn at `(x, y, z)` tests is `EntityType.getSpawnAABB`: `width / 2` either side
-    /// of x and z, `height` up from y. `entity_type` is read as `Identifier.parse` reads it.
-    /// `None` for an unregistered type or one whose row has no size.
+    /// This is `getDimensions()` and nothing more: the box a spawn at `(x, y, z)` tests,
+    /// `EntityType.getSpawnAABB`, is `spawnDimensionsScale * width / 2` either side of x and z
+    /// and `spawnDimensionsScale * height` up from y, and that scale (4.0 for the slime and the
+    /// magma cube, 2.0 for the sulfur cube, 1.0 for every other type) is not part of this read: a
+    /// mod testing whether a cube mob fits scales the size itself. `entity_type` is read as
+    /// `Identifier.parse` reads it. `None` for an unregistered type or one whose row has no
+    /// size.
     fn entity_type_dimensions(&self, entity_type: &str) -> Option<EntityTypeDimensions>;
     /// Side: both.
     /// Parse one complete SNBT compound as a saved `ItemStack.CODEC` item:
