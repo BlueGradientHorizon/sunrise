@@ -8,6 +8,12 @@ the base's tool from a full archive of that commit (into target/surface-base, wh
 `crates/`, `tools/layering`, Cargo manifests, and workspace members outside `crates/` (such as `docs/modding/examples/`).
 Only that one commit is fetched (`--depth 1`, in CI's shallow checkout; a full clone is never fetched shallow).
 
+Locally, `--base SHA` compares this checkout against that commit exactly as CI compares against its base (the base's
+own sunrise-stage, the landed-note check, the "Base" line); tools/pr_ready.py runs it with the branch's merge base.
+Without SUNRISE_STAGE_TOOL (CI sets it from its own build step) the head's tool is built as that step builds it:
+`cargo build --locked --profile test -p sunrise-stage --bin sunrise-stage` in this checkout. `--base` and `--trees`
+are two ways to pick the base, so they do not go together.
+
 Use --with-internals to audit listed internals too. With --trees BASE HEAD, use --build-base-tool when the generator
 changed: it always builds and uses BASE's own `sunrise-stage`, even if HEAD's could read the old sources. Only pass
 it for a whole checkout you trust: it compiles and runs BASE's code, build scripts included. Without the flag,
@@ -354,14 +360,35 @@ def main(argv=None) -> int:
     parser.add_argument("--trees", nargs=2, metavar=("BASE", "HEAD"), type=Path,
                         help="compare two local trees with the same generator instead of fetching the CI base; "
                              "use --build-base-tool if the generator changed")
+    parser.add_argument("--base", metavar="SHA",
+                        help="compare against this commit as CI compares against its base, including the base's "
+                             "own sunrise-stage (a local run)")
     parser.add_argument("--build-base-tool", action="store_true",
                         help="with --trees: always build and use BASE's own sunrise-stage "
                              "(runs BASE's code; a whole, trusted checkout only)")
     args = parser.parse_args(argv)
     if args.build_base_tool and not args.trees:
         parser.error("--build-base-tool goes with --trees; CI builds the base commit's own tool by itself")
+    if args.base and args.trees:
+        parser.error("--base and --trees both pick the base; use one")
+    tool = os.environ.get("SUNRISE_STAGE_TOOL")
+    if not tool:
+        # CI's "Build the source stage generator" step, with the same choice among the compiler's artifacts.
+        built = subprocess.run(["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-stage",
+                                "--bin", "sunrise-stage", "--message-format=json-render-diagnostics"],
+                               cwd=ROOT, stdout=subprocess.PIPE, text=True)
+        if built.returncode != 0:
+            raise SystemExit("building the head's sunrise-stage failed")
+        artifacts = [json.loads(line) for line in built.stdout.splitlines()]
+        executables = {item["executable"] for item in artifacts
+                       if item.get("reason") == "compiler-artifact"
+                       and item["target"]["name"] == "sunrise-stage"
+                       and "bin" in item["target"]["kind"]
+                       and not item["profile"]["test"] and item.get("executable")}
+        if len(executables) != 1:
+            raise SystemExit(f"expected one normal sunrise-stage executable, got {executables}")
+        tool = str(Path(executables.pop()).resolve(strict=True))
     started = time.monotonic()
-    tool = os.environ["SUNRISE_STAGE_TOOL"]
     gate_on = gate(ROOT / "tools/ci/surface.toml")
     with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as directory:
         work = Path(directory)
@@ -373,7 +400,8 @@ def main(argv=None) -> int:
         else:
             base = work / "base"
             try:
-                sha, why = base_commit(os.environ.get("EVENT", ""), os.environ.get("PR", ""), git)
+                sha, why = (args.base, "") if args.base else base_commit(
+                    os.environ.get("EVENT", ""), os.environ.get("PR", ""), git)
                 if sha:
                     base.mkdir()
                     unpack(sha, base)

@@ -420,6 +420,28 @@ class MainTests(unittest.TestCase):
         self.assertTrue(report.call_args.kwargs["with_internals"])
         find_base.assert_not_called()
 
+    def test_a_given_base_replaces_the_event_based_one(self):
+        fetched, built = [], []
+        git = mock.Mock(side_effect=AssertionError("the event's merge commit is not read"))
+
+        def report(tool, base, head, work, gate_on, *, own_base_tool, **_):
+            own_base_tool()
+            return 0, "Surface: identical\n"
+
+        code, out, _ = self.run_main(
+            "push", argv=["--base", "cafe"], git=git, report=report,
+            unpack=lambda sha, into: fetched.append(sha),
+            base_tool=lambda sha, work: built.append(sha) or "base-stage",
+            landed_notes=lambda head, base: {})
+        self.assertEqual((code, fetched, built), (0, ["cafe"], ["cafe"]))
+        self.assertRegex(out, r"^Surface: identical\nBase cafe; fetch \d+\.\ds, total \d+\.\ds\n$")
+
+    def test_a_given_base_and_trees_are_refused(self):
+        with self.assertRaises(SystemExit) as refused, contextlib.redirect_stderr(io.StringIO()) as error:
+            self.run_main(argv=["--base", "cafe", "--trees", "before", "after"])
+        self.assertEqual(refused.exception.code, 2)
+        self.assertIn("--base and --trees", error.getvalue())
+
     def local_audit(self, *flags, readable=True):
         compared = []
 

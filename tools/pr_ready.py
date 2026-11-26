@@ -14,7 +14,10 @@ mods, plus the server build when sunrise-client is affected); the tests of the t
 CI's workspace-wide run gives them; crates/sunrise-theme/tokens.css against sunrise-theme; Cargo.lock changing
 only with a Cargo.toml; the Python tests (always, as in CI; here one test file per worker, tools/parallel_unittest.py,
 with the same outcome in a fraction of the time, and --serial-python runs them in one process as CI does) and the
-public-tree check; and the vanilla harnesses the changes can affect (tools/parity.py --changed). Locally, the
+public-tree check; the mod API surface report, when the branch changes the mod API's sources (tools/ci/surface_report.py
+against the merge base, which builds sunrise-stage as CI's verify job does; a change note that names an id that did not
+change, or a breaking change without a note, fails here and not only on the gate); and the vanilla harnesses the
+changes can affect (tools/parity.py --changed). Locally, the
 harnesses run only when the branch changes a harness, an oracle, a probe or the runner; otherwise they are listed
 and left to the daily on main. --harnesses runs them anyway.
 Harnesses run where the vanilla data is (a prepared .local/ here, or the Mac mini); elsewhere they are listed for CI.
@@ -84,6 +87,11 @@ DISPATCH_TEST_INPUTS = ("crates/sunrise-mod-api-gen/", "crates/sunrise-mod-api-m
                         "crates/sunrise-mod-api/",
                         "crates/sunrise-mod-vocab/", *MOD_API_INPUTS)
 MOD_REGISTRY = "crates/sunrise-mod-registry/Cargo.toml"
+# What decides the mod API surface report: the crates that write and export the surface, its change notes, and the
+# report's own script and settings.
+SURFACE_INPUTS = ("crates/sunrise-mod-vocab/", "crates/sunrise-mod-api/", "crates/sunrise-mod-api-gen/",
+                  "crates/sunrise-mod-api-macros/", "crates/sunrise-mod-surface/", "crates/sunrise-stage/",
+                  "tools/ci/surface_report.py", "tools/ci/surface.toml", "tools/ci/surface-schema-3-reset.json")
 
 def is_doc(path):
     return path.endswith(".md")
@@ -272,6 +280,18 @@ def unittest_passed(output):
     return f"{ran.group(1) if ran else '?'} run, {outcome.group(1)}" if outcome else f"{ran.group(1)} passed" if ran else ""
 
 
+# The lines of tools/ci/surface_report.py's output that say what it found and why it failed: the report's own verdict,
+# a stale change note, a breaking change no note names, and what stopped the tool (an unreadable note, say)
+# (crates/sunrise-stage/src/main.rs surface_diff and fail).
+SURFACE_LINES = re.compile(r"^(Surface: .*|No surface report: .*|change note .* which did not change"
+                           r"|breaking change without a change note: .*|sunrise-stage: .*)$", re.M)
+
+
+def surface_summary(output):
+    """The surface report's verdict line, or why it has none, and on a failure each line that made it fail."""
+    return "; ".join(SURFACE_LINES.findall(output))
+
+
 def parity_summary(output):
     """tools/parity.py's own account: how many harnesses the change affects, ran and passed, and which failed."""
     affected = re.search(r"(\d+) harnesses depend on them", output)
@@ -380,6 +400,12 @@ def plan(args, base, changed, crates_of, libraries, dependencies, merge_base=Non
     doc_crates = sorted(libraries if crates is None else libraries.intersection(crates))
     doc_selection = "--workspace" if crates is None else " ".join(f"-p {shlex.quote(c)}" for c in doc_crates)
     no_rust = "no Rust change"
+    if not any(path.startswith(SURFACE_INPUTS) for path in changed):
+        surface_skip = "mod API surface untouched"
+    elif os.name == "nt":
+        surface_skip = "CI's verify reports it: the base tool build needs POSIX file locking"
+    else:
+        surface_skip = None
     steps = [
         Step("Cargo.lock", where="git"),
         Step("Public tree", "python3 tools/check_public_tree.py", where="here"),
@@ -409,6 +435,10 @@ def plan(args, base, changed, crates_of, libraries, dependencies, merge_base=Non
              skip=test_skip, summary=tests_passed),
         Step("doc tests", f"cargo test --locked {doc_selection} --doc",
              skip=test_skip or (None if doc_crates else "no library touched"), summary=tests_passed),
+        # CI's verify job reports it on every pull request: a note naming an id that did not change, or a breaking
+        # change without a note, fails there. Against the merge base, as CI's base is the pull request's first parent.
+        Step("Surface report", f"python3 tools/ci/surface_report.py --base {shlex.quote(merge_base)}",
+             summary=surface_summary, skip=surface_skip),
         Step("content root tests", CONTENT_ROOT_TESTS, summary=tests_passed,
              skip=None if crates is None or any(p.startswith(CONTENT_ROOT) for p in changed)
              else "content root untouched"),

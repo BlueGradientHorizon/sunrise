@@ -311,6 +311,57 @@ class PrReadyTests(unittest.TestCase):
         self.assertEqual(by_name["dispatch tests clippy"].skip, "dispatch surface untouched")
         self.assertEqual(by_name["mod registry tests tests"].skip, "mod registry untouched")
 
+    def test_surface_report_runs_when_the_mod_api_sources_change(self):
+        def surface_step(path, name="posix"):
+            with mock.patch.object(pr_ready, "affected_here", return_value=[]), \
+                    mock.patch.object(pr_ready.os, "name", name):
+                steps = pr_ready.plan(args(quick=True), "origin/main", {path}, PACKAGES, LIBRARIES, DEPENDENCIES,
+                                      merge_base="abc123")
+            names = [step.name for step in steps]
+            self.assertGreater(names.index("Surface report"), names.index("doc tests"))
+            return steps[names.index("Surface report")]
+        for path in ["crates/sunrise-mod-vocab/changes/hook-note.toml", "crates/sunrise-mod-vocab/src/hooks/block.rs",
+                     "crates/sunrise-mod-api/src/lib.rs", "crates/sunrise-mod-api-gen/src/lib.rs",
+                     "crates/sunrise-mod-api-macros/src/lib.rs", "crates/sunrise-mod-surface/src/diff.rs",
+                     "crates/sunrise-stage/src/main.rs", "tools/ci/surface_report.py", "tools/ci/surface.toml",
+                     "tools/ci/surface-schema-3-reset.json"]:
+            with self.subTest(path=path):
+                step = surface_step(path)
+                self.assertIsNone(step.skip)
+                self.assertEqual(step.where, "host")
+                self.assertEqual(step.command, "python3 tools/ci/surface_report.py --base abc123")
+        for path in ["crates/sunrise-core/src/lib.rs", "tools/ci/check_layers.py", "README.md"]:
+            with self.subTest(path=path):
+                self.assertEqual(surface_step(path).skip, "mod API surface untouched")
+        self.assertIn("CI's verify reports it",
+                      surface_step("crates/sunrise-mod-vocab/changes/hook-note.toml", name="nt").skip)
+        self.assertEqual(surface_step("README.md", name="nt").skip, "mod API surface untouched")
+
+    def test_surface_report_summary_names_the_verdict_and_what_failed(self):
+        passing = ("CI does not compare listed internals; use surface_report.py --with-internals for a local audit.\n"
+                   "Surface: additive (0 breaking, 0 conditional, 2 additive; 0 breaking without a note)\n"
+                   "Old aaaa, new bbbb\n\nAdditive (2)\n- fn:a (added)\n"
+                   "Base 1111; fetch 0.1s, total 2.0s\n")
+        self.assertEqual(pr_ready.surface_summary(passing),
+                         "Surface: additive (0 breaking, 0 conditional, 2 additive; 0 breaking without a note)")
+        failing = ("Surface: breaking (1 breaking, 0 conditional, 0 additive; 1 breaking without a note)\n"
+                   "Old aaaa, new bbbb\n\nBreaking (1)\n- type:HookId (changed)\n"
+                   "change note old.toml names fn:gone, which did not change\n"
+                   "breaking change without a change note: type:HookId\n")
+        self.assertEqual(pr_ready.surface_summary(failing),
+                         "Surface: breaking (1 breaking, 0 conditional, 0 additive; 1 breaking without a note); "
+                         "change note old.toml names fn:gone, which did not change; "
+                         "breaking change without a change note: type:HookId")
+        self.assertEqual(pr_ready.surface_summary("sunrise-stage: change note a.toml has no `why`\n"),
+                         "sunrise-stage: change note a.toml has no `why`")
+        self.assertEqual(pr_ready.surface_summary("No surface report: no base for a local run.\n"),
+                         "No surface report: no base for a local run.")
+        step = pr_ready.Step("Surface report", "x", summary=pr_ready.surface_summary)
+        step.status, step.output = "fail", failing
+        with contextlib.redirect_stderr(io.StringIO()):
+            pr_ready.finish(step, verbose=False)
+        self.assertIn("breaking change without a change note: type:HookId", step.detail)
+
     def test_shared_rust_configuration_keeps_workspace_coverage(self):
         for path in sorted(pr_ready.ROOT_RUST | {".cargo/config.toml", "crates/unknown/src/lib.rs"}):
             with self.subTest(path=path), mock.patch.object(pr_ready, "affected_here", return_value=[]):
