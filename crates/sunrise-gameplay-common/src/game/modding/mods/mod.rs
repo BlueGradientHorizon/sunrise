@@ -2,7 +2,7 @@
 //! assets (`content_root`), and the Mods page's rows. Code mods are native (`native_hooks.rs`)
 //! with content-only packages loaded separately.
 #[allow(unused_imports)]
-use super::{Game, execution_role::ExecutionRole, registration_capability_coverage as coverage};
+use super::{execution_role::ExecutionRole, registration_capability_coverage as coverage};
 pub(in crate::game) mod menu_books;
 pub mod package_files;
 pub(in crate::game) mod runtime_files;

@@ -2,7 +2,7 @@
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted, and only
 //! then is its own sound type kept to fall back on.
 use super::api_values::{TryIntoApi, block_state};
-use super::{Game, GameLevel};
+use super::GameLevel;
 use mod_api::{BlockSoundCause, BlockSoundType};
 use std::sync::Arc;
 use sunrise_core::{identifier::Identifier, position::BlockPos};

@@ -1,4 +1,4 @@
-use crate::game::{Game, boats_common::Boat, commands_common::Target, minecarts::Minecart};
+use crate::game::{boats_common::Boat, commands_common::Target, minecarts::Minecart};
 use std::collections::{HashMap, HashSet};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_gameplay_common::entity_uuids::EntityUuids;

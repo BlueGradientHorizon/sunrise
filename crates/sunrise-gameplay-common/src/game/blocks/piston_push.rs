@@ -4,7 +4,7 @@
 //! `piston_push_server.rs` and `piston_push_client.rs`.
 #[path = "piston_push/carrying.rs"]
 pub mod carrying;
-pub use super::{Game, move_gate::MoveWho};
+pub use super::move_gate::MoveWho;
 use crate::game::collision_source::Mover;
 use crate::game::entity::{Entity, EntityHandle, with_entity, with_entity_mut};
 pub use sunrise_core::geometry::{Aabb, Direction, Vec3, border::BorderGeometry};

@@ -1,4 +1,4 @@
-use crate::game::{Dim, Game};
+use crate::game::Dim;
 use mod_api::AttachmentHolder;
 use std::{
     collections::HashMap,

@@ -13,7 +13,7 @@
 //! list, the kinds whose id comes late too, so an aborted spawn just burns its id. Bolts and
 //! thrown potions have none and are kept by their lists' lengths. A traveller that arrived from
 //! another level inside the transaction is left where it arrived: travel is not journaled.
-use super::super::{Dim, Game};
+use super::super::Dim;
 use super::Level;
 use crate::game::commands_common::Target;
 use mod_api::EntityRef;

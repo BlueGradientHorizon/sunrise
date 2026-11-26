@@ -1,5 +1,5 @@
 //! Common command types and data-only helpers shared by server and client modules.
-pub use super::{Game, chat_common::PLAYER_NAME};
+pub use super::chat_common::PLAYER_NAME;
 pub use sunrise_command::CommandError;
 pub use sunrise_core::{
     geometry::Vec3,

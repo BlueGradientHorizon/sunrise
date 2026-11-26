@@ -1,6 +1,6 @@
 //! `HoneycombItem.getWaxed` for the player's and the dispenser's honeycomb, and the axe's scrape
 //! and wax-off from the world's NeoForge block maps.
-use super::{Game, native_block_tables::BlockTables};
+use super::native_block_tables::BlockTables;
 use sunrise_world::registry::BlockStateId;
 
 impl crate::game::CommonGame<'_> {

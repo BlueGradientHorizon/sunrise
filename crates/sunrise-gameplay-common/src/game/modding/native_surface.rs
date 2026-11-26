@@ -421,6 +421,8 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeSurfaceGameExt1<'__sg> for G 
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
+use crate::game::side_ops::world::WorldSideGameExt as _;
+
 use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

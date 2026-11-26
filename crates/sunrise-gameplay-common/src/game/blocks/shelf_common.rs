@@ -1,5 +1,5 @@
 //! Common shelf front-face hit test shared by server swaps and client prediction.
-use super::{Game, Hit};
+use super::Hit;
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,

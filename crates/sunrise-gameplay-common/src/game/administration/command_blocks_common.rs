@@ -1,6 +1,5 @@
 //! Common command-block and command-minecart helpers shared by server and client.
 use super::{
-    Game,
     minecarts::{CartKind, Minecart},
 };
 use sunrise_gameplay_common::command_blocks::state_of;

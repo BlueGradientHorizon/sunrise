@@ -3,7 +3,7 @@
 //! `carry_block_entity` and `land_block_entity`, the carried block entity in
 //! its moving piston's saved tag, and a client's copy. `BlockEntities` holds
 //! what is carried (`carry`, `land`).
-use super::{Game, GameLevel};
+use super::GameLevel;
 use crate::game::piston_carry_common::{PositionChange, land_position_data, take_position_data};
 pub use sunrise_core::{geometry::Direction, nbt::Tag, position::BlockPos};
 use sunrise_level::block_entities::Carried;

@@ -23,7 +23,7 @@ pub mod use_item;
 
 pub mod block_entity_data;
 #[allow(unused_imports)]
-pub use super::{Dim, Game, Hit, Screen};
+pub use super::{Dim, Hit, Screen};
 #[cfg(test)]
 pub use movement::MovePacket;
 #[allow(unused_imports)]

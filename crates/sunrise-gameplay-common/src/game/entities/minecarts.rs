@@ -9,7 +9,7 @@
 pub(in crate::game) mod save_lending;
 
 #[allow(unused_imports)]
-pub use super::{Game, InteractTarget, Keys};
+pub use super::{InteractTarget, Keys};
 pub use std::sync::Arc;
 pub use sunrise_core::{
     geometry::{Aabb, Vec3},

@@ -1,5 +1,5 @@
 //! Common game-mode queries, adventure predicates, chat abilities, and player abilities.
-use super::{Game, Screen};
+use super::Screen;
 use mod_api::{PlayerAbilities, PlayerRef};
 use sunrise_command::args::GameMode;
 use sunrise_items::items::ItemStack;

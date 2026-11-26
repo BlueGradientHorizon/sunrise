@@ -1,5 +1,6 @@
 use self::block_entity_tick::ResidentBlockEntityAccess;
-use crate::game::server_side::{Game, GameLevel};
+use crate::game::server_side::Game;
+use sunrise_gameplay_common::game::GameLevel;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::native_data_maps_common::DataMapType;
 #[cfg(test)]
@@ -7,10 +8,10 @@ use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
 use sunrise_gameplay_common::game::native_hooks::HitLevel;
 use sunrise_gameplay_common::game::native_hooks::LiveDamageRead;
 use sunrise_gameplay_common::game::native_hooks::apply_menu_button_cursor;
-use sunrise_gameplay_common::game::native_hooks::mob_kind;
+pub use sunrise_gameplay_common::game::native_hooks::mob_kind;
 use sunrise_gameplay_common::game::native_hooks::mod_menu;
 use sunrise_gameplay_common::game::native_hooks::property_change;
-use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::*};
+pub use sunrise_gameplay_common::game::native_hooks::*;
 use mod_api::EffectKey;
 use mod_api::{
     self, BlockPlacement, EntityRef, GameRuleActor, LifecycleContext, Placement, PlayerRef,

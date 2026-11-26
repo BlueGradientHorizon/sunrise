@@ -129,7 +129,7 @@ pub struct Told {
 
 impl Told {
     /// Whether the tick hooks are listened to on this side.
-    pub(in crate::game) fn listening(&self) -> bool {
+    pub fn listening(&self) -> bool {
         self.listening
     }
     /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
@@ -143,7 +143,7 @@ impl Told {
     }
     /// Whether the entities of type `kind` are told alone. For a family of one type
     /// (`minecraft:item`) it is asked once for the family, not for each entity.
-    pub(in crate::game) fn alone_kind(&self, kind: &str) -> bool {
+    pub fn alone_kind(&self, kind: &str) -> bool {
         self.listening
             && match self.alone {
                 Alone::None => false,
@@ -193,7 +193,7 @@ impl TickRound {
         self.sections
     }
     /// Whether the round keeps the entities that tick: a mod hears their ticks or their moves.
-    pub(in crate::game) fn listening(&self) -> bool {
+    pub fn listening(&self) -> bool {
         self.told.listening || self.sections
     }
     /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
@@ -201,7 +201,7 @@ impl TickRound {
         self.told.alone_mob(kind)
     }
     /// Whether the entities of type `kind` are told alone ([`Told::alone_kind`]).
-    pub(in crate::game) fn alone_kind(&self, kind: &str) -> bool {
+    pub fn alone_kind(&self, kind: &str) -> bool {
         self.told.alone_kind(kind)
     }
     /// The entity `id` of `kind` is about to tick with its family, which hears its Pre and its

@@ -1,10 +1,7 @@
 //! The `collision_shape` Part method (vanilla's `getCollisionShape` with its `CollisionContext`).
 //! The client library asks through `native_client_hooks` from inside a move; only a state whose
 //! block has a subscribing part is converted, and a part that faults is switched off.
-use super::{
-    Game,
-    api_values::{TryIntoApi, block_state},
-};
+use super::api_values::{TryIntoApi, block_state};
 use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
 use sunrise_core::position::BlockPos;
 use sunrise_world::{

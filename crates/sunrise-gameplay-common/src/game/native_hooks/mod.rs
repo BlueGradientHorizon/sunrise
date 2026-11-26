@@ -18,7 +18,7 @@ pub use fire::{
 pub use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
 pub use super::{
-    Game, GameLevel, LevelDimension, Screen,
+    GameLevel, LevelDimension, Screen,
     execution_role::{self, ExecutionRole},
     mod_api_host,
     native_configs::ConfigFile,

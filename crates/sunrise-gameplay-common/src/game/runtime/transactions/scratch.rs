@@ -6,7 +6,7 @@
 //! them, while closed loans are removed before commit and never leak into outer journals. A
 //! single-slot loan (`item: Some(..)`) never changes its item; a two-slot loan (`item: None`)
 //! may change its item and catches what its first slot does not take in its second slot.
-use super::{Game, HashMap, StorageSettlement};
+use super::{HashMap, StorageSettlement};
 pub use mod_api::{ItemPlace, ScratchSlot, TransactionContext, TransactionScopeError};
 use std::sync::Arc;
 pub use sunrise_items::items::{ItemStack, Items};

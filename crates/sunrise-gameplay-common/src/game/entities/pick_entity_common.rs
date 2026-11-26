@@ -1,5 +1,5 @@
 //! Common entity-pick types and queries shared by client crosshair picking and server entity picks.
-use super::{Game, Hit, pick_ray::PickCandidate};
+use super::{Hit, pick_ray::PickCandidate};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 

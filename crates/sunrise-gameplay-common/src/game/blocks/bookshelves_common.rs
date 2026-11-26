@@ -1,5 +1,5 @@
 //! Common enchanting-table bookshelf power queries (`EnchantmentMenu.slotsChanged`).
-use super::{Game, tables::BlockProviderQuery};
+use super::tables::BlockProviderQuery;
 use mod_api::LevelRef;
 use sunrise_core::position::BlockPos;
 use sunrise_sim::stations::bookshelf_offsets;

@@ -20,7 +20,7 @@ pub mod render_fixture;
 pub mod world_view;
 #[allow(unused_imports)]
 pub use super::api_values::TryIntoApi;
-pub use super::{Dim, Game, InteractTarget, view_vector};
+pub use super::{Dim, InteractTarget, view_vector};
 pub use std::sync::Arc;
 pub use sunrise_core::{
     geometry::{Aabb, Vec3},

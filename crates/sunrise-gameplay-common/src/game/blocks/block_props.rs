@@ -1,5 +1,6 @@
 //! Pure common block-state, bed, respawn-anchor, and portal-eligibility helpers.
 use crate::game::CommonGame as Game;
+use crate::game::Side;
 use sunrise_core::{
     geometry::{Vec3, VoxelShape},
     position::BlockPos,

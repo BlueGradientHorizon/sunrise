@@ -1,5 +1,5 @@
 //! Common Ender Dragon helpers shared by client rendering/picking and server simulation.
-use super::{Game, view_vector};
+use super::view_vector;
 use crate::game::potions_common::{PotionCloud, Victim};
 use mod_api::DragonPhase;
 use sunrise_core::geometry::{Aabb, Vec3, trig};
