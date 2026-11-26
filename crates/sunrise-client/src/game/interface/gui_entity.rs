@@ -11,7 +11,7 @@
 //! screen drawing the same entity every frame makes it once and allocates
 //! nothing once the buffers have grown.
 use super::stock_layer_mask::StockLayerMask;
-use super::{Game, commands::Target};
+use super::{Game, commands::Target, dragon::Dragon};
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
 use std::{cell::RefCell, sync::Arc};
@@ -28,6 +28,12 @@ use sunrise_core::{
 /// How many entities made for `GuiEntity::Kind` are kept: a mob page shows a
 /// few at once, and a learner's four models.
 const KEPT: usize = 8;
+
+/// The ender dragon's type. The client keeps it outside its mob list (`mobs/dragon.rs`), so a
+/// screen draws it through its own renderer (`EnderDragonRenderer`).
+const DRAGON: &str = "minecraft:ender_dragon";
+/// `EntityTypes.ENDER_DRAGON`'s height, by which the box centres it.
+const DRAGON_HEIGHT: f32 = 8.0;
 
 /// An entity made for the screen from a type and its data.
 struct Made {
@@ -118,23 +124,16 @@ impl Game<'_> {
             return Err(GuiEntityError::BadView);
         }
         let turned = turn(view.look, centre);
-        let mut existing;
-        let mob: &mut Mob = match entity {
-            GuiEntity::Kind { kind, data } => {
-                let at = self.made_entity(&mut scratch.made, kind, data)?;
-                &mut scratch.made[at].mob
-            }
-            GuiEntity::Existing(handle) => {
-                existing = self.existing_gui_entity(*handle)?;
-                &mut existing
-            }
-            // An entity a later API adds is one this game can't name.
-            _ => return Err(GuiEntityError::UnknownType),
-        };
-        pose(mob, turned);
         scratch.verts.clear();
-        self.gui_entity_geometry(mob, &mut scratch.verts);
-        let height = mob.height();
+        let dragon = self.with_gui_dragon(entity, |dragon| {
+            // EnderDragonRenderer turns by -yRot where a living renderer turns by
+            // 180 - yBodyRot: the dragon facing the viewer is the body yaw less 180.
+            self.gui_dragon_geometry(dragon, turned.0 - 180.0, &mut scratch.verts)
+        })?;
+        let height = match dragon {
+            Some(()) => DRAGON_HEIGHT,
+            None => self.gui_mob_geometry(entity, turned, scratch)?,
+        };
         // PictureInPictureRenderer: the box centre, (size, size, -size); then
         // the translation and Rz(pi) * Rx(the look's pitch).
         let gui = Mat4::from_translation(Vec3::new(centre[0], centre[1], 0.0))
@@ -157,6 +156,64 @@ impl Game<'_> {
         let end = batch.vertices.len();
         batch.depth_glint_since(start, end, rect);
         Ok(())
+    }
+
+    /// When `entity` names the ender dragon, `f` of the dragon a screen draws: a new one
+    /// made still for the screen (its type, with no data but its `id`), or the client's own
+    /// (the dragon or one of its parts). `None` for any other entity.
+    fn with_gui_dragon<R>(
+        &self,
+        entity: &GuiEntity,
+        f: impl FnOnce(&Dragon) -> R,
+    ) -> Result<Option<R>, GuiEntityError> {
+        match entity {
+            GuiEntity::Kind { kind, data } if kind.as_str() == DRAGON => {
+                // Its saved fields (the phase, health, the fight) don't change how a still
+                // screen dragon looks; data naming another type is refused, as for a mob.
+                let named = JavaString::from(DRAGON);
+                if data
+                    .get(&JavaString::from("id"))
+                    .is_some_and(|id| !matches!(id, Tag::String(s) if *s == named))
+                {
+                    return Err(GuiEntityError::BadData);
+                }
+                Ok(Some(f(&Dragon::new(Position::ZERO, 0.0, 0))))
+            }
+            GuiEntity::Existing(handle) => match self.native_entity_read_target(*handle) {
+                Some(Target::Dragon(_) | Target::DragonPart(_)) => self
+                    .dragon
+                    .as_ref()
+                    .map(|dragon| Some(f(dragon)))
+                    .ok_or(GuiEntityError::NoEntity),
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
+    }
+
+    /// A mob's (or the player's) geometry in `scratch.verts`, posed by `turned`; its height.
+    fn gui_mob_geometry(
+        &self,
+        entity: &GuiEntity,
+        turned: (f32, f32, f32, f32),
+        scratch: &mut Scratch,
+    ) -> Result<f32, GuiEntityError> {
+        let mut existing;
+        let mob: &mut Mob = match entity {
+            GuiEntity::Kind { kind, data } => {
+                let at = self.made_entity(&mut scratch.made, kind, data)?;
+                &mut scratch.made[at].mob
+            }
+            GuiEntity::Existing(handle) => {
+                existing = self.existing_gui_entity(*handle)?;
+                &mut existing
+            }
+            // An entity a later API adds is one this game can't name.
+            _ => return Err(GuiEntityError::UnknownType),
+        };
+        pose(mob, turned);
+        self.gui_entity_geometry(mob, &mut scratch.verts);
+        Ok(mob.height())
     }
 
     /// The index in `made` of the entity of `kind` loaded from `data`, made
@@ -587,6 +644,30 @@ mod tests {
                 );
             }
             assert_eq!(batch.vertices.len(), before);
+        });
+    }
+
+    /// #6050: the ender dragon isn't in the client's mob list, and was refused as
+    /// `UnknownType`. It draws through its own renderer, and data naming another type is
+    /// still refused.
+    #[test]
+    #[ignore = "daily"]
+    fn a_screen_draws_the_ender_dragon_by_type() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let look = GuiEntityLook::At([50.0, 40.0]);
+            let view = GuiEntityView::new([26.0, 8.0, 75.0, 78.0], 4.0, 0.0, look);
+            let mut batch = HudBatch::scratch([320, 240]);
+            let dragon = GuiEntity::kind(DRAGON);
+            assert_eq!(game.native_draw_entity(&mut batch, &dragon, view), Ok(()));
+            assert!(!batch.vertices.is_empty(), "the dragon's model is drawn");
+            let mut other = Compound::new();
+            other.insert("id".into(), Tag::String("minecraft:zombie".into()));
+            let mut refused = HudBatch::scratch([320, 240]);
+            assert_eq!(
+                game.native_draw_entity(&mut refused, &GuiEntity::with_data(DRAGON, other), view),
+                Err(GuiEntityError::BadData)
+            );
+            assert!(refused.vertices.is_empty());
         });
     }
 }
