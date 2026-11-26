@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::ItemPlace;
 use mod_api::MenuRef;
 use mod_api::MenuSlotPlace;

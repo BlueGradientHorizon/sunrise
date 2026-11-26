@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) fn with_headless_game(run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};

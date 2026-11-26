@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;

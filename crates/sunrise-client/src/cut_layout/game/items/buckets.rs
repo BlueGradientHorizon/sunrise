@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/filled_bucket_stat_tests.rs"]
 mod filled_bucket_stat_tests;

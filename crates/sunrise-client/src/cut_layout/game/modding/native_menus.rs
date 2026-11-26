@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::data::component_nbt;

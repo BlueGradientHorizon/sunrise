@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_gameplay_common::game::server_side::native_item_places::Bin;
 
 #[cfg(test)]

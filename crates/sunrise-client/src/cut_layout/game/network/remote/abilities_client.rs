@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "gamemode_split_tests_client.rs"]

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod attach_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::load_resources, crate::settings::Settings};

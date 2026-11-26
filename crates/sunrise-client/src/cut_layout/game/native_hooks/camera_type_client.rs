@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod camera_type_tests {
     use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::Calls;

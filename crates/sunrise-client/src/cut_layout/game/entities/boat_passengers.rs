@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::boats_common::Boat;

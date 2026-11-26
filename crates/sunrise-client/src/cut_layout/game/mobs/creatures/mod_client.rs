@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "../../creatures/spawn_egg_mob_tests_client.rs"]
 pub(crate) mod spawn_egg_mob_tests;

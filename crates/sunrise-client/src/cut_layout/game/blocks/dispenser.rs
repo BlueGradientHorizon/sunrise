@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod tests {

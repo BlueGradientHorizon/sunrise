@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/scaffolding_inside_tests_client.rs"]
 pub(crate) mod scaffolding_inside_tests;

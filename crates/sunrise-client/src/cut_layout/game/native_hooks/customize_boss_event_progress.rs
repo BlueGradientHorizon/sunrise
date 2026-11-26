@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod customize_boss_event_progress_tests {
 

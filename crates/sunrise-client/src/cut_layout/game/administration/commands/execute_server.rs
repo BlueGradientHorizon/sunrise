@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod passenger_relation_tests {
     use super::*;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_level::containers::BlockEntity;

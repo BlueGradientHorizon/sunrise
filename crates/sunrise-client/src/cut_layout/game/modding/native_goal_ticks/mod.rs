@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod interception_tests;
 #[cfg(test)]

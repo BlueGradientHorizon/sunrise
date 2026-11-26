@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::LevelRef;
 #[cfg(test)]
 mod tests {

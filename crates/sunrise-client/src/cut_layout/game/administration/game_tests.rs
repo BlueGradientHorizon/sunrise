@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_sim::lan::Out;

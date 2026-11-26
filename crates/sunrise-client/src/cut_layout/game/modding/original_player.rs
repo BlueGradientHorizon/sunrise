@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_gameplay_common::game::Dim;

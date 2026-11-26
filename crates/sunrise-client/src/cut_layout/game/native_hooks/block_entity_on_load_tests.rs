@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;

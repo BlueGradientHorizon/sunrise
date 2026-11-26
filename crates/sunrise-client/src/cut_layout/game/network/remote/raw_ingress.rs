@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::time::Duration;
 use sunrise_protocol::packets::play::Clientbound as C;
 #[cfg(test)]

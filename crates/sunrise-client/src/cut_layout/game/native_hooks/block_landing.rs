@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod landing_crossing_tests {

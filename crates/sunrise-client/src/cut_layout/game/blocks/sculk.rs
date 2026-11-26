@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_level::particle_options::ParticleType;
 #[cfg(feature = "client")]

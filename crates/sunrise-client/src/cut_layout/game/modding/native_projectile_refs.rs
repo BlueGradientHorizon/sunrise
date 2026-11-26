@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::arrows::Pickup;

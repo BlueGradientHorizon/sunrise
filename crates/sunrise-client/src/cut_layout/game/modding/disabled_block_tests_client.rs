@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::game::server_side::disabled_block_tests::tests::DISPENSER;

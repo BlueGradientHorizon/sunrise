@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/pickup_post_tests.rs"]
 pub(crate) mod pickup_post_tests;

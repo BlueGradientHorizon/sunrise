@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::native_rain_read::weather_flags;
 

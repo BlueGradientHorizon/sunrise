@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::DimensionKey;
 #[cfg(test)]
 #[path = "entity_residency/all_family_binding_tests.rs"]

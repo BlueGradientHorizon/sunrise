@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::position::ChunkPos;
 use sunrise_gameplay_common::game::commands_common::Target;
 

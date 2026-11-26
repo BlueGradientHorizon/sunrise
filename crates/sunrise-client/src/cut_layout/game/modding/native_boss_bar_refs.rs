@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_sim::lan::playerdata::uuid_ints;
 #[cfg(test)]
 mod tests {

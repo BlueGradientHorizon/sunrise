@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::commands::execute::ExecState;

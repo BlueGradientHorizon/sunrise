@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod render_tooltip_texture_tests {
     use sunrise_items::items::ItemStack;

@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod on_entity_item_update_tests {
     use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{Arc, ItemStack, mod_api}};

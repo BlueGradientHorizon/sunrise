@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Aabb;
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]

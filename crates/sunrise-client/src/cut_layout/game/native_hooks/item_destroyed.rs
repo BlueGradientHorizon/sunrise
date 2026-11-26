@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod item_destroyed_tests {

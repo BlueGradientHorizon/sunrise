@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod hotbar_slot_tests {

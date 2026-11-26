@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod client_packet_send_tests {
     use mod_api::{ClientHost, ClientPacketSendEvent, Flow, Hooks, ModEntry};

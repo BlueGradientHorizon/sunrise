@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::projectiles::Projectile;
 use sunrise_sim::projectiles::ProjectileKind;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use {crate::game::piston_carry::*, sunrise_gameplay_common::game::piston_carry::{ATTACHMENTS_KEY, Attachments, BlockPos, CARRIED_KEY, ChunkExtras, Direction, MovingPiston, Tag}};

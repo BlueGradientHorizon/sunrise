@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "interrupted_turn_tests.rs"]
 mod interrupted_turn_tests;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client::options_ui::Event;
 use sunrise_client::options_ui::Page;
 use sunrise_client::settings::Settings;

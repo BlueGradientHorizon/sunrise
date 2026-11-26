@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/book_escape_tests.rs"]

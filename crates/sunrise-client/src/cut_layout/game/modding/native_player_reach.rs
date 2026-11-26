@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;

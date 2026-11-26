@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod enchantment_snapshot_tests {
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, crate::game::resource_load::load_resources};

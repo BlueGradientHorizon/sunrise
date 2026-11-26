@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::FluidStack;
 use std::sync::Arc;
 use sunrise_core::geometry::Direction;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/building_cache.rs"]
 pub(crate) mod building_cache_tests;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_game_data::text::Text;

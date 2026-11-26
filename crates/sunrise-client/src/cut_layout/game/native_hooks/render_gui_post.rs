@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client::extras_hud::Corners;
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]

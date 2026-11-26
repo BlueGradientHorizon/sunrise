@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::AttachmentHolder;
 use mod_api::ChunkRef;
 use std::sync::Arc;

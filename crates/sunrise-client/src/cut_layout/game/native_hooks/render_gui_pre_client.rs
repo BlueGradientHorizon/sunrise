@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod local_sound_tests {
     use sunrise_gameplay_common::game::native_hooks::render_gui_pre::local_sound_tests::Mod;

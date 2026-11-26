@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use {sunrise_client_lib::audio::Audio, crate::settings::Settings, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};

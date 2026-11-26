@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "entity/restore_tests.rs"]
 pub(crate) mod restore_tests;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     /// Invoke the actual attack methods in an empty scratch Game, without

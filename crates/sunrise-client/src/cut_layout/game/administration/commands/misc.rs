@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tick_status_broadcast_tests.rs"]
 pub(crate) mod tick_status_broadcast_tests;

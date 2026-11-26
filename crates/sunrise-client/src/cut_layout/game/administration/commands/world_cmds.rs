@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "attribute_missing_tests.rs"]
 pub(crate) mod attribute_missing_tests;

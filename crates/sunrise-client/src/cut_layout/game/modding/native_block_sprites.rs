@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod biome_tint_tests {
 

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_sim::lan::entity::EntityState;
 #[cfg(test)]

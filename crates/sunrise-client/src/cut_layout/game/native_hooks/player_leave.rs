@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod player_leave_tests {
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod lectern_book_removal_tests {
     use super::super::game_tests::tests::server_game;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::SignEditView;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::Screen;

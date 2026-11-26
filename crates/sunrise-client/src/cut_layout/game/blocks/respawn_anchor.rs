@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
 use sunrise_gameplay::game::respawn_anchor::look_at_yaw;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_world::attributes::{Modifier, Operation};
 #[cfg(test)]

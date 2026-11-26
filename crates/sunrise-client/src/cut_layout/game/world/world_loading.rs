@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::path::PathBuf;
 use std::time::Instant;
 use sunrise_gameplay::game::world_loading::WorldRequest;

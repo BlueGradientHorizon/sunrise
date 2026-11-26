@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod component_hover_tests {
     use mod_api::text::{TextContent, TextHover};

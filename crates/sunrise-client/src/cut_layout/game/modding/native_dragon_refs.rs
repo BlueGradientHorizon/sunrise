@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::{DragonPhase, DragonRef, EntityRef};
 use sunrise_gameplay_common::game::dragon_common::Dragon;
 #[cfg(test)]

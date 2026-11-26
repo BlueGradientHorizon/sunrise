@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod fake_travel_tests {
     use sunrise_gameplay_common::game::Dim;

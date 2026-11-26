@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod allay_owner_damage_tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game_at;

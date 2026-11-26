@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod equippable_slot_tests {
     use sunrise_items::items::ItemStack;

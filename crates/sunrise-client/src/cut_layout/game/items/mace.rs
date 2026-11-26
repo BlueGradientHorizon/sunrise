@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 #[path = "tests/player_armor_weapon_tests.rs"]

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use {crate::game::native_rotate::*, sunrise_gameplay_common::game::native_rotate::{BlockState, EngineState, Rotation, native_worldgen_parts, rotate}};

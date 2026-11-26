@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};

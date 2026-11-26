@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod attachment_membership_tests {
     use {crate::game::mod_api_host::*, sunrise_gameplay_common::game::mod_api_host::{AttachmentAccess}};

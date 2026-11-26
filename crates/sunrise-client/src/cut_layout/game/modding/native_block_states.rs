@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use {crate::game::native_block_states::*, sunrise_gameplay_common::game::native_block_states::{Arc, BlockRegistry, BlockStateId, FluidState, ItemStack, Registries, StateConstraint, StateMatchError, block, block_registries, description_id, match_state_properties, parse, serialize}};

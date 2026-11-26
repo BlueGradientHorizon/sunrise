@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::ItemEntityRef;
 use sunrise_items::items::ItemStack;

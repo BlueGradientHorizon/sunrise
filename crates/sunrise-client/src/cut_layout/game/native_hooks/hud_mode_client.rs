@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode, ModEntry};

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client::spectator_menu::Outcome;
 use sunrise_level::profile_lookup::SPECTATOR;
 use sunrise_game_data::scoreboard::comp_text;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod stand_equip_event_tests {

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client::hud::HudBatch;
 use sunrise_client::toasts::SystemToast;
 use sunrise_game_data::text::Text;

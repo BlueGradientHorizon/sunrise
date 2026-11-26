@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use {crate::game::transactions::scratch::*, sunrise_gameplay_common::game::transactions::scratch::{ItemPlace, ItemStack, Scratch}};

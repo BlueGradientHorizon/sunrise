@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_sim::mobs::Who;
 #[cfg(test)]
 mod tests {

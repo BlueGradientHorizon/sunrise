@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/campfire_tests.rs"]
 pub(crate) mod campfire_tests;

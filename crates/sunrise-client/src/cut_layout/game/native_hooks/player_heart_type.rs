@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod player_heart_type_tests {
     use mod_api::client::hud_layout::HeartKind;

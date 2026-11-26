@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::{bind_local_player, with_game};

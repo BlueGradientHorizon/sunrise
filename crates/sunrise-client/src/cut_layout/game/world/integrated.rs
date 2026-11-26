@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::channel;
 use std::time::Duration;

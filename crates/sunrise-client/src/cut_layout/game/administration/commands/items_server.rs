@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 use sunrise_gameplay::game::server_side::commands::items::Slot;
 
 #[cfg(test)]

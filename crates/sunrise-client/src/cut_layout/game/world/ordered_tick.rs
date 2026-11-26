@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 /// Hears every entity tick, naming `named` to `entity_tick_each`.

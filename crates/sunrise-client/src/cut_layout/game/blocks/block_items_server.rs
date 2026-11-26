@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::save;

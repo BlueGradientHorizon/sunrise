@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};

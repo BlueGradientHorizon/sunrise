@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]
 #[path = "base_tests/screen_open_tests.rs"]

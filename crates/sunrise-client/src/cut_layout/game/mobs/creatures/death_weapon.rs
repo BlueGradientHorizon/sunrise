@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "death_weapon_tests.rs"]
 pub(crate) mod tests;

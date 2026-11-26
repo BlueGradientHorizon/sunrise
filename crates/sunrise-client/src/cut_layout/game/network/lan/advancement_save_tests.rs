@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 pub(in crate::game) mod connected_advancement_save_tests {
 

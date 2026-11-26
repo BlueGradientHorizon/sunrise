@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use crate::settings::Settings;
 
 use sunrise_core::position::ChunkPos;

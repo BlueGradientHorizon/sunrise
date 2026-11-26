@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client_gameplay::game::client_side::packs::{
     OVERLAY_HOLD, PackReload, ReloadKind, StageResult, reload_waits, startup_root,
 };

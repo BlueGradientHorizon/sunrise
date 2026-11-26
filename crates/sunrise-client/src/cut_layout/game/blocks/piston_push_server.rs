@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::entity::EntityHandle;
 #[cfg(test)]

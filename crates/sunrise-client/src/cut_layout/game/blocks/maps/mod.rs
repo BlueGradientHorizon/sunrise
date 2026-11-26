@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::maps::MapData;
 use sunrise_items::items::ItemStack;

@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "payload_transport/config_tests.rs"]
 mod config_tests;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/bed_loss.rs"]
 pub(crate) mod bed_loss_tests;

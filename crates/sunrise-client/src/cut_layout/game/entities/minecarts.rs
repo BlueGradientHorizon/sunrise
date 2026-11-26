@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "minecarts/lifetime_tests.rs"]
 pub(crate) mod lifetime_tests;

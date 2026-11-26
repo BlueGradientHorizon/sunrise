@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::mobs::Mob;

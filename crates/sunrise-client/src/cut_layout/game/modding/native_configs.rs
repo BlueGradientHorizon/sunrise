@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use {crate::game::native_configs::*, sunrise_gameplay_common::game::native_configs::{CHECK_EVERY, ConfigFile, Duration, Instant, NativeConfigs, Path, PathBuf, Tracked, fs}};

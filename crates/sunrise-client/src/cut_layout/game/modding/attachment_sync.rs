@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "attachment_sync/general_snapshot_tests.rs"]
 mod general_snapshot_tests;

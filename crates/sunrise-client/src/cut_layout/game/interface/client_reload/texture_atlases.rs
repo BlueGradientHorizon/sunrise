@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::tests::Maps;
 
 #[cfg(test)]

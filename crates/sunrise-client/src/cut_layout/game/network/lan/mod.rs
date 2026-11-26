@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_gameplay_common::game::lan_common::LanSettings;
 use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_sim::lan::NetConfig;

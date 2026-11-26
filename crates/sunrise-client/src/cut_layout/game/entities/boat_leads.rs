@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::server_side::boat_leads::Held;
 use sunrise_sim::mobs::leash::{Holder, Pending};

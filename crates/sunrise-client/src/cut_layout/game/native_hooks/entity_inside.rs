@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 pub(crate) mod entity_inside_tests {

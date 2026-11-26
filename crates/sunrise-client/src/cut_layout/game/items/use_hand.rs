@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/adventure_use_on_tests.rs"]
 pub(crate) mod adventure_use_on_tests;

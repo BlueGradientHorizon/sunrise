@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Direction;
 use sunrise_core::geometry::Vec3;

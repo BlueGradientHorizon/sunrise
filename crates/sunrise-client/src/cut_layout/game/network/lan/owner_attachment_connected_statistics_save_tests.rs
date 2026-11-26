@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 mod owner_attachment_save_tests {
     use sunrise_core::nbt::Tag;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_gameplay_common::game::Dim;
 use mod_api::PortalError;
 use mod_api::PortalRotation;

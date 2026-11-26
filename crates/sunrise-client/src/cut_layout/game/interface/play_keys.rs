@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod pause_close_tests {
     use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};

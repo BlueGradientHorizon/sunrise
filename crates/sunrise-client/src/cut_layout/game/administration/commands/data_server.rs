@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::nbt::Tag;
 #[cfg(test)]
 pub(crate) mod tests {

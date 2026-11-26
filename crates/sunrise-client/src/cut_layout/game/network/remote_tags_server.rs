@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;

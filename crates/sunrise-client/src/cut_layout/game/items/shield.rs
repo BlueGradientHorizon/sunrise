@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::health::{BlockOutcome, HurtSource};

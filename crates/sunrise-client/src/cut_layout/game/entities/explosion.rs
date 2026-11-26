@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::ExplosionStart;
 use sunrise_gameplay::game::server_side::explosion::{BlockInteraction, ExplicitBlastSource, ExplosionCause, ExplosionSource};
 use sunrise_core::geometry::Vec3;

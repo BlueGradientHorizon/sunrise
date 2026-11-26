@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay::game::server_side::lan::LanSettings;

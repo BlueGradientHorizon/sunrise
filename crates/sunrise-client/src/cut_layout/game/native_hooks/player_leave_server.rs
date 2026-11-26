@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod player_leave_tests {
 use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;

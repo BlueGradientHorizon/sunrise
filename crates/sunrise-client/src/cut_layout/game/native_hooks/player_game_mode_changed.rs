@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod player_game_mode_changed_tests {
     use mod_api::{Flow, GameMode, Hooks, ModEntry, PlayerGameModeChangedEvent, ServerHost};

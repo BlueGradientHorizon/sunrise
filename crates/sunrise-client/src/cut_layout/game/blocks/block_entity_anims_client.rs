@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod conduit_target_tests {
     use {sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::attack_conduit_for_test, crate::game::server_side::block_entity_anims::conduit_target_tests::game, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::summon};

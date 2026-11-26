@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client::hud::HudBatch;
 use sunrise_items::items::ItemStack;
 use winit::event::MouseButton;

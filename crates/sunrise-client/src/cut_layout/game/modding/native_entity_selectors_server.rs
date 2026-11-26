@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_command::args::Selector;
 #[cfg(test)]
 mod tests {

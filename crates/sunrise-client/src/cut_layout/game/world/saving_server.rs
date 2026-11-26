@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::time::Duration;
 use std::time::Instant;
 use sunrise_gameplay_common::game::saving::ClosingSave;

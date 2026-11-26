@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client_gameplay::game::host::draw::GameDrawContext;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::text::Text;

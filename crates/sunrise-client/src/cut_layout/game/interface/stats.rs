@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/phantom_spawn_tests.rs"]
 mod phantom_spawn_tests;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::EntityTypeTags;
 use sunrise_items::items::ItemStack;

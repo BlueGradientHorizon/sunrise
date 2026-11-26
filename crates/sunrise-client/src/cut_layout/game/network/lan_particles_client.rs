@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_level::particle_options::ParticleType;
 use sunrise_protocol::entity_data::{Particle, ParticleData};
 #[cfg(test)]

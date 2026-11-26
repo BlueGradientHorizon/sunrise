@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_world::teleport_consume::TeleportConsume;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::EntityRef;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 #[path = "falling_blocks/moving_piston_tests.rs"]

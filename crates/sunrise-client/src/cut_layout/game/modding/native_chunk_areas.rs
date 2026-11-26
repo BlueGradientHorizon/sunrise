@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::server_side::view_pass::tests::Sent, sunrise_gameplay::game::server_side::view_pass::tests::host_a_viewer, crate::game::server_side::view_pass::tests::open_game, sunrise_gameplay_common::game::server_side::view_pass::tests::sent};

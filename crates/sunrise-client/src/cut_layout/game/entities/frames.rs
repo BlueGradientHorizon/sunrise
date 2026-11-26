@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_items::items::ItemStack;

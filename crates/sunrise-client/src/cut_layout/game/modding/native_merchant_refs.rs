@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::MerchantRef;
 use sunrise_sim::merchant::Trader;

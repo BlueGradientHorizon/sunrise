@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod sweep_tests {
     use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::InsidePart;

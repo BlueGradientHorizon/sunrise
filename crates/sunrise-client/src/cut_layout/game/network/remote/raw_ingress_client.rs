@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_client_gameplay::remote::chunks::{Next, Received};
 use sunrise_client_lib::net::Event;
 use sunrise_protocol::packets::play::Clientbound as C;

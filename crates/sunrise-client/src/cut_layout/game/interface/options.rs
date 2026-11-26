@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod resize_state_tests {

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::BlockEntityError;
 use mod_api::__private::game::player_ref;
 use sunrise_core::nbt::Tag;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]
 pub(crate) mod infested_roll_tests;

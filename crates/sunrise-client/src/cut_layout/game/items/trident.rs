@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "trident/impact_tests.rs"]
 pub(crate) mod impact_tests;

@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::EntityRef;
 #[cfg(test)]
 mod tests {

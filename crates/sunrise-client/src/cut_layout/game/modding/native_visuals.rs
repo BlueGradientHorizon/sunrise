@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use sunrise_client_gameplay::game::client_side::native_visuals::rim_target_valid;

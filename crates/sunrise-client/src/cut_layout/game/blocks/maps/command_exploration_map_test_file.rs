@@ -1,3 +1,4 @@
+#![cfg(test)]
 #[cfg(test)]
 mod command_exploration_map_tests {
     use std::sync::Arc;

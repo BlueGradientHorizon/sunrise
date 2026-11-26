@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::{Billboard, DisplayKind, DisplayRef, EntityRef, ItemDisplayContext, TextAlignment, Transformation};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::entity_data::Value;

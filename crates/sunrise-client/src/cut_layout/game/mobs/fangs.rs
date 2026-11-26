@@ -1,4 +1,5 @@
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "fangs/current_tests.rs"]
 pub(crate) mod current_tests;

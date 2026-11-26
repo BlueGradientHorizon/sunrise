@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[path = "execute_facing_tests.rs"]
 pub(crate) mod execute_facing_tests;

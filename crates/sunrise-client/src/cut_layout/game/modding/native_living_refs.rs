@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use mod_api::LivingRef;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;

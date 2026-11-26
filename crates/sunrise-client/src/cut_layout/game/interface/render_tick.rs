@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {

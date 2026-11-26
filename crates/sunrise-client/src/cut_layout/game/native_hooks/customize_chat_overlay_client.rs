@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 pub(crate) mod customize_chat_overlay_tests {
     use crate::game::server_side::native_entity_refs::tests::with_client_game;

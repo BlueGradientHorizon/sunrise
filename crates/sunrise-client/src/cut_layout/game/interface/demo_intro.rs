@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use sunrise_game_data::text::Text;
 #[cfg(test)]
 mod tests {

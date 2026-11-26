@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay::game::server_side::ahead::{AHEAD, TAKEN};

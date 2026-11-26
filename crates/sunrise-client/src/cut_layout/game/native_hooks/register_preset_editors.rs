@@ -1,5 +1,6 @@
 
 
+#![cfg(test)]
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]
