@@ -212,6 +212,13 @@ macro_rules! impl_block_states_without_tables {
                 ) -> Result<Option<&str>, BlockStateError> {
                     Err(BlockStateError::Unavailable)
                 }
+                fn block_metadata_visit_properties(
+                    &self,
+                    _: BlockState,
+                    _: &mut dyn FnMut(&str, &str),
+                ) -> Result<(), BlockStateError> {
+                    Err(BlockStateError::Unavailable)
+                }
                 fn block_metadata_with(
                     &self,
                     _: BlockState,
@@ -418,6 +425,13 @@ impl BlockMetadata for BlockStates<'_> {
         properties: &[StateConstraint],
     ) -> Result<BlockState, BlockStateError> {
         self.backend.block_metadata_of(block, properties)
+    }
+    fn visit_properties(
+        &self,
+        state: BlockState,
+        visit: &mut dyn FnMut(&str, &str),
+    ) -> Result<(), BlockStateError> {
+        self.backend.block_metadata_visit_properties(state, visit)
     }
 }
 

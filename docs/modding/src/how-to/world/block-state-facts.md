@@ -14,7 +14,10 @@ serialized value from immutable metadata. `state.with(&metadata, "facing", "east
 new state without writing to the world. To start from a block's default and apply partial
 property constraints, use `BlockState::of(&metadata, key, constraints)`. A missing property on a
 known state reads as `Ok(None)`; unavailable metadata, invalid states and refused edits return
-`BlockStateError`. For a known local ordinal, use the
+`BlockStateError`. To read a state's whole property set, as a tint source forwarding it does,
+`state.visit_properties(&metadata, &mut |name, value| ...)` calls back with each property's name
+and serialized value, in name order, as borrowed `&str`s (nothing is allocated). A block with no
+properties calls nothing; metadata that cannot enumerate returns `Unavailable`. For a known local ordinal, use the
 [block's state range](../../concepts/registry-keys.md#block-states).
 
 | Method | Vanilla |

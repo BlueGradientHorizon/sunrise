@@ -52,6 +52,17 @@ impl BlockState {
     ) -> Result<Option<&'a str>, BlockStateError> {
         metadata.property(self, name)
     }
+    /// Visit each of this state's properties with its serialized value, in name order (as
+    /// vanilla's `StateDefinition` keeps them), from the supplied immutable metadata: what a
+    /// colour provider or an adapter forwards as the state's whole property set. A block with no
+    /// properties visits nothing.
+    pub fn visit_properties(
+        self,
+        metadata: &dyn BlockMetadata,
+        visit: &mut dyn FnMut(&str, &str),
+    ) -> Result<(), BlockStateError> {
+        metadata.visit_properties(self, visit)
+    }
     /// Return a new state with one property changed and the other properties retained. This does
     /// not change the original state, the metadata or any block in the world.
     pub fn with(
