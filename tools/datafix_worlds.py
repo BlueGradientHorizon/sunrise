@@ -133,8 +133,10 @@ def java(version):
     if component in ('java-runtime-delta', 'java-runtime-epsilon'):
         return 'java'  # 1.20.5 on: the JDK that runs 26.3 runs them
     runtimes = LOCK[platform()]
+    if component not in {name for plat, names in LOCK.items() if plat != 'note' for name in names}:
+        raise ValueError(f'{version}: javaVersion component {component} is in no platform of research-lock.json java_runtimes')
     if component not in runtimes:
-        component = 'java-runtime-gamma'
+        component = 'java-runtime-gamma'  # research-lock.json java_runtimes note: a component this platform lacks falls back to gamma
     pin = runtimes[component]
     home = LOCAL / 'java' / f'{component}-{platform()}'
     stamp = home / '.complete'
@@ -225,8 +227,8 @@ class Server:
             self.process.stdin.write('stop\n')
             self.process.stdin.flush()
             self.process.wait(120)
-        except Exception:
-            self.process.kill()
+        finally:
+            self.process.kill()   # a no-op once it has exited; after a failed stop the error still reaches the caller
             self.process.wait()   # the world folder and port are reused only once the process is gone
 
 
@@ -289,19 +291,16 @@ class Bot:
                 self.send(4 if old else 5, data)
             elif pid == disconnect:
                 raise RuntimeError(f'disconnected during configuration: {data!r}')
-            elif not old and self.known_packs(data):
+            elif not old and pid == 14 and self.known_packs(data):  # select_known_packs, clientbound, 1.20.5 on
                 self.send(7, varint(0))  # claim no packs: the server sends full registries
 
     @staticmethod
     def known_packs(data):
-        try:
-            pos, count = parse_varint(data, 0)
-            if count < 1:
-                return False
-            pos, n = parse_varint(data, pos)
-            return data[pos:pos + n] == b'minecraft'
-        except IndexError:
+        pos, count = parse_varint(data, 0)
+        if count < 1:
             return False
+        pos, n = parse_varint(data, pos)
+        return data[pos:pos + n] == b'minecraft'
 
     def idle(self):
         self.sock.settimeout(1.0)

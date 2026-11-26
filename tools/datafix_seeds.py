@@ -175,13 +175,8 @@ def default_java_identity():
         raise RuntimeError(f'java ({program}) is not JAVA_HOME direct launcher; cannot key JDK by content')
     resolved = os.path.realpath(program)
 
-    class _FileHasher:
-        @staticmethod
-        def file(path):
-            with open(path, 'rb') as stream:
-                return hashlib.file_digest(stream, 'sha256').hexdigest()
-
-    identity = shim.toolchain(resolved, _FileHasher())
+    lab = _sibling('lab')
+    identity = shim.toolchain(resolved, argparse.Namespace(file=lambda path: lab.digest(Path(path), 'sha256')))
     if len(identity) <= 1:
         raise RuntimeError(f'java ({resolved}) lacks JDK runtime files ({", ".join(shim.JDK_FILES)})')
     return identity
@@ -384,10 +379,8 @@ def prepare(dest_root, keep_dir, *, key=None, manifest=None, expected=None, gene
             os.rename(staging, snapshot_dir)
             copy_snapshot(snapshot_dir, dest)
             prune_seed_keep(keep)
-        except Exception:
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
         finally:
+            shutil.rmtree(staging, ignore_errors=True)  # already renamed away on success
             shutil.rmtree(scratch, ignore_errors=True)
     return {'key': key, 'status': 'miss', 'worlds': len(expected), 'elapsed': time.monotonic() - started}
 
