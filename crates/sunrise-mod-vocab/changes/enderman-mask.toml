@@ -1,0 +1,3 @@
+ids = ["hook:enderman_mask", "type:EndermanMaskEvent", "type:HookId"]
+why = "Adds the server hook enderman_mask, asked at the worn-item test that opens Enderman.isBeingStaredBy: a mod may say a head item hides the face from endermen, or that one vanilla treats as a mask (a carved pumpkin) does not, so the stare is judged on the look alone. enderman_anger could only suppress a stare, never count one the head-item test had hidden. New hook: no existing hook version changes."
+migrate = "Additive. A mod that matches HookId exhaustively adds the EndermanMask arm."

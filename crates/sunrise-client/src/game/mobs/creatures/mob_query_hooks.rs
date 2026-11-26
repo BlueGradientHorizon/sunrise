@@ -86,6 +86,21 @@ impl sunrise_client::mobs::MobHooks for Game<'_> {
         );
         cancel
     }
+    fn enderman_mask(&self, enderman: u32, player: &PlayerView, mask: bool) -> bool {
+        if !mod_api::__private::listened(mod_api::HookId::EndermanMask) {
+            return mask;
+        }
+        let Some(epoch) = self.native_lifecycle.epoch() else {
+            return mask;
+        };
+        let uuid = sunrise_client::lan::playerdata::ints_uuid(player.uuid);
+        let Some(player) = self.player(uuid) else {
+            return mask;
+        };
+        let mut mask = mask;
+        self.native_enderman_mask(mod_api::EntityRef::new(epoch, enderman), player, &mut mask);
+        mask
+    }
     fn can_grief(&self, mob: u32, rule: bool) -> bool {
         self.entity_grief(mob, rule)
     }

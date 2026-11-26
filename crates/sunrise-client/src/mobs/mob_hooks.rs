@@ -21,6 +21,11 @@ pub trait MobHooks {
     ) -> Option<PathType> {
         default
     }
+    /// `enderman_mask`: whether `player`'s head item hides their face from
+    /// enderman `enderman`, `mask` (vanilla's tag test) unless a mod says otherwise.
+    fn enderman_mask(&self, _enderman: u32, _player: &PlayerView, mask: bool) -> bool {
+        mask
+    }
     /// `EnderManAngerEvent`: whether a mod keeps enderman `enderman` calm
     /// though `player` stares at it.
     fn enderman_anger_suppressed(&self, enderman: u32, player: &PlayerView) -> bool;

@@ -13,4 +13,15 @@ impl Game<'_> {
     ) {
         self.fire_enderman_anger(enderman, player, cancel);
     }
+
+    /// `enderman_mask`: whether `player`'s head item hides their face from
+    /// `enderman`. `mask` comes in as vanilla's `#gaze_disguise_equipment` test.
+    pub(in crate::game) fn native_enderman_mask(
+        &self,
+        enderman: EntityRef,
+        player: PlayerRef,
+        mask: &mut bool,
+    ) {
+        self.fire_enderman_mask(enderman, player, mask);
+    }
 }
