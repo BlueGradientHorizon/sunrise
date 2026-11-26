@@ -964,11 +964,17 @@ class ScheduledDynaJobTests(unittest.TestCase):
         jobs = hot_paths["jobs"]
         self.assertEqual(set(jobs), {"schedule-dispatch", "route", "measure", "record"})
         dispatcher = jobs["schedule-dispatch"]
-        self.assertEqual(dispatcher["if"], "github.repository == 'sunrise-org/sunrise' && github.event_name == 'schedule'")
+        self.assertEqual(hot_paths["on"]["schedule"], [{"cron": "43 8 * * *"}])
+        self.assertEqual(dispatcher["if"], "github.repository == 'sunrise-org/sunrise' && "
+                         "github.event_name == 'schedule' && github.ref == 'refs/heads/main'")
         self.assertEqual(dispatcher["runs-on"], "ubuntu-latest")
-        self.assertEqual(dispatcher["permissions"], {"actions": "write"})
-        self.assertEqual([step["run"] for step in dispatcher["steps"]],
-                         ['gh workflow run hot-paths.yml --repo "$GITHUB_REPOSITORY" --ref main'])
+        self.assertEqual(dispatcher["permissions"], {"actions": "write", "contents": "read"})
+        checkout, dispatch = dispatcher["steps"]
+        self.assertTrue(checkout["uses"].startswith("actions/checkout@"))
+        self.assertEqual(checkout["with"]["ref"], "${{ github.sha }}")
+        self.assertEqual(checkout["with"]["persist-credentials"], "false")
+        self.assertEqual(dispatch["env"], {"GH_TOKEN": "${{ github.token }}"})
+        self.assertEqual(dispatch["run"], "python3 tools/ci/hot_paths_schedule.py")
         self.assertEqual(jobs["route"]["if"], "github.event_name == 'workflow_dispatch'")
         self.assertNotIn("needs", jobs["route"])
         self.assertEqual(jobs["measure"]["needs"], "route")
