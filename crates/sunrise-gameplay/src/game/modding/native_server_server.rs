@@ -1532,7 +1532,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Resolves `entity` to a mutable live experience orb in the active or any parked server level.
-    fn native_orb_mut(
+    pub(in crate::game) fn native_orb_mut(
         &mut self,
         entity: EntityRef,
     ) -> Result<&mut sunrise_sim::entities::ExperienceOrb, ExperienceOrbWriteError> {
